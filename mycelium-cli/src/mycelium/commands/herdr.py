@@ -147,6 +147,129 @@ def herdr_unmap(
         raise typer.Exit(1) from None
 
 
+@doc_ref(
+    usage="mycelium herdr enroll [handle] [--room <room>] [--pane <id>]",
+    desc="Join a room as the herdr agent in this pane, so mentions of it wake it.",
+    group="agent",
+)
+@app.command("enroll")
+@in_room("room")
+def herdr_enroll(
+    ctx: typer.Context,
+    handle: str | None = typer.Argument(
+        None, help="The handle to join as (default: from the pane's tab name)."
+    ),
+    room: str | None = None,
+    pane: str | None = typer.Option(
+        None, "--pane", help="herdr pane id (default: this pane, $HERDR_PANE_ID)."
+    ),
+) -> None:
+    """Make the agent in this herdr pane a member of a room.
+
+    For an agent running in a herdr pane that no workspace binding or runner
+    enrolled: it registers the agent in the room and maps the pane, so a mention
+    of it rings this pane. The mapping is a plain one, so no sync pass retires
+    it. Running it again in a pane that's already a member says so and changes
+    nothing.
+    """
+    import os
+
+    from mycelium.client import typed_client
+    from mycelium.commands.agent import _load_manifest_remote, _write_manifest
+
+    def member(name: str) -> bool:
+        """Whether the hub already has ``name`` registered in the room."""
+        with typed_client(config, timeout=HUB_TIMEOUT_S) as client:
+            return _load_manifest_remote(client, room_name, name) is not None
+
+    try:
+        room_name = str(room)
+        pane_id = pane or os.environ.get("HERDR_PANE_ID", "").strip()
+        if not pane_id:
+            console.print(
+                "[red]Not in a herdr pane[/red] ($HERDR_PANE_ID isn't set). "
+                "Run this inside the pane, or name it with --pane."
+            )
+            raise typer.Exit(1)
+        bridge = _bridge()
+        if not bridge.available():
+            console.print("[red]herdr isn't reachable[/red], so the pane can't be checked.")
+            raise typer.Exit(1)
+        agent = bridge.get_agent(pane_id)
+        if agent is None:
+            console.print(f"[red]No agent is running in pane {escape(pane_id)}.[/red]")
+            raise typer.Exit(1)
+
+        config = MyceliumConfig.load()
+        sender = config.get_current_identity()
+        mappings = [m for m in bridge.registry.all() if m.room == room_name]
+        here = next((m for m in mappings if m.pane == pane_id), None)
+        if here is not None:
+            if not member(here.handle):
+                manifest = _member_manifest(here.handle, room_name, agent, sender)
+                _write_manifest(config, room_name, manifest, created_by=sender)
+            console.print(
+                f"Already a member: [cyan]@{escape(here.handle)}[/cyan] in "
+                f"{escape(room_name)}, pane {escape(pane_id)}."
+            )
+            return
+
+        taken = {m.handle for m in mappings}
+        if handle:
+            wanted = _sanitize_handle(handle.lstrip("@"), "")
+            if not wanted:
+                console.print(
+                    f"[red]@{escape(handle)} can't be a handle:[/red] use lowercase "
+                    "letters, digits, '.', '-' and '_'."
+                )
+                raise typer.Exit(1)
+            if wanted in taken or member(wanted):
+                console.print(
+                    f"[red]@{wanted} is already a member of {escape(room_name)}.[/red] "
+                    "Pick another handle."
+                )
+                raise typer.Exit(1)
+        else:
+            workspace = str(agent.get("workspace_id") or "")
+            labels = bridge.tab_labels(workspace or None)
+            wanted = _derive_handle(
+                tab_label=labels.get(str(agent.get("tab_id") or ""), ""),
+                pane_id=pane_id,
+                prefix="",
+                name_from="tab",
+                taken=taken,
+            )
+            while member(wanted):
+                wanted = _sanitize_handle(f"{wanted}-{_pane_suffix(pane_id)}", "") or (
+                    f"agent-{_pane_suffix(pane_id)}"
+                )
+
+        manifest = _member_manifest(wanted, room_name, agent, sender)
+        _write_manifest(config, room_name, manifest, created_by=sender)
+        bridge.registry.set(
+            HerdrPaneMapping(
+                room=room_name,
+                handle=wanted,
+                pane=pane_id,
+                kind=agent.get("agent"),
+                cwd=agent.get("foreground_cwd") or agent.get("cwd"),
+            )
+        )
+        console.print(
+            f"[green]Enrolled[/green] [cyan]@{wanted}[/cyan] in {escape(room_name)}, "
+            f"pane {escape(pane_id)}. Mentions of @{wanted} now wake this pane."
+        )
+        console.print(
+            "[dim]Check with `mycelium whoami --sources`: the handle should come from "
+            "this herdr pane's agent.[/dim]"
+        )
+    except typer.Exit:
+        raise
+    except Exception as e:
+        print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
+        raise typer.Exit(1) from None
+
+
 def _room_members(config: MyceliumConfig, room_name: str) -> dict[str, str] | None:
     """The backend's live presence for a room: ``{handle: kind}`` (``slim``/``lease``).
 
