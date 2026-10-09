@@ -383,6 +383,21 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let experiences = Submenu::with_id(app, "experiences", "Experiences", true)?;
     let switch = MenuItem::with_id(app, "switch", "Settings…", true, Some("CmdOrCtrl+,"))?;
     let health = MenuItem::with_id(app, "doctor", "Health check…", true, None::<&str>)?;
+    // Where to look when something won't start: the app's own log, and the
+    // runner's, which says why an agent didn't.
+    let logs = Submenu::with_id_and_items(
+        app,
+        "logs",
+        "Logs",
+        true,
+        &[
+            &MenuItem::with_id(app, "log:desktop", "App log", true, None::<&str>)?,
+            &MenuItem::with_id(app, "log:runner", "Agent starts (runner log)", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            // Both logs' folders, with the runner's older logs beside it.
+            &MenuItem::with_id(app, "log:folder", "Open the Mycelium folder", true, None::<&str>)?,
+        ],
+    )?;
     let updates = MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit Mycelium", true, Some("CmdOrCtrl+Q"))?;
     let menu = Menu::with_items(
@@ -396,6 +411,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &switch,
             &health,
+            &logs,
             &updates,
             &PredefinedMenuItem::separator(app)?,
             &quit_item,
@@ -530,6 +546,14 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         "switch" | "settings" => show_local(app, "onboarding"),
         "status" | "doctor" => show_local(app, "doctor"),
         "updates" => updates::check(app.clone(), true),
+        "log:desktop" => open_log_from_menu(app, &desktop_log()),
+        "log:runner" => open_log_from_menu(app, &runner_log()),
+        "log:folder" => {
+            let folder = paths::home().join(".mycelium");
+            if let Err(e) = paths::open(folder.as_os_str()) {
+                app.dialog().message(e.to_string()).title("Logs").show(|_| {});
+            }
+        }
         "quit" => quit(app),
         // An experience's item carries the path it opens on.
         id => {
@@ -860,20 +884,37 @@ fn open_experience(app: AppHandle, webview: Webview, path: String) -> Result<(),
     Ok(())
 }
 
-/// Open the supervisor's log (`~/.mycelium/logs/desktop.log`): in Console on
-/// a Mac, elsewhere in whatever opens text files.
-#[tauri::command]
-fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
-    local_only(&app, &webview)?;
-    let log = paths::home().join(".mycelium").join("logs").join("desktop.log");
+/// The supervisor's log: what the app started, and why something stopped.
+fn desktop_log() -> std::path::PathBuf {
+    paths::home().join(".mycelium").join("logs").join("desktop.log")
+}
+
+/// The runner's log: every agent a room asked this machine to start, and
+/// whether it started, waited for a yes, or failed and why.
+fn runner_log() -> std::path::PathBuf {
+    paths::home().join(".mycelium").join("runner").join("runner.log")
+}
+
+/// Open a log in whatever this machine opens it with (Console, on a Mac).
+fn open_log_file(log: &std::path::Path) -> Result<(), String> {
     if !log.exists() {
         return Err("There's no log yet. It starts when Mycelium does.".into());
     }
-    #[cfg(target_os = "macos")]
-    let opened = paths::command("open").args(["-a", "Console"]).arg(&log).spawn().map(|_| ());
-    #[cfg(not(target_os = "macos"))]
-    let opened = paths::open(log.as_os_str());
-    opened.map_err(|e| e.to_string())
+    paths::open(log.as_os_str()).map_err(|e| e.to_string())
+}
+
+/// A log opened from the menu bar, which has no page to show an error on.
+fn open_log_from_menu(app: &AppHandle, log: &std::path::Path) {
+    if let Err(e) = open_log_file(log) {
+        app.dialog().message(e).title("Logs").show(|_| {});
+    }
+}
+
+/// Open the supervisor's log (`~/.mycelium/logs/desktop.log`).
+#[tauri::command]
+fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
+    local_only(&app, &webview)?;
+    open_log_file(&desktop_log())
 }
 
 /// Back to the room UI from one of the app's own pages, once it is up.

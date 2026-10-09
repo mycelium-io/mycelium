@@ -441,6 +441,7 @@
         <li><strong>Open Mycelium</strong>, <strong>Agents terminal</strong> and <strong>Your agents…</strong></li>
         <li><strong>Start at login</strong></li>
         <li><strong>Health check…</strong>, which shows each part the app runs and whether it&#x27;s working. When something isn&#x27;t, it says what to do. It runs the same checks as <code>mycelium doctor --mode desktop</code>.</li>
+        <li><strong>Logs</strong>, which opens the app&#x27;s log, the runner&#x27;s log or the folder they&#x27;re in. See <a href="#logs">Logs</a>.</li>
         <li><strong>Settings…</strong> (⌘, on a Mac, Ctrl+, elsewhere), for where rooms live, starting at login, the <a href="#models">model</a>, the agents&#x27; folder and usage stats. <strong>Save</strong> restarts Mycelium with the change.</li>
         <li><strong>Check for Updates…</strong></li>
       </ul>
@@ -449,7 +450,11 @@
       <h2 id="desktop-updates">Updates</h2>
       <p>The app checks for a new release shortly after it opens and whenever you choose <strong>Check for Updates…</strong>. If one is out, it asks before installing it and then restarts. An update installs only if it carries the release&#x27;s signature, so the app never installs anything the project didn&#x27;t publish.</p>
       <h2 id="desktop-logs">Logs</h2>
-      <p>Everything the app runs writes to <code>~/.mycelium/logs/desktop.log</code>.</p>
+      <p>Two logs say what went wrong. Both open from <strong>Logs</strong> in the menu, in whatever opens log files on your computer (Console, on a Mac).</p>
+      <ul>
+        <li><strong>App log</strong> (<code>~/.mycelium/logs/desktop.log</code>): everything the app runs, and why a part of it stopped.</li>
+        <li><strong>Agent starts</strong> (<code>~/.mycelium/runner/runner.log</code>): every agent a room asked this computer to start, and whether it started, is waiting for your yes, or failed and why. Look here first when an agent won&#x27;t start. Older entries are in <code>runner.log.1</code> to <code>runner.log.3</code> beside it.</li>
+      </ul>
       <h2 id="desktop-the-command-line">The command line</h2>
       <p>On an Apple silicon Mac, the installer on the docs site installs the app too. <code>curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash</code> puts it in Applications, links its <code>mycelium</code> CLI into <code>~/.local/bin</code> and opens it. <code>mycelium desktop serve</code> runs the same hub without the window.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/desktop.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
@@ -2072,7 +2077,7 @@ lsof <span class="flag">-i</span> :3000    # the app</code></pre>
       <h2 id="troubleshooting-logs">Logs</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">logs</span>                       # every service (Docker)
 <span class="bin">mycelium</span> <span class="cmd">logs</span> <span class="cmd">mycelium-backend</span>      # just the backend (Docker)</code></pre>
-      <p>The Mac app writes everything to <code>~/.mycelium/logs/desktop.log</code>.</p>
+      <p>The Mac app writes everything to <code>~/.mycelium/logs/desktop.log</code>. When an agent won&#x27;t start, the runner&#x27;s log says why: <code>~/.mycelium/runner/runner.log</code>. Both open from <strong>Logs</strong> in the app&#x27;s menu.</p>
       <hr class="divider">
       <h2 id="troubleshooting-starting-over">Starting over</h2>
       <p>This deletes all your rooms, memories and config. It also deletes the SLIM secret, saved sign-in tokens and agent credentials.</p>

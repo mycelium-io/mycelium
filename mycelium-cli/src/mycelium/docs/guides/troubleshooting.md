@@ -257,7 +257,9 @@ mycelium logs                       # every service (Docker)
 mycelium logs mycelium-backend      # just the backend (Docker)
 ```
 
-The Mac app writes everything to `~/.mycelium/logs/desktop.log`.
+The Mac app writes everything to `~/.mycelium/logs/desktop.log`. When an agent
+won't start, the runner's log says why: `~/.mycelium/runner/runner.log`. Both
+open from **Logs** in the app's menu.
 
 ---
 
