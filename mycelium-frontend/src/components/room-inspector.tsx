@@ -222,7 +222,7 @@ export function RoomInspector({
                   onClick={() => toggleSection(id)}
                   aria-expanded={!folded[id]}
                   aria-label={`${folded[id] ? "Expand" : "Collapse"} ${label}`}
-                  className="group flex h-full min-w-0 flex-1 items-center gap-1.5 rounded px-1 text-left text-micro font-medium uppercase tracking-wide text-muted-foreground hover:text-text"
+                  className="group flex h-full min-w-0 flex-1 items-center gap-1.5 rounded px-1 text-left text-label font-medium text-muted-foreground hover:text-text"
                 >
                   {folded[id] ? (
                     <ChevronRight className="size-3 flex-shrink-0" />
