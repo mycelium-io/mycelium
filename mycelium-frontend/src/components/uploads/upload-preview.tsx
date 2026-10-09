@@ -7,6 +7,8 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import {
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileAudio,
   FileImage,
@@ -18,6 +20,7 @@ import {
 import { MarkdownContent } from "@/components/markdown-content";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Ago } from "@/lib/relative-time";
 import { fetchUploadText, type Upload, type UploadKind } from "@/lib/api";
 import { downloadUrl, formatBytes, kindLabel, parseDelimited, textViewFor } from "@/lib/uploads";
@@ -164,26 +167,77 @@ export function DownloadButton({ upload, size = "sm" }: { upload: Upload; size?:
   );
 }
 
-/** The preview window: the file at a readable size, with its download. */
+/** The one `step` away from `current` in `set`, wrapping at the ends; `null`
+ *  when there is nowhere to go (no set, a set of one, or `current` not in it). */
+export function stepThrough(set: Upload[], current: Upload | null, step: 1 | -1): Upload | null {
+  if (!current || set.length < 2) return null;
+  const at = set.findIndex((u) => u.key === current.key);
+  if (at < 0) return null;
+  return set[(at + step + set.length) % set.length];
+}
+
+/** The preview window: the file at a readable size, with its download. Given
+ *  the `set` it was opened from (a message's attachments), it steps through
+ *  them with its arrows or ← and →, wrapping at the ends. */
 export function UploadPreviewDialog({
   upload,
   onClose,
   onOpenMemory,
+  set = [],
+  onShow,
 }: {
   upload: Upload | null;
   onClose: () => void;
   onOpenMemory?: (key: string) => void;
+  /** The files it was opened among, in order. */
+  set?: Upload[];
+  /** Show another file of `set`; without it the window can't step. */
+  onShow?: (upload: Upload) => void;
 }) {
   // Keep the last file drawn while the window animates closed.
   const [shown, setShown] = useState(upload);
   if (upload && upload !== shown) setShown(upload);
 
+  const stepping = Boolean(onShow) && set.length > 1;
+  const at = shown ? set.findIndex((u) => u.key === shown.key) : -1;
+  const go = (step: 1 | -1) => {
+    const next = stepThrough(set, shown, step);
+    if (next && onShow) onShow(next);
+  };
+
   return (
     <Dialog open={upload !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-4xl">
+      <DialogContent
+        className="flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-4xl"
+        onKeyDown={(e) => {
+          // Not while typing, or while a player has focus and wants its own keys.
+          const tag = (e.target as HTMLElement).tagName;
+          if (!stepping || tag === "INPUT" || tag === "TEXTAREA" || tag === "AUDIO" || tag === "VIDEO") return;
+          if (e.key === "ArrowRight") {
+            e.preventDefault();
+            go(1);
+          } else if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            go(-1);
+          }
+        }}
+      >
         {shown && (
           <>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border py-2.5 pr-12 pl-4">
+              {stepping && (
+                <div className="flex items-center gap-0.5">
+                  <IconButton label="Previous file" side="bottom" onClick={() => go(-1)}>
+                    <ChevronLeft />
+                  </IconButton>
+                  <span className="min-w-10 text-center tabular text-micro text-muted-foreground">
+                    {at + 1} of {set.length}
+                  </span>
+                  <IconButton label="Next file" side="bottom" onClick={() => go(1)}>
+                    <ChevronRight />
+                  </IconButton>
+                </div>
+              )}
               <div className="min-w-0 flex-1">
                 <DialogTitle className="truncate text-label text-text">{shown.filename}</DialogTitle>
                 <DialogDescription>

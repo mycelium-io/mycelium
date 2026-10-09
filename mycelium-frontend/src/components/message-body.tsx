@@ -55,6 +55,11 @@ export function MessageBody({
   // The files are drawn under the prose, so the line of links naming them isn't repeated above.
   const prose = attached.length ? withoutTrailingUploadLinks(content) : content;
   const { uploads } = useRoomUploads(attached.length ? (roomName ?? "") : "");
+  // This message's files, in the order it links them: what the preview steps through.
+  const attachedUploads = useMemo(
+    () => attached.flatMap((key) => uploads.filter((u) => u.key === key)),
+    [attached, uploads],
+  );
 
   // An upload's chip in the prose opens the same preview its card does; any
   // other memory link goes where it always went.
@@ -124,7 +129,13 @@ export function MessageBody({
       {roomName && attached.length > 0 && (
         <>
           <AttachmentStrip roomName={roomName} keys={attached} onOpen={setPreviewing} />
-          <UploadPreviewDialog upload={previewing} onClose={() => setPreviewing(null)} onOpenMemory={onOpenMemory} />
+          <UploadPreviewDialog
+            upload={previewing}
+            onClose={() => setPreviewing(null)}
+            onOpenMemory={onOpenMemory}
+            set={attachedUploads}
+            onShow={setPreviewing}
+          />
         </>
       )}
     </>
