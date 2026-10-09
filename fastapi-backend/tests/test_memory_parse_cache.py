@@ -18,8 +18,11 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture(autouse=True)
-def _empty_cache() -> None:
+def _empty_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     fs._parse_cache.clear()
+    # Files here are written a moment before they're read; the window that
+    # keeps a just-changed file out of the cache has its own tests below.
+    monkeypatch.setattr(fs, "RACY_WINDOW_NS", 0)
 
 
 def _read(base: Path, key: str) -> tuple[dict, str]:
@@ -79,3 +82,31 @@ def test_the_cache_is_bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         fs.write_memory_file(tmp_path, f"work/{i}", "body", created_by="julia")
     fs.list_memory_files(tmp_path)
     assert len(fs._parse_cache) == 3
+
+
+def test_a_file_changed_a_moment_ago_is_not_cached_yet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(fs, "RACY_WINDOW_NS", 2_000_000_000)
+    path = fs.write_memory_file(tmp_path, "work/a", "fresh", created_by="julia")
+    assert _read(tmp_path, "work/a")[1] == "fresh"
+    assert str(path) not in fs._parse_cache
+    # Once it has settled, it's cached.
+    old = path.stat().st_mtime_ns - 10_000_000_000
+    os.utime(path, ns=(old, old))
+    _read(tmp_path, "work/a")
+    assert str(path) in fs._parse_cache
+
+
+def test_a_same_size_rewrite_in_the_same_tick_is_still_seen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The case the window exists for: a coarse-clock filesystem gives two
+    # same-size writes the same stamp. Simulated by pinning the mtime back.
+    monkeypatch.setattr(fs, "RACY_WINDOW_NS", 2_000_000_000)
+    path = fs.write_memory_file(tmp_path, "work/a", "aaaa", created_by="julia")
+    stamp = path.stat().st_mtime_ns
+    assert _read(tmp_path, "work/a")[1] == "aaaa"
+    path.write_text(path.read_text().replace("aaaa", "bbbb"))
+    os.utime(path, ns=(stamp, stamp))
+    assert _read(tmp_path, "work/a")[1] == "bbbb"

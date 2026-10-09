@@ -23,6 +23,7 @@ import json
 import logging
 import re
 import threading
+import time
 import uuid
 import zlib
 from collections import OrderedDict
@@ -300,13 +301,17 @@ def parse_memory(text: str) -> tuple[dict[str, Any], str]:
 #
 # Parsing a memory's YAML frontmatter is most of what listing a room costs, and
 # the app lists memories on every poll. A file is parsed again only when its
-# modification time or size changes; otherwise its last parse is reused. The
-# file stays the source of truth: a write, an edit on disk or a restore changes
-# the stamp, and the next read parses it afresh.
+# stamp (modification and change times, size, inode) changes; otherwise its last
+# parse is reused. The file stays the source of truth: a write, an edit on disk
+# or a restore changes the stamp, and the next read parses it afresh.
 
 #: How many parsed files the hub keeps, oldest dropped first.
 PARSE_CACHE_MAX = 20_000
-_parse_cache: OrderedDict[str, tuple[int, int, dict[str, Any], str]] = OrderedDict()
+#: How long after a change a file's parse isn't cached (see ``parse_memory_file``).
+RACY_WINDOW_NS = 2_000_000_000
+_parse_cache: OrderedDict[str, tuple[tuple[int, int, int, int], dict[str, Any], str]] = (
+    OrderedDict()
+)
 _parse_lock = threading.Lock()
 
 
@@ -318,17 +323,23 @@ def parse_memory_file(path: Path) -> tuple[dict[str, Any], str]:
     """
     stat = path.stat()
     key = str(path)
+    stamp = (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, stat.st_ino)
     with _parse_lock:
         hit = _parse_cache.get(key)
-        if hit is not None and hit[0] == stat.st_mtime_ns and hit[1] == stat.st_size:
+        if hit is not None and hit[0] == stamp:
             _parse_cache.move_to_end(key)
-            return copy.deepcopy(hit[2]), hit[3]
+            return copy.deepcopy(hit[1]), hit[2]
     meta, content = parse_memory(path.read_text(encoding="utf-8"))
-    with _parse_lock:
-        _parse_cache[key] = (stat.st_mtime_ns, stat.st_size, copy.deepcopy(meta), content)
-        _parse_cache.move_to_end(key)
-        while len(_parse_cache) > PARSE_CACHE_MAX:
-            _parse_cache.popitem(last=False)
+    # A file changed in the last moment isn't cached yet: a second same-size
+    # write inside the filesystem's timestamp resolution (a second or two on
+    # some filesystems) would leave its stamp unchanged. Once it has settled,
+    # any later change moves the stamp. Git treats its index the same way.
+    if time.time_ns() - stat.st_mtime_ns >= RACY_WINDOW_NS:
+        with _parse_lock:
+            _parse_cache[key] = (stamp, copy.deepcopy(meta), content)
+            _parse_cache.move_to_end(key)
+            while len(_parse_cache) > PARSE_CACHE_MAX:
+                _parse_cache.popitem(last=False)
     return meta, content
 
 
