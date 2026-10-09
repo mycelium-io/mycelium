@@ -22,7 +22,7 @@ interface Props {
 /** A task with no replies yet: where its conversation starts, and where it goes. */
 function NoReplies() {
   return (
-    <div className="flex items-start gap-3 px-5 py-4">
+    <div className="flex items-start gap-3 px-5 py-3">
       <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-hairline text-muted-foreground">
         <MessagesSquare className="size-4" />
       </span>
@@ -54,7 +54,7 @@ export function TaskDiscussion({ roomName, episode, onOpenMemory, className }: P
   }, []);
 
   return (
-    <section data-testid="task-discussion" className={cn("border-t border-border pt-6 pb-6", className)}>
+    <section data-testid="task-discussion" className={cn("border-t border-border pt-4 pb-6", className)}>
       <h2 className="text-label font-medium text-text">Discussion</h2>
       <div className="-mx-5">
         <TaskConversation

@@ -284,7 +284,7 @@ export function MemoryDetail({
       {/* One header: the key as a title on its own line (a page names what it
           shows), then what it is (version, who, when, an upload's kind and
           size, its tags) with how to read it and what to do with it. */}
-      <header className={cn("border-b border-border", pad, showKey ? "space-y-1.5 pt-6 pb-3" : "py-1")}>
+      <header className={cn("border-b border-border", pad, showKey ? "space-y-0.5 pt-3 pb-1.5" : "py-1")}>
         {showKey && <KeyTitle memoryKey={memory.key} />}
         <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1.5 text-micro text-muted-foreground">
           <span className="tabular" title={memory.file_path || undefined}>
