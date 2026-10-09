@@ -9,6 +9,7 @@ import { Bell, BellOff, Check, Settings, VolumeX, X } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { EmptyState } from "@/components/empty-state";
 import { Tooltip } from "@/components/ui/tooltip";
+import { iconButtonClass } from "@/components/ui/icon-button";
 import { useNotifications } from "@/components/notifications-provider";
 import { NotificationSettingsDialog } from "@/components/notification-settings";
 import type { NotificationKind } from "@/lib/notifications";
@@ -70,10 +71,10 @@ export function NotificationBell() {
       <Popover open={open} onOpenChange={setOpen}>
         <Tooltip content={bellLabel}>
           <PopoverTrigger
-            className="relative flex size-8 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+            className={iconButtonClass("md", "relative data-[popup-open]:bg-hairline data-[popup-open]:text-text")}
             aria-label={bellLabel}
           >
-            <Bell className="size-4" />
+            <Bell />
             {unreadCount > 0 && (
               <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular text-accent-fg">
                 {unreadCount > 99 ? "99+" : unreadCount}
