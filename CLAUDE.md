@@ -764,6 +764,23 @@ is no litellm dependency.
   the negotiation engine. It runs a one-shot `pi` turn
   (a throwaway session, off the event loop via `asyncio.to_thread`), like every
   other mycelium cognition call.
+- **A schedule is an agent's check-in, kept and fired by the hub.**
+  `app/services/schedules.py`, `routes/schedules.py`, `mycelium schedule`, and
+  the room's Schedules tab (`components/schedules/room-schedules.tsx`, a clock
+  on the agent in the Members rail). One JSON file per room
+  (`.schedules.json`), not memories: every run rewrites `last_run` and its
+  history, which is nothing to index or version. A loop (`SCHEDULE_TICK_S`)
+  fires what is due, coalescing missed runs into one. Each run first asks a
+  **pre-check** from a closed set the hub answers in code (`always`,
+  `mentions`, `assigned`, `stale`, `silent`, `task`, `search:<query>`), never
+  a script; one that finds nothing is `quiet` and costs no model turn. A run
+  that wakes goes through the mention path: a herdr owner's doorbell
+  (`reason: schedule`, held while it works), else the owner's next `await`
+  hands it over (`schedules.take_pending`). A wake already waiting makes the
+  run `held`, a herdr owner mid-turn makes it `busy`. Nothing a run does is
+  said in the room; `schedule_changed` on the bus redraws the app. Guardrails:
+  a minimum interval, a per-agent cap, an expiry renewed by hand, and writing
+  one needs the right to act as its owner.
 - **A row waits on its dependencies, derived and never stored.** A `work/`
   row whose `depends-on` names a live board row that is not settled reads as
   waiting on it: `assignments.waiting_on` on the hub (in every assignment read

@@ -44,7 +44,15 @@ import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
 import { handleUploads } from "./uploads";
-import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink, Protocol } from "@/lib/api";
+import type {
+  A2aBridgeState,
+  MemoryGraph,
+  MemoryGraphEdge,
+  MemoryLink,
+  Protocol,
+  Schedule,
+  ScheduleRun,
+} from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -341,6 +349,17 @@ async function handleUsers(req: Request, method: string, rest: string[]): Promis
 /** Each person's room folders, kept until the mock restarts. Everyone starts
  *  with none, so the rooms list looks as it always has until someone files one. */
 const MOCK_ROOM_FOLDERS = new Map<string, { folders: unknown[] }>();
+
+/** The pre-checks the hub runs, as its list read names them. */
+const MOCK_SCHEDULE_CHECKS: Record<string, string> = {
+  always: "wake every time (no pre-check)",
+  mentions: "messages addressed to the owner since the last run",
+  assigned: "open rows for the owner that nobody holds",
+  stale: "rows the owner holds whose lease is stale or expired",
+  silent: "rows someone else holds whose lease lapsed while they are absent",
+  task: "the schedule's task thread moved since the last run",
+  "search:<query>": "messages matching a room search since the last run",
+};
 
 export async function handleMock(req: Request): Promise<Response | null> {
   const { pathname, searchParams } = new URL(req.url);
@@ -882,6 +901,86 @@ export async function handleMock(req: Request): Promise<Response | null> {
 
     case "uploads":
       return handleUploads(req, roomName, fx, sub);
+
+    case "schedules": {
+      // The room's schedules, from the fixture; writes are session-local.
+      const list = (fx.schedules ??= []);
+      const name = sub[1] ? decodeURIComponent(sub[1]) : null;
+      const found = name ? list.find((s) => s.name === name) : undefined;
+      const read = (s: Schedule) => ({ ...s, history: s.history ?? [] });
+      if (!name) {
+        if (method === "GET") {
+          return json({ schedules: list.map(read), total: list.length, checks: MOCK_SCHEDULE_CHECKS });
+        }
+        if (method !== "POST") return null;
+        const body = await readJson(req);
+        const now = new Date().toISOString();
+        const made: Schedule = {
+          name: String(body.name ?? ""),
+          owner: String(body.owner ?? "").replace(/^@/, ""),
+          every: (body.every as string | undefined) ?? null,
+          cron: (body.cron as string | undefined) ?? null,
+          prompt: String(body.prompt ?? ""),
+          check: String(body.check ?? "always"),
+          task: (body.task as string | undefined) ?? null,
+          state: "active",
+          paused: false,
+          created_by: String(body.created_by ?? "web-ui"),
+          created_at: now,
+          updated_at: now,
+          expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+          next_run: new Date(Date.now() + 30 * 60_000).toISOString(),
+          last_run: null,
+          last_result: null,
+          runs: 0,
+          wakes: 0,
+          quiet: 0,
+          history: [],
+        };
+        list.push(made);
+        return json(read(made), 201);
+      }
+      if (!found) return notFound(`schedule ${name} not found (mock)`);
+      if (sub[2] === "run" && method === "POST") {
+        const body = await readJson(req);
+        const run: ScheduleRun = {
+          at: new Date().toISOString(),
+          result: body.wake ? "woke" : "quiet",
+          trigger: "manual",
+          missed: 0,
+          found: [],
+          found_total: 0,
+          detail: null,
+        };
+        found.history = [run, ...(found.history ?? [])];
+        found.last_run = run.at;
+        found.last_result = run.result;
+        found.runs = (found.runs ?? 0) + 1;
+        if (run.result === "woke") found.wakes = (found.wakes ?? 0) + 1;
+        else found.quiet = (found.quiet ?? 0) + 1;
+        return json(run);
+      }
+      if (sub.length !== 2) return null;
+      if (method === "GET") return json(read(found));
+      if (method === "DELETE") {
+        list.splice(list.indexOf(found), 1);
+        return new Response(null, { status: 204 });
+      }
+      if (method !== "PATCH") return null;
+      const body = await readJson(req);
+      if (typeof body.paused === "boolean") {
+        found.paused = body.paused;
+        found.state = body.paused ? "paused" : "active";
+      }
+      if (body.renew) found.expires_at = new Date(Date.now() + 7 * 86_400_000).toISOString();
+      for (const field of ["every", "cron", "prompt", "check", "task"] as const) {
+        if (typeof body[field] === "string") found[field] = body[field] as string;
+      }
+      if (typeof body.every === "string") found.cron = null;
+      if (typeof body.cron === "string") found.every = null;
+      found.updated_at = new Date().toISOString();
+      return json(read(found));
+    }
 
     case "skills": {
       // GET /skills — the composer's `/` autocomplete. A skill is a `skills/…`

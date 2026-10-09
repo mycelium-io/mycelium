@@ -98,6 +98,7 @@ export const KEYMAP: Binding[] = [
   { id: "pane.board", keys: ["alt+p"], label: "Board", group: "Panes", scope: "room" },
   // Network = the merged SLIM diagnostics rail + message feed.
   { id: "pane.network", keys: ["alt+n"], label: "Network", group: "Panes", scope: "room" },
+  { id: "pane.schedules", keys: ["alt+k"], label: "Schedules", group: "Panes", scope: "room" },
   { id: "tab.close", keys: ["alt+w"], label: "Close the tab", group: "Panes", scope: "room" },
   { id: "tab.reopen", keys: ["alt+r"], label: "Reopen the last closed tab", group: "Panes", scope: "room" },
   { id: "tab.split", keys: ["alt+s"], label: "Split the tab to the right", group: "Panes", scope: "room" },

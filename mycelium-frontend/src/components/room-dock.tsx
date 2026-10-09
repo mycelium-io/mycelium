@@ -20,6 +20,7 @@ import { KbdChord } from "@/components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EventStream } from "@/components/event-stream";
 import { RoomBoard } from "@/components/board/room-board";
+import { RoomSchedules } from "@/components/schedules/room-schedules";
 import { MessageInspector } from "@/components/message-inspector";
 import { RoomA2aView } from "@/components/room-a2a";
 import { RoomSlimView } from "@/components/room-slim";
@@ -133,6 +134,15 @@ function NetworkPanel() {
   );
 }
 
+function SchedulesPanel() {
+  const d = useDock();
+  return (
+    <div className="h-full min-h-0">
+      <RoomSchedules roomName={d.roomName} />
+    </div>
+  );
+}
+
 function MemoryPanel({ params }: IDockviewPanelProps<{ key: string }>) {
   const d = useDock();
   return (
@@ -164,6 +174,7 @@ const COMPONENTS = {
   channel: ChannelPanel,
   board: BoardPanel,
   network: NetworkPanel,
+  schedules: SchedulesPanel,
   memory: MemoryPanel,
   thread: ThreadPanel,
 } as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>;
@@ -346,7 +357,7 @@ function GroupActions({ containerApi, group }: IDockviewHeaderActionsProps) {
 
 // ── Opening and moving ──────────────────────────────────────────────────────
 
-const VIEW_ORDER: View[] = ["channel", "board", "network"];
+const VIEW_ORDER: View[] = ["channel", "board", "network", "schedules"];
 
 function addView(api: DockviewApi, view: View, position?: Parameters<DockviewApi["addPanel"]>[0]["position"]) {
   return api.addPanel({

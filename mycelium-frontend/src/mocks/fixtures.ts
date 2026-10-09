@@ -33,6 +33,7 @@ import type {
   MemoryGraphNode,
   PresenceMember,
   RoomFloor,
+  Schedule,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
 import { demoCheckout, isDemoScenario } from "./demo";
@@ -122,6 +123,9 @@ export interface RoomFixture {
    *  that mention each reference, exactly as the hub returns it, so the mock
    *  exercises the same attach path the real one does. */
   status?: RoomStatus;
+  /** The room's schedules, served at GET /schedules; runs and edits are
+   *  session-local, like the rest of the mock's writes. */
+  schedules?: Schedule[];
 }
 
 /**
@@ -1291,6 +1295,67 @@ const checkout: RoomFixture = {
   presence: [
     { handle: "builder", kind: "slim", last_seen: null },
     { handle: "reviewer", kind: "lease", last_seen: iso(1) },
+  ],
+  // Builder looks in on its own leases twice an hour; reviewer was set to chase
+  // anyone who goes quiet on a claimed row, and is paused for the launch.
+  schedules: [
+    {
+      name: "lease-check",
+      owner: "builder",
+      every: "30m",
+      cron: null,
+      prompt: "Renew or hand back anything you hold that has gone stale.",
+      check: "stale",
+      task: null,
+      state: "active",
+      paused: false,
+      created_by: "julia",
+      created_at: iso(60 * 26),
+      updated_at: iso(60 * 26),
+      expires_at: iso(-60 * 24 * 6),
+      next_run: iso(-12),
+      last_run: iso(18),
+      last_result: "quiet",
+      runs: 52,
+      wakes: 3,
+      quiet: 49,
+      history: [
+        { at: iso(18), result: "quiet", trigger: "schedule", missed: 0, found: [], found_total: 0, detail: null },
+        { at: iso(48), result: "quiet", trigger: "schedule", missed: 0, found: [], found_total: 0, detail: null },
+        {
+          at: iso(78),
+          result: "woke",
+          trigger: "schedule",
+          missed: 0,
+          found: ['work/turn-on-apple-pay "Turn on Apple Pay for everyone": your lease is stale'],
+          found_total: 1,
+          detail: null,
+        },
+        { at: iso(108), result: "quiet", trigger: "schedule", missed: 2, found: [], found_total: 0, detail: null },
+      ],
+    },
+    {
+      name: "quiet-holders",
+      owner: "reviewer",
+      every: null,
+      cron: "0 9 * * 1-5",
+      prompt: "Someone holds a row and went quiet. Ask them in its thread, or release it.",
+      check: "silent",
+      task: null,
+      state: "paused",
+      paused: true,
+      created_by: "julia",
+      created_at: iso(60 * 72),
+      updated_at: iso(60 * 3),
+      expires_at: iso(-60 * 24 * 4),
+      next_run: iso(-60 * 20),
+      last_run: iso(60 * 27),
+      last_result: "woke",
+      runs: 3,
+      wakes: 1,
+      quiet: 2,
+      history: [],
+    },
   ],
   // Every board row's origin, as the notice the room filed it with — each timed
   // just after the chat line that sets it up, so the channel reads talk → filing

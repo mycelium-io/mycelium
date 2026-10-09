@@ -33,6 +33,7 @@ from mycelium.commands import (
     pattern,
     room,
     runner,
+    schedule,
     skill,
     swarm,
     ui,
@@ -123,6 +124,7 @@ app.add_typer(board.app, name="board")
 app.add_typer(room.app, name="room")
 app.add_typer(memory.app, name="memory")
 app.add_typer(skill.app, name="skill")
+app.add_typer(schedule.app, name="schedule")
 app.add_typer(file.app, name="file")
 app.add_typer(config.app, name="config")
 app.add_typer(docs.app, name="docs")

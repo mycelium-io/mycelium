@@ -10,16 +10,17 @@
  * show, so opening one that is already open shows it rather than a second copy.
  */
 
-export type View = "channel" | "board" | "network";
+export type View = "channel" | "board" | "network" | "schedules";
 
 export type DockPanelKind = View | "memory" | "thread";
 
-export const ROOM_VIEWS: readonly View[] = ["channel", "board", "network"];
+export const ROOM_VIEWS: readonly View[] = ["channel", "board", "network", "schedules"];
 
 export const VIEW_LABELS: Record<View, string> = {
   channel: "Channel",
   board: "Board",
   network: "Network",
+  schedules: "Schedules",
 };
 
 /** The params a tab carries in the saved layout: only what names it. */

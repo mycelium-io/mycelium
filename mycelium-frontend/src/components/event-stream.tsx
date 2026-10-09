@@ -691,6 +691,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       setResponding((prev) => applyActivity(prev, msg, Date.now()));
       return;
     }
+    // A schedule ran or changed: the Schedules tab's business, never a line here.
+    if (msg.type === "schedule_changed") return;
     const event = parseEvent(msg);
     setResponding((prev) => settleActivity(prev, event.sender));
     setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));

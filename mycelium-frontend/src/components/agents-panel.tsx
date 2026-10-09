@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, Check, FileText, Plus, UserMinus, UserPlus, Users } from "lucide-react";
+import { AtSign, Check, Clock, FileText, Plus, UserMinus, UserPlus, Users } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -16,7 +16,7 @@ import { copyText } from "@/lib/clipboard";
 import { inviteLink } from "@/lib/desktop";
 import { type PresenceMember, type RoomFloor } from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
-import { useRoomRoster } from "@/lib/room-data";
+import { useRoomRoster, useScheduledHandles } from "@/lib/room-data";
 import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
@@ -232,6 +232,7 @@ export function AgentsPanel({
   // manifests, people from agent owners ∪ posters ∪ live presence ∪ you, and a
   // presence entry for whoever holds a SLIM socket or an `await` lease.
   const { agents, people, presence, floors, loading, refresh } = useRoomRoster(roomName);
+  const scheduled = useScheduledHandles(roomName);
   const { runners } = useRunners();
   const runnersById = useMemo(() => new Map(runners.map((r) => [r.id, r])), [runners]);
 
@@ -416,6 +417,7 @@ export function AgentsPanel({
                       machine={machine}
                       memberPresence={presence.get(a.handle.toLowerCase())}
                       floor={floors.get(a.handle.toLowerCase())}
+                      schedules={scheduled.get(a.handle.toLowerCase()) ?? 0}
                       marked={marked}
                       rowRef={marked ? highlightRow : undefined}
                     />
@@ -580,6 +582,7 @@ function AgentRow({
   groupOwner,
   memberPresence,
   floor,
+  schedules = 0,
   marked,
   rowRef,
   machine = null,
@@ -589,6 +592,8 @@ function AgentRow({
   groupOwner: string | null;
   memberPresence?: PresenceMember;
   floor?: RoomFloor;
+  /** How many live schedules wake this agent; a clock shows when there is one. */
+  schedules?: number;
   marked: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
   /** The machine the app started this agent on, by name. */
@@ -611,6 +616,10 @@ function AgentRow({
           <DetailRow label="adapter" value={adapter} />
           <DetailRow label="machine" value={machine ?? undefined} />
           <DetailRow
+            label="schedules"
+            value={schedules ? `${schedules} (see the Schedules tab)` : undefined}
+          />
+          <DetailRow
             label="skills"
             value={a.adapter === "a2a" && a.a2a_skills?.length ? a.a2a_skills.join(", ") : undefined}
           />
@@ -626,6 +635,13 @@ function AgentRow({
       >
         <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
         <span className="shrink-0 font-mono text-label text-text">{a.handle}</span>
+        {schedules > 0 && (
+          <Clock
+            aria-label={`${schedules} schedule${schedules === 1 ? "" : "s"}`}
+            className="size-3 shrink-0 text-faint"
+            strokeWidth={2}
+          />
+        )}
         {a.adapter === "a2a" && (
           <span className="inline-flex flex-shrink-0 items-center rounded border border-accent/30 bg-accent-soft/40 px-1 text-[9px] font-medium leading-tight text-accent">
             a2a

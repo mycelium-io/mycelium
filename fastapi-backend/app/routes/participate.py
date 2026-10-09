@@ -38,7 +38,16 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.services import activity, actor, markers, message_format, principals, room_channels, tasks
+from app.services import (
+    activity,
+    actor,
+    markers,
+    message_format,
+    principals,
+    room_channels,
+    schedules,
+    tasks,
+)
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import room_exists
 from app.services.message_models import Kind
@@ -272,6 +281,24 @@ async def await_message(
     loop = asyncio.get_event_loop()
     deadline = loop.time() + (timeout if timeout > 0 else _MAX_WAIT_S)
     while True:
+        # A schedule's wake waits here for a handle with no herdr pane: the
+        # next ``await`` is when a resident loop is free to take a turn.
+        scheduled = schedules.take_pending(room_name, _norm(handle), scoped)
+        if scheduled is not None:
+            room_channels.manager.refresh_lease(room_name, handle)
+            activity.signal(room_name, handle, "responding", episode=scheduled.get("episode"))
+            return {
+                "room": room_name,
+                "handle": handle,
+                "prompt": scheduled["prompt"],
+                "sender": "scheduler",
+                "episode": scheduled.get("episode"),
+                "task": scheduled.get("task"),
+                "topic": None,
+                "message_id": None,
+                "earlier": [],
+                "schedule": scheduled["schedule"],
+            }
         records = persister.log.records
         i = _position()
         while i < len(records):

@@ -248,6 +248,16 @@ class Settings(BaseSettings):
     WORKER_PI_TIMEOUT_S: float = 600.0
     WORKER_MAX_TURNS_PER_ROOM: int = 60
 
+    # Schedules (services/schedules.py) — an agent's recurring check-in, fired
+    # by the hub. How often the hub looks for due ones, the shortest interval a
+    # schedule may have, how many one agent may hold in a room, and how long one
+    # lasts before it has to be renewed (by default, and at most).
+    SCHEDULE_TICK_S: float = 30.0
+    SCHEDULE_MIN_INTERVAL_S: int = 300
+    SCHEDULE_MAX_PER_AGENT: int = 5
+    SCHEDULE_DEFAULT_TTL_DAYS: float = 7.0
+    SCHEDULE_MAX_TTL_DAYS: float = 30.0
+
     # Pattern packs (routes/patterns.py) — scenarios a visitor can load as a room.
     # Set in config.toml under [patterns] (dir, allow_inline, personas_only); `.env`
     # carries them here, and compose mounts the folder and points PATTERNS_DIR at it.
