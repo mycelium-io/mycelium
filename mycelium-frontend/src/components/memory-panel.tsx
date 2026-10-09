@@ -204,9 +204,6 @@ function MemoryRowMenu({
             Open full page
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem icon={SquareTerminal} onClick={() => void copyText(command)}>
-            Copy command for an agent
-          </ContextMenuItem>
           <ContextMenuItem icon={Copy} onClick={() => void copyText(memory.key)}>
             Copy key
           </ContextMenuItem>
@@ -215,6 +212,9 @@ function MemoryRowMenu({
           </ContextMenuItem>
           <ContextMenuItem icon={Link2} onClick={() => void copyText(absoluteUrl(href))}>
             Copy page link
+          </ContextMenuItem>
+          <ContextMenuItem icon={SquareTerminal} onClick={() => void copyText(command)}>
+            Copy command for an agent
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem icon={Trash2} destructive onClick={() => setDeleting(true)}>

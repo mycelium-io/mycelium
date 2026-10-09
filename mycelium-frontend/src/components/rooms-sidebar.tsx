@@ -1028,9 +1028,6 @@ function RoomContextMenu({
           )}
         </ContextMenuSub>
         <ContextMenuSeparator />
-        <ContextMenuItem icon={SquareTerminal} onClick={() => void copyText(roomCommand(room.name))}>
-          Copy command for an agent
-        </ContextMenuItem>
         <ContextMenuItem icon={Link2} onClick={() => void copyText(absoluteUrl(path))}>
           Copy link
         </ContextMenuItem>
@@ -1039,6 +1036,9 @@ function RoomContextMenu({
             Copy room ID
           </ContextMenuItem>
         )}
+        <ContextMenuItem icon={SquareTerminal} onClick={() => void copyText(roomCommand(room.name))}>
+          Copy command for an agent
+        </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem icon={Trash2} destructive onClick={onDelete}>
           Delete room…

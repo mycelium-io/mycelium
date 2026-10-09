@@ -100,11 +100,6 @@ export function BoardRowMenu({ item, children }: { item: LiveItem; children: Rea
         {key && (
           <>
             <ContextMenuSeparator />
-            {roomName && (
-              <ContextMenuItem icon={SquareTerminal} onClick={() => void copyText(taskCommand(roomName, key))}>
-                Copy command for an agent
-              </ContextMenuItem>
-            )}
             <ContextMenuItem icon={Copy} onClick={() => void copyText(key)}>
               Copy key
             </ContextMenuItem>
@@ -114,6 +109,11 @@ export function BoardRowMenu({ item, children }: { item: LiveItem; children: Rea
             {href && (
               <ContextMenuItem icon={Link2} onClick={() => void copyText(absoluteUrl(href))}>
                 Copy page link
+              </ContextMenuItem>
+            )}
+            {roomName && (
+              <ContextMenuItem icon={SquareTerminal} onClick={() => void copyText(taskCommand(roomName, key))}>
+                Copy command for an agent
               </ContextMenuItem>
             )}
           </>
