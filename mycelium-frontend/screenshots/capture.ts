@@ -102,6 +102,16 @@ function specFor(shot: Shot, baseUrl: string, offline: boolean) {
         ? { "mycelium.principal": "", "mycelium.name-asked": "" }
         : { "mycelium.principal": "operator", "mycelium.name-asked": "1" }),
       ...Object.fromEntries(["checkout", "scratch", "storefront"].map((room) => [`mycelium.draft:${room}`, ""])),
+      // A room remembers its open tabs and the rail its split, so a shot that
+      // opened the Board or folded a section would hand that to the next one.
+      // Empty reads as "nothing saved": every shot starts on the defaults.
+      ...Object.fromEntries(["checkout", "scratch", "storefront"].map((room) => [`mycelium.dock.${room}`, ""])),
+      // The panels library keys a layout by its group id and its panel ids.
+      ...Object.fromEntries(
+        ["mycelium:shell:rooms:workspace", "mycelium:room:main:inspector", "mycelium:rail:agents:memory"].map(
+          (layout) => [`react-resizable-panels:${layout}`, ""],
+        ),
+      ),
     },
     offline,
     stdout: true,
