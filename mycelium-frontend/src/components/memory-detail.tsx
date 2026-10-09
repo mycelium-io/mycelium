@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, CornerDownLeft } from "lucide-react";
+import { ArrowUpRight, CornerDownLeft, Download, FileImage, FileText } from "lucide-react";
 import { highlightJson } from "@/components/message-inspector";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Expandable } from "@/components/ui/expandable";
@@ -13,8 +13,11 @@ import { isJsonRawText, prettyPrintJsonRawText } from "@/lib/json-text";
 import { linkErrorLabel } from "@/lib/memory-links";
 import { fmtAgo } from "@/lib/metrics-format";
 import { useRoomUploads } from "@/lib/room-data";
-import { isUploadKey } from "@/lib/uploads";
-import { DownloadButton, UploadFacts, UploadPreview } from "@/components/uploads/upload-preview";
+import { downloadUrl, formatBytes, isUploadKey, kindLabel } from "@/lib/uploads";
+import { cn } from "@/lib/utils";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
+import { UploadPreview } from "@/components/uploads/upload-preview";
 
 export interface MemoryLike {
   key: string;
@@ -53,26 +56,28 @@ function LinkRow({
   error?: string | null;
   onOpen?: () => void;
 }) {
+  const cut = label.lastIndexOf("/") + 1;
   const content = (
     <>
-      <span className="font-mono text-label truncate">{label}</span>
-      <span className="ml-auto flex-shrink-0 text-micro text-faint">{kind}</span>
-      {error && (
-        <span className="flex-shrink-0 text-micro text-red">{linkErrorLabel(error)}</span>
+      <FileText className="size-3.5 flex-shrink-0 text-faint" />
+      <span className={cn("min-w-0 truncate font-mono text-label", error && "line-through decoration-red/60")}>
+        <span className="text-muted-foreground">{label.slice(0, cut)}</span>
+        <span className={cn("text-text", !error && onOpen && "group-hover:text-accent")}>{label.slice(cut)}</span>
+      </span>
+      {error ? (
+        <span className="ml-auto flex-shrink-0 text-micro text-red">{linkErrorLabel(error)}</span>
+      ) : (
+        <span className="ml-auto flex-shrink-0 text-micro text-faint">{kind}</span>
       )}
     </>
   );
 
+  const row = "-mx-2 flex h-7 w-[calc(100%+1rem)] items-center gap-2 rounded px-2";
   if (error || !onOpen) {
-    return (
-      <div className="flex items-baseline gap-2 px-2 py-1 text-muted-foreground">{content}</div>
-    );
+    return <div className={row}>{content}</div>;
   }
   return (
-    <button
-      onClick={onOpen}
-      className="flex w-full items-baseline gap-2 rounded px-2 py-1 text-left text-accent transition-colors hover:bg-hairline"
-    >
+    <button onClick={onOpen} className={cn(row, "group text-left transition-colors hover:bg-hairline")}>
       {content}
     </button>
   );
@@ -87,30 +92,27 @@ interface LinkRowData {
   error?: string | null;
 }
 
+/** One direction of a memory's links. A direction with nothing in it isn't drawn. */
 function LinkGroup({
   title,
   icon: Icon,
   rows,
-  empty,
   onNavigate,
 }: {
   title: string;
   icon: typeof ArrowUpRight;
   rows: LinkRowData[];
-  empty: string;
   onNavigate?: (key: string) => void;
 }) {
+  if (rows.length === 0) return null;
   return (
-    <div>
-      <div className="mb-1 flex items-center gap-1.5 px-2 text-micro font-medium text-faint">
+    <div className="min-w-0">
+      <div className="mb-0.5 flex items-center gap-1.5 text-micro text-faint">
         <Icon className="size-3" />
         {title}
-        {rows.length > 0 && <span className="font-normal tabular">{rows.length}</span>}
+        <span className="tabular">{rows.length}</span>
       </div>
-      {rows.length === 0 ? (
-        <p className="px-2 py-1 text-label text-faint">{empty}</p>
-      ) : (
-        rows.map((row, i) => (
+      {rows.map((row, i) => (
           <LinkRow
             key={i}
             label={row.label}
@@ -118,8 +120,7 @@ function LinkGroup({
             error={row.error}
             onOpen={onNavigate ? () => onNavigate(row.navKey) : undefined}
           />
-        ))
-      )}
+      ))}
     </div>
   );
 }
@@ -140,10 +141,13 @@ interface Props {
   collapseBodyAt?: number | null;
   /** The surface the body sits on, so its fade matches. */
   bodyFade?: "bg" | "paper" | "surface" | "elevated";
-  /** Lead the meta line with the memory's key, for a surface that shows it nowhere else. */
+  /** Head it with a sticky toolbar naming the key, for a surface that shows it nowhere else. */
   showKey?: boolean;
-  /** More controls at the end of the meta line (a tab's Edit and its own page). */
+  /** More controls at the end of the header (a tab's Edit and its own page). */
   actions?: React.ReactNode;
+  /** Classes for everything under the header, so a page can center its body
+   *  while the toolbar spans the width. */
+  bodyClassName?: string;
 }
 
 /** The body, clamped where the surface asked for it and untouched where it
@@ -165,37 +169,39 @@ function MaybeExpandable({
   );
 }
 
-/** An upload's file where its memory's body would be: the preview, what it is,
- *  and its download. The body (a line about the file, or a text file's text)
- *  is still there under Raw. */
-function UploadPanel({
-  roomName,
-  memoryKey,
-  pad,
-  onNavigate,
-}: {
-  roomName: string;
-  memoryKey: string;
-  pad: string;
-  onNavigate?: (key: string) => void;
-}) {
-  const { uploads, loading } = useRoomUploads(roomName);
-  const upload = uploads.find((u) => u.key === memoryKey);
-  if (!upload) {
-    return loading ? null : (
-      <p className={`${pad} pt-4 text-label text-muted-foreground`}>This upload&apos;s file isn&apos;t on the hub.</p>
-    );
-  }
+/** A key as breadcrumbs, the way the editor's header writes it. */
+function KeyCrumbs({ memoryKey }: { memoryKey: string }) {
+  const parts = memoryKey.split("/");
   return (
-    <div className={`${pad} space-y-3 pt-4`}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="min-w-0 truncate text-label text-text">{upload.filename}</span>
-        <UploadFacts upload={upload} />
-        <span className="ml-auto">
-          <DownloadButton upload={upload} size="xs" />
+    <h1 className="max-w-full shrink-0 truncate font-mono text-label" title={memoryKey}>
+      {parts.map((part, i) => (
+        <span key={i} className={i === parts.length - 1 ? "text-text" : "text-muted-foreground"}>
+          {i > 0 && <span className="text-faint">/</span>}
+          {part}
         </span>
-      </div>
-      <UploadPreview upload={upload} onOpenMemory={onNavigate} />
+      ))}
+    </h1>
+  );
+}
+
+/** Rendered or Raw, as one control rather than two words. */
+function ViewToggle({ raw, onChange }: { raw: boolean; onChange: (raw: boolean) => void }) {
+  return (
+    <div className="flex items-center rounded-md bg-hairline/60 p-0.5">
+      {([["Rendered", false], ["Raw", true]] as const).map(([label, on]) => (
+        <button
+          key={label}
+          type="button"
+          aria-pressed={raw === on}
+          onClick={() => onChange(on)}
+          className={cn(
+            "flex h-5 items-center rounded px-2 text-micro transition-colors",
+            raw === on ? "bg-bg text-text shadow-sm" : "text-muted-foreground hover:text-text",
+          )}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -211,9 +217,15 @@ export function MemoryDetail({
   bodyFade = "bg",
   showKey = false,
   actions,
+  bodyClassName,
 }: Props) {
   const pad = variant === "page" ? "px-6 md:px-8" : "px-5";
   const [raw, setRaw] = useState(false);
+  // An upload's file stands where its body would; the body (a line about the
+  // file, or a text file's text) is still there under Raw.
+  const isUpload = Boolean(roomName) && isUploadKey(memory.key);
+  const { uploads, loading: uploadsLoading } = useRoomUploads(isUpload ? (roomName ?? "") : "");
+  const upload = isUpload ? uploads.find((u) => u.key === memory.key) : undefined;
   const [jsonView, setJsonView] = useState(false);
   const [outbound, setOutbound] = useState<MemoryLink[]>([]);
   const [backlinks, setBacklinks] = useState<MemoryLink[]>([]);
@@ -266,66 +278,110 @@ export function MemoryDetail({
 
   const hasLinks = outbound.length > 0 || backlinks.length > 0;
 
+  const facts = (
+    <span className="tabular" title={memory.file_path || undefined}>
+      v{memory.version} · {memory.updated_by || memory.created_by}
+      {memory.updated_at && (
+        <>
+          {" · "}
+          <time dateTime={memory.updated_at} title={new Date(memory.updated_at).toLocaleString()}>
+            {fmtAgo(memory.updated_at)}
+          </time>
+        </>
+      )}
+      {upload && ` · ${kindLabel(upload.kind)} · ${formatBytes(upload.size)}`}
+    </span>
+  );
+  const tags = memory.tags?.map(tag => (
+    <span key={tag} className="flex-shrink-0 rounded bg-hairline px-1.5 font-mono text-faint">
+      {tag}
+    </span>
+  ));
+  // A skill is just a `skills/…` memory — no special pane, just a tag.
+  const skill = memory.key.startsWith("skills/") && (
+    <span className="flex-shrink-0 rounded border border-accent/30 bg-accent-soft/40 px-1.5 text-micro font-medium text-accent">
+      skill
+    </span>
+  );
+  const controls = (
+    <div className="ml-auto flex flex-shrink-0 items-center gap-1">
+      {raw && rawIsJson && (
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-pressed={effectiveJsonView}
+          aria-label="Pretty-print JSON"
+          onClick={() => setJsonView(on => !on)}
+          className={effectiveJsonView ? "text-accent" : undefined}
+        >
+          Format JSON
+        </Button>
+      )}
+      <ViewToggle raw={raw} onChange={setRaw} />
+      {upload && (
+        <Tooltip content={`Download ${upload.filename}`}>
+          <a
+            href={downloadUrl(upload)}
+            download={upload.filename}
+            aria-label="Download"
+            className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "gap-1")}
+          >
+            <Download className="size-3.5" />
+            <span className="hidden @2xl:inline">Download</span>
+          </a>
+        </Tooltip>
+      )}
+      {actions}
+    </div>
+  );
+
   return (
     <div>
-      {/* A skill is just a `skills/…` memory — no special pane, just a tag. */}
-      {memory.key.startsWith("skills/") && (
+      {showKey ? (
+        // The page's toolbar, the editor's header in read mode: the key as
+        // breadcrumbs, what it is in a quiet line beside it, and the controls.
+        <header className="sticky top-0 z-10 flex min-h-10 items-center gap-3 border-b border-border bg-paper/95 px-5 py-1.5 backdrop-blur-sm">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {upload ? (
+              <FileImage className="size-3.5 flex-shrink-0 text-muted-foreground" />
+            ) : (
+              <FileText className="size-3.5 flex-shrink-0 text-muted-foreground" />
+            )}
+            <KeyCrumbs memoryKey={memory.key} />
+            {skill}
+            {/* Gives way before the key does. */}
+            <span className="hidden min-w-0 shrink-[100] truncate text-micro text-faint @xl:block">
+              {facts}
+              {memory.tags?.map(tag => (
+                <span key={tag} className="ml-2 rounded bg-hairline px-1.5 font-mono">
+                  {tag}
+                </span>
+              ))}
+            </span>
+          </div>
+          {controls}
+        </header>
+      ) : (
+        <header className={`flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border ${pad} py-1 text-micro text-muted-foreground`}>
+          {skill}
+          {facts}
+          {tags}
+          {controls}
+        </header>
+      )}
+
+      <div className={bodyClassName}>
+      {isUpload && !raw && (
         <div className={`${pad} pt-4`}>
-          <span className="inline-flex items-center rounded-md border border-accent/30 bg-accent-soft/40 px-2 py-0.5 text-micro font-medium text-accent">
-            skill
-          </span>
+          {upload ? (
+            <UploadPreview upload={upload} onOpenMemory={onNavigate} />
+          ) : uploadsLoading ? null : (
+            <p className="text-label text-muted-foreground">This upload&apos;s file isn&apos;t on the hub.</p>
+          )}
         </div>
       )}
-      {/* What it is in one line (version, who, when, its tags), and how to
-          read it at the end of the same line: nothing here needs a grid. */}
-      <div className={`flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border ${pad} py-1 text-micro text-muted-foreground`}>
-        {showKey && <span className="font-mono text-text">{memory.key}</span>}
-        <span className="tabular" title={memory.file_path || undefined}>
-          v{memory.version} · {memory.updated_by || memory.created_by}
-          {memory.updated_at && (
-            <>
-              {" · "}
-              <time dateTime={memory.updated_at} title={new Date(memory.updated_at).toLocaleString()}>
-                updated {fmtAgo(memory.updated_at)}
-              </time>
-            </>
-          )}
-        </span>
-        {memory.tags?.map(tag => (
-          <span key={tag} className="rounded bg-hairline px-1.5 font-mono text-faint">
-            {tag}
-          </span>
-        ))}
-        <div className="ml-auto flex items-center gap-2">
-          {raw && rawIsJson && (
-            <button
-              type="button"
-              aria-pressed={effectiveJsonView}
-              aria-label="Pretty-print JSON"
-              onClick={() => setJsonView(on => !on)}
-              className={`transition-colors hover:text-text ${effectiveJsonView ? "text-accent" : ""}`}
-            >
-              Format JSON
-            </button>
-          )}
-          {([["Rendered", false], ["Raw", true]] as const).map(([label, on]) => (
-            <button
-              key={label}
-              type="button"
-              aria-pressed={raw === on}
-              onClick={() => setRaw(on)}
-              className={`transition-colors hover:text-text ${raw === on ? "text-text" : ""}`}
-            >
-              {label}
-            </button>
-          ))}
-          {actions}
-        </div>
-      </div>
 
-      {roomName && isUploadKey(memory.key) && <UploadPanel roomName={roomName} memoryKey={memory.key} pad={pad} onNavigate={onNavigate} />}
-
-      <div className={`${pad} py-4`} hidden={Boolean(roomName && isUploadKey(memory.key) && !raw)}>
+      <div className={`${pad} py-4`} hidden={isUpload && !raw}>
         <MaybeExpandable collapseAt={collapseBodyAt} fade={bodyFade}>
           {raw ? (
             <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 font-mono text-micro leading-relaxed text-text whitespace-pre-wrap break-words">
@@ -344,23 +400,21 @@ export function MemoryDetail({
       </div>
 
       {hasLinks && (
-        <div className={`grid gap-4 border-t border-border ${pad} py-4`}>
-          <LinkGroup
-            title="Links to"
-            icon={ArrowUpRight}
-            rows={outboundRows}
-            empty="Nothing"
-            onNavigate={onNavigate}
-          />
-          <LinkGroup
-            title="Referenced by"
-            icon={CornerDownLeft}
-            rows={backlinkRows}
-            empty="Nothing links here"
-            onNavigate={onNavigate}
-          />
-        </div>
+        <section className={`border-t border-border ${pad} pt-4 pb-3`}>
+          <h2 className="mb-2 text-label font-medium text-text">Links</h2>
+          {/* Side by side when both directions have something and there's room. */}
+          <div
+            className={cn(
+              "grid gap-x-8 gap-y-3",
+              outbound.length > 0 && backlinks.length > 0 && "@2xl:grid-cols-2",
+            )}
+          >
+            <LinkGroup title="Links to" icon={ArrowUpRight} rows={outboundRows} onNavigate={onNavigate} />
+            <LinkGroup title="Referenced by" icon={CornerDownLeft} rows={backlinkRows} onNavigate={onNavigate} />
+          </div>
+        </section>
       )}
+      </div>
     </div>
   );
 }

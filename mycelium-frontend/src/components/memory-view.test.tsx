@@ -175,12 +175,13 @@ describe("<MemoryView />", () => {
     expect(screen.queryByTestId("memory-detail")).not.toBeInTheDocument();
   });
 
-  it("full page adds a way back to the room, and a tab doesn't", async () => {
+  it("leaves the way back to the room to the app's breadcrumb, page or tab", async () => {
     vi.mocked(fetchMemory).mockResolvedValue(MEMORY);
     const { unmount } = renderWithSWR(
       <MemoryView roomName="demo" memoryKey={MEMORY.key} onOpenMemory={vi.fn()} layout="page" />,
     );
-    expect(await screen.findByRole("link", { name: "demo" })).toHaveAttribute("href", "/room/demo");
+    await screen.findByTestId("memory-detail");
+    expect(screen.queryByRole("link", { name: "demo" })).not.toBeInTheDocument();
     unmount();
 
     renderWithSWR(<MemoryView roomName="demo" memoryKey={MEMORY.key} onOpenMemory={vi.fn()} />);

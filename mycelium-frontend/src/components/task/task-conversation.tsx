@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { RoomMessage } from "@/lib/api";
 import { usePendingMessages, type Landed } from "@/lib/pending-messages";
 import { PendingMessageRows } from "@/components/pending-message-rows";
@@ -40,6 +40,8 @@ interface Props {
    * duplicating the hook.
    */
   onReady?: (refresh: () => void) => void;
+  /** What an empty thread shows, for a host that frames it its own way. */
+  empty?: ReactNode;
 }
 
 /** The prose a thread message carries, or "" when it carries none. */
@@ -84,7 +86,7 @@ function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
  * rendering. The read is its own SWR entry (`useThreadMessages`), so showing a
  * conversation never replaces the room's feed with a filtered slice of itself.
  */
-export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: Props) {
+export function TaskConversation({ roomName, episode, onOpenMemory, onReady, empty }: Props) {
   const { messages, loading, refresh, hasOlder, loadOlder, loadingOlder } =
     useThreadMessages(roomName, episode);
   const { agents } = useRoomAgents(roomName);
@@ -200,7 +202,7 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
         </div>
       ) : ordered.length === 0 && pending.length === 0 ? (
         // A quiet line, not a card: an empty thread is where every task starts.
-        <p className="px-5 py-3 text-micro text-faint">
+        empty ?? <p className="px-5 py-3 text-micro text-faint">
           No replies yet. Reply below, or @-mention an agent: it lands in this task, not in the room.
         </p>
       ) : (

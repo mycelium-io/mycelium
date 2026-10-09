@@ -17,6 +17,7 @@ import { TaskDiscussion } from "@/components/task/task-discussion";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
 import { memoryEditPending, onMemoryEditRequest, takeMemoryEdit } from "@/lib/memory-edit-request";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 
@@ -90,6 +91,7 @@ export function MemoryView({
   }, [roomName, memoryKey, listedVersion]);
 
   const page = layout === "page";
+  const centered = page ? "mx-auto w-full max-w-3xl" : undefined;
   const backToRoom = page ? (
     <Link
       href={`/room/${encodeURIComponent(roomName)}`}
@@ -130,39 +132,40 @@ export function MemoryView({
   // room asks before leaving; otherwise (the full page) it asks here.
   const open = onGuard ? onOpenMemory : (key: string) => guard(() => onOpenMemory(key));
 
-  // At the end of the memory's one meta line. A task (a row with a thread)
-  // also takes the room's verbs: get it reviewed, split it, settle it.
+  // At the end of the memory's header, the same quiet buttons as its view
+  // toggle. A task (a row with a thread) also takes the room's verbs: get it
+  // reviewed, split it, settle it.
   const actions = (
     <>
-      <span aria-hidden className="h-3 w-px bg-border" />
       {hasDiscussion && (
-        <button
-          type="button"
-          onClick={() => setAsking(true)}
-          className="inline-flex items-center gap-1 text-accent transition-colors hover:text-text"
-        >
-          <Sparkles className="size-3.5" />
-          Ask agents
-        </button>
+        <Tooltip content="Put agents to work on this task">
+          <Button variant="ghost" size="xs" className="gap-1" aria-label="Ask agents" onClick={() => setAsking(true)}>
+            <Sparkles className="size-3.5" />
+            <span className="hidden @2xl:inline">Ask agents</span>
+          </Button>
+        </Tooltip>
       )}
       <Tooltip content={editing ? "Back to the rendered memory" : "Edit this memory"}>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="xs"
+          className="gap-1"
+          aria-label={editing ? "View" : "Edit"}
           onClick={() => (editing ? guard(() => setEditing(false)) : setEditing(true))}
-          className="inline-flex items-center gap-1 transition-colors hover:text-text"
         >
           {editing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
-          {editing ? "View" : "Edit"}
-        </button>
+          <span className="hidden @2xl:inline">{editing ? "View" : "Edit"}</span>
+        </Button>
       </Tooltip>
     </>
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-paper">
+    <div className="@container flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-paper">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className={page ? "mx-auto w-full max-w-3xl pb-12" : undefined}>
-          {backToRoom && <div className="px-6 pt-6 md:px-8">{backToRoom}</div>}
+        {/* The toolbar spans the view, as every tab's does; a page centers
+            what is under it. The app's breadcrumb already leads back to the room. */}
+        <div className={page ? "pb-12" : undefined}>
           {editing ? (
             <MemoryEditor
               key={memory.key}
@@ -195,14 +198,17 @@ export function MemoryView({
                 bodyFade="paper"
                 showKey
                 actions={actions}
+                bodyClassName={centered}
               />
               {hasDiscussion && memory.episode && (
-                <TaskDiscussion
-                  roomName={roomName}
-                  episode={memory.episode}
-                  onOpenMemory={open}
-                  className="px-6 md:px-8"
-                />
+                <div className={centered}>
+                  <TaskDiscussion
+                    roomName={roomName}
+                    episode={memory.episode}
+                    onOpenMemory={open}
+                    className="px-6 md:px-8"
+                  />
+                </div>
               )}
             </>
           )}
