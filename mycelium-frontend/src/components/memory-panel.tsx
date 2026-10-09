@@ -491,7 +491,8 @@ export function MemoryPanel({
   return (
     <div ref={paneRef} className="flex flex-col h-full overflow-hidden">
       <div className="flex h-8 flex-shrink-0 items-center gap-1 px-3 text-micro tabular text-muted-foreground">
-        <span>
+        {/* A count, not a control: it sits back behind the actions beside it. */}
+        <span className="text-faint">
           {memories.length} {memories.length === 1 ? "memory" : "memories"} · {contributors.length}{" "}
           {contributors.length === 1 ? "contributor" : "contributors"}
         </span>

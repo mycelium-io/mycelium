@@ -68,6 +68,9 @@ function RoomWorkspace() {
   const roomName = parseRoomNameParam(params.name as string);
   const [connected, setConnected] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<Tab>("agents");
+  // Bumped on every ask to show a rail section, so a folded one opens even
+  // when it is already the section named.
+  const [inspectorReveal, setInspectorReveal] = useState(0);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   // Hoisted above the state below so the tour flag can be seeded from the URL.
   const searchParamsEarly = useSearchParams();
@@ -90,6 +93,7 @@ function RoomWorkspace() {
 
   const openTab = useCallback((tab: Tab) => {
     setInspectorTab(tab);
+    setInspectorReveal(n => n + 1);
     setInspectorOpen(true);
   }, []);
 
@@ -264,6 +268,7 @@ function RoomWorkspace() {
       roomName={roomName}
       masId={room?.mas_id ?? null}
       tab={inspectorTab}
+      reveal={inspectorReveal}
       onTabChange={setInspectorTab}
       open={open}
       onOpenChange={onOpenChange}
