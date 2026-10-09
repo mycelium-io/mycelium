@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { act } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,29 +15,12 @@ vi.mock("@/components/memory-panel", () => ({
 }));
 
 import { RoomInspector } from "@/components/room-inspector";
-import { TAB_LABELS_MIN_WIDTH } from "@/lib/panel-layout";
 
-/** A ResizeObserver the test drives, standing in for a dragged panel edge. */
-const observers: ((width: number) => void)[] = [];
-
+/** jsdom lays nothing out; the panels only need the observer to exist. */
 class TestResizeObserver {
-  constructor(private callback: ResizeObserverCallback) {
-    observers.push(width => {
-      this.callback(
-        [{ contentRect: { width } } as ResizeObserverEntry],
-        this as unknown as ResizeObserver,
-      );
-    });
-  }
   observe() {}
   unobserve() {}
   disconnect() {}
-}
-
-async function railWidth(width: number): Promise<void> {
-  await act(async () => {
-    for (const resize of observers) resize(width);
-  });
 }
 
 function renderInspector() {
@@ -46,48 +28,38 @@ function renderInspector() {
   return userEvent.setup();
 }
 
-describe("<RoomInspector /> tab strip", () => {
+describe("<RoomInspector /> sections", () => {
   beforeEach(() => {
-    observers.length = 0;
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
   });
 
-  it("labels the tabs while the rail is wide enough to hold the words", async () => {
+  it("stacks members and memory, both in view at once", () => {
     renderInspector();
-    await railWidth(TAB_LABELS_MIN_WIDTH + 40);
-
-    for (const label of ["Members", "Memory"]) {
-      expect(screen.getByRole("button", { name: label })).toHaveTextContent(label);
-    }
-  });
-
-  it("drops to icons alone once the rail is too narrow for them", async () => {
-    renderInspector();
-    await railWidth(TAB_LABELS_MIN_WIDTH - 40);
-
-    for (const label of ["Members", "Memory"]) {
-      // Still addressable by name — the label moved to the accessible name and
-      // the tooltip rather than disappearing.
-      expect(screen.getByRole("button", { name: label })).toHaveTextContent("");
-    }
-  });
-
-  it("switches tabs the same way at either width", async () => {
-    const user = renderInspector();
-    await railWidth(TAB_LABELS_MIN_WIDTH - 40);
-
-    await user.click(screen.getByRole("button", { name: "Memory" }));
+    expect(screen.getByText("members panel")).toBeInTheDocument();
     expect(screen.getByText("memory panel")).toBeInTheDocument();
+  });
+
+  it("gives each section a header that folds it", () => {
+    renderInspector();
+    for (const label of ["Members", "Memory"]) {
+      const header = screen.getByRole("button", { name: `Collapse ${label}` });
+      expect(header).toHaveAttribute("aria-expanded", "true");
+      expect(header).toHaveTextContent(label);
+    }
+  });
+
+  it("draws one seam between the sections, to drag", () => {
+    renderInspector();
+    expect(screen.getAllByRole("separator")).toHaveLength(1);
   });
 });
 
 describe("<RoomInspector /> collapse", () => {
   beforeEach(() => {
-    observers.length = 0;
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
   });
 
-  it("collapses to the icon strip and reopens on the tab you clicked", async () => {
+  it("collapses to the icon strip and opens again from it", async () => {
     const user = renderInspector();
     expect(screen.getByText("members panel")).toBeInTheDocument();
 

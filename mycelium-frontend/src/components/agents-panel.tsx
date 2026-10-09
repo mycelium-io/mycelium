@@ -303,7 +303,7 @@ export function AgentsPanel({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex h-8 flex-shrink-0 items-center gap-1 px-3">
-        <span className="text-micro tabular text-muted-foreground">
+        <span className="text-micro tabular text-faint">
           {people.length + agents.length} {people.length + agents.length === 1 ? "member" : "members"}
         </span>
         <InviteButton roomName={roomName} />

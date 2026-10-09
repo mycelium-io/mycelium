@@ -123,13 +123,6 @@ export const ROOMS_FOLD_WIDTH =
 export const SHEET_LAYOUT_WIDTH = 768;
 
 /**
- * Below this the inspector's tab strip can't hold "Members / Episodes /
- * Memory" as words, so the tabs drop to icons alone. Measured against the
- * rail, not the viewport: the rail is what the tabs have to fit inside.
- */
-export const TAB_LABELS_MIN_WIDTH = 312;
-
-/**
  * A panel is "collapsed" once it's near its collapsed size. The library
  * reports pixel widths mid-animation, so this is a threshold rather than an
  * equality check on `collapsed`.
