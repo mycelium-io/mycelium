@@ -31,6 +31,7 @@ import {
   Plus,
   Search,
   SearchX,
+  SquareTerminal,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -63,6 +64,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { copyText, absoluteUrl } from "@/lib/clipboard";
+import { roomCommand } from "@/lib/agent-command";
 import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { DeleteRoomDialog } from "@/components/delete-room-dialog";
@@ -1034,6 +1036,9 @@ function RoomContextMenu({
             Copy room ID
           </ContextMenuItem>
         )}
+        <ContextMenuItem icon={SquareTerminal} onClick={() => void copyText(roomCommand(room.name))}>
+          Copy command for an agent
+        </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem icon={Trash2} destructive onClick={onDelete}>
           Delete room…

@@ -20,8 +20,21 @@ import {
   Copy,
   Link2,
   Maximize2,
+  Pencil,
   Plus,
+  SquareTerminal,
+  Trash2,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { memoryCommand, taskCommand } from "@/lib/agent-command";
+import { requestMemoryEdit } from "@/lib/memory-edit-request";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -31,11 +44,12 @@ import {
 } from "@/components/ui/context-menu";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import {
+  deleteMemory,
   searchMemories,
   type Memory,
   type MemorySearchResult,
 } from "@/lib/api";
-import { useRoomMemories } from "@/lib/room-data";
+import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
 import { expandedPathsForKey } from "@/lib/memory-panel-nav";
 import { MemoryPreviewCard, type PreviewAnchor } from "@/components/memory-preview-card";
@@ -147,9 +161,10 @@ const INDENT = 12; // px per depth level
 const PEEK_DELAY = 350; // ms of hover intent before the preview card opens
 
 /**
- * A memory's right-click menu in the tree: open it, open its full page (a
- * right-click replaces the browser's own "open in new tab"), and copy it as a
- * key, a `[[link]]` or a page link.
+ * A memory's right-click menu in the tree: open it to read or edit, open its
+ * full page (a right-click replaces the browser's own "open in new tab"), copy
+ * it as a key, a `[[link]]`, a page link or the command an agent runs to read
+ * it, and delete it, after asking.
  */
 function MemoryRowMenu({
   roomName,
@@ -163,30 +178,104 @@ function MemoryRowMenu({
   children: React.ReactElement;
 }) {
   const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
   if (!memory) return children;
   const href = memoryHref(roomName, memory.key);
+  // A memory with a thread is a task: an agent reads its conversation too.
+  const command = memory.episode ? taskCommand(roomName, memory.key) : memoryCommand(roomName, memory.key);
   return (
-    <ContextMenu>
-      <ContextMenuTrigger>{children}</ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem icon={FileText} onClick={() => onOpen(memory)}>
-          Open
-        </ContextMenuItem>
-        <ContextMenuItem icon={Maximize2} onClick={() => router.push(href)}>
-          Open full page
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem icon={Copy} onClick={() => void copyText(memory.key)}>
-          Copy key
-        </ContextMenuItem>
-        <ContextMenuItem icon={Link2} onClick={() => void copyText(`[[${memory.key}]]`)}>
-          Copy as [[link]]
-        </ContextMenuItem>
-        <ContextMenuItem icon={Link2} onClick={() => void copyText(absoluteUrl(href))}>
-          Copy page link
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger>{children}</ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem icon={FileText} onClick={() => onOpen(memory)}>
+            Open
+          </ContextMenuItem>
+          <ContextMenuItem
+            icon={Pencil}
+            onClick={() => {
+              requestMemoryEdit(memory.key);
+              onOpen(memory);
+            }}
+          >
+            Edit
+          </ContextMenuItem>
+          <ContextMenuItem icon={Maximize2} onClick={() => router.push(href)}>
+            Open full page
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem icon={Copy} onClick={() => void copyText(memory.key)}>
+            Copy key
+          </ContextMenuItem>
+          <ContextMenuItem icon={Link2} onClick={() => void copyText(`[[${memory.key}]]`)}>
+            Copy as [[link]]
+          </ContextMenuItem>
+          <ContextMenuItem icon={Link2} onClick={() => void copyText(absoluteUrl(href))}>
+            Copy page link
+          </ContextMenuItem>
+          <ContextMenuItem icon={SquareTerminal} onClick={() => void copyText(command)}>
+            Copy command for an agent
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem icon={Trash2} destructive onClick={() => setDeleting(true)}>
+            Delete…
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+      <DeleteMemoryDialog roomName={roomName} memoryKey={deleting ? memory.key : null} onClose={() => setDeleting(false)} />
+    </>
+  );
+}
+
+/** Asks before a memory is deleted, since a delete can't be undone from here. */
+function DeleteMemoryDialog({
+  roomName,
+  memoryKey,
+  onClose,
+}: {
+  roomName: string;
+  memoryKey: string | null;
+  onClose: () => void;
+}) {
+  const revalidate = useRoomRevalidate(roomName);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const remove = async () => {
+    if (!memoryKey) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteMemory(roomName, memoryKey);
+      revalidate();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't delete it");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open={memoryKey !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete this memory?</DialogTitle>
+          <DialogDescription>
+            <span className="font-mono text-text">{memoryKey}</span> is removed for everyone in{" "}
+            <span className="font-mono">{roomName}</span>. Links to it stop resolving.
+          </DialogDescription>
+        </DialogHeader>
+        {error && <p role="alert" className="text-label text-red">{error}</p>}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={() => void remove()} disabled={busy}>
+            {busy && <Loader2 className="size-3 animate-spin" />}
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

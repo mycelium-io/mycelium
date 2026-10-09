@@ -297,8 +297,8 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
   // What a row's right-click menu can do: the same handlers the row's own
   // strip and the board's keys call.
   const rowMenuActions = useMemo(
-    () => ({ now, onVerb: runRowAction, onAnswer: answer, onOpenThread }),
-    [now, runRowAction, answer, onOpenThread],
+    () => ({ roomName, now, onVerb: runRowAction, onAnswer: answer, onOpenThread }),
+    [roomName, now, runRowAction, answer, onOpenThread],
   );
 
   // A captured line is filed on the hub as a real task. It shows at once as a
