@@ -22,7 +22,9 @@ import {
   type Responding,
 } from "@/lib/activity";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
+import { usePendingMessages, type Landed } from "@/lib/pending-messages";
 import { MessageBody } from "@/components/message-body";
+import { PendingMessageRows } from "@/components/pending-message-rows";
 import { ConductorRow } from "@/components/task/conductor-row";
 import { ChatFindBar } from "@/components/chat-find-bar";
 import { ChatSearchResults } from "@/components/chat-search-results";
@@ -241,6 +243,12 @@ function SystemNotice({
  */
 function inAThread(event: Event, room: string): boolean {
   return CHAT_TYPES.has(event.type) && !isLiveEpisode(room, event.episode);
+}
+
+/** Who wrote the last row, when it is a message a row under it would group with. */
+function lastChatSender(rows: readonly Event[]): string | null {
+  const last = rows[rows.length - 1];
+  return last && !SYSTEM_TYPES.has(last.type) && !last.conductor ? last.sender : null;
 }
 
 /**
@@ -712,6 +720,16 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     [inChannel],
   );
 
+  // What you sent to the room that the feed doesn't have yet, drawn under it.
+  const saidHere = useMemo<Landed[]>(
+    () =>
+      inChannel
+        .filter((e) => CHAT_TYPES.has(e.type))
+        .map((e) => ({ id: e.messageId, sender: e.sender, content: e.content, at: e.at })),
+    [inChannel],
+  );
+  const pending = usePendingMessages(roomName, null, saidHere);
+
   const saidById = useMemo(() => {
     const said = new Map<string, Event>();
     for (const ev of events) if (ev.messageId && CHAT_TYPES.has(ev.type)) said.set(ev.messageId, ev);
@@ -1063,6 +1081,17 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     highlightRow.current?.scrollIntoView({ block: "center" });
   }, [highlight, historyLoaded, visible]);
 
+  // What you just sent is where you are looking, so the feed goes back to its
+  // tail and follows it from there.
+  const newestPending = pending[pending.length - 1]?.id ?? null;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!newestPending || !el) return;
+    atBottomRef.current = true;
+    setAtBottom(true);
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [newestPending]);
+
   return (
     <div className="flex flex-col h-full">
       <div className="relative flex flex-1 min-h-0 flex-col">
@@ -1113,7 +1142,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       <ScrollArea className="h-full" viewportRef={scrollRef}>
         {!historyLoaded ? (
           <ChannelSkeleton />
-        ) : visible.length === 0 ? (
+        ) : visible.length === 0 && pending.length === 0 ? (
           // A room whose every message is task-scoped has a full rail and an
           // empty feed, and "no messages yet" is then a false statement about a
           // room with hundreds of them. Say where the talking went instead.
@@ -1432,6 +1461,12 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
               );
             })}
         </NowProvider>
+          <PendingMessageRows
+            roomName={roomName}
+            pending={pending}
+            previousSender={lastChatSender(visible)}
+            onOpenMemory={onOpenMemory}
+          />
           {responding.length > 0 && (
             <RespondingLine entries={responding} room={roomName} threads={threads} onOpenThread={onOpenThread} />
           )}

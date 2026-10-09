@@ -9,7 +9,6 @@ import {
   createEngine,
   createMemories,
   launchRunnerAgent,
-  sendRoomMessage,
   type EngineKind,
   type Memory,
   type Runner,
@@ -36,6 +35,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
+import { sendPending } from "@/lib/pending-messages";
 import { FileText, ListTodo, Paperclip, Plus, UserPlus, X } from "lucide-react";
 import { PendingAttachments, usePendingUploads } from "@/components/uploads/composer-attachments";
 import { acceptAttribute } from "@/lib/uploads";
@@ -69,7 +69,7 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   roomName: string;
-  /** Fired after a successful POST so the parent can refresh the event stream. */
+  /** Fired once the hub has a sent message, so the parent can re-read its conversation. */
   onSent?: () => void;
   className?: string;
   /**
@@ -570,6 +570,22 @@ export function RoomChatBox({
       cleared();
       return;
     }
+    if (!command) {
+      // A message is drawn in its conversation straight away and the box is
+      // free again; sending, and saying when it couldn't, is the pending row's.
+      setError(null);
+      setNotice(null);
+      cleared();
+      attachments.clear();
+      void sendPending(roomName, {
+        sender: handle,
+        content: [body, files.join(" ")].filter(Boolean).join("\n\n"),
+        episode,
+      }).then((sent) => {
+        if (sent) onSent?.();
+      });
+      return;
+    }
     setSending(true);
     setError(null);
     setNotice(null);
@@ -622,13 +638,6 @@ export function RoomChatBox({
           setNoticeKey(null);
           break;
         }
-        default:
-          await sendRoomMessage(roomName, {
-            sender_handle: handle,
-            content: [body, files.join(" ")].filter(Boolean).join("\n\n"),
-            episode,
-          });
-          attachments.clear();
       }
       cleared();
       onSent?.();
