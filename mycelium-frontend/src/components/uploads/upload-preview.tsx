@@ -156,9 +156,17 @@ export function UploadFacts({ upload, className }: { upload: Upload; className?:
   );
 }
 
-export function DownloadButton({ upload, size = "sm" }: { upload: Upload; size?: "sm" | "xs" }) {
+export function DownloadButton({
+  upload,
+  size = "sm",
+  variant = "outline",
+}: {
+  upload: Upload;
+  size?: "sm" | "xs";
+  variant?: "outline" | "ghost";
+}) {
   return (
-    <a href={downloadUrl(upload)} download={upload.filename} className={buttonVariants({ variant: "outline", size })}>
+    <a href={downloadUrl(upload)} download={upload.filename} className={buttonVariants({ variant, size })}>
       <Download className="size-3.5" /> Download
     </a>
   );

@@ -17,6 +17,7 @@ import { TaskDiscussion } from "@/components/task/task-discussion";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
 import { memoryEditPending, onMemoryEditRequest, takeMemoryEdit } from "@/lib/memory-edit-request";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 
@@ -130,30 +131,29 @@ export function MemoryView({
   // room asks before leaving; otherwise (the full page) it asks here.
   const open = onGuard ? onOpenMemory : (key: string) => guard(() => onOpenMemory(key));
 
-  // At the end of the memory's one meta line. A task (a row with a thread)
-  // also takes the room's verbs: get it reviewed, split it, settle it.
+  // At the end of the memory's header, the same quiet buttons as its view
+  // toggle. A task (a row with a thread) also takes the room's verbs: get it
+  // reviewed, split it, settle it.
   const actions = (
     <>
-      <span aria-hidden className="h-3 w-px bg-border" />
       {hasDiscussion && (
-        <button
-          type="button"
-          onClick={() => setAsking(true)}
-          className="inline-flex items-center gap-1 text-accent transition-colors hover:text-text"
-        >
-          <Sparkles className="size-3.5" />
-          Ask agents
-        </button>
+        <Tooltip content="Put agents to work on this task">
+          <Button variant="ghost" size="xs" className="gap-1" onClick={() => setAsking(true)}>
+            <Sparkles className="size-3.5" />
+            Ask agents
+          </Button>
+        </Tooltip>
       )}
       <Tooltip content={editing ? "Back to the rendered memory" : "Edit this memory"}>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="xs"
+          className="gap-1"
           onClick={() => (editing ? guard(() => setEditing(false)) : setEditing(true))}
-          className="inline-flex items-center gap-1 transition-colors hover:text-text"
         >
           {editing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
           {editing ? "View" : "Edit"}
-        </button>
+        </Button>
       </Tooltip>
     </>
   );

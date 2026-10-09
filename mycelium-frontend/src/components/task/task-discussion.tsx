@@ -4,6 +4,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import { MessagesSquare } from "lucide-react";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { TaskConversation } from "@/components/task/task-conversation";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,24 @@ interface Props {
   /** The host's inset (`px-…`), so the heading, the replies and the composer
    *  line up with the task's body above them. */
   className?: string;
+}
+
+/** A task with no replies yet: where its conversation starts, and where it goes. */
+function NoReplies() {
+  return (
+    <div className="flex items-start gap-3 px-5 py-4">
+      <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-hairline text-muted-foreground">
+        <MessagesSquare className="size-4" />
+      </span>
+      <div className="min-w-0 space-y-0.5">
+        <p className="text-label text-text">No replies yet</p>
+        <p className="text-micro text-muted-foreground">
+          Start the conversation below. @-mention an agent to bring it in; replies stay in this task, out of the
+          room&apos;s channel.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -35,10 +54,16 @@ export function TaskDiscussion({ roomName, episode, onOpenMemory, className }: P
   }, []);
 
   return (
-    <section data-testid="task-discussion" className={cn("border-t border-border pt-4 pb-6", className)}>
-      <h2 className="text-micro font-medium uppercase tracking-wide text-faint">Discussion</h2>
+    <section data-testid="task-discussion" className={cn("border-t border-border pt-6 pb-6", className)}>
+      <h2 className="text-label font-medium text-text">Discussion</h2>
       <div className="-mx-5">
-        <TaskConversation roomName={roomName} episode={episode} onOpenMemory={onOpenMemory} onReady={onReady} />
+        <TaskConversation
+          roomName={roomName}
+          episode={episode}
+          onOpenMemory={onOpenMemory}
+          onReady={onReady}
+          empty={<NoReplies />}
+        />
       </div>
       <RoomChatBox roomName={roomName} episode={episode} inline onSent={() => refresh.current?.()} />
     </section>

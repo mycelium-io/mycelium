@@ -13,8 +13,10 @@ import { isJsonRawText, prettyPrintJsonRawText } from "@/lib/json-text";
 import { linkErrorLabel } from "@/lib/memory-links";
 import { fmtAgo } from "@/lib/metrics-format";
 import { useRoomUploads } from "@/lib/room-data";
-import { isUploadKey } from "@/lib/uploads";
-import { DownloadButton, UploadFacts, UploadPreview } from "@/components/uploads/upload-preview";
+import { formatBytes, isUploadKey, kindLabel } from "@/lib/uploads";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { DownloadButton, UploadPreview } from "@/components/uploads/upload-preview";
 
 export interface MemoryLike {
   key: string;
@@ -165,37 +167,35 @@ function MaybeExpandable({
   );
 }
 
-/** An upload's file where its memory's body would be: the preview, what it is,
- *  and its download. The body (a line about the file, or a text file's text)
- *  is still there under Raw. */
-function UploadPanel({
-  roomName,
-  memoryKey,
-  pad,
-  onNavigate,
-}: {
-  roomName: string;
-  memoryKey: string;
-  pad: string;
-  onNavigate?: (key: string) => void;
-}) {
-  const { uploads, loading } = useRoomUploads(roomName);
-  const upload = uploads.find((u) => u.key === memoryKey);
-  if (!upload) {
-    return loading ? null : (
-      <p className={`${pad} pt-4 text-label text-muted-foreground`}>This upload&apos;s file isn&apos;t on the hub.</p>
-    );
-  }
+/** A key as a title: the folder it sits in quiet, its own name in full. */
+function KeyTitle({ memoryKey }: { memoryKey: string }) {
+  const cut = memoryKey.lastIndexOf("/") + 1;
   return (
-    <div className={`${pad} space-y-3 pt-4`}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="min-w-0 truncate text-label text-text">{upload.filename}</span>
-        <UploadFacts upload={upload} />
-        <span className="ml-auto">
-          <DownloadButton upload={upload} size="xs" />
-        </span>
-      </div>
-      <UploadPreview upload={upload} onOpenMemory={onNavigate} />
+    <h1 className="min-w-0 truncate font-mono text-body text-text" title={memoryKey}>
+      {cut > 0 && <span className="text-faint">{memoryKey.slice(0, cut)}</span>}
+      {memoryKey.slice(cut)}
+    </h1>
+  );
+}
+
+/** Rendered or Raw, as one control rather than two words. */
+function ViewToggle({ raw, onChange }: { raw: boolean; onChange: (raw: boolean) => void }) {
+  return (
+    <div className="flex items-center rounded-md bg-hairline/60 p-0.5">
+      {([["Rendered", false], ["Raw", true]] as const).map(([label, on]) => (
+        <button
+          key={label}
+          type="button"
+          aria-pressed={raw === on}
+          onClick={() => onChange(on)}
+          className={cn(
+            "flex h-5 items-center rounded px-2 text-micro transition-colors",
+            raw === on ? "bg-bg text-text shadow-sm" : "text-muted-foreground hover:text-text",
+          )}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -214,6 +214,11 @@ export function MemoryDetail({
 }: Props) {
   const pad = variant === "page" ? "px-6 md:px-8" : "px-5";
   const [raw, setRaw] = useState(false);
+  // An upload's file stands where its body would; the body (a line about the
+  // file, or a text file's text) is still there under Raw.
+  const isUpload = Boolean(roomName) && isUploadKey(memory.key);
+  const { uploads, loading: uploadsLoading } = useRoomUploads(isUpload ? (roomName ?? "") : "");
+  const upload = isUpload ? uploads.find((u) => u.key === memory.key) : undefined;
   const [jsonView, setJsonView] = useState(false);
   const [outbound, setOutbound] = useState<MemoryLink[]>([]);
   const [backlinks, setBacklinks] = useState<MemoryLink[]>([]);
@@ -276,56 +281,60 @@ export function MemoryDetail({
           </span>
         </div>
       )}
-      {/* What it is in one line (version, who, when, its tags), and how to
-          read it at the end of the same line: nothing here needs a grid. */}
-      <div className={`flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border ${pad} py-1 text-micro text-muted-foreground`}>
-        {showKey && <span className="font-mono text-text">{memory.key}</span>}
-        <span className="tabular" title={memory.file_path || undefined}>
-          v{memory.version} · {memory.updated_by || memory.created_by}
-          {memory.updated_at && (
-            <>
-              {" · "}
-              <time dateTime={memory.updated_at} title={new Date(memory.updated_at).toLocaleString()}>
-                updated {fmtAgo(memory.updated_at)}
-              </time>
-            </>
-          )}
-        </span>
-        {memory.tags?.map(tag => (
-          <span key={tag} className="rounded bg-hairline px-1.5 font-mono text-faint">
-            {tag}
+      {/* One header: the key as a title on its own line (a page names what it
+          shows), then what it is (version, who, when, an upload's kind and
+          size, its tags) with how to read it and what to do with it. */}
+      <header className={cn("border-b border-border", pad, showKey ? "space-y-1.5 pt-6 pb-3" : "py-1")}>
+        {showKey && <KeyTitle memoryKey={memory.key} />}
+        <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1.5 text-micro text-muted-foreground">
+          <span className="tabular" title={memory.file_path || undefined}>
+            v{memory.version} · {memory.updated_by || memory.created_by}
+            {memory.updated_at && (
+              <>
+                {" · "}
+                <time dateTime={memory.updated_at} title={new Date(memory.updated_at).toLocaleString()}>
+                  updated {fmtAgo(memory.updated_at)}
+                </time>
+              </>
+            )}
+            {upload && ` · ${kindLabel(upload.kind)} · ${formatBytes(upload.size)}`}
           </span>
-        ))}
-        <div className="ml-auto flex items-center gap-2">
-          {raw && rawIsJson && (
-            <button
-              type="button"
-              aria-pressed={effectiveJsonView}
-              aria-label="Pretty-print JSON"
-              onClick={() => setJsonView(on => !on)}
-              className={`transition-colors hover:text-text ${effectiveJsonView ? "text-accent" : ""}`}
-            >
-              Format JSON
-            </button>
-          )}
-          {([["Rendered", false], ["Raw", true]] as const).map(([label, on]) => (
-            <button
-              key={label}
-              type="button"
-              aria-pressed={raw === on}
-              onClick={() => setRaw(on)}
-              className={`transition-colors hover:text-text ${raw === on ? "text-text" : ""}`}
-            >
-              {label}
-            </button>
+          {memory.tags?.map(tag => (
+            <span key={tag} className="rounded bg-hairline px-1.5 font-mono text-faint">
+              {tag}
+            </span>
           ))}
-          {actions}
+          <div className="ml-auto flex items-center gap-1">
+            {raw && rawIsJson && (
+              <Button
+                variant="ghost"
+                size="xs"
+                aria-pressed={effectiveJsonView}
+                aria-label="Pretty-print JSON"
+                onClick={() => setJsonView(on => !on)}
+                className={effectiveJsonView ? "text-accent" : undefined}
+              >
+                Format JSON
+              </Button>
+            )}
+            <ViewToggle raw={raw} onChange={setRaw} />
+            {upload && <DownloadButton upload={upload} size="xs" variant="ghost" />}
+            {actions}
+          </div>
         </div>
-      </div>
+      </header>
 
-      {roomName && isUploadKey(memory.key) && <UploadPanel roomName={roomName} memoryKey={memory.key} pad={pad} onNavigate={onNavigate} />}
+      {isUpload && !raw && (
+        <div className={`${pad} pt-4`}>
+          {upload ? (
+            <UploadPreview upload={upload} onOpenMemory={onNavigate} />
+          ) : uploadsLoading ? null : (
+            <p className="text-label text-muted-foreground">This upload&apos;s file isn&apos;t on the hub.</p>
+          )}
+        </div>
+      )}
 
-      <div className={`${pad} py-4`} hidden={Boolean(roomName && isUploadKey(memory.key) && !raw)}>
+      <div className={`${pad} py-4`} hidden={isUpload && !raw}>
         <MaybeExpandable collapseAt={collapseBodyAt} fade={bodyFade}>
           {raw ? (
             <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 font-mono text-micro leading-relaxed text-text whitespace-pre-wrap break-words">
