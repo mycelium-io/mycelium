@@ -188,6 +188,28 @@ mod windows_path {
     }
 }
 
+/// Delete the programs an update moved aside as `<name>.old` (see
+/// `windows/hooks.nsh`), in the background. One a process still runs (an
+/// agent's herdr from before the update) can't be deleted yet and is left for
+/// a later launch.
+#[cfg(windows)]
+pub fn clear_moved_aside() {
+    fn clear(dir: &Path) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                clear(&path);
+            } else if path.extension().is_some_and(|e| e == "old") {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+        std::thread::spawn(move || clear(&dir));
+    }
+}
+
 /// A program shipped inside the app bundle, beside the app's executable.
 pub fn bundled(name: &str) -> Option<PathBuf> {
     let current = std::env::current_exe().ok()?;

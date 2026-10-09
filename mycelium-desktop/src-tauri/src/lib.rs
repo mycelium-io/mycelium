@@ -1047,6 +1047,8 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            #[cfg(windows)]
+            paths::clear_moved_aside();
             *app.state::<Shell>().local_base.lock().unwrap() = app_base(&handle);
             main_window(&handle)?;
             build_tray(&handle)?;
