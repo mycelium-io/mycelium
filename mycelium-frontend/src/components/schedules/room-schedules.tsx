@@ -12,31 +12,21 @@
 import { useState } from "react";
 import { Clock, Loader2, MoreHorizontal, Plus } from "lucide-react";
 import {
-  createSchedule,
   deleteSchedule,
   runSchedule,
   updateSchedule,
   type Schedule,
-  type ScheduleEdit,
   type ScheduleResult,
 } from "@/lib/api";
 import { useRoomSchedules } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { Ago, NowProvider, useNow } from "@/lib/relative-time";
-import { useCurrentUser } from "@/components/current-user";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { ScheduleForm } from "./schedule-form";
 
 export const SCHEDULE_CHANGED = "schedule_changed";
 
@@ -438,7 +428,7 @@ function ScheduleDialog({
 }) {
   return (
     <Dialog open={editing !== null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-xl">
         {editing !== null && (
           <ScheduleForm
             key={editing === "new" ? "new" : editing.name}
@@ -454,148 +444,3 @@ function ScheduleDialog({
   );
 }
 
-function ScheduleForm({
-  roomName,
-  schedule,
-  checks,
-  onClose,
-  onSaved,
-}: {
-  roomName: string;
-  schedule: Schedule | null;
-  checks: Record<string, string>;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const { principal } = useCurrentUser();
-  const [name, setName] = useState(schedule?.name ?? "");
-  const [owner, setOwner] = useState(schedule?.owner ?? "");
-  const [timing, setTiming] = useState(schedule?.cron ? "cron" : "every");
-  const [every, setEvery] = useState(schedule?.every ?? "30m");
-  const [cron, setCron] = useState(schedule?.cron ?? "0 9 * * 1-5");
-  const [check, setCheck] = useState(schedule?.check ?? "always");
-  const [task, setTask] = useState(schedule?.task ?? "");
-  const [prompt, setPrompt] = useState(schedule?.prompt ?? "");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const save = async () => {
-    setSaving(true);
-    setError(null);
-    const when: ScheduleEdit = timing === "cron" ? { cron: cron.trim() } : { every: every.trim() };
-    try {
-      if (schedule) {
-        await updateSchedule(roomName, schedule.name, { ...when, check, prompt, task: task.trim() });
-      } else {
-        await createSchedule(roomName, {
-          name: name.trim(),
-          owner: owner.trim().replace(/^@/, ""),
-          prompt,
-          check,
-          task: task.trim() || undefined,
-          created_by: principal.trim() || undefined,
-          ...when,
-        });
-      }
-      onSaved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save the schedule");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const checkNames = Object.keys(checks).filter((c) => !c.startsWith("search:"));
-  const label = "flex flex-col gap-1 text-micro text-faint";
-  return (
-    <form
-      className="flex flex-col gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void save();
-      }}
-    >
-      <DialogHeader>
-        <DialogTitle>{schedule ? `Edit ${schedule.name}` : "New schedule"}</DialogTitle>
-        <DialogDescription>
-          On each run the hub does a quick check first, and only wakes the agent if the check finds something.
-        </DialogDescription>
-      </DialogHeader>
-      {!schedule && (
-        <div className="grid grid-cols-2 gap-3">
-          <label className={label}>
-            Name
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="board-check" required />
-          </label>
-          <label className={label}>
-            Agent
-            <Input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="@builder" required />
-          </label>
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-3">
-        <label className={label}>
-          Fires
-          <select
-            value={timing}
-            onChange={(e) => setTiming(e.target.value)}
-            className="h-8 rounded-md border border-border bg-bg px-2 text-label text-text"
-          >
-            <option value="every">every…</option>
-            <option value="cron">on a cron line (UTC)</option>
-          </select>
-        </label>
-        <label className={label}>
-          {timing === "cron" ? "Cron line" : "Interval"}
-          {timing === "cron" ? (
-            <Input value={cron} onChange={(e) => setCron(e.target.value)} className="font-mono" />
-          ) : (
-            <Input value={every} onChange={(e) => setEvery(e.target.value)} placeholder="30m, 2h, 1d" className="font-mono" />
-          )}
-        </label>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <label className={label}>
-          Check before waking
-          <Input value={check} onChange={(e) => setCheck(e.target.value)} list="schedule-checks" className="font-mono" />
-          <datalist id="schedule-checks">
-            {checkNames.map((c) => (
-              <option key={c} value={c}>
-                {checks[c]}
-              </option>
-            ))}
-          </datalist>
-          <span>{checks[check] ?? (check.startsWith("search:") ? checks["search:<query>"] : "")}</span>
-        </label>
-        <label className={label}>
-          Task (optional)
-          <Input value={task} onChange={(e) => setTask(e.target.value)} placeholder="work/checkout" className="font-mono" />
-        </label>
-      </div>
-      <label className={label}>
-        What the agent is told
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          rows={3}
-          className="rounded-md border border-border bg-bg px-2 py-1.5 text-label text-text"
-          placeholder="Look at the board and chase anything stuck."
-        />
-      </label>
-      {error && (
-        <p role="alert" className="break-words text-label text-red">
-          {error}
-        </p>
-      )}
-      <DialogFooter>
-        <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving && <Loader2 className="size-3 animate-spin" />}
-          {schedule ? "Save" : "Create"}
-        </Button>
-      </DialogFooter>
-    </form>
-  );
-}
