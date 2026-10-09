@@ -12,24 +12,42 @@ permissions:
 jobs:
   # Prerelease tags follow PEP 440: vX.Y.ZrcN, vX.Y.ZbN, vX.Y.ZaN, or
   # anything with "preview" in it. Prereleases skip every "promote to latest"
-  # step (Docker :latest tag, GH "Latest" label, Homebrew bump).
+  # step (Docker :latest tag, GH "Latest" label, docs site, Homebrew bump), and
+  # so does a stable tag a newer stable tag has already passed.
   detect-release-type:
     name: Detect release type
     runs-on: ubuntu-latest
     outputs:
       is_prerelease: ${{ steps.detect.outputs.is_prerelease }}
       version: ${{ steps.detect.outputs.version }}
+      # Whether this run may take `latest`: a stable tag that is also the
+      # highest stable version. Two releases run side by side (nothing queues
+      # them), so the older one can finish last; deciding by version rather than
+      # by finishing order keeps it from taking back :latest, the "Latest"
+      # release, the docs site and the Homebrew formula.
+      promote: ${{ steps.detect.outputs.promote }}
     steps:
       - id: detect
+        env:
+          REPO: ${{ github.server_url }}/${{ github.repository }}
         run: |
           tag="${GITHUB_REF_NAME}"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           if [[ "$tag" =~ (rc|alpha|beta|preview)[0-9]* ]]; then
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
             echo "→ $tag is a prerelease (skipping :latest promotion)"
+            exit 0
+          fi
+          echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          newest=$(git ls-remote --tags --refs "$REPO" 'v*' | sed 's#.*refs/tags/##' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          if [ "$tag" = "$newest" ]; then
+            echo "promote=true" >> "$GITHUB_OUTPUT"
+            echo "→ $tag is a stable release, and the newest"
           else
-            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
-            echo "→ $tag is a stable release"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            echo "→ $tag is a stable release, but $newest is newer: not promoting it to latest"
           fi
 
   publish-images:
@@ -56,14 +74,15 @@ jobs:
       - name: Compute image tags
         id: tags
         env:
-          IS_PRERELEASE: ${{ needs.detect-release-type.outputs.is_prerelease }}
+          PROMOTE: ${{ needs.detect-release-type.outputs.promote }}
           VERSION: ${{ steps.version.outputs.version }}
           OWNER: ${{ github.repository_owner }}
         run: |
-          # Stable releases get :latest + :version. Prereleases get :version only —
-          # otherwise compose.yml's `pull_policy: always` would push the preview
+          # The newest stable release gets :latest + :version. Anything else (a
+          # prerelease, or a stable tag a newer one has passed) gets :version
+          # only — otherwise compose.yml's `pull_policy: always` would hand it
           # to every existing user on their next `mycelium pull`.
-          if [ "$IS_PRERELEASE" = "true" ]; then
+          if [ "$PROMOTE" != "true" ]; then
             {
               echo "backend<<EOF"
               echo "ghcr.io/$OWNER/mycelium-backend:$VERSION"
@@ -296,6 +315,9 @@ jobs:
           # /releases/latest redirect that install.sh and `mycelium upgrade`
           # both follow — testers opt in via `mycelium upgrade --version <tag>`.
           prerelease: ${{ needs.detect-release-type.outputs.is_prerelease == 'true' }}
+          # By version, not by date: left to its default, whichever release
+          # was created last would take "Latest", an older one included.
+          make_latest: ${{ needs.detect-release-type.outputs.promote == 'true' && 'true' || 'false' }}
           body: |
             ## Install
 
@@ -325,11 +347,12 @@ jobs:
             mycelium-cli/dist/binaries/checksums.txt
           fail_on_unmatched_files: true
 
-  # The docs site moves with stable releases only, so it never describes
-  # something a user can't install yet.
+  # The docs site moves with the newest stable release only, so it never
+  # describes something a user can't install yet, or something older than
+  # what they can.
   publish-docs:
     needs: [detect-release-type, build-and-release]
-    if: needs.detect-release-type.outputs.is_prerelease == 'false'
+    if: needs.detect-release-type.outputs.promote == 'true'
     name: Publish the docs site
     permissions:
       contents: read
@@ -341,7 +364,7 @@ jobs:
 
   update-tap:
     needs: [detect-release-type, build-and-release]
-    if: needs.detect-release-type.outputs.is_prerelease == 'false'
+    if: needs.detect-release-type.outputs.promote == 'true'
     name: Update homebrew tap
     runs-on: ubuntu-latest
 
