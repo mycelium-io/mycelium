@@ -28,9 +28,17 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/api", () => ({
   fetchMemories: vi.fn(),
   searchMemories: vi.fn(),
+  deleteMemory: vi.fn(),
 }));
 
-import { fetchMemories } from "@/lib/api";
+vi.mock("@/lib/clipboard", () => ({
+  copyText: vi.fn(async () => undefined),
+  absoluteUrl: (path: string) => `http://app${path}`,
+}));
+
+import { deleteMemory, fetchMemories } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
+import { memoryEditPending } from "@/lib/memory-edit-request";
 
 const treeMemory = {
   key: "decisions/ship-it",
@@ -164,5 +172,45 @@ describe("<MemoryPanel /> preview hovercard", () => {
     fireEvent.click(screen.getByText("ship-it.md"));
     expect(onOpenMemory).toHaveBeenCalledWith("decisions/ship-it");
     expect(screen.queryByTestId("memory-preview-card")).toBeNull();
+  });
+});
+
+describe("<MemoryPanel /> right-click", () => {
+  beforeEach(() => {
+    vi.mocked(fetchMemories).mockResolvedValue([treeMemory]);
+    vi.mocked(copyText).mockClear();
+    vi.mocked(deleteMemory).mockReset().mockResolvedValue(undefined);
+  });
+
+  const openMenu = async () => {
+    await expandDecisions();
+    fireEvent.contextMenu(await screen.findByText("ship-it.md"));
+  };
+
+  it("copies the command an agent runs to read the memory", async () => {
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={vi.fn()} />);
+    await openMenu();
+    fireEvent.click(await screen.findByText("Copy command for an agent"));
+    expect(copyText).toHaveBeenCalledWith("mycelium memory get decisions/ship-it --room demo");
+  });
+
+  it("opens the memory to edit it", async () => {
+    const onOpenMemory = vi.fn();
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={onOpenMemory} />);
+    await openMenu();
+    fireEvent.click(await screen.findByText("Edit"));
+    expect(onOpenMemory).toHaveBeenCalledWith("decisions/ship-it");
+    expect(memoryEditPending("decisions/ship-it")).toBe(true);
+  });
+
+  it("asks before deleting, and deletes only on the yes", async () => {
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={vi.fn()} />);
+    await openMenu();
+    fireEvent.click(await screen.findByText("Delete…"));
+    expect(await screen.findByText("Delete this memory?")).toBeInTheDocument();
+    expect(deleteMemory).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(deleteMemory).toHaveBeenCalledWith("demo", "decisions/ship-it"));
   });
 });

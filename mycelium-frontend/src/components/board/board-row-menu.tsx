@@ -13,11 +13,13 @@ import {
   Hand,
   Link2,
   MessageSquare,
+  SquareTerminal,
   Undo2,
   Vote,
   X,
   type LucideIcon,
 } from "lucide-react";
+import { taskCommand } from "@/lib/agent-command";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -33,6 +35,8 @@ import { absoluteUrl, copyText } from "@/lib/clipboard";
 
 /** What a board row can do, from the board that owns the rows. */
 interface BoardRowActions {
+  /** The board's room, for the command an agent runs to read a row. */
+  roomName?: string;
   now: number;
   onVerb: (item: LiveItem, action: RowAction) => void;
   onAnswer: (item: LiveItem, choice: string) => void;
@@ -61,7 +65,7 @@ export const BoardRowActionsProvider = BoardRowActionsContext.Provider;
 export function BoardRowMenu({ item, children }: { item: LiveItem; children: ReactElement }) {
   const actions = useContext(BoardRowActionsContext);
   if (!actions) return children;
-  const { now, onVerb, onAnswer, onOpenThread } = actions;
+  const { roomName, now, onVerb, onAnswer, onOpenThread } = actions;
   const resolved = attentionFilterOf(item, now) === "resolved";
   const thread = openableThread(item);
   const choices = resolved ? [] : fieldAsList(item, "choices");
@@ -96,6 +100,11 @@ export function BoardRowMenu({ item, children }: { item: LiveItem; children: Rea
         {key && (
           <>
             <ContextMenuSeparator />
+            {roomName && (
+              <ContextMenuItem icon={SquareTerminal} onClick={() => void copyText(taskCommand(roomName, key))}>
+                Copy command for an agent
+              </ContextMenuItem>
+            )}
             <ContextMenuItem icon={Copy} onClick={() => void copyText(key)}>
               Copy key
             </ContextMenuItem>

@@ -16,6 +16,7 @@ import { MemoryEditor } from "@/components/memory-editor";
 import { TaskDiscussion } from "@/components/task/task-discussion";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
+import { memoryEditPending, onMemoryEditRequest, takeMemoryEdit } from "@/lib/memory-edit-request";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 
@@ -51,7 +52,15 @@ export function MemoryView({
 }) {
   const [memory, setMemory] = useState<Memory | null | undefined>(undefined);
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
+  // Opened from a right-click's Edit: start in the editor. Read in render,
+  // consumed once mounted, so a second render can't lose it.
+  const [editing, setEditing] = useState(() => memoryEditPending(memoryKey));
+  useEffect(() => {
+    takeMemoryEdit(memoryKey);
+    return onMemoryEditRequest((key) => {
+      if (key === memoryKey && takeMemoryEdit(key)) setEditing(true);
+    });
+  }, [memoryKey]);
   const [asking, setAsking] = useState(false);
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
