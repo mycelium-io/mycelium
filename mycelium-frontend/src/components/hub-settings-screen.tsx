@@ -137,7 +137,7 @@ export function HubSettingsScreen() {
         <div className="mt-6 border-t border-border px-1 pt-3 text-micro text-muted-foreground">
           {ownHub ? (
             <>
-              This Mac runs this hub.{" "}
+              This {desktopMachine()} runs this hub.{" "}
               <a href={settingsLink()} className="text-accent hover:underline">
                 Open Mycelium Settings
               </a>{" "}

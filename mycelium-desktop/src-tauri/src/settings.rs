@@ -75,7 +75,8 @@ fn expand_home(path: &str) -> String {
     if path == "~" {
         return home().to_string_lossy().to_string();
     }
-    match path.strip_prefix("~/") {
+    // `~\` too: a Windows folder the first-run page shortened before 3.0.31.
+    match path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\")) {
         Some(rest) => home().join(rest).to_string_lossy().to_string(),
         None => path.to_string(),
     }

@@ -95,7 +95,7 @@ def start_watcher() -> None:
                 if len(parts) < 2:
                     return
                 room_name = parts[0]
-                key = str(Path(*parts[1:]))
+                key = "/".join(parts[1:])
                 if key.endswith(".md"):
                     key = key[:-3]
             except (ValueError, IndexError):

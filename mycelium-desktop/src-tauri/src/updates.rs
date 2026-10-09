@@ -74,8 +74,9 @@ async fn offer(app: AppHandle, update: Update) {
     say(
         &app,
         format!(
-            "Downloading Mycelium {}. It restarts itself when it's ready; the menu bar icon shows how far along it is.",
-            update.version
+            "Downloading Mycelium {}. It restarts itself when it's ready; the {} shows how far along it is.",
+            update.version,
+            crate::TRAY_ICON
         ),
     );
     crate::set_update_status(&app, Some("Downloading update…"));

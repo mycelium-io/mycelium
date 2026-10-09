@@ -63,7 +63,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { copyText, absoluteUrl } from "@/lib/clipboard";
-import { useIsDesktop } from "@/lib/desktop";
+import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { DeleteRoomDialog } from "@/components/delete-room-dialog";
 import { useNotifications } from "@/components/notifications-provider";
@@ -229,6 +229,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
   useKeyAction("nav.home", () => router.push("/"));
 
   const openInstallModal = useOpenInstallModal();
+  const desktop = useIsDesktop();
 
   // Every room by name, plus what this rail can reach. Rooms come from
   // the full list, not the filtered one: the palette has a query of its own,
@@ -273,6 +274,19 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         keywords: ["runner", "computer", "agents", "start", "herdr"],
         run: () => router.push("/machines"),
       },
+      ...(desktop
+        ? [
+            {
+              id: "nav.terminal",
+              title: "Open the agents terminal",
+              group: "Navigate",
+              keywords: ["terminal", "herdr", "pane", "agents", "shell"],
+              run: () => {
+                window.location.href = terminalLink();
+              },
+            },
+          ]
+        : []),
       {
         id: "nav.install",
         title: "Install the CLI",
@@ -281,7 +295,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         run: openInstallModal,
       },
     ],
-    [rooms, go, router, openInstallModal, onCollapsedChange],
+    [rooms, go, router, openInstallModal, onCollapsedChange, desktop],
   );
   useCommands(commands);
 

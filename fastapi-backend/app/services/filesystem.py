@@ -24,7 +24,7 @@ import re
 import uuid
 import zlib
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 import yaml
@@ -132,8 +132,11 @@ def contained(base_dir: Path, relative: str) -> Path:
 
     Rejects ``..`` segments, absolute paths, symlinks that leave the base, and the
     base itself. The returned path is unresolved, so callers keep their existing
-    path semantics.
+    path semantics. Also rejects a backslash, which Windows reads as a separator
+    (so ``a\\b`` and ``a/b`` would be one file), and an empty segment.
     """
+    if "\\" in relative or any(not part.strip() for part in relative.split("/")):
+        raise UnsafePathError(f"not a valid name: {relative!r}")
     path = base_dir / relative
     resolved, base = path.resolve(), base_dir.resolve()
     if resolved == base or not resolved.is_relative_to(base):
@@ -169,17 +172,21 @@ def _sanitize_filename(key: str) -> str:
     """Convert a memory key to a safe filename.
 
     Keys like 'decisions/db' become 'decisions/db.md'.
-    Keys already ending in .md are left as-is.
+    Keys already ending in .md are left as-is. An empty key, or one ending in a
+    `/`, names no file and raises ``UnsafePathError``.
     """
+    if not key.strip() or key.endswith("/"):
+        raise UnsafePathError(f"not a valid key: {key!r}")
     if not key.endswith(".md"):
         key = key + ".md"
     return key
 
 
-def _key_from_path(file_path: Path, base_dir: Path) -> str:
+def _key_from_path(file_path: PurePath, base_dir: PurePath) -> str:
     """Extract a memory key from a file path relative to the base directory."""
     rel = file_path.relative_to(base_dir)
-    key = str(rel)
+    # Keys are `/`-separated on every platform; str() would give `\` on Windows.
+    key = rel.as_posix()
     if key.endswith(".md"):
         key = key[:-3]
     return key

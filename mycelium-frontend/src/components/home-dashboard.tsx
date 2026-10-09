@@ -14,6 +14,7 @@ import {
   Search,
   Lock,
   Sparkles,
+  SquareTerminal,
   Terminal,
   type LucideIcon,
 } from "lucide-react";
@@ -25,7 +26,7 @@ import { useOpenInstallModal } from "@/components/install-modal";
 import { useOpenSearch } from "@/components/global-search";
 import { useOpenPalette } from "@/components/keymap-provider";
 import { type EpisodeSummary, type Room } from "@/lib/api";
-import { desktopMachine, useIsDesktop } from "@/lib/desktop";
+import { desktopMachine, terminalLink, useIsDesktop } from "@/lib/desktop";
 import { useRoomEpisodes, useRoomLatest, useRooms, type RoomQueryOptions } from "@/lib/room-data";
 import { useBackendHealth } from "@/lib/use-status";
 
@@ -85,6 +86,14 @@ function ActionRow({
       {action && <KbdChord size="xs" tone="muted" action={action} />}
     </>
   );
+  // A link the app answers (`mycelium://`) is a plain anchor, not a route.
+  if (href && !href.startsWith("/")) {
+    return (
+      <a href={href} className={cls}>
+        {inner}
+      </a>
+    );
+  }
   return href ? (
     <Link href={href} className={cls}>
       {inner}
@@ -154,6 +163,7 @@ export function HomeDashboard() {
             <ActionRow icon={Search} label="Search everything" action="search.open" onClick={() => openSearch?.()} />
             <ActionRow icon={Command} label="All commands" action="palette.open" onClick={openPalette} />
             <ActionRow icon={Laptop} label={desktop ? `This ${desktopMachine()}'s agents` : "Machines"} href="/machines" />
+            {desktop && <ActionRow icon={SquareTerminal} label="Agents terminal" href={terminalLink()} />}
             <ActionRow icon={Sparkles} label="Run a sample" href={SAMPLE_TOUR_HREF} />
             {!desktop && <ActionRow icon={Terminal} label="Install the CLI" onClick={openInstallModal} />}
           </section>

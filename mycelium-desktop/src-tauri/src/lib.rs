@@ -34,6 +34,14 @@ use settings::{Mode, Settings};
 use supervisor::Supervisor;
 use terminal::Terminal;
 
+/// What copy calls this machine, and the icon the app keeps there.
+const MACHINE: &str = if cfg!(target_os = "macos") { "Mac" } else { "computer" };
+pub(crate) const TRAY_ICON: &str = if cfg!(target_os = "macos") {
+    "menu bar icon"
+} else {
+    "tray icon"
+};
+
 #[derive(Default)]
 struct Shell {
     /// Where the app's own pages are served from (a dev server, or the bundle).
@@ -533,7 +541,9 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
 }
 
 /// The macOS app menu, with Check for Updates… and Settings… (⌘,) where a
-/// Mac app keeps them.
+/// Mac app keeps them. Windows and Linux get no menu bar: the tray menu has
+/// everything, and a native menu bar there is a bare strip over the app.
+#[cfg(target_os = "macos")]
 fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let menu = Menu::default(app)?;
     if let Some(first) = menu.items()?.into_iter().next() {
@@ -597,13 +607,13 @@ fn join(app: AppHandle, hub: String, path: Option<String>) {
     // A dialog that waits for an answer must not block the main thread.
     std::thread::spawn(move || {
         let leaving = match &current {
-            Some(s) if s.mode == Mode::Hub => " This Mac will stop running its own hub.".to_string(),
-            Some(s) => format!(" This Mac will leave {}.", s.hub_url.clone().unwrap_or_default()),
+            Some(s) if s.mode == Mode::Hub => format!(" This {MACHINE} will stop running its own hub."),
+            Some(s) => format!(" This {MACHINE} will leave {}.", s.hub_url.clone().unwrap_or_default()),
             None => String::new(),
         };
         let yes = app
             .dialog()
-            .message(format!("Connect this Mac to the hub at {hub}?{leaving}"))
+            .message(format!("Connect this {MACHINE} to the hub at {hub}?{leaving}"))
             .title("Join a hub")
             .buttons(MessageDialogButtons::OkCancelCustom("Join".into(), "Cancel".into()))
             .blocking_show();
@@ -670,7 +680,7 @@ async fn scan_agents(app: AppHandle, webview: Webview) -> Result<Value, String> 
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
     if !out.status.success() {
-        return Err("Couldn't scan this Mac for agent CLIs.".into());
+        return Err(format!("Couldn't scan this {MACHINE} for agent CLIs."));
     }
     serde_json::from_slice(&out.stdout).map_err(|_| "The scan returned something unreadable.".into())
 }
@@ -997,14 +1007,17 @@ pub fn run() {
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // First, so a second launch (or a link opened while running) lands here.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| show_main(app)))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .menu(app_menu)
+        .plugin(tauri_plugin_updater::Builder::new().build());
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(app_menu);
+    let app = builder
+        // The tray's items, and on a Mac the menu bar's.
         .on_menu_event(on_menu_event)
         .manage(Shell::default())
         .manage(Supervisor::default())

@@ -5,9 +5,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Laptop, Server } from "lucide-react";
+import { BarChart3, Laptop, Server, SquareTerminal } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Runner } from "@/lib/api";
+import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import { useRunners } from "@/lib/runners";
 import { useHubHealth, type HubHealth } from "@/lib/use-status";
 import { useHubLabel } from "@/components/title-bar";
@@ -216,6 +217,21 @@ export function HubStatus() {
           <span style={{ color: TONE_COLOR[summary.tone] }}>{health === null ? "unreachable" : "degraded"}</span>
         )}
       </Link>
+    </Tooltip>
+  );
+}
+
+/** The app's agents terminal, where every agent this machine started is a
+ *  pane. Only inside the desktop app, which is what answers the link. */
+export function TerminalStatusLink() {
+  const desktop = useIsDesktop();
+  if (!desktop) return null;
+  return (
+    <Tooltip content="Agents terminal" side="top">
+      <a href={terminalLink()} aria-label="Open the agents terminal" className={`${CELL} flex-shrink-0`}>
+        <SquareTerminal className="size-3.5" />
+        <span className="hidden md:inline">terminal</span>
+      </a>
     </Tooltip>
   );
 }

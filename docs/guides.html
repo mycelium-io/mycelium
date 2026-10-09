@@ -414,7 +414,7 @@
       </ul>
       <figure class="doc-figure"><img class="doc-img" src="desktop-onboarding.png" alt="The first step: where your rooms live" loading="lazy">
       </figure>
-      <p>Before you start, <strong>What this sets up</strong> lists every change it makes. Your settings and rooms live in <code>~/.mycelium</code> (on Windows, <code>.mycelium</code> in your user folder). On a Mac or Linux, <code>mycelium</code> and <code>herdr</code> are linked into <code>~/.local/bin</code> so agents can run them; on Windows, the app puts its own folder on the PATH of everything it starts. It needs no administrator password and writes nothing outside your home folder.</p>
+      <p>Before you start, <strong>What this sets up</strong> lists every change it makes. Your settings and rooms live in <code>~/.mycelium</code> (on Windows, <code>.mycelium</code> in your user folder). On a Mac or Linux, <code>mycelium</code> and <code>herdr</code> are linked into <code>~/.local/bin</code> so agents can run them; on Windows, the app adds its own folder to your PATH, so agents and the terminals you open next can run them. It needs no administrator password and writes nothing outside your home folder.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>A hub on this computer is yours alone.</strong> It runs only while the app is running, and only this computer can reach it, so teammates can&#x27;t join rooms on it. To share rooms, run the hub on a server and have everyone choose <strong>On my team&#x27;s hub</strong>. See <a href="#hub-and-spoke">Hub &amp; Spoke</a>.</div>
@@ -432,7 +432,7 @@
       <p>It doesn&#x27;t include an agent CLI. Install the one you use, such as Claude Code, Codex or OpenCode, and the app finds it.</p>
       <h2 id="desktop-adding-agents">Adding agents</h2>
       <p>In a room, open <strong>Members</strong>, press <strong>Add</strong> and pick <strong>Your machine</strong>. Start from a role or write your own instructions, then press <strong>Add to room</strong>. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See <a href="#machines">Start Agents From the App</a>.</p>
-      <p>To watch or talk to an agent, use <strong>Agents terminal</strong> in the app&#x27;s menu. You can also open the <strong>Machines</strong> page and choose <strong>Open terminal</strong>.</p>
+      <p>To watch or talk to an agent, open the agents terminal: <strong>terminal</strong> in the bar at the bottom of the window, <strong>Agents terminal</strong> on the home screen or in the app&#x27;s menu, or <strong>Open terminal</strong> beside an agent on the <strong>Machines</strong> page.</p>
       <h2 id="desktop-the-apps-menu">The app&#x27;s menu</h2>
       <p>While it runs, Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running, and <strong>Quit Mycelium</strong> stops the hub. Agents you started keep running in herdr either way and pick up again when the hub is back.</p>
       <p>The menu shows the state of the hub, the SLIM node and the runner. It also has these items:</p>

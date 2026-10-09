@@ -17,6 +17,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -1292,7 +1293,7 @@ def upgrade(
         # Try wheel from GitHub first, fall back to PyPI
         wheel_name = f"mycelium_cli-{latest_version}-py3-none-any.whl"
         wheel_url = f"https://github.com/{_GITHUB_REPO}/releases/download/{latest_tag}/{wheel_name}"
-        wheel_tmp = Path(f"/tmp/{wheel_name}")  # noqa: S108
+        wheel_tmp = Path(tempfile.gettempdir()) / wheel_name
 
         installed = False
 

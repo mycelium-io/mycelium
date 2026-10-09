@@ -165,7 +165,10 @@ stage_mycelium() {
     cd "$repo/mycelium-cli"
     uv venv "$work/cli-venv" --allow-existing
     uv pip install --python "$(venv_bin "$work/cli-venv" python)" -e . ../mycelium-client/dist/*.whl pyinstaller
+    # UTF-8 mode: files opened without an encoding read and write UTF-8 on
+    # Windows too, rather than the code page (cp1252).
     "$(venv_bin "$work/cli-venv" pyinstaller)" --noconfirm --onefile --name mycelium \
+      --python-option "X utf8" \
       --collect-all mycelium --collect-all pyfiglet \
       --hidden-import mycelium_backend_client \
       --distpath "$work/cli-dist" --workpath "$work/cli-build" --specpath "$work" \
@@ -184,6 +187,7 @@ stage_hub() {
   (
     cd "$repo/fastapi-backend"
     uv run --with pyinstaller pyinstaller --noconfirm --onedir --name mycelium-hub \
+      --python-option "X utf8" \
       --distpath "$work/hub-dist" --workpath "$work/hub-build" --specpath "$work" \
       "${unused[@]/#/--exclude-module=}" \
       --collect-all fastembed --collect-all onnxruntime --collect-all slim_bindings \

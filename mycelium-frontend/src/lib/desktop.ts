@@ -32,9 +32,9 @@ export function useIsDesktop(): boolean {
   return useSyncExternalStore(noSubscribe, () => isDesktop(), () => false);
 }
 
-/** Opens an agent's herdr pane in the app's terminal window. */
-export function terminalLink(pane: string): string {
-  return `mycelium://terminal?pane=${encodeURIComponent(pane)}`;
+/** Opens the app's agents terminal: at an agent's herdr pane, or where it was. */
+export function terminalLink(pane?: string): string {
+  return pane ? `mycelium://terminal?pane=${encodeURIComponent(pane)}` : "mycelium://terminal";
 }
 
 /** Opens the app's Settings window, where the app's own hub is set up. */
