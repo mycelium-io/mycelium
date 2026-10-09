@@ -56,26 +56,28 @@ function LinkRow({
   error?: string | null;
   onOpen?: () => void;
 }) {
+  const cut = label.lastIndexOf("/") + 1;
   const content = (
     <>
-      <span className="font-mono text-label truncate">{label}</span>
-      <span className="ml-auto flex-shrink-0 text-micro text-faint">{kind}</span>
-      {error && (
-        <span className="flex-shrink-0 text-micro text-red">{linkErrorLabel(error)}</span>
+      <FileText className="size-3.5 flex-shrink-0 text-faint" />
+      <span className={cn("min-w-0 truncate font-mono text-label", error && "line-through decoration-red/60")}>
+        <span className="text-muted-foreground">{label.slice(0, cut)}</span>
+        <span className={cn("text-text", !error && onOpen && "group-hover:text-accent")}>{label.slice(cut)}</span>
+      </span>
+      {error ? (
+        <span className="ml-auto flex-shrink-0 text-micro text-red">{linkErrorLabel(error)}</span>
+      ) : (
+        <span className="ml-auto flex-shrink-0 text-micro text-faint">{kind}</span>
       )}
     </>
   );
 
+  const row = "-mx-2 flex h-7 w-[calc(100%+1rem)] items-center gap-2 rounded px-2";
   if (error || !onOpen) {
-    return (
-      <div className="flex items-baseline gap-2 px-2 py-1 text-muted-foreground">{content}</div>
-    );
+    return <div className={row}>{content}</div>;
   }
   return (
-    <button
-      onClick={onOpen}
-      className="flex w-full items-baseline gap-2 rounded px-2 py-1 text-left text-accent transition-colors hover:bg-hairline"
-    >
+    <button onClick={onOpen} className={cn(row, "group text-left transition-colors hover:bg-hairline")}>
       {content}
     </button>
   );
@@ -90,30 +92,27 @@ interface LinkRowData {
   error?: string | null;
 }
 
+/** One direction of a memory's links. A direction with nothing in it isn't drawn. */
 function LinkGroup({
   title,
   icon: Icon,
   rows,
-  empty,
   onNavigate,
 }: {
   title: string;
   icon: typeof ArrowUpRight;
   rows: LinkRowData[];
-  empty: string;
   onNavigate?: (key: string) => void;
 }) {
+  if (rows.length === 0) return null;
   return (
-    <div>
-      <div className="mb-1 flex items-center gap-1.5 px-2 text-micro font-medium text-faint">
+    <div className="min-w-0">
+      <div className="mb-0.5 flex items-center gap-1.5 text-micro text-faint">
         <Icon className="size-3" />
         {title}
-        {rows.length > 0 && <span className="font-normal tabular">{rows.length}</span>}
+        <span className="tabular">{rows.length}</span>
       </div>
-      {rows.length === 0 ? (
-        <p className="px-2 py-1 text-label text-faint">{empty}</p>
-      ) : (
-        rows.map((row, i) => (
+      {rows.map((row, i) => (
           <LinkRow
             key={i}
             label={row.label}
@@ -121,8 +120,7 @@ function LinkGroup({
             error={row.error}
             onOpen={onNavigate ? () => onNavigate(row.navKey) : undefined}
           />
-        ))
-      )}
+      ))}
     </div>
   );
 }
@@ -402,22 +400,19 @@ export function MemoryDetail({
       </div>
 
       {hasLinks && (
-        <div className={`grid gap-4 border-t border-border ${pad} py-4`}>
-          <LinkGroup
-            title="Links to"
-            icon={ArrowUpRight}
-            rows={outboundRows}
-            empty="Nothing"
-            onNavigate={onNavigate}
-          />
-          <LinkGroup
-            title="Referenced by"
-            icon={CornerDownLeft}
-            rows={backlinkRows}
-            empty="Nothing links here"
-            onNavigate={onNavigate}
-          />
-        </div>
+        <section className={`border-t border-border ${pad} pt-4 pb-3`}>
+          <h2 className="mb-2 text-label font-medium text-text">Links</h2>
+          {/* Side by side when both directions have something and there's room. */}
+          <div
+            className={cn(
+              "grid gap-x-8 gap-y-3",
+              outbound.length > 0 && backlinks.length > 0 && "@2xl:grid-cols-2",
+            )}
+          >
+            <LinkGroup title="Links to" icon={ArrowUpRight} rows={outboundRows} onNavigate={onNavigate} />
+            <LinkGroup title="Referenced by" icon={CornerDownLeft} rows={backlinkRows} onNavigate={onNavigate} />
+          </div>
+        </section>
       )}
       </div>
     </div>
