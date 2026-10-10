@@ -73,10 +73,11 @@ describe("<Monogram />", () => {
   it("keeps the disc opaque, so a pile of them does not go muddy", () => {
     const { container } = render(<Monogram handle="growth" />);
     const disc = container.querySelector("[aria-hidden]") as HTMLElement;
-    // A solid tint fill, not a translucent wash — stacked discs in the command
-    // center pile would otherwise turn to mud.
-    expect(disc.style.background).toMatch(/^var\(--avatar-[1-6]\)$/);
-    expect(disc.style.background).not.toContain("transparent");
+    // A soft tint mixed into the surface, not a see-through wash: stacked discs
+    // in the command center pile would otherwise turn to mud.
+    const style = disc.getAttribute("style") ?? "";
+    expect(style).toMatch(/background: color-mix\(in srgb, var\(--avatar-[1-6]\) 45%, var\(--surface\)\)/);
+    expect(style).not.toContain("transparent");
   });
 });
 
