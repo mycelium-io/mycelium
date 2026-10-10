@@ -4570,14 +4570,17 @@ when one changes. Each change is a line on the row's timeline:
 
 | Change | Where it shows |
 |---|---|
+| Pull request opened | The chat and the task's activity |
 | CI went red | The chat and the task's activity |
 | Merged | The chat and the task's activity |
 | Review requested, approved, changes requested | The task's activity |
 | CI went green, closed without merging | The task's activity |
 
 A change is said once, on one row: the first open row that mentions the pull
-request. The first time the hub sees a pull request it only notes where it
-stands, so linking one never announces anything. What the room last saw is kept
+request. The first time the hub sees a pull request, it says so only if the
+pull request is open: a task getting its pull request is news. Linking one
+that's already merged or closed announces nothing, and neither does giving the
+hub a token for links it hasn't seen before. What the room last saw is kept
 in the room's folder, so a change made while the hub was off is still said once
 it is back.
 

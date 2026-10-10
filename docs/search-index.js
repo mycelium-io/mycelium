@@ -2483,7 +2483,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#board-reference-when-a-pull-request-changes",
     "t": "When a pull request changes",
     "s": "Board",
-    "x": "The hub checks linked pull requests about once a minute, and tells the room when one changes. Each change is a line on the row's timeline: Change Where it shows CI went red The chat and the task's activity Merged The chat and the task's activity Review requested, approved, changes requested The task's activity CI went green, closed without merging The task's activity A change is said once, on one row: the first open ",
+    "x": "The hub checks linked pull requests about once a minute, and tells the room when one changes. Each change is a line on the row's timeline: Change Where it shows Pull request opened The chat and the task's activity CI went red The chat and the task's activity Merged The chat and the task's activity Review requested, approved, changes requested The task's activity CI went green, closed without merging The task's activi",
     "p": "Reference"
   },
   {

@@ -21,7 +21,7 @@ import pytest
 from app.services import message_format, wake_digest
 from app.services.persister import TranscriptRecord
 from app.services.status import watch
-from app.services.status.providers.github import changes
+from app.services.status.providers.github import changes, first
 from app.services.status.runtime import StatusRuntime
 from app.services.status.types import (
     FetchOutcome,
@@ -72,9 +72,15 @@ def test_a_reading_from_before_requested_was_kept_is_not_a_request():
     assert changes({"pr": "OPEN", "ci": "PENDING"}, _pr(requested=["ana"])) == []
 
 
+def test_only_an_open_pull_request_is_news_the_first_time():
+    assert first(_pr()) == [UpstreamChange("opened")]
+    assert first(_pr(pr="MERGED")) == []
+    assert first(_pr(pr="CLOSED")) == []
+
+
 def test_every_change_is_one_the_contract_knows():
-    assert {"review_requested", "approved", "changes_requested", "ci_failed", "ci_passed",
-            "merged", "closed"} == set(message_format.UPSTREAM_CHANGES)  # fmt: skip
+    assert {"opened", "review_requested", "approved", "changes_requested", "ci_failed",
+            "ci_passed", "merged", "closed"} == set(message_format.UPSTREAM_CHANGES)  # fmt: skip
     assert set(wake_digest.UPSTREAM_LINES) == set(message_format.UPSTREAM_CHANGES)
 
 
@@ -175,6 +181,30 @@ def test_the_first_answer_is_a_baseline_then_a_change_is_told_on_the_open_row(sh
 
     # The same answer again is not news.
     assert _sweep(pulls) == []
+
+
+class OpeningPulls(Pulls):
+    """The toy provider, saying what a first reading is worth, as GitHub does."""
+
+    def first(self, after: dict[str, Any]) -> list[UpstreamChange]:
+        return first(after)
+
+
+def test_an_open_pull_request_seen_first_is_told_once(shop):
+    pulls = OpeningPulls()
+    assert _sweep(pulls) == [(ROOM, "work/apple-pay", "opened")]
+    (notice,) = shop
+    assert notice["change"] == "opened"
+    assert notice["title"] == "Turn on Apple Pay"
+    # Seen once, it is a baseline like any other.
+    assert _sweep(pulls) == []
+
+
+def test_a_pull_request_already_merged_when_first_seen_says_nothing(shop):
+    pulls = OpeningPulls()
+    pulls.answers["PR-1"] = _pr(pr="MERGED", ci="SUCCESS")
+    assert _sweep(pulls) == []
+    assert shop == []
 
 
 def test_the_last_answer_survives_a_restart(shop):

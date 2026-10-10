@@ -125,7 +125,9 @@ class UpstreamChange:
     for, an approval, CI going red …), the words the room's timeline is told.
     A provider that can tell what happened declares a ``changes(before, after)``
     method over two readings' ``detail``; one that can't is still a provider,
-    and its rows just never say what moved.
+    and its rows just never say what moved. It may also declare ``first(after)``,
+    for what a first reading is worth saying (a pull request opened); without
+    it, a first reading is a silent baseline.
     """
 
     change: str

@@ -123,6 +123,9 @@ class GitHubProvider:
     def changes(self, before: dict[str, Any], after: dict[str, Any]) -> list[UpstreamChange]:
         return changes(before, after)
 
+    def first(self, after: dict[str, Any]) -> list[UpstreamChange]:
+        return first(after)
+
     async def fetch(self, refs: list[Ref], ctx: ProviderContext) -> list[FetchOutcome]:
         # No auth here: a provider that is called at all has its credential, and
         # ``ctx.http`` is already bound to ``base_url`` carrying it.
@@ -231,6 +234,16 @@ def changes(before: dict[str, Any], after: dict[str, Any]) -> list[UpstreamChang
     elif ci == "SUCCESS" and was in (*_RED, "PENDING"):
         found.append(UpstreamChange("ci_passed"))
     return found
+
+
+def first(after: dict[str, Any]) -> list[UpstreamChange]:
+    """What the first reading of a pull request is worth saying.
+
+    A row getting an open pull request is news: the work is up for review. One
+    already merged or closed is history, so linking it says nothing, and a hub
+    given its token for the first time doesn't announce every old link.
+    """
+    return [UpstreamChange("opened")] if after.get("pr") == "OPEN" else []
 
 
 def _ttl_for(node: dict[str, Any]) -> timedelta | None:

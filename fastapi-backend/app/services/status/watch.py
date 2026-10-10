@@ -23,8 +23,11 @@ subkinds only (``filed``, ``resolved``), so a review requested or a merge never
 rings anyone's doorbell. An agent reads it in the digest of a wake something
 else caused.
 
-**The first answer is a baseline, not news.** A ref seen for the first time is
-recorded silently: a pull request linked today did not change today.
+**The first answer is a baseline, not news,** with one exception. A ref seen
+for the first time is recorded, and a provider's ``first`` says what of it is
+worth telling: for GitHub, a pull request that is open (the work is up), never
+one already merged or closed, so linking an old one or giving a hub its token
+announces nothing.
 
 **What the room last saw is kept on disk.** The cache lives in the process and
 starts empty after a restart, so comparing with it would either announce
@@ -172,10 +175,12 @@ async def sweep(
             seen[name] = reading
             dirty = True
             provider = runtime.provider(item.ref.provider)
-            telling = getattr(provider, "changes", None)
-            if before is None or telling is None:
-                continue
-            changes = telling(before.get("detail") or {}, reading["detail"])
+            if before is None:
+                opening = getattr(provider, "first", None)
+                changes = opening(reading["detail"]) if opening else []
+            else:
+                telling = getattr(provider, "changes", None)
+                changes = telling(before.get("detail") or {}, reading["detail"]) if telling else []
             row = _row_for(room, item.origins, now) if changes else None
             if row is None:
                 continue

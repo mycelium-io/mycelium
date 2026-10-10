@@ -257,15 +257,17 @@ is no litellm dependency.
   frozen in `contracts/slim-wire.json` and asserted on both sides; `floor` is the
   one notice about a thread rather than a task, raised when whose turn it is
   changes. `upstream` is a linked pull request changing (`change` from the
-  frozen `upstream_changes`: review requested, approved, changes requested, CI
-  red/green, merged, closed), raised by the status watcher
+  frozen `upstream_changes`: opened, review requested, approved, changes
+  requested, CI red/green, merged, closed), raised by the status watcher
   (`app/services/status/watch.py`): GitHub can't call a hub on localhost, so
   once a minute it discovers the refs each room's rows and their threads
   mention, refreshes what the cache says is due, and compares each answer with
   the room's last (`.upstream-seen.json` in the room folder, so a change made
-  while the hub was down is still said; a first sighting is a baseline). One
-  notice per change, on the first open row that links it. It wakes nobody, by
-  decision: the chat shows a merge and CI going red, the task's activity shows
+  while the hub was down is still said; a first sighting is a baseline, except
+  that the provider's `first` tells an open pull request as `opened`, never a
+  merged or closed one). One notice per change, on the first open row that
+  links it. It wakes nobody, by decision: the chat shows a pull request
+  opening, a merge and CI going red, the task's activity shows
   the rest, and the wake digest lists them on `Board:` for rows the agent
   holds, was given or filed, plus every merge. Room-wide events stay
   unfiltered: a task moving is the room's business however deep inside a task it

@@ -1624,6 +1624,10 @@
           </thead>
           <tbody>
             <tr>
+              <td>Pull request opened</td>
+              <td>The chat and the task&#x27;s activity</td>
+            </tr>
+            <tr>
               <td>CI went red</td>
               <td>The chat and the task&#x27;s activity</td>
             </tr>
@@ -1642,7 +1646,7 @@
           </tbody>
         </table>
       </div>
-      <p>A change is said once, on one row: the first open row that mentions the pull request. The first time the hub sees a pull request it only notes where it stands, so linking one never announces anything. What the room last saw is kept in the room&#x27;s folder, so a change made while the hub was off is still said once it is back.</p>
+      <p>A change is said once, on one row: the first open row that mentions the pull request. The first time the hub sees a pull request, it says so only if the pull request is open: a task getting its pull request is news. Linking one that&#x27;s already merged or closed announces nothing, and neither does giving the hub a token for links it hasn&#x27;t seen before. What the room last saw is kept in the room&#x27;s folder, so a change made while the hub was off is still said once it is back.</p>
       <p>These lines inform and never wake anyone. When an agent wakes for some other reason, its digest lists the changes on rows it holds, was given or filed, on the <code>Board:</code> line, and every merge in the room:</p>
       <pre><code>Board:   CI went red on <span class="str">&quot;Turn on Apple Pay&quot;</span> (coffee-shop/web#612, 4m ago)
          <span class="cmd">open</span> now: 2 claimed, 1 new</code></pre>

@@ -116,6 +116,7 @@ export type NoticeSubkind = (typeof NOTICE_SUBKINDS)[number];
 /** What an `upstream` notice says happened to the pull request a row links,
  *  frozen beside the subkinds. */
 export const UPSTREAM_CHANGES = [
+  "opened",
   "review_requested",
   "approved",
   "changes_requested",
@@ -127,6 +128,7 @@ export const UPSTREAM_CHANGES = [
 
 /** The label an `upstream` notice wears, by what changed. */
 const UPSTREAM_LABEL: Record<string, string> = {
+  opened: "Pull request opened",
   review_requested: "Review requested",
   approved: "Approved",
   changes_requested: "Changes requested",
@@ -141,10 +143,10 @@ export function isUpstreamLabel(label: string): boolean {
   return Object.values(UPSTREAM_LABEL).includes(label);
 }
 
-/** Whether an `upstream` change is news for the chat (work landing, or CI
- *  breaking) rather than for the task's activity alone. */
+/** Whether an `upstream` change is news for the chat (work going up for
+ *  review, landing, or CI breaking) rather than for the task's activity alone. */
 export function upstreamInChat(change: string | null | undefined): boolean {
-  return change === "merged" || change === "ci_failed";
+  return change === "opened" || change === "merged" || change === "ci_failed";
 }
 
 /** What a notice says: what happened, to which task, and the thread to open. */
