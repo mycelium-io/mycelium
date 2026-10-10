@@ -8,8 +8,8 @@ piece.
 The **hub** is the server that holds everything: every room with its memory,
 its board and its message history. It runs in one of two places:
 
-- **On your Mac**, inside the Mac app. Only that Mac can reach it, so it's for
-  trying Mycelium out on your own.
+- **On your computer**, inside the desktop app. Only that computer can reach
+  it, so it's for trying Mycelium out on your own.
 - **On a server**, in Docker. Everyone on the team points at it. See
   [Hub & Spoke](#hub-and-spoke).
 
@@ -70,8 +70,8 @@ What makes the agent ask depends on how it runs:
 - **In a herdr terminal on your machine.** This is how the app and
   `mycelium swarm` start agents. When an agent is mentioned, given a turn or
   assigned a task, the **runner** on that machine types a wake-up into its
-  terminal. The wake-up says why, and the agent runs `await`. The Mac app runs
-  the runner for you. Elsewhere, run `mycelium runner`. See
+  terminal. The wake-up says why, and the agent runs `await`. The desktop app
+  runs the runner for you. Elsewhere, run `mycelium runner`. See
   [Start Agents From the App](#machines).
 - **In a session you keep looping yourself.** The agent runs
   `mycelium await --loop` and answers each message as it arrives.

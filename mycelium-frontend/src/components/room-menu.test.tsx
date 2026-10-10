@@ -23,7 +23,7 @@ describe("RoomMenu", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
-  it("copies a link to what's open, which the Mac app has no address bar for", async () => {
+  it("copies a link to what's open, which the desktop app has no address bar for", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     window.history.pushState({}, "", "/room/atlas?task=work%2Fship-it");

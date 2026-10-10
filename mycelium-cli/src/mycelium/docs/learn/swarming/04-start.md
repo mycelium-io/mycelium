@@ -9,7 +9,7 @@ five. When one of your machines is connected, it also asks where they run:
   worktree of the clone.
 - **On your machine.** The team is your own agent CLI, each in its own pane, in
   the folder you pick. Tick "Give each agent its own git worktree" so they
-  never share a checkout. Unless the hub is the Mac app's own, your machine
+  never share a checkout. Unless the hub is the desktop app's own, your machine
   asks you before it starts them.
 
 Or run it from a terminal in the repository, in the room you work in:

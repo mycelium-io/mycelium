@@ -4,7 +4,7 @@
 // ── The live app ──
 // A .app[data-app="/route"] pane shows its screenshot until the Mycelium app
 // answers, then the real app in a frame. The app is looked for at ?app=… on
-// the deck's URL, else the Docker stack's port (8080), else the Mac app's
+// the deck's URL, else the Docker stack's port (8080), else the desktop app's
 // (3717).
 //
 // A frame that has focus keeps every key, a clicker's included, so the frame

@@ -276,7 +276,7 @@ def _post(url: str, payload: dict[str, Any]) -> None:
 
 
 def hub_mode() -> str:
-    """How this hub runs: the Mac app, a container, or a server someone started."""
+    """How this hub runs: the desktop app, a container, or a server someone started."""
     return os.environ.get("MYCELIUM_HUB_MODE", "").strip() or "server"
 
 

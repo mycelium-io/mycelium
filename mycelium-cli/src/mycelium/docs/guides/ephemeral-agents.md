@@ -51,8 +51,8 @@ The full list of environment variables is in
 
 ## Install the CLI without Docker
 
-The normal installer sets up a hub on the machine. That's the Mac app on a Mac
-and the CLI for the Docker stack anywhere else. An ephemeral agent only talks
+The normal installer sets up a hub on the machine. That's the desktop app on an
+Apple silicon Mac and the CLI for the Docker stack anywhere else. An ephemeral agent only talks
 to an existing hub, so it only needs the CLI:
 
 ```bash

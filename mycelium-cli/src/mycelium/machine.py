@@ -371,7 +371,7 @@ def _problems(
                 f"Wakes have stalled on {machine}: the runner has been stuck on one sync pass "
                 f"for {stalled}, so {_names(live) if live else 'no agent here'} won't hear "
                 "mentions until it ends. Its log (~/.mycelium/runner/runner.log) says where it is stuck; restarting "
-                "the runner, or the Mac app, gets wakes going again.",
+                "the runner, or the desktop app, gets wakes going again.",
                 "mycelium runner stop && mycelium runner --detach",
                 [a.handle for a in live],
             )

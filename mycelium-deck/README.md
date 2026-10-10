@@ -88,7 +88,7 @@ An app pane shows the real Mycelium app in a frame:
 
 - **Finding the app.** The deck looks for it at `?app=` on its own URL
   (`serve.py --app URL` adds that), else on the Docker stack's port
-  (`127.0.0.1:8080`), else the Mac app's (`127.0.0.1:3717`). Until one
+  (`127.0.0.1:8080`), else the desktop app's (`127.0.0.1:3717`). Until one
   answers, the pane shows its screenshot, so the slide works offline and as
   a file.
 - **Clicking in.** The frame sits under a shield. Click it to use the app,
@@ -112,7 +112,7 @@ An app pane shows the real Mycelium app in a frame:
   room can read it.
 
 The app keeps its own theme, whatever the deck's. Present from the app
-`mycelium up` or the Mac app serves: a `next dev` server draws its own
+`mycelium up` or the desktop app serves: a `next dev` server draws its own
 error badge over the page.
 
 ## Drawing

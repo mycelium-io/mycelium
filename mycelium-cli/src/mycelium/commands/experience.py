@@ -3,7 +3,7 @@
 
 """mycelium experience: add, list and remove experiences on this machine.
 
-The same experiences the Mac app's Settings shows, for a server or a terminal.
+The same experiences the desktop app's Settings shows, for a server or a terminal.
 Adding one keeps its content under ``~/.mycelium/experiences`` and points the
 hub at it (``mycelium/desktop/experiences.py``); this then writes ``.env`` and,
 when a Docker stack is running, recreates the backend so it reads it. A hub the
@@ -54,7 +54,9 @@ def _apply(config: Any, restart: bool) -> None:
         console.print("Restarting the hub…")
         restart_containers(env_path, ["mycelium-backend"])
     else:
-        console.print("[dim]Restart Mycelium to load it (in the Mac app: Settings, then Save).[/]")
+        console.print(
+            "[dim]Restart Mycelium to load it (in the desktop app: Settings, then Save).[/]"
+        )
 
 
 def _line(x: dict[str, Any]) -> str:

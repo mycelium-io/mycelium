@@ -7,7 +7,7 @@ agents in touch with the room. When someone mentions an agent, gives it a turn
 or assigns it a task, the runner wakes it. It also tells the hub whether each
 agent is busy.
 
-The Mac app runs the runner for you. Anywhere else, start it and leave it
+The desktop app runs the runner for you. Anywhere else, start it and leave it
 running:
 
 ```bash
@@ -30,7 +30,7 @@ whether or not your laptop can be reached from outside.
 The runner looks on your `PATH` for the agent CLIs it knows, such as Claude
 Code, Codex, Gemini CLI, Cursor Agent, OpenCode, Pi, GitHub Copilot CLI and
 Amp. It tells the hub what it found and starts agents in [herdr](#herdr)
-terminals. It needs herdr 0.9.3 or newer, which the Mac app includes. To look
+terminals. It needs herdr 0.9.3 or newer, which the desktop app includes. To look
 again, press **Rescan** in the app or run `mycelium runner scan`.
 
 ## Starting an agent
@@ -79,7 +79,7 @@ the allowed folder is the one you ran `mycelium runner` from. Name others with
 mycelium runner --root ~/code --root ~/work/api
 ```
 
-In the Mac app, it's the working folder you chose at first run. Change it in
+In the desktop app, it's the working folder you chose at first run. Change it in
 Settings.
 
 ## You say yes on the machine
@@ -90,7 +90,7 @@ restarts anything, the runner asks you on the machine. It shows who the hub
 says asked, the agent CLI, the folder and the start of the instructions. You
 answer in one of two ways:
 
-- In the Mac app, a dialog offers **Start** and **Decline**.
+- In the desktop app, a dialog offers **Start** and **Decline**.
 - From a terminal:
 
 ```bash
@@ -101,8 +101,9 @@ mycelium runner decline <id>      # don't
 
 If nobody answers within ten minutes, the answer is no.
 
-The Mac app's own hub doesn't ask, since it answers only this Mac. That also
-means any program on this Mac can start agents through it without a question.
+The desktop app's own hub doesn't ask, since it answers only this computer.
+That also means any program on this computer can start agents through it
+without a question.
 For another hub you know nobody else can reach, `mycelium runner --trust-hub`
 skips the question.
 
@@ -137,8 +138,8 @@ the machine, so neither the network nor the hub can change them.
 ## Only your machines are listed
 
 The Machines page and **where it runs** show only your own machines. The
-Machines page is the laptop icon beside the notification bell. In the Mac app
-that's the Mac it runs on. In a browser, add a machine with the code
+Machines page is the laptop icon beside the notification bell. In the desktop
+app that's the computer it runs on. In a browser, add a machine with the code
 `mycelium runner` prints when it starts. With the hub's [sign-in](#auth) on,
 the hub itself shows each person only the machines they own.
 

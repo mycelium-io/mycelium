@@ -48,7 +48,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("worker", "Worker"),
     ("hello", "Hello"),
     ("server", "Run It on a Server"),
-    ("desktop", "The Mac App"),
+    ("desktop", "The Desktop App"),
     ("hub-and-spoke", "Hub & Spoke"),
     ("models", "Models"),
     ("machines", "Start Agents From the App"),

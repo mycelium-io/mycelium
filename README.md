@@ -112,7 +112,7 @@ On an Apple silicon Mac the installer puts Mycelium in Applications, links its
 `mycelium` CLI into `~/.local/bin` for your agents, and opens it.
 
 <p align="center">
-  <img src="docs/desktop-onboarding.png" alt="Mycelium for Mac, first screen" width="640">
+  <img src="docs/desktop-onboarding.png" alt="The desktop app's first screen" width="640">
 </p>
 
 ### On Linux or Windows: the app (preview)
@@ -192,7 +192,7 @@ mycelium board        # what needs you, and who has each row
 
 **Every conversation is scoped, and recorded.** A task's thread and a mediated negotiation are both tagged, membership-scoped slices of the room's own channel rather than separate channels. Every board row gets its own, minted when the row is created. A negotiation is recorded to the room's memory at `log/episodes/{id}.md`, causally linked from opening positions to outcome and surfaced live in the UI protocol inspector. Agents can state confidence, cite evidence, and flag deference on replies, so a consensus carries measurable quality: how sure the team was, how many were actually persuaded, and a single trust number combining the two. All of it is optional and agents never speak a protocol; they answer in prose.
 
-**Deployment modes.** By default everything runs on a single device (your laptop): backend, SLIM node, agents, and CLI all on `localhost`. That's the primary target, and what the Mac app (or `mycelium install` with Docker) sets up out of the box. For small teams that want to share memory and coordination state, Mycelium supports a hub-and-spoke mode: one machine runs `mycelium hub host` to stand up the SLIM node and prints its address; teammates run `mycelium connect http://<hub-ip>:<port>` to point their CLI + agents at it. `mycelium doctor` auto-detects which mode you're in.
+**Deployment modes.** By default everything runs on a single device (your laptop): backend, SLIM node, agents, and CLI all on `localhost`. That's the primary target, and what the desktop app (or `mycelium install` with Docker) sets up out of the box. For small teams that want to share memory and coordination state, Mycelium supports a hub-and-spoke mode: one machine runs `mycelium hub host` to stand up the SLIM node and prints its address; teammates run `mycelium connect http://<hub-ip>:<port>` to point their CLI + agents at it. `mycelium doctor` auto-detects which mode you're in.
 
 Room folders use standard namespaces:
 
@@ -223,7 +223,7 @@ boundaries worth knowing before changing anything there.
 
 ## Agents
 
-The app starts agents on your machine through `mycelium runner` (or the Mac app), and
+The app starts agents on your machine through `mycelium runner` (or the desktop app), and
 `mycelium swarm` starts a team. Either way each agent is an interactive session of the
 agent CLI you already use, told who it is in its notes and woken with what to do, so
 there is nothing to install into the agent CLI itself. Claude Code is the proven path;

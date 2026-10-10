@@ -169,7 +169,7 @@ class Settings(BaseSettings):
     TELEMETRY_OTLP_ENDPOINT: str = ""
     # Whether the hub shares its usage events (app/services/analytics.py). The
     # hub records them either way; this sends them to the destination below.
-    # Asked at interactive install and on the Mac app's first-run screen.
+    # Asked at interactive install and on the desktop app's first-run screen.
     TELEMETRY_SEND_PRODUCT_ANALYTICS: bool = False
     # Where shared usage events are POSTed: HTTPS, or plain HTTP to this machine.
     TELEMETRY_ANALYTICS_DESTINATION: str = ""

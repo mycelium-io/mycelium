@@ -15,8 +15,8 @@ without the answer goes on.
 These things keep a team that wakes itself from running away:
 
 - **Your machine asks before it starts a new agent** that the app or another
-  agent asked for through the hub. It doesn't ask when the hub is the Mac app's
-  own or when you've told your runner to trust its hub. The question guards
+  agent asked for through the hub. It doesn't ask when the hub is the desktop
+  app's own or when you've told your runner to trust its hub. The question guards
   against the network, not against an agent already running commands on your
   machine. A local `mycelium swarm` starts agents without asking, so only let
   agents run what you mean them to.

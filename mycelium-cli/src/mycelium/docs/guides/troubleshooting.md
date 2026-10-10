@@ -9,10 +9,10 @@ mycelium doctor --fix    # also runs the fixes it suggests, without asking first
 
 `mycelium doctor` is the first thing to run for almost any problem. It works out
 what this machine is and runs only the checks that apply. The machine might run
-**the Mac app**, be a **hub** running the Docker stack or be a **spoke** that
-connects to a hub elsewhere. To choose yourself, pass `--mode desktop`,
-`--mode hub` or `--mode spoke`. In the Mac app, **Health check…** in the menu
-bar runs the same checks.
+**the desktop app**, be a **hub** running the Docker stack or be a **spoke**
+that connects to a hub elsewhere. To choose yourself, pass `--mode desktop`,
+`--mode hub` or `--mode spoke`. In the desktop app, **Health check…** in its
+menu bar or system tray menu runs the same checks.
 
 Each problem it finds comes with the command that fixes it. `--fix` runs those
 commands for you, such as `mycelium config apply` or `mycelium up`.
@@ -29,7 +29,7 @@ flow waits on its turn.
 Something has to tell the agent there's work for it. Check these in order:
 
 1. **Is the runner running on the agent's machine?** It delivers wake-ups to
-   agents in herdr. The Mac app runs it. Elsewhere:
+   agents in herdr. The desktop app runs it. Elsewhere:
 
    ```bash
    mycelium runner status
@@ -77,7 +77,7 @@ what to do. The two most common:
   update, sign-in or first-run question. Answer it in its terminal.
 
 Either way the terminal stays open, and **Try again** starts the agent in that
-same terminal rather than opening another. In the Mac app, **Open its
+same terminal rather than opening another. In the desktop app, **Open its
 terminal** goes straight to it. For the full error, open **Logs → Agent
 starts** in the app's menu, or `~/.mycelium/runner/runner.log`.
 
@@ -86,8 +86,8 @@ starts** in the app's menu, or `~/.mycelium/runner/runner.log`.
 ### `mycelium: command not found`
 
 The CLI isn't installed or isn't on your `PATH`. Install it with the command
-below. On an Apple silicon Mac this installs the Mac app, which links its CLI
-into `~/.local/bin`. Add `bash -s -- --client-only` for the CLI alone.
+below. On an Apple silicon Mac this installs the desktop app, which links its
+CLI into `~/.local/bin`. Add `bash -s -- --client-only` for the CLI alone.
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
@@ -105,8 +105,8 @@ export PATH="$HOME/.local/bin:$PATH"
 
 **You see:** commands can't connect to the hub at `http://localhost:8000`.
 
-With the Mac app, open it, because the hub runs while the app does. Check its
-state in the menu bar or with **Health check…**.
+With the desktop app, open it, because the hub runs while the app does. Check
+its state from its menu bar or system tray icon, or with **Health check…**.
 
 With the Docker stack:
 
@@ -135,7 +135,7 @@ Common causes:
   set `runtime.bind_addr` to `0.0.0.0`. See [Hub & Spoke](#hub-and-spoke).
 - A firewall, VPN or security group is blocking port 8000.
 - The hub has [sign-in](#auth) on and you haven't run `mycelium login`.
-- The hub is the Mac app's, which only answers its own Mac.
+- The hub is the desktop app's, which only answers its own computer.
 
 ---
 
@@ -164,7 +164,7 @@ mycelium down && mycelium up
 **You see:** `mycelium doctor` says the model check is *not configured* or
 *auth failed*. Or engines like the [aligner](#aligner) don't answer.
 
-In the Mac app, set it in **Settings → Model**. From the command line:
+In the desktop app, set it in **Settings → Model**. From the command line:
 
 ```bash
 mycelium config set llm.model "anthropic/claude-sonnet-4-6"
@@ -217,7 +217,7 @@ needs both steps and a restart:
 
 ```bash
 mycelium config apply
-mycelium up             # with the Mac app, quit and reopen it
+mycelium up             # with the desktop app, quit and reopen it
 ```
 
 Don't edit `.env` by hand, because `config apply` rewrites it from
@@ -227,7 +227,7 @@ Don't edit `.env` by hand, because `config apply` rewrites it from
 
 ### Engines fail with "`pi` not found on PATH"
 
-Engines run on Pi, which the Mac app and the Docker image include. This only
+Engines run on Pi, which the desktop app and the Docker image include. This only
 happens when you run the backend yourself from the source. Install Pi there
 with `npm install -g @earendil-works/pi-coding-agent`.
 
@@ -280,7 +280,7 @@ mycelium logs                       # every service (Docker)
 mycelium logs mycelium-backend      # just the backend (Docker)
 ```
 
-The Mac app writes everything to `~/.mycelium/logs/desktop.log`. When an agent
+The desktop app writes everything to `~/.mycelium/logs/desktop.log`. When an agent
 won't start, the runner's log says why: `~/.mycelium/runner/runner.log`. Both
 open from **Logs** in the app's menu.
 
@@ -299,7 +299,8 @@ rm -rf ~/.mycelium
 mycelium install
 ```
 
-With the Mac app, quit it from its menu bar icon and remove `~/.mycelium`. When
+With the desktop app, quit it from its menu bar or system tray icon and remove
+`~/.mycelium`. When
 you open it again, it starts at its first screen. Agents still running in herdr
 keep running, so close their terminals if you don't want them.
 

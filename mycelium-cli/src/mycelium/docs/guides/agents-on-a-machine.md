@@ -2,8 +2,8 @@
 
 Every herdr agent on a machine is listed in one place, whether the runner,
 `mycelium swarm` or you started it. In the app, that's the **Machines** page.
-In the Mac app, it's **Your agents…** in the menu bar. From a terminal on that
-machine:
+In the desktop app, it's **Your agents…** under its menu bar or system tray
+icon. From a terminal on that machine:
 
 ```bash
 mycelium machine
@@ -37,7 +37,7 @@ mycelium machine integrations --install   # install them for the agent CLIs here
 
 Installing one adds a hook to that agent CLI's own settings. For Claude Code,
 that's `~/.claude/settings.json`. So Mycelium only does it when you say so, and
-the Mac app asks once.
+the desktop app asks once.
 
 ## Restarting agents
 

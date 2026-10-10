@@ -20,7 +20,7 @@ Run `mycelium status --json` for machine-readable health data, or `mycelium stat
 **Fix**: Reinstall via one of these methods:
 
 ```bash
-# curl (on an Apple silicon Mac this installs Mycelium for Mac and links its CLI;
+# curl (on an Apple silicon Mac this installs the desktop app and links its CLI;
 # add `bash -s -- --client-only` for the CLI alone)
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 
@@ -53,7 +53,7 @@ docker ps | grep mycelium   # container status
 - Check logs: `mycelium logs mycelium-backend --tail 50`
 - Rebuild: `mycelium up --build`
 
-If the Mac app runs the hub (`~/.mycelium/desktop.json` exists), there are no
+If the desktop app runs the hub (`~/.mycelium/desktop.json` exists), there are no
 containers: open the app, run `mycelium doctor --mode desktop`, and read
 `~/.mycelium/logs/desktop.log`.
 

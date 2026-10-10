@@ -21,7 +21,7 @@ run on it; the videos used `anthropic/claude-haiku-4-5`).
 
 1. **Start a recording stack.** Its data lives in `~/.mycelium-l9`, apart from
    your own. It runs on ports 8100 (the hub) and 46457 (SLIM), so it sits beside
-   a hub you already run on 8000, such as the Mac app's.
+   a hub you already run on 8000, such as the desktop app's.
 
    ```bash
    MYCELIUM_REPO_ROOT=$PWD MYCELIUM_DATA_DIR=~/.mycelium-l9 \

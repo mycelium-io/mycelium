@@ -829,7 +829,7 @@ export function RoomChatBox({
             minRows={1}
             maxRows={10}
             // Scrolls only once it's grown to its cap. Below that, WebKit (the
-            // Mac app) can measure the box a fraction short of its text and
+            // desktop app on a Mac) can measure the box a fraction short of its text and
             // draws a scrollbar for nothing.
             onHeightChange={() => {
               const el = inputRef.current;

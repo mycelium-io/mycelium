@@ -63,7 +63,7 @@ If you're documenting how Mycelium works, ground every claim against one of thes
 - **Agents are resident, never cold-spawned.** A runtime participates by looping `mycelium await --loop --exec` in a live session it already owns. The daemon that cold-spawned `claude -p` per mention was removed (it threw away context every turn). Don't describe Mycelium as spawning or hosting agents.
 - **SPIRE identity is gone, not an option.** Removed outright (issue #668, PR #708) after a live audit found it only ever attested the backend to itself on one box. The identity ladder is now two rungs: `psk` (default) and `signerjwt`. Don't list SPIRE as a selectable identity tier.
 - **memory set always upserts.** It overwrites existing keys; the row's version increments. Don't describe it as "create-only".
-- **Two compose files.** `compose.yml` (released images, end-user path) and `compose-dev.yml` (builds backend from source, for contributors). End users use the install script, which installs the Mac app on an Apple silicon Mac and the CLI + `mycelium install` elsewhere; only contributors run docker compose by hand.
+- **Two compose files.** `compose.yml` (released images, end-user path) and `compose-dev.yml` (builds backend from source, for contributors). End users use the install script, which installs the desktop app on an Apple silicon Mac and the CLI + `mycelium install` elsewhere; only contributors run docker compose by hand.
 - **Check the release tag, not just main.** Mycelium ships fast (v3.0.0 → v3.0.4 in a week); confirm the latest tag before describing "what a new user gets today."
 
 ## Out of scope for the wiki

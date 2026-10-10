@@ -371,7 +371,7 @@ def generate_env_file(
         "# ── Design patterns ───────────────────────────────────────────────────────",
         # The pack the hub offers at /api/patterns. PATTERNS_DIR is a path on this
         # machine: compose mounts it read-only into the backend and points the
-        # backend at the mount (compose.yml), and the Mac app's hub reads it as it
+        # backend at the mount (compose.yml), and the desktop app's hub reads it as it
         # is. Empty means the hub offers no pack.
         f"PATTERNS_DIR={_patterns_dir(config)}",
         f"PATTERNS_ALLOW_INLINE={'true' if config.patterns.allow_inline else 'false'}",

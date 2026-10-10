@@ -476,12 +476,12 @@ is no litellm dependency.
   with herdr's integration for its CLI installed, herdr reopens each agent in
   its own conversation after its server restarts. Installing one edits that
   CLI's settings, so it happens only on a yes (`mycelium machine integrations
-  --install`; the Mac app asks once, in the first-run wizard or as a dialog
+  --install`; the desktop app asks once, in the first-run wizard or as a dialog
   on first launch, and the answer is kept in `~/.mycelium/herdr/restore.json`).
   Restart is the same for every CLI: the same kind in its folder and pane, as
   itself, told to catch up from the room, with its workspace bound again so
   the runner syncs it. Mycelium needs herdr `MIN_VERSION` (0.9.3,
-  `integrations/herdr/bridge.py`) or newer; the Mac app ships it. A herdr
+  `integrations/herdr/bridge.py`) or newer; the desktop app ships it. A herdr
   server restart leaves every pane a bare shell, so sync retires a managed
   member only when its pane is closed, and retires nothing when the pane list
   can't be read.
@@ -511,11 +511,11 @@ is no litellm dependency.
   hub can't prove who asked, so the machine is the only place the check can
   live. A `launch` or `swarm` job waits (reported `waiting`) until it is
   answered in `mycelium/runner/approvals.py`: a question file under the
-  runner's folder and a `.yes`/`.no` beside it, written by the Mac app's
+  runner's folder and a `.yes`/`.no` beside it, written by the desktop app's
   dialog (the supervisor emits a `request` event) or by `mycelium runner
   approve|decline`. Nothing over the network can write that file; a job id
   that isn't the hub's hex never becomes a file name. `scan` and `stop` don't
-  ask. The one exception is a hub the runner may trust: the Mac app's own,
+  ask. The one exception is a hub the runner may trust: the desktop app's own,
   and only when its supervisor started it (it listens on 127.0.0.1 alone; a
   hub already on the port, like a Docker one publishing to the network, does
   not count), or `--trust-hub` said by the person. A machine with no one
@@ -532,7 +532,7 @@ is no litellm dependency.
   added by the code the runner prints, or ones owned by your principal), and
   with a verified token the hub shows and serves a caller only runners it
   owns. That listing is tidiness; the question on the machine is the security.
-- **The Mac app is a window over a supervisor the CLI owns, and needs no
+- **The desktop app is a window over a supervisor the CLI owns, and needs no
   Docker.** `mycelium desktop serve` (`mycelium/desktop/supervisor.py`) runs
   herdr's server, a native SLIM node (`slimctl slim start`, pinned 2.1.x to
   match `slim-bindings`), the hub, the UI and the runner, each once the one
@@ -900,7 +900,7 @@ is no litellm dependency.
   (`PROHIBITED_FIELDS`, and a room's own flow counts as `custom`).
   Sending them to `telemetry.analytics_destination` is
   `telemetry.send_product_analytics`, off by default, asked at
-  `mycelium install` and on the Mac app's first screen, whose answer wins
+  `mycelium install` and on the desktop app's first screen, whose answer wins
   for the hub it starts (`desktop serve --share-usage`). This is separate
   from the OTel export (`telemetry.enabled`), which is the backend's own
   operational metrics.
@@ -1015,7 +1015,7 @@ is no litellm dependency.
 > **This section is for contributors iterating on the backend source.** End users
 > follow the normal install path:
 > `curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash`, which on
-> an Apple silicon Mac installs and opens Mycelium for Mac (no Docker) and
+> an Apple silicon Mac installs and opens the desktop app (no Docker) and
 > elsewhere installs the CLI for `mycelium install` (`--docker` picks that on a
 > Mac, `--client-only` the CLI alone).
 

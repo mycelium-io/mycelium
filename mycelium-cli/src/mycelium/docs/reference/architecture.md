@@ -6,14 +6,14 @@ This is the technical view of [How Mycelium works](#how-it-works).
 
 A hub runs in one of two ways:
 
-| | Mac app | Docker |
+| | Desktop app | Docker |
 |---|---|---|
-| Set up with | The app's first screen, **On this Mac** | `mycelium install` |
+| Set up with | The app's first screen, **On this computer** | `mycelium install` |
 | Runs | The hub, the app, a SLIM node, herdr and the runner, as processes | The hub, the app and a SLIM node, as containers |
-| Reachable from | This Mac only | Wherever you bind it (`runtime.bind_addr`) |
+| Reachable from | This computer only | Wherever you bind it (`runtime.bind_addr`) |
 | Use it for | One person | A team, with [Hub & Spoke](#hub-and-spoke) |
 
-Every other machine is a **spoke**. A spoke runs the CLI or the Mac app pointed
+Every other machine is a **spoke**. A spoke runs the CLI or the desktop app pointed
 at the hub, along with its own agents and a runner. It keeps no copy of the
 hub's data. Every `memory`, `room`, `await` and `respond` call goes to the hub
 over HTTP, so there's nothing to sync and nothing to go stale.

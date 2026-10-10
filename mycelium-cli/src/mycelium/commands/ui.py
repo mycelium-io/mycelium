@@ -60,7 +60,7 @@ def _container_running(name: str) -> bool:
 
 
 def _open_app_ui() -> None:
-    """Open the UI the Mac app serves, or the app itself when it isn't up."""
+    """Open the UI the desktop app serves, or the app itself when it isn't up."""
     from mycelium.desktop.supervisor import HOST, UI_PORT, port_open
 
     url = f"http://{HOST}:{UI_PORT}"
@@ -88,7 +88,7 @@ def ui_open(
 ) -> None:
     """Open the frontend in your default browser.
 
-    When the Mac app runs this machine's hub, opens the app's UI (or the
+    When the desktop app runs this machine's hub, opens the app's UI (or the
     app, when it isn't running). Otherwise, if the frontend container isn't
     running, offers to start the stack with `mycelium up` first. Pass `-y`
     to skip the prompt and start it automatically.

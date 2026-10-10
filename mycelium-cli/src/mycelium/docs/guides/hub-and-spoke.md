@@ -2,7 +2,7 @@
 
 This guide shares rooms across a team's machines. One machine runs Mycelium and
 holds all the data. That machine is the **hub**. Everyone else's machine is a
-**spoke**. A spoke needs only the CLI or the Mac app plus its own agents, and
+**spoke**. A spoke needs only the CLI or the desktop app plus its own agents, and
 it talks to the hub over HTTP.
 
 ```
@@ -36,8 +36,8 @@ API, so everyone sees a change as soon as it's made.
 
 ## 1. Set up the hub
 
-The hub is the Docker stack. The Mac app's hub only answers its own Mac, so it
-can't be a team's hub. On the hub machine:
+The hub is the Docker stack. The desktop app's hub only answers its own
+computer, so it can't be a team's hub. On the hub machine:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash   # on a Mac: bash -s -- --docker
@@ -83,7 +83,7 @@ can also be reached directly, list the proxy's addresses instead, as in
 
 ## 2. Connect each spoke
 
-**With the Mac app:** on its first screen, choose **On my team's hub** and
+**With the desktop app:** on its first screen, choose **On my team's hub** and
 enter the hub's address, such as `https://hub.example.com` or
 `http://192.168.1.20:8000`.
 
@@ -99,7 +99,7 @@ mycelium doctor      # checks it can reach the hub
 People on a spoke can also use the app in a browser at the hub's port 3000.
 
 To start agents on a spoke from the app, run the [runner](#machines) there with
-`mycelium runner --detach`. The Mac app runs it for you.
+`mycelium runner --detach`. The desktop app runs it for you.
 
 ## 3. Use a room
 

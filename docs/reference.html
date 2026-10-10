@@ -268,14 +268,14 @@
           <thead>
             <tr>
               <th></th>
-              <th>Mac app</th>
+              <th>Desktop app</th>
               <th>Docker</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>Set up with</td>
-              <td>The app&#x27;s first screen, <strong>On this Mac</strong></td>
+              <td>The app&#x27;s first screen, <strong>On this computer</strong></td>
               <td><code>mycelium install</code></td>
             </tr>
             <tr>
@@ -285,7 +285,7 @@
             </tr>
             <tr>
               <td>Reachable from</td>
-              <td>This Mac only</td>
+              <td>This computer only</td>
               <td>Wherever you bind it (<code>runtime.bind_addr</code>)</td>
             </tr>
             <tr>
@@ -296,7 +296,7 @@
           </tbody>
         </table>
       </div>
-      <p>Every other machine is a <strong>spoke</strong>. A spoke runs the CLI or the Mac app pointed at the hub, along with its own agents and a runner. It keeps no copy of the hub&#x27;s data. Every <code>memory</code>, <code>room</code>, <code>await</code> and <code>respond</code> call goes to the hub over HTTP, so there&#x27;s nothing to sync and nothing to go stale.</p>
+      <p>Every other machine is a <strong>spoke</strong>. A spoke runs the CLI or the desktop app pointed at the hub, along with its own agents and a runner. It keeps no copy of the hub&#x27;s data. Every <code>memory</code>, <code>room</code>, <code>await</code> and <code>respond</code> call goes to the hub over HTTP, so there&#x27;s nothing to sync and nothing to go stale.</p>
       <p><code>mycelium doctor</code> works out which one this machine is from <code>server.api_url</code>. A backend on this machine means a hub, and anything else means a spoke. Pass <code>--mode desktop|hub|spoke</code> to choose.</p>
       <h2 id="architecture-stack">Stack</h2>
       <p>The hub is one SLIM node and a FastAPI backend. There&#x27;s no database, message broker or vector store.</p>
@@ -1288,7 +1288,7 @@
 <span class="comment"># Enable the OTel SDK in the backend (traces + metrics exported to the OTLP collector). Off by default.</span>
 <span class="arg">enabled</span> = <span class="flag">false</span>
 
-<span class="comment"># OTLP HTTP endpoint the backend pushes spans and metrics to. When unset and telemetry.enabled is true, defaults to http://mycelium-collector:4318, the collector&#x27;s address in the Docker stack. The Mac app runs no collector, so set this there (for example http://127.0.0.1:4318 for a collector on the same Mac).</span>
+<span class="comment"># OTLP HTTP endpoint the backend pushes spans and metrics to. When unset and telemetry.enabled is true, defaults to http://mycelium-collector:4318, the collector&#x27;s address in the Docker stack. The desktop app runs no collector, so set this there (for example http://127.0.0.1:4318 for a collector on the same machine).</span>
 <span class="arg">otlp_endpoint</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># Headers sent with every OTLP export, such as a hosted backend&#x27;s auth (for example &quot;x-honeycomb-team=&lt;key&gt;&quot;). Also used by the local Grafana when it forwards. Rendered as OTEL_EXPORTER_OTLP_HEADERS.</span>
@@ -1297,7 +1297,7 @@
 <span class="comment"># With the local Grafana (`mycelium up --grafana`), also forward everything it receives to this OTLP endpoint. Rendered as OTEL_EXPORTER_OTLP_ENDPOINT.</span>
 <span class="arg">forward_endpoint</span> = <span class="str">&quot;&quot;</span>
 
-<span class="comment"># Share the hub&#x27;s anonymous usage events (tasks filed and resolved, flows and negotiations finished, agents joined) with the analytics destination. The hub records them either way. Off by default; the Mac app&#x27;s own setting wins there.</span>
+<span class="comment"># Share the hub&#x27;s anonymous usage events (tasks filed and resolved, flows and negotiations finished, agents joined) with the analytics destination. The hub records them either way. Off by default; the desktop app&#x27;s own setting wins there.</span>
 <span class="arg">send_product_analytics</span> = <span class="flag">false</span>
 
 <span class="comment"># Where shared usage events are POSTed, as JSON (or Loki&#x27;s push format for a /loki/ URL). HTTPS, or plain HTTP to this machine only.</span>
@@ -2019,7 +2019,7 @@ steps:
       <h3 id="metrics-sharing-usage-stats">Sharing usage stats</h3>
       <p>Sharing sends each event to <code>telemetry.analytics_destination</code> as it happens. It&#x27;s off unless you turn it on. You&#x27;re asked in two places:</p>
       <ul>
-        <li><strong>The Mac app</strong> asks on its first screen when it runs a hub, and again under Settings. The app&#x27;s answer is the one that counts for the hub it starts.</li>
+        <li><strong>The desktop app</strong> asks on its first screen when it runs a hub, and again under Settings. The app&#x27;s answer is the one that counts for the hub it starts.</li>
         <li><strong><code>mycelium install</code></strong> asks as its last question.</li>
       </ul>
       <p>To change it by hand:</p>
@@ -2073,7 +2073,7 @@ steps:
       <ul>
         <li><strong>A hosted OTLP backend</strong>, such as Grafana Cloud or Honeycomb. Set the endpoint to it. Set its auth header with <code>mycelium config set telemetry.otlp_headers &quot;x-honeycomb-team=&lt;key&gt;&quot;</code>.</li>
         <li><strong>A local Grafana</strong> with the Docker stack. Set the endpoint to <code>http://mycelium-grafana:4318</code> and run <code>mycelium up --grafana</code>. That starts Grafana&#x27;s all-in-one image and imports Mycelium&#x27;s dashboard. It opens at <code>http://localhost:3001</code> with the login admin / admin. To also forward everything it receives to a hosted backend, set <code>telemetry.forward_endpoint</code>. Use <code>telemetry.otlp_headers</code> for that backend&#x27;s auth.</li>
-        <li><strong>The Mac app</strong> runs no collector or Grafana. Set the endpoint to one you run yourself, such as <code>http://127.0.0.1:4318</code> for a collector on the same Mac.</li>
+        <li><strong>The desktop app</strong> runs no collector or Grafana. Set the endpoint to one you run yourself, such as <code>http://127.0.0.1:4318</code> for a collector on the same computer.</li>
       </ul>
       <p>If the Grafana container restarts, restart the backend too with <code>docker restart mycelium-backend</code>. Its OTLP connection doesn&#x27;t reconnect.</p>
       <p>The spans follow OpenTelemetry&#x27;s <code>gen_ai.*</code> conventions, which are still marked Development. The versions tested against are pinned in <code>fastapi-backend/pyproject.toml</code>.</p>

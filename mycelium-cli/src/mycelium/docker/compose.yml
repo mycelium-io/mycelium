@@ -71,7 +71,7 @@ services:
         required: false
     environment:
       API_BASE_URL: http://mycelium-backend:8000
-      # How this hub runs, for its usage events (the Mac app says "desktop").
+      # How this hub runs, for its usage events (the desktop app says "desktop").
       MYCELIUM_HUB_MODE: docker
       # The SLIM node's in-network address. The backend is the room-channel
       # moderator (room_channels.py), so it must reach the node by its compose

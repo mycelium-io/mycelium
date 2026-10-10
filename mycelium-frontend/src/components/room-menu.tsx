@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
  * The room's `…` menu in the header: what you do to the room rather than in
  * it. The link to what you're looking at and the room's MAS id live here to be
  * copied, not beside the name, and deleting sits behind a menu instead of an
- * icon next to the title. The link matters most in the Mac app, which has no
+ * icon next to the title. The link matters most in the desktop app, which has no
  * address bar to copy it from.
  */
 export function RoomMenu({
