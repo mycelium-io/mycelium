@@ -1418,8 +1418,8 @@ Review 1
       <h2 id="voice-where-its-transcribed">Where it&#x27;s transcribed</h2>
       <p>Your hub turns speech into text, on its own CPU, with a small speech model (Moonshine) and a voice activity detector (Silero) that hears where you start and stop. Neither sends audio anywhere else. In the Mac app the hub runs on your machine, so your audio never leaves it. With a shared hub, your audio goes to that hub the way your messages do.</p>
       <p>Audio is never saved. The hub keeps only the few seconds it is listening to, and lets go of them once they&#x27;re text.</p>
-      <p>The speech model is about 150 MB. The Mac app and the Docker image include it. A hub without it downloads it the first time someone turns on a mic, and the first words take a little longer while it does.</p>
-      <p>If the mic button is missing, the hub can&#x27;t transcribe: it has no model and can&#x27;t download one.</p>
+      <p>The speech model is about 150 MB. The Mac app and the Docker image include it. A hub without it downloads it the first time someone turns on a mic, and the line under the box says it&#x27;s getting ready. Keep the mic on until your words appear: what you say meanwhile is held and transcribed once the model is ready, but turning the mic off before then drops it.</p>
+      <p>The mic button is missing when the hub can&#x27;t transcribe (it has no model and can&#x27;t download one), and in the Mac app when it&#x27;s connected to another hub. The app gives the microphone only to the hub it runs itself, so a remote hub&#x27;s pages can&#x27;t listen; use that hub in a browser to talk to it.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/voice.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="voice" aria-label="Previous and next sections">

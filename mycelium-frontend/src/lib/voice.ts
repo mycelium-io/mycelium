@@ -62,6 +62,14 @@ export function newVoiceSessionId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** Whether the Mac app will refuse this page the microphone: it gives it only
+ *  to its own hub, which it serves on this machine's loopback, so a page on
+ *  any other host inside the app (its client mode, showing another hub) is
+ *  refused. A browser decides for itself, so there this is always false. */
+export function appRefusesMic(hostname: string, inDesktopApp: boolean): boolean {
+  return inDesktopApp && !["127.0.0.1", "localhost", "[::1]"].includes(hostname);
+}
+
 /** What a mic that won't start says, from the browser's error. */
 export function micErrorMessage(err: unknown): string {
   const name = err instanceof DOMException ? err.name : "";

@@ -6,7 +6,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { ApiError, closeVoiceSession, fetchVoiceStatus, sendVoiceChunk } from "@/lib/api";
+import { isDesktop } from "@/lib/desktop";
 import {
+  appRefusesMic,
   CAPTURE_WORKLET,
   CHUNK_MS,
   concatPcm,
@@ -21,6 +23,10 @@ export type MicState = "off" | "starting" | "listening";
 /** Audio held while the hub is busy (fetching its model the first time),
  *  past which the oldest is dropped so a chunk stays under the hub's cap. */
 const MAX_BUFFERED_S = 45;
+
+function remoteInApp(): boolean {
+  return typeof window !== "undefined" && appRefusesMic(window.location.hostname, isDesktop());
+}
 
 /** Drop the oldest audio past `MAX_BUFFERED_S`, keeping the latest. */
 function trim(r: Rig) {
@@ -40,6 +46,9 @@ interface Rig {
   buffer: Int16Array[];
   buffered: number;
   inflight: Promise<void> | null;
+  /** Until the hub says its model is ready, it's only asked (an empty chunk)
+   *  while the audio waits here, so a slow first load isn't re-sent each tick. */
+  loading: boolean;
 }
 
 /**
@@ -86,25 +95,30 @@ export function useVoiceInput(onText: (text: string) => void, onError: (message:
     [release],
   );
 
-  /** Send what's buffered, unless a send is already out (then it waits for the next tick). */
+  /** Send what's buffered, or only ask whether the hub is ready while it loads. */
   const send = useCallback(
     (r: Rig, final: boolean): Promise<void> => {
-      const pcm = concatPcm(r.buffer);
-      r.buffer = [];
-      r.buffered = 0;
+      const probing = r.loading && !final;
+      const pcm = probing ? new Int16Array(0) : concatPcm(r.buffer);
+      if (!probing) {
+        r.buffer = [];
+        r.buffered = 0;
+      }
       const out = sendVoiceChunk(r.sid, pcm, final)
         .then((heard) => {
           if (heard.ready === false) {
-            // The hub is still loading its model and didn't read this chunk:
-            // keep it, ahead of what's been recorded since, for the next send.
-            if (!final && rig.current === r) {
+            // Still loading, and this chunk wasn't read: keep any audio it
+            // carried, ahead of what's been recorded since.
+            if (!final && rig.current === r && pcm.length) {
               r.buffer.unshift(pcm);
               r.buffered += pcm.length;
               trim(r);
             }
+            r.loading = true;
             setWarming(true);
             return;
           }
+          r.loading = false;
           for (const text of heard.texts) handlers.current.onText(text);
           if (rig.current === r) setSpeaking(heard.speaking);
           setWarming(false);
@@ -149,8 +163,9 @@ export function useVoiceInput(onText: (text: string) => void, onError: (message:
         buffer: [],
         buffered: 0,
         inflight: null,
+        loading: true,
         timer: setInterval(() => {
-          if (rig.current === r && !r.inflight && r.buffered > 0) void send(r, false);
+          if (rig.current === r && !r.inflight && (r.loading || r.buffered > 0)) void send(r, false);
         }, CHUNK_MS),
       };
       const sourceRate = ctx.sampleRate;
@@ -163,8 +178,8 @@ export function useVoiceInput(onText: (text: string) => void, onError: (message:
       rig.current = r;
       setState("listening");
       if (status?.state === "not_downloaded") setWarming(true);
-      // An empty first chunk opens the session now, so a hub that has to load
-      // (or fetch) its model starts on it while the person is still talking.
+      // An empty first chunk asks at once, so a hub that has to load (or
+      // fetch) its model starts on it while the person is still talking.
       void send(r, false);
     } catch (err) {
       stream?.getTracks().forEach((t) => t.stop());
@@ -199,8 +214,8 @@ export function useVoiceInput(onText: (text: string) => void, onError: (message:
   );
 
   return {
-    /** Whether the hub can transcribe; the mic is offered only when it can. */
-    available: Boolean(status && status.state !== "unavailable"),
+    /** Whether the mic is offered: the hub can transcribe, and nothing will refuse the microphone. */
+    available: Boolean(status && status.state !== "unavailable") && !remoteInApp(),
     state,
     speaking,
     warming,

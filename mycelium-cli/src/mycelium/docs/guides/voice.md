@@ -33,7 +33,11 @@ and lets go of them once they're text.
 
 The speech model is about 150 MB. The Mac app and the Docker image include it.
 A hub without it downloads it the first time someone turns on a mic, and the
-first words take a little longer while it does.
+line under the box says it's getting ready. Keep the mic on until your words
+appear: what you say meanwhile is held and transcribed once the model is
+ready, but turning the mic off before then drops it.
 
-If the mic button is missing, the hub can't transcribe: it has no model and
-can't download one.
+The mic button is missing when the hub can't transcribe (it has no model and
+can't download one), and in the Mac app when it's connected to another hub.
+The app gives the microphone only to the hub it runs itself, so a remote hub's
+pages can't listen; use that hub in a browser to talk to it.

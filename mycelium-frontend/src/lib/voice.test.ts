@@ -2,7 +2,15 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { appendHeard, concatPcm, downsample, micErrorMessage, newVoiceSessionId, toPcm16 } from "@/lib/voice";
+import {
+  appRefusesMic,
+  appendHeard,
+  concatPcm,
+  downsample,
+  micErrorMessage,
+  newVoiceSessionId,
+  toPcm16,
+} from "@/lib/voice";
 
 describe("downsample", () => {
   it("averages 48 kHz down to 16 kHz, three samples to one", () => {
@@ -51,6 +59,18 @@ describe("newVoiceSessionId", () => {
     const a = newVoiceSessionId();
     expect(a).toMatch(/^[0-9a-f]{32}$/);
     expect(newVoiceSessionId()).not.toBe(a);
+  });
+});
+
+describe("appRefusesMic", () => {
+  it("is false in a browser, wherever the hub is", () => {
+    expect(appRefusesMic("hub.example.com", false)).toBe(false);
+  });
+
+  it("in the Mac app, allows only its own hub on this machine", () => {
+    expect(appRefusesMic("127.0.0.1", true)).toBe(false);
+    expect(appRefusesMic("localhost", true)).toBe(false);
+    expect(appRefusesMic("hub.example.com", true)).toBe(true);
   });
 });
 

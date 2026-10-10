@@ -117,22 +117,24 @@ describe("useVoiceInput", () => {
     await waitFor(() => expect(heard).toContain("the last words"));
   });
 
-  it("keeps audio the hub didn't read while its model loads, and sends it again", async () => {
+  it("while the hub loads its model, only asks, and keeps the audio until it's ready", async () => {
     const { hook } = setup();
     await waitFor(() => expect(hook.result.current.available).toBe(true));
-    // The opening chunk and the next one both land while the model loads.
+    // The opening ask and the next one land while the model loads.
     replies.push({ texts: [], speaking: false, ready: false }, { texts: [], speaking: false, ready: false });
     await act(() => hook.result.current.toggle());
     await waitFor(() => expect(sent).toHaveLength(1));
     act(() => record(3));
     await waitFor(() => expect(sent).toHaveLength(2), { timeout: 2000 });
-    expect(sent[1].samples).toBe(480);
+    // Asking again carries no audio: it waits here rather than going up each tick.
+    expect(sent[1].samples).toBe(0);
     await waitFor(() => expect(hook.result.current.warming).toBe(true));
 
-    // Loaded now: the unread audio goes again, ahead of what came after it.
+    // The third ask finds it ready; the audio held meanwhile goes on the next tick.
     act(() => record(3));
-    await waitFor(() => expect(sent).toHaveLength(3), { timeout: 2000 });
-    expect(sent[2].samples).toBe(960);
+    await waitFor(() => expect(sent).toHaveLength(4), { timeout: 3000 });
+    expect(sent[2].samples).toBe(0);
+    expect(sent[3].samples).toBe(960);
     await waitFor(() => expect(hook.result.current.warming).toBe(false));
   });
 
