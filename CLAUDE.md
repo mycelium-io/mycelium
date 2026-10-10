@@ -182,8 +182,9 @@ A herdr doorbell rings on a text mention, on a turn put to the handle as a messa
 recipient (`herdr_wake_addressed`), and on a row filed for it
 (`herdr_wake_assigned`), each carrying a `reason`. What the agent is told is a
 digest the hub builds when the wake is delivered (`app/services/wake_digest.py`):
-why it woke, what changed since its last turn, its tasks and the board, the
-messages that asked for it (cut, with the rest counted), then `await` first and
+why it woke, what changed since its last turn, its tasks, the board (each
+notice since then as who did what to which task, then what's open, naming the
+expired and blocked rows), the messages that asked for it (cut, with the rest counted), then `await` first and
 a reply line that names the task's thread. Delivering a wake raises
 `responding`, so the room sees the agent on it whatever host typed the prompt.
 
