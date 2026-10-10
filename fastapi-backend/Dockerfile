@@ -39,13 +39,9 @@ COPY . .
 ENV FASTEMBED_CACHE_PATH=/opt/fastembed
 RUN python3 -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir='/opt/fastembed')" || true
 
-# The voice models (services/voice.py): Moonshine v2 and Silero VAD, ~150MB,
-# so a mic works with no network. If this fetch fails the folder stays the
-# app user's, and the hub fetches them the first time a mic is turned on.
-ENV VOICE_MODEL_DIR=/opt/voice
-RUN mkdir -p /opt/voice \
-    && (python3 -c "from app.services.voice import ensure_models; ensure_models()" || true) \
-    && chown -R mycelium /opt/voice
+# The voice models (services/voice.py) aren't baked in: voice is off unless
+# turned on, and a hub that turns it on fetches them into its data folder,
+# where they outlive the container.
 
 RUN chmod +x start.sh \
     && mkdir -p logs \

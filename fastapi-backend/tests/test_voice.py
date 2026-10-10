@@ -13,12 +13,13 @@ import os
 import threading
 import wave
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
 from app.config import settings
-from app.services import voice
+from app.services import voice, voice_worker
 
 RATE = voice.SAMPLE_RATE
 
@@ -78,10 +79,19 @@ class FakeEngine:
 @pytest.fixture
 def fake(monkeypatch):
     voice.reset()
+    monkeypatch.setattr(settings, "VOICE_ENABLED", True)
     eng = FakeEngine()
     monkeypatch.setattr(voice, "engine", lambda: eng)
     yield eng
     voice.reset()
+
+
+@pytest.fixture(autouse=True)
+def _in_process(monkeypatch):
+    """The routes reach the voice worker; most tests run its work here instead."""
+    monkeypatch.setattr(voice_worker, "IN_PROCESS", True)
+    yield
+    voice_worker.stop()
 
 
 def pcm(seconds: float, *, loud: bool) -> bytes:
@@ -98,7 +108,21 @@ SID = "0123456789abcdef"
 
 
 @pytest.mark.asyncio
+async def test_voice_is_off_unless_turned_on(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(tmp_path))
+    body = (await client.get("/api/voice")).json()
+    assert body["state"] == "unavailable"
+    assert body["detail"] == "voice is off on this hub (voice.enabled)"
+    # Off, starting the hub fetches nothing.
+    started = []
+    monkeypatch.setattr(voice.threading, "Thread", lambda **kw: started.append(kw) or _NoThread())
+    voice.prefetch()
+    assert started == []
+
+
+@pytest.mark.asyncio
 async def test_status_says_whether_a_mic_can_be_turned_on(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "VOICE_ENABLED", True)
     monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(tmp_path))
     monkeypatch.setattr(settings, "VOICE_DOWNLOAD", True)
     body = (await client.get("/api/voice")).json()
@@ -111,8 +135,19 @@ async def test_status_says_whether_a_mic_can_be_turned_on(client, monkeypatch, t
     assert body["state"] == "unavailable"
     assert str(tmp_path) in body["detail"]
 
-    monkeypatch.setattr(settings, "VOICE_ENABLED", False)
-    assert (await client.get("/api/voice")).json()["detail"] == "voice is turned off on this hub"
+
+class _NoThread:
+    def start(self) -> None:
+        pass
+
+
+def test_turning_voice_on_fetches_the_model_as_the_hub_starts(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "VOICE_ENABLED", True)
+    monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(tmp_path))
+    started = []
+    monkeypatch.setattr(voice.threading, "Thread", lambda **kw: started.append(kw) or _NoThread())
+    voice.prefetch()
+    assert [t["name"] for t in started] == ["voice-fetch"]
 
 
 @pytest.mark.asyncio
@@ -197,7 +232,7 @@ async def test_a_hub_that_cannot_transcribe_says_why(client, monkeypatch):
     monkeypatch.setattr(settings, "VOICE_ENABLED", False)
     r = await client.post(f"/api/voice/sessions/{SID}", content=pcm(0.1, loud=True))
     assert r.status_code == 503
-    assert "turned off" in r.json()["detail"]
+    assert "voice is off" in r.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -216,44 +251,88 @@ def test_an_idle_mic_is_closed(fake, monkeypatch):
     assert voice.open_sessions() == 0
 
 
+# ── The worker, from the hub's side ──────────────────────────────────────────
+
+
+class _FakeProc:
+    def __init__(self) -> None:
+        self.alive = True
+
+    def is_alive(self) -> bool:
+        return self.alive
+
+    def join(self, _timeout: float) -> None:
+        pass
+
+    def kill(self) -> None:
+        self.alive = False
+
+
+class _FakeConn:
+    """A pipe to a worker that runs ``voice.feed`` on the stand-in engine."""
+
+    def __init__(self) -> None:
+        self.reply: tuple | None = None
+        self.gone = False
+
+    def send(self, msg) -> None:
+        if self.gone:
+            raise BrokenPipeError
+        op, args = msg
+        if op == "feed":
+            sid, audio, final, caller = args
+            heard = voice.feed(sid, audio, final=final, caller=caller)
+            self.reply = ("ok", (heard.texts, heard.speaking))
+        else:
+            self.reply = ("ok", None)
+
+    def recv(self):
+        return self.reply
+
+    def close(self) -> None:
+        pass
+
+
 @pytest.fixture
-def loading(monkeypatch, tmp_path):
-    """The real engine() with a stand-in model that loads when told to."""
-    voice.reset()
-    monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(tmp_path))
-    monkeypatch.setattr(voice, "state", lambda: ("not_downloaded", ""))
+def worker(monkeypatch, fake):
+    """The hub side for real, with a worker started by a stand-in ``_start``."""
+    monkeypatch.setattr(voice_worker, "IN_PROCESS", False)
+    monkeypatch.setattr(voice, "state", lambda: ("ready", ""))
     gate = threading.Event()
-    calls = {"loads": 0}
+    starts = []
 
-    def slow_models():
-        calls["loads"] += 1
+    def start() -> None:
+        starts.append(1)
         gate.wait(5)
-        if calls.get("fail"):
-            raise voice.VoiceUnavailable("the download was cut off")
-        return tmp_path
+        with voice_worker._state_lock:
+            # Stand-ins for a process and its pipe, shaped like the real ones.
+            voice_worker._worker = voice_worker._Worker(
+                cast("Any", _FakeProc()), cast("Any", _FakeConn())
+            )
 
-    monkeypatch.setattr(voice, "ensure_models", slow_models)
-    monkeypatch.setattr(voice, "SherpaEngine", lambda _root: FakeEngine())
-    yield gate, calls
+    monkeypatch.setattr(voice_worker, "_start", start)
+    yield gate, starts
     gate.set()
-    if voice._loader is not None:
-        voice._loader.join(5)
-    voice.reset()
+    _wait_for_start()
+
+
+def _wait_for_start() -> None:
+    if voice_worker._starter is not None:
+        voice_worker._starter.join(5)
 
 
 @pytest.mark.asyncio
-async def test_a_chunk_during_the_first_load_is_answered_at_once_and_not_read(client, loading):
-    gate, calls = loading
+async def test_the_first_mic_starts_the_worker_once_and_waits_for_nobody(client, worker):
+    gate, starts = worker
     r = await client.post(f"/api/voice/sessions/{SID}", content=pcm(0.5, loud=True))
     assert r.json() == {"texts": [], "speaking": False, "ready": False}
-    # A second chunk doesn't start a second load or wait on the first.
+    # A second chunk doesn't start a second worker or wait on the first.
     r = await client.post(f"/api/voice/sessions/{SID}", content=pcm(0.5, loud=True))
     assert r.json()["ready"] is False
-    assert calls["loads"] == 1
-    assert voice.open_sessions() == 0
+    assert starts == [1]
 
     gate.set()
-    _wait_for_load()
+    _wait_for_start()
     r = await client.post(
         f"/api/voice/sessions/{SID}", content=pcm(0.5, loud=True) + pcm(0.2, loud=False)
     )
@@ -262,29 +341,54 @@ async def test_a_chunk_during_the_first_load_is_answered_at_once_and_not_read(cl
 
 
 @pytest.mark.asyncio
-async def test_a_failed_load_is_reported_and_not_retried_at_once(client, loading, monkeypatch):
-    gate, calls = loading
-    calls["fail"] = True
+async def test_a_worker_that_exited_is_started_again(client, worker):
+    gate, starts = worker
     gate.set()
     await client.post(f"/api/voice/sessions/{SID}", content=b"")
-    _wait_for_load()
+    _wait_for_start()
+    # It went idle and exited between two chunks.
+    running = voice_worker._worker
+    assert running is not None
+    cast("_FakeConn", running.conn).gone = True
+    r = await client.post(f"/api/voice/sessions/{SID}", content=pcm(0.2, loud=True))
+    assert r.json()["ready"] is False
+    _wait_for_start()
+    assert starts == [1, 1]
+    assert (await client.post(f"/api/voice/sessions/{SID}", content=b"")).json()["ready"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_failed_start_is_reported_and_not_retried_at_once(client, monkeypatch, fake):
+    monkeypatch.setattr(voice_worker, "IN_PROCESS", False)
+    monkeypatch.setattr(voice, "state", lambda: ("not_downloaded", ""))
+    fetches = []
+
+    def cut_off():
+        fetches.append(1)
+        raise voice.VoiceUnavailable("the download was cut off")
+
+    monkeypatch.setattr(voice, "ensure_models", cut_off)
+    await client.post(f"/api/voice/sessions/{SID}", content=b"")
+    _wait_for_start()
     r = await client.post(f"/api/voice/sessions/{SID}", content=b"")
     assert r.status_code == 503
     assert "cut off" in r.json()["detail"]
-    assert calls["loads"] == 1
+    assert fetches == [1]
 
     # Once the wait is over, the next mic tries again.
-    monkeypatch.setattr(voice, "_retry_at", 0.0)
-    calls["fail"] = False
+    monkeypatch.setattr(voice_worker, "_retry_at", 0.0)
     assert (await client.post(f"/api/voice/sessions/{SID}", content=b"")).json()["ready"] is False
-    _wait_for_load()
-    assert calls["loads"] == 2
+    _wait_for_start()
+    assert fetches == [1, 1]
 
 
-def _wait_for_load() -> None:
-    loader = voice._loader
-    assert loader is not None
-    loader.join(5)
+@pytest.mark.asyncio
+async def test_with_voice_off_no_worker_is_started(client, monkeypatch):
+    monkeypatch.setattr(voice_worker, "IN_PROCESS", False)
+    r = await client.post(f"/api/voice/sessions/{SID}", content=b"")
+    assert r.status_code == 503
+    assert voice_worker._starter is None or not voice_worker._starter.is_alive()
+    assert voice_worker._worker is None
 
 
 class _Stream:
@@ -361,17 +465,24 @@ def _real_models() -> Path | None:
 
 
 @pytest.mark.skipif(_real_models() is None, reason="the speech model isn't on disk")
-def test_the_real_model_transcribes_speech_fed_in_chunks(monkeypatch):
+def test_a_real_worker_transcribes_speech_and_exits_when_idle(monkeypatch):
     root = _real_models()
     assert root is not None
+    monkeypatch.setattr(settings, "VOICE_ENABLED", True)
+    # The worker is its own process and reads its settings from the environment.
+    monkeypatch.setenv("VOICE_ENABLED", "true")
+    monkeypatch.setenv("VOICE_MODEL_DIR", str(root))
     monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(root))
-    voice.reset()
-    # The first call starts the load and says so; wait for it as the app does.
+    monkeypatch.setattr(voice_worker, "IN_PROCESS", False)
+    monkeypatch.setattr(voice_worker, "IDLE_EXIT_S", 1.0)
+    monkeypatch.setattr(voice_worker, "_POLL_S", 0.2)
+    # The first chunk starts the worker and says so; wait for it as the app does.
     with pytest.raises(voice.VoiceWarming):
-        voice.engine()
-    assert voice._loader is not None
-    voice._loader.join(30)
-    voice.engine()
+        voice_worker.feed(SID, b"")
+    _wait_for_start()
+    worker = voice_worker._worker
+    assert worker is not None
+    assert worker.proc.is_alive()
     with wave.open(str(root / voice.MOONSHINE / "test_wavs" / "0.wav")) as w:
         rate = w.getframerate()
         recorded = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(np.float32)
@@ -381,7 +492,10 @@ def test_the_real_model_transcribes_speech_fed_in_chunks(monkeypatch):
     chunk = RATE // 2 * 2  # half a second of 16-bit samples
     texts: list[str] = []
     for i in range(0, len(audio), chunk):
-        texts += voice.feed(SID, audio[i : i + chunk]).texts
-    texts += voice.feed(SID, b"", final=True).texts
-    voice.reset()
+        texts += voice_worker.feed(SID, audio[i : i + chunk]).texts
+    texts += voice_worker.feed(SID, b"", final=True).texts
     assert " ".join(texts).strip()
+
+    # No mic open: it exits, and all its memory goes with it.
+    worker.proc.join(10)
+    assert not worker.proc.is_alive()

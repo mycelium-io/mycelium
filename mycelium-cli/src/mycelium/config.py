@@ -604,6 +604,27 @@ class BoardConfig(BaseModel):
     )
 
 
+class VoiceConfig(BaseModel):
+    """The message box's mic, transcribed on the hub."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Let people talk into the message box. The hub transcribes on its own CPU, "
+            "with a speech model of about 150 MB on disk, in a separate process that uses "
+            "about 500 MB of memory while anyone is talking and exits a few minutes after. "
+            "Off, the mic isn't offered and nothing is downloaded."
+        ),
+    )
+    download: bool = Field(
+        default=True,
+        description=(
+            "Let the hub download the speech model when voice is on and the model isn't "
+            "there. Off, put the files in the hub's data folder under models/voice yourself."
+        ),
+    )
+
+
 class PatternsConfig(BaseModel):
     """Design-pattern packs this hub offers (``/api/patterns``).
 
@@ -777,6 +798,7 @@ class MyceliumConfig(BaseModel):
     synthesizer: SynthesizerConfig = Field(default_factory=SynthesizerConfig)
     worker: WorkerConfig = Field(default_factory=WorkerConfig)
     board: BoardConfig = Field(default_factory=BoardConfig)
+    voice: VoiceConfig = Field(default_factory=VoiceConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     login: LoginConfig = Field(default_factory=LoginConfig)
     agent_auth: AgentAuthConfig = Field(default_factory=AgentAuthConfig)

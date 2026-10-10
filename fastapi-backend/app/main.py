@@ -145,6 +145,12 @@ async def lifespan(app: FastAPI):
 
     _schedules.start_sweep()
 
+    # Voice on and its model missing: fetch it now, in the background, rather
+    # than when the first person turns on a mic. Off, this does nothing.
+    from app.services import voice as _voice
+
+    _voice.prefetch()
+
     # Pre-load embedding model so first request isn't slow
     from app.services.embedding import warmup as warmup_embeddings
 
@@ -292,6 +298,9 @@ async def lifespan(app: FastAPI):
     stop_watcher()
     stop_event_sweep()
     stop_lease_sweep()
+    from app.services import voice_worker
+
+    voice_worker.stop()
     _schedules.stop_sweep()
 
     # Flush and shut down the OTel SDK so spans are not lost on a clean restart.

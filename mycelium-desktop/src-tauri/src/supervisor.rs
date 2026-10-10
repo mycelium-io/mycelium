@@ -173,6 +173,7 @@ fn command(settings: &Settings) -> Result<Command, String> {
     // The app's answer wins over config.toml for the hub it runs.
     if settings.mode == Mode::Hub {
         cmd.arg(if settings.share_usage { "--share-usage" } else { "--no-share-usage" });
+        cmd.arg(if settings.voice { "--voice" } else { "--no-voice" });
     }
     // The SLIM node's slimctl, pinned to the 2.1.x the hub's bindings speak.
     if let Some(slimctl) = paths::bundled("slimctl") {

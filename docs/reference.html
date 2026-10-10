@@ -205,6 +205,7 @@
           <a href="#config-rooms" class="nav-link sub">rooms</a>
           <a href="#config-slim" class="nav-link sub">slim</a>
           <a href="#config-engine" class="nav-link sub">engine</a>
+          <a href="#config-voice" class="nav-link sub">voice</a>
           <a href="#config-auth" class="nav-link sub">auth</a>
           <a href="#config-login" class="nav-link sub">login</a>
           <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
@@ -1186,6 +1187,15 @@
 
 <span class="comment"># Where registered engines run their drive (backend-only).</span>
 <span class="arg">runtime</span> = <span class="str">&quot;backend&quot;</span>
+
+<span class="comment"># The message box&#x27;s mic, transcribed on the hub.</span>
+<span class="cmd" id="config-voice">[voice]</span>
+
+<span class="comment"># Let people talk into the message box. The hub transcribes on its own CPU, with a speech model of about 150 MB on disk, in a separate process that uses about 500 MB of memory while anyone is talking and exits a few minutes after. Off, the mic isn&#x27;t offered and nothing is downloaded.</span>
+<span class="arg">enabled</span> = <span class="flag">false</span>
+
+<span class="comment"># Let the hub download the speech model when voice is on and the model isn&#x27;t there. Off, put the files in the hub&#x27;s data folder under models/voice yourself.</span>
+<span class="arg">download</span> = <span class="flag">true</span>
 
 <span class="comment"># HTTP-API JWT gate, off by default.</span>
 <span class="cmd" id="config-auth">[auth]</span>

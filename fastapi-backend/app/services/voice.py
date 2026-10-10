@@ -11,11 +11,17 @@ stretch of speech it closes is transcribed by Moonshine v2 and handed back as
 text for the composer's draft. Pauses only split speech into pieces; nothing
 here decides when to stop listening or to send.
 
-Both models run on the CPU through sherpa-onnx, like the search model runs
-through fastembed. They are files on disk at :func:`model_dir`: baked into the
-backend image, staged into the Mac app, or fetched once on first use from
-sherpa-onnx's release page. Audio is never stored: a session holds only the
-samples of the piece it is hearing, and forgets a mic left idle.
+Voice is off unless the hub's operator turns it on (``voice.enabled``), since it
+costs ~150 MB on disk and a ~500 MB worker while anyone talks. Off, nothing here
+loads or downloads anything. On, the models are fetched once into
+:func:`model_dir` (the data folder, so a rebuilt container keeps them), starting
+when the hub does. The sessions and the engine here run inside the voice
+worker (``voice_worker.py``), a process the hub starts when a mic opens and
+that exits once nobody is talking, because ONNX Runtime never gives a model's
+memory back to the process that loaded it. Both models run on the CPU through
+sherpa-onnx, like the search model runs through fastembed. Audio is never
+stored: a session holds only the samples of the piece it is hearing, and
+forgets a mic left idle.
 
 One limit shapes the cutting: sherpa-onnx 1.13.8 returns empty text for a
 Moonshine v2 piece much past six seconds (k2-fsa/sherpa-onnx#3975, fixed after
@@ -26,6 +32,7 @@ anything longer at its quietest point, so no piece reaches the model whole.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import logging
 import secrets
 import shutil
@@ -105,18 +112,14 @@ def _runtime() -> Any:
 def state() -> tuple[State, str]:
     """Whether voice works on this hub, and why not when it doesn't."""
     if not settings.VOICE_ENABLED:
-        return "unavailable", "voice is turned off on this hub"
-    try:
-        _runtime()
-    except VoiceUnavailable as exc:
-        return "unavailable", str(exc)
+        return "unavailable", "voice is off on this hub (voice.enabled)"
+    # Found rather than imported: the hub itself never loads it.
+    if importlib.util.find_spec("sherpa_onnx") is None:
+        return "unavailable", "this hub has no speech runtime (sherpa-onnx)"
     if _present(model_dir()):
         return "ready", ""
     if settings.VOICE_DOWNLOAD:
-        return (
-            "not_downloaded",
-            "the speech model downloads the first time someone turns the mic on",
-        )
+        return "not_downloaded", "the speech model is still downloading"
     return "unavailable", f"the speech model isn't at {model_dir()}"
 
 
@@ -256,63 +259,40 @@ class SherpaEngine:
 
 
 class VoiceWarming(RuntimeError):
-    """The engine is still loading (or its models downloading); send the chunk again."""
+    """The voice worker is still starting (or its models downloading); send the chunk again."""
 
 
-# A load that failed (a download cut off, a full disk) isn't tried again for
-# this long, so a mic held on doesn't restart a 150 MB download every chunk.
-LOAD_RETRY_S = 60.0
-
+# Set once in the voice worker, before it serves a chunk (``voice_worker.serve``).
 _engine: Engine | None = None
-_engine_lock = threading.Lock()
-_loader: threading.Thread | None = None
-_load_error = ""
-_retry_at = 0.0
 
 
-def _load() -> None:
-    global _engine, _load_error, _retry_at
-    try:
-        loaded = SherpaEngine(ensure_models())
-    except Exception as exc:  # anything that stops it is reported, not raised on a thread
-        logger.warning("voice: couldn't load the speech model: %s", exc)
-        with _engine_lock:
-            _load_error = (
-                str(exc)
-                if isinstance(exc, VoiceUnavailable)
-                else f"the speech model didn't load: {exc}"
-            )
-            _retry_at = time.monotonic() + LOAD_RETRY_S
-        return
-    with _engine_lock:
-        _engine = loaded
-        _load_error = ""
-    logger.info("voice: speech model loaded (%s)", MOONSHINE)
+def set_engine(eng: Engine | None) -> None:
+    global _engine
+    _engine = eng
 
 
 def engine() -> Engine:
-    """The hub's one engine, or :class:`VoiceWarming` while it loads.
+    """The loaded engine, or :class:`VoiceWarming` when there isn't one yet."""
+    if _engine is None:
+        raise VoiceWarming
+    return _engine
 
-    The first call starts loading it on a thread of its own, fetching the
-    models if they're missing. Nothing here waits on that, so a request never
-    holds one of the hub's worker threads through a download.
+
+def prefetch() -> None:
+    """Start fetching the models in the background, when voice is on and they're missing.
+
+    Called as the hub starts, so turning voice on downloads the model then,
+    rather than making the first person to press the mic wait for it.
     """
-    global _loader, _load_error
-    if _engine is not None:
-        return _engine
-    current, why = state()
-    if current == "unavailable":
-        raise VoiceUnavailable(why)
-    with _engine_lock:
-        if _engine is not None:
-            return _engine
-        if _load_error and time.monotonic() < _retry_at:
-            raise VoiceUnavailable(_load_error)
-        if _loader is None or not _loader.is_alive():
-            _load_error = ""
-            _loader = threading.Thread(target=_load, name="voice-load", daemon=True)
-            _loader.start()
-    raise VoiceWarming
+    if state()[0] == "not_downloaded":
+        threading.Thread(target=_prefetch, name="voice-fetch", daemon=True).start()
+
+
+def _prefetch() -> None:
+    try:
+        ensure_models()
+    except VoiceUnavailable as exc:
+        logger.warning("voice: %s", exc)
 
 
 # ── Sessions: one per open mic ───────────────────────────────────────────────
@@ -387,8 +367,8 @@ def feed(sid: str, audio: bytes, *, final: bool = False, caller: str | None = No
 
     ``final`` is the mic being turned off: whatever was being said is
     transcribed now rather than waiting for a pause, and the session ends.
-    Raises :class:`VoiceWarming` while the engine loads, before reading the
-    chunk, so the app can send the same audio again.
+    Raises :class:`VoiceWarming` before reading the chunk when there's no
+    engine yet, so the app can send the same audio again.
     """
     eng = engine()
     sess = _session(caller, sid, eng)
@@ -419,11 +399,7 @@ def feed(sid: str, audio: bytes, *, final: bool = False, caller: str | None = No
 
 
 def reset() -> None:
-    """Forget the loaded engine, any failed load, and every open mic (tests, or a model swap)."""
-    global _engine, _load_error, _retry_at
-    with _engine_lock:
-        _engine = None
-        _load_error = ""
-        _retry_at = 0.0
+    """Forget the engine and every open mic (tests)."""
+    set_engine(None)
     with _sessions_lock:
         _sessions.clear()

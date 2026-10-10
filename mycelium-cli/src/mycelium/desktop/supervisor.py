@@ -191,7 +191,7 @@ class Locator:
         )
 
     def models(self) -> Path:
-        """Where the hub's models are (search, and voice under ``voice/``): the app's own copy, else a cache it fills.
+        """Where the hub's embedding model is: the app's own copy, else a cache it fills.
 
         The container keeps it at ``/opt/fastembed``, which is no place on a Mac.
         """
@@ -305,6 +305,7 @@ class Supervisor:
         env: dict[str, str] | None = None,
         start_runner: bool = True,
         share_usage: bool | None = None,
+        voice: bool | None = None,
         look: Callable[[], list[Any]] | None = None,
     ) -> None:
         if mode == "client" and not hub_url:
@@ -320,6 +321,9 @@ class Supervisor:
         #: The Mac app's answer to "share usage stats", which wins over
         #: config.toml for the hub it starts. None leaves config.toml's.
         self.share_usage = share_usage
+        #: The Mac app's voice switch, which wins over config.toml's
+        #: ``voice.enabled`` for the hub it starts. None leaves config.toml's.
+        self.voice = voice
         #: How the hubs on this machine are found (``mycelium.hubs.find_hubs``).
         self.look = look
         #: Every hub seen at start, what deserves a look about them, and the
@@ -379,7 +383,6 @@ class Supervisor:
             "SLIM_NODE_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
             "MYCELIUM_SLIM_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
             "FASTEMBED_CACHE_PATH": str(loc.models()),
-            "VOICE_MODEL_DIR": str(loc.models() / "voice"),
             "MYCELIUM_HUB_MODE": "desktop",
             # Files read and written as UTF-8 on Windows too (the bundled
             # hub is built in this mode; a checkout's `uv run` needs telling).
@@ -389,6 +392,8 @@ class Supervisor:
             hub_env_vars["TELEMETRY_SEND_PRODUCT_ANALYTICS"] = (
                 "true" if self.share_usage else "false"
             )
+        if self.voice is not None:
+            hub_env_vars["VOICE_ENABLED"] = "true" if self.voice else "false"
         if pi := loc.pi():
             hub_env_vars["ALIGNER_PI_BINARY"] = pi
         ui_env = {

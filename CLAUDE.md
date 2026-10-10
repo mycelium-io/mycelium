@@ -658,8 +658,21 @@ is no litellm dependency.
   pdf.js, loaded on first use, never the browser's viewer); agents use
   `mycelium file upload|download`. Bytes go over HTTP, never SLIM, and the hub
   keeps them in plaintext like the rest of the room.
-- **Voice is transcribed on the hub, lands as a draft, and is toggled, never
-  ended by a pause.** The composer's mic (`components/voice/`) records through an
+- **Voice is opt-in, transcribed on the hub in a worker process, lands as a
+  draft, and is toggled, never ended by a pause.** It is off unless turned on
+  (`voice.enabled` in config.toml → `VOICE_ENABLED`; the Mac app's own switch,
+  passed as `desktop serve --voice/--no-voice`, wins for the hub it starts), and
+  off means no mic button, no download, no worker. The models are not baked
+  into the image or bundled in the app: an enabled hub fetches them into
+  `<data dir>/models/voice` at startup (`voice.prefetch`), checked against a
+  pinned SHA-256. Transcription runs in `app/services/voice_worker.py`, a spawned
+  process the hub starts on the first chunk and that exits after `IDLE_EXIT_S`
+  with no mic open, because ONNX Runtime never returns a model's memory to the
+  process that loaded it (an in-process unload freed nothing, and reloading grew
+  the process further). The hub never imports sherpa-onnx; `hub_entry.py` calls
+  `multiprocessing.freeze_support()` so the PyInstaller build can spawn it. A
+  chunk that arrives while the worker starts gets `ready: false`, unread, and the
+  app holds its audio and sends only an empty probe until it's ready. The composer's mic (`components/voice/`) records through an
   AudioWorklet, averages it to 16 kHz 16-bit PCM (`lib/voice.ts`) and POSTs a
   chunk every 300 ms, one request in flight, to `/api/voice/sessions/{id}`
   (`routes/voice.py`); the id is the app's own per open mic. Plain HTTP, not a
@@ -672,14 +685,9 @@ is no litellm dependency.
   text for a Moonshine v2 piece much past ~6 s (fixed upstream, unreleased), so
   the VAD caps pieces at 5.5 s and `split_long` cuts anything longer at its
   quietest point. `sherpa-onnx-core` (the native libraries) is listed beside
-  `sherpa-onnx` because uv's lock drops it. The models are files at
-  `VOICE_MODEL_DIR`: baked into the backend image at `/opt/voice`, staged into
-  the Mac app at `models/voice` (the supervisor points the hub there), or
-  fetched once on first use, and every fetch is checked against a pinned
-  SHA-256. The first mic starts the load on a thread of its own; no request
-  waits on it (the hub's `to_thread` pool is shared), chunks meanwhile get
-  `ready: false` unread and the app sends them again, and a failed load waits
-  `LOAD_RETRY_S` before another try. Sessions are keyed by (caller, id), with
+  `sherpa-onnx` because uv's lock drops it. No request waits on the worker
+  starting (the hub's `to_thread` pool is shared), and a failed start waits
+  `START_RETRY_S` before another try. Sessions are keyed by (caller, id), with
   a per-caller cap when sign-in is on. Audio is never stored. The Mac app needs
   `NSMicrophoneUsageDescription` (`src-tauri/Info.plist`) and the
   `device.audio-input` entitlement on the app itself (`app.entitlements`), and

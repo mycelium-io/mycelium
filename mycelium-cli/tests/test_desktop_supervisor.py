@@ -351,6 +351,22 @@ def test_the_apps_answer_on_usage_stats_reaches_the_hub(share: bool | None, sent
     assert hub_component.env.get("TELEMETRY_SEND_PRODUCT_ANALYTICS") == sent
 
 
+@pytest.mark.parametrize(("voice", "sent"), [(True, "true"), (False, "false"), (None, None)])
+def test_the_apps_voice_switch_reaches_the_hub(voice: bool | None, sent: str | None):
+    sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None), voice=voice)
+    [hub_component] = [c for c in sup._components() if c.name == "hub"]
+    assert hub_component.env.get("VOICE_ENABLED") == sent
+
+
+def test_voice_is_off_in_config_unless_turned_on():
+    from mycelium.config import MyceliumConfig
+
+    assert sv.hub_env(MyceliumConfig())["VOICE_ENABLED"] == "false"
+    config = MyceliumConfig()
+    config.voice.enabled = True
+    assert sv.hub_env(config)["VOICE_ENABLED"] == "true"
+
+
 def test_the_hubs_settings_come_from_config():
     from mycelium.config import MyceliumConfig
 

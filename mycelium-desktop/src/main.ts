@@ -17,6 +17,7 @@ interface Settings {
   hubUrl: string | null;
   roots: string[];
   shareUsage?: boolean;
+  voice?: boolean;
 }
 
 interface Found {
@@ -335,6 +336,8 @@ interface Choices {
   hubUrl: string;
   root: string;
   shareUsage: boolean;
+  /** Whether this Mac's hub transcribes the message box's mic. Off unless chosen. */
+  voice: boolean;
   /** Whether to install herdr's integrations: asked on first run only, so
    *  absent from Settings, which leaves the answer given then alone. */
   restore?: boolean;
@@ -346,6 +349,7 @@ function choicesFrom(snap: Snapshot): Choices {
     hubUrl: snap.settings?.hubUrl ?? "",
     root: tilde(snap.settings?.roots[0] ?? snap.home, snap.home),
     shareUsage: snap.settings?.shareUsage ?? false,
+    voice: snap.settings?.voice ?? false,
   };
 }
 
@@ -355,6 +359,7 @@ function settingsOf(c: Choices): Settings {
     hubUrl: c.mode === "client" ? c.hubUrl.trim() : null,
     roots: [c.root.trim()],
     shareUsage: c.mode === "hub" && c.shareUsage,
+    voice: c.mode === "hub" && c.voice,
   };
 }
 
@@ -696,6 +701,32 @@ function privacyPiece(c: Choices): HTMLElement {
   );
 }
 
+/** Talking into the message box. Off unless chosen, and saying what it costs,
+ *  since turning it on downloads a speech model and the hub holds it in memory
+ *  while anyone is talking. */
+function voicePiece(c: Choices): HTMLElement {
+  return el(
+    "div",
+    { class: "share" },
+    el(
+      "label",
+      { class: "share-label", for: "voice" },
+      checkbox("voice", c.voice, (on) => (c.voice = on)),
+      "Talk instead of type",
+    ),
+    el(
+      "p",
+      { class: "hint" },
+      "A mic in every message box: what you say is typed into it, and nothing sends until you do. ⌘⌥V turns it on and off.",
+    ),
+    el(
+      "p",
+      { class: "hint" },
+      "It runs on this Mac. Turning it on downloads a speech model of about 150 MB. While you're talking it uses about 500 MB of memory, which is given back a few minutes after you stop. Your audio isn't saved or sent anywhere.",
+    ),
+  );
+}
+
 /**
  * Ready-made rooms to explore, each added from a file the person was given.
  * The wizard offers them as an optional step; Settings lists what's here and
@@ -882,7 +913,7 @@ function setsUpPiece(c: Choices): HTMLElement {
 
 // ── first run: a short wizard ───────────────────────────────────────────────
 
-type Step = "place" | "model" | "agents" | "experiences" | "ready";
+type Step = "place" | "model" | "agents" | "voice" | "experiences" | "ready";
 
 async function wizard() {
   const snap = await snapshot();
@@ -899,9 +930,9 @@ async function wizard() {
   // Nothing to restart yet: the hub that starts at the end reads what's added.
   const experiences = experiencesPiece("wizard", () => {});
 
-  // An experience runs on rooms on this Mac, so a team's hub skips it.
+  // Voice and experiences run on this Mac's own hub, so a team's hub skips them.
   const steps = (): Step[] =>
-    c.mode === "hub" ? ["place", "model", "agents", "experiences", "ready"] : ["place", "agents", "ready"];
+    c.mode === "hub" ? ["place", "model", "agents", "voice", "experiences", "ready"] : ["place", "agents", "ready"];
 
   const show = () => {
     const order = steps();
@@ -928,6 +959,10 @@ async function wizard() {
       title = `Agents on this ${MACHINE}`;
       lede = "Mycelium can start these for you and bring them into a room.";
       body = agents;
+    } else if (at === "voice") {
+      title = "Talk instead of type";
+      lede = "Optional, and off unless you turn it on here or later in Settings.";
+      body = voicePiece(c);
     } else if (at === "experiences") {
       title = "Add an experience";
       lede = "Ready-made rooms to explore. Optional, and you can add them later.";
@@ -939,6 +974,7 @@ async function wizard() {
       ];
       if (c.mode === "hub") summary.push(["Model", skippedModel ? `Not set yet. Add one in Settings (${SETTINGS_KEYS}).` : model.summary()]);
       summary.push(["Agents work in", c.root]);
+      if (c.mode === "hub") summary.push(["Voice", c.voice ? "On. The speech model downloads when Mycelium starts." : "Off"]);
       const added = c.mode === "hub" ? experiences.added() : [];
       if (added.length > 0) summary.push(["Added", added.map((x) => x.title).join(", ")]);
       body = el(
@@ -1014,7 +1050,7 @@ async function wizard() {
 
 // ── Settings: the same pieces, one section at a time ─────────────────────────
 
-type Section = "mac" | "model" | "agents" | "experiences" | "privacy";
+type Section = "mac" | "model" | "agents" | "voice" | "experiences" | "privacy";
 
 async function settingsWindow(open: Section = "mac") {
   const snap = await snapshot();
@@ -1025,6 +1061,7 @@ async function settingsWindow(open: Section = "mac") {
     ["mac", `This ${MACHINE}`],
     ["model", "Model"],
     ["agents", "Agents"],
+    ["voice", "Voice"],
     ["experiences", "Experiences"],
     ["privacy", "Privacy"],
   ];
@@ -1067,6 +1104,20 @@ async function settingsWindow(open: Section = "mac") {
       const model = await modelPiece("settings");
       body = el("div", { class: "piece" }, el("p", { class: "lede" }, "The model Mycelium's built-in agents use. Agents like Claude Code use their own accounts."), model.el);
       save = () => startWith(c, model.value());
+    } else if (at === "voice" && c.mode === "client") {
+      // The app gives the mic only to the hub it runs itself.
+      body = el(
+        "div",
+        { class: "piece" },
+        el(
+          "p",
+          { class: "lede" },
+          `Voice works with a hub on this ${MACHINE}. Connected to a team's hub, the app doesn't offer the mic; use that hub in a browser to talk to it.`,
+        ),
+      );
+      nothingToSave = true;
+    } else if (at === "voice") {
+      body = el("div", { class: "piece" }, voicePiece(c));
     } else if (at === "agents") {
       body = agentsPiece(c, snap);
     } else if (at === "experiences") {

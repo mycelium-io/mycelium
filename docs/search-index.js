@@ -1202,7 +1202,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#voice",
     "t": "Voice",
     "s": "Work",
-    "x": "You can talk instead of type. Turn on the mic in any message box, in the room or in a task's thread, and what you say is typed into the box as you say it. The mic stays on until you turn it off, so you can think out loud, pause, and keep going. Nothing is sent until you send it: what you said is a draft you can read and fix first.",
+    "x": "You can talk instead of type. Turn on the mic in any message box, in the room or in a task's thread, and what you say is typed into the box as you say it. The mic stays on until you turn it off, so you can think out loud, pause, and keep going. Nothing is sent until you send it: what you said is a draft you can read and fix first. Voice is off unless you turn it on, because the speech model takes space and memory: ab",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#voice-turning-it-on",
+    "t": "Turning it on",
+    "s": "Work › Voice",
+    "x": "In the Mac app, turn on Talk instead of type in the first-run screens or in Settings, under Voice. Mycelium restarts and downloads the speech model. On a Docker hub, or any hub you run with the CLI: mycelium config set voice.enabled true mycelium config apply mycelium up The hub downloads the speech model when it starts, into its data folder, so it's downloaded once and kept across restarts. The download is checked a",
     "p": "Guides"
   },
   {

@@ -21,7 +21,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 
 from app.schemas import VoiceHeard, VoiceStatus
-from app.services import actor, voice
+from app.services import actor, voice, voice_worker
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 
@@ -77,10 +77,10 @@ async def hear(
         )
     try:
         heard = await asyncio.to_thread(
-            voice.feed, session_id, audio, final=final, caller=_caller(request)
+            voice_worker.feed, session_id, audio, final=final, caller=_caller(request)
         )
     except voice.VoiceWarming:
-        # The model is loading: this chunk wasn't read, so the app sends it again.
+        # The worker is starting: this chunk wasn't read, so the app sends it again.
         return VoiceHeard(ready=False)
     except voice.VoiceUnavailable as exc:
         raise HTTPException(status_code=503, detail=f"Voice isn't available: {exc}") from exc
@@ -90,7 +90,7 @@ async def hear(
 @router.delete("/sessions/{session_id}", status_code=204)
 async def close(session_id: SessionId, request: Request) -> None:
     """Close a mic, dropping whatever it was in the middle of hearing."""
-    voice.end(session_id, _caller(request))
+    await asyncio.to_thread(voice_worker.end, session_id, _caller(request))
 
 
 def _caller(request: Request) -> str | None:
