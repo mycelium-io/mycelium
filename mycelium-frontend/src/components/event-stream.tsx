@@ -1075,7 +1075,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     // A live message must not pull the view off the hit the reader stepped to,
     // any more than it may off a message they arrived at from search.
     if (highlight || activeId || !atBottomRef.current) return;
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    // At once, like a send: an animated scroll can land short of a tail that
+    // grows while it runs, and then the feed stops following.
+    const el = scrollRef.current;
+    el?.scrollTo({ top: el.scrollHeight, behavior: "instant" });
   }, [visible, highlight, activeId]);
 
   useEffect(() => {
@@ -1084,15 +1087,38 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   }, [highlight, historyLoaded, visible]);
 
   // What you just sent is where you are looking, so the feed goes back to its
-  // tail and follows it from there.
+  // tail and follows it from there. At once, before paint: animated, the scroll
+  // aims at the height it measured, the feed grows under it (the sent row
+  // swapping for the stored one, the composer shrinking back), it lands short,
+  // and the scroll handler reads that as the reader leaving the tail.
   const newestPending = pending[pending.length - 1]?.id ?? null;
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!newestPending || !el) return;
     atBottomRef.current = true;
     setAtBottom(true);
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
   }, [newestPending]);
+
+  // On the tail, stay on it through anything that changes the feed's size
+  // rather than its rows: "responding" appearing over the composer shortens
+  // the viewport, an image loading lengthens a message. Neither scrolls, so
+  // without this the newest line slides out of view under the reader.
+  const holdingRef = useRef(false);
+  useEffect(() => {
+    holdingRef.current = Boolean(highlight || activeId);
+  }, [highlight, activeId]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const stick = () => {
+      if (atBottomRef.current && !holdingRef.current) el.scrollTop = el.scrollHeight;
+    };
+    const observer = new ResizeObserver(stick);
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, [historyLoaded]);
 
   return (
     <div className="flex flex-col h-full">
