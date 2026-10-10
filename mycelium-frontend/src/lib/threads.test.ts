@@ -129,7 +129,10 @@ describe("reading a notice", () => {
     });
     expect(noticeLabel("upstream", null, "ci_failed")).toBe("CI went red");
     expect(noticeLabel("upstream", null, "merged")).toBe("Merged");
-    // Its merge and CI breaking are the room's news; the rest stays with the task.
+    expect(noticeLabel("upstream", null, "opened")).toBe("Pull request opened");
+    // Its opening, its merge and CI breaking are the room's news; the rest
+    // stays with the task.
+    expect(upstreamInChat("opened")).toBe(true);
     expect(upstreamInChat("merged")).toBe(true);
     expect(upstreamInChat("ci_failed")).toBe(true);
     expect(upstreamInChat("review_requested")).toBe(false);

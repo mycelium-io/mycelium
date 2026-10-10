@@ -21,7 +21,7 @@ import pytest
 from app.services import message_format, wake_digest
 from app.services.persister import TranscriptRecord
 from app.services.status import watch
-from app.services.status.providers.github import changes
+from app.services.status.providers.github import changes, first
 from app.services.status.runtime import StatusRuntime
 from app.services.status.types import (
     FetchOutcome,
@@ -72,9 +72,24 @@ def test_a_reading_from_before_requested_was_kept_is_not_a_request():
     assert changes({"pr": "OPEN", "ci": "PENDING"}, _pr(requested=["ana"])) == []
 
 
+def _created(ago: timedelta) -> str:
+    return (NOW - ago).isoformat()
+
+
+def test_only_a_pull_request_just_opened_is_news_the_first_time():
+    just = _created(timedelta(minutes=5))
+    assert first(_pr(created=just), NOW) == [UpstreamChange("opened")]
+    # Opened a day ago and linked now is a late link, not an opening.
+    assert first(_pr(created=_created(timedelta(days=1))), NOW) == []
+    assert first(_pr(pr="MERGED", created=just), NOW) == []
+    assert first(_pr(pr="CLOSED", created=just), NOW) == []
+    # A reading from before `created` was kept can't tell, so it says nothing.
+    assert first(_pr(), NOW) == []
+
+
 def test_every_change_is_one_the_contract_knows():
-    assert {"review_requested", "approved", "changes_requested", "ci_failed", "ci_passed",
-            "merged", "closed"} == set(message_format.UPSTREAM_CHANGES)  # fmt: skip
+    assert {"opened", "review_requested", "approved", "changes_requested", "ci_failed",
+            "ci_passed", "merged", "closed"} == set(message_format.UPSTREAM_CHANGES)  # fmt: skip
     assert set(wake_digest.UPSTREAM_LINES) == set(message_format.UPSTREAM_CHANGES)
 
 
@@ -175,6 +190,70 @@ def test_the_first_answer_is_a_baseline_then_a_change_is_told_on_the_open_row(sh
 
     # The same answer again is not news.
     assert _sweep(pulls) == []
+
+
+class OpeningPulls(Pulls):
+    """The toy provider, saying what a first reading is worth, as GitHub does."""
+
+    def first(self, after: dict[str, Any], now: datetime) -> list[UpstreamChange]:
+        return first(after, now)
+
+
+def _swept_before() -> None:
+    """The room has been swept already, so a ref new to it can be news."""
+    watch._save_seen(ROOM, {})
+
+
+def test_a_pull_request_just_opened_and_seen_first_is_told_once(shop):
+    _swept_before()
+    pulls = OpeningPulls()
+    pulls.answers["PR-1"] = _pr(created=_created(timedelta(minutes=5)))
+    assert _sweep(pulls) == [(ROOM, "work/apple-pay", "opened")]
+    (notice,) = shop
+    assert notice["change"] == "opened"
+    assert notice["title"] == "Turn on Apple Pay"
+    # Seen once, it is a baseline like any other.
+    assert _sweep(pulls) == []
+
+
+def test_a_rooms_first_sweep_tells_nothing_however_new(shop):
+    # A hub just given its token: every open pull request is a first sighting,
+    # and none of them was just opened as far as the room is concerned.
+    pulls = OpeningPulls()
+    pulls.answers["PR-1"] = _pr(created=_created(timedelta(minutes=5)))
+    assert _sweep(pulls) == []
+    assert shop == []
+
+
+def test_a_room_linking_nothing_yet_still_counts_as_swept(shop):
+    from app.services.filesystem import get_room_dir
+
+    for name in ("old-checkout", "apple-pay"):
+        (get_room_dir(ROOM) / "work" / f"{name}.md").unlink()
+    pulls = OpeningPulls()
+    assert _sweep(pulls) == []
+    # The first pull request linked after that is news, not a first sweep.
+    from app.services.filesystem import write_memory_file
+
+    write_memory_file(get_room_dir(ROOM), "work/refunds", "# Refunds\n\nPR-4", created_by="hay")
+    pulls.answers["PR-4"] = _pr(created=_created(timedelta(minutes=2)))
+    assert _sweep(pulls) == [(ROOM, "work/refunds", "opened")]
+
+
+def test_a_pull_request_opened_a_day_before_it_was_linked_says_nothing(shop):
+    _swept_before()
+    pulls = OpeningPulls()
+    pulls.answers["PR-1"] = _pr(created=_created(timedelta(days=1)))
+    assert _sweep(pulls) == []
+    assert shop == []
+
+
+def test_a_pull_request_already_merged_when_first_seen_says_nothing(shop):
+    _swept_before()
+    pulls = OpeningPulls()
+    pulls.answers["PR-1"] = _pr(pr="MERGED", ci="SUCCESS", created=_created(timedelta(minutes=5)))
+    assert _sweep(pulls) == []
+    assert shop == []
 
 
 def test_the_last_answer_survives_a_restart(shop):

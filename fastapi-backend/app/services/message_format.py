@@ -120,6 +120,7 @@ NOTICE_SUBKINDS = frozenset(
 #: What an ``upstream`` notice can say happened, frozen beside the subkinds.
 UPSTREAM_CHANGES = frozenset(
     {
+        "opened",
         "review_requested",
         "approved",
         "changes_requested",

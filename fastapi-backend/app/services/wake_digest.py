@@ -206,6 +206,7 @@ def _names(titles: list[str]) -> str:
 
 #: How each ``upstream`` change reads, around the row's quoted title.
 UPSTREAM_LINES = {
+    "opened": "pull request opened on {title}",
     "review_requested": "review requested on {title}",
     "approved": "{title} approved",
     "changes_requested": "changes requested on {title}",
