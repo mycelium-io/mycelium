@@ -5,8 +5,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ChevronLeft, Eye, FileQuestion, Pencil, Sparkles } from "lucide-react";
-import { IntentDialog } from "@/components/intent-dialog";
+import { ChevronLeft, Eye, FileQuestion, Pencil } from "lucide-react";
 import { fetchMemory, fetchMemoryExpanded, type Memory } from "@/lib/api";
 import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { isLiveEpisode } from "@/lib/threads";
@@ -62,7 +61,6 @@ export function MemoryView({
       if (key === memoryKey && takeMemoryEdit(key)) setEditing(true);
     });
   }, [memoryKey]);
-  const [asking, setAsking] = useState(false);
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
   const { setDirty, guard, dialog: unsavedDialog } = useUnsavedGuard();
@@ -132,32 +130,21 @@ export function MemoryView({
   // room asks before leaving; otherwise (the full page) it asks here.
   const open = onGuard ? onOpenMemory : (key: string) => guard(() => onOpenMemory(key));
 
-  // At the end of the memory's header, the same quiet buttons as its view
-  // toggle. A task (a row with a thread) also takes the room's verbs: get it
-  // reviewed, split it, settle it.
+  // At the end of the memory's header, the same quiet button as its view
+  // toggle.
   const actions = (
-    <>
-      {hasDiscussion && (
-        <Tooltip content="Put agents to work on this task">
-          <Button variant="ghost" size="xs" className="gap-1" aria-label="Ask agents" onClick={() => setAsking(true)}>
-            <Sparkles className="size-3.5" />
-            <span className="hidden @2xl:inline">Ask agents</span>
-          </Button>
-        </Tooltip>
-      )}
-      <Tooltip content={editing ? "Back to the rendered memory" : "Edit this memory"}>
-        <Button
-          variant="ghost"
-          size="xs"
-          className="gap-1"
-          aria-label={editing ? "View" : "Edit"}
-          onClick={() => (editing ? guard(() => setEditing(false)) : setEditing(true))}
-        >
-          {editing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
-          <span className="hidden @2xl:inline">{editing ? "View" : "Edit"}</span>
-        </Button>
-      </Tooltip>
-    </>
+    <Tooltip content={editing ? "Back to the rendered memory" : "Edit this memory"}>
+      <Button
+        variant="ghost"
+        size="xs"
+        className="gap-1"
+        aria-label={editing ? "View" : "Edit"}
+        onClick={() => (editing ? guard(() => setEditing(false)) : setEditing(true))}
+      >
+        {editing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
+        <span className="hidden @2xl:inline">{editing ? "View" : "Edit"}</span>
+      </Button>
+    </Tooltip>
   );
 
   return (
@@ -215,9 +202,6 @@ export function MemoryView({
         </div>
       </div>
       {unsavedDialog}
-      {asking && memory.episode && (
-        <IntentDialog roomName={roomName} episode={memory.episode} onClose={() => setAsking(false)} />
-      )}
     </div>
   );
 }
