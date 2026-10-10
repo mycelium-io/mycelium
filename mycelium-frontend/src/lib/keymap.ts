@@ -110,6 +110,15 @@ export const KEYMAP: Binding[] = [
   { id: "rail.toggle", keys: ["\\"], label: "Collapse / expand the rail", group: "Inspector", scope: "room" },
 
   { id: "focus.chat", keys: ["i", "Enter"], label: "Write a message", group: "Focus", scope: "room" },
+  // A ⌘/Ctrl chord, because it has to work while typing in the box, where
+  // ⌥ chords are characters. Plain ⌘ letters belong to the browser.
+  {
+    id: "composer.mic",
+    keys: ["mod+alt+v"],
+    label: "Turn the mic on or off",
+    group: "Focus",
+    scope: "room",
+  },
   {
     id: "mode.command",
     keys: ["Escape"],

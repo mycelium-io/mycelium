@@ -91,6 +91,18 @@ class Settings(BaseSettings):
     # The largest file a room takes as an upload (routes/uploads.py), in bytes.
     UPLOADS_MAX_BYTES: int = 25 * 1024 * 1024
 
+    # Voice (services/voice.py): speech from the app's mic, transcribed here by
+    # Moonshine v2 with Silero VAD through sherpa-onnx. Off unless the operator
+    # turns it on (`voice.enabled` in config.toml; the Mac app's own switch),
+    # since it costs ~150 MB on disk and a ~500 MB worker while anyone talks. The
+    # models are files in VOICE_MODEL_DIR (empty means <data dir>/models/voice),
+    # fetched once when VOICE_DOWNLOAD allows. VOICE_THREADS is the CPU threads
+    # one decode may use.
+    VOICE_ENABLED: bool = False
+    VOICE_MODEL_DIR: str = ""
+    VOICE_DOWNLOAD: bool = True
+    VOICE_THREADS: int = 2
+
     # Metrics collector (for proxying /api/observability/collector and /traces)
     COLLECTOR_URL: str = "http://mycelium-collector:4318"
 

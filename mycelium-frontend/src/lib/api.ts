@@ -751,6 +751,44 @@ export async function fetchUploadText(upload: Upload): Promise<string> {
   return res.text();
 }
 
+// ── Voice ────────────────────────────────────────────────────────────────────
+// The composer's mic: audio goes to the hub in small chunks while the mic is
+// on, and comes back as text for the draft. See lib/voice.ts.
+
+export interface VoiceStatus {
+  /** `not_downloaded`: the hub fetches its model the first time a mic is on. */
+  state: "ready" | "not_downloaded" | "unavailable";
+  detail: string;
+  language: string;
+  sample_rate: number;
+  model: string;
+}
+
+export interface VoiceHeard {
+  texts: string[];
+  speaking: boolean;
+  /** False while the hub loads its model: the chunk wasn't read, so send it again. */
+  ready?: boolean;
+}
+
+export async function fetchVoiceStatus(): Promise<VoiceStatus | null> {
+  return apiFetch<VoiceStatus | null>("/api/voice", { cache: "no-store", fallback: null });
+}
+
+/** One chunk of an open mic's audio, as 16-bit PCM; `final` turns it off. */
+export async function sendVoiceChunk(sessionId: string, pcm: Int16Array, final = false): Promise<VoiceHeard> {
+  const query = final ? "?final=true" : "";
+  return apiFetch<VoiceHeard>(`/api/voice/sessions/${sessionId}${query}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength) as ArrayBuffer,
+  });
+}
+
+export async function closeVoiceSession(sessionId: string): Promise<void> {
+  await apiFetch(`/api/voice/sessions/${sessionId}`, { method: "DELETE", fallback: undefined });
+}
+
 /** A flow the room's conductor can run: `@conductor <name> @a @b: …`. */
 export interface Protocol {
   name: string;

@@ -58,6 +58,7 @@ from app.routes.swarms import router as swarms_router
 from app.routes.tasks import router as tasks_router
 from app.routes.uploads import router as uploads_router
 from app.routes.users import router as users_router
+from app.routes.voice import router as voice_router
 from app.services.auth import auth_gate
 from app.services.filesystem import UnsafePathError
 
@@ -143,6 +144,12 @@ async def lifespan(app: FastAPI):
     from app.services import schedules as _schedules
 
     _schedules.start_sweep()
+
+    # Voice on and its model missing: fetch it now, in the background, rather
+    # than when the first person turns on a mic. Off, this does nothing.
+    from app.services import voice as _voice
+
+    _voice.prefetch()
 
     # Pre-load embedding model so first request isn't slow
     from app.services.embedding import warmup as warmup_embeddings
@@ -291,6 +298,9 @@ async def lifespan(app: FastAPI):
     stop_watcher()
     stop_event_sweep()
     stop_lease_sweep()
+    from app.services import voice_worker
+
+    voice_worker.stop()
     _schedules.stop_sweep()
 
     # Flush and shut down the OTel SDK so spans are not lost on a clean restart.
@@ -398,6 +408,7 @@ app.include_router(search_router, prefix="/api")
 app.include_router(schedules_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
 app.include_router(uploads_router, prefix="/api")
+app.include_router(voice_router, prefix="/api")
 app.include_router(patterns_router, prefix="/api")
 app.include_router(protocols_router, prefix="/api")
 app.include_router(status_router, prefix="/api")

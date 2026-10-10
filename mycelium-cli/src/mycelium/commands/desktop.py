@@ -92,6 +92,11 @@ def serve(
         "--share-usage/--no-share-usage",
         help="Send the hub's anonymous usage stats (default: config.toml's telemetry setting)",
     ),
+    voice: bool | None = typer.Option(
+        None,
+        "--voice/--no-voice",
+        help="Let the hub transcribe the mic (default: config.toml's voice.enabled)",
+    ),
 ) -> None:
     """Run Mycelium here and keep it running until stopped.
 
@@ -132,7 +137,12 @@ def serve(
 
     roots = [p.expanduser().resolve() for p in (root or [Path.home()])]
     sup = Supervisor(
-        cast("Mode", mode), hub_url=hub_url, roots=roots, emit=emit, share_usage=share_usage
+        cast("Mode", mode),
+        hub_url=hub_url,
+        roots=roots,
+        emit=emit,
+        share_usage=share_usage,
+        voice=voice,
     )
 
     def _stop(*_: object) -> None:

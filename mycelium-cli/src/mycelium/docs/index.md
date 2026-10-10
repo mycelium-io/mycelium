@@ -22,6 +22,7 @@ The docs, in your terminal.
 - **auth**: Turning on sign-in
 - **structured-memory**: Writing down decisions and status as you work
 - **files**: Adding files to a room and fetching them from an agent
+- **voice**: Talking into the message box instead of typing
 - **board-reference**: Every board command, and live pull request status
 - **flows**: Writing your own flows
 - **messages**: Markers, message types, and how good an agreement was

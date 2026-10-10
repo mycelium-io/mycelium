@@ -38,6 +38,11 @@ pub struct Settings {
     /// where the hub is someone else's.
     #[serde(default)]
     pub share_usage: bool,
+    /// Whether a hub on this Mac transcribes the message box's mic. Off unless
+    /// turned on in first run or Settings: the model costs ~150 MB on disk and
+    /// ~500 MB of memory while anyone is talking. Meaningless in client mode.
+    #[serde(default)]
+    pub voice: bool,
 }
 
 impl Settings {
@@ -115,6 +120,7 @@ mod tests {
             hub_url: Some("hub".into()),
             roots: vec![],
             share_usage: false,
+            voice: false,
         };
         assert!(bad.validate().is_err());
         let ok = Settings {
@@ -122,6 +128,7 @@ mod tests {
             hub_url: Some(" https://hub.example.com/ ".into()),
             roots: vec!["~/code".into()],
             share_usage: false,
+            voice: false,
         }
         .validate()
         .unwrap();
@@ -136,6 +143,7 @@ mod tests {
             hub_url: Some("x".into()),
             roots: vec![" ".into()],
             share_usage: true,
+            voice: true,
         }
         .validate()
         .unwrap();
@@ -149,5 +157,12 @@ mod tests {
         assert!(!old.share_usage);
         let saved = serde_json::to_string(&old).unwrap();
         assert!(saved.contains("\"shareUsage\":false"));
+    }
+
+    #[test]
+    fn settings_saved_before_voice_existed_read_as_voice_off() {
+        let old: Settings = serde_json::from_str(r#"{"mode":"hub","roots":["/tmp"]}"#).unwrap();
+        assert!(!old.voice);
+        assert!(serde_json::to_string(&old).unwrap().contains("\"voice\":false"));
     }
 }

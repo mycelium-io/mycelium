@@ -5,6 +5,8 @@
 
 import type { ReactNode } from "react";
 import { useSyncExternalStore } from "react";
+import useSWR from "swr";
+import { fetchVoiceStatus } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { hubSummary, StatusDot, TONE_COLOR } from "@/components/status-items";
 import { useHubLabel } from "@/components/title-bar";
@@ -45,6 +47,26 @@ function Mono({ children }: { children: ReactNode }) {
     <span className="block truncate font-mono text-micro" title={typeof children === "string" ? children : undefined}>
       {children}
     </span>
+  );
+}
+
+/** Whether the hub transcribes the message box's mic, and why not when it doesn't. */
+function VoiceRow() {
+  const { data: voice } = useSWR("voice-status", fetchVoiceStatus, { revalidateOnFocus: false });
+  if (!voice) return null;
+  const [state, why] =
+    voice.state === "ready"
+      ? ["on", "English, transcribed on the hub"]
+      : voice.state === "not_downloaded"
+        ? ["on", voice.detail || "the speech model is downloading"]
+        : voice.detail.includes("voice.enabled")
+          ? ["off", "turn it on with voice.enabled"]
+          : ["unavailable", voice.detail];
+  return (
+    <Row label="Voice">
+      {state}
+      <span className="text-muted-foreground"> · {why}</span>
+    </Row>
   );
 }
 
@@ -100,6 +122,7 @@ export function HubSettingsScreen() {
               {health.coordination?.channels_live != null && (
                 <Row label="Live channels">{health.coordination.channels_live}</Row>
               )}
+              <VoiceRow />
             </Section>
 
             <Section title="Storage">

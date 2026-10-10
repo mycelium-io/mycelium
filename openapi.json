@@ -4940,6 +4940,134 @@
         }
       }
     },
+    "/api/voice": {
+      "get": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "Voice Status",
+        "description": "Whether a mic can be turned on against this hub.",
+        "operationId": "voice_status_api_voice_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/voice/sessions/{session_id}": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "Hear",
+        "description": "Take a chunk of audio; return the text of any speech it finished.",
+        "operationId": "hear_api_voice_sessions__session_id__post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{16,64}$",
+              "description": "The app's id for one open mic",
+              "title": "Session Id"
+            },
+            "description": "The app's id for one open mic"
+          },
+          {
+            "name": "final",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "The mic is being turned off",
+              "default": false,
+              "title": "Final"
+            },
+            "description": "The mic is being turned off"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceHeard"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "Close",
+        "description": "Close a mic, dropping whatever it was in the middle of hearing.",
+        "operationId": "close_api_voice_sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{16,64}$",
+              "description": "The app's id for one open mic",
+              "title": "Session Id"
+            },
+            "description": "The app's id for one open mic"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/patterns": {
       "get": {
         "tags": [
@@ -11943,6 +12071,77 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VoiceHeard": {
+        "properties": {
+          "texts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Texts",
+            "description": "Each piece of speech the chunk ended, in order"
+          },
+          "speaking": {
+            "type": "boolean",
+            "title": "Speaking",
+            "description": "Whether speech is still under way",
+            "default": false
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "description": "False while the hub loads (or downloads) its speech model: the chunk wasn't read, so send the same audio again",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "VoiceHeard",
+        "description": "What one chunk of a mic's audio finished: text for the draft, if any."
+      },
+      "VoiceStatus": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "not_downloaded",
+              "unavailable"
+            ],
+            "title": "State",
+            "description": "`ready`: the model is loaded or on disk. `not_downloaded`: it will be fetched the first time a mic is turned on. `unavailable`: it can't run here."
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Why, when it isn't ready",
+            "default": ""
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "The language it transcribes",
+            "default": "en"
+          },
+          "sample_rate": {
+            "type": "integer",
+            "title": "Sample Rate",
+            "description": "The rate audio is sent at, in Hz",
+            "default": 16000
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "The speech model's name",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "VoiceStatus",
+        "description": "Whether this hub can transcribe a mic, and what it hears."
       },
       "WriteBody": {
         "properties": {

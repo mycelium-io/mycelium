@@ -1199,6 +1199,34 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#voice",
+    "t": "Voice",
+    "s": "Work",
+    "x": "You can talk instead of type. Turn on the mic in any message box, in the room or in a task's thread, and what you say is typed into the box as you say it. The mic stays on until you turn it off, so you can think out loud, pause, and keep going. Nothing is sent until you send it: what you said is a draft you can read and fix first. Voice is off unless you turn it on, because the speech model takes space and memory: ab",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#voice-turning-it-on",
+    "t": "Turning it on",
+    "s": "Work › Voice",
+    "x": "In the Mac app, turn on Talk instead of type in the first-run screens or in Settings, under Voice. Mycelium restarts and downloads the speech model. On a Docker hub, or any hub you run with the CLI: mycelium config set voice.enabled true mycelium config apply mycelium up The hub downloads the speech model when it starts, into its data folder, so it's downloaded once and kept across restarts. The download is checked a",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#voice-using-it",
+    "t": "Using it",
+    "s": "Work › Voice",
+    "x": "Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux), which works while you're typing. The key acts on the message box you're in, or the room's own box when you're in none. The first time, your browser or the Mac app asks to use the microphone. While it's on, the button is lit, the line under the box says it's listening, and a ring around the button pulses while it hears you speak. Each time you",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#voice-where-its-transcribed",
+    "t": "Where it's transcribed",
+    "s": "Work › Voice",
+    "x": "Your hub turns speech into text, on its own CPU, with a small speech model (Moonshine) and a voice activity detector (Silero) that hears where you start and stop. Neither sends audio anywhere else. In the Mac app the hub runs on your machine, so your audio never leaves it. With a shared hub, your audio goes to that hub the way your messages do. Audio is never saved. The hub keeps only the few seconds it is listening ",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#schedules",
     "t": "Schedules",
     "s": "Work",

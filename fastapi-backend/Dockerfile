@@ -39,6 +39,10 @@ COPY . .
 ENV FASTEMBED_CACHE_PATH=/opt/fastembed
 RUN python3 -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir='/opt/fastembed')" || true
 
+# The voice models (services/voice.py) aren't baked in: voice is off unless
+# turned on, and a hub that turns it on fetches them into its data folder,
+# where they outlive the container.
+
 RUN chmod +x start.sh \
     && mkdir -p logs \
     && chown -R mycelium /app
