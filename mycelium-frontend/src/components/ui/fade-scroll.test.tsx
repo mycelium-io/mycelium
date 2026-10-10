@@ -4,7 +4,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { FadeScroll, fadeMask } from "@/components/ui/fade-scroll";
+import { FadeScroll } from "@/components/ui/fade-scroll";
 
 /** jsdom lays nothing out, so the list's sizes are set by hand. */
 function sized(el: HTMLElement, { scrollTop, clientHeight, scrollHeight }: Record<string, number>) {
@@ -13,37 +13,32 @@ function sized(el: HTMLElement, { scrollTop, clientHeight, scrollHeight }: Recor
   el.scrollTop = scrollTop;
 }
 
-describe("fadeMask", () => {
-  it("fades only the edges with more past them", () => {
-    expect(fadeMask(false, false)).toBeUndefined();
-    expect(fadeMask(false, true)).toMatch(/^linear-gradient\(to bottom, black, .*transparent\)$/);
-    expect(fadeMask(true, false)).toMatch(/^linear-gradient\(to bottom, transparent, .*, black\)$/);
-  });
-});
+const blurs = (container: HTMLElement) =>
+  [...container.querySelectorAll("[data-edge-blur]")].map((el) => el.getAttribute("data-edge-blur"));
 
 describe("<FadeScroll />", () => {
-  it("fades the bottom while there is more below, and the top once scrolled past it", () => {
-    render(<FadeScroll data-testid="list">rows</FadeScroll>);
+  it("blurs the bottom while there is more below, and the top once scrolled past it", () => {
+    const { container } = render(<FadeScroll data-testid="list">rows</FadeScroll>);
     const list = screen.getByTestId("list");
 
     sized(list, { scrollTop: 0, clientHeight: 100, scrollHeight: 300 });
     fireEvent.scroll(list);
-    expect(list).toHaveAttribute("data-fade-bottom");
-    expect(list).not.toHaveAttribute("data-fade-top");
+    expect(blurs(container)).toEqual(["bottom"]);
+
+    sized(list, { scrollTop: 100, clientHeight: 100, scrollHeight: 300 });
+    fireEvent.scroll(list);
+    expect(blurs(container)).toEqual(["top", "bottom"]);
 
     sized(list, { scrollTop: 200, clientHeight: 100, scrollHeight: 300 });
     fireEvent.scroll(list);
-    expect(list).toHaveAttribute("data-fade-top");
-    expect(list).not.toHaveAttribute("data-fade-bottom");
+    expect(blurs(container)).toEqual(["top"]);
   });
 
-  it("draws no fade on a list that fits", () => {
-    render(<FadeScroll data-testid="list">rows</FadeScroll>);
+  it("blurs nothing on a list that fits", () => {
+    const { container } = render(<FadeScroll data-testid="list">rows</FadeScroll>);
     const list = screen.getByTestId("list");
     sized(list, { scrollTop: 0, clientHeight: 300, scrollHeight: 300 });
     fireEvent.scroll(list);
-    expect(list).not.toHaveAttribute("data-fade-top");
-    expect(list).not.toHaveAttribute("data-fade-bottom");
-    expect(list.style.maskImage).toBe("");
+    expect(blurs(container)).toEqual([]);
   });
 });

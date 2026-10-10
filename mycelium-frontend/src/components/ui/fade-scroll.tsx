@@ -6,25 +6,49 @@
 import { useCallback, useEffect, useRef, useState, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-/** How far the fade reaches into the list from an edge with more beyond it. */
-const FADE_PX = 24;
+/** The blur at a cut-off edge: layers that blur harder toward the edge, each
+ *  masked to fade in, so the rows soften progressively rather than at a line. */
+const LAYERS = [
+  { blur: 1, from: 0 },
+  { blur: 3, from: 40 },
+  { blur: 6, from: 70 },
+];
 
-/** The mask for a list cut off above, below, both or neither. It fades into
- *  whatever the list sits on, so no surface color has to be named here. */
-export function fadeMask(top: boolean, bottom: boolean): string | undefined {
-  if (!top && !bottom) return undefined;
-  const start = top ? `transparent, black ${FADE_PX}px` : "black";
-  const end = bottom ? `black calc(100% - ${FADE_PX}px), transparent` : "black";
-  return `linear-gradient(to bottom, ${start}, ${end})`;
+function EdgeBlur({ edge }: { edge: "top" | "bottom" }) {
+  // The mask runs from the list's inside toward the edge.
+  const toward = edge === "bottom" ? "to bottom" : "to top";
+  return (
+    <div
+      aria-hidden
+      data-edge-blur={edge}
+      className={cn("pointer-events-none absolute inset-x-0 h-8", edge === "bottom" ? "bottom-0" : "top-0")}
+    >
+      {LAYERS.map(({ blur, from }) => {
+        const mask = `linear-gradient(${toward}, transparent ${from}%, black 100%)`;
+        return (
+          <div
+            key={blur}
+            className="absolute inset-0"
+            style={{
+              backdropFilter: `blur(${blur}px)`,
+              WebkitBackdropFilter: `blur(${blur}px)`,
+              maskImage: mask,
+              WebkitMaskImage: mask,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 /**
- * A vertically scrolling list whose cut-off edges fade out, so a list with
- * more above or below it says so. An edge fades only while there is something
- * past it: a list that fits shows none, and scrolling to the end clears that
- * end's fade.
+ * A vertically scrolling list whose cut-off edges blur, so a list with more
+ * above or below it says so. An edge blurs only while there is something past
+ * it: a list that fits shows none, and scrolling to the end clears that end.
+ * `className` lays out the frame; everything else goes to the scrolling list.
  */
-export function FadeScroll({ className, style, onScroll, children, ...props }: HTMLAttributes<HTMLDivElement>) {
+export function FadeScroll({ className, onScroll, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   const ref = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ top: false, bottom: false });
 
@@ -52,21 +76,23 @@ export function FadeScroll({ className, style, onScroll, children, ...props }: H
     };
   }, [measure]);
 
-  const mask = fadeMask(edges.top, edges.bottom);
   return (
-    <div
-      ref={ref}
-      {...props}
-      data-fade-top={edges.top || undefined}
-      data-fade-bottom={edges.bottom || undefined}
-      className={cn("overflow-y-auto", className)}
-      style={mask ? { ...style, maskImage: mask, WebkitMaskImage: mask } : style}
-      onScroll={(e) => {
-        measure();
-        onScroll?.(e);
-      }}
-    >
-      {children}
+    <div className={cn("relative flex min-h-0 flex-col", className)}>
+      <div
+        ref={ref}
+        {...props}
+        data-fade-top={edges.top || undefined}
+        data-fade-bottom={edges.bottom || undefined}
+        className="min-h-0 flex-1 overflow-y-auto"
+        onScroll={(e) => {
+          measure();
+          onScroll?.(e);
+        }}
+      >
+        {children}
+      </div>
+      {edges.top && <EdgeBlur edge="top" />}
+      {edges.bottom && <EdgeBlur edge="bottom" />}
     </div>
   );
 }
