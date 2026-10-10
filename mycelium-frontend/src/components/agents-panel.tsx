@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Monogram } from "@/components/ui/monogram";
 import { HerdrRam } from "@/components/ui/herdr-ram";
 import { EmptyState } from "@/components/empty-state";
+import { FadeScroll } from "@/components/ui/fade-scroll";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { nameOf, useNames } from "@/lib/people";
@@ -332,7 +333,7 @@ export function AgentsPanel({
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <FadeScroll className="flex-1">
         {loading &&
           ["w-20", "w-28", "w-16"].map((w, i) => (
             <div key={i} className="flex items-center gap-2.5 px-3 py-2.5">
@@ -427,7 +428,7 @@ export function AgentsPanel({
             </div>
           );
         })}
-      </div>
+      </FadeScroll>
     </div>
   );
 }
