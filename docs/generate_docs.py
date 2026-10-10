@@ -103,6 +103,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("guides/working-the-board.md",   "working-the-board",  "guides",      "Work",         "Working the Board"),
     ("guides/structured-memory.md",   "structured-memory",  "guides",      "Work",         "Structured Memory"),
     ("guides/files.md",               "files",              "guides",      "Work",         "Files"),
+    ("guides/voice.md",               "voice",              "guides",      "Work",         "Voice"),
     ("guides/schedules.md",           "schedules",          "guides",      "Work",         "Schedules"),
     ("guides/security-planes.md",     "security-planes",    "guides",      "Security",     "Running a Shared Hub"),
     ("guides/auth.md",                "auth",               "guides",      "Security",     "Authentication"),

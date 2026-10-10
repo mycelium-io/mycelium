@@ -60,6 +60,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("working-the-board", "Working the Board"),
     ("structured-memory", "Structured Memory"),
     ("files", "Files"),
+    ("voice", "Voice"),
     ("security-planes", "Running a Shared Hub"),
     ("auth", "Authentication"),
     ("troubleshooting", "Troubleshooting"),

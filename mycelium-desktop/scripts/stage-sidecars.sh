@@ -21,7 +21,8 @@
 #
 #   hub/      the hub, a PyInstaller directory build
 #   ui/       the UI's standalone build, with its static files
-#   models/   the embedding model, so memory search works offline
+#   models/   the embedding model, so memory search works offline, and the
+#             voice models (models/voice), so the mic does
 #   pi/       Pi, which the engines think with, and (Mac, Linux) a launcher
 #             that runs it on the bundled node
 #   conpty/   Windows only: the console host herdr runs its panes in
@@ -191,7 +192,8 @@ stage_hub() {
       --distpath "$work/hub-dist" --workpath "$work/hub-build" --specpath "$work" \
       "${unused[@]/#/--exclude-module=}" \
       --collect-all fastembed --collect-all onnxruntime --collect-all slim_bindings \
-      --collect-all negmas --collect-all tokenizers --collect-submodules app \
+      --collect-all negmas --collect-all tokenizers --collect-all sherpa_onnx \
+      --collect-submodules app \
       --hidden-import uvicorn.logging --hidden-import uvicorn.loops.auto \
       --hidden-import uvicorn.protocols.http.auto --hidden-import uvicorn.protocols.websockets.auto \
       --hidden-import uvicorn.lifespan.on \
@@ -221,6 +223,13 @@ TextEmbedding(model_name=sys.argv[1], cache_dir=sys.argv[2])
   # carry the model twice; the snapshot's files alone are what loads it.
   copy_tree "$tmp/models" "$res/models" blobs
   echo "staged the embedding model"
+  # The voice models (services/voice.py), fetched by the hub's own code into
+  # models/voice, where the supervisor points VOICE_MODEL_DIR.
+  (
+    cd "$repo/fastapi-backend"
+    VOICE_MODEL_DIR="$res/models/voice" uv run python -c 'from app.services.voice import ensure_models; ensure_models()'
+  )
+  echo "staged the voice models"
 }
 
 stage_ui() {

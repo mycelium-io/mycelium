@@ -191,7 +191,7 @@ class Locator:
         )
 
     def models(self) -> Path:
-        """Where the hub's embedding model is: the app's own copy, else a cache it fills.
+        """Where the hub's models are (search, and voice under ``voice/``): the app's own copy, else a cache it fills.
 
         The container keeps it at ``/opt/fastembed``, which is no place on a Mac.
         """
@@ -379,6 +379,7 @@ class Supervisor:
             "SLIM_NODE_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
             "MYCELIUM_SLIM_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
             "FASTEMBED_CACHE_PATH": str(loc.models()),
+            "VOICE_MODEL_DIR": str(loc.models() / "voice"),
             "MYCELIUM_HUB_MODE": "desktop",
             # Files read and written as UTF-8 on Windows too (the bundled
             # hub is built in this mode; a checkout's `uv run` needs telling).

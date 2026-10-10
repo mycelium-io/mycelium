@@ -658,6 +658,27 @@ is no litellm dependency.
   pdf.js, loaded on first use, never the browser's viewer); agents use
   `mycelium file upload|download`. Bytes go over HTTP, never SLIM, and the hub
   keeps them in plaintext like the rest of the room.
+- **Voice is transcribed on the hub, lands as a draft, and is toggled, never
+  ended by a pause.** The composer's mic (`components/voice/`) records through an
+  AudioWorklet, averages it to 16 kHz 16-bit PCM (`lib/voice.ts`) and POSTs a
+  chunk every 300 ms, one request in flight, to `/api/voice/sessions/{id}`
+  (`routes/voice.py`); the id is the app's own per open mic. Plain HTTP, not a
+  socket, so it rides the same proxy and gate as everything else. On the hub
+  (`app/services/voice.py`) each session holds a Silero VAD that cuts speech at
+  pauses, and each piece is transcribed by Moonshine v2 (English) through
+  sherpa-onnx on the CPU; texts go back and are appended to the draft. A pause
+  only cuts a piece; the mic stays on until it's toggled off, which sends the
+  rest with `final`, and nothing auto-sends. sherpa-onnx 1.13.8 returns empty
+  text for a Moonshine v2 piece much past ~6 s (fixed upstream, unreleased), so
+  the VAD caps pieces at 5.5 s and `split_long` cuts anything longer at its
+  quietest point. `sherpa-onnx-core` (the native libraries) is listed beside
+  `sherpa-onnx` because uv's lock drops it. The models are files at
+  `VOICE_MODEL_DIR`: baked into the backend image at `/opt/voice`, staged into
+  the Mac app at `models/voice` (the supervisor points the hub there), or
+  fetched once on first use. Audio is never stored. The Mac app needs
+  `NSMicrophoneUsageDescription` (`src-tauri/Info.plist`) and the
+  `device.audio-input` entitlement on the app itself (`app.entitlements`);
+  wry grants the page's capture request when no permission handler is set.
 - **Patterns are scenarios the hub loads, from a pack the operator provides.** A
   scenario (`app/services/patterns.py`, `routes/patterns.py`) is a room ready to
   run: a cast, some context, a task and the flow that sets them working, loaded

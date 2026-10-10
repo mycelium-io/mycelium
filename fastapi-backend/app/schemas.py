@@ -627,6 +627,31 @@ class UploadListResponse(BaseModel):
     max_bytes: int = Field(0, description="The largest file this hub takes, in bytes")
 
 
+class VoiceStatus(BaseModel):
+    """Whether this hub can transcribe a mic, and what it hears."""
+
+    state: Literal["ready", "not_downloaded", "unavailable"] = Field(
+        ...,
+        description=(
+            "`ready`: the model is loaded or on disk. `not_downloaded`: it will be "
+            "fetched the first time a mic is turned on. `unavailable`: it can't run here."
+        ),
+    )
+    detail: str = Field("", description="Why, when it isn't ready")
+    language: str = Field("en", description="The language it transcribes")
+    sample_rate: int = Field(16000, description="The rate audio is sent at, in Hz")
+    model: str = Field("", description="The speech model's name")
+
+
+class VoiceHeard(BaseModel):
+    """What one chunk of a mic's audio finished: text for the draft, if any."""
+
+    texts: list[str] = Field(
+        default_factory=list, description="Each piece of speech the chunk ended, in order"
+    )
+    speaking: bool = Field(False, description="Whether speech is still under way")
+
+
 class ProtocolSummary(BaseModel):
     """A flow the room's conductor can run, as a summon needs to know it."""
 

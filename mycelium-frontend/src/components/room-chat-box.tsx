@@ -40,6 +40,9 @@ import { sendPending } from "@/lib/pending-messages";
 import { FileText, ListTodo, Paperclip, Plus, UserPlus, X } from "lucide-react";
 import { PendingAttachments, usePendingUploads } from "@/components/uploads/composer-attachments";
 import { acceptAttribute } from "@/lib/uploads";
+import { MicToggle } from "@/components/voice/mic-toggle";
+import { useVoiceInput } from "@/components/voice/use-voice-input";
+import { appendHeard } from "@/lib/voice";
 import { parseCapture } from "@/lib/board/capture";
 import { fileCapture } from "@/lib/board/file-capture";
 import {
@@ -264,6 +267,11 @@ export function RoomChatBox({
   const attachments = usePendingUploads(roomName, principal.trim() || "user");
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
+  // The mic: on until it's turned off, adding what's said to the draft.
+  const mic = useVoiceInput(
+    useCallback((text: string) => setContent((draft) => appendHeard(draft, text)), []),
+    setError,
+  );
   const revalidateRoom = useRoomRevalidate(roomName);
   // Your machines are read only while an `/agent` is being typed.
   const { connected: machines, loading: machinesLoading } = useRunners({
@@ -895,14 +903,26 @@ export function RoomChatBox({
                 keys a phone does not have, so they appear only when the box
                 is wide enough (measured against the composer, not the window:
                 it is this narrow on a phone and in a room with both rails open). */}
-            <span className="min-w-0 truncate text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100">
-              @ mention · @~ silent · [[ memory · / command
-            </span>
+            {mic.state === "off" ? (
+              <span className="min-w-0 truncate text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100">
+                @ mention · @~ silent · [[ memory · / command
+              </span>
+            ) : (
+              // While the mic is on, the row says so, whether or not the box has focus.
+              <span role="status" className="min-w-0 truncate text-micro text-accent">
+                {mic.state === "starting"
+                  ? "Starting the mic…"
+                  : mic.warming
+                    ? "Listening. The hub is getting its speech model ready, so the first words take a moment."
+                    : "Listening. What you say is added here; turn the mic off when you're done."}
+              </span>
+            )}
             <div className="ml-auto flex shrink-0 items-center gap-2">
             <span className="hidden items-center gap-1.5 text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100 @[34rem]:flex">
               <Kbd size="xs" tone="muted">⇧↵</Kbd> newline
               <KbdChord size="xs" tone="muted" action="palette.open" /> commands
             </span>
+            {mic.available && <MicToggle state={mic.state} speaking={mic.speaking} onToggle={mic.toggle} />}
             <button
               type="button"
               onClick={submit}

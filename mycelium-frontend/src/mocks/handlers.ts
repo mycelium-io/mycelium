@@ -45,6 +45,7 @@ import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
 import { handleUploads } from "./uploads";
+import { handleVoice } from "./voice";
 import type {
   A2aBridgeState,
   MemoryGraph,
@@ -473,6 +474,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
       storage: { status: "ok", message: "Local store", path: "/data", host_path: "~/.mycelium/data" },
       embedding: { status: "ok", model: "BAAI/bge-small-en-v1.5", message: "Model loaded" },
     });
+
+  // ── /api/voice ──────────────────────────────────────────────────────────────
+  if (rest[0] === "voice") return handleVoice(req, rest);
 
   // ── /api/search ─────────────────────────────────────────────────────────────
   if (rest[0] === "search" && method === "GET") {

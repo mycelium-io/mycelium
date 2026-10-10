@@ -85,7 +85,11 @@ find "$app/Contents" -type f -print0 \
     done
 
 echo "signing the app…"
-codesign "${signing[@]}" "$app"
+if [ "$identity" != "-" ]; then
+  codesign "${signing[@]}" --entitlements "$here/src-tauri/app.entitlements" "$app"
+else
+  codesign "${signing[@]}" "$app"
+fi
 codesign --verify --deep --strict "$app"
 echo "signature verified"
 
