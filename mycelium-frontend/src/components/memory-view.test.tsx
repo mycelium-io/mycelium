@@ -45,10 +45,6 @@ vi.mock("@/components/room-chat-box", () => ({
   RoomChatBox: () => <div data-testid="room-chat-box" />,
 }));
 
-vi.mock("@/components/intent-dialog", () => ({
-  IntentDialog: () => <div data-testid="intent-dialog" />,
-}));
-
 vi.mock("@/components/current-user", () => ({
   useCurrentUser: () => ({ principal: "alice" }),
 }));
@@ -132,7 +128,6 @@ describe("<MemoryView />", () => {
     renderWithSWR(<MemoryView roomName="demo" memoryKey={MEMORY.key} onOpenMemory={vi.fn()} />);
     expect(await screen.findByTestId("memory-detail")).toHaveAttribute("data-collapse-body-at", "");
     expect(screen.queryByTestId("task-conversation")).not.toBeInTheDocument();
-    expect(screen.queryByText("Ask agents")).not.toBeInTheDocument();
   });
 
   it("shows the transcluded body, wherever it's opened (#599)", async () => {
@@ -152,19 +147,20 @@ describe("<MemoryView />", () => {
     );
   });
 
-  it("offers a task the room's verbs, in a tab and full page alike", async () => {
+  it("leaves a task's verbs to its right-click menu, in a tab and full page alike", async () => {
     vi.mocked(fetchMemory).mockResolvedValue(TASK);
     const { unmount } = renderWithSWR(
       <MemoryView roomName="demo" memoryKey={MEMORY.key} onOpenMemory={vi.fn()} />,
     );
-    fireEvent.click(await screen.findByText("Ask agents"));
-    expect(screen.getByTestId("intent-dialog")).toBeInTheDocument();
+    await screen.findByTestId("task-conversation");
+    expect(screen.queryByRole("button", { name: "Ask agents" })).not.toBeInTheDocument();
     unmount();
 
     renderWithSWR(
       <MemoryView roomName="demo" memoryKey={MEMORY.key} onOpenMemory={vi.fn()} layout="page" />,
     );
-    expect(await screen.findByText("Ask agents")).toBeInTheDocument();
+    await screen.findByTestId("task-conversation");
+    expect(screen.queryByRole("button", { name: "Ask agents" })).not.toBeInTheDocument();
   });
 
   it("switches to the editor and back", async () => {
