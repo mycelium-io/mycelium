@@ -39,6 +39,17 @@ export function avatarTint(name: string): string {
   return `var(--avatar-${(hash(name.toLowerCase()) % SLOTS) + 1})`;
 }
 
+/** The fill and glyph colors of an avatar in `tint`: a soft wash of it with the
+ *  initials in a lighter shade. The wash is mixed into the surface rather than
+ *  made see-through, so avatars stacked in a facepile don't blend into each
+ *  other and the color holds steady over a hover highlight. */
+export function softAvatar(tint: string): { background: string; color: string } {
+  return {
+    background: `color-mix(in srgb, ${tint} 45%, var(--surface))`,
+    color: `color-mix(in srgb, ${tint} 35%, #fff)`,
+  };
+}
+
 /** Two-letter monogram: "backend-lead" → BL, "oc-test2" → OT, "main" → MA.
  *  Splits on non-alphanumerics, else takes the first two characters. */
 export function initials(name: string): string {
