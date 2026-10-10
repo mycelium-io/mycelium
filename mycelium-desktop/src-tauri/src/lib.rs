@@ -34,13 +34,8 @@ use settings::{Mode, Settings};
 use supervisor::Supervisor;
 use terminal::Terminal;
 
-/// What copy calls this machine, and the icon the app keeps there.
+/// What copy calls this machine.
 const MACHINE: &str = if cfg!(target_os = "macos") { "Mac" } else { "computer" };
-pub(crate) const TRAY_ICON: &str = if cfg!(target_os = "macos") {
-    "menu bar icon"
-} else {
-    "tray icon"
-};
 
 #[derive(Default)]
 struct Shell {
@@ -545,7 +540,7 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         "machines" => show_page(app, "/machines"),
         "switch" | "settings" => show_local(app, "onboarding"),
         "status" | "doctor" => show_local(app, "doctor"),
-        "updates" => updates::check(app.clone(), true),
+        "updates" => updates::check(app.clone(), updates::Check::Asked),
         "log:desktop" => open_log_from_menu(app, &desktop_log()),
         "log:runner" => open_log_from_menu(app, &runner_log()),
         "log:folder" => {
@@ -600,6 +595,9 @@ fn handle_link(app: &AppHandle, link: &Url) {
     match link.host_str() {
         Some("terminal") => open_terminal_window(app, param("pane").filter(|p| !p.is_empty())),
         Some("settings") => show_local(app, "onboarding"),
+        // The room UI's "update available": Check for Updates…, which asks
+        // before anything downloads, so a page can't restart the app.
+        Some("update") => updates::check(app.clone(), updates::Check::Asked),
         Some("join") => {
             let Some(hub) = param("hub") else { return };
             let path = param("room").filter(|r| !r.is_empty()).map(|room| {
@@ -965,6 +963,13 @@ fn start(app: AppHandle, webview: Webview, settings: Settings) -> Result<paths::
     Ok(setup)
 }
 
+/// How an update's download is going, for the update window's first look.
+#[tauri::command]
+fn update_progress(app: AppHandle, webview: Webview) -> Result<Option<updates::Progress>, String> {
+    local_only(&app, &webview)?;
+    Ok(updates::progress())
+}
+
 #[tauri::command]
 fn terminal_open(
     app: AppHandle,
@@ -1029,6 +1034,13 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
         // room folders, panels) never sees a drop. The UI listens for none of
         // Tauri's drop events, so the page gets them all.
         .disable_drag_drop_handler()
+        // Every page load starts the page over, so it is told again whether
+        // an update is available.
+        .on_page_load(|window, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                updates::announce(&window);
+            }
+        })
         // A link the UI opens in a new tab (one out of the app, from chat or a
         // memory) goes to the default browser: the app never opens a second
         // web window of its own, and only web and mail links are passed on.
@@ -1081,6 +1093,7 @@ pub fn run() {
             open_room,
             open_log,
             start,
+            update_progress,
             terminal_open,
             terminal_write,
             terminal_resize,
@@ -1116,13 +1129,18 @@ pub fn run() {
                 paths::link_bundled();
                 supervisor::restart(&handle, saved);
             }
-            // A quiet look for an update once the app has settled; it speaks
-            // only if there is one. Not in development, where every release is newer.
+            // A look for an update once the app has settled, which asks only
+            // if there is one; then a silent look every few hours, which the
+            // room UI shows. Not in development, where every release is newer.
             if !cfg!(debug_assertions) {
                 let later = handle.clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(10));
-                    updates::check(later, false);
+                    updates::check(later.clone(), updates::Check::Launch);
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
+                        updates::check(later.clone(), updates::Check::Quiet);
+                    }
                 });
             }
             Ok(())

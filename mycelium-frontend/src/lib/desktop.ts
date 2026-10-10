@@ -32,6 +32,34 @@ export function useIsDesktop(): boolean {
   return useSyncExternalStore(noSubscribe, () => isDesktop(), () => false);
 }
 
+/**
+ * A newer version of the app, when the app has found one it hasn't installed.
+ * The app says so by setting `__myceliumUpdate` on the page and firing a
+ * `mycelium:update` event (again on every page load), since the page never
+ * calls into it. Null in a browser, and while rendering on the server.
+ */
+export function useDesktopUpdate(): string | null {
+  return useSyncExternalStore(subscribeUpdate, readUpdate, () => null);
+}
+
+const UPDATE_EVENT = "mycelium:update";
+
+function subscribeUpdate(onChange: () => void): () => void {
+  globalThis.addEventListener?.(UPDATE_EVENT, onChange);
+  return () => globalThis.removeEventListener?.(UPDATE_EVENT, onChange);
+}
+
+function readUpdate(): string | null {
+  if (!isDesktop()) return null;
+  const found = (globalThis as { __myceliumUpdate?: { version?: unknown } | null }).__myceliumUpdate;
+  return typeof found?.version === "string" ? found.version : null;
+}
+
+/** Asks the app to update: its Check for Updates…, which asks before it downloads. */
+export function updateLink(): string {
+  return "mycelium://update";
+}
+
 /** Opens the app's agents terminal: at an agent's herdr pane, or where it was. */
 export function terminalLink(pane?: string): string {
   return pane ? `mycelium://terminal?pane=${encodeURIComponent(pane)}` : "mycelium://terminal";

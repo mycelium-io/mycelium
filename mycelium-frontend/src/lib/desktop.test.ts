@@ -1,8 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { describe, expect, it } from "vitest";
-import { APP_DOWNLOADS, appJoinLink, appPlatform, desktopMachine, desktopVersion, inviteLink, isDesktop, settingsLink, terminalLink } from "@/lib/desktop";
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  APP_DOWNLOADS,
+  appJoinLink,
+  appPlatform,
+  desktopMachine,
+  desktopVersion,
+  inviteLink,
+  isDesktop,
+  settingsLink,
+  terminalLink,
+  updateLink,
+  useDesktopUpdate,
+} from "@/lib/desktop";
 
 describe("desktop links", () => {
   it("knows the app by its user agent", () => {
@@ -58,5 +71,35 @@ describe("desktop links", () => {
     expect(appPlatform(ua.chromeos, 0)).toBeNull();
     expect(APP_DOWNLOADS.Windows.url).toMatch(/\/Mycelium-windows-x86_64-setup\.exe$/);
     expect(APP_DOWNLOADS.Linux.url).toMatch(/\/Mycelium-linux-x86_64\.AppImage$/);
+  });
+});
+
+describe("an update the app found", () => {
+  const page = globalThis as { __myceliumUpdate?: unknown };
+  const tell = (detail: unknown) => {
+    page.__myceliumUpdate = detail;
+    window.dispatchEvent(new CustomEvent("mycelium:update", { detail }));
+  };
+
+  afterEach(() => {
+    delete page.__myceliumUpdate;
+    vi.restoreAllMocks();
+  });
+
+  it("follows what the app says, inside the app", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Macintosh) MyceliumDesktop/3.0.33");
+    const { result } = renderHook(() => useDesktopUpdate());
+    expect(result.current).toBeNull();
+    act(() => tell({ version: "3.0.34" }));
+    expect(result.current).toBe("3.0.34");
+    act(() => tell(null));
+    expect(result.current).toBeNull();
+    expect(updateLink()).toBe("mycelium://update");
+  });
+
+  it("says nothing in a browser, whatever the page holds", () => {
+    page.__myceliumUpdate = { version: "3.0.34" };
+    const { result } = renderHook(() => useDesktopUpdate());
+    expect(result.current).toBeNull();
   });
 });

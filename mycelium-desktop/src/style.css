@@ -937,3 +937,129 @@ select.field {
   border-radius: 8px;
   padding: 10px 12px;
 }
+
+/* An update's download, in a small window of its own. */
+.update-page {
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+.update {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 32px 28px;
+  text-align: center;
+}
+
+.update-mark {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  margin-bottom: 6px;
+}
+
+/* The mark breathes while something is happening, and holds still when it stops. */
+.update:not([data-phase="failed"]) .update-mark {
+  animation: update-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes update-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(0.96);
+  }
+}
+
+.update-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.update-bar {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--elevated);
+  overflow: hidden;
+}
+
+.update-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.update[data-phase="failed"] .update-fill {
+  background: var(--red);
+}
+
+/* Installing and restarting have no numbers: a full bar that pulses. */
+.update[data-phase="installing"] .update-fill,
+.update[data-phase="restarting"] .update-fill {
+  animation: update-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes update-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.update-bar.indeterminate .update-fill {
+  width: 30% !important;
+  animation: update-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes update-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.update-line {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.update[data-phase="failed"] .update-line {
+  font-family: var(--font-sans);
+  color: var(--text);
+}
+
+.update-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--faint);
+  max-width: 280px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-mark,
+  .update-fill,
+  .update-bar.indeterminate .update-fill {
+    animation: none !important;
+  }
+}
