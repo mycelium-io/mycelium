@@ -25,9 +25,10 @@ else caused.
 
 **The first answer is a baseline, not news,** with one exception. A ref seen
 for the first time is recorded, and a provider's ``first`` says what of it is
-worth telling: for GitHub, a pull request that is open (the work is up), never
-one already merged or closed, so linking an old one or giving a hub its token
-announces nothing.
+worth telling: for GitHub, a pull request opened within the last hour (the work
+just went up), never one opened earlier and linked late, or already merged or
+closed. A room's very first sweep tells nothing at all, so a hub given its
+token, or a room the watcher has never looked at, takes everything as baseline.
 
 **What the room last saw is kept on disk.** The cache lives in the process and
 starts empty after a restart, so comparing with it would either announce
@@ -162,6 +163,8 @@ async def sweep(
 
     raised: list[tuple[str, str, str]] = []
     for room, items in found.items():
+        # Never looked at before: everything in it is a baseline, even news.
+        first_sweep = not _seen_path(room).exists()
         seen = load_seen(room)
         before_keys = set(seen)
         dirty = False
@@ -176,8 +179,8 @@ async def sweep(
             dirty = True
             provider = runtime.provider(item.ref.provider)
             if before is None:
-                opening = getattr(provider, "first", None)
-                changes = opening(reading["detail"]) if opening else []
+                opening = None if first_sweep else getattr(provider, "first", None)
+                changes = opening(reading["detail"], now) if opening else []
             else:
                 telling = getattr(provider, "changes", None)
                 changes = telling(before.get("detail") or {}, reading["detail"]) if telling else []
@@ -197,7 +200,9 @@ async def sweep(
         for name in before_keys - linked:
             seen.pop(name, None)
             dirty = True
-        if dirty and (seen or before_keys):
+        # A room's first sweep is written even when it links nothing yet, so a
+        # pull request linked there later is not taken for a first sweep.
+        if first_sweep or (dirty and (seen or before_keys)):
             await asyncio.to_thread(_save_seen, room, seen)
     if raised:
         logger.info("upstream watch raised %d change(s)", len(raised))

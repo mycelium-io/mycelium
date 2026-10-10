@@ -4578,9 +4578,10 @@ when one changes. Each change is a line on the row's timeline:
 
 A change is said once, on one row: the first open row that mentions the pull
 request. The first time the hub sees a pull request, it says so only if the
-pull request is open: a task getting its pull request is news. Linking one
-that's already merged or closed announces nothing, and neither does giving the
-hub a token for links it hasn't seen before. What the room last saw is kept
+pull request was opened in the last hour: a task getting its pull request is
+news. Linking one that was opened earlier, merged or closed announces nothing,
+and the first time the hub checks a room (after it's given a token, say) it
+only notes where everything stands. What the room last saw is kept
 in the room's folder, so a change made while the hub was off is still said once
 it is back.
 

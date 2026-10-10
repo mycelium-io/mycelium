@@ -55,7 +55,7 @@ _STATE = {
 #: The fields one pull request contributes. Shared by every alias in a batch.
 _FRAGMENT = """
 fragment pr on PullRequest {
-  url title state isDraft updatedAt
+  url title state isDraft createdAt updatedAt
   reviewDecision
   reviewRequests(first: 10) {
     nodes { requestedReviewer { ... on User { login } ... on Team { slug } ... on Bot { login } } }
@@ -123,8 +123,8 @@ class GitHubProvider:
     def changes(self, before: dict[str, Any], after: dict[str, Any]) -> list[UpstreamChange]:
         return changes(before, after)
 
-    def first(self, after: dict[str, Any]) -> list[UpstreamChange]:
-        return first(after)
+    def first(self, after: dict[str, Any], now: datetime) -> list[UpstreamChange]:
+        return first(after, now)
 
     async def fetch(self, refs: list[Ref], ctx: ProviderContext) -> list[FetchOutcome]:
         # No auth here: a provider that is called at all has its credential, and
@@ -184,6 +184,7 @@ def _upstream_state(node: dict[str, Any]) -> UpstreamState:
             "review": node.get("reviewDecision"),
             "title": node.get("title"),
             "pr": node.get("state"),
+            "created": node.get("createdAt"),
             "requested": _requested(node),
         },
     )
@@ -236,14 +237,23 @@ def changes(before: dict[str, Any], after: dict[str, Any]) -> list[UpstreamChang
     return found
 
 
-def first(after: dict[str, Any]) -> list[UpstreamChange]:
+#: How new an open pull request must be, when first seen, to be told as opened.
+#: Older than this, it was linked late (or the link came back), not just opened.
+OPENED_WITHIN = timedelta(hours=1)
+
+
+def first(after: dict[str, Any], now: datetime) -> list[UpstreamChange]:
     """What the first reading of a pull request is worth saying.
 
-    A row getting an open pull request is news: the work is up for review. One
-    already merged or closed is history, so linking it says nothing, and a hub
-    given its token for the first time doesn't announce every old link.
+    A row getting a pull request that was just opened is news: the work is up
+    for review. One opened a while ago and linked late, or already merged or
+    closed, is history, so it says nothing. A reading without ``created`` (from
+    before it was kept) can't be told apart, so it says nothing either.
     """
-    return [UpstreamChange("opened")] if after.get("pr") == "OPEN" else []
+    created = _parse(after.get("created"))
+    if after.get("pr") != "OPEN" or created is None:
+        return []
+    return [UpstreamChange("opened")] if now - created <= OPENED_WITHIN else []
 
 
 def _ttl_for(node: dict[str, Any]) -> timedelta | None:

@@ -264,8 +264,9 @@ is no litellm dependency.
   mention, refreshes what the cache says is due, and compares each answer with
   the room's last (`.upstream-seen.json` in the room folder, so a change made
   while the hub was down is still said; a first sighting is a baseline, except
-  that the provider's `first` tells an open pull request as `opened`, never a
-  merged or closed one). One notice per change, on the first open row that
+  that the provider's `first` tells a pull request opened in the last hour as
+  `opened`, and a room's very first sweep tells nothing). One notice per
+  change, on the first open row that
   links it. It wakes nobody, by decision: the chat shows a pull request
   opening, a merge and CI going red, the task's activity shows
   the rest, and the wake digest lists them on `Board:` for rows the agent
