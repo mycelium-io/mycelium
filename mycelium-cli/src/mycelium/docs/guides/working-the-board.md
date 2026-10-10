@@ -100,3 +100,7 @@ its URL, and give the hub a GitHub token. The row then shows the pull request's
 live state, such as approved, changes requested, CI failing or merged, and the
 room is told when it changes. See
 [live pull request status](#board-reference) for the states and the token.
+
+Any pull request linked in the thread counts, including one mentioned in
+passing, such as a follow-up opened from a review. To keep a task's row about
+its own pull request, link others as a bare `#123`, which the board ignores.
