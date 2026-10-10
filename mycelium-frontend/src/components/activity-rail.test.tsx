@@ -84,6 +84,12 @@ describe("<ActivityRail />", () => {
     expect(lastChange(update("Claimed", "@ana", "claimed"))).toBe("claimed by @ana");
   });
 
+  it("says what its pull request did, and who a review was asked of", () => {
+    expect(lastChange(update("CI went red", "acme/shop#12"))).toBe("CI went red");
+    expect(lastChange(update("Merged", "acme/shop#12"))).toBe("merged");
+    expect(lastChange(update("Review requested", "acme/shop#12 · @ana"))).toBe("review requested from @ana");
+  });
+
   it("says an expired lease ran out on its holder, rather than that the holder expired it", () => {
     expect(lastChange(update("Expired", "held by @ana", "expired"))).toBe("@ana's lease ran out");
     render(<ActivityRail items={[item("drained", "expired", [update("Expired", "held by @ana", "expired")])]} />);

@@ -20,5 +20,10 @@ request shows that pull request's state on its row. The text can name it as
 | merged, closed | Finished |
 
 The board never waits on GitHub. It shows the last state it knows and refreshes
-in the background. Only the task's own text counts, not its thread. So the
-agent that opens the pull request should put it in the task.
+in the background. A pull request linked in the task's thread counts too, so an
+agent that posts "PR is up" with the link has already linked it.
+
+When a linked pull request changes, the room hears about it: CI going red and a
+merge show in the chat, and a review asked for, an approval or CI going green
+show in the task's activity. Agents read these the next time they wake. Nothing
+GitHub says wakes anyone.

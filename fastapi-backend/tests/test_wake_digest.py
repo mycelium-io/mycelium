@@ -275,6 +275,38 @@ def test_the_board_line_keeps_the_newest_changes_and_counts_the_rest():
     assert lines[5:] == ["and 3 more", "open now: nothing open"]
 
 
+def test_a_pull_request_changing_shares_the_board_list():
+    # One list, newest first: a change to the agent's own row's pull request
+    # sits between board changes and shares their cap; someone else's approval
+    # is theirs, and a merge is everyone's.
+    room_dir = get_room_dir(ROOM)
+    write_memory_file(
+        room_dir, "work/mine", "# Mine", created_by="hay", extra_meta={"assignee": "builder"}
+    )
+    write_memory_file(
+        room_dir, "work/theirs", "# Theirs", created_by="hay", extra_meta={"assignee": "scout"}
+    )
+    pr = {"subkind": "upstream", "ref": "acme/shop#12"}
+    records = [
+        _said(0, "builder", "back", 60),
+        _notice(1, 50, subkind="claimed", key="work/theirs", title="Theirs", by="scout"),
+        _notice(2, 40, **pr, key="work/mine", title="Mine", change="ci_failed"),
+        _notice(3, 30, **pr, key="work/theirs", title="Theirs", change="approved"),
+        _notice(4, 20, **pr, key="work/theirs", title="Theirs", change="merged"),
+        _notice(5, 10, **pr, key="work/mine", title="Mine", change="review_requested", who="ana"),
+    ]
+    lines = _board_lines(wake_digest.build(ROOM, {"handle": "builder"}, records, NOW))
+    assert lines[:4] == [
+        'review requested on "Mine" from @ana (acme/shop#12, 10m ago)',
+        '"Theirs" merged (acme/shop#12, 20m ago)',
+        'CI went red on "Mine" (acme/shop#12, 40m ago)',
+        '@scout claimed "Theirs"',
+    ]
+    assert lines[4].startswith("open now: ")
+    # An upstream notice is never printed as a board change.
+    assert not any("upstream" in line for line in lines)
+
+
 def test_the_tally_names_the_rows_someone_has_to_act_on():
     room_dir = get_room_dir(ROOM)
     for n in range(1, 6):

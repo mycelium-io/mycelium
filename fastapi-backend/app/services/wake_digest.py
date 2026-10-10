@@ -45,8 +45,9 @@ NAMED = 3
 TITLE_CHARS = 48
 NAME_CHARS = 32
 #: The notices that say the board moved. ``floor`` is whose turn it is in a
-#: thread, which is not the board's news.
-BOARD_NOTICES = message_format.NOTICE_SUBKINDS - {"floor"}
+#: thread, which is not the board's news; ``upstream`` is a row's pull request
+#: changing, which :func:`moves` says in its own words.
+BOARD_NOTICES = message_format.NOTICE_SUBKINDS - {"floor", "upstream"}
 #: How far back the transcript is read for the agent's last turn.
 SCAN = 2000
 
@@ -203,6 +204,77 @@ def _names(titles: list[str]) -> str:
     return f" ({shown}{more})"
 
 
+#: How each ``upstream`` change reads, around the row's quoted title.
+UPSTREAM_LINES = {
+    "review_requested": "review requested on {title}",
+    "approved": "{title} approved",
+    "changes_requested": "changes requested on {title}",
+    "ci_failed": "CI went red on {title}",
+    "ci_passed": "CI went green on {title}",
+    "merged": "{title} merged",
+    "closed": "{title} closed without merging",
+}
+
+
+def upstream_line(data: dict[str, Any], when: datetime | None, now: datetime) -> str:
+    """One ``upstream`` notice as the digest says it:
+    ``CI went red on "Turn on Apple Pay" (acme/shop#12, 4m ago)``."""
+    change = str(data.get("change") or "")
+    title = f'"{data.get("title") or data.get("key")}"'
+    line = UPSTREAM_LINES.get(change, f"{change} on {{title}}").format(title=title)
+    who = [w for w in str(data.get("who") or "").split(",") if w]
+    if change == "review_requested" and who:
+        line += " from " + ", ".join(f"@{w}" for w in who)
+    ref = data.get("ref")
+    return f"{line} ({ref}, {age(when, now)})" if ref else f"{line} ({age(when, now)})"
+
+
+def _upstream_notice(record: Any) -> dict[str, Any] | None:
+    """The notice ``record`` carries, when it says a row's pull request changed."""
+    payload = (record.content.get("l9") or {}).get("payload") or {}
+    if payload.get("type") != message_format.NOTICE_PAYLOAD_TYPE:
+        return None
+    data = payload.get("data") or {}
+    return data if data.get("subkind") == "upstream" else None
+
+
+def moves(room: str, handle: str, since: list[Any], now: datetime) -> list[str]:
+    """Everything that moved in ``since``, newest first: the board's changes and
+    the changes to the pull requests behind the agent's rows, in one list.
+
+    A pull request is only the agent's news on a row it holds, was given or
+    filed: a review asked for on someone else's row is theirs to hear about. A
+    merge is everyone's, since work landing changes what the room builds on.
+    """
+    from app.services.filesystem import get_room_dir, read_memory_file
+
+    me = _norm(handle)
+    mine: dict[str, bool] = {}
+
+    def is_mine(key: str) -> bool:
+        if key not in mine:
+            found = read_memory_file(get_room_dir(room), key) if key else None
+            meta = found[0] if found else {}
+            people = (meta.get("owner"), meta.get("assignee"), meta.get("created_by"))
+            mine[key] = me in {_norm(str(p)) for p in people if p}
+        return mine[key]
+
+    lines: list[str] = []
+    for record in reversed(since):
+        board_data = _board_notice(record)
+        if board_data:
+            lines.append(change(board_data))
+            continue
+        data = _upstream_notice(record)
+        if not data:
+            continue
+        if data.get("change") != "merged" and not is_mine(str(data.get("key") or "")):
+            continue
+        when = parse_recorded_at(str(data["at"])) if data.get("at") else None
+        lines.append(upstream_line(data, when or parse_recorded_at(record.recorded_at), now))
+    return lines
+
+
 def _schedule_lines(room: str, name: str) -> list[str]:
     """The schedule's prompt and its latest findings, as the owner is told them."""
     from app.services import schedules
@@ -283,9 +355,10 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         lines.extend(f"         {t}" for t in mine[1:TASKS_SHOWN])
         if len(mine) > TASKS_SHOWN:
             lines.append(f"         and {len(mine) - TASKS_SHOWN} more")
-    # What changed on the board since its last turn, then what's open now, so
-    # the agent doesn't have to read the board to learn what moved.
-    moved = changes(since)
+    # What changed on the board since its last turn, and on the pull requests
+    # behind its rows, then what's open now, so the agent doesn't have to read
+    # the board to learn what moved.
+    moved = moves(room, handle, since, now)
     if moved:
         lines.append(f"Board:   {moved[0]}")
         lines.extend(f"         {c}" for c in moved[1:CHANGES_SHOWN])
