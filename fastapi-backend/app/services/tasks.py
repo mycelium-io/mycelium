@@ -368,23 +368,29 @@ async def create_task(
     title: str,
     *,
     created_by: str,
+    content: str | None = None,
     key: str | None = None,
     meta: dict[str, Any] | None = None,
 ) -> MemoryRead:
     """Create a task board-first, with its thread already minted.
 
     The row comes first and any coordination inside it is optional, so putting
-    something on the board takes no negotiation to converge first.
+    something on the board takes no negotiation to converge first. ``content``
+    is what the task is, written under the title in the same write: the title
+    stays the row's first line, which is what every surface reads it by, the
+    way ``worker_engine.record_result`` keeps it.
     """
     from app.routes.memory import upsert_memories
     from app.schemas import MemoryBatchCreate, MemoryCreate
 
     row_key = key or f"{WORK_NAMESPACE}/{slugify(title)}"
     fields: dict[str, Any] = {"kind": TASK_KIND, "status": "open", **(meta or {})}
+    described = (content or "").strip()
+    body = f"{title.strip()}\n\n{described}" if described else title
     written = await upsert_memories(
         room,
         MemoryBatchCreate(
-            items=[MemoryCreate(key=row_key, value=title, created_by=created_by, meta=fields)]
+            items=[MemoryCreate(key=row_key, value=body, created_by=created_by, meta=fields)]
         ),
         system={EPISODE_META: mint_episode_urn(room)},
     )

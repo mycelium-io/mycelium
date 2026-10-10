@@ -11456,6 +11456,18 @@
             "title": "Title",
             "description": "What the task is \u2014 the row's title"
           },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content",
+            "description": "The task's description, in markdown: written into the row under its title, so the row and its memory page show it, search indexes it and its links are edges. The thread is for talking about the task."
+          },
           "handle": {
             "type": "string",
             "title": "Handle",

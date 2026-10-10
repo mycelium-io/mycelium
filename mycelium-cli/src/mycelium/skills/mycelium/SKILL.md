@@ -25,11 +25,16 @@ a protocol; you decompose it, claim your piece, and coordinate **inside** it.
 
 ```bash
 mycelium board                                    # what needs you (the default filter)
-mycelium board new "Ship passkey login"           # put a task on the board
-mycelium board new "Pick token storage" --parent work/passkey-login --assign @sec
+mycelium board new "Ship passkey login" "Passkeys on the login page; passwords stay as a fallback."
+mycelium board new "Pick token storage" --file brief.md --parent work/passkey-login --assign @sec
 mycelium board claim work/passkey-login           # take it, as a lease
 mycelium board resolve work/passkey-login         # done
 ```
+
+What the task is goes in its **body** when you file it: the second argument,
+`--body`, or `--file` (`-` for stdin), in markdown. The row and its memory page
+show it, search finds it, and its links count. The thread is for talking about
+the task, not for describing it.
 
 Every task is created with a **thread** already minted, and no two tasks share
 one. `board new` prints its short id (`t3aa11bb`), and every verb below accepts

@@ -201,7 +201,15 @@ export async function deleteRoom(roomName: string): Promise<void> {
 /** Put a task on a room's board, with its thread minted (the app's `board new`). */
 export async function createTask(
   roomName: string,
-  data: { title: string; handle: string; assignee?: string; key?: string; parent?: string },
+  data: {
+    title: string;
+    /** What the task is, in markdown: written into the row under its title. */
+    content?: string;
+    handle: string;
+    assignee?: string;
+    key?: string;
+    parent?: string;
+  },
 ): Promise<Memory> {
   return apiFetch<Memory>(`${roomApiPath(roomName)}/tasks`, {
     method: "POST",

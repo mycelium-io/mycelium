@@ -1129,6 +1129,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#working-the-board-filing-a-task",
+    "t": "Filing a task",
+    "s": "Work › Working the Board",
+    "x": "A task has a title and a body. The title is what the board shows on its row. The body says what the task is: what's wanted, what's out of scope, links to the memories and PRs it's about. Write it when you file the task, in markdown: mycelium board new \"Ship passkey login\" \"Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]].\" mycelium board new \"Ship passkey login\" --file brief.md --as",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#working-the-board-actions",
     "t": "Actions",
     "s": "Work › Working the Board",
@@ -1927,9 +1934,9 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-board",
-    "t": "mycelium board new \"<title>\" [--assign @handle] [--parent <id>]",
+    "t": "mycelium board new \"<title>\" [\"<body>\" | --body \"<markdown>\" | --file <path>] [--assign @handle] [--parent <id>]",
     "s": "CLI Reference",
-    "x": "Put a task on the board, with the thread its coordination happens in already minted.",
+    "x": "Put a task on the board, with what it is in its body and its thread already minted.",
     "k": "cmd",
     "p": "Reference"
   },

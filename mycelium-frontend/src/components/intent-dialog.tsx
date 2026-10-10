@@ -100,13 +100,16 @@ export function IntentDialog({
         const task = await createTask(roomName, {
           title: title.trim(),
           handle: me,
+          // A plain task's details are what it is, so they're its body, filed
+          // with it; the thread is for talking about it.
+          ...(plainTask && note.trim() ? { content: note.trim() } : {}),
           ...(plainTask && assignee ? { assignee } : {}),
         });
         thread = task.episode ?? null;
         if (!thread) throw new Error("The task was filed but has no thread to start it in.");
       }
-      // A plain task starts nothing; a note is its thread's first message.
-      const content = plainTask ? note.trim() : intent.summon(picks, note || (needsTitle ? title : ""));
+      // A plain task starts nothing; a flow's summon is its thread's first message.
+      const content = plainTask ? "" : intent.summon(picks, note || (needsTitle ? title : ""));
       if (content) {
         await sendRoomMessage(roomName, { sender_handle: me, content, episode: thread });
       }
