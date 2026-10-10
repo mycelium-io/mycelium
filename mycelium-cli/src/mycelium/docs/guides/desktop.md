@@ -114,10 +114,13 @@ these items:
 
 ## Updates
 
-The app checks for a new release shortly after it opens and whenever you choose
-**Check for Updates…**. If one is out, it asks before installing it and then
-restarts. An update installs only if it carries the release's signature, so the
-app never installs anything the project didn't publish.
+The app checks for a new release shortly after it opens, every few hours while
+it runs, and whenever you choose **Check for Updates…**. If one is out, it asks
+before installing it. While you haven't installed it yet, the app's header
+shows **Update available**, which asks the same question. Once you say yes, a
+small window shows the download until the app restarts into the new version.
+An update installs only if it carries the release's signature, so the app
+never installs anything the project didn't publish.
 
 ## Logs
 

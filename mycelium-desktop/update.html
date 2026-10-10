@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Updating Mycelium</title>
+  </head>
+  <body class="update-page">
+    <main class="update" id="update" data-phase="downloading">
+      <img class="update-mark" src="/mark.png" alt="" />
+      <h1 class="update-title" id="update-title">Updating Mycelium</h1>
+      <div class="update-bar" role="progressbar" aria-labelledby="update-title" id="update-bar">
+        <div class="update-fill" id="update-fill"></div>
+      </div>
+      <p class="update-line" id="update-line">Getting ready…</p>
+      <p class="update-note" id="update-note">Mycelium restarts itself when it's ready. Your agents keep running in herdr.</p>
+    </main>
+    <script type="module" src="/src/update.ts"></script>
+  </body>
+</html>

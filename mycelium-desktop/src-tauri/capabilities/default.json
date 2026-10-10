@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "local-pages",
-  "description": "The app's own bundled pages: first run, loading, and the agents terminal. No remote origin is listed, so the hub's UI loaded into the main window gets no IPC at all.",
-  "windows": ["main", "terminal"],
+  "description": "The app's own bundled pages: first run, loading, the agents terminal and the update's download. No remote origin is listed, so the hub's UI loaded into the main window gets no IPC at all.",
+  "windows": ["main", "terminal", "update"],
   "permissions": ["core:default"]
 }

@@ -14,7 +14,7 @@ import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
 import { CommandPaletteButton, KeymapHelpButton } from "@/components/keymap-provider";
 import { InstallModalProvider, useOpenInstallModal } from "@/components/install-modal";
 import { DocsLink } from "@/components/docs-link";
-import { useAppDownload, useIsDesktop } from "@/lib/desktop";
+import { updateLink, useAppDownload, useDesktopUpdate, useIsDesktop } from "@/lib/desktop";
 import { HubStatus, MachinesStatusLink, MetricsStatusLink, TerminalStatusLink } from "@/components/status-items";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -71,6 +71,26 @@ function GetAppButton() {
       <a href={download.url} className={buttonVariants({ variant: "ghost", size: "sm", className: "gap-1.5" })}>
         <Download className="size-3.5" />
         <span className="hidden sm:inline">Get the {download.platform} app</span>
+      </a>
+    </Tooltip>
+  );
+}
+
+/**
+ * Inside the app, once it has found a newer version it hasn't installed: the
+ * one header action with a dot, since an app left open for days would
+ * otherwise only ever say so on its next launch. Opens the app's own
+ * question about updating, never the download itself.
+ */
+function UpdateAppButton() {
+  const version = useDesktopUpdate();
+  if (!version) return null;
+  return (
+    <Tooltip content={`Mycelium ${version} is available. It restarts to finish; agents keep running.`}>
+      <a href={updateLink()} className={buttonVariants({ variant: "ghost", size: "sm", className: "gap-1.5" })}>
+        <span aria-hidden className="inline-block size-1.5 rounded-full bg-accent" />
+        <span className="hidden sm:inline">Update available</span>
+        <span className="sm:hidden">Update</span>
       </a>
     </Tooltip>
   );
@@ -175,6 +195,7 @@ export function AppShell({
             right={
               <>
                 {headerRight}
+                <UpdateAppButton />
                 <GetAppButton />
                 <InstallCliButton />
                 <DocsLink />
