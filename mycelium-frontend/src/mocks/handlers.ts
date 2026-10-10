@@ -586,7 +586,16 @@ export async function handleMock(req: Request): Promise<Response | null> {
           const idx = fx.memories.findIndex((m) => m.key === item.key);
           const now = new Date().toISOString();
           const next: MockMemory = {
-            ...(idx >= 0 ? fx.memories[idx] : { key: item.key, created_by: "user", version: 0 }),
+            // Every memory carries a thread from the moment it exists, as the
+            // hub mints one at its upsert, so a new one can be discussed.
+            ...(idx >= 0
+              ? fx.memories[idx]
+              : {
+                  key: item.key,
+                  created_by: "user",
+                  version: 0,
+                  episode: `urn:ioc:mycelium:episode:${roomName}:${stableUuid(`${roomName}/${item.key}/${now}`).replace(/-/g, "").slice(0, 8)}`,
+                }),
             value: text,
             content_text: item.content_text ?? text,
             version: (idx >= 0 ? fx.memories[idx].version : 0) + 1,

@@ -710,7 +710,7 @@ is no litellm dependency.
   popover; `[[` is matched before `/` and `@` since a memory key can contain
   slashes. Skills insert a reference token — the resident agent/engine interprets
   it; the composer never runs the skill. **Commands** are the one `/` that runs:
-  `/task`, `/swarm`, `/memory`, `/agent` and `/engine`, only as a message's
+  `/task`, `/swarm`, `/memory`, `/thread`, `/agent` and `/engine`, only as a message's
   first word, listed ahead of the skills. Each declares its arguments in
   `lib/composer-commands.ts` (one parser for all of them), so the composer
   draws the signature over the box with the argument under the cursor lit,
@@ -723,7 +723,11 @@ is no litellm dependency.
   launch the Add member dialog does; `/memory <key> <text>` writes inline,
   replacing a taken key only at the version it saw, and with no text opens
   the new-memory dialog (`new-memory-dialog.tsx`, also behind the memory
-  pane's Add and the composer's +) where the key points. A message that
+  pane's Add and the composer's +) where the key points. `/thread <title>`
+  writes `context/<slug>` with the title as its heading and opens it, whose
+  discussion is the conversation (every memory carries a thread, so nothing
+  on the hub is special); a title already taken opens that page rather than
+  replacing it. A message that
   starts by mentioning a conductor gets the same help without being a
   command: its flow completes from `GET /rooms/{room}/protocols` (the room's
   own flows, then the built-ins it leaves alone) and the flow's roles fill

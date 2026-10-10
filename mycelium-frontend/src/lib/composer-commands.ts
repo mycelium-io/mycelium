@@ -71,6 +71,18 @@ export const COMPOSER_COMMANDS: ComposerCommand[] = [
     ],
   },
   {
+    name: "thread",
+    about: "start a conversation of its own, with a page to keep what it settles",
+    args: [
+      {
+        name: "title",
+        rest: true,
+        about: "What it's about. It becomes context/<title>, opened on its discussion",
+        missing: "Say what it's about",
+      },
+    ],
+  },
+  {
     name: "agent",
     about: "start a coding agent on your machine in this room",
     args: [

@@ -25,6 +25,13 @@ export function slugify(title: string): string {
     .replace(/-+$/g, "");
 }
 
+/** Where `/thread <title>` puts a conversation: `context/<slug>`, or null when
+ *  the title has nothing a key can be made from. */
+export function threadKey(title: string): string | null {
+  const slug = slugify(title);
+  return slug ? `context/${slug}` : null;
+}
+
 /** A folder path cleaned up the way a person means it: no stray or doubled slashes. */
 export function cleanFolder(folder: string): string {
   return folder

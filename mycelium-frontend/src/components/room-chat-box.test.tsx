@@ -450,6 +450,46 @@ describe("<RoomChatBox /> commands", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Updated decisions/db.");
   });
 
+  it("starts a /thread as a context page and opens it on its discussion", async () => {
+    const onOpenMemory = vi.fn();
+    renderWithSWR(<RoomChatBox roomName="demo" onOpenMemory={onOpenMemory} />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/thread Chat buddy{Enter}");
+
+    await waitFor(() => expect(onOpenMemory).toHaveBeenCalledWith("context/chat-buddy"));
+    expect(createMemories).toHaveBeenCalledWith("demo", [
+      { key: "context/chat-buddy", value: "# Chat buddy", content_text: "# Chat buddy", created_by: "julia" },
+    ]);
+    expect(sendRoomMessage).not.toHaveBeenCalled();
+    expect((box as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("opens a /thread that already has that name rather than replacing it", async () => {
+    const onOpenMemory = vi.fn();
+    renderWithSWR(<RoomChatBox roomName="demo" onOpenMemory={onOpenMemory} />);
+    const box = await textarea();
+    await userEvent.click(box);
+    // The room's memories are loaded once the [[ list can offer them. (`[` is
+    // special to userEvent.type; doubled, it types a literal one.)
+    await userEvent.type(box, "[[[[goals");
+    await screen.findByRole("button", { name: /\[\[context\/goals\]\]/ });
+    await userEvent.clear(box);
+    await userEvent.type(box, "/thread Goals{Enter}");
+
+    await waitFor(() => expect(onOpenMemory).toHaveBeenCalledWith("context/goals"));
+    expect(createMemories).not.toHaveBeenCalled();
+  });
+
+  it("says what's missing from a /thread with no title it can name", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/thread !!!{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("so it has a name");
+    expect(createMemories).not.toHaveBeenCalled();
+  });
+
   it("says what a key can be when it can't be one", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
