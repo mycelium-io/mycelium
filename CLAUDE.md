@@ -190,8 +190,10 @@ a reply line that names the task's thread. Delivering a wake raises
 **Tasks are the surface.** A board row is a markdown memory (body + frontmatter)
 and, through a store-owned episode binding, a thread on the room's channel
 (`app/services/tasks.py`, `routes/tasks.py`). The binding is minted at the
-memory-upsert chokepoint for every board namespace (`work/`, `decisions/`,
-`status/`, `failed/`), so every row is threaded and no two rows share one.
+memory-upsert chokepoint for every memory when it is created, whatever its
+namespace, so every row is threaded, no two share one, and a `context/` note or
+a skill can be discussed too; the board namespaces (`work/`, `decisions/`,
+`status/`, `failed/`) are the ones that are also *worked*.
 `board send`/`messages` are the room's chat verbs scoped to one row
 (`mycelium/chat.py`, one call, not a second implementation); `board coordinate`
 puts an engine to work inside a task. The channel is the room's **timeline**: a
@@ -231,7 +233,7 @@ is no litellm dependency.
 
 - **A task is a board row and a thread, one to one.** The row and the conversation
   about it are one object. The episode binding is store-owned: minted at the
-  memory-upsert chokepoint for every board namespace, carried across every write,
+  memory-upsert chokepoint for every memory on creation, carried across every write,
   write-once, absent from `meta`, so no `memory set` and no board verb can point a
   row at a conversation it was not part of, and a compiler cannot stamp two rows
   with one negotiation's episode. That is why creation has its own route (`POST /rooms/{room}/tasks`) rather

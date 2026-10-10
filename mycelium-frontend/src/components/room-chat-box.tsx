@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import {
+  ApiError,
   createEngine,
   createMemories,
   launchRunnerAgent,
@@ -677,10 +678,18 @@ export function RoomChatBox({
             setError("Say what it's about in words, so it has a name.");
             return;
           }
+          // Create only: `base_version: 0` makes the hub refuse (409) a key that
+          // already exists, so a page this browser hasn't heard of yet, or one
+          // made a moment ago elsewhere, is opened rather than overwritten. The
+          // cached list only saves the round trip when it already knows.
           if (!memories.some((m) => m.key === key)) {
-            await createMemories(roomName, [
-              { key, value: `# ${title}`, content_text: `# ${title}`, created_by: handle },
-            ]);
+            try {
+              await createMemories(roomName, [
+                { key, value: `# ${title}`, content_text: `# ${title}`, created_by: handle, base_version: 0 },
+              ]);
+            } catch (err) {
+              if (!(err instanceof ApiError && err.status === 409)) throw err;
+            }
             revalidateRoom();
           }
           if (onOpenMemory) onOpenMemory(key);

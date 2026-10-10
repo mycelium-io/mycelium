@@ -459,10 +459,31 @@ describe("<RoomChatBox /> commands", () => {
 
     await waitFor(() => expect(onOpenMemory).toHaveBeenCalledWith("context/chat-buddy"));
     expect(createMemories).toHaveBeenCalledWith("demo", [
-      { key: "context/chat-buddy", value: "# Chat buddy", content_text: "# Chat buddy", created_by: "julia" },
+      {
+        key: "context/chat-buddy",
+        value: "# Chat buddy",
+        content_text: "# Chat buddy",
+        created_by: "julia",
+        base_version: 0,
+      },
     ]);
     expect(sendRoomMessage).not.toHaveBeenCalled();
     expect((box as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("opens a /thread the hub says already exists, though this browser hadn't seen it", async () => {
+    // Create-only is the hub's to enforce: the list here may not have loaded,
+    // or someone may have made the page a moment ago.
+    const { ApiError } = await import("@/lib/api");
+    createMemories.mockRejectedValueOnce(new ApiError("stale_base", 409));
+    const onOpenMemory = vi.fn();
+    renderWithSWR(<RoomChatBox roomName="demo" onOpenMemory={onOpenMemory} />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/thread Launch retro{Enter}");
+
+    await waitFor(() => expect(onOpenMemory).toHaveBeenCalledWith("context/launch-retro"));
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("opens a /thread that already has that name rather than replacing it", async () => {
