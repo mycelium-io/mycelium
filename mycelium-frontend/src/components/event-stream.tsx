@@ -58,6 +58,10 @@ const NO_TICKS: MinimapTick[] = [];
  *  nodes. */
 /** How long typing in the find bar pauses before the room-wide search runs. */
 const SEARCH_SETTLE_MS = 200;
+/** How long typing pauses before the loaded messages are marked and counted.
+ *  Short enough to feel immediate, long enough that a word typed at speed is
+ *  matched once rather than once per letter. */
+const FIND_SETTLE_MS = 120;
 
 function rowNode(root: HTMLElement | null, id: string): HTMLElement | null {
   if (!root) return null;
@@ -889,7 +893,17 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // marks a loaded message is its words and phrases; the fields narrow the
   // room-wide search behind the bar, and a query that is all fields steps
   // through the loaded messages that search returned.
-  const needles = useMemo(() => freeText(query), [query]);
+  //
+  // The input shows every keystroke at once; what it marks and counts follows
+  // once typing pauses (`applied`), so a word typed at speed re-marks the
+  // channel once rather than per letter. Clearing it applies at once.
+  const [applied, setApplied] = useState("");
+  useEffect(() => {
+    const next = findOpen ? query : "";
+    const timer = setTimeout(() => setApplied(next), next.trim() ? FIND_SETTLE_MS : 0);
+    return () => clearTimeout(timer);
+  }, [findOpen, query]);
+  const needles = useMemo(() => freeText(applied), [applied]);
   const needle = needles.length > 0 ? needles : null;
   // The hub is asked once typing pauses, not per keystroke: a half-typed
   // `fr` on its way to `from:` is not a query worth a round trip.
@@ -906,18 +920,18 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     [search.result],
   );
   const matches = useMemo(() => {
-    if (!findOpen || !query.trim()) return NO_MATCHES;
+    if (!findOpen || !applied.trim()) return NO_MATCHES;
     // System notices are the feed's own narration, not what anyone said, and
     // several carry an envelope rather than prose. Find searches messages.
     const said = visible.filter(e => !SYSTEM_TYPES.has(e.type));
     // Words alone are matched here, at once. Once a field narrows the query,
     // only the hub can say which messages pass it, so stepping walks the
     // loaded messages its answer named.
-    if (!needle || hasScope(query)) {
+    if (!needle || hasScope(applied)) {
       return said.filter(e => e.messageId !== null && serverHits.has(e.messageId)).map(e => e.id);
     }
     return said.filter(e => hasMatch(e.content, needle) || hasMatch(e.sender, needle)).map(e => e.id);
-  }, [findOpen, query, needle, serverHits, visible]);
+  }, [findOpen, applied, needle, serverHits, visible]);
 
   const matchSet = useMemo(() => new Set(matches), [matches]);
   // Resolved at read time rather than corrected in an effect, so a message
@@ -946,6 +960,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   const closeFind = useCallback(() => setFindOpen(false), []);
 
   const stepMatch = (delta: 1 | -1) => {
+    // A step taken before typing has paused applies what was typed and lands
+    // on its newest hit, rather than stepping through the previous query's.
+    if (applied !== query) {
+      setApplied(query);
+      setStanding(null);
+      return;
+    }
     if (matches.length === 0) return;
     setStanding(matches[stepIndex(position ?? 0, matches.length, delta)]);
   };
@@ -968,9 +989,15 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     const measure = () => {
       const base = el.getBoundingClientRect().top;
       const height = el.scrollHeight || 1;
+      // One walk over the rows for all the hits, not one per hit: a common
+      // word hits hundreds of messages, and a scan for each was quadratic.
+      const rows = new Map<string, HTMLElement>();
+      for (const node of el.querySelectorAll<HTMLElement>("[data-event-id]")) {
+        if (node.dataset.eventId) rows.set(node.dataset.eventId, node);
+      }
       const next: MinimapTick[] = [];
       for (const id of matches) {
-        const row = rowNode(el, id);
+        const row = rows.get(id);
         if (!row) continue;
         const top = row.getBoundingClientRect().top - base + el.scrollTop;
         next.push({ id, top: Math.min(1, Math.max(0, top / height)) });
@@ -1134,6 +1161,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
           }}
           count={matches.length}
           position={position}
+          settling={applied !== query}
           onStep={stepMatch}
           onClose={closeFind}
           inputRef={findInput}
