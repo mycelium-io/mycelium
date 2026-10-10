@@ -307,6 +307,16 @@ def test_a_pull_request_changing_shares_the_board_list():
     assert not any("upstream" in line for line in lines)
 
 
+def test_a_pull_request_line_cuts_a_long_title_like_the_board_does():
+    long = "Turn on Apple Pay for every customer in every region before the sale starts"
+    line = wake_digest.upstream_line(
+        {"change": "merged", "title": long, "ref": "acme/shop#12"}, NOW, NOW
+    )
+    cut_title = wake_digest._short(long, wake_digest.TITLE_CHARS)
+    assert line == f'"{cut_title}" merged (acme/shop#12, now)'
+    assert cut_title.endswith("…")
+
+
 def test_the_tally_names_the_rows_someone_has_to_act_on():
     room_dir = get_room_dir(ROOM)
     for n in range(1, 6):
