@@ -56,6 +56,7 @@ import { MemoryPreviewCard, type PreviewAnchor } from "@/components/memory-previ
 import { memoryValueText } from "@/lib/memory-preview";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FadeScroll } from "@/components/ui/fade-scroll";
 import { Tooltip } from "@/components/ui/tooltip";
 import { NewMemoryDialog } from "@/components/new-memory-dialog";
 import { Button } from "@/components/ui/button";
@@ -663,7 +664,7 @@ export function MemoryPanel({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto border-t border-border" onScroll={endPeek}>
+      <FadeScroll className="flex-1 border-t border-border" onScroll={endPeek}>
 
         {/* Search results — flat list with similarity scores */}
         {searchResults && (
@@ -732,7 +733,7 @@ export function MemoryPanel({
             )}
           </div>
         )}
-      </div>
+      </FadeScroll>
 
       {peek && <MemoryPreviewCard memory={peek.memory} anchor={peek.anchor} />}
     </div>

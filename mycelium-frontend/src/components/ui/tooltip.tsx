@@ -54,11 +54,14 @@ export function Tooltip({
         aria-describedby={open ? popupId : undefined}
       />
       <TooltipPrimitive.Portal>
+        {/* The positioner is what stacks, as in the popover and context
+            menu: on the popup alone, the room's panes paint over it. */}
         <TooltipPrimitive.Positioner
           side={side}
           align={align}
           sideOffset={sideOffset}
           collisionPadding={8}
+          className="z-50"
         >
           <TooltipPrimitive.Popup
             id={popupId}

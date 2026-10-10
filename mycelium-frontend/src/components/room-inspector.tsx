@@ -13,7 +13,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
+import { useDefaultLayout } from "react-resizable-panels";
 import { AgentsPanel } from "@/components/agents-panel";
 import { KeyBadge } from "@/components/key-badge";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -68,14 +68,25 @@ interface Props {
   activeMemoryKey?: string | null;
 }
 
-/** A section folded to its header is this tall; open, it is never shorter
- *  than `SECTION_MIN`, so a drag past that snaps it shut instead. */
-const SECTION_HEADER = 28;
+/** A section's header is as tall as the room's tab strip, so the two line up
+ *  across the top. An open section is never shorter than `SECTION_MIN`. */
+const SECTION_HEADER = 32;
 const SECTION_MIN = 120;
 const RAIL_GROUP_ID = "mycelium:rail";
+const FOLDED_KEY = "mycelium:rail:folded";
 
-/** The room's context: members and memory, stacked in one right rail. Each
- *  section folds to its header, and the seam between them drags. */
+function readFolded(): Record<Tab, boolean> {
+  try {
+    const saved = JSON.parse(layoutStorage.getItem(FOLDED_KEY) ?? "null") as Partial<Record<Tab, boolean>> | null;
+    return { agents: saved?.agents === true, memory: saved?.memory === true };
+  } catch {
+    return { agents: false, memory: false };
+  }
+}
+
+/** The room's context: members and memory, stacked in one right rail, as an
+ *  accordion: each section folds to its header on its own, both can, and while
+ *  both are open the seam between them drags. */
 export function RoomInspector({
   roomName,
   masId,
@@ -102,25 +113,27 @@ export function RoomInspector({
 
   const railRef = useRef<HTMLElement>(null);
 
-  // The sections stack: each folds to its header and the seam between them
-  // drags. Their split is remembered in this browser, like the room's own.
+  // While both sections are open the seam between them drags, and their split
+  // is remembered in this browser, like the room's own. What is folded is
+  // remembered too, read once mounted so the server's render matches.
   const { defaultLayout, onLayoutChange, onLayoutChanged } = useDefaultLayout({
     id: RAIL_GROUP_ID,
     storage: layoutStorage,
     panelIds: TABS.map((t) => t.id),
   });
-  const agentsRef = usePanelRef();
-  const memoryRef = usePanelRef();
-  const panels: Record<Tab, typeof agentsRef> = { agents: agentsRef, memory: memoryRef };
   const [folded, setFolded] = useState<Record<Tab, boolean>>({ agents: false, memory: false });
+  const foldedLoaded = useRef(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser storage, read after hydration
+    setFolded(readFolded());
+    foldedLoaded.current = true;
+  }, []);
+  useEffect(() => {
+    if (foldedLoaded.current) layoutStorage.setItem(FOLDED_KEY, JSON.stringify(folded));
+  }, [folded]);
   // Folding is the reader's own choice and asks for nothing: it never moves
   // `tab`, so it can't trip the reveal below and spring back open.
-  const toggleSection = (id: Tab) => {
-    const panel = panels[id].current;
-    if (!panel) return;
-    if (panel.isCollapsed()) panel.expand();
-    else panel.collapse();
-  };
+  const toggleSection = (id: Tab) => setFolded((prev) => ({ ...prev, [id]: !prev[id] }));
 
   // Asked to show a section (its key, the status bar, search, the collapsed
   // strip): open the one asked for, however it was left. Only an ask does
@@ -130,9 +143,9 @@ export function RoomInspector({
   const [asked, setAsked] = useState(0);
   useEffect(() => {
     if (!open || reveal + asked === 0) return;
-    const panel = panels[tab].current;
-    if (panel?.isCollapsed()) panel.expand();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs per ask; the refs are stable
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- an ask from outside opens the section
+    setFolded((prev) => (prev[tab] ? { ...prev, [tab]: false } : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs per ask, not when the tab is merely named
   }, [reveal, asked]);
 
   // Collapsed: a slim strip of the tab icons; clicking one expands to it.
@@ -191,65 +204,72 @@ export function RoomInspector({
     ),
   };
 
+  const header = (id: Tab, label: string, Icon: LucideIcon, i: number) => (
+    <div
+      className="flex flex-shrink-0 items-center gap-1 border-b border-border bg-surface pl-1 pr-1"
+      style={{ height: SECTION_HEADER }}
+    >
+      <button
+        type="button"
+        data-tour={`inspector-${id}`}
+        onClick={() => toggleSection(id)}
+        aria-expanded={!folded[id]}
+        aria-label={`${folded[id] ? "Expand" : "Collapse"} ${label}`}
+        className="group flex h-full min-w-0 flex-1 items-center gap-1.5 rounded px-1 text-left text-label font-medium text-muted-foreground hover:text-text"
+      >
+        {folded[id] ? (
+          <ChevronRight className="size-3 flex-shrink-0" />
+        ) : (
+          <ChevronDown className="size-3 flex-shrink-0" />
+        )}
+        <Icon className="size-3.5 flex-shrink-0 text-faint group-hover:text-muted-foreground" />
+        <span className="truncate">{label}</span>
+        <KeyBadge action={`rail.${id}`} />
+      </button>
+      {i === 0 && (
+        <Tooltip content={railToggleTitle(true)} side="bottom">
+          <button onClick={() => setOpen(false)} aria-label={railToggleTitle(true)} className={iconButtonClass("sm")}>
+            <PanelRightClose />
+          </button>
+        </Tooltip>
+      )}
+    </div>
+  );
+  const section = (id: Tab) => <div className="min-h-0 flex-1 overflow-hidden">{body[id]}</div>;
+
   return (
     <aside ref={railRef} className="flex w-full min-w-0 flex-col overflow-hidden bg-surface/30">
-      <ResizablePanelGroup
-        orientation="vertical"
-        defaultLayout={defaultLayout}
-        onLayoutChange={onLayoutChange}
-        onLayoutChanged={onLayoutChanged}
-      >
-        {TABS.map(({ id, label, icon: Icon }, i) => (
-          <Fragment key={id}>
-            {i > 0 && <ResizableHandle />}
-            <ResizablePanel
-              id={id}
-              panelRef={panels[id]}
-              collapsible
-              collapsedSize={SECTION_HEADER}
-              minSize={SECTION_MIN}
-              defaultSize="50"
-              onResize={(size) => setFolded((prev) => ({ ...prev, [id]: size.inPixels <= SECTION_HEADER + 2 }))}
-              className="flex flex-col"
-            >
-              <div
-                className="flex flex-shrink-0 items-center gap-1 border-b border-border bg-surface pl-1 pr-1"
-                style={{ height: SECTION_HEADER }}
-              >
-                <button
-                  type="button"
-                  data-tour={`inspector-${id}`}
-                  onClick={() => toggleSection(id)}
-                  aria-expanded={!folded[id]}
-                  aria-label={`${folded[id] ? "Expand" : "Collapse"} ${label}`}
-                  className="group flex h-full min-w-0 flex-1 items-center gap-1.5 rounded px-1 text-left text-label font-medium text-muted-foreground hover:text-text"
-                >
-                  {folded[id] ? (
-                    <ChevronRight className="size-3 flex-shrink-0" />
-                  ) : (
-                    <ChevronDown className="size-3 flex-shrink-0" />
-                  )}
-                  <Icon className="size-3.5 flex-shrink-0 text-faint group-hover:text-muted-foreground" />
-                  <span className="truncate">{label}</span>
-                  <KeyBadge action={`rail.${id}`} />
-                </button>
-                {i === 0 && (
-                  <Tooltip content={railToggleTitle(true)} side="bottom">
-                    <button
-                      onClick={() => setOpen(false)}
-                      aria-label={railToggleTitle(true)}
-                      className={iconButtonClass("sm")}
-                    >
-                      <PanelRightClose />
-                    </button>
-                  </Tooltip>
-                )}
-              </div>
-              {!folded[id] && <div className="min-h-0 flex-1 overflow-hidden">{body[id]}</div>}
-            </ResizablePanel>
-          </Fragment>
-        ))}
-      </ResizablePanelGroup>
+      {!folded.agents && !folded.memory ? (
+        <ResizablePanelGroup
+          orientation="vertical"
+          defaultLayout={defaultLayout}
+          onLayoutChange={onLayoutChange}
+          onLayoutChanged={onLayoutChanged}
+        >
+          {TABS.map(({ id, label, icon }, i) => (
+            <Fragment key={id}>
+              {i > 0 && <ResizableHandle />}
+              <ResizablePanel id={id} minSize={SECTION_MIN} defaultSize="50" className="flex flex-col">
+                {header(id, label, icon, i)}
+                {section(id)}
+              </ResizablePanel>
+            </Fragment>
+          ))}
+        </ResizablePanelGroup>
+      ) : (
+        // A folded section is its header and nothing more; an open one takes
+        // the rest of the rail. Both folded leave the rail's foot empty.
+        TABS.map(({ id, label, icon }, i) =>
+          folded[id] ? (
+            <Fragment key={id}>{header(id, label, icon, i)}</Fragment>
+          ) : (
+            <div key={id} className="flex min-h-0 flex-1 flex-col">
+              {header(id, label, icon, i)}
+              {section(id)}
+            </div>
+          ),
+        )
+      )}
     </aside>
   );
 }
