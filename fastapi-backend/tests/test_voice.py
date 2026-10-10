@@ -10,6 +10,7 @@ test runs the real Moonshine v2 and Silero VAD when their files are on disk
 
 import hashlib
 import os
+import tarfile
 import threading
 import wave
 from pathlib import Path
@@ -316,9 +317,9 @@ def worker(monkeypatch, fake):
     _wait_for_start()
 
 
-def _wait_for_start() -> None:
+def _wait_for_start(timeout: float = 5) -> None:
     if voice_worker._starter is not None:
-        voice_worker._starter.join(5)
+        voice_worker._starter.join(timeout)
 
 
 @pytest.mark.asyncio
@@ -425,6 +426,112 @@ def test_a_download_whose_hash_matches_is_kept(monkeypatch, tmp_path):
     assert dest.read_bytes() == body
 
 
+# ── Unpacking the model: never half there ────────────────────────────────────
+
+_MODEL_FILES = {
+    "encoder_model.ort": b"encoder bytes",
+    "decoder_model_merged.ort": b"decoder bytes",
+    "tokens.txt": b"tokens",
+}
+
+
+def _archive(tmp_path: Path) -> bytes:
+    src = tmp_path / "src" / voice.MOONSHINE
+    src.mkdir(parents=True)
+    for name, data in _MODEL_FILES.items():
+        (src / name).write_bytes(data)
+    out = tmp_path / "model.tar.bz2"
+    with tarfile.open(out, "w:bz2") as tar:
+        tar.add(src, arcname=voice.MOONSHINE)
+    return out.read_bytes()
+
+
+@pytest.fixture
+def downloads(monkeypatch, tmp_path):
+    """A hub that may download, with the release served from bytes in hand."""
+    root = tmp_path / "voice"
+    monkeypatch.setattr(settings, "VOICE_ENABLED", True)
+    monkeypatch.setattr(settings, "VOICE_DOWNLOAD", True)
+    monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(root))
+    archive = _archive(tmp_path)
+    fetched: list[str] = []
+
+    def fetch(url: str, dest: Path, _sha: str) -> None:
+        fetched.append(dest.name)
+        dest.write_bytes(archive if url.endswith(".tar.bz2") else b"silero")
+
+    monkeypatch.setattr(voice, "_fetch", fetch)
+    return root, fetched
+
+
+def _unmarked_copy(root: Path, *, whole: bool) -> None:
+    folder = root / voice.MOONSHINE
+    folder.mkdir(parents=True)
+    for name, data in _MODEL_FILES.items():
+        (folder / name).write_bytes(data if whole else data[:3])
+    (root / voice.SILERO).write_bytes(b"silero")
+
+
+def test_the_model_is_unpacked_out_of_sight_and_moved_in_whole(downloads, monkeypatch):
+    root, fetched = downloads
+    seen_mid_unpack = []
+    real_extract = tarfile.TarFile.extractall
+
+    def watching(self, path, *args, **kwargs):
+        # While the archive unpacks, the real folder must not exist yet.
+        seen_mid_unpack.append((root / voice.MOONSHINE).exists())
+        assert voice.state()[0] != "ready"
+        return real_extract(self, path, *args, **kwargs)
+
+    monkeypatch.setattr(tarfile.TarFile, "extractall", watching)
+    assert voice.ensure_models() == root
+    assert seen_mid_unpack == [False]
+    assert voice._present(root)
+    assert voice.state()[0] == "ready"
+    assert set(fetched) == {voice.SILERO, f"{voice.MOONSHINE}.tar.bz2"}
+    # Nothing left behind but the model.
+    assert {p.name for p in root.iterdir()} == {voice.MOONSHINE, voice.SILERO}
+
+
+def test_a_half_unpacked_folder_is_not_taken_for_the_model(downloads):
+    """What 3.0.37 left when a mic opened mid-unpack: every file, some cut short."""
+    root, fetched = downloads
+    _unmarked_copy(root, whole=False)
+    assert not voice._present(root)
+    assert voice.state()[0] == "not_downloaded"
+    voice.ensure_models()
+    assert fetched == [f"{voice.MOONSHINE}.tar.bz2"]
+    assert (root / voice.MOONSHINE / "encoder_model.ort").read_bytes() == b"encoder bytes"
+    assert voice._present(root)
+
+
+def test_a_whole_unmarked_folder_is_adopted_without_downloading_again(downloads, monkeypatch):
+    root, fetched = downloads
+    _unmarked_copy(root, whole=True)
+    monkeypatch.setattr(
+        voice,
+        "_UNPACKED_SHA256",
+        {
+            "encoder": hashlib.sha256(_MODEL_FILES["encoder_model.ort"]).hexdigest(),
+            "decoder": hashlib.sha256(_MODEL_FILES["decoder_model_merged.ort"]).hexdigest(),
+            "tokens": hashlib.sha256(_MODEL_FILES["tokens.txt"]).hexdigest(),
+        },
+    )
+    voice.ensure_models()
+    assert fetched == []
+    assert voice._present(root)
+
+
+def test_files_an_operator_put_in_place_are_taken_as_they_are(monkeypatch, tmp_path):
+    root = tmp_path / "voice"
+    _unmarked_copy(root, whole=True)
+    monkeypatch.setattr(settings, "VOICE_ENABLED", True)
+    monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(root))
+    monkeypatch.setattr(settings, "VOICE_DOWNLOAD", False)
+    assert voice._present(root)
+    assert voice.state()[0] == "ready"
+
+
 def test_a_mic_belongs_to_whoever_opened_it(fake):
     voice.feed(SID, pcm(0.5, loud=True), caller="ada")
     # Another caller with the same id gets a session of its own.
@@ -460,8 +567,17 @@ def test_short_speech_is_left_whole():
 
 
 def _real_models() -> Path | None:
-    root = Path(os.environ.get("VOICE_MODEL_DIR") or voice.model_dir())
-    return root if voice._present(root) else None
+    """Real model files to run against, only when ``VOICE_MODEL_DIR`` names them.
+
+    Never the default data folder: that's a person's own download, and the
+    worker may write its unpacked marker there. The files count whether or
+    not an unpack marked them, since the worker adopts a whole unmarked copy.
+    """
+    named = os.environ.get("VOICE_MODEL_DIR")
+    if not named:
+        return None
+    root = Path(named)
+    return root if all(p.is_file() for p in voice._files(root).values()) else None
 
 
 @pytest.mark.skipif(_real_models() is None, reason="the speech model isn't on disk")
@@ -479,7 +595,8 @@ def test_a_real_worker_transcribes_speech_and_exits_when_idle(monkeypatch):
     # The first chunk starts the worker and says so; wait for it as the app does.
     with pytest.raises(voice.VoiceWarming):
         voice_worker.feed(SID, b"")
-    _wait_for_start()
+    # A real start hashes an unmarked copy and loads the model: seconds, not five.
+    _wait_for_start(60)
     worker = voice_worker._worker
     assert worker is not None
     assert worker.proc.is_alive()

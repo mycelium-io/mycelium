@@ -96,8 +96,56 @@ def _files(root: Path) -> dict[str, Path]:
     }
 
 
+# Written into the Moonshine folder once its archive has been checked and
+# unpacked, holding the archive's hash. A folder without it may be half
+# unpacked (or from an older archive), and a half-written .ort file is what
+# ONNX Runtime refuses with "ORT model verification failed".
+UNPACKED_MARKER = ".verified"
+
+
 def _present(root: Path) -> bool:
-    return all(p.is_file() for p in _files(root).values())
+    """Whether the models are on disk, whole.
+
+    The files existing isn't enough: they appear one by one while the archive
+    unpacks. So a hub that fetches its own models also needs the marker an
+    unpack writes last. With ``VOICE_DOWNLOAD`` off the operator put the
+    files there, and their existing is taken as their being whole.
+    """
+    if not all(p.is_file() for p in _files(root).values()):
+        return False
+    return not settings.VOICE_DOWNLOAD or _unpacked(root)
+
+
+def _unpacked(root: Path) -> bool:
+    marker = root / MOONSHINE / UNPACKED_MARKER
+    try:
+        return marker.read_text().strip() == MOONSHINE_SHA256
+    except OSError:
+        return False
+
+
+# What each file the engine loads was in that archive. Only read to take on a
+# folder unpacked before the marker existed: whole files are marked rather
+# than downloaded again, and a half-written one doesn't match.
+_UNPACKED_SHA256 = {
+    "encoder": "7c66495948d0d08ec1af454cd4b5514862ae6511e94712a60e6d83eaec8dc8cf",
+    "decoder": "d9d7b333af34bc552580576ddcf248a1c6c839e0d3b43b09afb9376ed009899d",
+    "tokens": "2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049",
+}
+
+
+def _adopt_unmarked(root: Path) -> bool:
+    """Mark a Moonshine folder whose files are whole, and say whether it was."""
+    files = _files(root)
+    for name, want in _UNPACKED_SHA256.items():
+        try:
+            digest = hashlib.sha256(files[name].read_bytes()).hexdigest()
+        except OSError:
+            return False
+        if digest != want:
+            return False
+    (root / MOONSHINE / UNPACKED_MARKER).write_text(MOONSHINE_SHA256 + "\n")
+    return True
 
 
 def _runtime() -> Any:
@@ -152,6 +200,28 @@ def _fetch(url: str, dest: Path, sha256: str) -> None:
         tmp.unlink(missing_ok=True)
 
 
+def _unpack_moonshine(root: Path) -> None:
+    """Fetch and unpack the Moonshine archive, then move it into place at once.
+
+    Everything happens in a staging folder beside the real one, which is only
+    renamed into place once it's whole and marked, so nothing ever sees a
+    Moonshine folder with some of its files written.
+    """
+    staging = root / f".{MOONSHINE}.{secrets.token_hex(4)}.part"
+    staging.mkdir()
+    try:
+        archive = staging / f"{MOONSHINE}.tar.bz2"
+        _fetch(f"{_RELEASE}/{MOONSHINE}.tar.bz2", archive, MOONSHINE_SHA256)
+        with tarfile.open(archive, "r:bz2") as tar:
+            tar.extractall(staging, filter="data")
+        unpacked = staging / MOONSHINE
+        (unpacked / UNPACKED_MARKER).write_text(MOONSHINE_SHA256 + "\n")
+        shutil.rmtree(root / MOONSHINE, ignore_errors=True)
+        unpacked.rename(root / MOONSHINE)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def ensure_models() -> Path:
     """The model folder, fetching what's missing once if the hub may."""
     root = model_dir()
@@ -168,13 +238,8 @@ def ensure_models() -> Path:
         try:
             if not (root / SILERO).is_file():
                 _fetch(f"{_RELEASE}/{SILERO}", root / SILERO, SILERO_SHA256)
-            if not (root / MOONSHINE).is_dir() or not _present(root):
-                archive = root / f"{MOONSHINE}.tar.bz2"
-                _fetch(f"{_RELEASE}/{MOONSHINE}.tar.bz2", archive, MOONSHINE_SHA256)
-                shutil.rmtree(root / MOONSHINE, ignore_errors=True)
-                with tarfile.open(archive, "r:bz2") as tar:
-                    tar.extractall(root, filter="data")
-                archive.unlink(missing_ok=True)
+            if not _unpacked(root) and not _adopt_unmarked(root):
+                _unpack_moonshine(root)
         except (httpx.HTTPError, OSError, tarfile.TarError) as exc:
             msg = f"couldn't fetch the speech model: {exc}"
             raise VoiceUnavailable(msg) from exc
