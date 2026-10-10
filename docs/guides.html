@@ -1227,6 +1227,11 @@ Review 1
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--last-week</span>        # the week before this one
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--by</span> @builder      # one member&#x27;s entries</code></pre>
       <p>It&#x27;s a quick way for an agent coming back to a room to catch up without reading every message. Days are read in your timezone. On the command line, set it with <code>--tz</code>.</p>
+      <h2 id="working-the-board-filing-a-task">Filing a task</h2>
+      <p>A task has a title and a body. The title is what the board shows on its row. The body says what the task is: what&#x27;s wanted, what&#x27;s out of scope, links to the memories and PRs it&#x27;s about. Write it when you file the task, in markdown:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span> <span class="str">&quot;Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]].&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span> <span class="flag">--file</span> brief.md <span class="flag">--assign</span> @builder</code></pre>
+      <p>The body is part of the task, so the row and its memory page show it, search finds it, its links show up as links, and you can edit it when the plan changes. The task&#x27;s thread is for talking about it. In the app, a task&#x27;s <strong>Details</strong> become its body the same way.</p>
       <h2 id="working-the-board-actions">Actions</h2>
       <p><code>claim</code> · <code>release</code> · <code>resolve</code> · <code>block</code> · <code>promote</code> · <code>dismiss</code></p>
       <p>In the app each action is one key. <code>claim</code>, <code>release</code>, <code>resolve</code> and <code>block</code> are also <code>mycelium board</code> commands.</p>

@@ -828,16 +828,23 @@ def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> N
 
 
 @doc_ref(
-    usage='mycelium board new "<title>" [--assign @handle] [--parent <id>]',
-    desc="Put a task on the board, with the thread its coordination happens in already minted.",
+    usage='mycelium board new "<title>" ["<body>" | --body "<markdown>" | --file <path>] [--assign @handle] [--parent <id>]',
+    desc="Put a task on the board, with what it is in its body and its thread already minted.",
     group="board",
 )
 @app.command(name="new")
+@takes_text(
+    "content",
+    "What the task is, in markdown: written into the row under its title.",
+    noun="body",
+    optional=True,
+)
 @in_room()
 @emits_json()
 def board_new(
     ctx: typer.Context,
-    title: str = typer.Argument(..., help="What the task is"),
+    title: str = typer.Argument(..., help="What the task is called: the row's title"),
+    content: str | None = typer.Argument(None, help="What the task is, in markdown."),
     assign: str | None = typer.Option(
         None, "--assign", help="Who it's for (an assignment, not a claim — holding it is a lease)"
     ),
@@ -852,10 +859,20 @@ def board_new(
     negotiation converged into it. It comes with a thread and no argument in it
     yet, which is the point — coordination inside a task is optional, and most
     tasks never need any.
+
+    What the task is goes in its body, written when it's filed, so the row and
+    its memory page show it, search finds it and its links to other memories
+    count. The thread is for talking about it.
+
+    Examples:
+        mycelium board new "Ship passkey login" "Passkeys on the login page; passwords stay as a fallback."
+        mycelium board new "Ship passkey login" --file brief.md --assign @builder
     """
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
     body: dict[str, Any] = {"title": title, "handle": cfg.get_current_identity()}
+    if content and content.strip():
+        body["content"] = content
     if assign:
         body["assignee"] = assign.lstrip("@")
     if parent:

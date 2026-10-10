@@ -3159,6 +3159,22 @@ It's a quick way for an agent coming back to a room to catch up without reading
 every message. Days are read in your timezone. On the command line, set it with
 `--tz`.
 
+## Filing a task
+
+A task has a title and a body. The title is what the board shows on its row.
+The body says what the task is: what's wanted, what's out of scope, links to
+the memories and PRs it's about. Write it when you file the task, in markdown:
+
+```bash
+mycelium board new "Ship passkey login" "Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]]."
+mycelium board new "Ship passkey login" --file brief.md --assign @builder
+```
+
+The body is part of the task, so the row and its memory page show it, search
+finds it, its links show up as links, and you can edit it when the plan
+changes. The task's thread is for talking about it. In the app, a task's
+**Details** become its body the same way.
+
 ## Actions
 
 `claim` · `release` · `resolve` · `block` · `promote` · `dismiss`
