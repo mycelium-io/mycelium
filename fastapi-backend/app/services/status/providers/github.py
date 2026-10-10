@@ -32,6 +32,7 @@ from app.services.status.types import (
     FetchSucceeded,
     ProviderContext,
     Ref,
+    UpstreamChange,
     UpstreamState,
 )
 
@@ -56,6 +57,9 @@ _FRAGMENT = """
 fragment pr on PullRequest {
   url title state isDraft updatedAt
   reviewDecision
+  reviewRequests(first: 10) {
+    nodes { requestedReviewer { ... on User { login } ... on Team { slug } ... on Bot { login } } }
+  }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
 }
 """
@@ -116,6 +120,9 @@ class GitHubProvider:
             )
         return refs
 
+    def changes(self, before: dict[str, Any], after: dict[str, Any]) -> list[UpstreamChange]:
+        return changes(before, after)
+
     async def fetch(self, refs: list[Ref], ctx: ProviderContext) -> list[FetchOutcome]:
         # No auth here: a provider that is called at all has its credential, and
         # ``ctx.http`` is already bound to ``base_url`` carrying it.
@@ -169,8 +176,61 @@ def _upstream_state(node: dict[str, Any]) -> UpstreamState:
         label=label,
         url=node.get("url"),
         source_updated_at=_parse(node.get("updatedAt")),
-        detail={"ci": rollup, "review": node.get("reviewDecision"), "title": node.get("title")},
+        detail={
+            "ci": rollup,
+            "review": node.get("reviewDecision"),
+            "title": node.get("title"),
+            "pr": node.get("state"),
+            "requested": _requested(node),
+        },
     )
+
+
+def _requested(node: dict[str, Any]) -> list[str]:
+    """Who a review is waiting on: people by login, teams by slug."""
+    names: list[str] = []
+    for request in (node.get("reviewRequests") or {}).get("nodes") or []:
+        reviewer = (request or {}).get("requestedReviewer") or {}
+        name = reviewer.get("login") or reviewer.get("slug")
+        if isinstance(name, str) and name and name not in names:
+            names.append(name)
+    return names
+
+
+_RED = ("FAILURE", "ERROR")
+
+
+def changes(before: dict[str, Any], after: dict[str, Any]) -> list[UpstreamChange]:
+    """What happened to a pull request between two readings of its ``detail``.
+
+    Only crossings count: a pull request that was already approved is not
+    approved again on the next reading. A merge or close says all there is to
+    say, so nothing else is reported beside it. A reading from before this
+    provider kept ``pr`` or ``requested`` reads as unknown there, never as a
+    change.
+    """
+    pr = after.get("pr")
+    if pr in ("MERGED", "CLOSED") and before.get("pr") == "OPEN":
+        return [UpstreamChange("merged" if pr == "MERGED" else "closed")]
+    if pr != "OPEN":
+        return []
+    found: list[UpstreamChange] = []
+    if "requested" in before:
+        asked = [n for n in after.get("requested") or [] if n not in before["requested"]]
+        if asked:
+            found.append(UpstreamChange("review_requested", tuple(asked)))
+    review = after.get("review")
+    if review != before.get("review"):
+        if review == "APPROVED":
+            found.append(UpstreamChange("approved"))
+        elif review == "CHANGES_REQUESTED":
+            found.append(UpstreamChange("changes_requested"))
+    ci, was = after.get("ci"), before.get("ci")
+    if ci in _RED and was not in _RED:
+        found.append(UpstreamChange("ci_failed"))
+    elif ci == "SUCCESS" and was in (*_RED, "PENDING"):
+        found.append(UpstreamChange("ci_passed"))
+    return found
 
 
 def _ttl_for(node: dict[str, Any]) -> timedelta | None:

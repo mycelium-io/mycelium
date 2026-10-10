@@ -28,7 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from app.services.filesystem import get_room_dir, list_memory_files
+from app.services.filesystem import EPISODE_META, get_room_dir, list_memory_files, system_meta
 
 if TYPE_CHECKING:
     from app.services.status.runtime import StatusRuntime
@@ -73,10 +73,41 @@ def discover(room_name: str, runtime: StatusRuntime) -> list[DiscoveredRefs]:
                 found[ref].append(origin)
 
     room_dir = get_room_dir(room_name)
+    threads: dict[str, str] = {}
     for namespace in LIVE_NAMESPACES:
-        for key, _meta, content in list_memory_files(room_dir, prefix=namespace, limit=SCAN_LIMIT):
+        for key, meta, content in list_memory_files(room_dir, prefix=namespace, limit=SCAN_LIMIT):
             # The key is scanned too: a memory filed as `work/pr-504` names the
             # thing it is about in its own name as often as in its body.
             note(f"{key}\n{content}", f"memory:{key}")
+            episode = system_meta(meta).get(EPISODE_META)
+            if episode:
+                threads[str(episode)] = key
+
+    # A row's own thread links it too: the PR is usually announced there
+    # ("PR is up: …"), and nobody should have to copy it into the body.
+    for episode, text in _thread_text(room_name, threads):
+        note(text, f"memory:{threads[episode]}")
 
     return [DiscoveredRefs(ref=ref, origins=tuple(found[ref])) for ref in order]
+
+
+def _thread_text(room_name: str, threads: dict[str, str]) -> list[tuple[str, str]]:
+    """What was said in each of ``threads``, as ``(episode, text)``, from the
+    room's transcript. Empty when the room has no channel up (a test, or a hub
+    still starting); the rows' own text is still discovered."""
+    if not threads:
+        return []
+    from app.services.persister import _conversational_text, record_episode
+    from app.services.room_channels import manager
+
+    managed = manager.get(room_name)
+    if managed is None or managed.persister is None:
+        return []
+    said: list[tuple[str, str]] = []
+    for record in managed.persister.log.records:
+        episode = record_episode(record)
+        if episode in threads:
+            text = _conversational_text(record.content)
+            if text:
+                said.append((episode, text))
+    return said

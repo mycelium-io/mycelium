@@ -8,6 +8,7 @@ import { ChevronDown, ChevronRight, MessageSquare } from "lucide-react";
 
 import { Tooltip } from "@/components/ui/tooltip";
 import { useIsClient } from "@/lib/client-hooks";
+import { isUpstreamLabel } from "@/lib/threads";
 import { cn } from "@/lib/utils";
 
 /** One thing the room raised about a task, as it reads once a row is opened. */
@@ -141,6 +142,12 @@ export function lastChange(update: ActivityUpdate): string {
   const who = update.detail.match(/@[\w.@-]+/g)?.join(", ") ?? "";
   if (update.label === "Activity") return who ? `${who} posted in the thread` : "a message in the thread";
   if (update.label === "Knowledge") return who ? `${who} edited its notes` : "its notes changed";
+  // Its pull request: nobody here did it, and the handles are who a review
+  // was asked of. "CI" keeps its capitals.
+  if (isUpstreamLabel(update.label)) {
+    const said = update.label.startsWith("CI") ? update.label : update.label.toLowerCase();
+    return who ? `${said} from ${who}` : said;
+  }
   // The handle on an expired lease is whoever stopped renewing it, not who did it.
   if (update.label === "Expired") return who ? `${who}'s lease ran out` : "its lease ran out";
   // Whose turn it is in the thread: the holder alone, the handles it gave the

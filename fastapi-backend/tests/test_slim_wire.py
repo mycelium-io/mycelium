@@ -215,6 +215,7 @@ def test_notice_payload_matches_contract():
     g = _contract()["notice"]
     assert g["payload_type"] == message_format.NOTICE_PAYLOAD_TYPE
     assert set(g["subkinds"]) == set(message_format.NOTICE_SUBKINDS)
+    assert set(g["upstream_changes"]) == set(message_format.UPSTREAM_CHANGES)
 
     published: list[dict] = []
     original = bus.publish

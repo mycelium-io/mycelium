@@ -95,7 +95,8 @@ something closes. Muting Mycelium's notification sound mutes these.
 The board is for what's happening now. Anything that needs to last beyond the
 work belongs in GitHub, and the board links to it instead of copying it.
 
-Mention a pull request in a task's body as `owner/repo#123` or by its URL, and
-give the hub a GitHub token. The row then shows the pull request's live state,
-such as approved, changes requested, CI failing or merged. See
+Mention a pull request in a task's body or its thread as `owner/repo#123` or by
+its URL, and give the hub a GitHub token. The row then shows the pull request's
+live state, such as approved, changes requested, CI failing or merged, and the
+room is told when it changes. See
 [live pull request status](#board-reference) for the states and the token.

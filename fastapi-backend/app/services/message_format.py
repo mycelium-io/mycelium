@@ -99,9 +99,35 @@ NOTICE_PAYLOAD_TYPE = "notice"
 #: ``by`` names the holder who stopped renewing it. ``floor`` says whose turn it
 #: is in a thread (:mod:`app.services.floor`): ``key`` is the thread's short id,
 #: ``by`` the holder, ``speakers`` the comma-joined handles it was given to, and
-#: ``released`` marks the floor opening back up.
+#: ``released`` marks the floor opening back up. ``upstream`` says the thing a
+#: row points at changed outside the room (a pull request's review or CI moved,
+#: or it merged): ``change`` is one of :data:`UPSTREAM_CHANGES`, and nobody but
+#: the status watcher (:mod:`app.services.status.watch`) raises it.
 NOTICE_SUBKINDS = frozenset(
-    {"filed", "claimed", "released", "resolved", "blocked", "unblocked", "expired", "floor"}
+    {
+        "filed",
+        "claimed",
+        "released",
+        "resolved",
+        "blocked",
+        "unblocked",
+        "expired",
+        "floor",
+        "upstream",
+    }
+)
+
+#: What an ``upstream`` notice can say happened, frozen beside the subkinds.
+UPSTREAM_CHANGES = frozenset(
+    {
+        "review_requested",
+        "approved",
+        "changes_requested",
+        "ci_failed",
+        "ci_passed",
+        "merged",
+        "closed",
+    }
 )
 
 

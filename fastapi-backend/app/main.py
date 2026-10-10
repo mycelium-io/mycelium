@@ -140,6 +140,13 @@ async def lifespan(app: FastAPI):
 
     start_lease_sweep()
 
+    # Upstream watch: raises the `upstream` timeline notice when a pull request
+    # a row links changes (review, CI, merge). GitHub can't call a hub on
+    # localhost, so this looks once a minute instead.
+    from app.services.status.watch import start_watch, stop_watch
+
+    start_watch()
+
     # Schedules: fires each agent's due check-ins (pre-check, then the wake).
     from app.services import schedules as _schedules
 
@@ -298,6 +305,7 @@ async def lifespan(app: FastAPI):
     stop_watcher()
     stop_event_sweep()
     stop_lease_sweep()
+    stop_watch()
     from app.services import voice_worker
 
     voice_worker.stop()

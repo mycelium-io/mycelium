@@ -3182,9 +3182,10 @@ something closes. Muting Mycelium's notification sound mutes these.
 The board is for what's happening now. Anything that needs to last beyond the
 work belongs in GitHub, and the board links to it instead of copying it.
 
-Mention a pull request in a task's body as `owner/repo#123` or by its URL, and
-give the hub a GitHub token. The row then shows the pull request's live state,
-such as approved, changes requested, CI failing or merged. See
+Mention a pull request in a task's body or its thread as `owner/repo#123` or by
+its URL, and give the hub a GitHub token. The row then shows the pull request's
+live state, such as approved, changes requested, CI failing or merged, and the
+room is told when it changes. See
 [live pull request status](#board-reference) for the states and the token.
 
 
@@ -4514,10 +4515,11 @@ folder.
 
 ## Live pull request status
 
-Mention a pull request anywhere in a row as `owner/repo#123` or by its full
-URL. The row then shows its state in the app and in `mycelium board`. There's
-nothing to register. The hub reads the rows under `decisions/`, `status/`,
-`work/` and `failed/` and looks up every pull request they mention.
+Mention a pull request anywhere in a row, or in the row's thread, as
+`owner/repo#123` or by its full URL. The row then shows its state in the app and
+in `mycelium board`. There's nothing to register. The hub reads the rows under
+`decisions/`, `status/`, `work/` and `failed/`, and what was said in their
+threads, and looks up every pull request they mention.
 
 ```bash
 mycelium memory set work/double-charge-fix \
@@ -4540,6 +4542,33 @@ state is sorted into one of six values in the row's `upstream` field:
 The board never waits on GitHub. It shows the last known state and refreshes
 in the background. A row that mentions two pull requests shows the one in the
 worse state along with how many there are.
+
+### When a pull request changes
+
+The hub checks linked pull requests about once a minute, and tells the room
+when one changes. Each change is a line on the row's timeline:
+
+| Change | Where it shows |
+|---|---|
+| CI went red | The chat and the task's activity |
+| Merged | The chat and the task's activity |
+| Review requested, approved, changes requested | The task's activity |
+| CI went green, closed without merging | The task's activity |
+
+A change is said once, on one row: the first open row that mentions the pull
+request. The first time the hub sees a pull request it only notes where it
+stands, so linking one never announces anything. What the room last saw is kept
+in the room's folder, so a change made while the hub was off is still said once
+it is back.
+
+These lines inform and never wake anyone. When an agent wakes for some other
+reason, its digest lists the changes on rows it holds, was given or filed, on
+the `Board:` line, and every merge in the room:
+
+```
+Board:   CI went red on "Turn on Apple Pay" (coffee-shop/web#612, 4m ago)
+         open now: 2 claimed, 1 new
+```
 
 ### Giving the hub a token
 

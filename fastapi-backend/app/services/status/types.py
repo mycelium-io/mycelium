@@ -118,6 +118,22 @@ class UpstreamState:
 
 
 @dataclass(frozen=True, slots=True)
+class UpstreamChange:
+    """Something that happened to an external thing between two readings of it.
+
+    ``change`` is one of ``message_format.UPSTREAM_CHANGES`` (a review asked
+    for, an approval, CI going red …), the words the room's timeline is told.
+    A provider that can tell what happened declares a ``changes(before, after)``
+    method over two readings' ``detail``; one that can't is still a provider,
+    and its rows just never say what moved.
+    """
+
+    change: str
+    #: Who it is about, when the provider knows: the reviewers asked, say.
+    who: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class FetchSucceeded:
     ref: Ref
     upstream: UpstreamState

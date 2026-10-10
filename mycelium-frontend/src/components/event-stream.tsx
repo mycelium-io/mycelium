@@ -10,7 +10,14 @@ import {
   logFetchError,
 } from "@/lib/api";
 import { useMessageSearch, useRoomAgents, useRoomRowNames, useRoomThreads, type RowNaming, type ThreadOwner } from "@/lib/room-data";
-import { NOTICE_TYPE, PING_TYPE, isLiveEpisode, noticeLabel, threadShortId } from "@/lib/threads";
+import {
+  NOTICE_TYPE,
+  PING_TYPE,
+  isLiveEpisode,
+  noticeLabel,
+  threadShortId,
+  upstreamInChat,
+} from "@/lib/threads";
 import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
 import {
   applyActivity,
@@ -281,12 +288,15 @@ function isActivity(event: Event): boolean {
  * are the room's news, so they get a line where people are reading; each stays
  * on the rail too, where the task's whole life collects. Every other board event
  * (claimed, released, expired, blocked, the floor moving on each step of a flow)
- * stays on the rail alone.
+ * stays on the rail alone. A task's pull request is the same: its merge and
+ * its CI going red are news, and the rest of what GitHub says (a review asked
+ * for, CI green again) is the task's own.
  */
 function isAlsoInChat(event: Event): boolean {
   if (event.type === PING_TYPE) return true;
   if (event.type !== NOTICE_TYPE) return false;
   const subkind = (event.raw.subkind as string) || "filed";
+  if (subkind === "upstream") return upstreamInChat(event.raw.change as string | undefined);
   return subkind === "filed" || subkind === "resolved";
 }
 
@@ -384,7 +394,16 @@ function activityLine(ev: Event): { label: string; detail: string } {
   }
   if (ev.type === NOTICE_TYPE) {
     const by = ev.raw.by as string | undefined;
-    const label = noticeLabel((ev.raw.subkind as string) || "filed", ev.raw.kind as string | undefined);
+    const label = noticeLabel(
+      (ev.raw.subkind as string) || "filed",
+      ev.raw.kind as string | undefined,
+      ev.raw.change as string | undefined,
+    );
+    if (ev.raw.subkind === "upstream") {
+      // Which pull request, and who a review was asked of. Nobody moved it here.
+      const who = ((ev.raw.who as string[] | undefined) ?? []).map((h) => `@${h}`).join(", ");
+      return { label, detail: [ev.raw.ref as string | undefined, who].filter(Boolean).join(" · ") };
+    }
     if (ev.raw.subkind === "floor") {
       // Whose turn it is in a thread: the task the thread belongs to (its id
       // only when no row carries it), then the handles it was given to, the
@@ -1274,23 +1293,33 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 const episode = ev.thread;
                 const by = ev.raw.by as string | undefined;
                 const subkind = (ev.raw.subkind as string) || "filed";
+                const change = ev.raw.change as string | undefined;
                 // Green when work lands, closes or clears; red when it stalls on a
                 // blocker; yellow when it comes back up for grabs, handed back or
-                // drained; accent in hand.
+                // drained; accent in hand. A pull request reads the same way:
+                // merged or green is green, red CI or changes asked for is red.
                 const dot =
-                  subkind === "resolved" || subkind === "filed" || subkind === "unblocked"
-                    ? "var(--green)"
-                    : subkind === "blocked"
-                      ? "var(--red)"
-                      : subkind === "released" || subkind === "expired"
-                        ? "var(--yellow)"
-                        : "var(--accent)";
+                  subkind === "upstream"
+                    ? change === "merged" || change === "ci_passed" || change === "approved"
+                      ? "var(--green)"
+                      : change === "ci_failed" || change === "changes_requested"
+                        ? "var(--red)"
+                        : "var(--accent)"
+                    : subkind === "resolved" || subkind === "filed" || subkind === "unblocked"
+                      ? "var(--green)"
+                      : subkind === "blocked"
+                        ? "var(--red)"
+                        : subkind === "released" || subkind === "expired"
+                          ? "var(--yellow)"
+                          : "var(--accent)";
+                const ref = ev.raw.ref as string | undefined;
+                const prUrl = ev.raw.url as string | undefined;
                 return (
                   <SystemNotice
                     key={ev.id}
                     time={ev.time} at={ev.at} prevAt={prevAt}
                     dot={dot}
-                    label={noticeLabel(subkind, ev.raw.kind as string | undefined)}
+                    label={noticeLabel(subkind, ev.raw.kind as string | undefined, change)}
                   >
                     <button
                       type="button"
@@ -1304,7 +1333,18 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     {/* A filed task reads by who it is for; a lease event by who
                         moved it; an expired one by who let it drain. Fall back to
                         the filer when a task is for no one. */}
-                    {subkind === "filed" && ev.raw.for ? (
+                    {subkind === "upstream" ? (
+                      ref && prUrl ? (
+                        <span>
+                          ·{" "}
+                          <a href={prUrl} target="_blank" rel="noreferrer" className="hover:text-text hover:underline">
+                            {ref}
+                          </a>
+                        </span>
+                      ) : ref ? (
+                        <span>· {ref}</span>
+                      ) : null
+                    ) : subkind === "filed" && ev.raw.for ? (
                       <span>· for @{String(ev.raw.for).replace(/^@/, "")}</span>
                     ) : by ? (
                       <span>

@@ -175,6 +175,10 @@ export function parseEvent(msg: Record<string, unknown>): Event {
           for: notice.assignee,
           speakers: notice.speakers,
           released: notice.released,
+          change: notice.change,
+          ref: notice.ref,
+          url: notice.url,
+          who: notice.who,
         };
         break;
       }

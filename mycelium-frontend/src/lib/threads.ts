@@ -108,9 +108,44 @@ export const NOTICE_SUBKINDS = [
   "unblocked",
   "expired",
   "floor",
+  "upstream",
 ] as const;
 
 export type NoticeSubkind = (typeof NOTICE_SUBKINDS)[number];
+
+/** What an `upstream` notice says happened to the pull request a row links,
+ *  frozen beside the subkinds. */
+export const UPSTREAM_CHANGES = [
+  "review_requested",
+  "approved",
+  "changes_requested",
+  "ci_failed",
+  "ci_passed",
+  "merged",
+  "closed",
+] as const;
+
+/** The label an `upstream` notice wears, by what changed. */
+const UPSTREAM_LABEL: Record<string, string> = {
+  review_requested: "Review requested",
+  approved: "Approved",
+  changes_requested: "Changes requested",
+  ci_failed: "CI went red",
+  ci_passed: "CI went green",
+  merged: "Merged",
+  closed: "Closed",
+};
+
+/** Whether a timeline label is one an `upstream` notice wears. */
+export function isUpstreamLabel(label: string): boolean {
+  return Object.values(UPSTREAM_LABEL).includes(label);
+}
+
+/** Whether an `upstream` change is news for the chat (work landing, or CI
+ *  breaking) rather than for the task's activity alone. */
+export function upstreamInChat(change: string | null | undefined): boolean {
+  return change === "merged" || change === "ci_failed";
+}
 
 /** What a notice says: what happened, to which task, and the thread to open. */
 export interface Notice {
@@ -128,6 +163,13 @@ export interface Notice {
   speakers: string[];
   /** On a `floor` notice: the floor opened back up. */
   released: boolean;
+  /** On an `upstream` notice: what happened (one of {@link UPSTREAM_CHANGES}),
+   *  to which pull request (`owner/repo#123`), its link, and who a review was
+   *  asked of. */
+  change: string | null;
+  ref: string | null;
+  url: string | null;
+  who: string[];
 }
 
 /**
@@ -156,6 +198,10 @@ export function noticeOf(raw: Record<string, unknown> | null | undefined): Notic
     assignee: str(data.for),
     speakers: str(data.speakers)?.split(",").filter(Boolean) ?? [],
     released: data.released === "1",
+    change: str(data.change),
+    ref: str(data.ref),
+    url: str(data.url),
+    who: str(data.who)?.split(",").filter(Boolean) ?? [],
   };
 }
 
@@ -171,9 +217,16 @@ const FILED_AS: Record<string, string> = {
   signal: "note",
 };
 
-/** The label a notice wears in the timeline, by subkind (and, when filed, kind). */
-export function noticeLabel(subkind: string, kind: string | null | undefined): string {
+/** The label a notice wears in the timeline, by subkind (and, when filed, kind;
+ *  for an `upstream` one, what changed). */
+export function noticeLabel(
+  subkind: string,
+  kind: string | null | undefined,
+  change?: string | null,
+): string {
   switch (subkind) {
+    case "upstream":
+      return (change && UPSTREAM_LABEL[change]) || "Pull request";
     case "filed":
       return `New ${(kind && FILED_AS[kind]) || "task"}`;
     case "claimed":

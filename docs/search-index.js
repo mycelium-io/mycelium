@@ -1139,7 +1139,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#working-the-board-github",
     "t": "GitHub",
     "s": "Work › Working the Board",
-    "x": "The board is for what's happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it instead of copying it. Mention a pull request in a task's body as owner/repo#123 or by its URL, and give the hub a GitHub token. The row then shows the pull request's live state, such as approved, changes requested, CI failing or merged. See live pull request status for the states and the to",
+    "x": "The board is for what's happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it instead of copying it. Mention a pull request in a task's body or its thread as owner/repo#123 or by its URL, and give the hub a GitHub token. The row then shows the pull request's live state, such as approved, changes requested, CI failing or merged, and the room is told when it changes. Se",
     "p": "Guides"
   },
   {
@@ -2469,7 +2469,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#board-reference-live-pull-request-status",
     "t": "Live pull request status",
     "s": "Board",
-    "x": "Mention a pull request anywhere in a row as owner/repo#123 or by its full URL. The row then shows its state in the app and in mycelium board. There's nothing to register. The hub reads the rows under decisions/, status/, work/ and failed/ and looks up every pull request they mention. mycelium memory set work/double-charge-fix \\ \"land the double-charge fix: coffee-shop/web#504\" The row shows GitHub's own wording, such",
+    "x": "Mention a pull request anywhere in a row, or in the row's thread, as owner/repo#123 or by its full URL. The row then shows its state in the app and in mycelium board. There's nothing to register. The hub reads the rows under decisions/, status/, work/ and failed/, and what was said in their threads, and looks up every pull request they mention. mycelium memory set work/double-charge-fix \\ \"land the double-charge fix:",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#board-reference-when-a-pull-request-changes",
+    "t": "When a pull request changes",
+    "s": "Board",
+    "x": "The hub checks linked pull requests about once a minute, and tells the room when one changes. Each change is a line on the row's timeline: Change Where it shows CI went red The chat and the task's activity Merged The chat and the task's activity Review requested, approved, changes requested The task's activity CI went green, closed without merging The task's activity A change is said once, on one row: the first open ",
     "p": "Reference"
   },
   {
