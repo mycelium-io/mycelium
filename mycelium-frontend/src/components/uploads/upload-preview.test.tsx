@@ -72,9 +72,22 @@ describe("<UploadPreviewDialog /> in a set", () => {
     expect(screen.getByText("1 of 3")).toBeInTheDocument();
   });
 
-  it("shows no arrows for a single file", () => {
+  it("shows the whole set as a strip, the shown one marked, and jumps to one clicked", async () => {
+    const user = userEvent.setup();
+    render(<Opened set={SET} first={SET[0]} />);
+    expect(screen.getByRole("button", { name: "Show shot-1.png" })).toHaveAttribute("aria-current", "true");
+
+    await user.click(screen.getByRole("button", { name: "Show shot-3.png" }));
+    expect(screen.getByText("3 of 3")).toBeInTheDocument();
+    expect(screen.getByRole("img")).toHaveAttribute("alt", "shot-3.png");
+    expect(screen.getByRole("button", { name: "Show shot-3.png" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: "Show shot-1.png" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("shows no arrows or strip for a single file", () => {
     render(<Opened set={[SET[0]]} first={SET[0]} />);
     expect(screen.queryByRole("button", { name: "Next file" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show shot-1.png" })).toBeNull();
     expect(screen.queryByText(/of 1/)).toBeNull();
   });
 });

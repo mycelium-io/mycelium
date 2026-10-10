@@ -4,7 +4,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import {
   ChevronLeft,
@@ -176,9 +176,53 @@ export function stepThrough(set: Upload[], current: Upload | null, step: 1 | -1)
   return set[(at + step + set.length) % set.length];
 }
 
+/** The set as a strip of small previews under the file: images as thumbnails,
+ *  anything else as its kind's icon. The one shown is lit and kept in view;
+ *  clicking another shows it. */
+function Filmstrip({ set, current, onShow }: { set: Upload[]; current: Upload; onShow: (upload: Upload) => void }) {
+  const activeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [current.key]);
+
+  return (
+    <div className="flex min-w-0 gap-1.5 overflow-x-auto px-1 py-1">
+      {set.map((u) => {
+        const active = u.key === current.key;
+        const Icon = KIND_ICON[u.kind];
+        return (
+          <button
+            key={u.key}
+            ref={active ? activeRef : undefined}
+            type="button"
+            onClick={() => onShow(u)}
+            aria-label={`Show ${u.filename}`}
+            aria-current={active || undefined}
+            title={u.filename}
+            className={cn(
+              "flex size-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border bg-surface transition",
+              active
+                ? "border-accent ring-1 ring-accent"
+                : "border-border opacity-60 hover:opacity-100 focus-visible:opacity-100",
+            )}
+          >
+            {u.kind === "image" ? (
+              // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
+              <img src={u.url} alt="" loading="lazy" className="size-full object-cover" />
+            ) : (
+              <Icon className="size-5 text-muted-foreground" />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** The preview window: the file at a readable size, with its download. Given
  *  the `set` it was opened from (a message's attachments), it steps through
- *  them with its arrows or ← and →, wrapping at the ends. */
+ *  them with its arrows or ← and →, wrapping at the ends, and shows the whole
+ *  set as a strip along the bottom. */
 export function UploadPreviewDialog({
   upload,
   onClose,
@@ -225,19 +269,6 @@ export function UploadPreviewDialog({
         {shown && (
           <>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border py-2.5 pr-12 pl-4">
-              {stepping && (
-                <div className="flex items-center gap-0.5">
-                  <IconButton label="Previous file" side="bottom" onClick={() => go(-1)}>
-                    <ChevronLeft />
-                  </IconButton>
-                  <span className="min-w-10 text-center tabular text-micro text-muted-foreground">
-                    {at + 1} of {set.length}
-                  </span>
-                  <IconButton label="Next file" side="bottom" onClick={() => go(1)}>
-                    <ChevronRight />
-                  </IconButton>
-                </div>
-              )}
               <div className="min-w-0 flex-1">
                 <DialogTitle className="truncate text-label text-text">{shown.filename}</DialogTitle>
                 <DialogDescription>
@@ -261,6 +292,24 @@ export function UploadPreviewDialog({
             <div className="min-h-0 overflow-auto p-4">
               <UploadPreview upload={shown} onOpenMemory={onOpenMemory} />
             </div>
+            {stepping && onShow && (
+              <div className="flex items-center gap-2 border-t border-border px-3 py-1.5">
+                {/* Balances the count, so the strip sits in the middle. */}
+                <span aria-hidden className="w-12 flex-shrink-0" />
+                <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
+                  <IconButton label="Previous file" side="top" onClick={() => go(-1)}>
+                    <ChevronLeft />
+                  </IconButton>
+                  <Filmstrip set={set} current={shown} onShow={onShow} />
+                  <IconButton label="Next file" side="top" onClick={() => go(1)}>
+                    <ChevronRight />
+                  </IconButton>
+                </div>
+                <span className="w-12 flex-shrink-0 text-right tabular text-micro text-muted-foreground">
+                  {at + 1} of {set.length}
+                </span>
+              </div>
+            )}
           </>
         )}
       </DialogContent>
