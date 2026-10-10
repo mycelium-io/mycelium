@@ -7,7 +7,7 @@ The same experiences the desktop app's Settings shows, for a server or a termina
 Adding one keeps its content under ``~/.mycelium/experiences`` and points the
 hub at it (``mycelium/desktop/experiences.py``); this then writes ``.env`` and,
 when a Docker stack is running, recreates the backend so it reads it. A hub the
-Mac app runs is restarted by the app instead.
+desktop app runs is restarted by the app instead.
 """
 
 from __future__ import annotations

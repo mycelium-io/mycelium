@@ -804,7 +804,7 @@ def doctor(
     exercise all checks. In the optional hub-and-spoke deployment mode
     spoke nodes talk to a remote backend and don't run Docker containers
     locally. When --mode is 'auto' (the default), doctor checks what the
-    Mac app runs if the app is set up on this machine, and otherwise
+    desktop app runs if the app is set up on this machine, and otherwise
     detects spoke mode from server.api_url: if it points to a non-local
     host the Docker, runtime-drift, and port-drift checks are skipped.
 

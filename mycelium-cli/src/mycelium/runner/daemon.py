@@ -30,8 +30,8 @@ is exactly "start one of the agent CLIs you found, here".
 Even that is asked of the person here first. Anyone who can reach a hub can
 queue a job for any runner on it, so a launch, swarm or restart waits for a yes on
 this machine (``approvals``) unless a device paired here signed it, within
-what the pairing allows (``pairing``), or the runner trusts its hub: the Mac
-app's own hub, which only this machine can reach, or one the person said to
+what the pairing allows (``pairing``), or the runner trusts its hub: the
+desktop app's own hub, which only this machine can reach, or one the person said to
 trust with ``--trust-hub``. Scans and stops don't ask: a scan changes nothing,
 and a stop only ends an agent this machine already agreed to start. A ``pair``
 job doesn't ask either: it carries proof of a code only this machine printed.
