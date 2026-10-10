@@ -40,9 +40,9 @@ def _said(
     )
 
 
-def _notice(n: int, minutes_ago: int) -> TranscriptRecord:
+def _notice(n: int, minutes_ago: int, **data: str) -> TranscriptRecord:
     record = _said(n, "system", "", minutes_ago)
-    record.content["l9"]["payload"] = {"type": message_format.NOTICE_PAYLOAD_TYPE}
+    record.content["l9"]["payload"] = {"type": message_format.NOTICE_PAYLOAD_TYPE, "data": data}
     return record
 
 
@@ -77,7 +77,14 @@ def test_a_mention_digest_says_why_what_changed_and_what_asked():
         _said(1, "builder", "on it", 41),
         _said(2, "reviewer", "@builder I went through the receipt code. " + "x " * 300, 40, THREAD),
         _said(3, "hay", "unrelated chatter in the room", 30),
-        _notice(4, 20),
+        _notice(
+            4,
+            20,
+            subkind="claimed",
+            key="work/fix-the-receipt-tax",
+            title="Fix the receipt tax",
+            by="builder",
+        ),
         _said(5, "scout", LONG, 2, THREAD),
     ]
     digest = wake_digest.build(
@@ -90,10 +97,11 @@ def test_a_mention_digest_says_why_what_changed_and_what_asked():
         in digest
     )
     assert (
-        "Since:   your last turn, 41m ago: 2 in this thread (@reviewer 1, @scout 1), 1 elsewhere in the room, 1 board move"
+        "Since:   your last turn, 41m ago: 2 in this thread (@reviewer 1, @scout 1), 1 elsewhere in the room\n"
         in digest
     )
     assert 'Tasks:   claimed "Fix the receipt tax" (1h ago)' in digest
+    assert 'Board:   @builder claimed "Fix the receipt tax"\n         open now: 1 claimed' in digest
     # Each message says who, when and how long, and is cut with the rest counted.
     assert f"--- @scout, 2m ago, {len(LONG.strip()):,} chars, latest ---" in digest
     assert "--- @reviewer, 40m ago," in digest
@@ -199,6 +207,105 @@ def test_a_task_filed_for_the_agent_says_how_to_take_it():
     assert 'Why:     @operator gave you a task: "Do X" (work/x)' in digest
     assert "Since:   you joined" in digest
     assert "Claim:  mycelium board claim work/x --room digest-room --to @builder" in digest
+
+
+def _board_lines(digest: str) -> list[str]:
+    lines = digest.splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.startswith("Board:"))
+    end = next(i for i in range(start + 1, len(lines)) if not lines[i].startswith("         "))
+    return [ln[9:] for ln in lines[start:end]]
+
+
+def test_the_board_line_lists_what_changed_newest_first_then_whats_open():
+    records = [
+        _said(1, "builder", "back", 60),
+        _notice(
+            2,
+            50,
+            subkind="filed",
+            key="work/a",
+            title="Add Apple Pay",
+            by="julia",
+            kind="task",
+            **{"for": "builder"},
+        ),
+        _notice(
+            3,
+            40,
+            subkind="filed",
+            key="decisions/b",
+            title="Refund or support?",
+            by="reviewer",
+            kind="decision",
+        ),
+        _notice(4, 30, subkind="floor", key="t1", by="builder"),
+        _notice(
+            5, 20, subkind="expired", key="work/c", title="Hands-free voice mode", by="voice-model"
+        ),
+        _notice(6, 15, subkind="expired", key="work/d", title="Nobody held this", by="runtime"),
+        _notice(
+            7,
+            10,
+            subkind="resolved",
+            key="work/e",
+            title="Say 'the desktop app' everywhere in the docs and the app",
+            by="schedule-ux",
+        ),
+    ]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "julia"}, records, NOW)
+    assert _board_lines(digest) == [
+        "@schedule-ux resolved \"Say 'the desktop app' everywhere in the docs…\"",
+        '"Nobody held this" expired',
+        '"Hands-free voice mode" expired, @voice-model stopped renewing',
+        '@reviewer filed a decision "Refund or support?"',
+        '@julia filed "Add Apple Pay" for @builder',
+        "open now: nothing open",
+    ]
+    # The changes are listed, so the count of them is no longer said.
+    assert "board move" not in digest
+
+
+def test_the_board_line_keeps_the_newest_changes_and_counts_the_rest():
+    records = [_said(0, "builder", "back", 60)] + [
+        _notice(n, 50 - n, subkind="claimed", key=f"work/t{n}", title=f"Task {n}", by="hay")
+        for n in range(1, 9)
+    ]
+    lines = _board_lines(wake_digest.build(ROOM, {"handle": "builder"}, records, NOW))
+    assert lines[:5] == [f'@hay claimed "Task {n}"' for n in (8, 7, 6, 5, 4)]
+    assert lines[5:] == ["and 3 more", "open now: nothing open"]
+
+
+def test_the_tally_names_the_rows_someone_has_to_act_on():
+    room_dir = get_room_dir(ROOM)
+    for n in range(1, 6):
+        write_memory_file(
+            room_dir,
+            f"work/drained-{n}",
+            f"# Drained task {n}",
+            created_by="hay",
+            extra_meta={
+                "assignment": "held",
+                "owner": "voice-model",
+                "claimed_at": (NOW - timedelta(hours=3)).isoformat(),
+                "ttl_minutes": 30,
+            },
+        )
+    write_memory_file(
+        room_dir,
+        "work/stuck",
+        "# Waiting on the GitHub token",
+        created_by="hay",
+        extra_meta={"blocked_by": "julia"},
+    )
+    write_memory_file(room_dir, "work/fresh", "# A new one", created_by="hay")
+    digest = wake_digest.build(ROOM, {"handle": "builder"}, [], NOW)
+    (line,) = _board_lines(digest)
+    assert line.startswith(
+        "1 blocked (Waiting on the GitHub token), 1 new, 5 expired (Drained task "
+    )
+    assert line.endswith(" and 2 more)")
+    # Nothing changed, so there is no list and no "open now:" in front of the tally.
+    assert "open now:" not in digest
 
 
 def test_cut_counts_exactly_what_it_leaves_out():

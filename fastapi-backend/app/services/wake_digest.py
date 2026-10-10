@@ -37,6 +37,16 @@ EARLIER_CHARS = 280
 SHOWN = 3
 #: How many of the agent's own tasks are listed.
 TASKS_SHOWN = 5
+#: How many changes to the board are listed, newest kept.
+CHANGES_SHOWN = 5
+#: How many rows the tally names behind a count someone has to act on.
+NAMED = 3
+#: How much of a task's title a change line or the tally carries.
+TITLE_CHARS = 48
+NAME_CHARS = 32
+#: The notices that say the board moved. ``floor`` is whose turn it is in a
+#: thread, which is not the board's news.
+BOARD_NOTICES = message_format.NOTICE_SUBKINDS - {"floor"}
 #: How far back the transcript is read for the agent's last turn.
 SCAN = 2000
 
@@ -104,11 +114,57 @@ def _title(key: str, content: str) -> str:
     return first.lstrip("# ").strip()
 
 
+def _short(title: str, limit: int) -> str:
+    """A title cut to ``limit`` characters on a word, ending in an ellipsis."""
+    title = " ".join(title.split())
+    if len(title) <= limit:
+        return title
+    head = title[: limit - 1]
+    space = head.rfind(" ")
+    return (head[:space] if space > limit * 0.6 else head).rstrip(" ,.;:") + "…"
+
+
+def _board_notice(record: Any) -> dict[str, Any] | None:
+    """The notice ``record`` carries, when it is one about a task on the board."""
+    payload = (record.content.get("l9") or {}).get("payload") or {}
+    if payload.get("type") != message_format.NOTICE_PAYLOAD_TYPE:
+        return None
+    data = payload.get("data") or {}
+    return data if data.get("subkind") in BOARD_NOTICES else None
+
+
+def change(data: dict[str, Any]) -> str:
+    """One board change as the digest says it: who did what to which task."""
+    subkind = str(data["subkind"])
+    title = f'"{_short(str(data.get("title") or data.get("key") or "a task"), TITLE_CHARS)}"'
+    by = _norm(data.get("by"))
+    who = f"@{by}" if by and by != assignments.RUNTIME_AUTHOR else ""
+    if subkind == "expired":
+        return f"{title} expired" + (f", {who} stopped renewing" if who else "")
+    if not who:
+        return f"{title} {subkind}"
+    verb = subkind
+    if subkind == "filed" and data.get("kind") and data["kind"] != "task":
+        verb = f"filed a {data['kind']}"
+    to = _norm(data.get("for"))
+    return f"{who} {verb} {title}" + (f" for @{to}" if subkind == "filed" and to else "")
+
+
+def changes(since: list[Any]) -> list[str]:
+    """What happened on the board in ``since``, newest first."""
+    return [change(data) for data in map(_board_notice, reversed(since)) if data]
+
+
 def board(room: str, handle: str, now: datetime) -> tuple[list[str], str]:
-    """The agent's own open tasks, and the room's board as a tally of what's live."""
+    """The agent's own open tasks, and the room's board as a tally of what's live.
+
+    The tally names the rows behind ``blocked`` and ``expired``, since those are
+    the ones someone has to do something about.
+    """
     me = _norm(handle)
     mine: list[str] = []
     tally: Counter[str] = Counter()
+    named: dict[str, list[str]] = {"blocked": [], "expired": []}
     for key, meta, content in _rows(room):
         if assignments.settled(meta, now):
             continue
@@ -120,10 +176,12 @@ def board(room: str, handle: str, now: datetime) -> tuple[list[str], str]:
             else {"held": "claimed", "unclaimed": "new", "released": "released"}.get(state, state)
         )
         tally[word] += 1
+        title = _title(key, content)
+        if word in named:
+            named[word].append(_short(title, NAME_CHARS))
         holder = _norm(meta.get("owner")) if state == "held" else ""
         if me not in (holder, _norm(meta.get("assignee"))):
             continue
-        title = _title(key, content)
         if blocked:
             mine.append(f'blocked "{title}" (waiting on {blocked})')
         elif state == "held":
@@ -132,8 +190,17 @@ def board(room: str, handle: str, now: datetime) -> tuple[list[str], str]:
         else:
             mine.append(f'{word} "{title}" (for you, unclaimed)')
     order = ["claimed", "blocked", "new", "released", "expired"]
-    parts = [f"{tally[w]} {w}" for w in order if tally[w]]
+    parts = [f"{tally[w]} {w}{_names(named.get(w, []))}" for w in order if tally[w]]
     return mine, ", ".join(parts) or "nothing open"
+
+
+def _names(titles: list[str]) -> str:
+    """`` (A, B, C and 2 more)`` for the rows behind a count, or nothing."""
+    if not titles:
+        return ""
+    shown = ", ".join(titles[:NAMED])
+    more = f" and {len(titles) - NAMED} more" if len(titles) > NAMED else ""
+    return f" ({shown}{more})"
 
 
 def _schedule_lines(room: str, name: str) -> list[str]:
@@ -179,12 +246,6 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     said = [r for r in since if _conversational_text(r.content)]
     in_here = [r for r in said if place_of(r) == here]
     elsewhere = len(said) - len(in_here)
-    moves = sum(
-        1
-        for r in since
-        if ((r.content.get("l9") or {}).get("payload") or {}).get("type")
-        == message_format.NOTICE_PAYLOAD_TYPE
-    )
     by = Counter(r.sender for r in in_here if r.sender)
 
     lines = [f"mycelium wake for @{me} in {room}", ""]
@@ -214,8 +275,6 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     rest = [changed]
     if elsewhere:
         rest.append(f"{elsewhere} elsewhere in the room")
-    if moves:
-        rest.append(f"{moves} board {'move' if moves == 1 else 'moves'}")
     lines.append(f"Since:   {first}: " + ", ".join(rest))
 
     mine, tally = board(room, handle, now)
@@ -224,7 +283,17 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         lines.extend(f"         {t}" for t in mine[1:TASKS_SHOWN])
         if len(mine) > TASKS_SHOWN:
             lines.append(f"         and {len(mine) - TASKS_SHOWN} more")
-    lines.append(f"Board:   {tally}")
+    # What changed on the board since its last turn, then what's open now, so
+    # the agent doesn't have to read the board to learn what moved.
+    moved = changes(since)
+    if moved:
+        lines.append(f"Board:   {moved[0]}")
+        lines.extend(f"         {c}" for c in moved[1:CHANGES_SHOWN])
+        if len(moved) > CHANGES_SHOWN:
+            lines.append(f"         and {len(moved) - CHANGES_SHOWN} more")
+        lines.append(f"         open now: {tally}")
+    else:
+        lines.append(f"Board:   {tally}")
     # What the team agreed for the task it's about, so it works to that.
     task_key = wake.get("key") if reason == "assigned" else (where[0] if where else None)
     if task_key:
