@@ -2,7 +2,18 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { cleanFolder, folderChoices, joinKey, keyProblem, slugify, treeSlice } from "@/lib/memory-location";
+import { cleanFolder, folderChoices, joinKey, keyProblem, slugify, threadKey, treeSlice } from "@/lib/memory-location";
+
+describe("threadKey", () => {
+  it("puts a conversation under context/, named for its title", () => {
+    expect(threadKey("Chat buddy")).toBe("context/chat-buddy");
+    expect(threadKey("  Q3 launch: what's left?  ")).toBe("context/q3-launch-what-s-left");
+  });
+
+  it("has no key for a title with nothing to name it by", () => {
+    expect(threadKey("!!!")).toBeNull();
+  });
+});
 
 describe("slugify", () => {
   it("turns a title into a key segment", () => {

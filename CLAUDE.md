@@ -190,8 +190,10 @@ a reply line that names the task's thread. Delivering a wake raises
 **Tasks are the surface.** A board row is a markdown memory (body + frontmatter)
 and, through a store-owned episode binding, a thread on the room's channel
 (`app/services/tasks.py`, `routes/tasks.py`). The binding is minted at the
-memory-upsert chokepoint for every board namespace (`work/`, `decisions/`,
-`status/`, `failed/`), so every row is threaded and no two rows share one.
+memory-upsert chokepoint for every memory when it is created, whatever its
+namespace, so every row is threaded, no two share one, and a `context/` note or
+a skill can be discussed too; the board namespaces (`work/`, `decisions/`,
+`status/`, `failed/`) are the ones that are also *worked*.
 `board send`/`messages` are the room's chat verbs scoped to one row
 (`mycelium/chat.py`, one call, not a second implementation); `board coordinate`
 puts an engine to work inside a task. The channel is the room's **timeline**: a
@@ -231,7 +233,7 @@ is no litellm dependency.
 
 - **A task is a board row and a thread, one to one.** The row and the conversation
   about it are one object. The episode binding is store-owned: minted at the
-  memory-upsert chokepoint for every board namespace, carried across every write,
+  memory-upsert chokepoint for every memory on creation, carried across every write,
   write-once, absent from `meta`, so no `memory set` and no board verb can point a
   row at a conversation it was not part of, and a compiler cannot stamp two rows
   with one negotiation's episode. That is why creation has its own route (`POST /rooms/{room}/tasks`) rather
@@ -710,7 +712,7 @@ is no litellm dependency.
   popover; `[[` is matched before `/` and `@` since a memory key can contain
   slashes. Skills insert a reference token — the resident agent/engine interprets
   it; the composer never runs the skill. **Commands** are the one `/` that runs:
-  `/task`, `/swarm`, `/memory`, `/agent` and `/engine`, only as a message's
+  `/task`, `/swarm`, `/memory`, `/thread`, `/agent` and `/engine`, only as a message's
   first word, listed ahead of the skills. Each declares its arguments in
   `lib/composer-commands.ts` (one parser for all of them), so the composer
   draws the signature over the box with the argument under the cursor lit,
@@ -723,7 +725,11 @@ is no litellm dependency.
   launch the Add member dialog does; `/memory <key> <text>` writes inline,
   replacing a taken key only at the version it saw, and with no text opens
   the new-memory dialog (`new-memory-dialog.tsx`, also behind the memory
-  pane's Add and the composer's +) where the key points. A message that
+  pane's Add and the composer's +) where the key points. `/thread <title>`
+  writes `context/<slug>` with the title as its heading and opens it, whose
+  discussion is the conversation (every memory carries a thread, so nothing
+  on the hub is special); a title already taken opens that page rather than
+  replacing it. A message that
   starts by mentioning a conductor gets the same help without being a
   command: its flow completes from `GET /rooms/{room}/protocols` (the room's
   own flows, then the built-ins it leaves alone) and the flow's roles fill

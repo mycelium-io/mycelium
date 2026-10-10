@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import {
+  ApiError,
   createEngine,
   createMemories,
   launchRunnerAgent,
@@ -68,7 +69,7 @@ import {
   useRunners,
 } from "@/lib/runners";
 import { terminalLink, useIsDesktop } from "@/lib/desktop";
-import { STANDARD_FOLDERS, keyProblem } from "@/lib/memory-location";
+import { STANDARD_FOLDERS, keyProblem, threadKey } from "@/lib/memory-location";
 import { agentLabel } from "@/lib/agent-label";
 import { cn } from "@/lib/utils";
 
@@ -667,6 +668,37 @@ export function RoomChatBox({
           setNoticeKey(null);
           break;
         }
+        case "thread": {
+          // A conversation of its own: a context/ page, which carries a thread
+          // from the moment it exists like every memory, opened on its
+          // discussion. One that already has that name is opened, not replaced.
+          const title = argValue(command, "title").trim();
+          const key = threadKey(title);
+          if (!key) {
+            setError("Say what it's about in words, so it has a name.");
+            return;
+          }
+          // Create only: `base_version: 0` makes the hub refuse (409) a key that
+          // already exists, so a page this browser hasn't heard of yet, or one
+          // made a moment ago elsewhere, is opened rather than overwritten. The
+          // cached list only saves the round trip when it already knows.
+          if (!memories.some((m) => m.key === key)) {
+            try {
+              await createMemories(roomName, [
+                { key, value: `# ${title}`, content_text: `# ${title}`, created_by: handle, base_version: 0 },
+              ]);
+            } catch (err) {
+              if (!(err instanceof ApiError && err.status === 409)) throw err;
+            }
+            revalidateRoom();
+          }
+          if (onOpenMemory) onOpenMemory(key);
+          else {
+            setNotice(`Started ${key}.`);
+            setNoticeKey(key);
+          }
+          break;
+        }
       }
       cleared();
       onSent?.();
@@ -678,7 +710,7 @@ export function RoomChatBox({
       // render, so refocus after that commit lands to keep the user typing.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [content, episode, onSent, roomName, principal, sending, startAgent, revalidateRoom, memories, attachments]);
+  }, [content, episode, onSent, onOpenMemory, roomName, principal, sending, startAgent, revalidateRoom, memories, attachments]);
 
   const attachFrom = (list: FileList | null | undefined) => {
     if (list?.length) attachments.add(Array.from(list));
