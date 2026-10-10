@@ -193,7 +193,9 @@ describe("LaunchAgentForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
 
     const shell = await screen.findByText(/Wait for the terminal's shell, then start Claude Code/);
-    expect(within(shell.closest("li")!).getByLabelText("in progress")).toBeInTheDocument();
+    // The steps show as soon as the start is queued, all waiting; the step
+    // the machine is on lights up once its job is read back.
+    expect(await within(shell.closest("li")!).findByLabelText("in progress")).toBeInTheDocument();
     const terminal = screen.getByText("Open a terminal for it in herdr").closest("li")!;
     expect(within(terminal).getByLabelText("done")).toBeInTheDocument();
   });
