@@ -194,6 +194,17 @@ describe("<EventStream /> find in the channel", () => {
     expect(screen.getAllByText("deploy", { selector: "mark" })).toHaveLength(2);
   });
 
+  it("applies what was typed when Enter comes before the pause", async () => {
+    // Stepping straight away must walk the query on screen, not the one
+    // before it.
+    await openFind([["deploy one"], ["quiet"], ["deploy two"]]);
+    await typeQuery("quiet");
+    await userEvent.clear(findBar());
+    await userEvent.type(findBar(), "deploy{Enter}");
+
+    expect(within(status() as HTMLElement).getByText("2/2")).toBeInTheDocument();
+  });
+
   it("jumps to the match whose tick is clicked", async () => {
     await openFind([["deploy one"], ["deploy two"]]);
     await typeQuery("deploy");

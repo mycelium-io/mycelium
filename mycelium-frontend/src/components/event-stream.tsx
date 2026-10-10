@@ -960,6 +960,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   const closeFind = useCallback(() => setFindOpen(false), []);
 
   const stepMatch = (delta: 1 | -1) => {
+    // A step taken before typing has paused applies what was typed and lands
+    // on its newest hit, rather than stepping through the previous query's.
+    if (applied !== query) {
+      setApplied(query);
+      setStanding(null);
+      return;
+    }
     if (matches.length === 0) return;
     setStanding(matches[stepIndex(position ?? 0, matches.length, delta)]);
   };
