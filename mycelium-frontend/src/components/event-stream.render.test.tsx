@@ -122,6 +122,40 @@ describe("<EventStream /> live message rendering", () => {
     scrollTo.mockRestore();
   });
 
+  it("stays on the tail when the feed's size changes without a new row", async () => {
+    // "responding" appearing over the composer shortens the viewport, and
+    // nothing scrolls: the feed has to put the reader back on its last line.
+    const observers: (() => void)[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private cb: () => void) {
+          observers.push(cb);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    renderWithSWR(<EventStream roomName="sprint" />);
+    await act(async () => {});
+    const viewport = document.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+
+    let top = 0;
+    Object.defineProperty(viewport, "scrollHeight", { configurable: true, value: 900 });
+    Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 300 });
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (v: number) => {
+        top = v;
+      },
+    });
+    act(() => observers.forEach((cb) => cb()));
+    expect(top).toBe(900);
+    vi.unstubAllGlobals();
+  });
+
   it("renders an l9_commit streamed over SSE as a consensus notice, not the unhandled fallback", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     renderWithSWR(<EventStream roomName="sprint" />);
