@@ -61,7 +61,7 @@ in `$MYCELIUM_DATA_DIR/usage/events.jsonl`, one JSON object per line.
 Sharing sends each event to `telemetry.analytics_destination` as it happens.
 It's off unless you turn it on. You're asked in two places:
 
-- **The Mac app** asks on its first screen when it runs a hub, and again under
+- **The desktop app** asks on its first screen when it runs a hub, and again under
   Settings. The app's answer is the one that counts for the hub it starts.
 - **`mycelium install`** asks as its last question.
 
@@ -144,8 +144,9 @@ Where to point it:
   `http://localhost:3001` with the login admin / admin. To also forward
   everything it receives to a hosted backend, set `telemetry.forward_endpoint`.
   Use `telemetry.otlp_headers` for that backend's auth.
-- **The Mac app** runs no collector or Grafana. Set the endpoint to one you run
-  yourself, such as `http://127.0.0.1:4318` for a collector on the same Mac.
+- **The desktop app** runs no collector or Grafana. Set the endpoint to one you
+  run yourself, such as `http://127.0.0.1:4318` for a collector on the same
+  computer.
 
 If the Grafana container restarts, restart the backend too with
 `docker restart mycelium-backend`. Its OTLP connection doesn't reconnect.

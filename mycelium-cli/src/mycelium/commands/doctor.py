@@ -175,7 +175,7 @@ def _check_llm_connectivity(
 
     ``set_up`` is what to do when no model is set, and ``replace_key`` what to do
     when the provider refuses the key, in the words of wherever this is read:
-    the terminal's ``install``, or the Mac app's Settings.
+    the terminal's ``install``, or the desktop app's Settings.
     """
     # Skip entirely if the LLM isn't configured at all; _check_llm_config
     # already reported that and running the probe would be redundant noise.
@@ -804,7 +804,7 @@ def doctor(
     exercise all checks. In the optional hub-and-spoke deployment mode
     spoke nodes talk to a remote backend and don't run Docker containers
     locally. When --mode is 'auto' (the default), doctor checks what the
-    Mac app runs if the app is set up on this machine, and otherwise
+    desktop app runs if the app is set up on this machine, and otherwise
     detects spoke mode from server.api_url: if it points to a non-local
     host the Docker, runtime-drift, and port-drift checks are skipped.
 
@@ -830,7 +830,7 @@ def doctor(
         from mycelium.desktop.checks import settings as desktop_settings
 
         if mode == "auto" and desktop_settings() is not None:
-            # The Mac app is set up here: it runs no containers, so check
+            # The desktop app is set up here: it runs no containers, so check
             # what it does run.
             mode = "desktop"
         if mode == "auto":

@@ -37,7 +37,7 @@ def settings() -> dict[str, Any] | None:
 
 
 def app_hub() -> bool:
-    """Whether the Mac app runs this machine's hub: set up, and not joining one elsewhere."""
+    """Whether the desktop app runs this machine's hub: set up, and not joining one elsewhere."""
     s = settings()
     return s is not None and s.get("mode") != "client"
 

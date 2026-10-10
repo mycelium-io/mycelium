@@ -21,7 +21,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#how-it-works-the-hub",
     "t": "The hub",
     "s": "How It Works",
-    "x": "The hub is the server that holds everything: every room with its memory, its board and its message history. It runs in one of two places: On your Mac, inside the Mac app. Only that Mac can reach it, so it's for trying Mycelium out on your own. On a server, in Docker. Everyone on the team points at it. See Hub & Spoke. Other machines keep no copy of anything. The app, the CLI and every agent read and write the hub dir",
+    "x": "The hub is the server that holds everything: every room with its memory, its board and its message history. It runs in one of two places: On your computer, inside the desktop app. Only that computer can reach it, so it's for trying Mycelium out on your own. On a server, in Docker. Everyone on the team points at it. See Hub & Spoke. Other machines keep no copy of anything. The app, the CLI and every agent read and wri",
     "p": "Get Started"
   },
   {
@@ -593,7 +593,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#on-a-server",
     "t": "Run It on a Server",
     "s": "Setup",
-    "x": "Run Mycelium with the CLI on Linux, on a server your team shares or anywhere you'd rather run the hub in Docker. On a Mac the installer below installs the Mac app instead, which needs no Docker. Pass --docker to get this path on a Mac. This page sets up a hub on one machine. To let teammates on other machines use it, continue with Hub & Spoke.",
+    "x": "Run Mycelium with the CLI on Linux, on a server your team shares or anywhere you'd rather run the hub in Docker. On a Mac the installer below installs the desktop app instead, which needs no Docker. Pass --docker to get this path on a Mac. This page sets up a hub on one machine. To let teammates on other machines use it, continue with Hub & Spoke.",
     "p": "Guides"
   },
   {
@@ -607,7 +607,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#on-a-server-start-the-hub",
     "t": "Start the hub",
     "s": "Setup › Run It on a Server",
-    "x": "curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install On an Apple silicon Mac, add --docker to the installer (… | bash -s -- --docker). Otherwise it installs the Mac app. An Intel Mac gets this Docker path either way. You need Docker running. The CLI needs Python 3.12 or newer. If the machine has an older one, the installer fetches 3.12 for the CLI instead of failing. The installer puts",
+    "x": "curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install On an Apple silicon Mac, add --docker to the installer (… | bash -s -- --docker). Otherwise it installs the desktop app. An Intel Mac gets this Docker path either way. You need Docker running. The CLI needs Python 3.12 or newer. If the machine has an older one, the installer fetches 3.12 for the CLI instead of failing. The installer ",
     "p": "Guides"
   },
   {
@@ -698,14 +698,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#hub-and-spoke",
     "t": "Hub & Spoke",
     "s": "Setup",
-    "x": "This guide shares rooms across a team's machines. One machine runs Mycelium and holds all the data. That machine is the hub. Everyone else's machine is a spoke. A spoke needs only the CLI or the Mac app plus its own agents, and it talks to the hub over HTTP. ┌─────────────────────────────────────────────┐ │ Hub (one machine, Docker) │ │ │ │ ├─ backend (API) :8000 │ │ ├─ app (web UI) :3000 │ │ └─ SLIM node :46357 (hub",
+    "x": "This guide shares rooms across a team's machines. One machine runs Mycelium and holds all the data. That machine is the hub. Everyone else's machine is a spoke. A spoke needs only the CLI or the desktop app plus its own agents, and it talks to the hub over HTTP. ┌─────────────────────────────────────────────┐ │ Hub (one machine, Docker) │ │ │ │ ├─ backend (API) :8000 │ │ ├─ app (web UI) :3000 │ │ └─ SLIM node :46357 ",
     "p": "Guides"
   },
   {
     "u": "guides.html#hub-and-spoke-1-set-up-the-hub",
     "t": "1. Set up the hub",
     "s": "Setup › Hub & Spoke",
-    "x": "The hub is the Docker stack. The Mac app's hub only answers its own Mac, so it can't be a team's hub. On the hub machine: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash # on a Mac: bash -s -- --docker mycelium install This starts the backend, the app and the SLIM node. Check it with: mycelium doctor By default the hub only listens on its own machine. Turn on sign-in first, and then open the hub t",
+    "x": "The hub is the Docker stack. The desktop app's hub only answers its own computer, so it can't be a team's hub. On the hub machine: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash # on a Mac: bash -s -- --docker mycelium install This starts the backend, the app and the SLIM node. Check it with: mycelium doctor By default the hub only listens on its own machine. Turn on sign-in first, and then open ",
     "p": "Guides"
   },
   {
@@ -719,7 +719,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#hub-and-spoke-2-connect-each-spoke",
     "t": "2. Connect each spoke",
     "s": "Setup › Hub & Spoke",
-    "x": "With the Mac app: on its first screen, choose On my team's hub and enter the hub's address, such as https://hub.example.com or http://192.168.1.20:8000. With the CLI: install the CLI alone and point it at the hub: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only mycelium init --api-url http://192.168.1.20:8000 mycelium login # when the hub has sign-in on mycelium doctor # checks",
+    "x": "With the desktop app: on its first screen, choose On my team's hub and enter the hub's address, such as https://hub.example.com or http://192.168.1.20:8000. With the CLI: install the CLI alone and point it at the hub: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only mycelium init --api-url http://192.168.1.20:8000 mycelium login # when the hub has sign-in on mycelium doctor # ch",
     "p": "Guides"
   },
   {
@@ -775,7 +775,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#models-set-it",
     "t": "Set it",
     "s": "Setup › Models",
-    "x": "In the Mac app, the first run asks for it. You can change it any time in Settings → Model (⌘,). Pick a provider, paste a key and save. The model name is filled in for you. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"<your key>\" mycelium config apply llm.base_url sets the address for a provider the hub can't find on its own, like Ollama or a compa",
+    "x": "In the desktop app, the first run asks for it. You can change it any time in Settings → Model (⌘, on a Mac). Pick a provider, paste a key and save. The model name is filled in for you. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"<your key>\" mycelium config apply llm.base_url sets the address for a provider the hub can't find on its own, like Olla",
     "p": "Guides"
   },
   {
@@ -796,14 +796,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#models-check-it",
     "t": "Check it",
     "s": "Setup › Models",
-    "x": "In the Mac app, Settings → Model says whether the model answered. Health check… shows it under Models. From the command line, mycelium doctor asks the model for a real reply. If it can't get one, it says what went wrong, such as a missing key, a key the provider refuses or a model name it doesn't know.",
+    "x": "In the desktop app, Settings → Model says whether the model answered. Health check… shows it under Models. From the command line, mycelium doctor asks the model for a real reply. If it can't get one, it says what went wrong, such as a missing key, a key the provider refuses or a model name it doesn't know.",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines",
     "t": "Start Agents From the App",
     "s": "Agents",
-    "x": "The app can start coding agents on your own computer. It can start one agent with its own instructions or a whole swarm on a task. The program that does this is the runner, which runs on that computer. The runner also keeps your agents in touch with the room. When someone mentions an agent, gives it a turn or assigns it a task, the runner wakes it. It also tells the hub whether each agent is busy. The Mac app runs th",
+    "x": "The app can start coding agents on your own computer. It can start one agent with its own instructions or a whole swarm on a task. The program that does this is the runner, which runs on that computer. The runner also keeps your agents in touch with the room. When someone mentions an agent, gives it a turn or assigns it a task, the runner wakes it. It also tells the hub whether each agent is busy. The desktop app run",
     "p": "Guides"
   },
   {
@@ -831,14 +831,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines-which-folders",
     "t": "Which folders",
     "s": "Agents › Start Agents From the App",
-    "x": "The app can only start agents inside the folders the runner was given and only with an agent CLI the scan found. It never sends a command to run. By default the allowed folder is the one you ran mycelium runner from. Name others with --root: mycelium runner --root ~/code --root ~/work/api In the Mac app, it's the working folder you chose at first run. Change it in Settings.",
+    "x": "The app can only start agents inside the folders the runner was given and only with an agent CLI the scan found. It never sends a command to run. By default the allowed folder is the one you ran mycelium runner from. Name others with --root: mycelium runner --root ~/code --root ~/work/api In the desktop app, it's the working folder you chose at first run. Change it in Settings.",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-you-say-yes-on-the-machine",
     "t": "You say yes on the machine",
     "s": "Agents › Start Agents From the App",
-    "x": "Anyone who can reach a hub can ask it to start an agent on any machine connected to it, and the hub can't prove who asked. So before it starts or restarts anything, the runner asks you on the machine. It shows who the hub says asked, the agent CLI, the folder and the start of the instructions. You answer in one of two ways: In the Mac app, a dialog offers Start and Decline. From a terminal: mycelium runner requests #",
+    "x": "Anyone who can reach a hub can ask it to start an agent on any machine connected to it, and the hub can't prove who asked. So before it starts or restarts anything, the runner asks you on the machine. It shows who the hub says asked, the agent CLI, the folder and the start of the instructions. You answer in one of two ways: In the desktop app, a dialog offers Start and Decline. From a terminal: mycelium runner reques",
     "p": "Guides"
   },
   {
@@ -852,14 +852,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines-only-your-machines-are-listed",
     "t": "Only your machines are listed",
     "s": "Agents › Start Agents From the App",
-    "x": "The Machines page and where it runs show only your own machines. The Machines page is the laptop icon beside the notification bell. In the Mac app that's the Mac it runs on. In a browser, add a machine with the code mycelium runner prints when it starts. With the hub's sign-in on, the hub itself shows each person only the machines they own. To see and fix the agents already running on a machine, see Your agents on a ",
+    "x": "The Machines page and where it runs show only your own machines. The Machines page is the laptop icon beside the notification bell. In the desktop app that's the computer it runs on. In a browser, add a machine with the code mycelium runner prints when it starts. With the hub's sign-in on, the hub itself shows each person only the machines they own. To see and fix the agents already running on a machine, see Your age",
     "p": "Guides"
   },
   {
     "u": "guides.html#agents-on-a-machine",
     "t": "Your Agents on a Machine",
     "s": "Agents",
-    "x": "Every herdr agent on a machine is listed in one place, whether the runner, mycelium swarm or you started it. In the app, that's the Machines page. In the Mac app, it's Your agents… in the menu bar. From a terminal on that machine: mycelium machine It lists the agents by herdr workspace and says what each one is doing. Then it lists what's wrong, with the command that fixes each problem. Add --json for the list as dat",
+    "x": "Every herdr agent on a machine is listed in one place, whether the runner, mycelium swarm or you started it. In the app, that's the Machines page. In the desktop app, it's Your agents… under its menu bar or system tray icon. From a terminal on that machine: mycelium machine It lists the agents by herdr workspace and says what each one is doing. Then it lists what's wrong, with the command that fixes each problem. Add",
     "p": "Guides"
   },
   {
@@ -887,7 +887,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#herdr",
     "t": "Persistent Agents (herdr)",
     "s": "Agents",
-    "x": "herdr keeps coding-agent sessions running in named terminals, called panes, even after you close the window you started them from. Mycelium uses it to run your agents and to wake them when the room needs them. The Mac app includes it. Elsewhere, install herdr 0.9.3 or newer from herdr.dev and start its server. If you start agents from the app or with mycelium swarm, you don't need to set herdr up by hand. Both open a",
+    "x": "herdr keeps coding-agent sessions running in named terminals, called panes, even after you close the window you started them from. Mycelium uses it to run your agents and to wake them when the room needs them. The desktop app includes it. Elsewhere, install herdr 0.9.3 or newer from herdr.dev and start its server. If you start agents from the app or with mycelium swarm, you don't need to set herdr up by hand. Both op",
     "p": "Guides"
   },
   {
@@ -943,7 +943,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#ephemeral-agents-install-the-cli-without-docker",
     "t": "Install the CLI without Docker",
     "s": "Agents › Ephemeral Agents",
-    "x": "The normal installer sets up a hub on the machine. That's the Mac app on a Mac and the CLI for the Docker stack anywhere else. An ephemeral agent only talks to an existing hub, so it only needs the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only With --client-only, the installer doesn't install the app or check for Docker, which most base images don't have. The CLI needs P",
+    "x": "The normal installer sets up a hub on the machine. That's the desktop app on an Apple silicon Mac and the CLI for the Docker stack anywhere else. An ephemeral agent only talks to an existing hub, so it only needs the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only With --client-only, the installer doesn't install the app or check for Docker, which most base images don't ha",
     "p": "Guides"
   },
   {
@@ -1286,7 +1286,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#security-planes-typical-setups",
     "t": "Typical setups",
     "s": "Security › Running a Shared Hub",
-    "x": "Setup HTTP API SLIM Just you, one machine (the Mac app, or Docker on a laptop) Open; only this machine can reach it Shared secret A team on a LAN or VPN Sign-in on The hub's generated secret Reached over the internet Sign-in on, behind HTTPS A private secret; per-member identity if you need members told apart on the channel",
+    "x": "Setup HTTP API SLIM Just you, one machine (the desktop app, or Docker on a laptop) Open; only this machine can reach it Shared secret A team on a LAN or VPN Sign-in on The hub's generated secret Reached over the internet Sign-in on, behind HTTPS A private secret; per-member identity if you need members told apart on the channel",
     "p": "Guides"
   },
   {
@@ -1454,7 +1454,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-start-with-mycelium-doctor",
     "t": "Start with mycelium doctor",
     "s": "Help › Troubleshooting",
-    "x": "mycelium doctor # checks config, the hub, the model and SLIM mycelium doctor --fix # also runs the fixes it suggests, without asking first mycelium doctor is the first thing to run for almost any problem. It works out what this machine is and runs only the checks that apply. The machine might run the Mac app, be a hub running the Docker stack or be a spoke that connects to a hub elsewhere. To choose yourself, pass --",
+    "x": "mycelium doctor # checks config, the hub, the model and SLIM mycelium doctor --fix # also runs the fixes it suggests, without asking first mycelium doctor is the first thing to run for almost any problem. It works out what this machine is and runs only the checks that apply. The machine might run the desktop app, be a hub running the Docker stack or be a spoke that connects to a hub elsewhere. To choose yourself, pas",
     "p": "Guides"
   },
   {
@@ -1468,7 +1468,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-an-agent-doesnt-answer",
     "t": "An agent doesn't answer",
     "s": "Help › Troubleshooting",
-    "x": "You see: nothing happens when you mention an agent, give it a task or a flow waits on its turn. Something has to tell the agent there's work for it. Check these in order: Is the runner running on the agent's machine? It delivers wake-ups to agents in herdr. The Mac app runs it. Elsewhere: mycelium runner status mycelium runner --detach # start it if it isn't Is the agent itself running? mycelium machine lists every a",
+    "x": "You see: nothing happens when you mention an agent, give it a task or a flow waits on its turn. Something has to tell the agent there's work for it. Check these in order: Is the runner running on the agent's machine? It delivers wake-ups to agents in herdr. The desktop app runs it. Elsewhere: mycelium runner status mycelium runner --detach # start it if it isn't Is the agent itself running? mycelium machine lists eve",
     "p": "Guides"
   },
   {
@@ -1482,14 +1482,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-mycelium-command-not-found",
     "t": "mycelium: command not found",
     "s": "Help › Troubleshooting",
-    "x": "The CLI isn't installed or isn't on your PATH. Install it with the command below. On an Apple silicon Mac this installs the Mac app, which links its CLI into ~/.local/bin. Add bash -s -- --client-only for the CLI alone. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash If it's installed but your shell can't find it: export PATH=\"$HOME/.local/bin:$PATH\"",
+    "x": "The CLI isn't installed or isn't on your PATH. Install it with the command below. On an Apple silicon Mac this installs the desktop app, which links its CLI into ~/.local/bin. Add bash -s -- --client-only for the CLI alone. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash If it's installed but your shell can't find it: export PATH=\"$HOME/.local/bin:$PATH\"",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-the-hub-isnt-running",
     "t": "The hub isn't running",
     "s": "Help › Troubleshooting",
-    "x": "You see: commands can't connect to the hub at http://localhost:8000. With the Mac app, open it, because the hub runs while the app does. Check its state in the menu bar or with Health check…. With the Docker stack: mycelium status # quick check mycelium up # start the hub mycelium logs mycelium-backend --tail 50",
+    "x": "You see: commands can't connect to the hub at http://localhost:8000. With the desktop app, open it, because the hub runs while the app does. Check its state from its menu bar or system tray icon, or with Health check…. With the Docker stack: mycelium status # quick check mycelium up # start the hub mycelium logs mycelium-backend --tail 50",
     "p": "Guides"
   },
   {
@@ -1510,7 +1510,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-no-model-configured",
     "t": "No model configured",
     "s": "Help › Troubleshooting",
-    "x": "You see: mycelium doctor says the model check is not configured or auth failed. Or engines like the aligner don't answer. In the Mac app, set it in Settings → Model. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"sk-ant-...\" mycelium config apply mycelium up mycelium doctor makes a real model call. Besides a missing key, it catches a wrong model nam",
+    "x": "You see: mycelium doctor says the model check is not configured or auth failed. Or engines like the aligner don't answer. In the desktop app, set it in Settings → Model. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"sk-ant-...\" mycelium config apply mycelium up mycelium doctor makes a real model call. Besides a missing key, it catches a wrong model",
     "p": "Guides"
   },
   {
@@ -1531,14 +1531,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-a-setting-doesnt-take-effect",
     "t": "A setting doesn't take effect",
     "s": "Help › Troubleshooting",
-    "x": "You see: nothing happened after you changed a setting. Or mycelium doctor reports Config file drift or Runtime config drift. Settings live in ~/.mycelium/config.toml. mycelium config apply renders them into ~/.mycelium/.env, which the hub reads when it starts. So a change needs both steps and a restart: mycelium config apply mycelium up # with the Mac app, quit and reopen it Don't edit .env by hand, because config ap",
+    "x": "You see: nothing happened after you changed a setting. Or mycelium doctor reports Config file drift or Runtime config drift. Settings live in ~/.mycelium/config.toml. mycelium config apply renders them into ~/.mycelium/.env, which the hub reads when it starts. So a change needs both steps and a restart: mycelium config apply mycelium up # with the desktop app, quit and reopen it Don't edit .env by hand, because confi",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-engines-fail-with-pi-not-found-on-path",
     "t": "Engines fail with \"pi not found on PATH\"",
     "s": "Help › Troubleshooting",
-    "x": "Engines run on Pi, which the Mac app and the Docker image include. This only happens when you run the backend yourself from the source. Install Pi there with npm install -g @earendil-works/pi-coding-agent.",
+    "x": "Engines run on Pi, which the desktop app and the Docker image include. This only happens when you run the backend yourself from the source. Install Pi there with npm install -g @earendil-works/pi-coding-agent.",
     "p": "Guides"
   },
   {
@@ -1566,14 +1566,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-logs",
     "t": "Logs",
     "s": "Help › Troubleshooting",
-    "x": "mycelium logs # every service (Docker) mycelium logs mycelium-backend # just the backend (Docker) The Mac app writes everything to ~/.mycelium/logs/desktop.log. When an agent won't start, the runner's log says why: ~/.mycelium/runner/runner.log. Both open from Logs in the app's menu.",
+    "x": "mycelium logs # every service (Docker) mycelium logs mycelium-backend # just the backend (Docker) The desktop app writes everything to ~/.mycelium/logs/desktop.log. When an agent won't start, the runner's log says why: ~/.mycelium/runner/runner.log. Both open from Logs in the app's menu.",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-starting-over",
     "t": "Starting over",
     "s": "Help › Troubleshooting",
-    "x": "This deletes all your rooms, memories and config. It also deletes the SLIM secret, saved sign-in tokens and agent credentials. With the Docker stack: mycelium down --volumes rm -rf ~/.mycelium mycelium install With the Mac app, quit it from its menu bar icon and remove ~/.mycelium. When you open it again, it starts at its first screen. Agents still running in herdr keep running, so close their terminals if you don't ",
+    "x": "This deletes all your rooms, memories and config. It also deletes the SLIM secret, saved sign-in tokens and agent credentials. With the Docker stack: mycelium down --volumes rm -rf ~/.mycelium mycelium install With the desktop app, quit it from its menu bar or system tray icon and remove ~/.mycelium. When you open it again, it starts at its first screen. Agents still running in herdr keep running, so close their term",
     "p": "Guides"
   },
   {
@@ -1594,7 +1594,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-deployment",
     "t": "Deployment",
     "s": "Architecture",
-    "x": "A hub runs in one of two ways: Mac app Docker Set up with The app's first screen, On this Mac mycelium install Runs The hub, the app, a SLIM node, herdr and the runner, as processes The hub, the app and a SLIM node, as containers Reachable from This Mac only Wherever you bind it (runtime.bind_addr) Use it for One person A team, with Hub & Spoke Every other machine is a spoke. A spoke runs the CLI or the Mac app point",
+    "x": "A hub runs in one of two ways: Desktop app Docker Set up with The app's first screen, On this computer mycelium install Runs The hub, the app, a SLIM node, herdr and the runner, as processes The hub, the app and a SLIM node, as containers Reachable from This computer only Wherever you bind it (runtime.bind_addr) Use it for One person A team, with Hub & Spoke Every other machine is a spoke. A spoke runs the CLI or the",
     "p": "Reference"
   },
   {
@@ -2537,7 +2537,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#metrics-sharing-usage-stats",
     "t": "Sharing usage stats",
     "s": "Observability › Metrics",
-    "x": "Sharing sends each event to telemetry.analytics_destination as it happens. It's off unless you turn it on. You're asked in two places: The Mac app asks on its first screen when it runs a hub, and again under Settings. The app's answer is the one that counts for the hub it starts. mycelium install asks as its last question. To change it by hand: mycelium config set telemetry.send_product_analytics true # or false myce",
+    "x": "Sharing sends each event to telemetry.analytics_destination as it happens. It's off unless you turn it on. You're asked in two places: The desktop app asks on its first screen when it runs a hub, and again under Settings. The app's answer is the one that counts for the hub it starts. mycelium install asks as its last question. To change it by hand: mycelium config set telemetry.send_product_analytics true # or false ",
     "p": "Reference"
   },
   {

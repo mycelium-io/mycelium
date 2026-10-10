@@ -3,7 +3,7 @@
 [herdr](https://herdr.dev) keeps coding-agent sessions running in named
 terminals, called panes, even after you close the window you started them
 from. Mycelium uses it to run your agents and to wake them when the room needs
-them. The Mac app includes it. Elsewhere, install herdr 0.9.3 or newer from
+them. The desktop app includes it. Elsewhere, install herdr 0.9.3 or newer from
 [herdr.dev](https://herdr.dev) and start its server.
 
 If you start agents from the app or with `mycelium swarm`, you don't need to
@@ -46,7 +46,7 @@ seconds:
 
 `mycelium herdr sync` also runs one pass straight away and says whether the
 runner is running. Make sure it is, or nothing is delivered after that first
-pass. Start it with `mycelium runner --detach`. The Mac app runs it for you.
+pass. Start it with `mycelium runner --detach`. The desktop app runs it for you.
 
 ```bash
 mycelium herdr sync                        # one pass over every connected workspace

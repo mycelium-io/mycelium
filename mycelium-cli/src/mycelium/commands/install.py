@@ -619,7 +619,7 @@ def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # n
 
     The hub records its usage either way (the app's Metrics page reads it);
     this only decides whether the events are also sent. Defaults to *No*. The
-    Mac app asks the same question on its first-run screen.
+    desktop app asks the same question on its first-run screen.
 
     Non-interactive installs never reach this path; they stay off unconditionally
     as required by #938.

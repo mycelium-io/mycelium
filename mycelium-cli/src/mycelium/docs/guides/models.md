@@ -22,8 +22,8 @@ They sign in with their own accounts the same way they do outside Mycelium.
 
 ## Set it
 
-**In the Mac app**, the first run asks for it. You can change it any time in
-**Settings → Model** (⌘,). Pick a provider, paste a key and save. The model
+**In the desktop app**, the first run asks for it. You can change it any time
+in **Settings → Model** (⌘, on a Mac). Pick a provider, paste a key and save. The model
 name is filled in for you.
 
 **From the command line**:
@@ -40,7 +40,7 @@ like Ollama or a company gateway.
 Set this on the hub's machine. A spoke's model setting does nothing. The key is
 saved in `~/.mycelium/config.toml` on that machine, readable only by you, and
 passed to the hub when it starts. Anything running inside the hub can read it,
-including [workers](#worker). After you save it, the Mac app never shows the
+including [workers](#worker). After you save it, the desktop app never shows the
 key again. It shows only the last four characters so you can tell which key is
 in use.
 
@@ -65,7 +65,7 @@ provider and model name with their context limits and prices.
 
 ## Check it
 
-In the Mac app, **Settings → Model** says whether the model answered.
+In the desktop app, **Settings → Model** says whether the model answered.
 **Health check…** shows it under **Models**. From the command line,
 `mycelium doctor` asks the model for a real reply. If it can't get one, it says
 what went wrong, such as a missing key, a key the provider refuses or a model

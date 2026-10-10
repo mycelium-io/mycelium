@@ -511,7 +511,7 @@ function TerminalView({ command, onBack }: { command: string; onBack: () => void
 
 /**
  * Which Mycelium this is: the hub's release (what the UI and every agent here
- * run against) and, inside the Mac app, the app's own, with where to read what
+ * run against) and, inside the desktop app, the app's own, with where to read what
  * changed. An unreleased build says so rather than printing a placeholder.
  */
 export function AboutView({ onBack }: { onBack?: () => void }) {
@@ -532,7 +532,7 @@ export function AboutView({ onBack }: { onBack?: () => void }) {
         <dd className="font-mono text-text">{version(hub)}</dd>
         {app && (
           <>
-            <dt className="text-muted-foreground">Mac app</dt>
+            <dt className="text-muted-foreground">Desktop app</dt>
             <dd className="font-mono text-text">{version(app)}</dd>
           </>
         )}

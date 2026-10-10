@@ -652,7 +652,7 @@ class TelemetryConfig(BaseModel):
     them either way (tasks filed and resolved, flows and negotiations finished,
     agents joined, the hub starting) and the app's Metrics page reads them;
     this sends the same events to ``analytics_destination``. Off by default,
-    asked at interactive install and on the Mac app's first-run screen. No
+    asked at interactive install and on the desktop app's first-run screen. No
     names, handles, rooms, task text, prompts or replies are ever included.
     """
 
@@ -669,8 +669,8 @@ class TelemetryConfig(BaseModel):
             "OTLP HTTP endpoint the backend pushes spans and metrics to. "
             "When unset and telemetry.enabled is true, defaults to "
             "http://mycelium-collector:4318, the collector's address in the Docker stack. "
-            "The Mac app runs no collector, so set this there (for example "
-            "http://127.0.0.1:4318 for a collector on the same Mac)."
+            "The desktop app runs no collector, so set this there (for example "
+            "http://127.0.0.1:4318 for a collector on the same machine)."
         ),
     )
     otlp_headers: str | None = Field(
@@ -693,7 +693,7 @@ class TelemetryConfig(BaseModel):
         description=(
             "Share the hub's anonymous usage events (tasks filed and resolved, flows and "
             "negotiations finished, agents joined) with the analytics destination. The hub "
-            "records them either way. Off by default; the Mac app's own setting wins there."
+            "records them either way. Off by default; the desktop app's own setting wins there."
         ),
     )
     analytics_destination: str | None = Field(

@@ -11,7 +11,7 @@ starts your coding agents for you when you ask.
 | Windows (preview) | **[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)** | x64, Windows 10 or later |
 
 The Linux and Windows builds are previews: every release builds them, and
-they get less testing than the Mac app.
+they get less testing than the Mac build.
 
 ## Install
 

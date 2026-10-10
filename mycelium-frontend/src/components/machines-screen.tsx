@@ -45,7 +45,7 @@ const RECENT_JOBS = 8;
 
 export function MachinesScreen() {
   const { runners, loading } = useRunners();
-  // Inside the Mac app this Mac is always one of them: the app runs its
+  // Inside the desktop app this computer is always one of them: the app runs its
   // runner, so there is nothing to set up, only a moment to wait for it.
   const desktop = useIsDesktop();
   const keyId = useDeviceKeyId();
@@ -83,7 +83,7 @@ export function MachinesScreen() {
   );
 }
 
-/** In the Mac app before its runner has checked in: it is on its way, not missing. */
+/** In the desktop app before its runner has checked in: it is on its way, not missing. */
 function ThisMacConnecting() {
   return (
     <div className="flex items-center gap-3 px-1 py-2">

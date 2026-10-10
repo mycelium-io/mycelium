@@ -1,6 +1,6 @@
 ---
 name: mycelium-setup
-description: Set up and maintain Mycelium (install the Mac app or the CLI, bring up a hub, connect your agent runtime)
+description: Set up and maintain Mycelium (install the desktop app or the CLI, bring up a hub, connect your agent runtime)
 user-invocable: true
 allowed-tools: Bash(command:*), Bash(curl:*), Bash(docker:*), Bash(mycelium:*), Bash(uname:*), Bash(sysctl:*), Bash(uv:*)
 metadata:
@@ -72,7 +72,7 @@ curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 
 What that installs depends on the machine. On an Apple silicon Mac
 (`uname -s` says `Darwin` and `sysctl -n hw.optional.arm64` says `1`) it
-installs **Mycelium for Mac** into Applications, links the app's `mycelium` CLI
+installs **the desktop app** into Applications, links the app's `mycelium` CLI
 into `~/.local/bin`, and opens the app: the hub is the app's, and Docker is not
 involved. Anywhere else (Linux, a server, an Intel Mac) it installs the CLI, and
 the hub is the Docker stack. If the user asks for the Docker stack on a Mac,

@@ -54,7 +54,7 @@ def _out_path() -> Path:
 
 
 def running_pid() -> int | None:
-    """The pid of this machine's runner, when one is running, the Mac app's included."""
+    """The pid of this machine's runner, when one is running, the desktop app's included."""
     from mycelium.runner.daemon import registered
 
     found = registered()
@@ -62,7 +62,7 @@ def running_pid() -> int | None:
 
 
 def runs_in_app() -> bool:
-    """Whether this machine's runner is the one inside the Mac app."""
+    """Whether this machine's runner is the one inside the desktop app."""
     from mycelium.runner.daemon import APP, registered
 
     found = registered()

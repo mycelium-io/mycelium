@@ -1,4 +1,4 @@
-# Mycelium for Mac, Linux and Windows
+# The Mycelium desktop app: macOS, Linux and Windows
 
 The desktop app. A thin [Tauri 2](https://v2.tauri.app) shell over
 `mycelium desktop serve`, which runs everything a machine needs: the SLIM node,

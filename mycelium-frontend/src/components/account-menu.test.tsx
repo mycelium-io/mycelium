@@ -23,7 +23,7 @@ describe("<AboutView />", () => {
     );
     expect(screen.getByRole("link", { name: /Changelog/ })).toHaveAttribute("target", "_blank");
     // In a browser there is no app version to show.
-    expect(screen.queryByText("Mac app")).toBeNull();
+    expect(screen.queryByText("Desktop app")).toBeNull();
   });
 
   it("calls an unreleased hub a development build, not a placeholder version", () => {
@@ -44,12 +44,12 @@ describe("<AboutView />", () => {
     expect(screen.getByText("unreachable")).toBeInTheDocument();
   });
 
-  it("shows the Mac app's own version inside the app", () => {
+  it("shows the desktop app's own version inside the app", () => {
     network.mockReturnValue({ network: { version: "3.0.14" }, loading: false });
     const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("WebKit MyceliumDesktop/3.0.12");
     render(<AboutView />);
 
-    expect(screen.getByText("Mac app")).toBeInTheDocument();
+    expect(screen.getByText("Desktop app")).toBeInTheDocument();
     expect(screen.getByText("v3.0.12")).toBeInTheDocument();
     ua.mockRestore();
   });

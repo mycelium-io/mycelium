@@ -59,7 +59,7 @@ name you gave this machine with `mycelium iam` or gave the app.
 
 You can also sort your rooms list into folders. Click the + next to Rooms,
 choose **New folder** and drag rooms onto it. Folders only change your own
-list. They follow you to other browsers and the Mac app.
+list. They follow you to other browsers and the desktop app.
 
 ## What a room is on disk
 

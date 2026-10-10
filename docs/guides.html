@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Guides · mycelium</title>
-<meta name="description" content="Step-by-step guides: running Mycelium on a server, the Mac app, sharing a hub, starting and managing agents, the board, sign-in, and troubleshooting.">
+<meta name="description" content="Step-by-step guides: running Mycelium on a server, the desktop app, sharing a hub, starting and managing agents, the board, sign-in, and troubleshooting.">
 <meta property="og:title" content="Guides · mycelium">
-<meta property="og:description" content="Step-by-step guides: running Mycelium on a server, the Mac app, sharing a hub, starting and managing agents, the board, sign-in, and troubleshooting.">
+<meta property="og:description" content="Step-by-step guides: running Mycelium on a server, the desktop app, sharing a hub, starting and managing agents, the board, sign-in, and troubleshooting.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/guides.html">
 <meta property="og:type" content="website">
@@ -260,7 +260,7 @@
   <div class="main-inner">
     <section class="doc-section" id="on-a-server">
       <h1>Run It on a Server</h1>
-      <p>Run Mycelium with the CLI on Linux, on a server your team shares or anywhere you&#x27;d rather run the hub in Docker. On a Mac the installer below installs <a href="#desktop">the Mac app</a> instead, which needs no Docker. Pass <code>--docker</code> to get this path on a Mac.</p>
+      <p>Run Mycelium with the CLI on Linux, on a server your team shares or anywhere you&#x27;d rather run the hub in Docker. On a Mac the installer below installs <a href="#desktop">the desktop app</a> instead, which needs no Docker. Pass <code>--docker</code> to get this path on a Mac.</p>
       <p>This page sets up a hub on one machine. To let teammates on other machines use it, continue with <a href="#hub-and-spoke">Hub &amp; Spoke</a>.</p>
       <h2 id="on-a-server-start-with-a-prompt">Start with a prompt</h2>
       <p>The quickest way is to ask your coding agent to do it. Paste this into any coding agent that can run shell commands:</p>
@@ -269,7 +269,7 @@
       <h2 id="on-a-server-start-the-hub">Start the hub</h2>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash
 <span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
-      <p>On an Apple silicon Mac, add <code>--docker</code> to the installer (<code>… | bash -s -- --docker</code>). Otherwise it installs the Mac app. An Intel Mac gets this Docker path either way.</p>
+      <p>On an Apple silicon Mac, add <code>--docker</code> to the installer (<code>… | bash -s -- --docker</code>). Otherwise it installs the desktop app. An Intel Mac gets this Docker path either way.</p>
       <p>You need Docker running. The CLI needs Python 3.12 or newer. If the machine has an older one, the installer fetches 3.12 for the CLI instead of failing.</p>
       <p>The installer puts the <code>mycelium</code> CLI on your PATH. <code>mycelium install</code> then sets up its config in <code>~/.mycelium/</code> and starts the hub. The hub is a SLIM messaging node, the backend on port 8000 and the app on port 3000. Along the way it asks for a model provider and API key. Rooms and memory work without one, and you can add one later. See <a href="#models">Models</a>.</p>
       <p>To manage the hub after that:</p>
@@ -346,7 +346,7 @@
               <td><code>mycelium join &lt;code&gt;</code></td>
             </tr>
             <tr>
-              <td>Run the Mac app&#x27;s hub without its window</td>
+              <td>Run the desktop app&#x27;s hub without its window</td>
               <td><code>mycelium desktop serve</code></td>
             </tr>
           </tbody>
@@ -398,7 +398,7 @@
           </tbody>
         </table>
       </div>
-      <p>The Linux and Windows builds are previews: every release builds them, and they get less testing than the Mac app.</p>
+      <p>The Linux and Windows builds are previews: every release builds them, and they get less testing than the Mac build.</p>
       <h2 id="desktop-install">Install</h2>
       <ul>
         <li><strong>Mac:</strong> open the download and drag <strong>Mycelium</strong> into <strong>Applications</strong>, then open it from there. The first time, macOS asks whether to open an app downloaded from the internet. Choose <strong>Open</strong>.</li>
@@ -474,7 +474,7 @@
 
     <section class="doc-section" id="hub-and-spoke">
       <h1>Hub &amp; Spoke</h1>
-      <p>This guide shares rooms across a team&#x27;s machines. One machine runs Mycelium and holds all the data. That machine is the <strong>hub</strong>. Everyone else&#x27;s machine is a <strong>spoke</strong>. A spoke needs only the CLI or the Mac app plus its own agents, and it talks to the hub over HTTP.</p>
+      <p>This guide shares rooms across a team&#x27;s machines. One machine runs Mycelium and holds all the data. That machine is the <strong>hub</strong>. Everyone else&#x27;s machine is a <strong>spoke</strong>. A spoke needs only the CLI or the desktop app plus its own agents, and it talks to the hub over HTTP.</p>
       <pre><code>┌─────────────────────────────────────────────┐
 │  Hub  (one machine, Docker)                 │
 │                                             │
@@ -498,7 +498,7 @@
         <div class="callout-body"><strong>Before you share a hub, turn on sign-in.</strong> Without it, anyone who can reach port 8000 can read and write every room and post as any <code>@handle</code>. Sign-in needs an OIDC identity provider such as your company&#x27;s SSO, Keycloak, Dex, ZITADEL or Authentik. See <a href="#auth">Authentication</a> and <a href="#security-planes">Running a shared hub</a>.</div>
       </div>
       <h2 id="hub-and-spoke-1-set-up-the-hub">1. Set up the hub</h2>
-      <p>The hub is the Docker stack. The Mac app&#x27;s hub only answers its own Mac, so it can&#x27;t be a team&#x27;s hub. On the hub machine:</p>
+      <p>The hub is the Docker stack. The desktop app&#x27;s hub only answers its own computer, so it can&#x27;t be a team&#x27;s hub. On the hub machine:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash   # on a Mac: bash <span class="flag">-s</span> -- <span class="flag">--docker</span>
 <span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
       <p>This starts the backend, the app and the SLIM node. Check it with:</p>
@@ -515,14 +515,14 @@
 <span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
       <p>Use <code>&#x27;*&#x27;</code> only when the backend can be reached through the proxy alone. If it can also be reached directly, list the proxy&#x27;s addresses instead, as in <code>&#x27;172.18.0.1,10.0.0.5&#x27;</code>. To check that it worked, open <code>https://hub.example.com/api/rooms/my-room/.well-known/agent-card.json</code>. The <code>url</code> in it should start with <code>https://</code>.</p>
       <h2 id="hub-and-spoke-2-connect-each-spoke">2. Connect each spoke</h2>
-      <p><strong>With the Mac app:</strong> on its first screen, choose <strong>On my team&#x27;s hub</strong> and enter the hub&#x27;s address, such as <code>https://hub.example.com</code> or <code>http://192.168.1.20:8000</code>.</p>
+      <p><strong>With the desktop app:</strong> on its first screen, choose <strong>On my team&#x27;s hub</strong> and enter the hub&#x27;s address, such as <code>https://hub.example.com</code> or <code>http://192.168.1.20:8000</code>.</p>
       <p><strong>With the CLI:</strong> install the CLI alone and point it at the hub:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash <span class="flag">-s</span> -- <span class="flag">--client-only</span>
 <span class="bin">mycelium</span> <span class="cmd">init</span> <span class="flag">--api-url</span> <span class="url">http://192.168.1.20:8000</span>
 <span class="bin">mycelium</span> <span class="cmd">login</span>       # when the hub has sign-in on
 <span class="bin">mycelium</span> <span class="cmd">doctor</span>      # checks it can reach the hub</code></pre>
       <p>People on a spoke can also use the app in a browser at the hub&#x27;s port 3000.</p>
-      <p>To start agents on a spoke from the app, run the <a href="#machines">runner</a> there with <code>mycelium runner --detach</code>. The Mac app runs it for you.</p>
+      <p>To start agents on a spoke from the app, run the <a href="#machines">runner</a> there with <code>mycelium runner --detach</code>. The desktop app runs it for you.</p>
       <h2 id="hub-and-spoke-3-use-a-room">3. Use a room</h2>
       <p>A room created anywhere lives on the hub, so every spoke sees it:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> portfolio      # on any machine
@@ -571,13 +571,13 @@
       <p>The <a href="engines.html#conductor">conductor</a> uses no model, because it follows a flow in code. There&#x27;s no way yet to give different engines different models.</p>
       <p>Agents you bring, like Claude Code, Codex or OpenCode, don&#x27;t use this setting. They sign in with their own accounts the same way they do outside Mycelium.</p>
       <h2 id="models-set-it">Set it</h2>
-      <p><strong>In the Mac app</strong>, the first run asks for it. You can change it any time in <strong>Settings → Model</strong> (⌘,). Pick a provider, paste a key and save. The model name is filled in for you.</p>
+      <p><strong>In the desktop app</strong>, the first run asks for it. You can change it any time in <strong>Settings → Model</strong> (⌘, on a Mac). Pick a provider, paste a key and save. The model name is filled in for you.</p>
       <p><strong>From the command line</strong>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.model <span class="str">&quot;anthropic/claude-sonnet-4-6&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.api_key &quot;&lt;your key&gt;&quot;
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
       <p><code>llm.base_url</code> sets the address for a provider the hub can&#x27;t find on its own, like Ollama or a company gateway.</p>
-      <p>Set this on the hub&#x27;s machine. A spoke&#x27;s model setting does nothing. The key is saved in <code>~/.mycelium/config.toml</code> on that machine, readable only by you, and passed to the hub when it starts. Anything running inside the hub can read it, including <a href="engines.html#worker">workers</a>. After you save it, the Mac app never shows the key again. It shows only the last four characters so you can tell which key is in use.</p>
+      <p>Set this on the hub&#x27;s machine. A spoke&#x27;s model setting does nothing. The key is saved in <code>~/.mycelium/config.toml</code> on that machine, readable only by you, and passed to the hub when it starts. Anything running inside the hub can read it, including <a href="engines.html#worker">workers</a>. After you save it, the desktop app never shows the key again. It shows only the last four characters so you can tell which key is in use.</p>
       <h2 id="models-providers">Providers</h2>
       <div class="table-wrap">
         <table>
@@ -621,7 +621,7 @@
       <h2 id="models-under-the-hood">Under the hood</h2>
       <p>The engines run on <a href="https://github.com/earendil-works/pi">Pi</a>, an open-source agent runtime that talks to many model providers. Any <code>provider/model</code> that Pi knows works here. Its <a href="https://pi.dev/models">model catalog</a> lists every provider and model name with their context limits and prices.</p>
       <h2 id="models-check-it">Check it</h2>
-      <p>In the Mac app, <strong>Settings → Model</strong> says whether the model answered. <strong>Health check…</strong> shows it under <strong>Models</strong>. From the command line, <code>mycelium doctor</code> asks the model for a real reply. If it can&#x27;t get one, it says what went wrong, such as a missing key, a key the provider refuses or a model name it doesn&#x27;t know.</p>
+      <p>In the desktop app, <strong>Settings → Model</strong> says whether the model answered. <strong>Health check…</strong> shows it under <strong>Models</strong>. From the command line, <code>mycelium doctor</code> asks the model for a real reply. If it can&#x27;t get one, it says what went wrong, such as a missing key, a key the provider refuses or a model name it doesn&#x27;t know.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/models.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="models" aria-label="Previous and next sections">
@@ -640,14 +640,14 @@
     <section class="doc-section" id="machines">
       <h1>Start Agents From the App</h1>
       <p>The app can start coding agents on your own computer. It can start one agent with its own instructions or a whole swarm on a task. The program that does this is the <strong>runner</strong>, which runs on that computer. The runner also keeps your agents in touch with the room. When someone mentions an agent, gives it a turn or assigns it a task, the runner wakes it. It also tells the hub whether each agent is busy.</p>
-      <p>The Mac app runs the runner for you. Anywhere else, start it and leave it running:</p>
+      <p>The desktop app runs the runner for you. Anywhere else, start it and leave it running:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--detach</span>     # start in the background
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">status</span>       # is it running, and does the hub see it?
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">stop</span>         # stop it; agents it started keep running</code></pre>
       <p>While the runner isn&#x27;t running, your agents keep working but don&#x27;t hear about mentions or turns.</p>
       <h2 id="machines-how-it-connects">How it connects</h2>
       <p>The runner only ever connects out to the hub, and the hub never reaches into your machine. When you ask for an agent in the app, the hub hands the request to the runner the next time the runner checks in, which takes a few seconds at most. It works the same whether the hub is on your laptop or on a server, and whether or not your laptop can be reached from outside.</p>
-      <p>The runner looks on your <code>PATH</code> for the agent CLIs it knows, such as Claude Code, Codex, Gemini CLI, Cursor Agent, OpenCode, Pi, GitHub Copilot CLI and Amp. It tells the hub what it found and starts agents in <a href="#herdr">herdr</a> terminals. It needs herdr 0.9.3 or newer, which the Mac app includes. To look again, press <strong>Rescan</strong> in the app or run <code>mycelium runner scan</code>.</p>
+      <p>The runner looks on your <code>PATH</code> for the agent CLIs it knows, such as Claude Code, Codex, Gemini CLI, Cursor Agent, OpenCode, Pi, GitHub Copilot CLI and Amp. It tells the hub what it found and starts agents in <a href="#herdr">herdr</a> terminals. It needs herdr 0.9.3 or newer, which the desktop app includes. To look again, press <strong>Rescan</strong> in the app or run <code>mycelium runner scan</code>.</p>
       <h2 id="machines-starting-an-agent">Starting an agent</h2>
       <p>In a room, open <strong>Members → Add → Your machine</strong> and fill in these fields:</p>
       <ul>
@@ -665,18 +665,18 @@
       <h2 id="machines-which-folders">Which folders</h2>
       <p>The app can only start agents inside the folders the runner was given and only with an agent CLI the scan found. It never sends a command to run. By default the allowed folder is the one you ran <code>mycelium runner</code> from. Name others with <code>--root</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--root</span> ~/code <span class="flag">--root</span> ~/work/api</code></pre>
-      <p>In the Mac app, it&#x27;s the working folder you chose at first run. Change it in Settings.</p>
+      <p>In the desktop app, it&#x27;s the working folder you chose at first run. Change it in Settings.</p>
       <h2 id="machines-you-say-yes-on-the-machine">You say yes on the machine</h2>
       <p>Anyone who can reach a hub can ask it to start an agent on any machine connected to it, and the hub can&#x27;t prove who asked. So before it starts or restarts anything, the runner asks you on the machine. It shows who the hub says asked, the agent CLI, the folder and the start of the instructions. You answer in one of two ways:</p>
       <ul>
-        <li>In the Mac app, a dialog offers <strong>Start</strong> and <strong>Decline</strong>.</li>
+        <li>In the desktop app, a dialog offers <strong>Start</strong> and <strong>Decline</strong>.</li>
         <li>From a terminal:</li>
       </ul>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">requests</span>          # what is waiting
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">approve</span> &lt;id&gt;      # start it
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">decline</span> &lt;id&gt;      # don&#x27;t</code></pre>
       <p>If nobody answers within ten minutes, the answer is no.</p>
-      <p>The Mac app&#x27;s own hub doesn&#x27;t ask, since it answers only this Mac. That also means any program on this Mac can start agents through it without a question. For another hub you know nobody else can reach, <code>mycelium runner --trust-hub</code> skips the question.</p>
+      <p>The desktop app&#x27;s own hub doesn&#x27;t ask, since it answers only this computer. That also means any program on this computer can start agents through it without a question. For another hub you know nobody else can reach, <code>mycelium runner --trust-hub</code> skips the question.</p>
       <h2 id="machines-pair-a-computer-to-skip-approvals">Pair a computer to skip approvals</h2>
       <p>Sometimes no one is at a machine to approve requests, as with a Mac mini or a home server. Pair the computer you work from with that machine. Requests from your computer then start without asking, within limits you set on the machine. On the machine:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">pair</span> <span class="flag">--folder</span> ~/code <span class="flag">--cli</span> opencode <span class="flag">--days</span> 30</code></pre>
@@ -716,7 +716,7 @@
       </div>
       <p>Anything outside these limits or from another computer still asks. Your computer signs each request with a key it can&#x27;t export. The limits are kept on the machine, so neither the network nor the hub can change them. <code>mycelium runner pairings</code> lists pairings, and <code>mycelium runner unpair &quot;work laptop&quot;</code> removes one.</p>
       <h2 id="machines-only-your-machines-are-listed">Only your machines are listed</h2>
-      <p>The Machines page and <strong>where it runs</strong> show only your own machines. The Machines page is the laptop icon beside the notification bell. In the Mac app that&#x27;s the Mac it runs on. In a browser, add a machine with the code <code>mycelium runner</code> prints when it starts. With the hub&#x27;s <a href="#auth">sign-in</a> on, the hub itself shows each person only the machines they own.</p>
+      <p>The Machines page and <strong>where it runs</strong> show only your own machines. The Machines page is the laptop icon beside the notification bell. In the desktop app that&#x27;s the computer it runs on. In a browser, add a machine with the code <code>mycelium runner</code> prints when it starts. With the hub&#x27;s <a href="#auth">sign-in</a> on, the hub itself shows each person only the machines they own.</p>
       <p>To see and fix the agents already running on a machine, see <a href="#agents-on-a-machine">Your agents on a machine</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/machines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
@@ -735,7 +735,7 @@
 
     <section class="doc-section" id="agents-on-a-machine">
       <h1>Your Agents on a Machine</h1>
-      <p>Every herdr agent on a machine is listed in one place, whether the runner, <code>mycelium swarm</code> or you started it. In the app, that&#x27;s the <strong>Machines</strong> page. In the Mac app, it&#x27;s <strong>Your agents…</strong> in the menu bar. From a terminal on that machine:</p>
+      <p>Every herdr agent on a machine is listed in one place, whether the runner, <code>mycelium swarm</code> or you started it. In the app, that&#x27;s the <strong>Machines</strong> page. In the desktop app, it&#x27;s <strong>Your agents…</strong> under its menu bar or system tray icon. From a terminal on that machine:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span></code></pre>
       <figure class="doc-figure"><img class="doc-img" src="app-machines.png" alt="The Machines page: a machine&#x27;s agent CLIs, its agents, and what to fix" loading="lazy">
       </figure>
@@ -751,7 +751,7 @@
       <p>Restarting herdr&#x27;s server, for example to update it, stops every agent running in it. If herdr&#x27;s integration for an agent&#x27;s CLI is installed, herdr brings that agent back in its own conversation. Without it, the terminals come back empty and the agents show as stopped.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">integrations</span>             # which are installed
 <span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">integrations</span> <span class="flag">--install</span>   # install them for the agent CLIs here</code></pre>
-      <p>Installing one adds a hook to that agent CLI&#x27;s own settings. For Claude Code, that&#x27;s <code>~/.claude/settings.json</code>. So Mycelium only does it when you say so, and the Mac app asks once.</p>
+      <p>Installing one adds a hook to that agent CLI&#x27;s own settings. For Claude Code, that&#x27;s <code>~/.claude/settings.json</code>. So Mycelium only does it when you say so, and the desktop app asks once.</p>
       <h2 id="agents-on-a-machine-restarting-agents">Restarting agents</h2>
       <p>An agent that stopped and didn&#x27;t come back can be restarted. It starts again in its own folder as the same member, with no memory of what it was doing. It reads its notes and then catches up from the room.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">restart</span> <span class="flag">--all</span>         # every stopped agent
@@ -778,7 +778,7 @@
 
     <section class="doc-section" id="herdr">
       <h1>Persistent Agents (herdr)</h1>
-      <p><a href="https://herdr.dev">herdr</a> keeps coding-agent sessions running in named terminals, called panes, even after you close the window you started them from. Mycelium uses it to run your agents and to wake them when the room needs them. The Mac app includes it. Elsewhere, install herdr 0.9.3 or newer from <a href="https://herdr.dev">herdr.dev</a> and start its server.</p>
+      <p><a href="https://herdr.dev">herdr</a> keeps coding-agent sessions running in named terminals, called panes, even after you close the window you started them from. Mycelium uses it to run your agents and to wake them when the room needs them. The desktop app includes it. Elsewhere, install herdr 0.9.3 or newer from <a href="https://herdr.dev">herdr.dev</a> and start its server.</p>
       <p>If you start agents from the app or with <code>mycelium swarm</code>, you don&#x27;t need to set herdr up by hand. Both open a herdr workspace and connect it to the room, and the <a href="#machines">runner</a> keeps it in step. This guide is for connecting agents you started in herdr yourself.</p>
       <h2 id="herdr-why-it-matters">Why it matters</h2>
       <p>An agent that runs <code>mycelium await --loop</code> hears about each message on its own. The hub keeps its place in the room, so it never misses one. But a coding agent sitting idle at its prompt isn&#x27;t asking. herdr and the runner fill that gap. When the agent is mentioned, given a turn by the conductor or aligner or assigned a task, the runner types a wake-up into its pane that says why. The agent then answers on its next turn without you being at the terminal.</p>
@@ -792,7 +792,7 @@
         <li><strong>Status.</strong> The runner sends the hub whether each agent is <code>idle</code>, <code>working</code> or <code>blocked</code>, so the app can show it.</li>
         <li><strong>Wake-ups.</strong> Waiting wake-ups are typed into the right pane.</li>
       </ul>
-      <p><code>mycelium herdr sync</code> also runs one pass straight away and says whether the runner is running. Make sure it is, or nothing is delivered after that first pass. Start it with <code>mycelium runner --detach</code>. The Mac app runs it for you.</p>
+      <p><code>mycelium herdr sync</code> also runs one pass straight away and says whether the runner is running. Make sure it is, or nothing is delivered after that first pass. Start it with <code>mycelium runner --detach</code>. The desktop app runs it for you.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span>                        # one pass over every connected workspace
 <span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--kind</span> claude          # only add agents of one agent CLI
 <span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">unbind</span> w2                   # stop syncing w2; its agents stay in the room</code></pre>
@@ -906,7 +906,7 @@
       <p><code>MYCELIUM_AGENT_HANDLE</code> is the name on every message. It&#x27;s also the handle a token is looked up for. Authentication is off by default, and then you don&#x27;t need a token.</p>
       <p>The full list of environment variables is in <a href="#troubleshooting">Troubleshooting</a>.</p>
       <h2 id="ephemeral-agents-install-the-cli-without-docker">Install the CLI without Docker</h2>
-      <p>The normal installer sets up a hub on the machine. That&#x27;s the Mac app on a Mac and the CLI for the Docker stack anywhere else. An ephemeral agent only talks to an existing hub, so it only needs the CLI:</p>
+      <p>The normal installer sets up a hub on the machine. That&#x27;s the desktop app on an Apple silicon Mac and the CLI for the Docker stack anywhere else. An ephemeral agent only talks to an existing hub, so it only needs the CLI:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash <span class="flag">-s</span> -- <span class="flag">--client-only</span></code></pre>
       <p>With <code>--client-only</code>, the installer doesn&#x27;t install the app or check for Docker, which most base images don&#x27;t have. The CLI needs Python 3.12 or newer. If the container&#x27;s <code>python3</code> is older, the installer fetches 3.12 for the CLI instead of failing.</p>
       <p>You can set <code>MYCELIUM_CLIENT_ONLY=1</code> instead of passing the flag. If <code>MYCELIUM_API_URL</code> points at a hub on another machine, the installer uses client-only mode automatically.</p>
@@ -1507,7 +1507,7 @@ Review 1
         <li><strong>Every room is an <a href="#a2a-bridge">A2A</a> endpoint.</strong> Its card, with the room&#x27;s name and skills, is public. Without sign-in, anyone can post into it as <code>@a2a-guest</code>.</li>
         <li><strong>The hub reads everything.</strong> Room messages are encrypted between the hub and its SLIM node but not end to end. See <a href="concepts.html#slim">SLIM</a>.</li>
         <li><strong><a href="engines.html#worker">Workers</a> can reach anything the hub can</strong>, including every room&#x27;s files and the model&#x27;s API key.</li>
-        <li><strong>Anything that can reach the hub can ask a runner to start an agent.</strong> The runner asks on its machine before starting anything. The exception is the Mac app&#x27;s own hub, which only its own Mac can reach. There, any program on the Mac can start agents without a question. See <a href="#machines-you-say-yes-on-the-machine">You say yes on the machine</a>.</li>
+        <li><strong>Anything that can reach the hub can ask a runner to start an agent.</strong> The runner asks on its machine before starting anything. The exception is the desktop app&#x27;s own hub, which only its own computer can reach. There, any program on that computer can start agents without a question. See <a href="#machines-you-say-yes-on-the-machine">You say yes on the machine</a>.</li>
       </ul>
       <h2 id="security-planes-what-to-do-about-it">What to do about it</h2>
       <ol class="steps">
@@ -1576,7 +1576,7 @@ Review 1
           </thead>
           <tbody>
             <tr>
-              <td><strong>Just you, one machine</strong> (the Mac app, or Docker on a laptop)</td>
+              <td><strong>Just you, one machine</strong> (the desktop app, or Docker on a laptop)</td>
               <td>Open; only this machine can reach it</td>
               <td>Shared secret</td>
             </tr>
@@ -1941,7 +1941,7 @@ role   = &quot;agent&quot;</code></pre>
       <h2 id="troubleshooting-start-with-mycelium-doctor">Start with <code>mycelium doctor</code></h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span>          # checks config, the hub, the model and SLIM
 <span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--fix</span>    # also runs the fixes it suggests, without asking first</code></pre>
-      <p><code>mycelium doctor</code> is the first thing to run for almost any problem. It works out what this machine is and runs only the checks that apply. The machine might run <strong>the Mac app</strong>, be a <strong>hub</strong> running the Docker stack or be a <strong>spoke</strong> that connects to a hub elsewhere. To choose yourself, pass <code>--mode desktop</code>, <code>--mode hub</code> or <code>--mode spoke</code>. In the Mac app, <strong>Health check…</strong> in the menu bar runs the same checks.</p>
+      <p><code>mycelium doctor</code> is the first thing to run for almost any problem. It works out what this machine is and runs only the checks that apply. The machine might run <strong>the desktop app</strong>, be a <strong>hub</strong> running the Docker stack or be a <strong>spoke</strong> that connects to a hub elsewhere. To choose yourself, pass <code>--mode desktop</code>, <code>--mode hub</code> or <code>--mode spoke</code>. In the desktop app, <strong>Health check…</strong> in its menu bar or system tray menu runs the same checks.</p>
       <p>Each problem it finds comes with the command that fixes it. <code>--fix</code> runs those commands for you, such as <code>mycelium config apply</code> or <code>mycelium up</code>.</p>
       <hr class="divider">
       <h2 id="troubleshooting-common-problems">Common problems</h2>
@@ -1949,7 +1949,7 @@ role   = &quot;agent&quot;</code></pre>
       <p><strong>You see:</strong> nothing happens when you mention an agent, give it a task or a flow waits on its turn.</p>
       <p>Something has to tell the agent there&#x27;s work for it. Check these in order:</p>
       <ol class="steps">
-        <li><strong>Is the runner running on the agent&#x27;s machine?</strong> It delivers wake-ups to agents in herdr. The Mac app runs it. Elsewhere:
+        <li><strong>Is the runner running on the agent&#x27;s machine?</strong> It delivers wake-ups to agents in herdr. The desktop app runs it. Elsewhere:
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">status</span>
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--detach</span>     # start it if it isn&#x27;t</code></pre>
         </li>
@@ -1968,17 +1968,17 @@ role   = &quot;agent&quot;</code></pre>
         <li><strong>The terminal&#x27;s shell didn&#x27;t get to a prompt in time.</strong> The runner opens a terminal in herdr and waits up to 30 seconds for its shell. A shell whose startup files (<code>~/.zshrc</code>, <code>~/.bash_profile</code>) are slow or fail never gets there. Open a new terminal window on that machine to check it starts normally.</li>
         <li><strong>The agent CLI is waiting for you.</strong> It started, but stopped at its own update, sign-in or first-run question. Answer it in its terminal.</li>
       </ul>
-      <p>Either way the terminal stays open, and <strong>Try again</strong> starts the agent in that same terminal rather than opening another. In the Mac app, <strong>Open its terminal</strong> goes straight to it. For the full error, open <strong>Logs → Agent starts</strong> in the app&#x27;s menu, or <code>~/.mycelium/runner/runner.log</code>.</p>
+      <p>Either way the terminal stays open, and <strong>Try again</strong> starts the agent in that same terminal rather than opening another. In the desktop app, <strong>Open its terminal</strong> goes straight to it. For the full error, open <strong>Logs → Agent starts</strong> in the app&#x27;s menu, or <code>~/.mycelium/runner/runner.log</code>.</p>
       <hr class="divider">
       <h3 id="troubleshooting-mycelium-command-not-found"><code>mycelium: command not found</code></h3>
-      <p>The CLI isn&#x27;t installed or isn&#x27;t on your <code>PATH</code>. Install it with the command below. On an Apple silicon Mac this installs the Mac app, which links its CLI into <code>~/.local/bin</code>. Add <code>bash -s -- --client-only</code> for the CLI alone.</p>
+      <p>The CLI isn&#x27;t installed or isn&#x27;t on your <code>PATH</code>. Install it with the command below. On an Apple silicon Mac this installs the desktop app, which links its CLI into <code>~/.local/bin</code>. Add <code>bash -s -- --client-only</code> for the CLI alone.</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash</code></pre>
       <p>If it&#x27;s installed but your shell can&#x27;t find it:</p>
       <pre><code>export PATH=<span class="str">&quot;$HOME/.local/bin:$PATH&quot;</span></code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-the-hub-isnt-running">The hub isn&#x27;t running</h3>
       <p><strong>You see:</strong> commands can&#x27;t connect to the hub at <code>http://localhost:8000</code>.</p>
-      <p>With the Mac app, open it, because the hub runs while the app does. Check its state in the menu bar or with <strong>Health check…</strong>.</p>
+      <p>With the desktop app, open it, because the hub runs while the app does. Check its state from its menu bar or system tray icon, or with <strong>Health check…</strong>.</p>
       <p>With the Docker stack:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">status</span>      # quick check
 <span class="bin">mycelium</span> <span class="cmd">up</span>          # start the hub
@@ -1994,7 +1994,7 @@ role   = &quot;agent&quot;</code></pre>
         <li>The hub only listens on its own machine. On the hub, turn on sign-in and then set <code>runtime.bind_addr</code> to <code>0.0.0.0</code>. See <a href="#hub-and-spoke">Hub &amp; Spoke</a>.</li>
         <li>A firewall, VPN or security group is blocking port 8000.</li>
         <li>The hub has <a href="#auth">sign-in</a> on and you haven&#x27;t run <code>mycelium login</code>.</li>
-        <li>The hub is the Mac app&#x27;s, which only answers its own Mac.</li>
+        <li>The hub is the desktop app&#x27;s, which only answers its own computer.</li>
       </ul>
       <hr class="divider">
       <h3 id="troubleshooting-port-already-in-use">Port already in use</h3>
@@ -2009,7 +2009,7 @@ lsof <span class="flag">-i</span> :3000    # the app</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-no-model-configured">No model configured</h3>
       <p><strong>You see:</strong> <code>mycelium doctor</code> says the model check is <em>not configured</em> or <em>auth failed</em>. Or engines like the <a href="engines.html#aligner">aligner</a> don&#x27;t answer.</p>
-      <p>In the Mac app, set it in <strong>Settings → Model</strong>. From the command line:</p>
+      <p>In the desktop app, set it in <strong>Settings → Model</strong>. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.model <span class="str">&quot;anthropic/claude-sonnet-4-6&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.api_key <span class="str">&quot;sk-ant-...&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
@@ -2033,11 +2033,11 @@ lsof <span class="flag">-i</span> :3000    # the app</code></pre>
       <p><strong>You see:</strong> nothing happened after you changed a setting. Or <code>mycelium doctor</code> reports <em>Config file drift</em> or <em>Runtime config drift</em>.</p>
       <p>Settings live in <code>~/.mycelium/config.toml</code>. <code>mycelium config apply</code> renders them into <code>~/.mycelium/.env</code>, which the hub reads when it starts. So a change needs both steps and a restart:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
-<span class="bin">mycelium</span> <span class="cmd">up</span>             # with the Mac app, quit and reopen it</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">up</span>             # with the desktop app, quit and reopen it</code></pre>
       <p>Don&#x27;t edit <code>.env</code> by hand, because <code>config apply</code> rewrites it from <code>config.toml</code>.</p>
       <hr class="divider">
       <h3 id="troubleshooting-engines-fail-with-pi-not-found-on-path">Engines fail with &quot;<code>pi</code> not found on PATH&quot;</h3>
-      <p>Engines run on Pi, which the Mac app and the Docker image include. This only happens when you run the backend yourself from the source. Install Pi there with <code>npm install -g @earendil-works/pi-coding-agent</code>.</p>
+      <p>Engines run on Pi, which the desktop app and the Docker image include. This only happens when you run the backend yourself from the source. Install Pi there with <code>npm install -g @earendil-works/pi-coding-agent</code>.</p>
       <hr class="divider">
       <h3 id="troubleshooting-permission-errors-in-mycelium">Permission errors in <code>~/.mycelium</code></h3>
       <p><strong>You see:</strong> a <code>PermissionError</code>, or <code>mycelium doctor</code> flags files in <code>~/.mycelium</code> owned by root. This happens when Mycelium was once run with <code>sudo</code>. Take the files back:</p>
@@ -2086,7 +2086,7 @@ lsof <span class="flag">-i</span> :3000    # the app</code></pre>
       <h2 id="troubleshooting-logs">Logs</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">logs</span>                       # every service (Docker)
 <span class="bin">mycelium</span> <span class="cmd">logs</span> <span class="cmd">mycelium-backend</span>      # just the backend (Docker)</code></pre>
-      <p>The Mac app writes everything to <code>~/.mycelium/logs/desktop.log</code>. When an agent won&#x27;t start, the runner&#x27;s log says why: <code>~/.mycelium/runner/runner.log</code>. Both open from <strong>Logs</strong> in the app&#x27;s menu.</p>
+      <p>The desktop app writes everything to <code>~/.mycelium/logs/desktop.log</code>. When an agent won&#x27;t start, the runner&#x27;s log says why: <code>~/.mycelium/runner/runner.log</code>. Both open from <strong>Logs</strong> in the app&#x27;s menu.</p>
       <hr class="divider">
       <h2 id="troubleshooting-starting-over">Starting over</h2>
       <p>This deletes all your rooms, memories and config. It also deletes the SLIM secret, saved sign-in tokens and agent credentials.</p>
@@ -2094,7 +2094,7 @@ lsof <span class="flag">-i</span> :3000    # the app</code></pre>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">down</span> <span class="flag">--volumes</span>
 rm <span class="flag">-rf</span> ~/.mycelium
 <span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
-      <p>With the Mac app, quit it from its menu bar icon and remove <code>~/.mycelium</code>. When you open it again, it starts at its first screen. Agents still running in herdr keep running, so close their terminals if you don&#x27;t want them.</p>
+      <p>With the desktop app, quit it from its menu bar or system tray icon and remove <code>~/.mycelium</code>. When you open it again, it starts at its first screen. Agents still running in herdr keep running, so close their terminals if you don&#x27;t want them.</p>
       <hr class="divider">
       <h2 id="troubleshooting-getting-help">Getting help</h2>
       <p>Report problems at <strong>https://github.com/mycelium-io/mycelium/issues</strong></p>

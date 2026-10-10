@@ -50,7 +50,7 @@ function Mono({ children }: { children: ReactNode }) {
 
 /** The hub this page talks to and how it is set up, read off its `/health`.
  *  Nothing here is changed from the browser: a hub is configured on its own
- *  machine, which inside the Mac app is the app's Settings window. */
+ *  machine, which inside the desktop app is the app's Settings window. */
 export function HubSettingsScreen() {
   const { data: health } = useHubHealth();
   const hub = useHubLabel();

@@ -239,7 +239,7 @@ def skill_print() -> None:
 
     This is Mycelium's own SKILL.md (the protocol an agent follows in a room),
     not an entry in a room's skills store above. Agents the runner, swarm or
-    the Mac app start don't need it: their notes and wake prompts carry the
+    the desktop app start don't need it: their notes and wake prompts carry the
     commands. It is for an agent CLI you start yourself, e.g.:
 
         mycelium skill print > ~/.claude/skills/mycelium/SKILL.md

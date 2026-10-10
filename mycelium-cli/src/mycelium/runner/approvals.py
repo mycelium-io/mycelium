@@ -6,7 +6,7 @@
 Anyone who can reach a hub can queue a job for any runner dialed in to it,
 and a hub can say anything about who asked. So a launch or a swarm from a hub
 the runner doesn't own waits here until it is answered on this machine: the
-Mac app shows a dialog, and ``mycelium runner approve|decline`` answers from a
+desktop app shows a dialog, and ``mycelium runner approve|decline`` answers from a
 terminal. The question and its answer are files under the runner's folder, so
 nothing that reaches this machine over the network can answer it.
 

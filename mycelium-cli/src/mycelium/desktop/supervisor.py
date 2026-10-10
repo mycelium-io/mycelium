@@ -317,7 +317,7 @@ class Supervisor:
         self.config = config
         self.env = env if env is not None else hub_env(config)
         self.start_runner = start_runner
-        #: The Mac app's answer to "share usage stats", which wins over
+        #: The desktop app's answer to "share usage stats", which wins over
         #: config.toml for the hub it starts. None leaves config.toml's.
         self.share_usage = share_usage
         #: How the hubs on this machine are found (``mycelium.hubs.find_hubs``).

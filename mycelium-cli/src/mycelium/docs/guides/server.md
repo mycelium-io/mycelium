@@ -2,7 +2,7 @@
 
 Run Mycelium with the CLI on Linux, on a server your team shares or anywhere
 you'd rather run the hub in Docker. On a Mac the installer below installs
-[the Mac app](#desktop) instead, which needs no Docker. Pass `--docker` to get
+[the desktop app](#desktop) instead, which needs no Docker. Pass `--docker` to get
 this path on a Mac.
 
 This page sets up a hub on one machine. To let teammates on other machines use
@@ -29,7 +29,7 @@ mycelium install
 ```
 
 On an Apple silicon Mac, add `--docker` to the installer
-(`… | bash -s -- --docker`). Otherwise it installs the Mac app. An Intel Mac
+(`… | bash -s -- --docker`). Otherwise it installs the desktop app. An Intel Mac
 gets this Docker path either way.
 
 You need Docker running. The CLI needs Python 3.12 or newer. If the machine has
@@ -107,4 +107,4 @@ see [Swarm](#swarm).
 | Pick the room for the folder you're in | `mycelium room use <room>` |
 | Let the app start agents on this machine | `mycelium runner --detach` |
 | Join an agent session to a room with a code | `mycelium join <code>` |
-| Run the Mac app's hub without its window | `mycelium desktop serve` |
+| Run the desktop app's hub without its window | `mycelium desktop serve` |

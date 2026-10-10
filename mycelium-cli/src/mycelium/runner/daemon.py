@@ -30,8 +30,8 @@ is exactly "start one of the agent CLIs you found, here".
 Even that is asked of the person here first. Anyone who can reach a hub can
 queue a job for any runner on it, so a launch, swarm or restart waits for a yes on
 this machine (``approvals``) unless a device paired here signed it, within
-what the pairing allows (``pairing``), or the runner trusts its hub: the Mac
-app's own hub, which only this machine can reach, or one the person said to
+what the pairing allows (``pairing``), or the runner trusts its hub: the
+desktop app's own hub, which only this machine can reach, or one the person said to
 trust with ``--trust-hub``. Scans and stops don't ask: a scan changes nothing,
 and a stop only ends an agent this machine already agreed to start. A ``pair``
 job doesn't ask either: it carries proof of a code only this machine printed.
@@ -156,12 +156,12 @@ def runner_dir() -> Path:
 # ── registration ──────────────────────────────────────────────────────────────
 #
 # Every runner says it is running the same way, however it was started:
-# `mycelium runner` in a terminal, or the one inside the Mac app's supervisor.
+# `mycelium runner` in a terminal, or the one inside the desktop app's supervisor.
 # `runner.pid` holds the pid of the process it runs in (just the number, which
 # older CLIs read too), and `runner.started-by` beside it says who started it,
 # so a command that would signal that pid knows when it is the app's.
 
-#: Who started a runner: a terminal (`mycelium runner`), or the Mac app.
+#: Who started a runner: a terminal (`mycelium runner`), or the desktop app.
 TERMINAL, APP = "terminal", "app"
 
 _PID, _STARTED_BY = "runner.pid", "runner.started-by"
@@ -407,7 +407,7 @@ class Runner:
         self.started_by = started_by
         #: Start what the hub asks without asking here: only for a hub nobody else can reach.
         self.trust_hub = trust_hub
-        #: Told of each question as it is asked (the Mac app shows it as a dialog).
+        #: Told of each question as it is asked (the desktop app shows it as a dialog).
         self.on_request = on_request
         self._requests_base = requests_base
         #: Where the devices paired with this machine are kept (``pairing.folder``).
@@ -1275,7 +1275,7 @@ class Runner:
 
         The registration is what `mycelium machine`, `runner pair` and
         `herdr sync` read, so a runner counts as running however it was
-        started, the Mac app's included.
+        started, the desktop app's included.
         """
         register(self.started_by, self._state_path.parent)
         try:

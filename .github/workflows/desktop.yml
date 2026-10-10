@@ -1,6 +1,6 @@
 name: Desktop app
 
-# Mycelium for Mac, Linux and Windows: the desktop app with the hub, UI, SLIM
+# Mycelium for macOS, Linux and Windows: the desktop app with the hub, UI, SLIM
 # node, herdr and Pi inside (mycelium-desktop/scripts/stage-sidecars.sh), one
 # job per platform:
 #
