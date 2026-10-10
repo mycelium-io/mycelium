@@ -307,6 +307,20 @@ export function RoomChatBox({
     requestAnimationFrame(() => inputRef.current?.focus());
   });
 
+  // Every message box on screen hears the mic's key, so only one acts: the box
+  // you're in, or the room's own box when you aren't in any.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useKeyAction(
+    "composer.mic",
+    () => {
+      const active = document.activeElement;
+      const inThisBox = Boolean(active && rootRef.current?.contains(active));
+      const inAnyBox = Boolean(active?.closest("[data-tour='composer']"));
+      if (inThisBox || (!inAnyBox && !episode)) void mic.toggle();
+    },
+    { enabled: mic.available },
+  );
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value;
     setContent(next);
@@ -769,6 +783,7 @@ export function RoomChatBox({
   // thread's pane or a task's page, and should match each.
   return (
     <div
+      ref={rootRef}
       data-tour="composer"
       className={cn("@container flex-shrink-0", inline ? "pt-2" : "border-t border-border px-4 py-3", className)}
     >

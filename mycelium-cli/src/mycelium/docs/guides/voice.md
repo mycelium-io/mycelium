@@ -8,8 +8,10 @@ can read and fix first.
 
 ## Using it
 
-Press the mic button beside Send. The first time, your browser or the Mac app
-asks to use the microphone. While it's on, the button is lit, the line under
+Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux),
+which works while you're typing. The key acts on the message box you're in,
+or the room's own box when you're in none. The first time, your browser or the
+Mac app asks to use the microphone. While it's on, the button is lit, the line under
 the box says it's listening, and a ring around the button pulses while it
 hears you speak.
 
