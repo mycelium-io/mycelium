@@ -184,8 +184,9 @@ recipient (`herdr_wake_addressed`), and on a row filed for it
 digest the hub builds when the wake is delivered (`app/services/wake_digest.py`):
 why it woke, what changed since its last turn, its tasks, the board (each
 notice since then as who did what to which task, then what's open, naming the
-expired and blocked rows), the messages that asked for it (cut, with the rest counted), then `await` first and
-a reply line that names the task's thread. Delivering a wake raises
+expired and blocked rows), the messages that asked for it (cut, with the rest
+counted), then `await` first and a reply line that names the task's thread.
+Delivering a wake raises
 `responding`, so the room sees the agent on it whatever host typed the prompt.
 
 **Tasks are the surface.** A board row is a markdown memory (body + frontmatter)
