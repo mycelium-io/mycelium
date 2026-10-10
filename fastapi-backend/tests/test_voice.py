@@ -8,7 +8,9 @@ test runs the real Moonshine v2 and Silero VAD when their files are on disk
 (``VOICE_MODEL_DIR``, or the default model folder) and skips otherwise.
 """
 
+import hashlib
 import os
+import threading
 import wave
 from pathlib import Path
 
@@ -118,7 +120,7 @@ async def test_speech_is_handed_back_as_each_pause_ends_it(client, fake):
     # Speaking: nothing to hand back yet.
     r = await client.post(f"/api/voice/sessions/{SID}", content=pcm(1.0, loud=True))
     assert r.status_code == 200, r.text
-    assert r.json() == {"texts": [], "speaking": True}
+    assert r.json() == {"texts": [], "speaking": True, "ready": True}
 
     # A pause ends the piece.
     r = await client.post(f"/api/voice/sessions/{SID}", content=pcm(0.5, loud=False))
@@ -214,6 +216,130 @@ def test_an_idle_mic_is_closed(fake, monkeypatch):
     assert voice.open_sessions() == 0
 
 
+@pytest.fixture
+def loading(monkeypatch, tmp_path):
+    """The real engine() with a stand-in model that loads when told to."""
+    voice.reset()
+    monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(tmp_path))
+    monkeypatch.setattr(voice, "state", lambda: ("not_downloaded", ""))
+    gate = threading.Event()
+    calls = {"loads": 0}
+
+    def slow_models():
+        calls["loads"] += 1
+        gate.wait(5)
+        if calls.get("fail"):
+            raise voice.VoiceUnavailable("the download was cut off")
+        return tmp_path
+
+    monkeypatch.setattr(voice, "ensure_models", slow_models)
+    monkeypatch.setattr(voice, "SherpaEngine", lambda _root: FakeEngine())
+    yield gate, calls
+    gate.set()
+    if voice._loader is not None:
+        voice._loader.join(5)
+    voice.reset()
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_during_the_first_load_is_answered_at_once_and_not_read(client, loading):
+    gate, calls = loading
+    r = await client.post(f"/api/voice/sessions/{SID}", content=pcm(0.5, loud=True))
+    assert r.json() == {"texts": [], "speaking": False, "ready": False}
+    # A second chunk doesn't start a second load or wait on the first.
+    r = await client.post(f"/api/voice/sessions/{SID}", content=pcm(0.5, loud=True))
+    assert r.json()["ready"] is False
+    assert calls["loads"] == 1
+    assert voice.open_sessions() == 0
+
+    gate.set()
+    _wait_for_load()
+    r = await client.post(
+        f"/api/voice/sessions/{SID}", content=pcm(0.5, loud=True) + pcm(0.2, loud=False)
+    )
+    assert r.json()["ready"] is True
+    assert r.json()["texts"] == ["0.5 seconds of speech"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_load_is_reported_and_not_retried_at_once(client, loading, monkeypatch):
+    gate, calls = loading
+    calls["fail"] = True
+    gate.set()
+    await client.post(f"/api/voice/sessions/{SID}", content=b"")
+    _wait_for_load()
+    r = await client.post(f"/api/voice/sessions/{SID}", content=b"")
+    assert r.status_code == 503
+    assert "cut off" in r.json()["detail"]
+    assert calls["loads"] == 1
+
+    # Once the wait is over, the next mic tries again.
+    monkeypatch.setattr(voice, "_retry_at", 0.0)
+    calls["fail"] = False
+    assert (await client.post(f"/api/voice/sessions/{SID}", content=b"")).json()["ready"] is False
+    _wait_for_load()
+    assert calls["loads"] == 2
+
+
+def _wait_for_load() -> None:
+    loader = voice._loader
+    assert loader is not None
+    loader.join(5)
+
+
+class _Stream:
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def raise_for_status(self) -> None:
+        pass
+
+    def iter_bytes(self, _size: int):
+        yield self.body
+
+
+def test_a_download_whose_hash_differs_is_refused(monkeypatch, tmp_path):
+    monkeypatch.setattr(voice.httpx, "stream", lambda *a, **k: _Stream(b"something else"))
+    dest = tmp_path / "silero_vad_v5.onnx"
+    with pytest.raises(voice.VoiceUnavailable, match="isn't the file"):
+        voice._fetch("https://example.com/x", dest, voice.SILERO_SHA256)
+    assert not dest.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_download_whose_hash_matches_is_kept(monkeypatch, tmp_path):
+    body = b"the model"
+    monkeypatch.setattr(voice.httpx, "stream", lambda *a, **k: _Stream(body))
+    dest = tmp_path / "model.onnx"
+    voice._fetch("https://example.com/x", dest, hashlib.sha256(body).hexdigest())
+    assert dest.read_bytes() == body
+
+
+def test_a_mic_belongs_to_whoever_opened_it(fake):
+    voice.feed(SID, pcm(0.5, loud=True), caller="ada")
+    # Another caller with the same id gets a session of its own.
+    assert voice.feed(SID, pcm(0.2, loud=False), caller="bex").texts == []
+    assert voice.feed(SID, pcm(0.2, loud=False), caller="ada").texts == ["0.5 seconds of speech"]
+    voice.end(SID, caller="bex")
+    assert voice.open_sessions() == 1
+
+
+def test_one_caller_cannot_hold_every_mic(fake):
+    for i in range(voice.MAX_SESSIONS_PER_CALLER):
+        voice.feed(f"{i:016x}", b"", caller="ada")
+    with pytest.raises(voice.VoiceUnavailable, match="already have"):
+        voice.feed("f" * 16, b"", caller="ada")
+    # Someone else, and a hub with sign-in off, still get one.
+    voice.feed("f" * 16, b"", caller="bex")
+    voice.feed("e" * 16, b"", caller=None)
+
+
 def test_long_speech_is_cut_at_its_quietest_point_under_the_limit():
     speech = np.ones(int(13 * RATE), dtype=np.float32)
     breath = int(4.2 * RATE)
@@ -240,6 +366,12 @@ def test_the_real_model_transcribes_speech_fed_in_chunks(monkeypatch):
     assert root is not None
     monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(root))
     voice.reset()
+    # The first call starts the load and says so; wait for it as the app does.
+    with pytest.raises(voice.VoiceWarming):
+        voice.engine()
+    assert voice._loader is not None
+    voice._loader.join(30)
+    voice.engine()
     with wave.open(str(root / voice.MOONSHINE / "test_wavs" / "0.wav")) as w:
         rate = w.getframerate()
         recorded = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(np.float32)

@@ -12087,6 +12087,12 @@
             "title": "Speaking",
             "description": "Whether speech is still under way",
             "default": false
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "description": "False while the hub loads (or downloads) its speech model: the chunk wasn't read, so send the same audio again",
+            "default": true
           }
         },
         "type": "object",

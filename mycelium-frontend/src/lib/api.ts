@@ -767,6 +767,8 @@ export interface VoiceStatus {
 export interface VoiceHeard {
   texts: string[];
   speaking: boolean;
+  /** False while the hub loads its model: the chunk wasn't read, so send it again. */
+  ready?: boolean;
 }
 
 export async function fetchVoiceStatus(): Promise<VoiceStatus | null> {

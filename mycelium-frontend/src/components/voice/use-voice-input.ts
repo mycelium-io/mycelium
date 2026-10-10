@@ -22,6 +22,13 @@ export type MicState = "off" | "starting" | "listening";
  *  past which the oldest is dropped so a chunk stays under the hub's cap. */
 const MAX_BUFFERED_S = 45;
 
+/** Drop the oldest audio past `MAX_BUFFERED_S`, keeping the latest. */
+function trim(r: Rig) {
+  while (r.buffered > MAX_BUFFERED_S * r.rate && r.buffer.length > 1) {
+    r.buffered -= r.buffer.shift()!.length;
+  }
+}
+
 interface Rig {
   sid: string;
   rate: number;
@@ -87,6 +94,17 @@ export function useVoiceInput(onText: (text: string) => void, onError: (message:
       r.buffered = 0;
       const out = sendVoiceChunk(r.sid, pcm, final)
         .then((heard) => {
+          if (heard.ready === false) {
+            // The hub is still loading its model and didn't read this chunk:
+            // keep it, ahead of what's been recorded since, for the next send.
+            if (!final && rig.current === r) {
+              r.buffer.unshift(pcm);
+              r.buffered += pcm.length;
+              trim(r);
+            }
+            setWarming(true);
+            return;
+          }
           for (const text of heard.texts) handlers.current.onText(text);
           if (rig.current === r) setSpeaking(heard.speaking);
           setWarming(false);
@@ -140,9 +158,7 @@ export function useVoiceInput(onText: (text: string) => void, onError: (message:
         const pcm = toPcm16(downsample(e.data, sourceRate, rate));
         r.buffer.push(pcm);
         r.buffered += pcm.length;
-        while (r.buffered > MAX_BUFFERED_S * rate && r.buffer.length > 1) {
-          r.buffered -= r.buffer.shift()!.length;
-        }
+        trim(r);
       };
       rig.current = r;
       setState("listening");

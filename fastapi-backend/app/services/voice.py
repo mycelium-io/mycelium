@@ -25,6 +25,7 @@ anything longer at its quietest point, so no piece reaches the model whole.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import secrets
 import shutil
@@ -48,6 +49,10 @@ LANGUAGE = "en"
 MOONSHINE = "sherpa-onnx-moonshine-base-en-quantized-2026-02-27"
 SILERO = "silero_vad_v5.onnx"
 _RELEASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
+# What those release assets were when this was written: the Moonshine archive
+# and the Silero file. A download that doesn't match is refused.
+MOONSHINE_SHA256 = "43232c1d13013d37317163baec3135bd771a186a4356f28c889bab453bb0e891"
+SILERO_SHA256 = "6b99cbfd39246b6706f98ec13c7c50c6b299181f2474fa05cbc8046acc274396"
 
 # The longest piece handed to the model, in seconds; see the module docstring.
 MAX_PIECE_S = 5.5
@@ -120,14 +125,25 @@ def state() -> tuple[State, str]:
 _download_lock = threading.Lock()
 
 
-def _fetch(url: str, dest: Path) -> None:
+def _fetch(url: str, dest: Path, sha256: str) -> None:
+    """Download ``url`` to ``dest``, refusing it unless its SHA-256 is ``sha256``.
+
+    The image build, the Mac app's staging and a hub fetching on first use all
+    come through here, so a release asset that changed under the same name is
+    caught once, before it is baked in anywhere.
+    """
     tmp = dest.with_name(f".{dest.name}.{secrets.token_hex(4)}.part")
+    digest = hashlib.sha256()
     try:
         with httpx.stream("GET", url, follow_redirects=True, timeout=120) as resp:
             resp.raise_for_status()
             with tmp.open("wb") as out:
                 for chunk in resp.iter_bytes(1 << 20):
+                    digest.update(chunk)
                     out.write(chunk)
+        if digest.hexdigest() != sha256:
+            msg = f"{dest.name} from {url} isn't the file this hub expects (SHA-256 {digest.hexdigest()})"
+            raise VoiceUnavailable(msg)
         tmp.replace(dest)
     finally:
         tmp.unlink(missing_ok=True)
@@ -148,10 +164,10 @@ def ensure_models() -> Path:
         logger.info("voice: fetching the speech model into %s", root)
         try:
             if not (root / SILERO).is_file():
-                _fetch(f"{_RELEASE}/{SILERO}", root / SILERO)
+                _fetch(f"{_RELEASE}/{SILERO}", root / SILERO, SILERO_SHA256)
             if not (root / MOONSHINE).is_dir() or not _present(root):
                 archive = root / f"{MOONSHINE}.tar.bz2"
-                _fetch(f"{_RELEASE}/{MOONSHINE}.tar.bz2", archive)
+                _fetch(f"{_RELEASE}/{MOONSHINE}.tar.bz2", archive, MOONSHINE_SHA256)
                 shutil.rmtree(root / MOONSHINE, ignore_errors=True)
                 with tarfile.open(archive, "r:bz2") as tar:
                     tar.extractall(root, filter="data")
@@ -239,26 +255,71 @@ class SherpaEngine:
         return " ".join(texts)
 
 
+class VoiceWarming(RuntimeError):
+    """The engine is still loading (or its models downloading); send the chunk again."""
+
+
+# A load that failed (a download cut off, a full disk) isn't tried again for
+# this long, so a mic held on doesn't restart a 150 MB download every chunk.
+LOAD_RETRY_S = 60.0
+
 _engine: Engine | None = None
 _engine_lock = threading.Lock()
+_loader: threading.Thread | None = None
+_load_error = ""
+_retry_at = 0.0
+
+
+def _load() -> None:
+    global _engine, _load_error, _retry_at
+    try:
+        loaded = SherpaEngine(ensure_models())
+    except Exception as exc:  # anything that stops it is reported, not raised on a thread
+        logger.warning("voice: couldn't load the speech model: %s", exc)
+        with _engine_lock:
+            _load_error = (
+                str(exc)
+                if isinstance(exc, VoiceUnavailable)
+                else f"the speech model didn't load: {exc}"
+            )
+            _retry_at = time.monotonic() + LOAD_RETRY_S
+        return
+    with _engine_lock:
+        _engine = loaded
+        _load_error = ""
+    logger.info("voice: speech model loaded (%s)", MOONSHINE)
 
 
 def engine() -> Engine:
-    """The hub's one engine, loaded (and its models fetched) on first use."""
-    global _engine
+    """The hub's one engine, or :class:`VoiceWarming` while it loads.
+
+    The first call starts loading it on a thread of its own, fetching the
+    models if they're missing. Nothing here waits on that, so a request never
+    holds one of the hub's worker threads through a download.
+    """
+    global _loader, _load_error
     if _engine is not None:
         return _engine
+    current, why = state()
+    if current == "unavailable":
+        raise VoiceUnavailable(why)
     with _engine_lock:
-        if _engine is None:
-            current, why = state()
-            if current == "unavailable":
-                raise VoiceUnavailable(why)
-            _engine = SherpaEngine(ensure_models())
-            logger.info("voice: speech model loaded (%s)", MOONSHINE)
-    return _engine
+        if _engine is not None:
+            return _engine
+        if _load_error and time.monotonic() < _retry_at:
+            raise VoiceUnavailable(_load_error)
+        if _loader is None or not _loader.is_alive():
+            _load_error = ""
+            _loader = threading.Thread(target=_load, name="voice-load", daemon=True)
+            _loader.start()
+    raise VoiceWarming
 
 
 # ── Sessions: one per open mic ───────────────────────────────────────────────
+
+# How many mics one signed-in person may hold open at once. A hub with sign-in
+# off can't tell its callers apart, so there only MAX_SESSIONS applies.
+MAX_SESSIONS_PER_CALLER = 4
 
 
 @dataclass
@@ -269,32 +330,39 @@ class Session:
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
-_sessions: dict[str, Session] = {}
+# Keyed by (caller, id): a mic is reachable only by whoever opened it.
+_sessions: dict[tuple[str | None, str], Session] = {}
 _sessions_lock = threading.Lock()
 
 
 def _sweep(now: float) -> None:
-    for sid in [s for s, sess in _sessions.items() if now - sess.last_seen > SESSION_IDLE_S]:
-        del _sessions[sid]
+    for key in [k for k, sess in _sessions.items() if now - sess.last_seen > SESSION_IDLE_S]:
+        del _sessions[key]
 
 
-def _session(sid: str, eng: Engine) -> Session:
+def _session(caller: str | None, sid: str, eng: Engine) -> Session:
     now = time.monotonic()
     with _sessions_lock:
         _sweep(now)
-        sess = _sessions.get(sid)
+        sess = _sessions.get((caller, sid))
         if sess is None:
             if len(_sessions) >= MAX_SESSIONS:
                 msg = "too many microphones are open on this hub right now"
                 raise VoiceUnavailable(msg)
-            sess = _sessions[sid] = Session(detector=eng.new_detector())
+            if (
+                caller is not None
+                and sum(1 for c, _ in _sessions if c == caller) >= MAX_SESSIONS_PER_CALLER
+            ):
+                msg = f"you already have {MAX_SESSIONS_PER_CALLER} microphones open; turn one off first"
+                raise VoiceUnavailable(msg)
+            sess = _sessions[(caller, sid)] = Session(detector=eng.new_detector())
         sess.last_seen = now
         return sess
 
 
-def end(sid: str) -> None:
+def end(sid: str, caller: str | None = None) -> None:
     with _sessions_lock:
-        _sessions.pop(sid, None)
+        _sessions.pop((caller, sid), None)
 
 
 def open_sessions() -> int:
@@ -314,14 +382,16 @@ class Heard:
     speaking: bool
 
 
-def feed(sid: str, audio: bytes, *, final: bool = False) -> Heard:
+def feed(sid: str, audio: bytes, *, final: bool = False, caller: str | None = None) -> Heard:
     """Take a chunk of a mic's audio; return the text of any speech it finished.
 
     ``final`` is the mic being turned off: whatever was being said is
     transcribed now rather than waiting for a pause, and the session ends.
+    Raises :class:`VoiceWarming` while the engine loads, before reading the
+    chunk, so the app can send the same audio again.
     """
     eng = engine()
-    sess = _session(sid, eng)
+    sess = _session(caller, sid, eng)
     texts: list[str] = []
     window = eng.window
     with sess.lock:
@@ -344,14 +414,16 @@ def feed(sid: str, audio: bytes, *, final: bool = False) -> Heard:
                 texts.append(text)
         speaking = bool(sess.detector.is_speech_detected()) and not final
     if final:
-        end(sid)
+        end(sid, caller)
     return Heard(texts=texts, speaking=speaking)
 
 
 def reset() -> None:
-    """Forget the loaded engine and every open mic (tests, or a model swap)."""
-    global _engine
+    """Forget the loaded engine, any failed load, and every open mic (tests, or a model swap)."""
+    global _engine, _load_error, _retry_at
     with _engine_lock:
         _engine = None
+        _load_error = ""
+        _retry_at = 0.0
     with _sessions_lock:
         _sessions.clear()

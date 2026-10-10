@@ -675,10 +675,16 @@ is no litellm dependency.
   `sherpa-onnx` because uv's lock drops it. The models are files at
   `VOICE_MODEL_DIR`: baked into the backend image at `/opt/voice`, staged into
   the Mac app at `models/voice` (the supervisor points the hub there), or
-  fetched once on first use. Audio is never stored. The Mac app needs
+  fetched once on first use, and every fetch is checked against a pinned
+  SHA-256. The first mic starts the load on a thread of its own; no request
+  waits on it (the hub's `to_thread` pool is shared), chunks meanwhile get
+  `ready: false` unread and the app sends them again, and a failed load waits
+  `LOAD_RETRY_S` before another try. Sessions are keyed by (caller, id), with
+  a per-caller cap when sign-in is on. Audio is never stored. The Mac app needs
   `NSMicrophoneUsageDescription` (`src-tauri/Info.plist`) and the
-  `device.audio-input` entitlement on the app itself (`app.entitlements`);
-  wry grants the page's capture request when no permission handler is set.
+  `device.audio-input` entitlement on the app itself (`app.entitlements`), and
+  its `on_permission_request` grants the microphone only to this Mac's own hub
+  UI (`media_permission`): a remote hub's pages in client mode are denied.
 - **Patterns are scenarios the hub loads, from a pack the operator provides.** A
   scenario (`app/services/patterns.py`, `routes/patterns.py`) is a room ready to
   run: a cast, some context, a task and the flow that sets them working, loaded

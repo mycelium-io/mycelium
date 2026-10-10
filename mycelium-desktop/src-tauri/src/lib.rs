@@ -22,6 +22,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
+use tauri::webview::{PermissionKind, PermissionResponse};
 use tauri::{
     AppHandle, Emitter, Manager, RunEvent, Url, Webview, WebviewUrl, WebviewWindowBuilder,
     WindowEvent, Wry,
@@ -87,6 +88,26 @@ fn app_base(app: &AppHandle) -> Option<Url> {
 fn local_url(app: &AppHandle, page: &str) -> Option<Url> {
     let base = app.state::<Shell>().local_base.lock().unwrap().clone()?;
     base.join(page).ok()
+}
+
+/// The microphone goes only to this Mac's own hub UI. In client mode the
+/// window shows another hub's pages, and once macOS has let the app use the
+/// mic, a page granted it here could record without anyone pressing the mic.
+/// The camera and anything else not handled here keep WebKit's own prompt.
+fn media_permission(app: &AppHandle, webview: &Webview, kind: PermissionKind) -> PermissionResponse {
+    if !matches!(kind, PermissionKind::Microphone) {
+        return PermissionResponse::Default;
+    }
+    let status = app.state::<Supervisor>().status();
+    let own_ui = status
+        .as_ref()
+        .filter(|s| s.get("mode").and_then(Value::as_str) == Some("hub"))
+        .and_then(|s| s.get("ui_url").and_then(Value::as_str))
+        .and_then(|u| Url::parse(u).ok());
+    match (webview.url(), own_ui) {
+        (Ok(page), Some(ui)) if page.origin() == ui.origin() => PermissionResponse::Allow,
+        _ => PermissionResponse::Deny,
+    }
 }
 
 /// Commands answer only the app's own pages, never a hub's page loaded in the window.
@@ -1034,6 +1055,10 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
         // room folders, panels) never sees a drop. The UI listens for none of
         // Tauri's drop events, so the page gets them all.
         .disable_drag_drop_handler()
+        .on_permission_request({
+            let app = app.clone();
+            move |webview, kind| media_permission(&app, &webview, kind)
+        })
         // Every page load starts the page over, so it is told again whether
         // an update is available.
         .on_page_load(|window, payload| {

@@ -650,6 +650,13 @@ class VoiceHeard(BaseModel):
         default_factory=list, description="Each piece of speech the chunk ended, in order"
     )
     speaking: bool = Field(False, description="Whether speech is still under way")
+    ready: bool = Field(
+        True,
+        description=(
+            "False while the hub loads (or downloads) its speech model: the chunk "
+            "wasn't read, so send the same audio again"
+        ),
+    )
 
 
 class ProtocolSummary(BaseModel):
