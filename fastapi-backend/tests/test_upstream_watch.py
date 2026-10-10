@@ -305,6 +305,40 @@ def test_a_link_said_in_the_rows_thread_counts(shop, monkeypatch):
     assert found["toy:pull_request:PR-7"] == ("memory:work/refunds",)
 
 
+def test_a_link_written_as_code_in_the_thread_does_not_count(shop, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.services.filesystem import get_room_dir, write_memory_file
+    from app.services.room_channels import manager
+
+    write_memory_file(
+        get_room_dir(ROOM),
+        "work/refunds",
+        "# Refunds\n\nShipped in `see PR-3 here`",
+        created_by="hay",
+        extra_meta={"episode": "urn:ioc:mycelium:episode:shop:t2"},
+    )
+    said = _record(
+        "reviewer",
+        "Rendered as `CI went red on PR-8 4m ago`\n\n```\nPR-9\n```\nPR is up: PR-7",
+        "urn:ioc:mycelium:episode:shop:t2",
+    )
+    log = SimpleNamespace(records=[said])
+    monkeypatch.setattr(
+        manager, "get", lambda room: SimpleNamespace(persister=SimpleNamespace(log=log))
+    )
+
+    from app.services.status import discovery
+
+    found = {str(d.ref) for d in discovery.discover(ROOM, StatusRuntime({"toy": Pulls()}))}
+    # Prose in the thread counts; code in it doesn't. The row's own text is
+    # read whole, code and all.
+    assert "toy:pull_request:PR-7" in found
+    assert "toy:pull_request:PR-8" not in found
+    assert "toy:pull_request:PR-9" not in found
+    assert "toy:pull_request:PR-3" in found
+
+
 # ── the digest ───────────────────────────────────────────────────────────────
 
 
