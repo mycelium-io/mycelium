@@ -34,7 +34,8 @@ mycelium board resolve work/passkey-login         # done
 What the task is goes in its **body** when you file it: the second argument,
 `--body`, or `--file` (`-` for stdin), in markdown. The row and its memory page
 show it, search finds it, and its links count. The thread is for talking about
-the task, not for describing it.
+the task, not for describing it. Quote the title: `board new Fix login` files
+the title "Fix" with the body "login".
 
 Every task is created with a **thread** already minted, and no two tasks share
 one. `board new` prints its short id (`t3aa11bb`), and every verb below accepts
