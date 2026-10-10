@@ -25,6 +25,7 @@ so this is a many-to-many and neither side is collapsed here.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -43,6 +44,11 @@ LIVE_NAMESPACES = ("decisions", "status", "work", "failed")
 #: Most memories to scan in one pass. A room with ten thousand memories should
 #: cost a bounded read, and the rows a board shows are the recent ones anyway.
 SCAN_LIMIT = 500
+
+#: Fenced blocks and inline code spans in a message. A reference written as
+#: code in a thread is an example or a quotation (``acme/shop#12`` in a review),
+#: not the row's pull request.
+_CODE = re.compile(r"```.*?(?:```|\Z)|`[^`\n]*`", re.DOTALL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,8 +91,9 @@ def discover(room_name: str, runtime: StatusRuntime) -> list[DiscoveredRefs]:
 
     # A row's own thread links it too: the PR is usually announced there
     # ("PR is up: …"), and nobody should have to copy it into the body.
+    # Code in a message is left out; the row's own text is read whole.
     for episode, text in _thread_text(room_name, threads):
-        note(text, f"memory:{threads[episode]}")
+        note(_CODE.sub(" ", text), f"memory:{threads[episode]}")
 
     return [DiscoveredRefs(ref=ref, origins=tuple(found[ref])) for ref in order]
 

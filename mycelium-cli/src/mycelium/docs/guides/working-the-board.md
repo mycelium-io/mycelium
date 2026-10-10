@@ -120,3 +120,5 @@ room is told when it changes. See
 Any pull request linked in the thread counts, including one mentioned in
 passing, such as a follow-up opened from a review. To keep a task's row about
 its own pull request, link others as a bare `#123`, which the board ignores.
+A reference written as code in the thread, between backticks or in a code
+block, doesn't count either: it's usually an example.
