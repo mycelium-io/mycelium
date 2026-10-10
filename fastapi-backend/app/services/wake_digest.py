@@ -220,7 +220,7 @@ def upstream_line(data: dict[str, Any], when: datetime | None, now: datetime) ->
     """One ``upstream`` notice as the digest says it:
     ``CI went red on "Turn on Apple Pay" (acme/shop#12, 4m ago)``."""
     change = str(data.get("change") or "")
-    title = f'"{data.get("title") or data.get("key")}"'
+    title = f'"{_short(str(data.get("title") or data.get("key") or "a task"), TITLE_CHARS)}"'
     line = UPSTREAM_LINES.get(change, f"{change} on {{title}}").format(title=title)
     who = [w for w in str(data.get("who") or "").split(",") if w]
     if change == "review_requested" and who:
