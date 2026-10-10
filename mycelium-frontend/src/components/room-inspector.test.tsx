@@ -68,6 +68,7 @@ function renderInspector() {
 describe("<RoomInspector /> sections", () => {
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    window.localStorage.clear();
   });
 
   it("stacks members and memory, both in view at once", () => {
@@ -110,15 +111,32 @@ describe("<RoomInspector /> sections", () => {
     expect(await screen.findByText("memory panel")).toBeInTheDocument();
   });
 
-  it("draws one seam between the sections, to drag", () => {
-    renderInspector();
+  it("folds both sections at once, like an accordion", async () => {
+    const user = renderInspector();
+    await user.click(screen.getByRole("button", { name: "Collapse Members" }));
+    await user.click(screen.getByRole("button", { name: "Collapse Memory" }));
+    expect(screen.getByRole("button", { name: "Expand Members" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Expand Memory" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("members panel")).not.toBeInTheDocument();
+    expect(screen.queryByText("memory panel")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Expand Memory" }));
+    expect(screen.getByText("memory panel")).toBeInTheDocument();
+    expect(screen.queryByText("members panel")).not.toBeInTheDocument();
+  });
+
+  it("draws one seam between the sections while both are open, to drag", async () => {
+    const user = renderInspector();
     expect(screen.getAllByRole("separator")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Collapse Members" }));
+    expect(screen.queryByRole("separator")).toBeNull();
   });
 });
 
 describe("<RoomInspector /> collapse", () => {
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    window.localStorage.clear();
   });
 
   it("collapses to the icon strip and opens again from it", async () => {
