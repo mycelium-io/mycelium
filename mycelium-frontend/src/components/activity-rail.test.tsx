@@ -4,7 +4,7 @@
 // The "Recently updated" rail: live work first, finished work behind one line,
 // and each row saying what last happened to it.
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ActivityRail, lastChange, type ActivityItem, type ActivityUpdate } from "@/components/activity-rail";
@@ -45,6 +45,27 @@ describe("<ActivityRail />", () => {
     expect(screen.queryByText("done one")).toBeNull();
     expect(screen.getByText("Show 2 more")).toBeTruthy();
     expect(screen.getByText("2 done")).toBeTruthy();
+  });
+
+  it("folds to its header, keeps the counts and the task that moved last, and remembers", () => {
+    localStorage.removeItem("mycelium.activity.folded");
+    const items = [
+      { ...item("older", "claimed", [update("Claimed", "@ana", "claimed")]), at: AT - 60_000 },
+      item("newest", "blocked", [update("Blocked", "@sam", "blocked")]),
+    ];
+    const { unmount } = render(<ActivityRail items={items} />);
+    fireEvent.click(screen.getByRole("button", { name: "Fold recently updated tasks" }));
+
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.getByText(/^1 blocked$/)).toBeTruthy();
+    expect(screen.getByText("newest")).toBeTruthy();
+    expect(screen.queryByText("older")).toBeNull();
+    expect(localStorage.getItem("mycelium.activity.folded")).toBe("1");
+
+    unmount();
+    render(<ActivityRail items={items} />);
+    expect(screen.getByRole("button", { name: "Show recently updated tasks" })).toBeTruthy();
+    localStorage.removeItem("mycelium.activity.folded");
   });
 
   it("doesn't count a lease running out as news in the header", () => {
