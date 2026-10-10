@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { MarkdownContent } from "@/components/markdown-content";
 import type { Highlight } from "@/components/ui/highlight-text";
@@ -34,19 +34,32 @@ const CLAMP_MASK = "linear-gradient(to bottom, black calc(100% - 3.5rem), transp
  * so short messages are untouched. Shared by the channel (`event-stream`) and
  * the thread pane (`task-conversation`) so the affordance is identical in both.
  */
-export function MessageBody({
-  content,
-  hit,
-  onOpenMemory,
-  roomName,
-}: {
+export const MessageBody = memo(MessageBodyImpl, sameBody);
+
+interface MessageBodyProps {
   content: string;
   hit?: Highlight;
   onOpenMemory?: (key: string) => void;
   /** The room the message is in. With it, the files the message links are
    *  drawn under it and a link to one opens its preview. */
   roomName?: string;
-}) {
+}
+
+/** Whether a message would draw the same: its text, where it links, and its
+ *  find mark compared by what it marks rather than by object. A channel
+ *  re-renders on every keystroke in its find bar, and re-parsing every loaded
+ *  message's markdown each time is what made find slow. */
+function sameBody(a: MessageBodyProps, b: MessageBodyProps): boolean {
+  return (
+    a.content === b.content &&
+    a.onOpenMemory === b.onOpenMemory &&
+    a.roomName === b.roomName &&
+    a.hit?.query === b.hit?.query &&
+    a.hit?.active === b.hit?.active
+  );
+}
+
+function MessageBodyImpl({ content, hit, onOpenMemory, roomName }: MessageBodyProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [overflows, setOverflows] = useState(false);
   const [expanded, setExpanded] = useState(false);

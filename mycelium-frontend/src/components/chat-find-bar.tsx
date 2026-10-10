@@ -16,6 +16,9 @@ interface Props {
   /** Messages the query hits, and which of them the reader is standing on. */
   count: number;
   position: number | null;
+  /** True while the count is for an earlier query than the one typed: it is
+   *  left unsaid rather than flashing "No matches" between keystrokes. */
+  settling?: boolean;
   onStep: (delta: 1 | -1) => void;
   onClose: () => void;
   inputRef: RefObject<HTMLInputElement | null>;
@@ -55,6 +58,7 @@ export function ChatFindBar({
   onQueryChange,
   count,
   position,
+  settling = false,
   onStep,
   onClose,
   inputRef,
@@ -64,7 +68,8 @@ export function ChatFindBar({
   handles = [],
 }: Props) {
   const empty = query.trim().length === 0;
-  const status = empty ? "" : count === 0 ? "No matches" : `${(position ?? 0) + 1}/${count}`;
+  const unsaid = empty || settling;
+  const status = unsaid ? "" : count === 0 ? "No matches" : `${(position ?? 0) + 1}/${count}`;
 
   const [cursor, setCursor] = useState(0);
   const [hinting, setHinting] = useState(true);
@@ -166,7 +171,7 @@ export function ChatFindBar({
         >
           <span
             aria-live="polite"
-            className={`shrink-0 cursor-default text-micro tabular ${count === 0 && !empty ? "text-red" : "text-muted-foreground"}`}
+            className={`shrink-0 cursor-default text-micro tabular ${count === 0 && !unsaid ? "text-red" : "text-muted-foreground"}`}
           >
             {status}
           </span>

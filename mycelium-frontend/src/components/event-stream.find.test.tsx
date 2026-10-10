@@ -47,6 +47,16 @@ async function openFind(lines: [string, string?][]) {
 }
 
 const findBar = () => screen.getByLabelText("Find in the channel");
+
+/** Wait out the pause after typing that the channel marks and counts on. */
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+
+/** Type a query into the find bar and let the channel catch up with it. */
+async function typeQuery(text: string) {
+  await userEvent.type(findBar(), text);
+  await settle();
+}
+
 const status = () => screen.getByRole("button", { name: "Close find" }).closest("[data-slot='chat-find-bar']")!;
 
 describe("<EventStream /> find in the channel", () => {
@@ -76,7 +86,7 @@ describe("<EventStream /> find in the channel", () => {
       ["deploy again after the fix"],
     ]);
 
-    await userEvent.type(findBar(), "deploy");
+    await typeQuery("deploy");
 
     // Two messages, and the reader starts on the newest — the end of the feed
     // is where they were standing when they pressed the key.
@@ -86,7 +96,7 @@ describe("<EventStream /> find in the channel", () => {
 
   it("marks the message it has stepped to differently from the rest", async () => {
     await openFind([["deploy one"], ["deploy two"]]);
-    await userEvent.type(findBar(), "deploy");
+    await typeQuery("deploy");
 
     const marks = screen.getAllByText("deploy", { selector: "mark" });
     expect(marks.map(m => m.dataset.findMatch)).toEqual(["hit", "active"]);
@@ -94,7 +104,7 @@ describe("<EventStream /> find in the channel", () => {
 
   it("steps between matches with wrap-around", async () => {
     await openFind([["deploy one"], ["deploy two"]]);
-    await userEvent.type(findBar(), "deploy");
+    await typeQuery("deploy");
     const bar = status() as HTMLElement;
 
     expect(within(bar).getByText("2/2")).toBeInTheDocument();
@@ -107,7 +117,7 @@ describe("<EventStream /> find in the channel", () => {
   it("finds a sender by name, not only what they said", async () => {
     await openFind([["nothing to see", "alice"], ["also nothing", "bruno"]]);
 
-    await userEvent.type(findBar(), "bruno");
+    await typeQuery("bruno");
 
     expect(within(status() as HTMLElement).getByText("1/1")).toBeInTheDocument();
   });
@@ -115,7 +125,7 @@ describe("<EventStream /> find in the channel", () => {
   it("says so plainly when a query hits nothing", async () => {
     await openFind([["the deploy is stuck"]]);
 
-    await userEvent.type(findBar(), "kubernetes");
+    await typeQuery("kubernetes");
 
     expect(screen.getByText("No matches")).toBeInTheDocument();
     expect(screen.queryByText("kubernetes", { selector: "mark" })).not.toBeInTheDocument();
@@ -124,14 +134,14 @@ describe("<EventStream /> find in the channel", () => {
   it("matches the query literally, so a metacharacter is not a pattern", async () => {
     await openFind([["cost is $5 (net)"]]);
 
-    await userEvent.type(findBar(), "(net)");
+    await typeQuery("(net)");
 
     expect(within(status() as HTMLElement).getByText("1/1")).toBeInTheDocument();
   });
 
   it("closes on Escape and takes its marks with it", async () => {
     await openFind([["the deploy is stuck"]]);
-    await userEvent.type(findBar(), "deploy");
+    await typeQuery("deploy");
     expect(screen.getAllByText("deploy", { selector: "mark" })).toHaveLength(1);
 
     await userEvent.keyboard("{Escape}");
@@ -144,7 +154,7 @@ describe("<EventStream /> find in the channel", () => {
   it("marks a hit inside an @mention, which is prose too", async () => {
     await openFind([["ping @growth about the soak"]]);
 
-    await userEvent.type(findBar(), "growth");
+    await typeQuery("growth");
 
     // The mention renders as its own styled span; a find that skipped it would
     // count a message it could not show the reader anything in.
@@ -153,7 +163,7 @@ describe("<EventStream /> find in the channel", () => {
 
   it("claims no limit it doesn't have once the whole room is loaded", async () => {
     await openFind([["the deploy is stuck"]]);
-    await userEvent.type(findBar(), "deploy");
+    await typeQuery("deploy");
 
     // This channel has walked back to the beginning of the room, so find has
     // genuinely searched all of it. (The reverse — a channel with pages it
@@ -163,15 +173,30 @@ describe("<EventStream /> find in the channel", () => {
 
   it("puts a tick in the scroll gutter for every match", async () => {
     await openFind([["deploy one"], ["quiet"], ["deploy two"]]);
-    await userEvent.type(findBar(), "deploy");
+    await typeQuery("deploy");
 
     expect(screen.getByLabelText("Jump to match 1 of 2")).toBeInTheDocument();
     expect(screen.getByLabelText("Jump to match 2 of 2")).toBeInTheDocument();
   });
 
+  it("marks the channel once typing pauses, not once per letter", async () => {
+    // Re-marking every loaded message on each keystroke is what made find
+    // slow in a busy room. While the query is still being typed the count is
+    // left unsaid rather than flashing "No matches".
+    await openFind([["the deploy is stuck"], ["deploy again"]]);
+
+    await userEvent.type(findBar(), "deploy");
+
+    expect(screen.queryByText("No matches")).not.toBeInTheDocument();
+    expect(screen.queryAllByText("deploy", { selector: "mark" })).toHaveLength(0);
+    await settle();
+    expect(within(status() as HTMLElement).getByText("2/2")).toBeInTheDocument();
+    expect(screen.getAllByText("deploy", { selector: "mark" })).toHaveLength(2);
+  });
+
   it("jumps to the match whose tick is clicked", async () => {
     await openFind([["deploy one"], ["deploy two"]]);
-    await userEvent.type(findBar(), "deploy");
+    await typeQuery("deploy");
     expect(within(status() as HTMLElement).getByText("2/2")).toBeInTheDocument();
 
     await userEvent.click(screen.getByLabelText("Jump to match 1 of 2"));
