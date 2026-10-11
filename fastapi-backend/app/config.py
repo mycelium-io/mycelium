@@ -91,14 +91,16 @@ class Settings(BaseSettings):
     # The largest file a room takes as an upload (routes/uploads.py), in bytes.
     UPLOADS_MAX_BYTES: int = 25 * 1024 * 1024
 
-    # Voice (services/voice.py): speech from the app's mic, transcribed here by
-    # Moonshine v2 with Silero VAD through sherpa-onnx. Off unless the operator
-    # turns it on (`voice.enabled` in config.toml; the Mac app's own switch),
-    # since it costs ~150 MB on disk and a ~500 MB worker while anyone talks. The
-    # models are files in VOICE_MODEL_DIR (empty means <data dir>/models/voice),
-    # fetched once when VOICE_DOWNLOAD allows. VOICE_THREADS is the CPU threads
-    # one decode may use.
+    # Voice (services/voice.py): speech from the app's mic, transcribed here
+    # with Silero VAD through sherpa-onnx. Off unless the operator turns it on
+    # (`voice.enabled` in config.toml; the Mac app's own switch). VOICE_MODEL
+    # picks the speech model: `fast` (Moonshine v2, ~150 MB on disk and a ~500 MB
+    # worker while anyone talks) or `accurate` (Parakeet TDT 0.6B v2, ~630 MB
+    # and ~1.4 GB), read when the hub starts. The models are files in
+    # VOICE_MODEL_DIR (empty means <data dir>/models/voice), fetched once when
+    # VOICE_DOWNLOAD allows. VOICE_THREADS is the CPU threads one decode may use.
     VOICE_ENABLED: bool = False
+    VOICE_MODEL: str = "fast"
     VOICE_MODEL_DIR: str = ""
     VOICE_DOWNLOAD: bool = True
     VOICE_THREADS: int = 2

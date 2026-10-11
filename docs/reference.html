@@ -1194,6 +1194,9 @@
 <span class="comment"># Let people talk into the message box. The hub transcribes on its own CPU, with a speech model of about 150 MB on disk, in a separate process that uses about 500 MB of memory while anyone is talking and exits a few minutes after. Off, the mic isn&#x27;t offered and nothing is downloaded.</span>
 <span class="arg">enabled</span> = <span class="flag">false</span>
 
+<span class="comment"># The speech model. fast is Moonshine: about 150 MB on disk and 500 MB of memory. accurate is Parakeet: about half the mistakes, at about 630 MB on disk (a 480 MB download, made the first time a mic is turned on) and 1.4 GB of memory. Both are English only. The hub reads it when it starts.</span>
+<span class="arg">model</span> = <span class="str">&quot;fast&quot;</span>
+
 <span class="comment"># Let the hub download the speech model when voice is on and the model isn&#x27;t there. Off, put the files in the hub&#x27;s data folder under models/voice yourself.</span>
 <span class="arg">download</span> = <span class="flag">true</span>
 

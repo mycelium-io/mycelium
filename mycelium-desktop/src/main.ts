@@ -18,7 +18,11 @@ interface Settings {
   roots: string[];
   shareUsage?: boolean;
   voice?: boolean;
+  voiceModel?: VoiceModel;
 }
+
+/** The speech model this Mac's hub transcribes with (`voice.model`). */
+type VoiceModel = "fast" | "accurate";
 
 interface Found {
   name: string;
@@ -338,6 +342,8 @@ interface Choices {
   shareUsage: boolean;
   /** Whether this Mac's hub transcribes the message box's mic. Off unless chosen. */
   voice: boolean;
+  /** Which speech model it uses: fast unless chosen. */
+  voiceModel: VoiceModel;
   /** Whether to install herdr's integrations: asked on first run only, so
    *  absent from Settings, which leaves the answer given then alone. */
   restore?: boolean;
@@ -350,6 +356,7 @@ function choicesFrom(snap: Snapshot): Choices {
     root: tilde(snap.settings?.roots[0] ?? snap.home, snap.home),
     shareUsage: snap.settings?.shareUsage ?? false,
     voice: snap.settings?.voice ?? false,
+    voiceModel: snap.settings?.voiceModel ?? "fast",
   };
 }
 
@@ -360,6 +367,7 @@ function settingsOf(c: Choices): Settings {
     roots: [c.root.trim()],
     shareUsage: c.mode === "hub" && c.shareUsage,
     voice: c.mode === "hub" && c.voice,
+    voiceModel: c.voiceModel,
   };
 }
 
@@ -701,17 +709,52 @@ function privacyPiece(c: Choices): HTMLElement {
   );
 }
 
-/** Talking into the message box. Off unless chosen, and saying what it costs,
- *  since turning it on downloads a speech model and the hub holds it in memory
- *  while anyone is talking. */
+/** Talking into the message box. Off unless chosen, and saying what each
+ *  speech model costs, since turning it on downloads one and the hub holds it
+ *  in memory while anyone is talking. */
 function voicePiece(c: Choices): HTMLElement {
+  const choice = (value: VoiceModel, title: string, sub: string) => {
+    const b = el(
+      "button",
+      { class: "choice stacked", type: "button", role: "radio" },
+      el("strong", {}, title),
+      el("span", {}, sub),
+      el("i", { class: "radio", "aria-hidden": "true" }),
+    );
+    b.addEventListener("click", () => {
+      c.voiceModel = value;
+      render();
+    });
+    return b;
+  };
+  const fast = choice("fast", "Fast", "A 150 MB download, and about 500 MB of memory while you talk.");
+  const accurate = choice(
+    "accurate",
+    "Accurate",
+    "About half the mistakes. A 480 MB download, made the first time you turn on the mic, and about 1.4 GB of memory while you talk.",
+  );
+  const models = el(
+    "div",
+    { class: "indent" },
+    el("div", { class: "label" }, "Speech model"),
+    el("div", { class: "choices column", role: "radiogroup", "aria-label": "Speech model" }, fast, accurate),
+  );
+  const render = () => {
+    fast.setAttribute("aria-checked", String(c.voiceModel === "fast"));
+    accurate.setAttribute("aria-checked", String(c.voiceModel === "accurate"));
+    models.hidden = !c.voice;
+  };
+  render();
   return el(
     "div",
     { class: "share" },
     el(
       "label",
       { class: "share-label", for: "voice" },
-      checkbox("voice", c.voice, (on) => (c.voice = on)),
+      checkbox("voice", c.voice, (on) => {
+        c.voice = on;
+        render();
+      }),
       "Talk instead of type",
     ),
     el(
@@ -722,8 +765,9 @@ function voicePiece(c: Choices): HTMLElement {
     el(
       "p",
       { class: "hint" },
-      "It runs on this Mac. Turning it on downloads a speech model of about 150 MB. While you're talking it uses about 500 MB of memory, which is given back a few minutes after you stop. Your audio isn't saved or sent anywhere.",
+      `It runs on this ${MACHINE}, in English. Its memory is given back a few minutes after you stop talking. Your audio isn't saved or sent anywhere.`,
     ),
+    models,
   );
 }
 
@@ -974,7 +1018,13 @@ async function wizard() {
       ];
       if (c.mode === "hub") summary.push(["Model", skippedModel ? `Not set yet. Add one in Settings (${SETTINGS_KEYS}).` : model.summary()]);
       summary.push(["Agents work in", c.root]);
-      if (c.mode === "hub") summary.push(["Voice", c.voice ? "On. The speech model downloads when Mycelium starts." : "Off"]);
+      if (c.mode === "hub") {
+        const voice =
+          c.voiceModel === "accurate"
+            ? "On, accurate. The speech model downloads the first time you turn on the mic."
+            : "On. The speech model downloads when Mycelium starts.";
+        summary.push(["Voice", c.voice ? voice : "Off"]);
+      }
       const added = c.mode === "hub" ? experiences.added() : [];
       if (added.length > 0) summary.push(["Added", added.map((x) => x.title).join(", ")]);
       body = el(

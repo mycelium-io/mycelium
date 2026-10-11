@@ -97,6 +97,11 @@ def serve(
         "--voice/--no-voice",
         help="Let the hub transcribe the mic (default: config.toml's voice.enabled)",
     ),
+    voice_model: str | None = typer.Option(
+        None,
+        "--voice-model",
+        help="The speech model, fast or accurate (default: config.toml's voice.model)",
+    ),
 ) -> None:
     """Run Mycelium here and keep it running until stopped.
 
@@ -111,6 +116,9 @@ def serve(
         raise typer.Exit(2)
     if mode == "client" and not hub_url:
         console.print("[red]--mode client needs --hub-url.[/]")
+        raise typer.Exit(2)
+    if voice_model not in (None, "fast", "accurate"):
+        console.print("[red]--voice-model is fast or accurate.[/]")
         raise typer.Exit(2)
 
     from mycelium.desktop.supervisor import LOG_PATH
@@ -143,6 +151,7 @@ def serve(
         emit=emit,
         share_usage=share_usage,
         voice=voice,
+        voice_model=voice_model,
     )
 
     def _stop(*_: object) -> None:

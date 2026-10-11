@@ -12146,6 +12146,12 @@
             "title": "Model",
             "description": "The speech model's name",
             "default": ""
+          },
+          "choice": {
+            "type": "string",
+            "title": "Choice",
+            "description": "`voice.model` on this hub: `fast` (Moonshine) or `accurate` (Parakeet)",
+            "default": "fast"
           }
         },
         "type": "object",
