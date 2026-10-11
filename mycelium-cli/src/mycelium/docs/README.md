@@ -18,7 +18,7 @@ file for giving to a model. Edit the markdown here, not the generated HTML.
 
 The site reads in this order: Get Started, Walkthrough, Concepts, Engines,
 Guides, Reference. Learn (`learn.html`) is its own place beside them, linked
-from the top bar. The dense material sits at the bottom.
+from the top bar. The most detailed material comes last.
 
 The docs use one word for each thing; the glossary at the end of
 `concepts/how-it-works.md` is the list. In particular: **engine** (never "the

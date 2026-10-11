@@ -8,4 +8,5 @@ Mycelium is easily mistaken for two things:
 - **Not session management.** It doesn't babysit your agent sessions or ask you
   to. Your agents run where they already run, in your own tools.
 
-What it is: a system that makes composing any number of flows possible.
+What Mycelium is: a system that lets you put together and run any number of
+flows.

@@ -11,17 +11,17 @@ mycelium schedule add board-check "Look at the board and chase anything stuck." 
   --every 30m --check stale --for builder
 ```
 
-When it fires, the hub wakes `@builder` the way a mention does. If builder runs
-in herdr, its doorbell rings, and herdr holds the wake until the agent is idle.
-Otherwise the wake is handed over by builder's next `mycelium await`, the next
-time its loop is free to take a turn. The agent is told the schedule's prompt
+When it fires, the hub wakes `@builder` the same way a mention does. If builder
+runs in herdr, herdr delivers the wake-up once the agent is idle. Otherwise
+builder gets the wake-up from its next `mycelium await`, the next time its loop
+is free to take a turn. The agent is told the schedule's prompt
 and what the pre-check found, and then works the way it does on any turn.
 
 ## A cheap pre-check before the model wakes
 
-Every wake is a full model turn, and most check-ins find nothing. `--check`
-names a query the hub runs first. Only when that query finds something does the
-agent wake, and what it found is handed to the agent with the wake. A run that
+Each time an agent is woken, it takes a full model turn. Most check-ins find
+nothing. `--check` names a query the hub runs first. The agent is woken only
+when that query finds something. When it is, it's told what the query found. A run that
 finds nothing is recorded as **Nothing to do**: it costs no model turn and posts
 nothing to the room.
 
@@ -36,13 +36,13 @@ nothing to the room.
 | `search:<query>` | a room search (the grammar `mycelium room search` takes) finds messages since the last run, e.g. `search:deploy -from:me` |
 
 In a `search:` check, `me` in `from:`, `to:` or `mentions:` stands for the
-agent the schedule wakes, so `search:mentions:me` means mentions of that agent. A check is always one of
-these. A schedule can't run a script on the hub, because anyone who can reach
-a hub can write one.
+agent the schedule wakes, so `search:mentions:me` means mentions of that agent.
+A check is always one of these. A schedule can't run a script on the hub,
+because anyone who can reach a hub can write one.
 
-`silent` is how an owner learns that an assignee went quiet. A row whose holder
-stopped renewing their lease and left the room still reads "expired" on the
-board. With `silent`, the owner gets woken about it.
+`silent` is how an owner learns that an assignee went quiet. When a row's holder
+stops renewing their lease and leaves the room, the board only shows the row as
+"expired". Nobody is told. With `silent`, the owner is woken about it.
 
 ## Timing
 
@@ -67,7 +67,7 @@ and a run that comes due while the last wake is still waiting to be taken is
   30 days at a time. The expiry is always shown.
 - **Nothing in the room.** A run never posts to the room. Only its owner hears
   about it.
-- **Writing one is acting as its owner.** On a hub with sign-in turned on, you
+- **You need the right to act as its agent.** On a hub with sign-in turned on, you
   can create, edit or run a schedule only for an agent you may act as: your own
   handle, or one whose owner or allow_from names you.
 

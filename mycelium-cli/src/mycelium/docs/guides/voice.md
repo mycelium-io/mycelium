@@ -25,8 +25,8 @@ mycelium up
 ```
 
 The hub downloads the speech model when it starts, into its data folder, so
-it's downloaded once and kept across restarts. The download is checked against
-the file it should be before it's used. With `voice.download` set to false the
+it's downloaded once and kept across restarts. Before using the download, the
+hub checks that it matches the expected file. With `voice.download` set to false the
 hub never downloads anything, and you put the files in the data folder under
 `models/voice` yourself.
 
@@ -48,8 +48,8 @@ folder, and you can delete `models/voice` to get the space back.
 
 Both run on the hub's CPU, and both give their memory back a few minutes after
 the last mic is turned off. `accurate` also waits for a longer pause (about a
-second) before it types what you said, since it reads a whole sentence better
-than its halves. With `fast`, a stretch of speech is cut into pieces of at most
+second) before it types what you said, since it transcribes a whole sentence
+more accurately than part of one. With `fast`, a stretch of speech is cut into pieces of at most
 five and a half seconds, because longer pieces come back empty from the
 version of the speech runtime the hub uses. `accurate` has no such limit.
 
@@ -96,12 +96,12 @@ Voice is English only for now.
 
 Your hub turns speech into text, on its own CPU, with a speech model (Moonshine,
 or Parakeet when you chose `accurate`) and a voice activity detector (Silero)
-that hears where you start and stop. Neither sends audio anywhere else. In
+that detects when you start and stop speaking. Neither sends audio anywhere else. In
 the desktop app the hub runs on your machine, so your audio never leaves it.
 With a shared hub, your audio goes to that hub the way your messages do.
 
-Audio is never saved. The hub keeps only the few seconds it is listening to,
-and lets go of them once they're text.
+Audio is never saved. The hub keeps only the few seconds it is transcribing and
+discards them once they're text.
 
 The model runs in a separate process that the hub starts when someone turns on
 a mic and that stops about five minutes after the last mic is turned off. That's

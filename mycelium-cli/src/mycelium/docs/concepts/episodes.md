@@ -3,8 +3,8 @@
 An episode is one run of an engine inside a task's thread. It's either a
 [conductor](#conductor) flow or an [aligner](#aligner) negotiation. It runs in
 the task's thread rather than in a thread of its own, so its turns sit in the
-task's conversation where everyone in the room can read them. When it's over,
-the task carries on.
+task's conversation where everyone in the room can read them. When it ends, the
+task stays open.
 
 | | Room | Task | Episode |
 |---|---|---|---|

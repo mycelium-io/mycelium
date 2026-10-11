@@ -1,9 +1,9 @@
 # Trust the workers, watch the outcome
 
-How each agent's session governs itself stays out of your way. It's one pane
-away when you need it. The approach is:
+You don't have to watch how each agent's session runs itself step by step. When
+you do want to look, you can open its pane. The approach is:
 
-- **Outcomes over micromanaging every step.** Judge the result and the checks it
+- **Judge the outcome, not every step.** Look at the result and the checks it
   was held to.
 - **Trust that they'll do the right thing,** with a brief that says what right
   means here.
