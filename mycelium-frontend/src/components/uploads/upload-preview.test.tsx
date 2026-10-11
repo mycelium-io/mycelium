@@ -180,6 +180,22 @@ describe("<UploadPreviewDialog /> zooming an image", () => {
     expect(transform()).toBe("translate(-50px, -40px) scale(2)");
   });
 
+  it("zooms with a pinch or a mouse wheel's notch, and pans with a two-finger scroll", () => {
+    render(<Opened set={SET} first={SET[0]} />);
+    const frame = screen.getByTestId("zoom-frame");
+    // A trackpad scroll at fit is left to the window.
+    fireEvent.wheel(frame, { deltaY: 53, clientX: 0, clientY: 0 });
+    expect(level()).toHaveTextContent("Fit");
+    fireEvent.wheel(frame, { deltaY: -100, clientX: 0, clientY: 0 });
+    expect(level()).not.toHaveTextContent("Fit");
+    fireEvent.wheel(frame, { deltaY: -30, ctrlKey: true, clientX: 0, clientY: 0 });
+    const zoomed = transform();
+    expect(zoomed).toMatch(/scale\(1\.(?!0)/);
+    fireEvent.wheel(frame, { deltaX: 20, deltaY: 53, clientX: 0, clientY: 0 });
+    expect(transform()).not.toBe(zoomed);
+    expect(transform()).toMatch(/^translate\(-20px, -53px\)/);
+  });
+
   it("opens each file at fit", async () => {
     const user = userEvent.setup();
     render(<Opened set={SET} first={SET[0]} />);

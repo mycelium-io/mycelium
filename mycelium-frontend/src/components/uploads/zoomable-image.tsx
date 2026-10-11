@@ -107,10 +107,12 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
       const { view: now, box: b, natural: n } = latest.current;
       const r = frame.getBoundingClientRect();
       const point = { x: e.clientX - r.left, y: e.clientY - r.top };
-      // A trackpad pinch arrives as a wheel with ctrl held; a mouse wheel in
-      // whole notches. Anything else is a two-finger scroll, which pans.
+      // A trackpad pinch arrives as a wheel with ctrl held, and a mouse wheel
+      // in lines (Firefox) or in notches of exactly 100 or 120 pixels (Chrome,
+      // Edge). Anything else is a two-finger scroll, which pans: a fast swipe
+      // can send a whole number too, just rarely one of those.
       const pinch = e.ctrlKey;
-      const notched = e.deltaMode !== 0 || (e.deltaX === 0 && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 40);
+      const notched = e.deltaMode !== 0 || (e.deltaX === 0 && e.deltaY !== 0 && (e.deltaY % 100 === 0 || e.deltaY % 120 === 0));
       if (pinch || notched) {
         e.preventDefault();
         const factor = Math.exp(-e.deltaY * (pinch ? 0.01 : 0.002));
@@ -136,8 +138,10 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
         ref={frameRef}
         data-testid="zoom-frame"
         className={cn(
-          "max-w-full touch-none overflow-hidden rounded-md select-none",
-          fit ? "cursor-zoom-in" : dragging ? "cursor-grabbing" : "cursor-grab",
+          "max-w-full overflow-hidden rounded-md select-none",
+          // Touch keeps the browser's own pinch and scroll at fit; zoomed in, a
+          // finger drags the image instead.
+          fit ? "cursor-zoom-in" : cn("touch-none", dragging ? "cursor-grabbing" : "cursor-grab"),
         )}
         onDoubleClick={(e) => setView((v) => toggleAt(v, pointIn(e), box, natural))}
         onPointerDown={(e) => {
