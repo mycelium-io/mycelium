@@ -35,11 +35,6 @@ export function useHubLabel(): string {
   return hubLabel(host, desktop);
 }
 
-/**
- * The strip across the top of every screen, the way an editor draws one:
- * where you are on the left (the hub, then the page), and who you are on the
- * right. Thin, and the same in a browser and in the desktop app.
- */
 /** The way into Settings from every screen. Lit while a settings page is open. */
 function SettingsButton() {
   const onSettings = (usePathname() ?? "").startsWith("/settings");
@@ -57,6 +52,11 @@ function SettingsButton() {
   );
 }
 
+/**
+ * The strip across the top of every screen, the way an editor draws one:
+ * where you are on the left (the hub, then the page), and who you are on the
+ * right. Thin, and the same in a browser and in the desktop app.
+ */
 export function TitleBar({ crumb, right }: { crumb?: ReactNode; right?: ReactNode }) {
   const hub = useHubLabel();
   return (

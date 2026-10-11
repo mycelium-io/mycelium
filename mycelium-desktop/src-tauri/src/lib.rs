@@ -168,8 +168,10 @@ fn open_settings(app: &AppHandle) {
             return;
         }
     }
-    let has_ui = app.state::<Supervisor>().status().as_ref().and_then(|s| s.get("ui_url")).is_some();
-    if has_ui {
+    // `ui_url` is in the status from the start, before the UI answers, so ask
+    // whether there's something to show yet rather than whether it has an address.
+    let up = app.state::<Supervisor>().status().as_ref().is_some_and(supervisor::ready);
+    if up {
         show_page(app, "/settings/general");
     } else {
         show_local(app, "onboarding");

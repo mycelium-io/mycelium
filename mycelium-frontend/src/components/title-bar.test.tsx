@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 vi.mock("@/components/account-menu", () => ({ AccountMenu: () => <span>account</span> }));
@@ -8,6 +8,10 @@ const pathname = vi.hoisted(() => ({ current: "/" }));
 vi.mock("next/navigation", () => ({ usePathname: () => pathname.current }));
 
 import { TitleBar, hubLabel } from "./title-bar";
+
+beforeEach(() => {
+  pathname.current = "/";
+});
 
 describe("hubLabel", () => {
   it("names a hub on this computer, never by its port", () => {
@@ -52,6 +56,5 @@ describe("TitleBar", () => {
     pathname.current = "/settings/keys";
     render(<TitleBar />);
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
-    pathname.current = "/";
   });
 });
