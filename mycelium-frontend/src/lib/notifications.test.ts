@@ -44,7 +44,7 @@ describe("classify", () => {
     expect(n).toMatchObject({ kind: "direct", needsMe: true });
   });
 
-  it("rings a converged l9_commit only for the people who were in it", () => {
+  it("rings a converged l9_commit only when its text mentions you", () => {
     const raw = {
       room_name: "sprint",
       sender_handle: "aligner",
@@ -60,8 +60,10 @@ describe("classify", () => {
         },
       }),
     };
-    expect(classify(raw, "bob")).toMatchObject({ kind: "consensus", needsMe: true, summary: "consensus reached" });
-    expect(classify(raw, "carol")).toMatchObject({ kind: "consensus", needsMe: false });
+    // bob took part, but nothing in it names him, so it only badges the room.
+    expect(classify(raw, "bob")).toMatchObject({ kind: "consensus", needsMe: false, summary: "consensus reached" });
+    const named = { ...raw, content: raw.content.replace("consensus reached", "consensus reached, @bob please ship it") };
+    expect(classify(named, "bob")).toMatchObject({ kind: "consensus", needsMe: true });
   });
 
   it("badges a room for an l9_knowledge update but never rings", () => {
@@ -129,8 +131,8 @@ describe("isAdmitted", () => {
     expect(isAdmitted(join, DEFAULT_SETTINGS)).toBe(false);
   });
 
-  it("admits an ambient item under everything scope", () => {
-    expect(isAdmitted(join, { ...DEFAULT_SETTINGS, scope: "everything" })).toBe(true);
+  it("leaves an ambient item out even under the old everything scope", () => {
+    expect(isAdmitted(join, { ...DEFAULT_SETTINGS, scope: "everything" })).toBe(false);
   });
 
   it("rejects everything under global do-not-disturb", () => {
@@ -143,14 +145,14 @@ describe("isAdmitted", () => {
 });
 
 describe("roomLevel", () => {
-  it("defaults to mentions under needs-me scope, all under everything", () => {
+  it("defaults to mentions, whatever the old scope setting says", () => {
     expect(roomLevel(DEFAULT_SETTINGS, "sprint")).toBe("mentions");
-    expect(roomLevel({ ...DEFAULT_SETTINGS, scope: "everything" }, "sprint")).toBe("all");
+    expect(roomLevel({ ...DEFAULT_SETTINGS, scope: "everything" }, "sprint")).toBe("mentions");
   });
 
-  it("lets a per-room override win over the scope default and legacy mute", () => {
-    const s = { ...DEFAULT_SETTINGS, mutedRooms: ["sprint"], roomLevels: { sprint: "all" as const } };
-    expect(roomLevel(s, "sprint")).toBe("all");
+  it("reads a saved 'all' level as mentions", () => {
+    const s = { ...DEFAULT_SETTINGS, roomLevels: { sprint: "all" as const } };
+    expect(roomLevel(s, "sprint")).toBe("mentions");
   });
 
   it("reads a legacy muted room as muted", () => {
@@ -170,9 +172,9 @@ describe("isAlert", () => {
     expect(isAlert(message, DEFAULT_SETTINGS)).toBe(false);
   });
 
-  it("is loud for ambient chatter when the room is on all", () => {
+  it("stays quiet for ambient chatter even in a room once set to all", () => {
     const s = { ...DEFAULT_SETTINGS, roomLevels: { sprint: "all" as const } };
-    expect(isAlert(message, s)).toBe(true);
+    expect(isAlert(message, s)).toBe(false);
   });
 
   it("is silent for anything in a muted room", () => {

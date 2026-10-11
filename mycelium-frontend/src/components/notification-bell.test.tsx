@@ -8,27 +8,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
 
+const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
+
 vi.mock("@/lib/api", () => ({
-  // bob owns the agent "builder"; the room's one row is filed by it.
-  fetchRoomAgents: vi.fn(async () => [{ handle: "builder", owner: "bob" }]),
-  fetchMemories: vi.fn(async () => [
-    {
-      key: "work/zoom",
-      created_by: "builder",
-      value: "Zoom and pan images",
-      meta: { status: "open" },
-      episode: "urn:ioc:mycelium:episode:sprint:t1",
-    },
-  ]),
+  fetchMemories: vi.fn(async () => [{ key: "work/zoom", value: { text: "Zoom and pan images\n\nbody" }, episode: THREAD }]),
 }));
+const ping = vi.fn();
+vi.mock("@/lib/audio-ping", () => ({ ping: (...a: unknown[]) => ping(...a), primeAudio: () => {} }));
 
 import { CurrentUserProvider } from "@/components/current-user";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { NotificationBell } from "@/components/notification-bell";
 
-const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
+const CREATED = "2026-08-15T10:00:00.000000+00:00";
 let seq = 0;
-const at = () => `2026-10-11T10:${String(10 + seq).padStart(2, "0")}:00.000000+00:00`;
 
 function renderBell() {
   return render(
@@ -40,45 +33,17 @@ function renderBell() {
   );
 }
 
-function message(sender: string, text: string, episode: string | null = null) {
+function message(text: string, episode: string | null = null) {
   seq += 1;
   return {
     id: `msg-${seq}`,
     room_name: "sprint",
-    sender_handle: sender,
+    sender_handle: "alice",
     message_type: "l9_exchange",
-    created_at: at(),
+    created_at: CREATED,
     episode,
     content: JSON.stringify({ content: text }),
   };
-}
-
-function upstream(change: string) {
-  seq += 1;
-  return {
-    id: `n-${seq}`,
-    room_name: "sprint",
-    sender_handle: "system",
-    message_type: "l9_exchange",
-    created_at: at(),
-    content: JSON.stringify({
-      l9: {
-        payload: {
-          type: "notice",
-          data: { subkind: "upstream", change, key: "work/zoom", title: "Zoom and pan images", episode: THREAD, ref: "o/r#1258" },
-        },
-      },
-    }),
-  };
-}
-
-async function emit(...frames: Record<string, unknown>[]) {
-  const es = FakeEventSource.latest();
-  for (const f of frames) {
-    await act(async () => {
-      es.emitNotification(f);
-    });
-  }
 }
 
 async function start() {
@@ -89,6 +54,12 @@ async function start() {
   });
 }
 
+async function emit(frame: Record<string, unknown>) {
+  await act(async () => {
+    FakeEventSource.latest().emitNotification(frame);
+  });
+}
+
 describe("<NotificationBell />", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -96,71 +67,65 @@ describe("<NotificationBell />", () => {
     resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
+    ping.mockClear();
   });
 
-  it("lists a question put to you under Needs you and counts it on the badge", async () => {
+  it("lists a message that mentions you, with who and where", async () => {
     const user = userEvent.setup();
     await start();
-    await emit(message("alice", "hey @bob take a look"));
+    await emit(message("hey @bob take a look"));
 
-    await user.click(await screen.findByLabelText("1 waiting on you"));
-    const needsYou = await screen.findByRole("region", { name: "Needs you" });
-    expect(within(needsYou).getByText("sprint channel")).toBeInTheDocument();
-    expect(within(needsYou).getByText("Asks you")).toBeInTheDocument();
-    expect(within(needsYou).getByText(/hey @bob take a look/)).toBeInTheDocument();
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    expect(screen.getByText("alice")).toBeInTheDocument();
+    expect(screen.getByText("sprint · channel")).toBeInTheDocument();
+    expect(screen.getByText("hey @bob take a look")).toBeInTheDocument();
   });
 
-  it("ignores the channel's chatter that doesn't name you", async () => {
+  it("leaves out a message that doesn't mention you, and a silent mention", async () => {
     await start();
-    await emit(message("alice", "hey @carol take a look"));
-    expect(screen.getByLabelText("Notifications")).toBeInTheDocument();
+    await emit(message("hey @carol take a look"));
+    await emit(message("done, for @~bob"));
+    expect(screen.getByLabelText("Mentions")).toBeInTheDocument();
+    expect(ping).not.toHaveBeenCalled();
   });
 
-  it("puts a silent mention in the bell without counting it", async () => {
+  it("plays a sound for a mention", async () => {
+    await start();
+    await emit(message("@bob can you check?"));
+    expect(ping).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the task of a mention in a thread and opens that thread", async () => {
     const user = userEvent.setup();
     await start();
-    await emit(message("alice", "done, for @~bob", THREAD));
+    await emit(message("@bob which preset?", THREAD));
 
-    await user.click(screen.getByLabelText("Notifications"));
-    const earlier = await screen.findByRole("region", { name: "Earlier" });
-    expect(within(earlier).getByText("Zoom and pan images")).toBeInTheDocument();
-    expect(within(earlier).getByText("alice named you")).toBeInTheDocument();
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    expect(await screen.findByText("sprint · Zoom and pan images")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /which preset/ })).toHaveAttribute(
+      "href",
+      "/room/sprint?focus=episode%3At1",
+    );
   });
 
-  it("groups a task's updates into one entry that ends ready to merge", async () => {
+  it("marking all read clears the count", async () => {
     const user = userEvent.setup();
     await start();
-    // Filed by bob's own agent, so the task is his to hear about.
-    await emit(upstream("opened"), upstream("approved"), upstream("ci_passed"));
+    await emit(message("hey @bob take a look"));
 
-    await user.click(await screen.findByLabelText("1 waiting on you"));
-    const needsYou = await screen.findByRole("region", { name: "Needs you" });
-    expect(within(needsYou).getAllByText("Zoom and pan images")).toHaveLength(1);
-    expect(within(needsYou).getByText("Ready to merge")).toBeInTheDocument();
-    expect(within(needsYou).getByText("CI green")).toBeInTheDocument();
-    expect(within(needsYou).getByRole("link")).toHaveAttribute("href", "/room/sprint?focus=episode%3At1");
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    const panel = (await screen.findByText("Mentions", { selector: "span" })).closest("[data-slot=popover-content]")!;
+    await user.click(within(panel as HTMLElement).getByLabelText("Mark all read"));
+    expect(screen.getByLabelText("Mentions", { selector: "button" })).toBeInTheDocument();
   });
 
-  it("answering in the thread takes it off Needs you", async () => {
+  it("dismissing a mention removes it from the list", async () => {
     const user = userEvent.setup();
     await start();
-    await emit(message("alice", "@bob which one?", THREAD));
-    await screen.findByLabelText("1 waiting on you");
-    await emit(message("bob", "the second", THREAD));
+    await emit(message("hey @bob take a look"));
+    await user.click(await screen.findByLabelText("1 unread mention"));
 
-    await user.click(await screen.findByLabelText("Notifications"));
-    expect(screen.queryByRole("region", { name: "Needs you" })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Earlier" })).toBeInTheDocument();
-  });
-
-  it("muting a task takes it out of the bell", async () => {
-    const user = userEvent.setup();
-    await start();
-    await emit(message("alice", "hey @bob take a look"));
-    await user.click(await screen.findByLabelText("1 waiting on you"));
-
-    await user.click(await screen.findByLabelText("Mute sprint channel"));
-    expect(screen.queryByText("sprint channel")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Notifications")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Dismiss"));
+    expect(screen.queryByText("hey @bob take a look")).not.toBeInTheDocument();
   });
 });

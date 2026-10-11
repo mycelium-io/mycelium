@@ -7,8 +7,6 @@ import { createContext, useContext, type ReactElement } from "react";
 import {
   ArrowUpRight,
   Ban,
-  Bell,
-  BellOff,
   CheckCircle2,
   CircleDot,
   Copy,
@@ -34,25 +32,6 @@ import { openableThread } from "@/components/board/board-cells";
 import { attentionFilterOf, ROW_ACTIONS, type LiveItem, type RowAction } from "@/lib/board/item";
 import { fieldAsList } from "@/lib/board/fields";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
-import { taskIdOf } from "@/lib/task-inbox";
-import { useOptionalNotifications } from "@/components/notifications-provider";
-
-/** Mute or unmute a task's notifications: the one control the bell offers per
- *  task, since which tasks reach you is decided for you. */
-function MuteTaskItem({ roomName, episode }: { roomName: string; episode: string }) {
-  const notifications = useOptionalNotifications();
-  if (!notifications) return null;
-  const id = taskIdOf(roomName, episode, null);
-  const muted = notifications.settings.mutedTasks?.includes(id) ?? false;
-  return (
-    <ContextMenuItem
-      icon={muted ? Bell : BellOff}
-      onClick={() => (muted ? notifications.unmuteTask(id) : notifications.muteTask(id))}
-    >
-      {muted ? "Unmute this task" : "Mute this task"}
-    </ContextMenuItem>
-  );
-}
 
 /** What a board row can do, from the board that owns the rows. */
 interface BoardRowActions {
@@ -109,7 +88,6 @@ export function BoardRowMenu({ item, children }: { item: LiveItem; children: Rea
             {a.label}
           </ContextMenuItem>
         ))}
-        {roomName && thread && <MuteTaskItem roomName={roomName} episode={thread} />}
         {choices.length > 0 && (
           <ContextMenuSub label="Answer" icon={Vote}>
             {choices.map((choice) => (

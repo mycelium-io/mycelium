@@ -11,7 +11,6 @@ import { LoginGate } from "@/components/login-gate";
 import { NamePrompt } from "@/components/name-prompt";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
-import { TaskToast } from "@/components/task-toast";
 import { SWRProvider } from "@/components/swr-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -57,7 +56,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                           the provider. */}
                       <KeymapProvider>
                         {children}
-                        <TaskToast />
                         {/* Asks a browser that hasn't said who it is, once. */}
                         <NamePrompt />
                       </KeymapProvider>
