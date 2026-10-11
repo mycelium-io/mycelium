@@ -39,24 +39,42 @@ export type NotificationScope = "needs-me" | "everything";
  *  just badges; muted = nothing (no badge, no bell). */
 export type RoomLevel = "all" | "mentions" | "muted";
 
+/** When a task pops up a toast: only when it's your move, or never. */
+export type ToastSetting = "your-move" | "off";
+
+/**
+ * Notification settings, kept per browser. Each field is one setting on the
+ * settings page, under these ids: `notifications.toasts` (`toasts`),
+ * `notifications.desktop` (`desktopEnabled`), `notifications.sound`
+ * (`soundEnabled`, with `soundVolume`) and `notifications.dnd` (`dnd`). Muting
+ * is done from the room's menu and the row's menu.
+ */
 export interface NotificationSettings {
+  /** Retired from the UI (the bell is grouped by task now); kept so a saved
+   *  "everything" still reads. */
   scope: NotificationScope;
+  toasts: ToastSetting;
   soundEnabled: boolean;
   soundVolume: number;
+  /** A system notification instead of a toast when the window isn't focused. */
   desktopEnabled: boolean;
   dnd: boolean;
   mutedRooms: string[];
+  /** Tasks muted from their row's menu, by task-inbox id (`room#thread`). */
+  mutedTasks: string[];
   /** Per-room overrides of the scope-derived default. */
   roomLevels: Record<string, RoomLevel>;
 }
 
 export const DEFAULT_SETTINGS: NotificationSettings = {
   scope: "needs-me",
+  toasts: "your-move",
   soundEnabled: true,
   soundVolume: 0.5,
-  desktopEnabled: false,
+  desktopEnabled: true,
   dnd: false,
   mutedRooms: [],
+  mutedTasks: [],
   roomLevels: {},
 };
 
@@ -231,7 +249,10 @@ export type CrossTabMessage =
   | { type: "room-read"; room: string }
   | { type: "dismiss"; id: string }
   | { type: "clear" }
-  | { type: "settings"; settings: NotificationSettings };
+  | { type: "settings"; settings: NotificationSettings }
+  | { type: "task-seen"; id: string; at: string }
+  | { type: "tasks-seen"; at: string }
+  | { type: "task-dismiss"; id: string };
 
 const CHANNEL_NAME = "mycelium-notifications";
 

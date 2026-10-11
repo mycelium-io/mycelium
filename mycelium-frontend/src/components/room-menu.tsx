@@ -6,9 +6,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Link2, Lock, MoreHorizontal, Settings, Trash2, Users } from "lucide-react";
+import { Bell, BellOff, Check, Copy, Link2, Lock, MoreHorizontal, Settings, Trash2, Users } from "lucide-react";
 import { setRoomPrivate } from "@/lib/api";
 import { settingHref } from "@/lib/client-settings";
+import { roomLevel } from "@/lib/notifications";
+import { useOptionalNotifications } from "@/components/notifications-provider";
 import { useRooms } from "@/lib/room-data";
 import { usePrincipal } from "@/components/current-user";
 import { DeleteRoomDialog } from "@/components/delete-room-dialog";
@@ -42,6 +44,8 @@ export function RoomMenu({
   const [copied, setCopied] = useState<"link" | "id" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const notifications = useOptionalNotifications();
+  const roomMuted = notifications ? roomLevel(notifications.settings, roomName) === "muted" : false;
   // Read when the menu opens, so it names the task or view open right now.
   const link = open && typeof window !== "undefined" ? window.location.href : "";
 
@@ -127,6 +131,27 @@ export function RoomMenu({
                 <span className="block text-text">{isPrivate ? "Share with everyone" : "Make private"}</span>
                 <span className="block text-micro text-faint">
                   {isPrivate ? "List it for everyone on the hub" : "Hide it from other people's room lists"}
+                </span>
+              </span>
+            </button>
+          )}
+          {notifications && (
+            <button
+              type="button"
+              onClick={() =>
+                roomMuted ? notifications.unmuteRoom(roomName) : notifications.muteRoom(roomName)
+              }
+              className={item}
+            >
+              {roomMuted ? (
+                <Bell className="size-3.5 flex-shrink-0 text-muted-foreground" />
+              ) : (
+                <BellOff className="size-3.5 flex-shrink-0 text-muted-foreground" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block text-text">{roomMuted ? "Unmute notifications" : "Mute notifications"}</span>
+                <span className="block text-micro text-faint">
+                  {roomMuted ? "Its tasks reach your bell again" : "Nothing from this room reaches your bell"}
                 </span>
               </span>
             </button>

@@ -11,7 +11,7 @@
  * object on the default `message` event (see `event-stream.tsx`).
  */
 
-import { subscribe } from "./live";
+import { subscribe, subscribeAll } from "./live";
 
 interface StreamStep {
   delayMs: number;
@@ -121,6 +121,38 @@ export function mockStream(roomName: string): Response {
     },
   });
 
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
+/**
+ * Mock SSE for the notification feed: every room's live frames, tagged with
+ * the room, as `/api/notifications/stream` carries them on the hub. A write in
+ * any room (a message, a filed task) reaches the bell this way.
+ */
+export function mockNotificationStream(): Response {
+  const encoder = new TextEncoder();
+  let unsubscribe = () => {};
+  let beat: ReturnType<typeof setInterval> | undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode("retry: 5000\n: connected\n\n"));
+      unsubscribe = subscribeAll((frame) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+      });
+      beat = setInterval(() => controller.enqueue(encoder.encode(": heartbeat\n\n")), 15_000);
+    },
+    cancel() {
+      unsubscribe();
+      if (beat) clearInterval(beat);
+    },
+  });
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
