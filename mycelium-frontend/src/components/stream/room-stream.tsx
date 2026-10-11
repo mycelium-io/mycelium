@@ -28,6 +28,9 @@ import { cn } from "@/lib/utils";
 
 /** How much of the room's history the Stream reads when it opens. */
 const HISTORY = 400;
+/** The most lines kept while the tab stays open; the oldest go first, so a
+ *  room left open all day stays quick to draw. */
+const KEEP = 2000;
 /** The gutter: the channel's own rule, then one column per lane. */
 const LANE_X0 = 14;
 const LANE_STEP = 9;
@@ -144,7 +147,7 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
     const ev = streamEventOf(data as Record<string, unknown>, roomName);
     if (!ev || seenIds.current.has(ev.id)) return;
     seenIds.current.add(ev.id);
-    setEvents((prev) => [...prev, ev]);
+    setEvents((prev) => (prev.length >= KEEP ? [...prev.slice(prev.length - KEEP + 1), ev] : [...prev, ev]));
   });
 
   // What you've seen is remembered when you leave the tab or the window, so

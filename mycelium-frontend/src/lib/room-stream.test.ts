@@ -56,6 +56,15 @@ describe("streamEventOf", () => {
     const ci = streamEventOf(notice({ subkind: "upstream", key: "work/a", episode: T1, change: "ci_passed", ref: "o/r#1260" }), ROOM)!;
     expect(ci).toMatchObject({ kind: "github", who: "github" });
     expect(describeEvent(ci)).toBe("CI passed on PR #1260");
+
+    // Led by the pull request, since a person approved it, not GitHub.
+    const approved = streamEventOf(notice({ subkind: "upstream", key: "work/a", change: "approved", ref: "o/r#12" }), ROOM)!;
+    expect(describeEvent(approved)).toBe("PR #12 approved");
+    const asked = streamEventOf(
+      notice({ subkind: "upstream", key: "work/a", change: "review_requested", ref: "o/r#12", who: "mycelium-reviewer" }),
+      ROOM,
+    )!;
+    expect(describeEvent(asked)).toBe("review asked on PR #12 of mycelium-reviewer");
   });
 
   it("skips pings, floor changes and saves of board rows", () => {
@@ -81,6 +90,7 @@ describe("foldEvents", () => {
     change: null,
     ref: null,
     assignee: null,
+    asked: [],
     mentions: [],
     ...over,
   });

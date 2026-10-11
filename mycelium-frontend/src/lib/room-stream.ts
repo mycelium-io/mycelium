@@ -41,6 +41,8 @@ export interface StreamEvent {
   ref: string | null;
   /** For a `filed` notice, who the task is for. */
   assignee: string | null;
+  /** For a review request, who was asked. */
+  asked: string[];
   /** Handles the message asks for with `@handle` (not silent `@~` ones). */
   mentions: string[];
 }
@@ -79,6 +81,7 @@ export function streamEventOf(raw: Record<string, unknown>, room: string): Strea
     change: null,
     ref: null,
     assignee: null,
+    asked: [] as string[],
     mentions: [] as string[],
   };
 
@@ -108,6 +111,7 @@ export function streamEventOf(raw: Record<string, unknown>, room: string): Strea
       change: notice.change,
       ref: notice.ref,
       assignee: notice.assignee,
+      asked: notice.who,
     };
   }
 
@@ -221,15 +225,18 @@ export function matches(event: StreamEvent, filter: StreamFilter): boolean {
   return true;
 }
 
+/** A pull request change, led by the pull request: GitHub reports it, but a
+ *  person approved or merged it, so the line doesn't credit "github" with it.
+ *  `%s` is the pull request ("PR #12"). */
 const PR_WORDS: Record<string, string> = {
-  opened: "opened",
-  review_requested: "asked for review on",
-  approved: "approved",
-  changes_requested: "asked for changes on",
-  ci_passed: "CI passed on",
-  ci_failed: "CI failed on",
-  merged: "merged",
-  closed: "closed",
+  opened: "%s opened",
+  review_requested: "review asked on %s",
+  approved: "%s approved",
+  changes_requested: "changes asked for on %s",
+  ci_passed: "CI passed on %s",
+  ci_failed: "CI failed on %s",
+  merged: "%s merged",
+  closed: "%s closed",
 };
 
 const BOARD_WORDS: Record<string, string> = {
@@ -250,9 +257,11 @@ export function describe(event: StreamEvent, { withTitle = true }: { withTitle?:
     case "saved":
       return `saved ${event.text}`;
     case "github": {
-      const pr = event.ref?.split("#").pop();
-      const what = (event.change && PR_WORDS[event.change]) || "changed";
-      return pr ? `${what} PR #${pr}` : `${what} the pull request`;
+      const number = event.ref?.split("#").pop();
+      const pr = number ? `PR #${number}` : "the pull request";
+      const said = ((event.change && PR_WORDS[event.change]) || "%s changed").replace("%s", pr);
+      // A review request names who was asked.
+      return event.change === "review_requested" && event.asked.length ? `${said} of ${event.asked.join(", ")}` : said;
     }
     case "board": {
       const what = (event.subkind && BOARD_WORDS[event.subkind]) || event.subkind || "changed";
