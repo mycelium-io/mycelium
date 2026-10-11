@@ -152,6 +152,30 @@ fn show_page(app: &AppHandle, path: &str) {
     navigate_main(app, url);
 }
 
+/// Settings… (⌘,): the settings pages of the hub the window is showing. With
+/// no hub page open (first run, or the hub isn't up), the app's own window,
+/// which is where a hub is chosen and works without one.
+fn open_settings(app: &AppHandle) {
+    let local = app.state::<Shell>().local_base.lock().unwrap().clone();
+    let shown = app
+        .get_webview_window("main")
+        .and_then(|w| w.url().ok())
+        .filter(|u| matches!(u.scheme(), "http" | "https"))
+        .filter(|u| local.as_ref().is_none_or(|l| l.origin() != u.origin()));
+    if let Some(page) = shown {
+        if let Ok(url) = page.join("/settings/general") {
+            navigate_main(app, url);
+            return;
+        }
+    }
+    let has_ui = app.state::<Supervisor>().status().as_ref().and_then(|s| s.get("ui_url")).is_some();
+    if has_ui {
+        show_page(app, "/settings/general");
+    } else {
+        show_local(app, "onboarding");
+    }
+}
+
 fn show_local(app: &AppHandle, view: &str) {
     if let Some(url) = local_url(app, &format!("index.html?view={view}")) {
         navigate_main(app, url);
@@ -397,7 +421,8 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         ],
     )?;
     let experiences = Submenu::with_id(app, "experiences", "Experiences", true)?;
-    let switch = MenuItem::with_id(app, "switch", "Settings…", true, Some("CmdOrCtrl+,"))?;
+    let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+    let switch = MenuItem::with_id(app, "switch", "Hub and Connection…", true, None::<&str>)?;
     let health = MenuItem::with_id(app, "doctor", "Health check…", true, None::<&str>)?;
     // Where to look when something won't start: the app's own log, and the
     // runner's, which says why an agent didn't.
@@ -425,6 +450,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &agents,
             // The experiences folder goes here while one is added.
             &PredefinedMenuItem::separator(app)?,
+            &settings,
             &switch,
             &health,
             &logs,
@@ -559,7 +585,8 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         "open" => show_main(app),
         "terminal" => open_terminal_window(app, None),
         "machines" => show_page(app, "/machines"),
-        "switch" | "settings" => show_local(app, "onboarding"),
+        "settings" => open_settings(app),
+        "switch" => show_local(app, "onboarding"),
         "status" | "doctor" => show_local(app, "doctor"),
         "updates" => updates::check(app.clone(), updates::Check::Asked),
         "log:desktop" => open_log_from_menu(app, &desktop_log()),
@@ -591,10 +618,12 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             let updates =
                 MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+            let switch = MenuItem::with_id(app, "switch", "Hub and Connection…", true, None::<&str>)?;
             // After "About Mycelium" and its separator.
             app_submenu.insert(&updates, 2)?;
             app_submenu.insert(&settings, 3)?;
-            app_submenu.insert(&PredefinedMenuItem::separator(app)?, 4)?;
+            app_submenu.insert(&switch, 4)?;
+            app_submenu.insert(&PredefinedMenuItem::separator(app)?, 5)?;
         }
     }
     Ok(menu)

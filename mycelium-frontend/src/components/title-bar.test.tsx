@@ -4,6 +4,8 @@ import { render, screen } from "@testing-library/react";
 vi.mock("@/components/account-menu", () => ({ AccountMenu: () => <span>account</span> }));
 vi.mock("@/components/notification-bell", () => ({ NotificationBell: () => <span>bell</span> }));
 vi.mock("@/components/key-badge", () => ({ KeyBadge: () => null }));
+const pathname = vi.hoisted(() => ({ current: "/" }));
+vi.mock("next/navigation", () => ({ usePathname: () => pathname.current }));
 
 import { TitleBar, hubLabel } from "./title-bar";
 
@@ -33,5 +35,23 @@ describe("TitleBar", () => {
   it("draws no separator without a page to name", () => {
     render(<TitleBar />);
     expect(screen.queryByText("/")).not.toBeInTheDocument();
+  });
+
+  it("has a settings button on every screen that opens General", () => {
+    for (const where of ["/", "/room/checkout"]) {
+      pathname.current = where;
+      const { unmount } = render(<TitleBar />);
+      const gear = screen.getByRole("link", { name: "Settings" });
+      expect(gear).toHaveAttribute("href", "/settings/general");
+      expect(gear).not.toHaveAttribute("aria-current");
+      unmount();
+    }
+  });
+
+  it("lights the settings button while a settings page is open", () => {
+    pathname.current = "/settings/keys";
+    render(<TitleBar />);
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+    pathname.current = "/";
   });
 });
