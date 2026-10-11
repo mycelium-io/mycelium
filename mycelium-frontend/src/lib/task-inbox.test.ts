@@ -131,7 +131,7 @@ describe("yourMove", () => {
     expect(yourMove(merged)).toBeNull();
   });
 
-  it("calls CI red your move only on your own work", () => {
+  it("counts CI red as needing you only on your own work", () => {
     const theirs = fold([message("alice", "@~julia fyi"), notice("upstream", { change: "ci_failed" })])!;
     expect(yourMove(theirs)).toBeNull();
     const yours = fold([notice("filed", { by: "julia" }), notice("upstream", { change: "ci_failed" })])!;

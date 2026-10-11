@@ -17,7 +17,7 @@ const GAP = 12;
 const STATUS_BAR = 24;
 
 /**
- * The one toast: a task just became your move (asked, blocked, CI red on
+ * The one toast: a task now needs you (asked you, blocked, CI red on
  * yours, ready to merge). Bottom-right, small and silent, with one action. It
  * waits while the pointer is on it or the window isn't focused, so it is still
  * there when you come back, and it is in the bell either way. It lifts itself

@@ -79,7 +79,7 @@ export interface TaskEntry {
   events: TaskEvent[];
   involvement: Involvement[];
   /** Filed by, assigned to, or held by you or an agent you own, which is what
-   *  makes CI going red or a block your move. */
+   *  is why CI going red or a block counts as needing you. */
   yours: boolean;
   pr: PullRequestState;
   /** When someone last asked you something here that you haven't answered. */
@@ -369,7 +369,7 @@ export function isUnseen(entry: TaskEntry): boolean {
   return !entry.seenAt || entry.updatedAt > entry.seenAt;
 }
 
-/** The words a "your move" wears, in the bell and on a toast. */
+/** The label for why a task needs you, in the bell and on a toast. */
 export const MOVE_LABEL: Record<YourMove, string> = {
   asks: "Asks you",
   blocked: "Blocked",
@@ -377,7 +377,7 @@ export const MOVE_LABEL: Record<YourMove, string> = {
   ready: "Ready to merge",
 };
 
-/** The color a "your move" wears: accent for a question, red for something
+/** The color for why a task needs you: accent for a question, red for something
  *  broken, yellow for stuck, green for ready. */
 export const MOVE_TONE: Record<YourMove, string> = {
   asks: "var(--accent)",

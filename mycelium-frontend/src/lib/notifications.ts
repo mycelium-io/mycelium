@@ -39,7 +39,7 @@ export type NotificationScope = "needs-me" | "everything";
  *  just badges; muted = nothing (no badge, no bell). */
 export type RoomLevel = "all" | "mentions" | "muted";
 
-/** When a task pops up a toast: only when it's your move, or never. */
+/** When a task pops up a toast: only when it needs you, or never. */
 export type ToastSetting = "your-move" | "off";
 
 /**

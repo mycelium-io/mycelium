@@ -55,7 +55,7 @@ import {
   type YourMove,
 } from "@/lib/task-inbox";
 
-/** The one toast on screen: which task, and why it's your move. */
+/** The one toast on screen: which task, and why it needs you. */
 export interface TaskToast {
   id: string;
   move: YourMove;
@@ -290,7 +290,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return cached.byEpisode.get(episode) ?? null;
   }, []);
 
-  // Tell you a task is now your move: a toast in the window you're looking
+  // Tell you a task now needs you: a toast in the window you're looking
   // at, or a system notification (and the chime) when you're elsewhere.
   const announce = useCallback(
     (entry: TaskEntry, move: YourMove) => {
