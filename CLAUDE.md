@@ -1159,6 +1159,23 @@ mycelium config apply
   node (`MYCELIUM_SLIM_ENDPOINT`) and skip without one
 - Live-LLM tests guarded by `MYCELIUM_LLM_TESTS=1` (costs tokens)
 - Commit messages: imperative, concise, body for context if needed
+- **PR titles and descriptions are written in plain English.** A title is
+  one ordinary sentence saying what changes, in words someone outside the
+  room already knows. It has no shorthand from the discussion, no slogans,
+  and no fragments strung together with commas or colons. It becomes the
+  commit on `main` and the changelog line. A description opens with what
+  changes for the person using it, then why and how, then what was and
+  wasn't tested. The rules and examples are in the `prose-edit` skill
+  ("PR titles and descriptions"). Reviewers check the title against them,
+  and a title that fails holds the PR until it's rewritten.
+- **A PR an agent opens is signed in its description's footer.** It names
+  the agent and the room it works in, in backticks and never with `@` (a
+  room handle can be a real GitHub user, and GitHub would notify them):
+
+  ```markdown
+  ---
+  <sub>🤖 Opened by the Mycelium agent `mycelium-coder` from the room `mycelium-general`.</sub>
+  ```
 - **No design or planning documents in git.** Plans, design briefs, RFCs,
   proposals, implementation write-ups and per-issue notes do not belong in this
   repo — not under `docs/`, not beside the code they describe. They are stale the

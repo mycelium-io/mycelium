@@ -1,6 +1,6 @@
 ---
 name: prose-edit
-description: How to write and edit prose in this repo, and what to look for when reviewing it. Covers code comments and docstrings, CLAUDE.md, the docs, READMEs, skill files, PR descriptions, commit messages and text in the app. Use when writing or editing any of these, when reviewing a PR's writing, or when asked to "edit prose", "tidy comments", "audit comments", "check the docs' wording" or "prose-edit".
+description: How to write and edit prose in this repo, and what to look for when reviewing it. Covers code comments and docstrings, CLAUDE.md, the docs, READMEs, skill files, PR titles and descriptions, commit messages and text in the app. Use when writing or editing any of these, when opening a PR, when reviewing a PR's writing, or when asked to "edit prose", "tidy comments", "audit comments", "check the docs' wording" or "prose-edit".
 user_invocable: true
 ---
 
@@ -106,6 +106,57 @@ the surrounding code says, and say why rather than what.
   tacks on an "or" or "and" as an afterthought. Write it the way you'd say it
   in one breath, or split it into two sentences.
 
+## PR titles and descriptions
+
+A PR's title is the first thing anyone reads about the change, and it is
+usually all they read. It becomes the commit message on `main`, and the
+changelog is generated from those messages. So the title has to make sense to
+someone who hasn't followed the room the work came from.
+
+### Titles
+
+- **Say what changes, in words a user or a new teammate already knows.** If
+  the change is something a person sees, say what they'll see. If it's
+  internal, say what the code now does.
+- **Write one ordinary sentence in the imperative,** starting with a verb:
+  Add, Fix, Show, Stop, Let, Remove.
+- **Use no terms from the room's own discussion.** Words like "your move",
+  "the floor", "the seam", a wake digest or "the hub checks" mean nothing to
+  someone who wasn't there. Say what they stand for.
+- **Avoid slogans, and phrase pairs joined by a comma or colon** ("One page
+  per topic, room settings the hub checks"). If the change has two parts, say
+  both plainly, or split the PR.
+- **The test:** could someone who has never seen the PR say, from the title
+  alone, what will be different after it merges?
+
+Before:
+
+> Build the settings pages: one page per topic, room settings the hub checks
+
+After:
+
+> Add settings pages for your profile, notifications, keyboard shortcuts,
+> each room and the hub
+
+Before:
+
+> Group the bell by task, with rare toasts for your move
+
+After:
+
+> Group notifications by task, and pop one up only when something is waiting
+> on you, like a PR ready to merge
+
+### Descriptions
+
+- **Open with what changes for the person using it,** in a short paragraph or a
+  list, before any file, function or route name.
+- **Then say why, then how,** for the reviewer.
+- **Define any term the reader might not know** the first time it appears, or
+  use a plainer word.
+- **End with what was tested, what wasn't, and what's left out.**
+- **Never write `@name`** in anything that goes to GitHub. Room handles are
+  real GitHub users, and GitHub notifies them.
 ## Where things go
 
 - **Code comments** say what the code does and why, in the present tense.
@@ -113,14 +164,15 @@ the surrounding code says, and say why rather than what.
   too, so everything above applies there.
 - **The docs** are for people using Mycelium: start with what they're trying to
   do and why, then how.
-- **PR descriptions** say what changed and why, and what wasn't tested. Never
-  write `@name` in anything that goes to GitHub: room handles are real GitHub
-  users, and GitHub notifies them.
+- **PR titles and descriptions** follow the section above.
 
 ## When reviewing
 
 - Read a PR's prose as well as its code: comments, CLAUDE.md, docs, skill
-  files and the description.
+  files, the description and the title.
+- Check the title first, against the test above. A title that fails it is a
+  finding, and the PR isn't ready to merge until it's fixed, however good the
+  code is. Suggest a title that passes.
 - Quote the sentence, say which problem it has, and suggest a rewrite.
 - Text that's already clear is a fine result. Don't invent findings, and don't
   rewrite text that works just to make it yours.
