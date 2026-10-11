@@ -1165,7 +1165,9 @@ mycelium config apply
   and no fragments strung together with commas or colons. It becomes the
   commit on `main` and the changelog line. A description opens with what
   changes for the person using it, then why and how, then what was and
-  wasn't tested. The rules and examples are in the `prose-edit` skill
+  wasn't tested. A PR an agent opens ends with a footer naming the agent and
+  its room, in backticks and never with `@`. The rules, examples and the
+  footer's format are in the `prose-edit` skill
   ("PR titles and descriptions"). Reviewers check the title against them,
   and a title that fails holds the PR until it's rewritten.
 - **No design or planning documents in git.** Plans, design briefs, RFCs,
