@@ -50,10 +50,39 @@ jobs:
             echo "→ $tag is a stable release, but $newest is newer: not promoting it to latest"
           fi
 
-  publish-images:
+  # Each image is built on a machine of its own architecture, then the two are
+  # joined into one multi-arch image in publish-images. Nothing is emulated:
+  # building arm64 under QEMU on an x86 runner crashes the frontend's Next.js
+  # build with an illegal instruction on some of GitHub's newer hosts.
+  build-images:
     needs: detect-release-type
-    name: Build and push Docker images to GHCR
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.image }} image for ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        image: [backend, frontend, collector]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+          - image: backend
+            context: fastapi-backend
+            file: fastapi-backend/Dockerfile
+          - image: frontend
+            context: mycelium-frontend
+            file: mycelium-frontend/Dockerfile
+            # NEXT_PUBLIC_API_URL is baked at build time — keep the published
+            # image pointing at the default local-install backend port. Users
+            # with custom setups can rebuild the image with --build-arg API_URL=…
+            build-args: API_URL=http://localhost:8000
+          # Receives OTLP telemetry from agent diagnostics plugins. Build context
+          # is the CLI dir because Dockerfile.collector
+          # COPYs ./pyproject.toml and ./src/ from there.
+          - image: collector
+            context: mycelium-cli
+            file: mycelium-cli/Dockerfile.collector
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -67,51 +96,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
-      - name: Get version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Compute image tags
-        id: tags
-        env:
-          PROMOTE: ${{ needs.detect-release-type.outputs.promote }}
-          VERSION: ${{ steps.version.outputs.version }}
-          OWNER: ${{ github.repository_owner }}
-        run: |
-          # The newest stable release gets :latest + :version. Anything else (a
-          # prerelease, or a stable tag a newer one has passed) gets :version
-          # only — otherwise compose.yml's `pull_policy: always` would hand it
-          # to every existing user on their next `mycelium pull`.
-          if [ "$PROMOTE" != "true" ]; then
-            {
-              echo "backend<<EOF"
-              echo "ghcr.io/$OWNER/mycelium-backend:$VERSION"
-              echo "EOF"
-              echo "frontend<<EOF"
-              echo "ghcr.io/$OWNER/mycelium-frontend:$VERSION"
-              echo "EOF"
-              echo "collector<<EOF"
-              echo "ghcr.io/$OWNER/mycelium-collector:$VERSION"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-          else
-            {
-              echo "backend<<EOF"
-              echo "ghcr.io/$OWNER/mycelium-backend:latest"
-              echo "ghcr.io/$OWNER/mycelium-backend:$VERSION"
-              echo "EOF"
-              echo "frontend<<EOF"
-              echo "ghcr.io/$OWNER/mycelium-frontend:latest"
-              echo "ghcr.io/$OWNER/mycelium-frontend:$VERSION"
-              echo "EOF"
-              echo "collector<<EOF"
-              echo "ghcr.io/$OWNER/mycelium-collector:latest"
-              echo "ghcr.io/$OWNER/mycelium-collector:$VERSION"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Bump backend pyproject version to match tag
+        if: matrix.image == 'backend'
         # FastAPI reads `version=` from this file at startup (see app/main.py
         # _read_pkg_version) so /health reports the right release. Without
         # this step the backend image ships with the placeholder version.
@@ -120,46 +106,85 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           sed -i.bak "s/^version = .*/version = \"$VERSION\"/" pyproject.toml && rm -f pyproject.toml.bak
 
-      - name: Build and push mycelium-backend
+      # Pushed by digest only, with no tag: publish-images tags the joined image,
+      # so nothing points at a one-architecture image on its own.
+      - name: Build and push mycelium-${{ matrix.image }} for ${{ matrix.arch }}
+        id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: fastapi-backend
-          file: fastapi-backend/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.backend }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-backend:cache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-backend:cache,mode=max
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/${{ matrix.arch }}
+          build-args: ${{ matrix.build-args }}
+          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/mycelium-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          # One cache per architecture, so the two builds don't overwrite each other's.
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-${{ matrix.image }}:cache-${{ matrix.arch }}
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-${{ matrix.image }}:cache-${{ matrix.arch }},mode=max
 
-      - name: Build and push mycelium-frontend
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: mycelium-frontend
-          file: mycelium-frontend/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          # NEXT_PUBLIC_API_URL is baked at build time — keep the published
-          # image pointing at the default local-install backend port. Users
-          # with custom setups can rebuild the image with --build-arg API_URL=…
-          build-args: |
-            API_URL=http://localhost:8000
-          tags: ${{ steps.tags.outputs.frontend }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-frontend:cache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-frontend:cache,mode=max
+      - name: Save the image digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
 
-      - name: Build and push mycelium-collector
-        # Receives OTLP telemetry from agent diagnostics plugins. Build context
-        # is the CLI dir because Dockerfile.collector
-        # COPYs ./pyproject.toml and ./src/ from there.
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          context: mycelium-cli
-          file: mycelium-cli/Dockerfile.collector
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.collector }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-collector:cache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-collector:cache,mode=max
+          name: digests-${{ matrix.image }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-images:
+    needs: [detect-release-type, build-images]
+    name: Publish ${{ matrix.image }} image to GHCR
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [backend, frontend, collector]
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Download the amd64 and arm64 digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: digests-${{ matrix.image }}-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Tag one image for both architectures
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          PROMOTE: ${{ needs.detect-release-type.outputs.promote }}
+          REPO: ghcr.io/${{ github.repository_owner }}/mycelium-${{ matrix.image }}
+        run: |
+          # The newest stable release gets :latest + :version. Anything else (a
+          # prerelease, or a stable tag a newer one has passed) gets :version
+          # only — otherwise compose.yml's `pull_policy: always` would hand it
+          # to every existing user on their next `mycelium pull`.
+          VERSION="${GITHUB_REF_NAME#v}"
+          tags=(-t "$REPO:$VERSION")
+          if [ "$PROMOTE" = "true" ]; then
+            tags+=(-t "$REPO:latest")
+          fi
+          sources=()
+          for digest in *; do
+            sources+=("$REPO@sha256:$digest")
+          done
+          if [ "${#sources[@]}" -ne 2 ]; then
+            echo "::error::expected an amd64 and an arm64 digest, found ${#sources[@]}"
+            exit 1
+          fi
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+          docker buildx imagetools inspect "$REPO:$VERSION"
 
   build-binaries:
     needs: publish-images
