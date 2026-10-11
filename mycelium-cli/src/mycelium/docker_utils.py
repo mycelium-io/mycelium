@@ -321,6 +321,7 @@ def generate_env_file(
         f"BOARD_DEPENDENCY_GATE={str(config.board.dependency_gate).lower()}",
         # The message box's mic; off unless turned on (services/voice.py).
         f"VOICE_ENABLED={str(config.voice.enabled).lower()}",
+        f"VOICE_MODEL={config.voice.model}",
         f"VOICE_DOWNLOAD={str(config.voice.download).lower()}",
         "",
         "# ── Auth (HTTP-API JWT gate; off unless auth.enabled is set) ─────────────",

@@ -35,8 +35,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# No mic open for this long and the worker exits, giving back the ~300 MB the
-# model holds. Starting it again takes about a second.
+# No mic open for this long and the worker exits, giving back the memory the
+# model holds (~500 MB for Moonshine, ~1.4 GB for Parakeet). Starting it again
+# takes about a second.
 IDLE_EXIT_S = 300.0
 # How long the worker may take to load the models before it's given up on.
 START_TIMEOUT_S = 60.0

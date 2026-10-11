@@ -25,6 +25,26 @@ impl Mode {
     }
 }
 
+/// The speech model a hub on this Mac transcribes with (`voice.model`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VoiceModel {
+    /// Moonshine: ~150 MB on disk, ~500 MB of memory while anyone talks.
+    #[default]
+    Fast,
+    /// Parakeet: about half the mistakes, ~630 MB on disk and ~1.4 GB of memory.
+    Accurate,
+}
+
+impl VoiceModel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VoiceModel::Fast => "fast",
+            VoiceModel::Accurate => "accurate",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -43,6 +63,9 @@ pub struct Settings {
     /// ~500 MB of memory while anyone is talking. Meaningless in client mode.
     #[serde(default)]
     pub voice: bool,
+    /// Which speech model that hub runs. Fast unless Settings says otherwise.
+    #[serde(default)]
+    pub voice_model: VoiceModel,
 }
 
 impl Settings {
@@ -121,6 +144,7 @@ mod tests {
             roots: vec![],
             share_usage: false,
             voice: false,
+            voice_model: VoiceModel::Fast,
         };
         assert!(bad.validate().is_err());
         let ok = Settings {
@@ -129,6 +153,7 @@ mod tests {
             roots: vec!["~/code".into()],
             share_usage: false,
             voice: false,
+            voice_model: VoiceModel::Fast,
         }
         .validate()
         .unwrap();
@@ -144,6 +169,7 @@ mod tests {
             roots: vec![" ".into()],
             share_usage: true,
             voice: true,
+            voice_model: VoiceModel::Fast,
         }
         .validate()
         .unwrap();
@@ -164,5 +190,14 @@ mod tests {
         let old: Settings = serde_json::from_str(r#"{"mode":"hub","roots":["/tmp"]}"#).unwrap();
         assert!(!old.voice);
         assert!(serde_json::to_string(&old).unwrap().contains("\"voice\":false"));
+    }
+
+    #[test]
+    fn the_speech_model_is_fast_unless_chosen() {
+        let old: Settings = serde_json::from_str(r#"{"mode":"hub","roots":["/tmp"],"voice":true}"#).unwrap();
+        assert_eq!(old.voice_model, VoiceModel::Fast);
+        let chosen: Settings =
+            serde_json::from_str(r#"{"mode":"hub","roots":["/tmp"],"voiceModel":"accurate"}"#).unwrap();
+        assert_eq!(chosen.voice_model.as_str(), "accurate");
     }
 }

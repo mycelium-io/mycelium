@@ -7,8 +7,9 @@ keep going. Nothing is sent until you send it: what you said is a draft you
 can read and fix first.
 
 Voice is off unless you turn it on, because the speech model takes space and
-memory: about 150 MB on disk, and about 500 MB of memory while anyone is
-talking.
+memory. There are two to choose from (see [Choosing a speech model](#choosing-a-speech-model)).
+The default takes about 150 MB on disk and about 500 MB of memory while anyone
+is talking.
 
 ## Turning it on
 
@@ -33,6 +34,48 @@ Turning voice off again (`voice.enabled false`, or the switch in the Mac app)
 removes the mic from every message box. The downloaded model stays in the data
 folder, and you can delete `models/voice` to get the space back.
 
+## Choosing a speech model
+
+| | `fast` (the default) | `accurate` |
+| --- | --- | --- |
+| Model | Moonshine v2 base | NVIDIA Parakeet TDT 0.6B v2 |
+| Download | about 150 MB, when the hub starts | about 480 MB, the first time a mic is turned on |
+| On disk | about 150 MB | about 630 MB |
+| Memory while anyone talks | about 500 MB | about 1.4 GB |
+| Speed | a few hundredths of a second per sentence | about a fifth of a second per second of speech |
+| Mistakes, on our test recordings | about 1 word in 16 | about half as many |
+| Languages | English only | English only |
+
+Both run on the hub's CPU, and both give their memory back a few minutes after
+the last mic is turned off. `accurate` also waits for a longer pause (about a
+second) before it types what you said, since it reads a whole sentence better
+than its halves. With `fast`, a stretch of speech is cut into pieces of at most
+five and a half seconds, because longer pieces come back empty from the
+version of the speech runtime the hub uses. `accurate` has no such limit.
+
+To switch on a Docker hub, or any hub you run with the CLI:
+
+```bash
+mycelium config set voice.model accurate
+mycelium config apply
+mycelium up
+```
+
+The hub reads the choice when it starts, so a switch takes effect after that
+restart. In the Mac app, pick **Fast** or **Accurate** under Voice in Settings
+and save, which restarts Mycelium.
+
+The first time you turn on a mic with `accurate`, the hub downloads it, which
+can take a few minutes. The line under the box says it's getting ready
+meanwhile. Turn the mic on once to start the download, and talk once your first
+words appear. The download is checked the same way as the default model's, and
+a download that fails is tried again a minute later. With `voice.download` set
+to false, put the model's folder (`sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`)
+in `models/voice` yourself.
+
+Switching back to `fast` leaves the larger model in `models/voice`. Delete its
+folder to get the space back.
+
 ## Using it
 
 Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux),
@@ -51,9 +94,9 @@ Voice is English only for now.
 
 ## Where it's transcribed
 
-Your hub turns speech into text, on its own CPU, with a small speech model
-(Moonshine) and a voice activity detector (Silero) that hears where you start
-and stop. Neither sends audio anywhere else. In the Mac app the hub runs on
+Your hub turns speech into text, on its own CPU, with a speech model (Moonshine,
+or Parakeet when you chose `accurate`) and a voice activity detector (Silero)
+that hears where you start and stop. Neither sends audio anywhere else. In the Mac app the hub runs on
 your machine, so your audio never leaves it. With a shared hub, your audio goes
 to that hub the way your messages do.
 

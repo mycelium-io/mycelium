@@ -13,7 +13,9 @@ import os
 import tarfile
 import threading
 import wave
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
@@ -486,7 +488,7 @@ def test_the_model_is_unpacked_out_of_sight_and_moved_in_whole(downloads, monkey
     monkeypatch.setattr(tarfile.TarFile, "extractall", watching)
     assert voice.ensure_models() == root
     assert seen_mid_unpack == [False]
-    assert voice._present(root)
+    assert voice._present(root, voice.FAST)
     assert voice.state()[0] == "ready"
     assert set(fetched) == {voice.SILERO, f"{voice.MOONSHINE}.tar.bz2"}
     # Nothing left behind but the model.
@@ -497,29 +499,26 @@ def test_a_half_unpacked_folder_is_not_taken_for_the_model(downloads):
     """What 3.0.37 left when a mic opened mid-unpack: every file, some cut short."""
     root, fetched = downloads
     _unmarked_copy(root, whole=False)
-    assert not voice._present(root)
+    assert not voice._present(root, voice.FAST)
     assert voice.state()[0] == "not_downloaded"
     voice.ensure_models()
     assert fetched == [f"{voice.MOONSHINE}.tar.bz2"]
     assert (root / voice.MOONSHINE / "encoder_model.ort").read_bytes() == b"encoder bytes"
-    assert voice._present(root)
+    assert voice._present(root, voice.FAST)
 
 
 def test_a_whole_unmarked_folder_is_adopted_without_downloading_again(downloads, monkeypatch):
     root, fetched = downloads
     _unmarked_copy(root, whole=True)
-    monkeypatch.setattr(
-        voice,
-        "_UNPACKED_SHA256",
-        {
-            "encoder": hashlib.sha256(_MODEL_FILES["encoder_model.ort"]).hexdigest(),
-            "decoder": hashlib.sha256(_MODEL_FILES["decoder_model_merged.ort"]).hexdigest(),
-            "tokens": hashlib.sha256(_MODEL_FILES["tokens.txt"]).hexdigest(),
-        },
-    )
+    hashes = {
+        "encoder": hashlib.sha256(_MODEL_FILES["encoder_model.ort"]).hexdigest(),
+        "decoder": hashlib.sha256(_MODEL_FILES["decoder_model_merged.ort"]).hexdigest(),
+        "tokens": hashlib.sha256(_MODEL_FILES["tokens.txt"]).hexdigest(),
+    }
+    monkeypatch.setitem(voice.MODELS, "fast", replace(voice.FAST, file_sha256=hashes))
     voice.ensure_models()
     assert fetched == []
-    assert voice._present(root)
+    assert voice._present(root, voice.FAST)
 
 
 def test_files_an_operator_put_in_place_are_taken_as_they_are(monkeypatch, tmp_path):
@@ -528,7 +527,7 @@ def test_files_an_operator_put_in_place_are_taken_as_they_are(monkeypatch, tmp_p
     monkeypatch.setattr(settings, "VOICE_ENABLED", True)
     monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(root))
     monkeypatch.setattr(settings, "VOICE_DOWNLOAD", False)
-    assert voice._present(root)
+    assert voice._present(root, voice.FAST)
     assert voice.state()[0] == "ready"
 
 
@@ -566,6 +565,138 @@ def test_short_speech_is_left_whole():
     assert [len(p) for p in voice.split_long(speech)] == [len(speech)]
 
 
+# ── Choosing the model ───────────────────────────────────────────────────────
+
+
+class _FakeSherpa:
+    """sherpa-onnx's constructors, recording which recognizer was built and how."""
+
+    def __init__(self) -> None:
+        self.built: list[tuple[str, dict[str, Any]]] = []
+        recorder = self
+
+        class OfflineRecognizer:
+            @staticmethod
+            def from_moonshine_v2(**kw: Any) -> object:
+                recorder.built.append(("moonshine", kw))
+                return object()
+
+            @staticmethod
+            def from_transducer(**kw: Any) -> object:
+                recorder.built.append(("transducer", kw))
+                return object()
+
+        self.OfflineRecognizer = OfflineRecognizer
+
+    @staticmethod
+    def VadModelConfig() -> SimpleNamespace:
+        return SimpleNamespace(silero_vad=SimpleNamespace(window_size=512), sample_rate=0)
+
+
+@pytest.fixture
+def sherpa(monkeypatch) -> _FakeSherpa:
+    so = _FakeSherpa()
+    monkeypatch.setattr(voice, "_runtime", lambda: so)
+    return so
+
+
+def test_fast_is_moonshine_as_before(monkeypatch, sherpa, tmp_path):
+    monkeypatch.setattr(settings, "VOICE_MODEL", "fast")
+    eng = voice.SherpaEngine(tmp_path)
+    [(kind, kw)] = sherpa.built
+    assert kind == "moonshine"
+    assert kw["encoder"] == str(tmp_path / voice.MOONSHINE / "encoder_model.ort")
+    # Its pieces stay under the length Moonshine v2 can read, cut at short pauses.
+    assert eng._vad.silero_vad.max_speech_duration == 5.5
+    assert eng._vad.silero_vad.min_silence_duration == 0.4
+    assert len(voice.split_long(np.ones(13 * RATE, dtype=np.float32), eng.model.max_piece_s)) > 1
+
+
+def test_accurate_is_parakeet_with_no_short_cap(monkeypatch, sherpa, tmp_path):
+    monkeypatch.setattr(settings, "VOICE_MODEL", "accurate")
+    eng = voice.SherpaEngine(tmp_path)
+    [(kind, kw)] = sherpa.built
+    assert kind == "transducer"
+    assert kw["model_type"] == "nemo_transducer"
+    assert kw["joiner"] == str(tmp_path / voice.ACCURATE.folder / "joiner.int8.onnx")
+    assert eng._vad.silero_vad.max_speech_duration == voice.ACCURATE.max_piece_s
+    # 13 s of unbroken speech reaches it whole.
+    speech = np.ones(13 * RATE, dtype=np.float32)
+    assert len(voice.split_long(speech, eng.model.max_piece_s)) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_status_names_the_chosen_model(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "VOICE_ENABLED", True)
+    monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(tmp_path))
+    body = (await client.get("/api/voice")).json()
+    assert (body["choice"], body["model"]) == ("fast", voice.MOONSHINE)
+    monkeypatch.setattr(settings, "VOICE_MODEL", "accurate")
+    body = (await client.get("/api/voice")).json()
+    assert (body["choice"], body["model"]) == ("accurate", voice.ACCURATE.folder)
+    assert body["state"] == "not_downloaded"
+    assert "first time a mic" in body["detail"]
+
+
+@pytest.mark.asyncio
+async def test_accurate_with_no_files_and_no_download_is_unavailable(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "VOICE_ENABLED", True)
+    monkeypatch.setattr(settings, "VOICE_MODEL", "accurate")
+    monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "VOICE_DOWNLOAD", False)
+    # Moonshine being there doesn't count for Parakeet.
+    _unmarked_copy(tmp_path, whole=True)
+    body = (await client.get("/api/voice")).json()
+    assert body["state"] == "unavailable"
+    assert str(tmp_path) in body["detail"]
+    with pytest.raises(voice.VoiceUnavailable, match="isn't at"):
+        voice.ensure_models()
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_model_is_unavailable_and_says_the_choices(client, monkeypatch):
+    monkeypatch.setattr(settings, "VOICE_ENABLED", True)
+    monkeypatch.setattr(settings, "VOICE_MODEL", "huge")
+    body = (await client.get("/api/voice")).json()
+    assert body["state"] == "unavailable"
+    assert "'fast', 'accurate'" in body["detail"]
+    assert body["choice"] == "huge"
+
+
+def test_parakeet_waits_for_a_mic_before_downloading(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "VOICE_ENABLED", True)
+    monkeypatch.setattr(settings, "VOICE_MODEL", "accurate")
+    monkeypatch.setattr(settings, "VOICE_MODEL_DIR", str(tmp_path))
+    started = []
+    monkeypatch.setattr(voice.threading, "Thread", lambda **kw: started.append(kw) or _NoThread())
+    voice.prefetch()
+    assert started == []
+
+
+def test_accurate_fetches_parakeet_only(downloads, monkeypatch, tmp_path):
+    root, fetched = downloads
+    monkeypatch.setattr(settings, "VOICE_MODEL", "accurate")
+    src = tmp_path / "pk" / voice.ACCURATE.folder
+    src.mkdir(parents=True)
+    for name in voice.ACCURATE.files.values():
+        (src / name).write_bytes(name.encode())
+    archive = tmp_path / "pk.tar.bz2"
+    with tarfile.open(archive, "w:bz2") as tar:
+        tar.add(src, arcname=voice.ACCURATE.folder)
+    pins = {voice.SILERO: voice.SILERO_SHA256}
+
+    def fetch(url: str, dest: Path, sha: str) -> None:
+        fetched.append(dest.name)
+        assert sha == pins.get(dest.name, voice.ACCURATE.archive_sha256)
+        dest.write_bytes(archive.read_bytes() if url.endswith(".tar.bz2") else b"silero")
+
+    monkeypatch.setattr(voice, "_fetch", fetch)
+    assert voice.ensure_models() == root
+    assert set(fetched) == {voice.SILERO, f"{voice.ACCURATE.folder}.tar.bz2"}
+    assert {p.name for p in root.iterdir()} == {voice.ACCURATE.folder, voice.SILERO}
+    assert voice.state()[0] == "ready"
+
+
 def _real_models() -> Path | None:
     """Real model files to run against, only when ``VOICE_MODEL_DIR`` names them.
 
@@ -577,7 +708,7 @@ def _real_models() -> Path | None:
     if not named:
         return None
     root = Path(named)
-    return root if all(p.is_file() for p in voice._files(root).values()) else None
+    return root if all(p.is_file() for p in voice._files(root, voice.chosen()).values()) else None
 
 
 @pytest.mark.skipif(_real_models() is None, reason="the speech model isn't on disk")
@@ -600,7 +731,7 @@ def test_a_real_worker_transcribes_speech_and_exits_when_idle(monkeypatch):
     worker = voice_worker._worker
     assert worker is not None
     assert worker.proc.is_alive()
-    with wave.open(str(root / voice.MOONSHINE / "test_wavs" / "0.wav")) as w:
+    with wave.open(str(root / voice.chosen().folder / "test_wavs" / "0.wav")) as w:
         rate = w.getframerate()
         recorded = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(np.float32)
     # The app sends 16 kHz; the bundled clip is recorded at another rate.
