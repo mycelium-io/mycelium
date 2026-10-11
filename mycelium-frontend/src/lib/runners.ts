@@ -159,6 +159,8 @@ export function describeJob(job: RunnerJob): string {
       return `Start ${handle ?? "an agent"}`;
     case "stop":
       return `Stop ${handle ?? "an agent"}`;
+    case "interrupt":
+      return `Interrupt ${handle ?? "an agent"}`;
     case "scan":
       return "Scan for agent CLIs";
     case "swarm":

@@ -10176,7 +10176,8 @@
               "scan",
               "swarm",
               "restart",
-              "pair"
+              "pair",
+              "interrupt"
             ],
             "title": "Kind"
           },

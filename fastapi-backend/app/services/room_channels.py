@@ -54,6 +54,7 @@ from app.services.persister import (
     RoomPersister,
     SummonHook,
     bus_frame,
+    parse_interrupt_mentions,
     parse_mentions,
     record_from,
 )
@@ -554,8 +555,10 @@ class RoomChannelManager:
 
         ``reason`` says what kind of doorbell it is, so the bridge can word the
         prompt: ``mention`` (someone tagged you), ``turn`` (a turn is addressed
-        to you), or ``assigned`` (the row ``key`` was given to you). The most
-        specific reason pending wins over a mention.
+        to you), ``assigned`` (the row ``key`` was given to you), or
+        ``interrupt`` (an ``@!`` stopped your turn to say this). The most
+        specific reason pending wins over a mention, and an interrupt over the
+        rest, since the agent's turn was stopped to deliver it.
 
         ``sender`` and ``episode`` say who rang last and where. What they said
         isn't kept here: when the wake is delivered, the digest it carries is
@@ -577,8 +580,11 @@ class RoomChannelManager:
                 for field in ("from", "episode"):
                     if field in entry:
                         w[field] = entry[field]
-                # The reason only moves up: a turn or an assignment outranks a mention.
-                if reason != "mention":
+                # The reason only moves up: a turn or an assignment outranks a
+                # mention, and an interrupt outranks them all.
+                if reason == "interrupt" or (
+                    reason != "mention" and w.get("reason") != "interrupt"
+                ):
                     w.update({k: v for k, v in entry.items() if k != "handle"})
                 return
         queue.append(entry)
@@ -608,13 +614,24 @@ class RoomChannelManager:
         mentions = [raw.lstrip("@").lower() for raw in parse_mentions(content or "")]
         if any(_registered_kind(room, h) == "conductor" for h in mentions):
             return []
+        # An ``@!`` also stops a working agent's turn, when the sender may
+        # (:mod:`app.services.interrupts`); otherwise it is an ordinary mention.
+        interrupting = {h.lower() for h in parse_interrupt_mentions(content or "")}
         exclude_norm = exclude.lstrip("@").lower() if exclude else None
+        who = sender or exclude
         enqueued: list[str] = []
         for handle in mentions:
             if handle == exclude_norm:
                 continue
-            if self.herdr_status(room, handle) is not None:
-                self.enqueue_herdr_wake(room, handle, sender=sender or exclude, episode=episode)
+            status = self.herdr_status(room, handle)
+            if status is not None:
+                reason = "mention"
+                if handle in interrupting:
+                    from app.services import interrupts
+
+                    if interrupts.request(room, handle, who, status):
+                        reason = "interrupt"
+                self.enqueue_herdr_wake(room, handle, reason=reason, sender=who, episode=episode)
                 enqueued.append(handle)
         return enqueued
 

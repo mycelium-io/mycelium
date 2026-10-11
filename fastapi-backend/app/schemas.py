@@ -784,7 +784,7 @@ class AgentRead(BaseModel):
 RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
-RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart", "pair"]
+RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart", "pair", "interrupt"]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
