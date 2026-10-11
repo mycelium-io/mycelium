@@ -108,9 +108,9 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
       const r = frame.getBoundingClientRect();
       const point = { x: e.clientX - r.left, y: e.clientY - r.top };
       // A trackpad pinch arrives as a wheel with ctrl held, and a mouse wheel
-      // in lines (Firefox) or in notches of exactly 100 or 120 pixels (Chrome,
-      // Edge). Anything else is a two-finger scroll, which pans: a fast swipe
-      // can send a whole number too, just rarely one of those.
+      // in lines (Firefox) or in a multiple of 100 or 120 pixels, one or more
+      // notches (Chrome, Edge). Anything else is a two-finger scroll, which
+      // pans: a fast swipe can send a whole number too, just rarely one of those.
       const pinch = e.ctrlKey;
       const notched = e.deltaMode !== 0 || (e.deltaX === 0 && e.deltaY !== 0 && (e.deltaY % 100 === 0 || e.deltaY % 120 === 0));
       if (pinch || notched) {
