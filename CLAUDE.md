@@ -767,7 +767,9 @@ is no litellm dependency.
   `interrupt`, delivered once it is idle, whose digest tells it to act on the
   message and carry on. Anything else is an ordinary mention. Personas and
   workers lose the `!` with their other sigils, so a hub-run member never
-  interrupts.
+  interrupts. A sender the room has no manifest for counts as a person, so
+  with sign-in off any name can interrupt, as it can already do everything
+  else there.
 - **Three composer sigils, one mechanism.** The chat composer
   (`room-chat-box.tsx`) autocompletes `@` → agents, `[[` → room memories (inserts
   `[[key]]`, which resolves to `myc://` and is clickable in chat), and `/` → the

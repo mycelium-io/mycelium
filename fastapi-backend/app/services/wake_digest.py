@@ -334,12 +334,14 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         who = f"@{asked[-1].sender}" if asked and asked[-1].sender else sender
         why = f"it's your turn in {_place(room, where)}; {who} is asking"
     elif reason == "interrupt":
-        # The turn was stopped to deliver this, so say so: without it an agent
-        # reads the stop as "the person stopped me" and waits.
+        # Its turn was probably stopped to deliver this, so say why: without it an
+        # agent reads the stop as "the person stopped me" and waits. Worded as
+        # what was sent, since the hub only knows the key was asked for (the
+        # agent may have gone idle first, or its runner may predate interrupts).
         why = (
-            f"{sender} interrupted you with an urgent message in {_place(room, where)}. "
-            "Read it and act on it, then carry on with what you were doing "
-            "unless it says otherwise."
+            f"{sender} sent you an urgent message with @! in {_place(room, where)}, "
+            "which stops your turn if you were working. Read it and act on it, then "
+            "carry on with what you were doing unless it says otherwise."
         )
     else:
         n = len(asked)

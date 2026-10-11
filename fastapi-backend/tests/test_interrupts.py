@@ -128,8 +128,9 @@ def test_the_digest_says_it_was_interrupted_and_to_carry_on():
         ROOM, {"handle": "coder", "reason": "interrupt", "from": "julia"}, [], NOW
     )
     assert digest.splitlines()[2] == (
-        "Why:     @julia interrupted you with an urgent message in the room (room-a). "
-        "Read it and act on it, then carry on with what you were doing unless it says otherwise."
+        "Why:     @julia sent you an urgent message with @! in the room (room-a), which stops "
+        "your turn if you were working. Read it and act on it, then carry on with what you "
+        "were doing unless it says otherwise."
     )
 
 
