@@ -12,7 +12,7 @@ function Room({ onPane }: { onPane: (id: string) => void }) {
   useKeyScope("room");
   useKeyAction("pane.channel", () => onPane("channel"));
   useKeyAction("pane.board", () => onPane("board"));
-  return <KeyBadge action="pane.network" />;
+  return <KeyBadge action="pane.schedules" />;
 }
 
 function Composer() {
@@ -115,7 +115,7 @@ describe("<KeymapProvider />", () => {
 
     expect(document.querySelector("[data-key-badge]")).toBeNull();
     await user.keyboard("{Alt>}");
-    expect(document.querySelector("[data-key-badge]")).toHaveTextContent("N");
+    expect(document.querySelector("[data-key-badge]")).toHaveTextContent("K");
     await user.keyboard("{/Alt}");
     expect(document.querySelector("[data-key-badge]")).toBeNull();
   });

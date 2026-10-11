@@ -58,7 +58,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { ArrowDown, AtSign, Copy, Link2, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
+import { ArrowDown, AtSign, Braces, Copy, Link2, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
+import { RawMessageDialog } from "@/components/raw-message-dialog";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import { agentTag } from "@/lib/agent-label";
@@ -532,23 +533,29 @@ interface Props {
 
 /**
  * A message's right-click menu: copy what it says, or a link that opens the
- * room scrolled to it (the same `focus` link search results use). Selected
- * text inside it keeps the browser's own menu.
+ * room scrolled to it (the same `focus` link search results use), or see the
+ * message exactly as the hub sent it. Selected text inside it keeps the
+ * browser's own menu.
  */
 function MessageMenu({
   roomName,
   messageId,
   content,
   sender,
+  wire,
   children,
 }: {
   roomName: string;
   messageId?: string | null;
   content: string;
   sender: string;
+  wire?: Record<string, unknown>;
   children: React.ReactElement;
 }) {
+  const [rawOpen, setRawOpen] = useState(false);
   return (
+    <>
+    {wire && <RawMessageDialog open={rawOpen} onClose={() => setRawOpen(false)} message={wire} />}
     <ContextMenu>
       <ContextMenuTrigger>{children}</ContextMenuTrigger>
       <ContextMenuContent>
@@ -570,8 +577,14 @@ function MessageMenu({
         <ContextMenuItem icon={AtSign} onClick={() => void copyText(`@${sender}`)}>
           Copy @{sender}
         </ContextMenuItem>
+        {wire && (
+          <ContextMenuItem icon={Braces} onClick={() => setRawOpen(true)}>
+            View raw message
+          </ContextMenuItem>
+        )}
       </ContextMenuContent>
     </ContextMenu>
+    </>
   );
 }
 
@@ -1517,7 +1530,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
               // at all, and whether it is the hit being stood on.
               const hit = matchSet.has(ev.id) ? { query: needles, active: ev.id === activeId } : undefined;
               return (
-                <MessageMenu key={ev.id} roomName={roomName} messageId={ev.messageId} content={ev.content} sender={ev.sender}>
+                <MessageMenu key={ev.id} roomName={roomName} messageId={ev.messageId} content={ev.content} sender={ev.sender} wire={ev.wire}>
                 <div
                   data-event-id={ev.id}
                   ref={marked ? highlightRow : undefined}

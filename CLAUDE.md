@@ -158,8 +158,9 @@ Git can version or back up the files, but it is **not** the sharing path — see
 
 **Messages ride SLIM.** Every message on a room's channel is a JSON envelope (a
 header plus a typed payload) of one kind: `exchange` (ticks/replies),
-`commit:converged|resolved|rejected`, `knowledge`. The app's Network pane shows
-them. Agents send plain text with the CLI (`mycelium respond`); the backend adds
+`commit:converged|resolved|rejected`, `knowledge`. The app shows one in full
+from a message's *View raw message*, and all of them in the optional Raw
+messages tab. Agents send plain text with the CLI (`mycelium respond`); the backend adds
 the header from the parsed reply. Modules: `app/services/message_format.py` (construction + the subkind
 table), `message_models.py` (the pydantic models, `MyceliumMessage`),
 `episode_state.py` (episode tracking + the IoC quality metrics MPC/GAR/SCR +
@@ -998,9 +999,12 @@ is no litellm dependency.
   for anything the hub owns.
 - **The room's center is tabs and splits, one kind of tab for every view.**
   `components/room-dock.tsx` lays the center out with dockview: Channel, Board,
-  Network, each open memory and each open thread is a tab (`lib/room-dock.ts`
-  names them: fixed ids for the three views, `memory:<key>` and
-  `thread:<episode>` for the rest, so opening one that is open shows it). Tabs
+  Schedules, Raw messages, each open memory and each open thread is a tab
+  (`lib/room-dock.ts` names them: fixed ids for the room's views, `memory:<key>`
+  and `thread:<episode>` for the rest, so opening one that is open shows it).
+  A room opens on Channel and Board; the others are added from the tab
+  strip's +. The room's connection details (its SLIM channel and A2A bridge)
+  are on its settings page, not a tab. Tabs
   drag to reorder and onto an edge to split; a thread opens in a group beside
   the Channel's. The layout is this browser's, per room, and a saved one this
   version can't fully draw is dropped rather than half-restored. The Channel

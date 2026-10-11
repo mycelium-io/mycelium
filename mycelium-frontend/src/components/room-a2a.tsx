@@ -8,7 +8,7 @@ import { ArrowDownLeft, ArrowUpRight, ChevronRight } from "lucide-react";
 import { useA2aBridge } from "@/lib/room-data";
 import type { A2aBridgedAgent, A2aExchange } from "@/lib/api";
 
-/** The A2A bridge strip in the Network pane — the room's off-channel traffic.
+/** The A2A bridge strip under Connection on the room's settings page: the room's off-channel traffic.
  *
  *  Everything else in this pane rides SLIM. A bridged agent doesn't: the hub
  *  calls it over HTTP and posts the reply back as that handle, so its turns

@@ -5,23 +5,52 @@
  * The room's center as tabs and splits: what a tab can be, its id, and the
  * layout remembered per room in this browser.
  *
- * Every view in the center is one kind of tab. The room's own three (Channel,
- * Board, Network) have fixed ids; a memory and a thread are keyed by what they
- * show, so opening one that is already open shows it rather than a second copy.
+ * Every view in the center is one kind of tab. The room's own views (Channel,
+ * Board, Schedules, Raw messages) have fixed ids; a memory and a thread are
+ * keyed by what they show, so opening one that is already open shows it rather
+ * than a second copy.
  */
 
-export type View = "channel" | "board" | "network" | "schedules";
+export type View = "channel" | "board" | "schedules" | "raw";
 
 export type DockPanelKind = View | "memory" | "thread";
 
-export const ROOM_VIEWS: readonly View[] = ["channel", "board", "network", "schedules"];
+export const ROOM_VIEWS: readonly View[] = ["channel", "board", "schedules", "raw"];
 
 export const VIEW_LABELS: Record<View, string> = {
   channel: "Channel",
   board: "Board",
-  network: "Network",
   schedules: "Schedules",
+  raw: "Raw messages",
 };
+
+/** The id the raw message feed had while it was the Network tab. A layout
+ *  saved then opens the feed in the same place. */
+const LEGACY_IDS: Record<string, { id: View; title: string }> = {
+  network: { id: "raw", title: VIEW_LABELS.raw },
+};
+
+/** A saved layout with its tabs' old ids replaced by the ones this version
+ *  draws: every string equal to an old id (the panel's key, its component,
+ *  and its place in the grid), and the tab's title with it. */
+export function migrateLayout(layout: unknown): unknown {
+  const walk = (node: unknown): unknown => {
+    if (typeof node === "string") return LEGACY_IDS[node]?.id ?? node;
+    if (Array.isArray(node)) return node.map(walk);
+    if (!node || typeof node !== "object") return node;
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(node)) {
+      const legacy = LEGACY_IDS[key];
+      const next = walk(value);
+      if (legacy && next && typeof next === "object" && "title" in next) {
+        (next as Record<string, unknown>).title = legacy.title;
+      }
+      out[legacy?.id ?? key] = next;
+    }
+    return out;
+  };
+  return walk(layout);
+}
 
 /** The params a tab carries in the saved layout: only what names it. */
 export type DockPanelParams = { key: string } | { episode: string } | Record<string, never>;
@@ -55,7 +84,7 @@ const STORAGE_PREFIX = "mycelium.dock.";
 export function loadLayout(room: string): unknown {
   try {
     const raw = window.localStorage.getItem(STORAGE_PREFIX + room);
-    return raw ? JSON.parse(raw) : null;
+    return raw ? migrateLayout(JSON.parse(raw)) : null;
   } catch {
     return null;
   }

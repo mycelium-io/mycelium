@@ -19,6 +19,7 @@ import {
 import { settingHref } from "@/lib/client-settings";
 import { useRoom, useRoomSettings, useRooms } from "@/lib/room-data";
 import { ROOM_SETTINGS, type RoomSettingCopy } from "@/lib/room-settings";
+import { RoomConnection } from "./room-connection";
 import { CheckChips, Confirm, Note, Row, Section, Segmented, SettingsPage, Toggle } from "./settings-ui";
 
 function describeValue(copy: RoomSettingCopy, value: unknown): string {
@@ -311,6 +312,8 @@ export function RoomSettingsPage({ room: asked }: { room: string | null }) {
           ))}
         </Section>
       ))}
+
+      <RoomConnection room={room} />
     </SettingsPage>
   );
 }

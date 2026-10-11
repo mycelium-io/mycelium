@@ -70,6 +70,22 @@ describe("a saved room layout", () => {
     expect(loadLayout("storefront")).toBeNull();
   });
 
+  it("opens a tab saved as Network as Raw messages, in the same place", () => {
+    const saved = {
+      grid: { root: { type: "leaf", data: { views: ["channel", "network"], activeView: "network" } } },
+      panels: {
+        channel: { id: "channel", contentComponent: "channel", title: "Channel" },
+        network: { id: "network", contentComponent: "network", title: "Network" },
+      },
+    };
+    saveLayout("checkout", saved);
+    const loaded = loadLayout("checkout") as typeof saved & { panels: Record<string, unknown> };
+    expect(restorableLayout(loaded)).toBe(true);
+    expect(loaded.panels.raw).toEqual({ id: "raw", contentComponent: "raw", title: "Raw messages" });
+    expect(loaded.panels.network).toBeUndefined();
+    expect(loaded.grid.root.data).toEqual({ views: ["channel", "raw"], activeView: "raw" });
+  });
+
   it("reads as none when what is stored isn't JSON", () => {
     window.localStorage.setItem("mycelium.dock.checkout", "{not json");
     expect(loadLayout("checkout")).toBeNull();

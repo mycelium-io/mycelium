@@ -1365,7 +1365,7 @@ export async function stopRunnerAgent(id: string, room: string, handle: string):
   );
 }
 
-// ── A2A bridge (the Network pane's off-channel half) ─────────────────────────
+// ── A2A bridge (the room's off-channel traffic) ──────────────────────────────
 //
 // A bridged agent is reached over HTTP by the hub, not over the room's SLIM
 // channel, so none of it shows up in the coordination telemetry above. This is
@@ -1804,7 +1804,7 @@ export interface AuthStatus {
   warnings?: string[];
 }
 
-/** The three `/health` blocks the Network tab reads. They arrive in one
+/** The three `/health` blocks the connection settings read. They arrive in one
  *  response, so the deployment's posture (identity tier, auth gate) costs no
  *  extra call beyond the coordination telemetry the tab already polls. */
 export interface NetworkStatus {

@@ -76,7 +76,7 @@ describe("keymap", () => {
   });
 
   it("resolves an action to the chord its badge draws", () => {
-    expect(chordFor("pane.network")).toBe("alt+n");
+    expect(chordFor("pane.schedules")).toBe("alt+k");
     expect(chordFor("nope")).toBeUndefined();
   });
 

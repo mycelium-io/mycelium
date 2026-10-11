@@ -692,7 +692,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "messages": {
-      // GET /messages/wire — the wire feed for the Network pane, and the half
+      // GET /messages/wire — the wire feed for the Raw messages tab, and the half
       // of the channel's feed that carries pings and board notices. Oldest
       // first, the last `limit` of what is older than the cursor — the shape
       // the backend's transcript replay serves.
@@ -1056,7 +1056,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "a2a": {
-      // GET /a2a/state — the Network pane's bridge strip. A room with no
+      // GET /a2a/state — the bridge strip on the room's settings page. A room with no
       // bridge answers with an empty one, exactly like the backend does.
       if (sub[1] !== "state" || method !== "GET") return null;
       return json(fx.a2a ?? emptyBridge(roomName));

@@ -134,8 +134,8 @@ export const SHOTS: Shot[] = [
     route: "/room/checkout",
     theme: "dark",
     viewport: "desktop",
-    steps: ["Network"],
-    caption: "The network pane: SLIM channel diagnostics over a live message feed.",
+    steps: ["Open a view", "Raw messages"],
+    caption: "The raw messages tab: every message crossing the room's channel, as the hub sent it.",
   },
 
   // ── The docs' concept and guide pages ────────────────────────────────────

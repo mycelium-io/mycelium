@@ -17,7 +17,7 @@
  *                         fanned out across the rooms the hub holds.
  *
  * Server state is SWR-keyed like every other read in the app, so the metrics
- * screen shares its `/health` entry with the Network rail and its room list
+ * screen shares its `/health` entry with the connection settings and its room list
  * with the sidebar rather than opening reads of its own. The screen owns only
  * the cadence, which it passes down as `refreshInterval`.
  */
