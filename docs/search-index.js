@@ -1216,7 +1216,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#voice-turning-it-on",
     "t": "Turning it on",
     "s": "Work › Voice",
-    "x": "In the Mac app, turn on Talk instead of type in the first-run screens or in Settings, under Voice. Mycelium restarts and downloads the speech model. On a Docker hub, or any hub you run with the CLI: mycelium config set voice.enabled true mycelium config apply mycelium up The hub downloads the speech model when it starts, into its data folder, so it's downloaded once and kept across restarts. The download is checked a",
+    "x": "In the desktop app, turn on Talk instead of type in the first-run screens or in Settings, under Voice. Mycelium restarts and downloads the speech model. On a Docker hub, or any hub you run with the CLI: mycelium config set voice.enabled true mycelium config apply mycelium up The hub downloads the speech model when it starts, into its data folder, so it's downloaded once and kept across restarts. The download is check",
     "p": "Guides"
   },
   {
@@ -1230,14 +1230,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#voice-using-it",
     "t": "Using it",
     "s": "Work › Voice",
-    "x": "Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux), which works while you're typing. The key acts on the message box you're in, or the room's own box when you're in none. The first time, your browser or the Mac app asks to use the microphone. While it's on, the button is lit, the line under the box says it's listening, and a ring around the button pulses while it hears you speak. Each time you",
+    "x": "Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux), which works while you're typing. The key acts on the message box you're in, or the room's own box when you're in none. The first time, your browser or the desktop app asks to use the microphone. While it's on, the button is lit, the line under the box says it's listening, and a ring around the button pulses while it hears you speak. Each time",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-where-its-transcribed",
     "t": "Where it's transcribed",
     "s": "Work › Voice",
-    "x": "Your hub turns speech into text, on its own CPU, with a speech model (Moonshine, or Parakeet when you chose accurate) and a voice activity detector (Silero) that hears where you start and stop. Neither sends audio anywhere else. In the Mac app the hub runs on your machine, so your audio never leaves it. With a shared hub, your audio goes to that hub the way your messages do. Audio is never saved. The hub keeps only t",
+    "x": "Your hub turns speech into text, on its own CPU, with a speech model (Moonshine, or Parakeet when you chose accurate) and a voice activity detector (Silero) that hears where you start and stop. Neither sends audio anywhere else. In the desktop app the hub runs on your machine, so your audio never leaves it. With a shared hub, your audio goes to that hub the way your messages do. Audio is never saved. The hub keeps on",
     "p": "Guides"
   },
   {

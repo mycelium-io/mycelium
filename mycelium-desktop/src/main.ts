@@ -765,7 +765,7 @@ function voicePiece(c: Choices): HTMLElement {
     el(
       "p",
       { class: "hint" },
-      "It runs on this Mac, in English. Its memory is given back a few minutes after you stop talking. Your audio isn't saved or sent anywhere.",
+      `It runs on this ${MACHINE}, in English. Its memory is given back a few minutes after you stop talking. Your audio isn't saved or sent anywhere.`,
     ),
     models,
   );

@@ -13,7 +13,7 @@ is talking.
 
 ## Turning it on
 
-In the Mac app, turn on **Talk instead of type** in the first-run screens or
+In the desktop app, turn on **Talk instead of type** in the first-run screens or
 in Settings, under Voice. Mycelium restarts and downloads the speech model.
 
 On a Docker hub, or any hub you run with the CLI:
@@ -30,7 +30,7 @@ the file it should be before it's used. With `voice.download` set to false the
 hub never downloads anything, and you put the files in the data folder under
 `models/voice` yourself.
 
-Turning voice off again (`voice.enabled false`, or the switch in the Mac app)
+Turning voice off again (`voice.enabled false`, or the switch in the desktop app)
 removes the mic from every message box. The downloaded model stays in the data
 folder, and you can delete `models/voice` to get the space back.
 
@@ -62,7 +62,7 @@ mycelium up
 ```
 
 The hub reads the choice when it starts, so a switch takes effect after that
-restart. In the Mac app, pick **Fast** or **Accurate** under Voice in Settings
+restart. In the desktop app, pick **Fast** or **Accurate** under Voice in Settings
 and save, which restarts Mycelium.
 
 The first time you turn on a mic with `accurate`, the hub downloads it, which
@@ -81,7 +81,7 @@ folder to get the space back.
 Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux),
 which works while you're typing. The key acts on the message box you're in,
 or the room's own box when you're in none. The first time, your browser or the
-Mac app asks to use the microphone. While it's on, the button is lit, the line
+desktop app asks to use the microphone. While it's on, the button is lit, the line
 under the box says it's listening, and a ring around the button pulses while it
 hears you speak.
 
@@ -96,9 +96,9 @@ Voice is English only for now.
 
 Your hub turns speech into text, on its own CPU, with a speech model (Moonshine,
 or Parakeet when you chose `accurate`) and a voice activity detector (Silero)
-that hears where you start and stop. Neither sends audio anywhere else. In the Mac app the hub runs on
-your machine, so your audio never leaves it. With a shared hub, your audio goes
-to that hub the way your messages do.
+that hears where you start and stop. Neither sends audio anywhere else. In
+the desktop app the hub runs on your machine, so your audio never leaves it.
+With a shared hub, your audio goes to that hub the way your messages do.
 
 Audio is never saved. The hub keeps only the few seconds it is listening to,
 and lets go of them once they're text.
@@ -111,6 +111,6 @@ appear: what you say meanwhile is held and transcribed once it's ready, but
 turning the mic off before then drops it.
 
 The mic button is missing when voice is off or the hub can't run it (it has no
-model and can't download one), and in the Mac app when it's connected to
+model and can't download one), and in the desktop app when it's connected to
 another hub. The app gives the microphone only to the hub it runs itself, so a
 remote hub's pages can't listen; use that hub in a browser to talk to it.
