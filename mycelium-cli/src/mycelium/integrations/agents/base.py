@@ -45,6 +45,11 @@ class AgentKind:
         """A line on what it commonly waits for when its host reads it as blocked."""
         return None
 
+    def interrupt_key(self) -> str:
+        """The key that stops its current turn and keeps its session, as herdr names
+        keys. Escape for the agent TUIs this table knows."""
+        return "esc"
+
 
 class ResidentIntegration(Integration):
     """The manifest of an agent a person or the runner runs: the manifest IS the registration.

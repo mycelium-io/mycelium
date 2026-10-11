@@ -80,8 +80,11 @@ TRANSCRIPT_FILENAME = "log/transcript.jsonl"
 # word chars or hyphens). Guarded so it doesn't fire mid-word (e.g. an email).
 # ``@~handle`` is a silent mention (``contracts/mentions.json``): the ``~`` keeps
 # it out of this pattern, so it never wakes, addresses or summons anyone.
-_SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@([A-Za-z0-9][\w-]*)")
+# ``@!handle`` is an interrupting mention: a mention like ``@handle`` that also
+# stops the agent mid-turn, so it is in this pattern and in its own.
+_SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@!?([A-Za-z0-9][\w-]*)")
 _SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~([A-Za-z0-9][\w-]*)")
+_INTERRUPT_RE = re.compile(r"(?:^|(?<=[\s(<]))@!([A-Za-z0-9][\w-]*)")
 
 
 # ── Envelope helpers ─────────────────────────────────────────────────────────
@@ -161,6 +164,19 @@ def parse_silent_mentions(text: str) -> list[str]:
     """
     seen: dict[str, None] = {}
     for match in _SILENT_RE.findall(text):
+        seen.setdefault(match, None)
+    return list(seen)
+
+
+def parse_interrupt_mentions(text: str) -> list[str]:
+    """Handles named with an interrupting ``@!handle`` in one plain-text string.
+
+    Each is a mention too (:func:`parse_mentions` lists it), and asks for more:
+    stop the agent mid-turn so it reads the message now rather than when its
+    turn ends. Same boundary rule and order as :func:`parse_mentions`.
+    """
+    seen: dict[str, None] = {}
+    for match in _INTERRUPT_RE.findall(text):
         seen.setdefault(match, None)
     return list(seen)
 

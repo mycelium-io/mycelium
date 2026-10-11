@@ -165,6 +165,16 @@ class AgentHost(Protocol):
         """End the agent. Best-effort: one that's already gone is stopped."""
         ...
 
+    def interrupt(self, ref: str, kind: str | None) -> bool:
+        """Stop the agent at ``ref`` mid-turn, keeping its session. ``True`` if it was
+        working and was sent its key.
+
+        Only a working agent is interrupted: on an idle one the key could clear
+        what a person was typing into it. ``kind`` picks the key. What it is told
+        comes after, as the wake the hub queued, once it is idle.
+        """
+        ...
+
     def gone(self, agent: Tracked) -> None:
         """Forget what this host kept about an agent that has stopped."""
         ...
@@ -350,6 +360,18 @@ class HerdrHost:
     def stop(self, agent: Tracked) -> None:
         self._close_quietly(agent.pane)
         self.gone(agent)
+
+    def interrupt(self, ref: str, kind: str | None) -> bool:
+        from mycelium.integrations.agents import of_kind
+
+        agent = self.bridge.get_agent(ref)
+        if agent is None or agent.get("agent_status") != "working":
+            return False
+        try:
+            self.bridge.send_keys(ref, of_kind(kind or agent.get("agent")).interrupt_key())
+        except HerdrError as e:
+            raise HostError(f"couldn't interrupt the agent in {ref}: {e}") from e
+        return True
 
     def gone(self, agent: Tracked) -> None:
         mapping = self.bridge.registry.get(agent.room, agent.handle)
@@ -579,6 +601,11 @@ class OmnigentHost:
             self._post(f"/v1/sessions/{agent.pane}/events", {"type": "stop_session", "data": {}})
         except HostError:
             pass
+
+    def interrupt(self, ref: str, kind: str | None) -> bool:  # noqa: ARG002
+        """Omnigent has no interrupt that keeps a session: the message reaches the
+        agent as an ordinary wake, at its next idle."""
+        return False
 
     def gone(self, agent: Tracked) -> None:  # noqa: ARG002 - Omnigent keeps nothing to forget
         return None

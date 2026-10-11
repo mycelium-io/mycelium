@@ -117,7 +117,7 @@ class Herdr:
             return _proc(_ok({"agents": agents}))
         if head == "pane read":
             return _proc(_ok({"text": self.screen}))
-        if head == "pane run":
+        if head in ("pane run", "pane send-keys"):
             return _proc("")
         if head == "agent get":
             status = self.live.get(args[2])
@@ -646,6 +646,38 @@ def test_stop_closes_the_pane_and_keeps_the_agent_listed(make_runner, herdr: Her
     # And it can be started again.
     r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
     assert r.hello_body()["agents"][0]["status"] == "running"
+
+
+def test_interrupt_sends_the_key_only_to_a_working_agent(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    # Idle: the key could clear what a person was typing, so nothing is pressed.
+    herdr.live["w9:p1"] = "idle"
+    assert r.do({"kind": "interrupt", "spec": {"room": "eng", "handle": "scout"}}) == {
+        "pane": "w9:p1",
+        "interrupted": False,
+    }
+    assert herdr.of("pane send-keys") == []
+    # Working: its CLI's own key, and the session stays open.
+    herdr.live["w9:p1"] = "working"
+    result = r.do({"kind": "interrupt", "spec": {"room": "eng", "handle": "scout"}})
+    assert result == {"pane": "w9:p1", "interrupted": True}
+    assert herdr.of("pane send-keys") == [["pane", "send-keys", "w9:p1", "esc"]]
+    assert herdr.of("pane close") == []
+
+
+def test_interrupt_reaches_an_agent_the_runner_did_not_start(make_runner, herdr: Herdr, hub: Hub):
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    r = make_runner()
+    r.bridge.registry.set(
+        HerdrPaneMapping(room="eng", handle="julia-claude", pane="w3:p1", kind="claude")
+    )
+    herdr.live["w3:p1"] = "working"
+    result = r.do({"kind": "interrupt", "spec": {"room": "eng", "handle": "julia-claude"}})
+    assert result == {"pane": "w3:p1", "interrupted": True}
+    with pytest.raises(daemon.JobError, match="Nothing on"):
+        r.do({"kind": "interrupt", "spec": {"room": "eng", "handle": "nobody"}})
 
 
 def test_the_runner_remembers_its_agents_across_a_restart(make_runner, herdr: Herdr, hub: Hub):

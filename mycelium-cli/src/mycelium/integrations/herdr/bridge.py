@@ -695,6 +695,10 @@ class HerdrBridge:
         """Close ``pane``, ending whatever runs in it."""
         self._run_json(["pane", "close", pane])
 
+    def send_keys(self, pane: str, *keys: str) -> None:
+        """Press ``keys`` in ``pane`` (herdr's names: ``esc``, ``enter``...)."""
+        self._run_quiet(["pane", "send-keys", pane, *keys])
+
     def _run_quiet(self, args: list[str]) -> None:
         """Run a herdr command that prints nothing when it works."""
         if not self.binary_present():

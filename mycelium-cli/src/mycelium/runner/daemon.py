@@ -854,6 +854,33 @@ class Runner:
         self.log.print(f"[yellow]stopped[/yellow] @{agent.handle} in {agent.room}")
         return {"pane": agent.pane}
 
+    def interrupt_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Stop an agent mid-turn with its CLI's own key, keeping its session.
+
+        For an ``@!`` mention. Only a working agent is sent the key; what it is
+        told is the wake the hub queued, which the sync pass delivers once it is
+        idle. One this runner started is on its own host; any other agent bound
+        to a room here is in a herdr pane (``mycelium machine`` lists them).
+        """
+        room, handle = str(spec["room"]), str(spec["handle"])
+        tracked = self.state.agents.get(f"{room}/{handle}")
+        host: AgentHost
+        if tracked is not None and tracked.live:
+            host, ref, kind = self.host, tracked.pane, tracked.framework
+        else:
+            mapping = self.bridge.registry.get(room, handle)
+            if mapping is None:
+                raise JobError(f"Nothing on {self.label} is running @{handle} in {room}.")
+            host = self.host if isinstance(self.host, HerdrHost) else HerdrHost(self.bridge)
+            ref, kind = mapping.pane, mapping.kind
+        try:
+            sent = host.interrupt(ref, kind)
+        except HostError as e:
+            raise JobError(str(e)) from e
+        said = "interrupted" if sent else "left alone (not working)"
+        self.log.print(f"[yellow]{said}[/yellow] @{handle} in {room}")
+        return {"pane": ref, "interrupted": sent}
+
     def swarm(self, spec: dict[str, Any], created_by: str | None) -> dict[str, Any]:
         """Open a herdr workspace for a team the hub set up, brief it, and start the kickoff.
 
@@ -1003,6 +1030,8 @@ class Runner:
             return self.launch(spec, job_id=str(job["id"]) if job.get("id") else None)
         if kind == "stop":
             return self.stop_agent(spec)
+        if kind == "interrupt":
+            return self.interrupt_agent(spec)
         if kind == "scan":
             found = self.scan()
             return {"installed": [f.id for f in found if f.installed]}

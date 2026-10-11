@@ -756,6 +756,20 @@ is no litellm dependency.
   with the composer's hints (`composer-hints.tsx`), and its History panel
   lists every hit with the counts as switches. The wake digest names the
   command in one line.
+- **A mention asks; `@~` names; `@!` interrupts.** `contracts/mentions.json`
+  freezes the three forms, asserted by the hub's parser (`persister.py`) and
+  the app's (`lib/mentions.ts`). `@!handle` is a mention that also stops a
+  working agent's turn (`app/services/interrupts.py`): when the sender is a
+  person, or the agent's owner or lead (`allow_from`), and herdr shows it
+  working, the hub queues an `interrupt` job for the runner whose machine
+  reports it, which presses the agent CLI's own key (`AgentKind.interrupt_key`)
+  only if herdr still shows it working, and the wake it queued carries reason
+  `interrupt`, delivered once it is idle, whose digest tells it to act on the
+  message and carry on. Anything else is an ordinary mention. Personas and
+  workers lose the `!` with their other sigils, so a hub-run member never
+  interrupts. A sender the room has no manifest for counts as a person, so
+  with sign-in off any name can interrupt, as it can already do everything
+  else there.
 - **Three composer sigils, one mechanism.** The chat composer
   (`room-chat-box.tsx`) autocompletes `@` → agents, `[[` → room memories (inserts
   `[[key]]`, which resolves to `myc://` and is clickable in chat), and `/` → the

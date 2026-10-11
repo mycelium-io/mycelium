@@ -333,6 +333,16 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     elif reason == "turn":
         who = f"@{asked[-1].sender}" if asked and asked[-1].sender else sender
         why = f"it's your turn in {_place(room, where)}; {who} is asking"
+    elif reason == "interrupt":
+        # Its turn was probably stopped to deliver this, so say why: without it an
+        # agent reads the stop as "the person stopped me" and waits. Worded as
+        # what was sent, since the hub only knows the key was asked for (the
+        # agent may have gone idle first, or its runner may predate interrupts).
+        why = (
+            f"{sender} sent you an urgent message with @! in {_place(room, where)}, "
+            "which stops your turn if you were working. Read it and act on it, then "
+            "carry on with what you were doing unless it says otherwise."
+        )
     else:
         n = len(asked)
         latest = f", latest {age(parse_recorded_at(asked[-1].recorded_at), now)}" if asked else ""

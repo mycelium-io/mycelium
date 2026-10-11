@@ -1176,7 +1176,7 @@ export interface PairingOutcome {
   reason?: string | null;
 }
 
-export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm" | "restart" | "pair";
+export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm" | "restart" | "pair" | "interrupt";
 /** `waiting`: the machine's runner is asking the person there before it starts anything. */
 export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
 

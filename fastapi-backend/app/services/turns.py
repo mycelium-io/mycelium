@@ -37,12 +37,13 @@ logger = logging.getLogger(__name__)
 #: The ``@`` sigil in front of a handle. The prompt a turn carries names the
 #: other members in its prose (a broker's summary, a step's context); left as
 #: is, every one of them would wake on the mention-in-text match. Stripping the
-#: sigil keeps the names readable and the wake single.
-MENTION_SIGIL = re.compile(r"@(?=\w)")
+#: sigil keeps the names readable and the wake single. An interrupting ``@!``
+#: loses its ``!`` with it.
+MENTION_SIGIL = re.compile(r"@!?(?=\w)")
 
 
 def neutralize_mentions(text: str) -> str:
-    """``text`` with every ``@handle`` reduced to ``handle``."""
+    """``text`` with every ``@handle`` and ``@!handle`` reduced to ``handle``."""
     return MENTION_SIGIL.sub("", text)
 
 

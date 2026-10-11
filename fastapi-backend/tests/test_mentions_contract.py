@@ -14,18 +14,24 @@ from pathlib import Path
 
 import pytest
 
-from app.services.persister import find_summons, parse_mentions, parse_silent_mentions
+from app.services.persister import (
+    find_summons,
+    parse_interrupt_mentions,
+    parse_mentions,
+    parse_silent_mentions,
+)
 
 _CONTRACT_PATH = Path(__file__).resolve().parent.parent.parent / "contracts" / "mentions.json"
 _CONTRACT = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
 
 
 def test_sigils_match_contract():
-    assert _CONTRACT["sigils"] == {"mention": "@", "silent": "@~"}
+    assert _CONTRACT["sigils"] == {"mention": "@", "silent": "@~", "interrupt": "@!"}
 
 
 @pytest.mark.parametrize("case", _CONTRACT["cases"], ids=lambda c: c["text"])
 def test_case_parses_as_the_contract_says(case):
+    assert parse_interrupt_mentions(case["text"]) == case["interrupt"]
     assert parse_mentions(case["text"]) == case["mentions"]
     assert parse_silent_mentions(case["text"]) == case["silent"]
 
