@@ -94,7 +94,7 @@ export function NotificationsPage() {
           />
         </Row>
         <Row
-          id="notifications.banner"
+          id="notifications.desktop"
           label="Banners"
           help="Your computer's own notification, so you see it from another app."
           changed={settings.desktopEnabled !== DEFAULT_SETTINGS.desktopEnabled}
