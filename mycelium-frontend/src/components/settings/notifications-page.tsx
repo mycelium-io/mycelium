@@ -5,57 +5,32 @@
 
 import { X } from "lucide-react";
 import { useNotifications } from "@/components/notifications-provider";
-import { DEFAULT_SETTINGS, type NotificationScope, type RoomLevel } from "@/lib/notifications";
+import { DEFAULT_SETTINGS, roomLevel } from "@/lib/notifications";
 import { useIsDesktop } from "@/lib/desktop";
-import { Note, Row, Section, Segmented, SettingsPage, Toggle } from "./settings-ui";
+import { Note, Row, Section, SettingsPage, Toggle } from "./settings-ui";
 
-const LEVEL_LABEL: Record<RoomLevel, string> = {
-  all: "Everything",
-  mentions: "Only what needs me",
-  muted: "Nothing",
-};
-
-/** What the bell tells you about, and how. These were the bell's own dialog;
- *  the bell's gear opens this page now, so there is one place to change them. */
+/** How the bell tells you you've been mentioned, and which rooms are muted.
+ *  The bell's gear opens this page, so there is one place to change them. */
 export function NotificationsPage() {
   const { settings, setSettings, desktopPermission, requestDesktopPermission, unmuteRoom } = useNotifications();
   const desktop = useIsDesktop();
-  const rooms = [
-    ...new Set([...settings.mutedRooms, ...Object.keys(settings.roomLevels ?? {})]),
-  ].sort();
+  const rooms = [...new Set([...settings.mutedRooms, ...Object.keys(settings.roomLevels ?? {})])]
+    .filter((room) => roomLevel(settings, room) === "muted")
+    .sort();
 
   return (
     <SettingsPage
       title="Notifications"
       scope={desktop ? "Saved in this app on this computer. Never sent to the hub." : "Saved in this browser. Never sent to the hub."}
     >
-      <Section title="Tell me about">
-        <Row
-          id="notifications.scope"
-          label="What reaches the bell"
-          help={
-            settings.scope === "needs-me"
-              ? "Mentions, direct messages, agreements reached, and memory written for you."
-              : "All of that, plus the room's ambient activity, like agents joining."
-          }
-          changed={settings.scope !== DEFAULT_SETTINGS.scope}
-          onReset={() => setSettings({ ...settings, scope: DEFAULT_SETTINGS.scope })}
-          defaultLabel="what needs me"
-        >
-          <Segmented<NotificationScope>
-            label="What reaches the bell"
-            value={settings.scope}
-            options={[
-              { value: "needs-me", label: "What needs me" },
-              { value: "everything", label: "Everything" },
-            ]}
-            onChange={(scope) => setSettings({ ...settings, scope })}
-          />
-        </Row>
+      <Section
+        title="The bell"
+        note="The bell lists messages that mention you by name (@ and your handle) or are sent to you, and nothing else. A silent mention (@~ and your handle) doesn't appear there."
+      >
         <Row
           id="notifications.dnd"
           label="Do not disturb"
-          help="Keep collecting notifications in the bell, without a sound or a banner."
+          help="Keep collecting mentions in the bell, without a sound or a banner."
           changed={settings.dnd}
           onReset={() => setSettings({ ...settings, dnd: false })}
           defaultLabel="off"
@@ -68,7 +43,7 @@ export function NotificationsPage() {
         <Row
           id="notifications.sound"
           label="Sound"
-          help="A short ping when something arrives while Mycelium isn't the window you're looking at."
+          help="A short ping when someone mentions you, unless you're already looking at that room."
           changed={settings.soundEnabled !== DEFAULT_SETTINGS.soundEnabled || settings.soundVolume !== DEFAULT_SETTINGS.soundVolume}
           onReset={() =>
             setSettings({ ...settings, soundEnabled: DEFAULT_SETTINGS.soundEnabled, soundVolume: DEFAULT_SETTINGS.soundVolume })
@@ -96,7 +71,7 @@ export function NotificationsPage() {
         <Row
           id="notifications.desktop"
           label="Banners"
-          help="Your computer's own notification, so you see it from another app."
+          help="Your computer's own notification when someone mentions you while Mycelium isn't the window you're looking at."
           changed={settings.desktopEnabled !== DEFAULT_SETTINGS.desktopEnabled}
           onReset={() => setSettings({ ...settings, desktopEnabled: DEFAULT_SETTINGS.desktopEnabled })}
           defaultLabel="off"
@@ -120,24 +95,23 @@ export function NotificationsPage() {
       </Section>
 
       <Section
-        title="Rooms set differently"
-        note="Set a room from its menu in the rooms list. Rooms not listed here follow what reaches the bell."
+        title="Muted rooms"
+        note="Mute a room from its … menu, or from its menu in the rooms list. Nothing from a muted room reaches the bell or badges the room."
       >
         {rooms.length === 0 ? (
-          <Row label="None" help="Every room follows the setting above." />
+          <Row label="None" help="No room is muted." />
         ) : (
           rooms.map((room) => {
-            const level: RoomLevel = settings.roomLevels?.[room] ?? "muted";
             return (
-              <Row key={room} label={room} help={LEVEL_LABEL[level]}>
+              <Row key={room} label={room} help="Muted">
                 <button
                   type="button"
                   onClick={() => unmuteRoom(room)}
-                  aria-label={`Let ${room} follow the setting above`}
+                  aria-label={`Unmute ${room}`}
                   className="flex items-center gap-1 text-micro text-muted-foreground hover:text-text"
                 >
                   <X className="size-3" />
-                  Clear
+                  Unmute
                 </button>
               </Row>
             );

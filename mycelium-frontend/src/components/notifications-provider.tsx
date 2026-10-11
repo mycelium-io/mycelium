@@ -17,6 +17,8 @@ import {
 import { setStreamViewer, useNotificationStream, useNotificationsConnected } from "@/lib/stream-hub";
 import { useCurrentUser } from "@/components/current-user";
 import { ping, primeAudio } from "@/lib/audio-ping";
+import { fetchMemories } from "@/lib/api";
+import { mentionHref, OPEN_MENTION_EVENT } from "@/lib/notifications";
 import {
   classify,
   DEFAULT_SETTINGS,
@@ -155,6 +157,29 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setStreamViewer(principal);
   }, [principal]);
 
+  // Task titles by thread, per room, read when a mention first comes from one
+  // of the room's threads and again when an unknown thread shows up.
+  const titles = useRef<Map<string, { at: number; byEpisode: Map<string, string> }>>(new Map());
+  const taskTitle = useCallback(async (room: string, episode: string): Promise<string | null> => {
+    let cached = titles.current.get(room);
+    if (!cached || (!cached.byEpisode.has(episode) && Date.now() - cached.at > 30_000)) {
+      // Every memory has a thread, not only the board's rows: a mention in a
+      // `context/` note's discussion is named too. The rows are read on their
+      // own as well, so a busy room's newest memories can't crowd them out.
+      const [rows, recent] = await Promise.all([fetchMemories(room, "work/"), fetchMemories(room)]);
+      const byEpisode = new Map<string, string>();
+      for (const row of [...recent, ...rows]) {
+        if (!row.episode) continue;
+        const text = typeof row.value === "string" ? row.value : ((row.value as { text?: string } | null)?.text ?? "");
+        const first = text.split("\n").find((l) => l.trim());
+        byEpisode.set(row.episode, first ? first.replace(/^#+\s*/, "").trim() : row.key);
+      }
+      cached = { at: Date.now(), byEpisode };
+      titles.current.set(room, cached);
+    }
+    return cached.byEpisode.get(episode) ?? null;
+  }, []);
+
   useNotificationStream((raw) => {
     const n = classify(raw as Record<string, unknown>, principalRef.current);
     if (!n) return;
@@ -167,22 +192,43 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const loud = isAlert(n, settingsRef.current);
     // Something said in the room you're looking at is read as it arrives: it
     // shouldn't badge the room you're in or count on the bell.
-    const seeing = document.hasFocus() && roomOfPath(window.location.pathname) === n.room;
+    const focused = document.hasFocus();
+    const seeing = focused && roomOfPath(window.location.pathname) === n.room;
     setNotifications((prev) => [...prev, { ...n, read: seeing, alert: loud }]);
-    // Sound/desktop only for loud items, and only when this tab isn't the
-    // one you're looking at. `hasFocus()` (not visibilityState) is the right
-    // signal: it's false when you've switched to another tab, minimized, OR
-    // alt-tabbed to another app — whereas visibilityState stays "visible"
-    // for a window merely behind another app, so those pings would be lost.
-    if (loud && !settingsRef.current.dnd && isLeader.current && !document.hasFocus()) {
+    // A mention of you plays a sound, unless you're looking at the room it was
+    // said in. Only the leader tab plays it, so several open tabs ring once.
+    // The system notification is for when the window isn't focused:
+    // `hasFocus()` (not visibilityState) is false when you've switched tabs,
+    // minimized, or alt-tabbed to another app.
+    if (loud && !seeing && !settingsRef.current.dnd && isLeader.current) {
       if (settingsRef.current.soundEnabled) ping(settingsRef.current.soundVolume);
-      if (settingsRef.current.desktopEnabled && "Notification" in window && window.Notification.permission === "granted") {
+      if (
+        !focused &&
+        settingsRef.current.desktopEnabled &&
+        "Notification" in window &&
+        window.Notification.permission === "granted"
+      ) {
         try {
-          new window.Notification(`${n.room} · ${n.kind}`, { body: n.summary || n.sender });
+          const note = new window.Notification(`${n.sender} mentioned you in ${n.room}`, { body: n.summary, tag: n.id });
+          note.onclick = () => {
+            window.focus();
+            note.close();
+            // The bell routes it, since it sits under the app's router.
+            setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+            channelRef.current?.post({ type: "read", id: n.id });
+            window.dispatchEvent(new CustomEvent(OPEN_MENTION_EVENT, { detail: mentionHref(n) }));
+          };
         } catch {
           // Best-effort — a blocked/unsupported Notification() must never break the feed.
         }
       }
+    }
+    // A mention in a task's thread names the task in the bell.
+    if (loud && n.episode) {
+      const episode = n.episode;
+      void taskTitle(n.room, episode).then((title) => {
+        if (title) setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, title } : x)));
+      });
     }
   });
 
@@ -316,4 +362,10 @@ export function useNotifications(): NotificationsContextValue {
   const ctx = useContext(NotificationsContext);
   if (!ctx) throw new Error("useNotifications must be used within a NotificationsProvider");
   return ctx;
+}
+
+/** The same, or null outside a provider: for a control (the room's menu) that
+ *  also renders where there are no notifications, like a test. */
+export function useOptionalNotifications(): NotificationsContextValue | null {
+  return useContext(NotificationsContext);
 }

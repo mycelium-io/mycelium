@@ -12,7 +12,6 @@ import {
   ArrowUp,
   Bell,
   BellOff,
-  BellRing,
   Boxes,
   Check,
   ChevronRight,
@@ -1049,8 +1048,7 @@ function RoomContextMenu({
 }
 
 const LEVEL_OPTIONS: { level: RoomLevel; label: string; hint: string; Icon: LucideIcon }[] = [
-  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: BellRing },
-  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: Bell },
+  { level: "mentions", label: "On", hint: "badge; bell and sound on @you", Icon: Bell },
   { level: "muted", label: "Muted", hint: "nothing", Icon: BellOff },
 ];
 

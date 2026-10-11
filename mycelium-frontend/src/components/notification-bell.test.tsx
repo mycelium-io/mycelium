@@ -8,14 +8,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
 
+const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
+const NOTE_THREAD = "urn:ioc:mycelium:episode:sprint:n1";
+
 vi.mock("@/lib/api", () => ({
+  // The board's rows when asked for `work/`, the room's newest memories otherwise.
+  fetchMemories: vi.fn(async (_room: string, prefix?: string) =>
+    prefix === "work/"
+      ? [{ key: "work/zoom", value: { text: "Zoom and pan images\n\nbody" }, episode: THREAD }]
+      : [{ key: "context/chat-buddy", value: "Talking with the chat buddy", episode: NOTE_THREAD }],
+  ),
 }));
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+const ping = vi.fn();
+vi.mock("@/lib/audio-ping", () => ({ ping: (...a: unknown[]) => ping(...a), primeAudio: () => {} }));
 
 import { CurrentUserProvider } from "@/components/current-user";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { NotificationBell } from "@/components/notification-bell";
+import { OPEN_MENTION_EVENT } from "@/lib/notifications";
 
 const CREATED = "2026-08-15T10:00:00.000000+00:00";
+let seq = 0;
 
 function renderBell() {
   return render(
@@ -27,15 +42,31 @@ function renderBell() {
   );
 }
 
-function mention() {
+function message(text: string, episode: string | null = null) {
+  seq += 1;
   return {
-    id: "msg-1",
+    id: `msg-${seq}`,
     room_name: "sprint",
     sender_handle: "alice",
     message_type: "l9_exchange",
     created_at: CREATED,
-    content: JSON.stringify({ content: "hey @bob take a look" }),
+    episode,
+    content: JSON.stringify({ content: text }),
   };
+}
+
+async function start() {
+  renderBell();
+  await act(async () => {});
+  await act(async () => {
+    FakeEventSource.latest().open();
+  });
+}
+
+async function emit(frame: Record<string, unknown>) {
+  await act(async () => {
+    FakeEventSource.latest().emitNotification(frame);
+  });
 }
 
 describe("<NotificationBell />", () => {
@@ -45,78 +76,79 @@ describe("<NotificationBell />", () => {
     resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
+    ping.mockClear();
   });
 
-  it("badges an unread mention and lists it in the popover", async () => {
+  it("lists a message that mentions you, with who and where", async () => {
     const user = userEvent.setup();
-    renderBell();
-    await act(async () => {});
-    const es = FakeEventSource.latest();
+    await start();
+    await emit(message("hey @bob take a look"));
 
-    await act(async () => {
-      es.open();
-      es.emitNotification(mention());
-    });
-
-    expect(await screen.findByLabelText("1 unread notifications")).toBeInTheDocument();
-
-    await user.click(screen.getByLabelText("1 unread notifications"));
-    expect(await screen.findByText("sprint")).toBeInTheDocument();
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    expect(screen.getByText("alice")).toBeInTheDocument();
+    expect(screen.getByText("sprint · channel")).toBeInTheDocument();
     expect(screen.getByText("hey @bob take a look")).toBeInTheDocument();
   });
 
-  it("ignores a message that doesn't mention or address the acting principal", async () => {
-    renderBell();
-    await act(async () => {});
-    const es = FakeEventSource.latest();
-
-    await act(async () => {
-      es.open();
-      es.emitNotification({
-        id: "msg-2",
-        room_name: "sprint",
-        sender_handle: "alice",
-        message_type: "l9_exchange",
-        created_at: CREATED,
-        content: JSON.stringify({ content: "hey @carol take a look" }),
-      });
-    });
-
-    expect(screen.getByLabelText("Notifications")).toBeInTheDocument();
-    expect(screen.queryByText(/unread/)).not.toBeInTheDocument();
+  it("leaves out a message that doesn't mention you, and a silent mention", async () => {
+    await start();
+    await emit(message("hey @carol take a look"));
+    await emit(message("done, for @~bob"));
+    expect(screen.getByLabelText("Mentions")).toBeInTheDocument();
+    expect(ping).not.toHaveBeenCalled();
   });
 
-  it("marking all read clears the unread badge", async () => {
-    const user = userEvent.setup();
-    renderBell();
-    await act(async () => {});
-    const es = FakeEventSource.latest();
-
-    await act(async () => {
-      es.open();
-      es.emitNotification(mention());
-    });
-    await screen.findByLabelText("1 unread notifications");
-
-    await user.click(screen.getByLabelText("1 unread notifications"));
-    const panel = await screen.findByText("Notifications");
-    await user.click(within(panel.closest("[data-slot=popover-content]")!).getByLabelText("Mark all read"));
-
-    expect(screen.getByLabelText("Notifications")).toBeInTheDocument();
+  it("plays a sound for a mention", async () => {
+    await start();
+    await emit(message("@bob can you check?"));
+    expect(ping).toHaveBeenCalledTimes(1);
   });
 
-  it("dismissing a notification removes it from the list", async () => {
+  it("names the task of a mention in a thread and opens that thread", async () => {
     const user = userEvent.setup();
-    renderBell();
-    await act(async () => {});
-    const es = FakeEventSource.latest();
+    await start();
+    await emit(message("@bob which preset?", THREAD));
 
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    expect(await screen.findByText("sprint · Zoom and pan images")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /which preset/ })).toHaveAttribute(
+      "href",
+      "/room/sprint?focus=episode%3At1",
+    );
+  });
+
+  it("names a note whose discussion mentions you, not only a task", async () => {
+    const user = userEvent.setup();
+    await start();
+    await emit(message("@bob thoughts?", NOTE_THREAD));
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    expect(await screen.findByText("sprint · Talking with the chat buddy")).toBeInTheDocument();
+  });
+
+  it("opens a mention when its system notification is clicked", async () => {
+    await start();
     await act(async () => {
-      es.open();
-      es.emitNotification(mention());
+      window.dispatchEvent(new CustomEvent(OPEN_MENTION_EVENT, { detail: "/room/sprint?focus=episode%3At1" }));
     });
-    await user.click(await screen.findByLabelText("1 unread notifications"));
-    expect(await screen.findByText("sprint")).toBeInTheDocument();
+    expect(push).toHaveBeenCalledWith("/room/sprint?focus=episode%3At1");
+  });
+
+  it("marking all read clears the count", async () => {
+    const user = userEvent.setup();
+    await start();
+    await emit(message("hey @bob take a look"));
+
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    const panel = (await screen.findByText("Mentions", { selector: "span" })).closest("[data-slot=popover-content]")!;
+    await user.click(within(panel as HTMLElement).getByLabelText("Mark all read"));
+    expect(screen.getByLabelText("Mentions", { selector: "button" })).toBeInTheDocument();
+  });
+
+  it("dismissing a mention removes it from the list", async () => {
+    const user = userEvent.setup();
+    await start();
+    await emit(message("hey @bob take a look"));
+    await user.click(await screen.findByLabelText("1 unread mention"));
 
     await user.click(screen.getByLabelText("Dismiss"));
     expect(screen.queryByText("hey @bob take a look")).not.toBeInTheDocument();

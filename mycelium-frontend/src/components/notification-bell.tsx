@@ -3,35 +3,20 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, BellOff, Check, Settings, VolumeX, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Bell, Check, Settings, VolumeX, X } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { EmptyState } from "@/components/empty-state";
 import { Tooltip } from "@/components/ui/tooltip";
 import { iconButtonClass } from "@/components/ui/icon-button";
 import { useNotifications } from "@/components/notifications-provider";
 import { settingHref } from "@/lib/client-settings";
-import type { NotificationKind } from "@/lib/notifications";
+import { mentionHref, OPEN_MENTION_EVENT } from "@/lib/notifications";
 
-const KIND_LABEL: Record<NotificationKind, string> = {
-  mention: "Mention",
-  direct: "Direct",
-  consensus: "Consensus",
-  knowledge: "Knowledge",
-  join: "Join",
-  // Badge-only, filtered out of the bell — present for exhaustiveness.
-  message: "Message",
-};
-
-const KIND_TONE: Record<NotificationKind, string> = {
-  mention: "var(--accent)",
-  direct: "var(--accent)",
-  consensus: "var(--green)",
-  knowledge: "var(--yellow)",
-  join: "var(--muted-foreground)",
-  message: "var(--muted-foreground)",
-};
+/** The first non-blank line, so a long message reads as one line. */
+const firstLine = (text: string) => text.split("\n").find((l) => l.trim())?.trim() ?? "";
 
 function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
@@ -46,20 +31,31 @@ function timeAgo(iso: string): string {
 }
 
 export function NotificationBell() {
-  const { notifications, unreadCount, settings, markRead, markAllRead, dismiss, clearAll, muteRoom } =
-    useNotifications();
+  const { notifications, unreadCount, settings, markRead, markAllRead, dismiss, clearAll } = useNotifications();
   const [open, setOpen] = useState(false);
+  const router = useRouter();
 
-  // The bell is the "loud" inbox: only alert items (mentions, directs, consensus,
-  // knowledge). Badge-only room activity badges the sidebar, never lands here.
-  const loud = notifications.filter((n) => n.alert !== false);
+  // A system notification for a mention, clicked from another app, opens the
+  // message the same way its entry here does.
+  useEffect(() => {
+    const go = (e: Event) => {
+      const href = (e as CustomEvent<string>).detail;
+      if (href) router.push(href);
+    };
+    window.addEventListener(OPEN_MENTION_EVENT, go);
+    return () => window.removeEventListener(OPEN_MENTION_EVENT, go);
+  }, [router]);
+
+  // The bell holds messages that mention you (or were sent to you), and
+  // nothing else. Other room activity only badges the room in the sidebar.
+  const loud = notifications.filter((n) => n.alert !== false && n.needsMe);
   const items = [...loud].reverse();
 
   // One string names the trigger and fills its tooltip, so the do-not-disturb
   // dot — too small to anchor a bubble of its own — is still readable and
   // announced.
   const bellLabel = [
-    unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications",
+    unreadCount > 0 ? `${unreadCount} unread mention${unreadCount === 1 ? "" : "s"}` : "Mentions",
     settings.dnd ? "do not disturb is on" : null,
   ]
     .filter(Boolean)
@@ -91,7 +87,7 @@ export function NotificationBell() {
         </Tooltip>
         <PopoverContent className="flex max-h-[28rem] w-80 flex-col p-0">
           <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
-            <span className="text-label font-semibold text-text">Notifications</span>
+            <span className="text-label font-semibold text-text">Mentions</span>
             <span className="text-micro tabular text-faint">{loud.length}</span>
             <div className="ml-auto flex items-center gap-1">
               {loud.length > 0 && (
@@ -122,8 +118,8 @@ export function NotificationBell() {
               <EmptyState
                 size="sm"
                 icon={Bell}
-                title="No notifications"
-                description="Mentions, messages to you, and negotiations you're in show up here."
+                title="No mentions"
+                description="When someone writes @ and your handle, the message shows up here and plays a sound."
                 className="py-8"
               />
             ) : (
@@ -140,7 +136,7 @@ export function NotificationBell() {
                     aria-hidden
                   />
                   <Link
-                    href={`/room/${encodeURIComponent(n.room)}`}
+                    href={mentionHref(n)}
                     onClick={() => {
                       markRead(n.id);
                       setOpen(false);
@@ -148,30 +144,15 @@ export function NotificationBell() {
                     className="min-w-0 flex-1"
                   >
                     <div className="flex items-center gap-1.5">
-                      <span
-                        className="text-micro font-semibold uppercase tracking-wide"
-                        style={{ color: KIND_TONE[n.kind] }}
-                      >
-                        {KIND_LABEL[n.kind]}
+                      <span className="flex-shrink-0 text-micro font-semibold text-text">{n.sender}</span>
+                      <span className="truncate text-micro text-muted-foreground">
+                        {n.room} · {n.title ?? (n.episode ? "a thread" : "channel")}
                       </span>
-                      <span className="truncate text-micro text-muted-foreground">{n.room}</span>
                       <span className="ml-auto flex-shrink-0 text-micro tabular text-faint">{timeAgo(n.time)}</span>
                     </div>
-                    <p className="mt-0.5 truncate text-label text-text">{n.summary || n.sender}</p>
+                    <p className="mt-0.5 truncate text-label text-text">{firstLine(n.summary)}</p>
                   </Link>
-                  <div className="flex flex-shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Tooltip content={`Mute ${n.room}`}>
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          muteRoom(n.room);
-                        }}
-                        aria-label={`Mute ${n.room}`}
-                        className="mt-0.5 flex size-5 items-center justify-center rounded text-faint hover:bg-hairline hover:text-text"
-                      >
-                        <BellOff className="size-3" />
-                      </button>
-                    </Tooltip>
+                  <div className="flex flex-shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                     <Tooltip content="Dismiss">
                       <button
                         onClick={(e) => {
