@@ -114,7 +114,7 @@ export interface RoomFixture {
   /** The room's link graph (#599/#611) — undefined means "no link index yet",
    *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
-  // Wire frames served at GET /messages/wire, feeding the Network pane's message feed.
+  // Wire frames served at GET /messages/wire, feeding the Raw messages tab.
   // Shaped like the persister's bus frames (a bare `{header, payload}` envelope
   // under `content`, plus the flat fields the inspector reads).
   wire?: Record<string, unknown>[];
@@ -163,7 +163,7 @@ const agentManifest = (description: string, adapter = "claude_code", owner?: str
   `adapter: ${adapter}\ndescription: "${description}"\n` + (owner ? `owner: ${owner}\n` : "");
 
 /** An external A2A agent's manifest: the card the hub resolved plus what it
- *  advertises, the fields the roster and the Network pane read. */
+ *  advertises, the fields the roster and the room's connection settings read. */
 const a2aManifest = (description: string, card: string, skills: string[]): string =>
   `adapter: a2a\ndescription: "${description}"\n` +
   `a2a_card: ${card}\na2a_endpoint: ${card}/a2a\n` +
@@ -205,7 +205,7 @@ const APPLE_PAY_THREAD = checkoutEpisode("d6f8b0");
 // The *chat* is the source. Each reply is a channel broadcast (`say`), and the
 // aligner reads it and emits the structured messages it implies. So one move drives
 // three things — the broadcast, the coordination_tick it interprets that from,
-// and the message the Network feed shows — and they can't disagree. `ask`
+// and the message the Raw messages tab shows — and they can't disagree. `ask`
 // is the aligner's prompt that precedes a reply (it addresses one at a time).
 const CHECKOUT_CONSENSUS = { launch: "friday am" };
 interface CheckoutMove {
@@ -267,7 +267,7 @@ const checkoutMessageChain: MyceliumMessage[] = [
 // The mediated negotiation as it appears on the wire: for each move, the
 // aligner's optional prompt and the agent's reply (both chat broadcasts, shown
 // in the channel), then the coordination_tick the aligner emits from that reply
-// (feeds the Network pane, filtered out of the channel). Interleaved and
+// (feeds the Raw messages tab, filtered out of the channel). Interleaved and
 // timestamped so the transcript reads in order — the chat drives the messages.
 const checkoutNegotiation: MockMessage[] = (() => {
   const out: MockMessage[] = [];
@@ -1215,8 +1215,8 @@ const checkout: RoomFixture = {
     { id: "a2", sender_handle: "operator", message_type: "coordination_join", content: JSON.stringify({ handle: "operator", intent: "on before the sale email", episode: CHECKOUT_EPISODE }), created_at: iso(47), episode: CHECKOUT_EPISODE },
     { id: "a3", sender_handle: "builder", message_type: "coordination_join", content: JSON.stringify({ handle: "builder", intent: "a full day of test orders first", episode: CHECKOUT_EPISODE }), created_at: iso(47), episode: CHECKOUT_EPISODE },
     // The aligner brokers a couple of short rounds. Each reply is a chat
-    // broadcast; the aligner reads it and emits the coordination_tick the Network
-    // pane reconstructs. The chat is the source (see checkoutMoves).
+    // broadcast; the aligner reads it and emits the coordination_tick the Raw
+    // messages tab reconstructs. The chat is the source (see checkoutMoves).
     ...checkoutNegotiation,
     { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { launch: "friday am" }, episode: CHECKOUT_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: CHECKOUT_EPISODE },
     // The room files the work the call breaks into. The two task-created notices

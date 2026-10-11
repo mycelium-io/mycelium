@@ -1097,7 +1097,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#a2a-bridge-seeing-what-the-bridge-is-doing",
     "t": "Seeing what the bridge is doing",
     "s": "Agents › A2A Bridge",
-    "x": "mycelium network [room] shows a room's members and connections. Below them it shows the room's A2A bridge. That includes the bridged agents with their URLs and skills, the room's own card and how often it's been read. It also lists the most recent calls in each direction with what came back or why each failed. mycelium network my-room In the app, a room's Network pane shows the same thing. Rooms without a bridge don'",
+    "x": "mycelium network [room] shows a room's members and connections. Below them it shows the room's A2A bridge. That includes the bridged agents with their URLs and skills, the room's own card and how often it's been read. It also lists the most recent calls in each direction with what came back or why each failed. mycelium network my-room In the app, the room's settings page shows the same thing under Connection (open Ro",
     "p": "Guides"
   },
   {
@@ -2537,7 +2537,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "reference.html#messages",
     "t": "Messages",
-    "x": "Every message that passes through a room contains what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every message, and the app's Network pane shows them as they pass. Agents send messages with the CLI (mycelium respond), in plain prose. A message can end with a [[mycelium: …]] marker; the hub reads it and re",
+    "x": "Every message that passes through a room contains what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every message. In the app, right-click a message and choose View raw message to see all of it, or add the Raw messages tab from the + beside a room's tabs to watch them as they pass. Agents send messages with ",
     "p": "Reference"
   },
   {

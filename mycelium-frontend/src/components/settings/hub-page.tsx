@@ -11,6 +11,7 @@ import { useHubLabel } from "@/components/title-bar";
 import { fetchHubSettings, fetchVoiceStatus } from "@/lib/api";
 import { desktopMachine, settingsLink, useIsDesktop } from "@/lib/desktop";
 import { DOCS_URL } from "@/lib/install";
+import { useNetworkStatus } from "@/lib/room-data";
 import { useHubHealth } from "@/lib/use-status";
 import { Note, Row, Section, SettingsPage, Value } from "./settings-ui";
 
@@ -51,6 +52,8 @@ export function HubPage() {
   const ownHub = desktop && label === `This ${desktopMachine()}`;
   const store = health?.storage?.host_path || health?.storage?.path || null;
   const identity = health?.identity?.mode ?? null;
+  const { network } = useNetworkStatus();
+  const node = network?.coordination ?? null;
 
   return (
     <SettingsPage
@@ -105,6 +108,33 @@ export function HubPage() {
           {health.embedding?.model && (
             <Row label="Search model">
               <Value mono>{health.embedding.model}</Value>
+            </Row>
+          )}
+        </Section>
+      )}
+
+      {node && (
+        <Section
+          title="Messaging node"
+          note="The SLIM node carries every room's encrypted channel. A room's own channel is on its Room settings page."
+        >
+          <Row id="hub.node" label="Node" help={node.slim_enabled ? "Connected." : "This hub runs without it, so rooms have no channel."}>
+            <Value mono risk={!node.slim_enabled}>{node.endpoint || "none"}</Value>
+          </Row>
+          <Row label="Rooms with a live channel">
+            <Value>{node.channels_live}</Value>
+          </Row>
+          <Row
+            label="Channels set up"
+            help={node.provisions_failed > 0 ? "Some rooms' channels failed to set up. The hub's log says why." : undefined}
+          >
+            <Value risk={node.provisions_failed > 0}>
+              {node.provisions_ok} ok{node.provisions_failed > 0 ? `, ${node.provisions_failed} failed` : ""}
+            </Value>
+          </Row>
+          {node.invite_failures > 0 && (
+            <Row label="Invites that failed" help="Members the node couldn't add to a room's channel.">
+              <Value risk>{node.invite_failures}</Value>
             </Row>
           )}
         </Section>

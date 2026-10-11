@@ -50,6 +50,9 @@ export interface Event {
    *  prose (the prompt its members read). Null on everything else. */
   conductor: ConductorLine | null;
   raw: Record<string, unknown>;
+  /** The message as the hub sent it, before any of the above was read off it,
+   *  for "View raw message". */
+  wire?: Record<string, unknown>;
 }
 
 export const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
@@ -276,5 +279,6 @@ export function parseEvent(msg: Record<string, unknown>): Event {
       ? conductorLineOf({ content: msg.content, metadata: msg.metadata })
       : null,
     raw,
+    wire: msg,
   };
 }

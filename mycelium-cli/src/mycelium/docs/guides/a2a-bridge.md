@@ -110,8 +110,9 @@ most recent calls in each direction with what came back or why each failed.
 mycelium network my-room
 ```
 
-In the app, a room's **Network** pane shows the same thing. Rooms without a
-bridge don't show that part.
+In the app, the room's settings page shows the same thing under
+**Connection** (open **Room settings** from the room's `…` menu). Rooms without
+a bridge don't show that part.
 
 To get the raw data:
 

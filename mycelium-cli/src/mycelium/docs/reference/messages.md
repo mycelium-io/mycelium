@@ -3,7 +3,9 @@
 Every message that passes through a room contains what was said, plus a header
 saying what kind of message it is, who took part, which thread it belongs to
 and which earlier messages it answers. The hub records
-every message, and the app's Network pane shows them as they pass.
+every message. In the app, right-click a message and choose **View raw message**
+to see all of it, or add the **Raw messages** tab from the + beside a room's
+tabs to watch them as they pass.
 
 Agents send messages with the CLI (`mycelium respond`), in plain prose. A
 message can end with a `[[mycelium: …]]` marker; the hub reads it and records

@@ -23,8 +23,6 @@ import { EventStream } from "@/components/event-stream";
 import { RoomBoard } from "@/components/board/room-board";
 import { RoomSchedules } from "@/components/schedules/room-schedules";
 import { MessageInspector } from "@/components/message-inspector";
-import { RoomA2aView } from "@/components/room-a2a";
-import { RoomSlimView } from "@/components/room-slim";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { MemoryView, type GuardHandle } from "@/components/memory-view";
 import { ThreadView } from "@/components/thread-view";
@@ -115,22 +113,15 @@ function BoardPanel() {
   );
 }
 
-/** SLIM channel diagnostics as a rail on top, the A2A bridge (the room's
- *  off-channel traffic) beneath it when there is one, and the live message
- *  feed filling the rest. */
-function NetworkPanel() {
+/** Every message crossing the room's channel as the hub sent it, with the
+ *  episode records behind them. Not open by default: it's for looking under
+ *  the chat, so it's added from the tab strip's +. The room's connection
+ *  details are on its settings page. */
+function RawPanel() {
   const d = useDock();
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg">
-      <div className="shrink-0 border-b border-border bg-surface/40">
-        <RoomSlimView roomName={d.roomName} layout="rail" />
-      </div>
-      <div className="shrink-0">
-        <RoomA2aView roomName={d.roomName} />
-      </div>
-      <div className="min-h-0 flex-1">
-        <MessageInspector roomName={d.roomName} />
-      </div>
+    <div className="h-full min-h-0 bg-bg">
+      <MessageInspector roomName={d.roomName} />
     </div>
   );
 }
@@ -174,7 +165,7 @@ function ThreadPanel({ params, api }: IDockviewPanelProps<{ episode: string }>) 
 const COMPONENTS = {
   channel: ChannelPanel,
   board: BoardPanel,
-  network: NetworkPanel,
+  raw: RawPanel,
   schedules: SchedulesPanel,
   memory: MemoryPanel,
   thread: ThreadPanel,
@@ -358,7 +349,7 @@ function GroupActions({ containerApi, group }: IDockviewHeaderActionsProps) {
 
 // ── Opening and moving ──────────────────────────────────────────────────────
 
-const VIEW_ORDER: View[] = ["channel", "board", "network", "schedules"];
+const VIEW_ORDER: View[] = ["channel", "board", "schedules", "raw"];
 
 function addView(api: DockviewApi, view: View, position?: Parameters<DockviewApi["addPanel"]>[0]["position"]) {
   return api.addPanel({
@@ -372,11 +363,10 @@ function addView(api: DockviewApi, view: View, position?: Parameters<DockviewApi
   });
 }
 
-/** The room's first layout: its three views as tabs, the Channel in front. */
+/** The room's first layout: Channel and Board as tabs, the Channel in front. */
 function defaultLayout(api: DockviewApi): void {
   addView(api, "channel");
   addView(api, "board", { referencePanel: "channel" });
-  addView(api, "network", { referencePanel: "channel" });
   api.getPanel("channel")?.api.setActive();
 }
 

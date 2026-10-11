@@ -1143,7 +1143,7 @@ EOF
       <h2 id="a2a-bridge-seeing-what-the-bridge-is-doing">Seeing what the bridge is doing</h2>
       <p><code>mycelium network [room]</code> shows a room&#x27;s members and connections. Below them it shows the room&#x27;s A2A bridge. That includes the bridged agents with their URLs and skills, the room&#x27;s own card and how often it&#x27;s been read. It also lists the most recent calls in each direction with what came back or why each failed.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">network</span> <span class="cmd">my-room</span></code></pre>
-      <p>In the app, a room&#x27;s <strong>Network</strong> pane shows the same thing. Rooms without a bridge don&#x27;t show that part.</p>
+      <p>In the app, the room&#x27;s settings page shows the same thing under <strong>Connection</strong> (open <strong>Room settings</strong> from the room&#x27;s <code>…</code> menu). Rooms without a bridge don&#x27;t show that part.</p>
       <p>To get the raw data:</p>
       <pre><code>GET /api/rooms/{room}/a2a/state</code></pre>
       <p>These counts are kept in memory and reset when the hub restarts. The room&#x27;s messages are saved as usual, including replies from bridged agents.</p>
