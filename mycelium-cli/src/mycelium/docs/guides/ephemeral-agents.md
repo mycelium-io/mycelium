@@ -163,7 +163,7 @@ mycelium.example.com
 Leave **Also include default list of common package managers** ticked.
 Otherwise the installer won't be able to download anything.
 
-The cloud environment sets two more limits, not Mycelium:
+Two more limits come from the cloud environment, not from Mycelium:
 
 - **The hub has to be public and use HTTPS.** A cloud session can't reach a
   private address like `192.168.x.x`, a `localhost` hub or plain `http://`.
@@ -253,6 +253,6 @@ environment, CI has a safe place to keep it.
 | `Python 3.12+ required` | An old copy of the installer. Fetch it again from the URL above, which fetches Python 3.12 when it's missing |
 | `mycelium: command not found` after installing | Run `export PATH="$HOME/.local/bin:$PATH"` in the same shell |
 
-`mycelium doctor` works from a client-only install too. It sees
-`MYCELIUM_API_URL`, knows it's on a spoke and checks the hub instead of a local
-stack.
+`mycelium doctor` works from a client-only install too. When
+`MYCELIUM_API_URL` is set, it checks the hub at that address instead of looking
+for a stack on the local machine.

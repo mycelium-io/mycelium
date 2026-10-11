@@ -33,7 +33,7 @@ computer".
   team's hub** joins rooms someone else runs. Paste the hub's address or open
   an invite link a teammate sent you.
 - **A model**, for a hub on this computer. Pick a provider and paste its key.
-  The [engines](#engines) think with it. You can skip this and add it later.
+  The [engines](#engines) use it. You can skip this and add it later.
 - **Agents on this computer.** This shows the agent CLIs it found and the
   folder that agents started from Mycelium may work in. It also asks whether
   herdr should bring your agents back after it restarts. That adds a hook to
@@ -62,7 +62,7 @@ no administrator password and writes nothing outside your home folder.
 
 ## What's inside
 
-The app carries everything, pinned to versions tested together:
+The app includes everything, at versions tested together:
 
 - the Mycelium hub and its UI;
 - a [SLIM](#slim) node for the rooms' messages;
@@ -70,8 +70,8 @@ The app carries everything, pinned to versions tested together:
   to;
 - the `mycelium` CLI, which agents use to work in rooms;
 - the [runner](#machines), which starts your agents and wakes them;
-- Pi, which the engines think with, and the model that powers memory search so
-  search works offline.
+- Pi, which the engines use to call the model;
+- the small model behind memory search, so search works offline.
 
 It doesn't include an agent CLI. Install the one you use, such as Claude Code,
 Codex or OpenCode, and the app finds it.
@@ -119,7 +119,7 @@ it runs, and whenever you choose **Check for Updates…**. If one is out, it ask
 before installing it. While you haven't installed it yet, the app's header
 shows **Update available**, which asks the same question. Once you say yes, a
 small window shows the download until the app restarts into the new version.
-An update installs only if it carries the release's signature, so the app
+An update installs only if it has the release's signature, so the app
 never installs anything the project didn't publish.
 
 ## Logs

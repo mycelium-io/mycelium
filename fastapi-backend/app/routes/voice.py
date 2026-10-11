@@ -20,6 +20,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 
+from app.config import settings
 from app.schemas import VoiceHeard, VoiceStatus
 from app.services import actor, voice, voice_worker
 
@@ -38,12 +39,19 @@ SessionId = Annotated[
 async def voice_status() -> VoiceStatus:
     """Whether a mic can be turned on against this hub."""
     state, detail = voice.state()
+    try:
+        model = voice.chosen()
+    except voice.VoiceUnavailable:
+        choice, name = settings.VOICE_MODEL, ""
+    else:
+        choice, name = model.choice, model.folder
     return VoiceStatus(
         state=state,
         detail=detail,
         language=voice.LANGUAGE,
         sample_rate=voice.SAMPLE_RATE,
-        model=voice.MOONSHINE,
+        model=name,
+        choice=choice,
     )
 
 

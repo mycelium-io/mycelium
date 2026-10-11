@@ -1,6 +1,6 @@
 # Mycelium Documentation
 
-The docs, in your terminal.
+You can read all of Mycelium's documentation here in your terminal.
 
 ## Sections
 

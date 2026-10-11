@@ -306,6 +306,7 @@ class Supervisor:
         start_runner: bool = True,
         share_usage: bool | None = None,
         voice: bool | None = None,
+        voice_model: str | None = None,
         look: Callable[[], list[Any]] | None = None,
     ) -> None:
         if mode == "client" and not hub_url:
@@ -324,6 +325,9 @@ class Supervisor:
         #: The Mac app's voice switch, which wins over config.toml's
         #: ``voice.enabled`` for the hub it starts. None leaves config.toml's.
         self.voice = voice
+        #: The app's choice of speech model (``fast`` or ``accurate``), which
+        #: wins over ``voice.model`` the same way. None leaves config.toml's.
+        self.voice_model = voice_model
         #: How the hubs on this machine are found (``mycelium.hubs.find_hubs``).
         self.look = look
         #: Every hub seen at start, what deserves a look about them, and the
@@ -394,6 +398,8 @@ class Supervisor:
             )
         if self.voice is not None:
             hub_env_vars["VOICE_ENABLED"] = "true" if self.voice else "false"
+        if self.voice_model is not None:
+            hub_env_vars["VOICE_MODEL"] = self.voice_model
         if pi := loc.pi():
             hub_env_vars["ALIGNER_PI_BINARY"] = pi
         ui_env = {

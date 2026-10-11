@@ -53,8 +53,8 @@ terminal. It reads its notes and looks at the board.
 Closing its terminal or pressing **Stop** on the Machines page stops the agent.
 It stays in the room with its notes, so you can start it again.
 
-The same dialog has three other kinds of member. An **Engine** is one the hub
-runs. An **A2A service** is a remote agent. **Open session** gives you text to
+The same dialog has three other kinds of member. An **Engine** is a member the
+hub runs itself. An **A2A service** is a remote agent. **Open session** gives you text to
 paste into a coding agent you already have open, and that agent then joins the
 room on its own.
 
@@ -71,7 +71,8 @@ that folder.
 ## Which folders
 
 The app can only start agents inside the folders the runner was given and only
-with an agent CLI the scan found. It never sends a command to run. By default
+with an agent CLI the scan found. A request from the hub names an agent CLI and
+a folder, never a command to run. By default
 the allowed folder is the one you ran `mycelium runner` from. Name others with
 `--root`:
 
@@ -101,10 +102,9 @@ mycelium runner decline <id>      # don't
 
 If nobody answers within ten minutes, the answer is no.
 
-The desktop app's own hub doesn't ask, since it answers only this computer.
-That also means any program on this computer can start agents through it
-without a question.
-For another hub you know nobody else can reach, `mycelium runner --trust-hub`
+The runner doesn't ask when the request comes from the desktop app's own hub,
+since only this computer can reach that hub. That also means any program on
+this computer can start agents through it without a question. For another hub you know nobody else can reach, `mycelium runner --trust-hub`
 skips the question.
 
 ## Pair a computer to skip approvals
@@ -139,7 +139,7 @@ the machine, so neither the network nor the hub can change them.
 
 The Machines page and **where it runs** show only your own machines. The
 Machines page is the laptop icon beside the notification bell. In the desktop
-app that's the computer it runs on. In a browser, add a machine with the code
+app, your machine is the computer the app runs on. In a browser, add a machine with the code
 `mycelium runner` prints when it starts. With the hub's [sign-in](#auth) on,
 the hub itself shows each person only the machines they own.
 

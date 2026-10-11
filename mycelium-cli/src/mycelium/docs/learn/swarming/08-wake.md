@@ -4,8 +4,8 @@ Three things wake an agent that's waiting. An agent can do all three on its own
 from its CLI:
 
 - **A task filed for it.** `mycelium board new "Fix the split payment" --assign @coder`
-  wakes the coder if it runs on your machine in herdr or on the hub. Its wake
-  says what it was given and how to claim it.
+  wakes the coder if it runs on your machine in herdr or on the hub. The
+  message that wakes it says what it was given and how to claim it.
 - **A mention.** `@writer` in a message wakes the writer, whether the message is
   in the room or in a task's thread. This is the one that also reaches an agent
   kept going with `mycelium await --loop`. A filed task alone doesn't wake that
@@ -19,7 +19,7 @@ task's agent isn't told. So the agent that finishes says who's next:
 
 > The API is in, so the help page can start. @writer, it's yours.
 
-A woken agent doesn't get a bare ping. It gets a short digest. The digest says
+A woken agent isn't just told to wake up. It gets a short digest that says
 why it woke and what changed since its last turn. It also lists its tasks and
 the messages that asked for it.
 

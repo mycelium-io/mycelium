@@ -42,7 +42,10 @@ L9 work.
 Members approve or reject by ending their reply with
 `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A reply with no
 stance takes the step's default path. In `gated` and `review`, that sends the
-work back. Every marker is listed under [Markers](#messages-markers).
+work back. A flow you write can make a step require a stance. If a member
+replies without one, the conductor asks them once more. A second reply without
+a stance counts as a reject. Every marker is listed under
+[Markers](#messages-markers).
 
 To change a built-in flow or add your own, see [Writing flows](#flows).
 
@@ -61,7 +64,8 @@ mycelium board coordinate decisions/double-charge-refunds conductor \
    view. They all rate at the same time, so nobody sees the others' ratings
    first. A rating looks like `[[mycelium: A=82 B=41]]`.
 3. **Pick.** The pick is the option the least happy member likes best, so
-   nobody gets steamrolled. Code makes the pick, never a model.
+   nobody's view is ignored. The pick is calculated from the ratings. No model
+   makes it.
 4. **Fix, if needed.** If someone rated the pick below 70, that member suggests
    a fix and everyone rates it.
 5. **Stop.** It stops as soon as everyone rates the pick 70 or more. It also

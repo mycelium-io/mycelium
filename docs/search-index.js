@@ -281,7 +281,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "concepts.html#episodes",
     "t": "Episodes",
-    "x": "An episode is one run of an engine inside a task's thread. It's either a conductor flow or an aligner negotiation. It runs in the task's thread rather than in a thread of its own, so its turns sit in the task's conversation where everyone in the room can read them. When it's over, the task carries on. Room Task Episode Lasts Until you delete it Until it's resolved One run Holds Memory, tasks, the chat Its thread and ",
+    "x": "An episode is one run of an engine inside a task's thread. It's either a conductor flow or an aligner negotiation. It runs in the task's thread rather than in a thread of its own, so its turns sit in the task's conversation where everyone in the room can read them. When it ends, the task stays open. Room Task Episode Lasts Until you delete it Until it's resolved One run Holds Memory, tasks, the chat Its thread and st",
     "p": "Concepts"
   },
   {
@@ -498,7 +498,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#synthesizer-only-whats-new",
     "t": "Only what's new",
     "s": "Synthesizer",
-    "x": "Each time you ask, it reads only the messages since the last summary and folds them into what it already has. If nothing new has been said, it doesn't write anything. To start over from the whole conversation, put --all in the message itself. It's part of what you say to the synthesizer, not a CLI flag: mycelium engine invoke synthesizer \"--all\" -r sprint-plan",
+    "x": "Each time you ask, it reads only the messages since the last summary and adds what's new to the existing summary. If nothing new has been said, it doesn't write anything. To start over from the whole conversation, put --all in the message itself. It's part of what you say to the synthesizer, not a CLI flag: mycelium engine invoke synthesizer \"--all\" -r sprint-plan",
     "p": "Engines"
   },
   {
@@ -656,7 +656,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop-whats-inside",
     "t": "What's inside",
     "s": "Setup › The Desktop App",
-    "x": "The app carries everything, pinned to versions tested together: the Mycelium hub and its UI; a SLIM node for the rooms' messages; herdr, where your agents run as terminals you can watch and type to; the mycelium CLI, which agents use to work in rooms; the runner, which starts your agents and wakes them; Pi, which the engines think with, and the model that powers memory search so search works offline. It doesn't inclu",
+    "x": "The app includes everything, at versions tested together: the Mycelium hub and its UI; a SLIM node for the rooms' messages; herdr, where your agents run as terminals you can watch and type to; the mycelium CLI, which agents use to work in rooms; the runner, which starts your agents and wakes them; Pi, which the engines use to call the model; the small model behind memory search, so search works offline. It doesn't in",
     "p": "Guides"
   },
   {
@@ -677,7 +677,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop-updates",
     "t": "Updates",
     "s": "Setup › The Desktop App",
-    "x": "The app checks for a new release shortly after it opens, every few hours while it runs, and whenever you choose Check for Updates…. If one is out, it asks before installing it. While you haven't installed it yet, the app's header shows Update available, which asks the same question. Once you say yes, a small window shows the download until the app restarts into the new version. An update installs only if it carries t",
+    "x": "The app checks for a new release shortly after it opens, every few hours while it runs, and whenever you choose Check for Updates…. If one is out, it asks before installing it. While you haven't installed it yet, the app's header shows Update available, which asks the same question. Once you say yes, a small window shows the download until the app restarts into the new version. An update installs only if it has the r",
     "p": "Guides"
   },
   {
@@ -712,7 +712,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#hub-and-spoke-behind-an-https-proxy",
     "t": "Behind an HTTPS proxy",
     "s": "Setup › Hub & Spoke",
-    "x": "A hub reached over the internet should sit behind a reverse proxy that handles HTTPS, such as Caddy, nginx or a cloud load balancer. The backend then sees plain HTTP. It would put http:// in the links it gives out, such as a room's A2A card. Tell it to trust your proxy: mycelium config set runtime.trusted_proxies '*' mycelium config apply mycelium up Use '*' only when the backend can be reached through the proxy alon",
+    "x": "A hub reached over the internet should sit behind a reverse proxy that handles HTTPS, such as Caddy, nginx or a cloud load balancer. The backend then only sees plain HTTP and puts http:// in the links it gives out, like a room's A2A card. To fix that, tell it to trust your proxy: mycelium config set runtime.trusted_proxies '*' mycelium config apply mycelium up Use '*' only when the backend can be reached through the ",
     "p": "Guides"
   },
   {
@@ -754,7 +754,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#hub-and-spoke-doctor-says-spoke-mode-on-the-hub",
     "t": "doctor says \"spoke mode\" on the hub",
     "s": "Setup › Hub & Spoke",
-    "x": "doctor decides from server.api_url. A backend on this machine means it's the hub. If the backend runs here at a different address, set server.api_url to http://localhost:8000 or run mycelium doctor --mode hub. See Troubleshooting for more.",
+    "x": "doctor decides whether this machine is the hub from server.api_url. If it points to a backend on this machine, this machine is the hub. If the backend runs here at a different address, set server.api_url to http://localhost:8000 or run mycelium doctor --mode hub. See Troubleshooting for more.",
     "p": "Guides"
   },
   {
@@ -831,7 +831,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines-which-folders",
     "t": "Which folders",
     "s": "Agents › Start Agents From the App",
-    "x": "The app can only start agents inside the folders the runner was given and only with an agent CLI the scan found. It never sends a command to run. By default the allowed folder is the one you ran mycelium runner from. Name others with --root: mycelium runner --root ~/code --root ~/work/api In the desktop app, it's the working folder you chose at first run. Change it in Settings.",
+    "x": "The app can only start agents inside the folders the runner was given and only with an agent CLI the scan found. A request from the hub names an agent CLI and a folder, never a command to run. By default the allowed folder is the one you ran mycelium runner from. Name others with --root: mycelium runner --root ~/code --root ~/work/api In the desktop app, it's the working folder you chose at first run. Change it in Se",
     "p": "Guides"
   },
   {
@@ -852,7 +852,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines-only-your-machines-are-listed",
     "t": "Only your machines are listed",
     "s": "Agents › Start Agents From the App",
-    "x": "The Machines page and where it runs show only your own machines. The Machines page is the laptop icon beside the notification bell. In the desktop app that's the computer it runs on. In a browser, add a machine with the code mycelium runner prints when it starts. With the hub's sign-in on, the hub itself shows each person only the machines they own. To see and fix the agents already running on a machine, see Your age",
+    "x": "The Machines page and where it runs show only your own machines. The Machines page is the laptop icon beside the notification bell. In the desktop app, your machine is the computer the app runs on. In a browser, add a machine with the code mycelium runner prints when it starts. With the hub's sign-in on, the hub itself shows each person only the machines they own. To see and fix the agents already running on a machin",
     "p": "Guides"
   },
   {
@@ -873,7 +873,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#agents-on-a-machine-restarting-agents",
     "t": "Restarting agents",
     "s": "Agents › Your Agents on a Machine",
-    "x": "An agent that stopped and didn't come back can be restarted. It starts again in its own folder as the same member, with no memory of what it was doing. It reads its notes and then catches up from the room. mycelium machine restart --all # every stopped agent mycelium machine restart reviewer # one On the Machines page, Restart says where each agent will start before anything does. The runner then asks you on the mach",
+    "x": "An agent that stopped and didn't come back can be restarted. It starts again in its own folder as the same member, with no memory of what it was doing. It reads its notes and then catches up from the room. mycelium machine restart --all # every stopped agent mycelium machine restart reviewer # one On the Machines page, Restart shows where each agent will start before it starts any of them. The runner then asks you on",
     "p": "Guides"
   },
   {
@@ -894,7 +894,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#herdr-why-it-matters",
     "t": "Why it matters",
     "s": "Agents › Persistent Agents (herdr)",
-    "x": "An agent that runs mycelium await --loop hears about each message on its own. The hub keeps its place in the room, so it never misses one. But a coding agent sitting idle at its prompt isn't asking. herdr and the runner fill that gap. When the agent is mentioned, given a turn by the conductor or aligner or assigned a task, the runner types a wake-up into its pane that says why. The agent then answers on its next turn",
+    "x": "An agent that runs mycelium await --loop is told about each new message without help. The hub remembers where it left off, so it never misses one. But a coding agent sitting idle at its prompt isn't waiting for messages, so nothing reaches it. herdr and the runner cover that case. When the agent is mentioned, given a turn by the conductor or aligner or assigned a task, the runner types a wake-up into its pane that sa",
     "p": "Guides"
   },
   {
@@ -978,7 +978,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#ephemeral-agents-2-let-the-session-reach-the-hub",
     "t": "2. Let the session reach the hub",
     "s": "Agents › Ephemeral Agents",
-    "x": "By default, cloud sessions can only reach package registries and GitHub. To let them reach your hub, set Network access to Custom. Then add the hub's host under Allowed domains: mycelium.example.com Leave Also include default list of common package managers ticked. Otherwise the installer won't be able to download anything. The cloud environment sets two more limits, not Mycelium: The hub has to be public and use HTT",
+    "x": "By default, cloud sessions can only reach package registries and GitHub. To let them reach your hub, set Network access to Custom. Then add the hub's host under Allowed domains: mycelium.example.com Leave Also include default list of common package managers ticked. Otherwise the installer won't be able to download anything. Two more limits come from the cloud environment, not from Mycelium: The hub has to be public a",
     "p": "Guides"
   },
   {
@@ -1202,35 +1202,42 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#files-files-from-an-agent",
     "t": "Files from an agent",
     "s": "Work › Files",
-    "x": "An agent sees a link like [[uploads/spec.pdf]] in a message and fetches the file with the link as written: mycelium file download \"[[uploads/spec.pdf]]\" To share its own work, an agent uploads the file and puts the link it prints in its reply: mycelium file upload report.md chart.png mycelium respond \"Report and chart: [[uploads/report.markdown]] [[uploads/chart.png]]\" mycelium file ls lists the room's files, myceliu",
+    "x": "An agent sees a link like [[uploads/spec.pdf]] in a message and fetches the file with the link as written: mycelium file download \"[[uploads/spec.pdf]]\" To share its own work, an agent uploads the file and puts the link it prints in its reply: mycelium file upload report.md chart.png mycelium respond \"Report and chart: [[uploads/report.markdown]] [[uploads/chart.png]]\" A file ending in .md is stored as .markdown, so ",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice",
     "t": "Voice",
     "s": "Work",
-    "x": "You can talk instead of type. Turn on the mic in any message box, in the room or in a task's thread, and what you say is typed into the box as you say it. The mic stays on until you turn it off, so you can think out loud, pause, and keep going. Nothing is sent until you send it: what you said is a draft you can read and fix first. Voice is off unless you turn it on, because the speech model takes space and memory: ab",
+    "x": "You can talk instead of type. Turn on the mic in any message box, in the room or in a task's thread, and what you say is typed into the box as you say it. The mic stays on until you turn it off, so you can think out loud, pause, and keep going. Nothing is sent until you send it: what you said is a draft you can read and fix first. Voice is off unless you turn it on, because the speech model takes space and memory. Th",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-turning-it-on",
     "t": "Turning it on",
     "s": "Work › Voice",
-    "x": "In the Mac app, turn on Talk instead of type in the first-run screens or in Settings, under Voice. Mycelium restarts and downloads the speech model. On a Docker hub, or any hub you run with the CLI: mycelium config set voice.enabled true mycelium config apply mycelium up The hub downloads the speech model when it starts, into its data folder, so it's downloaded once and kept across restarts. The download is checked a",
+    "x": "In the desktop app, turn on Talk instead of type in the first-run screens or in Settings, under Voice. Mycelium restarts and downloads the speech model. On a Docker hub, or any hub you run with the CLI: mycelium config set voice.enabled true mycelium config apply mycelium up The hub downloads the speech model when it starts, into its data folder, so it's downloaded once and kept across restarts. Before using the down",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#voice-choosing-a-speech-model",
+    "t": "Choosing a speech model",
+    "s": "Work › Voice",
+    "x": "fast (the default) accurate Model Moonshine v2 base NVIDIA Parakeet TDT 0.6B v2 Download about 150 MB, when the hub starts about 480 MB, the first time a mic is turned on On disk about 150 MB about 630 MB Memory while anyone talks about 500 MB about 1.4 GB Speed a few hundredths of a second per sentence about a fifth of a second per second of speech Mistakes, on our test recordings about 1 word in 16 about half as ma",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-using-it",
     "t": "Using it",
     "s": "Work › Voice",
-    "x": "Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux), which works while you're typing. The key acts on the message box you're in, or the room's own box when you're in none. The first time, your browser or the Mac app asks to use the microphone. While it's on, the button is lit, the line under the box says it's listening, and a ring around the button pulses while it hears you speak. Each time you",
+    "x": "Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux), which works while you're typing. The key acts on the message box you're in, or the room's own box when you're in none. The first time, your browser or the desktop app asks to use the microphone. While it's on, the button is lit, the line under the box says it's listening, and a ring around the button pulses while it hears you speak. Each time",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-where-its-transcribed",
     "t": "Where it's transcribed",
     "s": "Work › Voice",
-    "x": "Your hub turns speech into text, on its own CPU, with a small speech model (Moonshine) and a voice activity detector (Silero) that hears where you start and stop. Neither sends audio anywhere else. In the Mac app the hub runs on your machine, so your audio never leaves it. With a shared hub, your audio goes to that hub the way your messages do. Audio is never saved. The hub keeps only the few seconds it is listening ",
+    "x": "Your hub turns speech into text, on its own CPU, with a speech model (Moonshine, or Parakeet when you chose accurate) and a voice activity detector (Silero) that detects when you start and stop speaking. Neither sends audio anywhere else. In the desktop app the hub runs on your machine, so your audio never leaves it. With a shared hub, your audio goes to that hub the way your messages do. Audio is never saved. The hu",
     "p": "Guides"
   },
   {
@@ -1244,7 +1251,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#schedules-a-cheap-pre-check-before-the-model-wakes",
     "t": "A cheap pre-check before the model wakes",
     "s": "Work › Schedules",
-    "x": "Every wake is a full model turn, and most check-ins find nothing. --check names a query the hub runs first. Only when that query finds something does the agent wake, and what it found is handed to the agent with the wake. A run that finds nothing is recorded as Nothing to do: it costs no model turn and posts nothing to the room. Check Wakes the agent when always every time (the default) mentions someone addressed the",
+    "x": "Each time an agent is woken, it takes a full model turn. Most check-ins find nothing. --check names a query the hub runs first. The agent is woken only when that query finds something. When it is, it's told what the query found. A run that finds nothing is recorded as Nothing to do: it costs no model turn and posts nothing to the room. Check Wakes the agent when always every time (the default) mentions someone addres",
     "p": "Guides"
   },
   {
@@ -1293,7 +1300,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#security-planes-what-to-do-about-it",
     "t": "What to do about it",
     "s": "Security › Running a Shared Hub",
-    "x": "Turn on sign-in. Every request then needs a token from your identity provider, and writes are tied to real accounts. Only an agent's owner can act for it. You need an OIDC provider such as your company's SSO, Keycloak, Dex, ZITADEL or Authentik. There's no lighter option yet. Serve it over HTTPS behind a reverse proxy. See Hub & Spoke. Keep workers to replies only with worker.tools = false, or don't add them. The exc",
+    "x": "Turn on sign-in. Every request then needs a token from your identity provider, and writes are tied to real accounts. Only an agent's owner can act for it. You need an OIDC provider such as your company's SSO, Keycloak, Dex, ZITADEL or Authentik. There's no lighter option yet. Serve it over HTTPS behind a reverse proxy. See Hub & Spoke. Keep workers to replies only with worker.tools = false, or don't add them. Leave t",
     "p": "Guides"
   },
   {
@@ -1440,7 +1447,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-acting-for-an-agent",
     "t": "Acting for an agent",
     "s": "Security › Authentication",
-    "x": "Two calls take a handle that isn't about authorship: mycelium await reads and consumes that handle's queue of messages. Joining a room records that handle as present. Without a check, anyone with a valid token could read another member's messages by awaiting as them. So with auth on, these calls are only allowed in two cases: The handle is your own. A per-machine suffix like alice#a8f3 still counts as alice. The agen",
+    "x": "Two calls take a handle for something other than recording who wrote what: mycelium await reads and consumes that handle's queue of messages. Joining a room records that handle as present. Without a check, anyone with a valid token could read another member's messages by awaiting as them. So with auth on, these calls are only allowed in two cases: The handle is your own. A per-machine suffix like alice#a8f3 still cou",
     "p": "Guides"
   },
   {
@@ -1524,7 +1531,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-the-hub-isnt-running",
     "t": "The hub isn't running",
     "s": "Help › Troubleshooting",
-    "x": "You see: commands can't connect to the hub at http://localhost:8000. With the desktop app, open it, because the hub runs while the app does. Check its state from its menu bar or system tray icon, or with Health check…. With the Docker stack: mycelium status # quick check mycelium up # start the hub mycelium logs mycelium-backend --tail 50",
+    "x": "You see: commands can't connect to the hub at http://localhost:8000. With the desktop app, open it. The hub only runs while the app is open. Check its state from its menu bar or system tray icon, or with Health check…. With the Docker stack: mycelium status # quick check mycelium up # start the hub mycelium logs mycelium-backend --tail 50",
     "p": "Guides"
   },
   {
@@ -1650,7 +1657,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-tasks-threads-and-pings",
     "t": "Tasks, threads and pings",
     "s": "Architecture",
-    "x": "A task is a memory under work/. Each task has a thread, which is its own conversation within the room's channel with its own id. A thread isn't a separate encrypted group. Everyone in the room can read every thread. Every board row gets its own thread for good. The hub gives a memory its thread the first time it's written under work/, decisions/, status/ or failed/. That's true however it was written, whether by boar",
+    "x": "A task is a memory under work/. Each task has a thread, which is its own conversation within the room's channel with its own id. A thread isn't a separate encrypted group. Everyone in the room can read every thread. Every board row keeps one thread for good. The hub gives every memory a thread the first time it's written, in any folder, including board rows under work/, decisions/, status/ and failed/. That's true ho",
     "p": "Reference"
   },
   {
@@ -2510,7 +2517,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#flows-steps-that-ask-nobody",
     "t": "Steps that ask nobody",
     "s": "Writing Flows",
-    "x": "A pick is a step with kind: select. It takes a threshold and max_repairs. A threshold of 0.7 means everyone rates the pick 70 or more. It goes on by how the pick went: feasible: everyone's on board. infeasible: someone can fix it. stuck: a fix can't help. default. An end step of end: converged can only be reached from a pick's feasible edge. show concord prints one in full. accord is built from two more kinds of step",
+    "x": "A pick is a step with kind: select. It chooses among the options members suggested, using the ratings they gave. It takes a threshold and max_repairs. A threshold of 0.7 means the pick passes only if everyone rates it 70 or more. Its next map picks the next step by how the pick went: feasible: everyone rated the pick and every rating meets the threshold. infeasible: someone rated it below the threshold. They can be a",
     "p": "Reference"
   },
   {
@@ -2523,7 +2530,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "reference.html#messages",
     "t": "Messages",
-    "x": "Every message that passes through a room carries what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every message, and the app's Network pane shows them as they pass. Agents send messages with the CLI (mycelium respond), in plain prose. A message can end with a [[mycelium: …]] marker; the hub reads it and rec",
+    "x": "Every message that passes through a room contains what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every message, and the app's Network pane shows them as they pass. Agents send messages with the CLI (mycelium respond), in plain prose. A message can end with a [[mycelium: …]] marker; the hub reads it and re",
     "p": "Reference"
   },
   {
@@ -2537,14 +2544,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#messages-reading-the-score",
     "t": "Reading the score",
     "s": "Messages",
-    "x": "When enough agents report confidence, a negotiation's record carries a score. These are IoC metrics, from the Internet of Cognition L9 work: Metric Stands for What it tells you mpc mean final confidence How sure the team is at the end, from 0 to 1. gar genuine agreement rate The share of agents whose confidence moved toward the final answer, meaning they were persuaded. 0 to 1. scr social compliance ratio The share o",
+    "x": "When enough agents report confidence, a negotiation's record includes a score. These are IoC metrics, from the Internet of Cognition L9 work: Metric Stands for What it tells you mpc mean final confidence How sure the team is at the end, from 0 to 1. gar genuine agreement rate The share of agents whose confidence moved toward the final answer, meaning they were persuaded. 0 to 1. scr social compliance ratio The share ",
     "p": "Reference"
   },
   {
     "u": "reference.html#messages-the-record",
     "t": "The record",
     "s": "Messages",
-    "x": "Every negotiation is saved at log/episodes/{id}.md whether it agreed or not. See episodes. In the record, each message points to the ones it answers. Its full id looks like urn:ioc:mycelium:episode:{room}:{id}.",
+    "x": "Every negotiation is saved at log/episodes/{id}.md whether it agreed or not. See episodes. In the record, each message points to the ones it answers. The negotiation's full id looks like urn:ioc:mycelium:episode:{room}:{id}.",
     "p": "Reference"
   },
   {
@@ -2565,7 +2572,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#metrics-usage",
     "t": "Usage",
     "s": "Observability › Metrics",
-    "x": "Most work in a room is a task, so usage follows tasks. The hub records an event each time one of these happens: Event When Carries mycelium.hub_started The hub starts how it runs (desktop, docker, server), OS mycelium.task_filed A row lands on a board its kind, who filed it (person, agent, engine), whether it was for someone mycelium.task_resolved A row is resolved its kind, who resolved it, hours it was open myceliu",
+    "x": "Most work in a room is a task, so usage follows tasks. The hub records an event each time one of these happens: Event When Carries mycelium.hub_started The hub starts how it runs (desktop, docker, server), OS mycelium.task_filed A row is added to a board its kind, who filed it (person, agent, engine), whether it was for someone mycelium.task_resolved A row is resolved its kind, who resolved it, hours it was open myce",
     "p": "Reference"
   },
   {

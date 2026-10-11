@@ -616,6 +616,15 @@ class VoiceConfig(BaseModel):
             "Off, the mic isn't offered and nothing is downloaded."
         ),
     )
+    model: Literal["fast", "accurate"] = Field(
+        default="fast",
+        description=(
+            "The speech model. fast is Moonshine: about 150 MB on disk and 500 MB of memory. "
+            "accurate is Parakeet: about half the mistakes, at about 630 MB on disk (a 480 MB "
+            "download, made the first time a mic is turned on) and 1.4 GB of memory. Both "
+            "are English only. The hub reads it when it starts."
+        ),
+    )
     download: bool = Field(
         default=True,
         description=(

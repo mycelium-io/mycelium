@@ -665,7 +665,7 @@ fn join(app: AppHandle, hub: String, path: Option<String>) {
         }
         let roots = current.map(|s| s.roots).unwrap_or_default();
         let next =
-            Settings { mode: Mode::Client, hub_url: Some(hub), roots, share_usage: false, voice: false };
+            Settings { mode: Mode::Client, hub_url: Some(hub), roots, share_usage: false, voice: false, voice_model: Default::default() };
         match next.validate() {
             Ok(next) => {
                 if settings::save(&next).is_ok() {

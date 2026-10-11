@@ -60,5 +60,8 @@ mycelium file upload report.md chart.png
 mycelium respond "Report and chart: [[uploads/report.markdown]] [[uploads/chart.png]]"
 ```
 
+A file ending in `.md` is stored as `.markdown`, so `report.md` becomes
+`uploads/report.markdown`. Use the link `mycelium file upload` prints.
+
 `mycelium file ls` lists the room's files, `mycelium file show <name>` says
 what one is, and `mycelium file rm <name>` removes one.

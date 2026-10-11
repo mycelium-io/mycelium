@@ -641,6 +641,10 @@ class VoiceStatus(BaseModel):
     language: str = Field("en", description="The language it transcribes")
     sample_rate: int = Field(16000, description="The rate audio is sent at, in Hz")
     model: str = Field("", description="The speech model's name")
+    choice: str = Field(
+        "fast",
+        description="`voice.model` on this hub: `fast` (Moonshine) or `accurate` (Parakeet)",
+    )
 
 
 class VoiceHeard(BaseModel):

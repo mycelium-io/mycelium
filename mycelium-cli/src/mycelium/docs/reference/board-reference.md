@@ -85,18 +85,20 @@ when one changes. Each change is a line on the row's timeline:
 | Review requested, approved, changes requested | The task's activity |
 | CI went green, closed without merging | The task's activity |
 
-A change is said once, on one row: the first open row that mentions the pull
-request. The first time the hub sees a pull request, it says so only if the
-pull request was opened in the last hour: a task getting its pull request is
-news. Linking one that was opened earlier, merged or closed announces nothing,
-and the first time the hub checks a room (after it's given a token, say) it
-only notes where everything stands. What the room last saw is kept
-in the room's folder, so a change made while the hub was off is still said once
+The hub announces each change once, on one row: the first open row that
+mentions the pull request. When the hub sees a pull request for the first time,
+it announces it only if the pull request was opened in the last hour, because
+that means the task has just got its pull request. Linking one that was opened
+earlier, or is already merged or closed, announces nothing. The first time the
+hub checks a room (for example, right after it's given a token), it only
+records where everything stands. The hub keeps what the room last saw in the
+room's folder, so a change made while the hub was off is still announced once
 it is back.
 
-These lines inform and never wake anyone. When an agent wakes for some other
-reason, its digest lists the changes on rows it holds, was given or filed, on
-the `Board:` line, and every merge in the room:
+These lines don't wake anyone. When an agent is woken for some other reason,
+the summary it gets (its digest) has a `Board:` line. That line lists the
+changes on rows the agent holds, was given or filed. It also lists every merge
+in the room:
 
 ```
 Board:   CI went red on "Turn on Apple Pay" (coffee-shop/web#612, 4m ago)

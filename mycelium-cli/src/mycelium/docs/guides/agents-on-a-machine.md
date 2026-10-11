@@ -50,9 +50,9 @@ mycelium machine restart --all         # every stopped agent
 mycelium machine restart reviewer      # one
 ```
 
-On the Machines page, **Restart** says where each agent will start before
-anything does. The runner then asks you on the machine first, as it does before
-any start.
+On the Machines page, **Restart** shows where each agent will start before it
+starts any of them. The runner then asks you on the machine first, as it does
+before it starts any agent.
 
 ## Other fixes
 

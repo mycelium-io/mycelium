@@ -21,8 +21,8 @@ tools, logins and uncommitted changes. They need your machine running. Workers
 work from what's been pushed, in a copy on the hub. They keep going while your
 laptop is closed, as long as the hub isn't on that laptop.
 
-> **Security.** A worker's commands run inside the hub as the hub. They can
-> reach anything the hub can, including every room's files and the model's API
+> **Security.** A worker's commands run inside the hub, as the same user the
+> hub runs as. They can reach anything the hub can, including every room's files and the model's API
 > key. That's fine on a hub only you use. On a hub other people can reach, set
 > `worker.tools` to `false` so workers can only write replies, or don't add
 > workers at all.

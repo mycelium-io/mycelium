@@ -27,8 +27,9 @@ class JiraProvider:
         """Look up a batch. Return one Ok or Err per reference, in any order."""
 ```
 
-Only the provider knows what its references look like. Supporting a new kind,
-such as Jira ticket keys, means adding a provider. Nobody lists what to watch.
+Each provider finds its own references in a row's text with `claims`, so nobody
+has to list what to watch. To support a new kind of reference, such as Jira
+ticket keys, add a provider.
 
 `auth` says how the tool expects credentials and which names to look up:
 
@@ -55,5 +56,5 @@ The hub also enforces two rules:
 
 Map the tool's states onto the board's six: `ok`, `pending`, `blocked`,
 `failed`, `done` and `unknown`. Keep the tool's own wording as the label. The
-answer lands on the row as `upstream`. It never goes in `status`, which is the
+result goes in the row's `upstream` field. It never goes in `status`, which is the
 task's own stage. In the backend this is the `Liveness` type.

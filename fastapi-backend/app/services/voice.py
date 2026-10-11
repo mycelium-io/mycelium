@@ -7,26 +7,35 @@ Voice: what someone says into their microphone, transcribed on the hub.
 The app streams 16 kHz mono audio here in small chunks while a person has the
 mic toggled on (``routes/voice.py``). Each open mic is a session holding a
 Silero voice activity detector, which hears where speech starts and stops; each
-stretch of speech it closes is transcribed by Moonshine v2 and handed back as
-text for the composer's draft. Pauses only split speech into pieces; nothing
-here decides when to stop listening or to send.
+stretch of speech it closes is transcribed by the hub's speech model and handed
+back as text for the composer's draft. Pauses only split speech into pieces;
+nothing here decides when to stop listening or to send.
 
-Voice is off unless the hub's operator turns it on (``voice.enabled``), since it
-costs ~150 MB on disk and a ~500 MB worker while anyone talks. Off, nothing here
-loads or downloads anything. On, the models are fetched once into
-:func:`model_dir` (the data folder, so a rebuilt container keeps them), starting
-when the hub does. The sessions and the engine here run inside the voice
-worker (``voice_worker.py``), a process the hub starts when a mic opens and
-that exits once nobody is talking, because ONNX Runtime never gives a model's
-memory back to the process that loaded it. Both models run on the CPU through
-sherpa-onnx, like the search model runs through fastembed. Audio is never
-stored: a session holds only the samples of the piece it is hearing, and
-forgets a mic left idle.
+Two speech models are offered (``voice.model``, :data:`MODELS`): ``fast`` is
+Moonshine v2 base (~150 MB on disk, a ~500 MB worker), and ``accurate`` is
+NVIDIA's Parakeet TDT 0.6B v2 (~630 MB on disk, a ~1.4 GB worker), which makes
+about half the mistakes. Both are English only. The hub reads the choice when it
+starts.
 
-One limit shapes the cutting: sherpa-onnx 1.13.8 returns empty text for a
-Moonshine v2 piece much past six seconds (k2-fsa/sherpa-onnx#3975, fixed after
-that release). The detector caps a piece's length, and :func:`split_long` cuts
-anything longer at its quietest point, so no piece reaches the model whole.
+Voice is off unless the hub's operator turns it on (``voice.enabled``). Off,
+nothing here loads or downloads anything. On, the chosen model is fetched once
+into :func:`model_dir` (the data folder, so a rebuilt container keeps them):
+Moonshine as the hub starts, Parakeet only once someone turns a mic on, since
+it's a larger download a hub may never use. The sessions and the engine here
+run inside the voice worker (``voice_worker.py``), a process the hub starts
+when a mic opens and that exits once nobody is talking, because ONNX Runtime
+never gives a model's memory back to the process that loaded it. The models
+run on the CPU through sherpa-onnx, like the search model runs through
+fastembed. Audio is never stored: a session holds only the samples of the
+piece it is hearing, and forgets a mic left idle.
+
+One limit shapes Moonshine's cutting: sherpa-onnx 1.13.8 returns empty text
+for a Moonshine v2 piece much past six seconds (k2-fsa/sherpa-onnx#3975, fixed
+after that release). For it the detector caps a piece's length, and
+:func:`split_long` cuts anything longer at its quietest point, so no piece
+reaches the model whole. Parakeet has no such limit: its pieces end at a pause,
+or after :data:`ACCURATE`'s ``max_piece_s`` of unbroken speech so text still
+arrives during a long run.
 """
 
 from __future__ import annotations
@@ -53,19 +62,11 @@ logger = logging.getLogger(__name__)
 SAMPLE_RATE = 16_000
 LANGUAGE = "en"
 
-MOONSHINE = "sherpa-onnx-moonshine-base-en-quantized-2026-02-27"
 SILERO = "silero_vad_v5.onnx"
 _RELEASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
-# What those release assets were when this was written: the Moonshine archive
-# and the Silero file. A download that doesn't match is refused.
-MOONSHINE_SHA256 = "43232c1d13013d37317163baec3135bd771a186a4356f28c889bab453bb0e891"
+# What the Silero release asset was when this was written; a download that
+# doesn't match is refused.
 SILERO_SHA256 = "6b99cbfd39246b6706f98ec13c7c50c6b299181f2474fa05cbc8046acc274396"
-
-# The longest piece handed to the model, in seconds; see the module docstring.
-MAX_PIECE_S = 5.5
-# A pause this long ends a piece of speech. Short enough that text arrives
-# while someone is still talking in sentences, long enough not to split words.
-MIN_SILENCE_S = 0.4
 
 # A mic left this long without a chunk is closed; the app sends one every
 # fraction of a second while it is on.
@@ -75,8 +76,99 @@ MAX_SESSIONS = 16
 State = Literal["ready", "not_downloaded", "unavailable"]
 
 
+@dataclass(frozen=True)
+class SpeechModel:
+    """One speech model a hub can run, and how it's fetched and cut."""
+
+    #: The ``voice.model`` value that picks it.
+    choice: str
+    #: Its archive on sherpa-onnx's release page, and the folder it unpacks to.
+    folder: str
+    #: What that archive was when this was written; a download that differs is refused.
+    archive_sha256: str
+    #: The files the engine loads, by role, inside ``folder``.
+    files: dict[str, str]
+    #: What each of those files was in the archive. Only read to take on a
+    #: folder unpacked before the marker existed: whole files are marked
+    #: rather than downloaded again, and a half-written one doesn't match.
+    file_sha256: dict[str, str]
+    #: The longest piece handed to the model, in seconds.
+    max_piece_s: float
+    #: A pause this long ends a piece of speech.
+    min_silence_s: float
+    #: Whether the hub fetches it as it starts, rather than when a mic opens.
+    fetch_at_start: bool
+
+
+FAST = SpeechModel(
+    choice="fast",
+    folder="sherpa-onnx-moonshine-base-en-quantized-2026-02-27",
+    archive_sha256="43232c1d13013d37317163baec3135bd771a186a4356f28c889bab453bb0e891",
+    files={
+        "encoder": "encoder_model.ort",
+        "decoder": "decoder_model_merged.ort",
+        "tokens": "tokens.txt",
+    },
+    file_sha256={
+        "encoder": "7c66495948d0d08ec1af454cd4b5514862ae6511e94712a60e6d83eaec8dc8cf",
+        "decoder": "d9d7b333af34bc552580576ddcf248a1c6c839e0d3b43b09afb9376ed009899d",
+        "tokens": "2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049",
+    },
+    # Under the length past which Moonshine v2 comes back empty (see above).
+    max_piece_s=5.5,
+    # Short enough that text arrives while someone is still talking in
+    # sentences, long enough not to split words.
+    min_silence_s=0.4,
+    fetch_at_start=True,
+)
+
+ACCURATE = SpeechModel(
+    choice="accurate",
+    folder="sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+    archive_sha256="157c157bc51155e03e37d2466522a3a737dd9c72bb25f36eb18912964161e1ad",
+    files={
+        "encoder": "encoder.int8.onnx",
+        "decoder": "decoder.int8.onnx",
+        "joiner": "joiner.int8.onnx",
+        "tokens": "tokens.txt",
+    },
+    file_sha256={
+        "encoder": "a32b12d17bbbc309d0686fbbcc2987b5e9b8333a7da83fa6b089f0a2acd651ab",
+        "decoder": "b6bb64963457237b900e496ee9994b59294526439fbcc1fecf705b31a15c6b4e",
+        "joiner": "7946164367946e7f9f29a122407c3252b680dbae9a51343eb2488d057c3c43d2",
+        "tokens": "ec182b70dd42113aff6c5372c75cac58c952443eb22322f57bbd7f53977d497d",
+    },
+    # Not a limit of the model: unbroken speech this long is handed over
+    # anyway, so text keeps arriving. The detector buffers 30 s.
+    max_piece_s=20.0,
+    # It reads a whole sentence better than its halves, and is quick enough
+    # that waiting for a longer pause costs little.
+    min_silence_s=1.0,
+    fetch_at_start=False,
+)
+
+MODELS = {m.choice: m for m in (FAST, ACCURATE)}
+
+# Kept by name: Moonshine is what a hub runs unless told otherwise.
+MOONSHINE = FAST.folder
+MOONSHINE_SHA256 = FAST.archive_sha256
+MAX_PIECE_S = FAST.max_piece_s
+MIN_SILENCE_S = FAST.min_silence_s
+
+
 class VoiceUnavailable(RuntimeError):
     """The hub can't transcribe right now, with the reason to show the person."""
+
+
+def chosen() -> SpeechModel:
+    """The model ``voice.model`` picks, or :class:`VoiceUnavailable` for one it doesn't know."""
+    model = MODELS.get(settings.VOICE_MODEL.strip().lower())
+    if model is None:
+        msg = f"voice.model is {settings.VOICE_MODEL!r}; it's one of " + ", ".join(
+            repr(name) for name in MODELS
+        )
+        raise VoiceUnavailable(msg)
+    return model
 
 
 def model_dir() -> Path:
@@ -86,24 +178,19 @@ def model_dir() -> Path:
     return Path(settings.MYCELIUM_DATA_DIR) / "models" / "voice"
 
 
-def _files(root: Path) -> dict[str, Path]:
-    m = root / MOONSHINE
-    return {
-        "encoder": m / "encoder_model.ort",
-        "decoder": m / "decoder_model_merged.ort",
-        "tokens": m / "tokens.txt",
-        "vad": root / SILERO,
-    }
+def _files(root: Path, model: SpeechModel) -> dict[str, Path]:
+    folder = root / model.folder
+    return {role: folder / name for role, name in model.files.items()} | {"vad": root / SILERO}
 
 
-# Written into the Moonshine folder once its archive has been checked and
+# Written into a model's folder once its archive has been checked and
 # unpacked, holding the archive's hash. A folder without it may be half
 # unpacked (or from an older archive), and a half-written .ort file is what
 # ONNX Runtime refuses with "ORT model verification failed".
 UNPACKED_MARKER = ".verified"
 
 
-def _present(root: Path) -> bool:
+def _present(root: Path, model: SpeechModel) -> bool:
     """Whether the models are on disk, whole.
 
     The files existing isn't enough: they appear one by one while the archive
@@ -111,40 +198,33 @@ def _present(root: Path) -> bool:
     unpack writes last. With ``VOICE_DOWNLOAD`` off the operator put the
     files there, and their existing is taken as their being whole.
     """
-    if not all(p.is_file() for p in _files(root).values()):
+    if not all(p.is_file() for p in _files(root, model).values()):
         return False
-    return not settings.VOICE_DOWNLOAD or _unpacked(root)
+    return not settings.VOICE_DOWNLOAD or _unpacked(root, model)
 
 
-def _unpacked(root: Path) -> bool:
-    marker = root / MOONSHINE / UNPACKED_MARKER
+def _unpacked(root: Path, model: SpeechModel) -> bool:
+    marker = root / model.folder / UNPACKED_MARKER
     try:
-        return marker.read_text().strip() == MOONSHINE_SHA256
+        return marker.read_text().strip() == model.archive_sha256
     except OSError:
         return False
 
 
-# What each file the engine loads was in that archive. Only read to take on a
-# folder unpacked before the marker existed: whole files are marked rather
-# than downloaded again, and a half-written one doesn't match.
-_UNPACKED_SHA256 = {
-    "encoder": "7c66495948d0d08ec1af454cd4b5514862ae6511e94712a60e6d83eaec8dc8cf",
-    "decoder": "d9d7b333af34bc552580576ddcf248a1c6c839e0d3b43b09afb9376ed009899d",
-    "tokens": "2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049",
-}
-
-
-def _adopt_unmarked(root: Path) -> bool:
-    """Mark a Moonshine folder whose files are whole, and say whether it was."""
-    files = _files(root)
-    for name, want in _UNPACKED_SHA256.items():
+def _adopt_unmarked(root: Path, model: SpeechModel) -> bool:
+    """Mark a model folder whose files are whole, and say whether it was."""
+    files = _files(root, model)
+    for role, want in model.file_sha256.items():
+        digest = hashlib.sha256()
         try:
-            digest = hashlib.sha256(files[name].read_bytes()).hexdigest()
+            with files[role].open("rb") as f:
+                while chunk := f.read(1 << 20):
+                    digest.update(chunk)
         except OSError:
             return False
-        if digest != want:
+        if digest.hexdigest() != want:
             return False
-    (root / MOONSHINE / UNPACKED_MARKER).write_text(MOONSHINE_SHA256 + "\n")
+    (root / model.folder / UNPACKED_MARKER).write_text(model.archive_sha256 + "\n")
     return True
 
 
@@ -164,10 +244,16 @@ def state() -> tuple[State, str]:
     # Found rather than imported: the hub itself never loads it.
     if importlib.util.find_spec("sherpa_onnx") is None:
         return "unavailable", "this hub has no speech runtime (sherpa-onnx)"
-    if _present(model_dir()):
+    try:
+        model = chosen()
+    except VoiceUnavailable as exc:
+        return "unavailable", str(exc)
+    if _present(model_dir(), model):
         return "ready", ""
     if settings.VOICE_DOWNLOAD:
-        return "not_downloaded", "the speech model is still downloading"
+        if model.fetch_at_start:
+            return "not_downloaded", "the speech model is still downloading"
+        return "not_downloaded", "the speech model downloads the first time a mic is turned on"
     return "unavailable", f"the speech model isn't at {model_dir()}"
 
 
@@ -200,50 +286,51 @@ def _fetch(url: str, dest: Path, sha256: str) -> None:
         tmp.unlink(missing_ok=True)
 
 
-def _unpack_moonshine(root: Path) -> None:
-    """Fetch and unpack the Moonshine archive, then move it into place at once.
+def _unpack(root: Path, model: SpeechModel) -> None:
+    """Fetch and unpack a model's archive, then move it into place at once.
 
     Everything happens in a staging folder beside the real one, which is only
     renamed into place once it's whole and marked, so nothing ever sees a
-    Moonshine folder with some of its files written.
+    model folder with some of its files written.
     """
-    staging = root / f".{MOONSHINE}.{secrets.token_hex(4)}.part"
+    staging = root / f".{model.folder}.{secrets.token_hex(4)}.part"
     staging.mkdir()
     try:
-        archive = staging / f"{MOONSHINE}.tar.bz2"
-        _fetch(f"{_RELEASE}/{MOONSHINE}.tar.bz2", archive, MOONSHINE_SHA256)
+        archive = staging / f"{model.folder}.tar.bz2"
+        _fetch(f"{_RELEASE}/{model.folder}.tar.bz2", archive, model.archive_sha256)
         with tarfile.open(archive, "r:bz2") as tar:
             tar.extractall(staging, filter="data")
-        unpacked = staging / MOONSHINE
-        (unpacked / UNPACKED_MARKER).write_text(MOONSHINE_SHA256 + "\n")
-        shutil.rmtree(root / MOONSHINE, ignore_errors=True)
-        unpacked.rename(root / MOONSHINE)
+        unpacked = staging / model.folder
+        (unpacked / UNPACKED_MARKER).write_text(model.archive_sha256 + "\n")
+        shutil.rmtree(root / model.folder, ignore_errors=True)
+        unpacked.rename(root / model.folder)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
 
 def ensure_models() -> Path:
-    """The model folder, fetching what's missing once if the hub may."""
+    """The model folder, fetching what the chosen model needs once if the hub may."""
+    model = chosen()
     root = model_dir()
-    if _present(root):
+    if _present(root, model):
         return root
     if not settings.VOICE_DOWNLOAD:
         msg = f"the speech model isn't at {root}"
         raise VoiceUnavailable(msg)
     with _download_lock:
-        if _present(root):
+        if _present(root, model):
             return root
         root.mkdir(parents=True, exist_ok=True)
-        logger.info("voice: fetching the speech model into %s", root)
+        logger.info("voice: fetching the %s speech model into %s", model.choice, root)
         try:
             if not (root / SILERO).is_file():
                 _fetch(f"{_RELEASE}/{SILERO}", root / SILERO, SILERO_SHA256)
-            if not _unpacked(root) and not _adopt_unmarked(root):
-                _unpack_moonshine(root)
+            if not _unpacked(root, model) and not _adopt_unmarked(root, model):
+                _unpack(root, model)
         except (httpx.HTTPError, OSError, tarfile.TarError) as exc:
             msg = f"couldn't fetch the speech model: {exc}"
             raise VoiceUnavailable(msg) from exc
-    if not _present(root):
+    if not _present(root, model):
         msg = f"the speech model at {root} is incomplete"
         raise VoiceUnavailable(msg)
     return root
@@ -285,22 +372,33 @@ class Engine(Protocol):
 
 
 class SherpaEngine:
-    """Moonshine v2 and Silero VAD through sherpa-onnx, loaded once per hub."""
+    """The chosen speech model and Silero VAD through sherpa-onnx, loaded once per worker."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, model: SpeechModel | None = None) -> None:
         so = _runtime()
-        files = _files(root)
+        self.model = model or chosen()
+        files = _files(root, self.model)
         self._so = so
-        self._recognizer = so.OfflineRecognizer.from_moonshine_v2(
-            encoder=str(files["encoder"]),
-            decoder=str(files["decoder"]),
-            tokens=str(files["tokens"]),
-            num_threads=settings.VOICE_THREADS,
-        )
+        if "joiner" in self.model.files:  # a transducer: Parakeet
+            self._recognizer = so.OfflineRecognizer.from_transducer(
+                encoder=str(files["encoder"]),
+                decoder=str(files["decoder"]),
+                joiner=str(files["joiner"]),
+                tokens=str(files["tokens"]),
+                num_threads=settings.VOICE_THREADS,
+                model_type="nemo_transducer",
+            )
+        else:
+            self._recognizer = so.OfflineRecognizer.from_moonshine_v2(
+                encoder=str(files["encoder"]),
+                decoder=str(files["decoder"]),
+                tokens=str(files["tokens"]),
+                num_threads=settings.VOICE_THREADS,
+            )
         self._vad = so.VadModelConfig()
         self._vad.silero_vad.model = str(files["vad"])
-        self._vad.silero_vad.min_silence_duration = MIN_SILENCE_S
-        self._vad.silero_vad.max_speech_duration = MAX_PIECE_S
+        self._vad.silero_vad.min_silence_duration = self.model.min_silence_s
+        self._vad.silero_vad.max_speech_duration = self.model.max_piece_s
         self._vad.sample_rate = SAMPLE_RATE
         self.window = int(self._vad.silero_vad.window_size)
         # One decode at a time: they take a few hundredths of a second, and
@@ -312,7 +410,7 @@ class SherpaEngine:
 
     def transcribe(self, samples: np.ndarray) -> str:
         texts = []
-        for piece in split_long(samples):
+        for piece in split_long(samples, self.model.max_piece_s):
             with self._lock:
                 stream = self._recognizer.create_stream()
                 stream.accept_waveform(SAMPLE_RATE, piece)
@@ -346,10 +444,11 @@ def engine() -> Engine:
 def prefetch() -> None:
     """Start fetching the models in the background, when voice is on and they're missing.
 
-    Called as the hub starts, so turning voice on downloads the model then,
+    Called as the hub starts, so turning voice on downloads Moonshine then,
     rather than making the first person to press the mic wait for it.
+    Parakeet waits for a mic: it's a larger download a hub may never use.
     """
-    if state()[0] == "not_downloaded":
+    if state()[0] == "not_downloaded" and chosen().fetch_at_start:
         threading.Thread(target=_prefetch, name="voice-fetch", daemon=True).start()
 
 

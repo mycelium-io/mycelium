@@ -367,6 +367,24 @@ def test_voice_is_off_in_config_unless_turned_on():
     assert sv.hub_env(config)["VOICE_ENABLED"] == "true"
 
 
+def test_the_speech_model_is_fast_unless_chosen():
+    from mycelium.config import MyceliumConfig
+
+    assert sv.hub_env(MyceliumConfig())["VOICE_MODEL"] == "fast"
+    config = MyceliumConfig()
+    config.voice.model = "accurate"
+    assert sv.hub_env(config)["VOICE_MODEL"] == "accurate"
+
+
+@pytest.mark.parametrize("model", ["accurate", "fast", None])
+def test_the_apps_speech_model_reaches_the_hub(model: str | None):
+    sup = Supervisor(
+        "hub", emit=Events(), env={}, locator=Locator(None, None), voice=True, voice_model=model
+    )
+    [hub_component] = [c for c in sup._components() if c.name == "hub"]
+    assert hub_component.env.get("VOICE_MODEL") == model
+
+
 def test_the_hubs_settings_come_from_config():
     from mycelium.config import MyceliumConfig
 

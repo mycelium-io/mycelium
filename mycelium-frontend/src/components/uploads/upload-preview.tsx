@@ -4,7 +4,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Ref } from "react";
 import useSWR from "swr";
 import {
   ChevronLeft,
@@ -21,6 +21,7 @@ import { MarkdownContent } from "@/components/markdown-content";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
+import { ZoomableImage, type ZoomKeys } from "@/components/uploads/zoomable-image";
 import { Ago } from "@/lib/relative-time";
 import { fetchUploadText, type Upload, type UploadKind } from "@/lib/api";
 import { downloadUrl, formatBytes, kindLabel, parseDelimited, textViewFor } from "@/lib/uploads";
@@ -125,21 +126,27 @@ export function UploadPreview({
   upload,
   onOpenMemory,
   className,
+  zoom,
 }: {
   upload: Upload;
   onOpenMemory?: (key: string) => void;
   className?: string;
+  /** Let an image be zoomed and panned, taking the window's keys through this. */
+  zoom?: Ref<ZoomKeys>;
 }) {
   return (
     <div className={className}>
-      {upload.kind === "image" && (
-        // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
-        <img
-          src={upload.url}
-          alt={upload.filename}
-          className="mx-auto block max-h-[70vh] max-w-full rounded-md object-contain"
-        />
-      )}
+      {upload.kind === "image" &&
+        (zoom ? (
+          <ZoomableImage ref={zoom} src={upload.url} alt={upload.filename} />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
+          <img
+            src={upload.url}
+            alt={upload.filename}
+            className="mx-auto block max-h-[70vh] max-w-full rounded-md object-contain"
+          />
+        ))}
       {upload.kind === "pdf" && <PdfPreview url={upload.url} />}
       {upload.kind === "text" && <TextPreview upload={upload} onOpenMemory={onOpenMemory} />}
       {upload.kind === "audio" && <audio controls preload="metadata" src={upload.url} className="w-full" />}
@@ -222,7 +229,8 @@ function Filmstrip({ set, current, onShow }: { set: Upload[]; current: Upload; o
 /** The preview window: the file at a readable size, with its download. Given
  *  the `set` it was opened from (a message's attachments), it steps through
  *  them with its arrows or ← and →, wrapping at the ends, and shows the whole
- *  set as a strip along the bottom. */
+ *  set as a strip along the bottom. An image can be zoomed and panned; while
+ *  it's zoomed the arrow keys pan it instead, and each file opens at fit. */
 export function UploadPreviewDialog({
   upload,
   onClose,
@@ -242,6 +250,7 @@ export function UploadPreviewDialog({
   const [shown, setShown] = useState(upload);
   if (upload && upload !== shown) setShown(upload);
 
+  const zoom = useRef<ZoomKeys>(null);
   const stepping = Boolean(onShow) && set.length > 1;
   const at = shown ? set.findIndex((u) => u.key === shown.key) : -1;
   const go = (step: 1 | -1) => {
@@ -256,7 +265,14 @@ export function UploadPreviewDialog({
         onKeyDown={(e) => {
           // Not while typing, or while a player has focus and wants its own keys.
           const tag = (e.target as HTMLElement).tagName;
-          if (!stepping || tag === "INPUT" || tag === "TEXTAREA" || tag === "AUDIO" || tag === "VIDEO") return;
+          if (tag === "INPUT" || tag === "TEXTAREA" || tag === "AUDIO" || tag === "VIDEO") return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+          // A zoomed image takes + − 0 and the arrows first.
+          if (zoom.current?.key(e.key)) {
+            e.preventDefault();
+            return;
+          }
+          if (!stepping) return;
           if (e.key === "ArrowRight") {
             e.preventDefault();
             go(1);
@@ -290,7 +306,8 @@ export function UploadPreviewDialog({
               <DownloadButton upload={shown} />
             </div>
             <div className="min-h-0 overflow-auto p-4">
-              <UploadPreview upload={shown} onOpenMemory={onOpenMemory} />
+              {/* Keyed by file, so each one opens at fit. */}
+              <UploadPreview key={shown.key} upload={shown} onOpenMemory={onOpenMemory} zoom={zoom} />
             </div>
             {stepping && onShow && (
               <div className="flex items-center gap-2 border-t border-border px-3 py-1.5">

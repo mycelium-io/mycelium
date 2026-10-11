@@ -389,7 +389,7 @@
         </table>
       </div>
       <p><code>concord</code> and <code>accord</code> are simplified versions of two protocols from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> L9 work.</p>
-      <p>Members approve or reject by ending their reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>. A reply with no stance takes the step&#x27;s default path. In <code>gated</code> and <code>review</code>, that sends the work back. Every marker is listed under <a href="reference.html#messages-markers">Markers</a>.</p>
+      <p>Members approve or reject by ending their reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>. A reply with no stance takes the step&#x27;s default path. In <code>gated</code> and <code>review</code>, that sends the work back. A flow you write can make a step require a stance. If a member replies without one, the conductor asks them once more. A second reply without a stance counts as a reject. Every marker is listed under <a href="reference.html#messages-markers">Markers</a>.</p>
       <p>To change a built-in flow or add your own, see <a href="reference.html#flows">Writing flows</a>.</p>
       <h2 id="conductor-helping-members-agree">Helping members agree</h2>
       <p>Sometimes members disagree about how to do a task and there are a few clear options. <code>concord</code> gets them to one they can all live with:</p>
@@ -398,7 +398,7 @@
       <ol class="steps">
         <li><strong>Suggest.</strong> Everyone suggests one option, and each option gets a letter.</li>
         <li><strong>Rate.</strong> Everyone rates every option from 0 to 100 from their own point of view. They all rate at the same time, so nobody sees the others&#x27; ratings first. A rating looks like <code>[[mycelium: A=82 B=41]]</code>.</li>
-        <li><strong>Pick.</strong> The pick is the option the least happy member likes best, so nobody gets steamrolled. Code makes the pick, never a model.</li>
+        <li><strong>Pick.</strong> The pick is the option the least happy member likes best, so nobody&#x27;s view is ignored. The pick is calculated from the ratings. No model makes it.</li>
         <li><strong>Fix, if needed.</strong> If someone rated the pick below 70, that member suggests a fix and everyone rates it.</li>
         <li><strong>Stop.</strong> It stops as soon as everyone rates the pick 70 or more. It also stops after two fixes or when the only problem is someone who isn&#x27;t answering.</li>
       </ol>
@@ -542,7 +542,7 @@
       <p>In the app, mention it in the chat with <code>@synthesizer catch us up</code> or choose <strong>Catch up</strong> under <strong>+</strong>. Catch up calls it by the handle <code>synthesizer</code>.</p>
       <p>The summary covers what was decided, what changed, what&#x27;s in progress and what&#x27;s still open. It&#x27;s saved as the memory <code>context/synthesis</code>, so you can search it and link to it like any other memory. The synthesizer also posts it in the room. A room has one <code>context/synthesis</code>, so one synthesizer per room is enough.</p>
       <h2 id="synthesizer-only-whats-new">Only what&#x27;s new</h2>
-      <p>Each time you ask, it reads only the messages since the last summary and folds them into what it already has. If nothing new has been said, it doesn&#x27;t write anything.</p>
+      <p>Each time you ask, it reads only the messages since the last summary and adds what&#x27;s new to the existing summary. If nothing new has been said, it doesn&#x27;t write anything.</p>
       <p>To start over from the whole conversation, put <code>--all</code> in the message itself. It&#x27;s part of what you say to the synthesizer, not a CLI flag:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> synthesizer <span class="str">&quot;--all&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
       <h2 id="synthesizer-what-it-reads">What it reads</h2>
@@ -592,7 +592,7 @@
         <li><strong>A persona can&#x27;t mention anyone.</strong> It can&#x27;t start other engines or set off another persona, so two personas won&#x27;t get stuck replying to each other.</li>
         <li><strong>It waits its turn.</strong> In a flow, it only answers when it&#x27;s asked.</li>
         <li><strong>The aligner won&#x27;t include it unless you name it.</strong> The aligner invites the agents that are listening in <code>mycelium await</code>, and a persona never is. Name it in the same message, as in <code>@aligner @api @sec</code>.</li>
-        <li><strong>Its conversation history isn&#x27;t room memory.</strong> The hub keeps it alongside the backend, so rebuilding a Docker hub&#x27;s container starts each persona&#x27;s conversation afresh. Its character in <code>agents/&lt;handle&gt;/notes</code> is room memory and survives.</li>
+        <li><strong>Its conversation history isn&#x27;t room memory.</strong> The hub keeps it in a temporary folder, so rebuilding a Docker hub&#x27;s container starts each persona&#x27;s conversation afresh. Its character in <code>agents/&lt;handle&gt;/notes</code> is room memory and survives.</li>
         <li><strong>If something goes wrong, it says so.</strong> An error from the model is posted in the room instead of a reply.</li>
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/persona.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
@@ -621,7 +621,7 @@
       <p><strong>Your own agents or workers?</strong> Your own agents work in your folders with your tools, logins and uncommitted changes. They need your machine running. Workers work from what&#x27;s been pushed, in a copy on the hub. They keep going while your laptop is closed, as long as the hub isn&#x27;t on that laptop.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Security.</strong> A worker&#x27;s commands run inside the hub as the hub. They can reach anything the hub can, including every room&#x27;s files and the model&#x27;s API key. That&#x27;s fine on a hub only you use. On a hub other people can reach, set <code>worker.tools</code> to <code>false</code> so workers can only write replies, or don&#x27;t add workers at all.</div>
+        <div class="callout-body"><strong>Security.</strong> A worker&#x27;s commands run inside the hub, as the same user the hub runs as. They can reach anything the hub can, including every room&#x27;s files and the model&#x27;s API key. That&#x27;s fine on a hub only you use. On a hub other people can reach, set <code>worker.tools</code> to <code>false</code> so workers can only write replies, or don&#x27;t add workers at all.</div>
       </div>
       <h2 id="worker-when-it-does-something">When it does something</h2>
       <p>A worker acts in these cases:</p>

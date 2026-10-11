@@ -565,7 +565,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
 
     <section class="doc-section" id="episodes">
       <h1>Episodes</h1>
-      <p>An episode is one run of an engine inside a task&#x27;s thread. It&#x27;s either a <a href="engines.html#conductor">conductor</a> flow or an <a href="engines.html#aligner">aligner</a> negotiation. It runs in the task&#x27;s thread rather than in a thread of its own, so its turns sit in the task&#x27;s conversation where everyone in the room can read them. When it&#x27;s over, the task carries on.</p>
+      <p>An episode is one run of an engine inside a task&#x27;s thread. It&#x27;s either a <a href="engines.html#conductor">conductor</a> flow or an <a href="engines.html#aligner">aligner</a> negotiation. It runs in the task&#x27;s thread rather than in a thread of its own, so its turns sit in the task&#x27;s conversation where everyone in the room can read them. When it ends, the task stays open.</p>
       <div class="table-wrap">
         <table>
           <thead>

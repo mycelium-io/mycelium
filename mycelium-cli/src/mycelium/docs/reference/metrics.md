@@ -19,20 +19,20 @@ each time one of these happens:
 | Event | When | Carries |
 |---|---|---|
 | `mycelium.hub_started` | The hub starts | how it runs (`desktop`, `docker`, `server`), OS |
-| `mycelium.task_filed` | A row lands on a board | its kind, who filed it (`person`, `agent`, `engine`), whether it was for someone |
+| `mycelium.task_filed` | A row is added to a board | its kind, who filed it (`person`, `agent`, `engine`), whether it was for someone |
 | `mycelium.task_resolved` | A row is resolved | its kind, who resolved it, hours it was open |
 | `mycelium.flow_completed` | A conductor flow finishes | the flow (`review`, `swarm`, `gated`, ... or `custom`), outcome, steps |
 | `mycelium.negotiation_completed` | The aligner reaches an outcome | outcome, rounds |
 | `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `worker`, ...) |
 
-Each of the app's ways to start work maps onto these. A plain task is filed
-and resolved. Review, Split and Settle finish as a flow or a negotiation inside
-a task. Split is a swarm.
+Every way the app offers to start work is counted by these events. A plain
+task counts as filed and then resolved. Review, Split and Settle each count as
+a flow or a negotiation that finishes inside a task. Split runs a swarm.
 
-Every event also carries the release, the time and the hub's id. The id is a
+Every event also includes the release, the time and the hub's id. The id is a
 random UUID, either the one `mycelium install` saves in `config.toml` or one
 the hub creates for itself. Resolved tasks, finished flows and finished
-negotiations carry `work_count`, which is how much work this hub has finished
+negotiations include `work_count`, which is how much work this hub has finished
 so far. That tells first use (`1`) apart from repeat use (`2` and up).
 
 **Never recorded:** names, handles, emails, rooms, task titles or text,
