@@ -9,16 +9,25 @@ import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
 
 const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
+const NOTE_THREAD = "urn:ioc:mycelium:episode:sprint:n1";
 
 vi.mock("@/lib/api", () => ({
-  fetchMemories: vi.fn(async () => [{ key: "work/zoom", value: { text: "Zoom and pan images\n\nbody" }, episode: THREAD }]),
+  // The board's rows when asked for `work/`, the room's newest memories otherwise.
+  fetchMemories: vi.fn(async (_room: string, prefix?: string) =>
+    prefix === "work/"
+      ? [{ key: "work/zoom", value: { text: "Zoom and pan images\n\nbody" }, episode: THREAD }]
+      : [{ key: "context/chat-buddy", value: "Talking with the chat buddy", episode: NOTE_THREAD }],
+  ),
 }));
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 const ping = vi.fn();
 vi.mock("@/lib/audio-ping", () => ({ ping: (...a: unknown[]) => ping(...a), primeAudio: () => {} }));
 
 import { CurrentUserProvider } from "@/components/current-user";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { NotificationBell } from "@/components/notification-bell";
+import { OPEN_MENTION_EVENT } from "@/lib/notifications";
 
 const CREATED = "2026-08-15T10:00:00.000000+00:00";
 let seq = 0;
@@ -106,6 +115,22 @@ describe("<NotificationBell />", () => {
       "href",
       "/room/sprint?focus=episode%3At1",
     );
+  });
+
+  it("names a note whose discussion mentions you, not only a task", async () => {
+    const user = userEvent.setup();
+    await start();
+    await emit(message("@bob thoughts?", NOTE_THREAD));
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    expect(await screen.findByText("sprint · Talking with the chat buddy")).toBeInTheDocument();
+  });
+
+  it("opens a mention when its system notification is clicked", async () => {
+    await start();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(OPEN_MENTION_EVENT, { detail: "/room/sprint?focus=episode%3At1" }));
+    });
+    expect(push).toHaveBeenCalledWith("/room/sprint?focus=episode%3At1");
   });
 
   it("marking all read clears the count", async () => {

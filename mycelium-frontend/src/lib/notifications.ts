@@ -9,7 +9,7 @@
 
 import { parseMentions } from "@/lib/mentions";
 import { CHAT_TYPES, unwrapContent } from "@/lib/room-events";
-import { isLiveEpisode } from "@/lib/threads";
+import { isLiveEpisode, threadShortId } from "@/lib/threads";
 
 export type NotificationKind = "mention" | "direct" | "consensus" | "knowledge" | "join" | "message";
 
@@ -88,6 +88,18 @@ function mentionsHandle(text: string, handle: string): boolean {
   if (!handle) return false;
   return parseMentions(text).some((h) => h.toLowerCase() === handle);
 }
+
+/** Where a mention opens: its task's thread, or the channel at the message. */
+export function mentionHref(n: Pick<StoredNotification, "room" | "id" | "episode">): string {
+  const room = `/room/${encodeURIComponent(n.room)}`;
+  const short = threadShortId(n.episode);
+  const focus = short ? `episode:${short}` : `message:${n.id}`;
+  return `${room}?focus=${encodeURIComponent(focus)}`;
+}
+
+/** Raised on `window` when a system notification for a mention is clicked,
+ *  with the href to open as its detail. The bell routes it. */
+export const OPEN_MENTION_EVENT = "mycelium:open-mention";
 
 /** The room a path shows, if it's a room page. */
 export function roomOfPath(pathname: string): string | null {

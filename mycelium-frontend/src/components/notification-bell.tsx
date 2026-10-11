@@ -3,8 +3,9 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Bell, Check, Settings, VolumeX, X } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { EmptyState } from "@/components/empty-state";
@@ -12,19 +13,10 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { iconButtonClass } from "@/components/ui/icon-button";
 import { useNotifications } from "@/components/notifications-provider";
 import { settingHref } from "@/lib/client-settings";
-import type { StoredNotification } from "@/lib/notifications";
-import { threadShortId } from "@/lib/threads";
+import { mentionHref, OPEN_MENTION_EVENT } from "@/lib/notifications";
 
 /** The first non-blank line, so a long message reads as one line. */
 const firstLine = (text: string) => text.split("\n").find((l) => l.trim())?.trim() ?? "";
-
-/** Where a mention opens: its task's thread, or the channel at the message. */
-function mentionHref(n: StoredNotification): string {
-  const room = `/room/${encodeURIComponent(n.room)}`;
-  const short = threadShortId(n.episode);
-  const focus = short ? `episode:${short}` : `message:${n.id}`;
-  return `${room}?focus=${encodeURIComponent(focus)}`;
-}
 
 function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
@@ -41,6 +33,18 @@ function timeAgo(iso: string): string {
 export function NotificationBell() {
   const { notifications, unreadCount, settings, markRead, markAllRead, dismiss, clearAll } = useNotifications();
   const [open, setOpen] = useState(false);
+  const router = useRouter();
+
+  // A system notification for a mention, clicked from another app, opens the
+  // message the same way its entry here does.
+  useEffect(() => {
+    const go = (e: Event) => {
+      const href = (e as CustomEvent<string>).detail;
+      if (href) router.push(href);
+    };
+    window.addEventListener(OPEN_MENTION_EVENT, go);
+    return () => window.removeEventListener(OPEN_MENTION_EVENT, go);
+  }, [router]);
 
   // The bell holds messages that mention you (or were sent to you), and
   // nothing else. Other room activity only badges the room in the sidebar.

@@ -18,6 +18,7 @@ import { setStreamViewer, useNotificationStream, useNotificationsConnected } fro
 import { useCurrentUser } from "@/components/current-user";
 import { ping, primeAudio } from "@/lib/audio-ping";
 import { fetchMemories } from "@/lib/api";
+import { mentionHref, OPEN_MENTION_EVENT } from "@/lib/notifications";
 import {
   classify,
   DEFAULT_SETTINGS,
@@ -162,12 +163,16 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const taskTitle = useCallback(async (room: string, episode: string): Promise<string | null> => {
     let cached = titles.current.get(room);
     if (!cached || (!cached.byEpisode.has(episode) && Date.now() - cached.at > 30_000)) {
-      const rows = await fetchMemories(room, "work/");
+      // Every memory has a thread, not only the board's rows: a mention in a
+      // `context/` note's discussion is named too. The rows are read on their
+      // own as well, so a busy room's newest memories can't crowd them out.
+      const [rows, recent] = await Promise.all([fetchMemories(room, "work/"), fetchMemories(room)]);
       const byEpisode = new Map<string, string>();
-      for (const row of rows) {
+      for (const row of [...recent, ...rows]) {
+        if (!row.episode) continue;
         const text = typeof row.value === "string" ? row.value : ((row.value as { text?: string } | null)?.text ?? "");
         const first = text.split("\n").find((l) => l.trim());
-        if (row.episode && first) byEpisode.set(row.episode, first.replace(/^#+\s*/, "").trim());
+        byEpisode.set(row.episode, first ? first.replace(/^#+\s*/, "").trim() : row.key);
       }
       cached = { at: Date.now(), byEpisode };
       titles.current.set(room, cached);
@@ -208,6 +213,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           note.onclick = () => {
             window.focus();
             note.close();
+            // The bell routes it, since it sits under the app's router.
+            setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+            channelRef.current?.post({ type: "read", id: n.id });
+            window.dispatchEvent(new CustomEvent(OPEN_MENTION_EVENT, { detail: mentionHref(n) }));
           };
         } catch {
           // Best-effort — a blocked/unsupported Notification() must never break the feed.
