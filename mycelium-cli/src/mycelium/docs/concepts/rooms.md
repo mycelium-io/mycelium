@@ -61,6 +61,29 @@ You can also sort your rooms list into folders. Click the + next to Rooms,
 choose **New folder** and drag rooms onto it. Folders only change your own
 list. They follow you to other browsers and the desktop app.
 
+## Room settings
+
+A room has a few settings of its own. They apply to everyone in the room.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `chat-board-moves` | `filed`, `resolved` | Which board moves get a line in the chat. Every move stays on the activity rail. Choose from `filed`, `claimed`, `released`, `blocked`, `unblocked`, `expired` and `resolved`. |
+| `dependency-gate` | the hub's `board.dependency_gate` | Whether a task waiting on an unfinished one can be claimed. |
+| `worker-turns` | the hub's `worker.max_turns_per_room` | How many turns the hub's workers can take in this room. A room can lower the hub's limit but not raise it. |
+
+In the app, open **Room settings** from the room's `…` menu. Each setting is a
+memory under `settings/` in the room. The value is in its frontmatter and the
+reason for it is in its body, so it keeps a history and has its own
+discussion. From the CLI:
+
+```bash
+mycelium memory set settings/worker-turns "Keep swarms here short." --meta setting=20
+```
+
+The hub checks every write to `settings/` and refuses a value the setting
+doesn't take, whoever writes it. Deleting the memory goes back to the hub's
+value or the default.
+
 ## What a room is on disk
 
 Each room is a folder on the hub at `~/.mycelium/rooms/<room>/`. Every memory

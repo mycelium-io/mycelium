@@ -44,6 +44,7 @@ import {
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
+import { HUB_SETTINGS, resetRoomSettingMock, roomSettings, setRoomSettingMock } from "./settings";
 import { handleUploads } from "./uploads";
 import { handleVoice } from "./voice";
 import type {
@@ -475,6 +476,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
       embedding: { status: "ok", model: "BAAI/bge-small-en-v1.5", message: "Model loaded" },
     });
 
+  // ── /api/hub ────────────────────────────────────────────────────────────────
+  if (rest[0] === "hub" && rest[1] === "settings" && method === "GET") return json(HUB_SETTINGS);
+
   // ── /api/voice ──────────────────────────────────────────────────────────────
   if (rest[0] === "voice") return handleVoice(req, rest);
 
@@ -536,6 +540,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         fx.room.is_public = body.is_public;
         if (!body.is_public && !fx.room.owner) fx.room.owner = String(body.by ?? "") || null;
       }
+      if ("title" in body) fx.room.title = String(body.title ?? "").trim() || null;
       return json(fx.room);
     }
     if (method !== "GET") return null;
@@ -545,6 +550,21 @@ export async function handleMock(req: Request): Promise<Response | null> {
   if (!fx) return notFound(`room ${roomName} not found (mock)`);
 
   switch (sub[0]) {
+    case "settings": {
+      // GET /settings, PUT and DELETE /settings/:id — the room's settings.
+      if (sub.length === 1 && method === "GET") return json(roomSettings(roomName));
+      const id = decodeURIComponent(sub[1] ?? "");
+      if (sub.length === 2 && method === "PUT") {
+        const done = setRoomSettingMock(roomName, id, await readJson(req));
+        if ("ok" in done) return json(done.ok);
+        return json({ detail: { error: "room_setting", message: done.message, key: `settings/${id}` } }, done.status);
+      }
+      if (sub.length === 2 && method === "DELETE") {
+        const reset = resetRoomSettingMock(roomName, id);
+        return reset ? json(reset) : notFound(`No room setting '${id}' (mock)`);
+      }
+      return null;
+    }
     case "memory": {
       // POST /memory/search
       if (sub[1] === "search" && method === "POST") {

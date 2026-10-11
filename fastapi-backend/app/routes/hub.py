@@ -3,8 +3,8 @@
 
 """Hub API: what this hub is set up with, for the people who use it.
 
-GET /hub/settings   the model its agents use, its experiences, and whether it
-                    shares usage stats
+GET /hub/settings   the model its agents use, its experiences, whether it
+                    shares usage stats, what workers may do, sign-in and voice
 
 A hub is often a server nobody using it can reach the configuration of. This
 lets a joined machine say what is set without being able to change it: it is
@@ -39,6 +39,17 @@ class HubExperience(BaseModel):
     scenarios: int = Field(description="How many scenarios it has")
 
 
+class HubWorkers(BaseModel):
+    tools: bool = Field(description="Workers can run commands in their checkout")
+    turn_timeout_s: float = Field(description="The longest one worker turn may take")
+    max_turns_per_room: int = Field(description="Worker turns a room gets; a room may lower it")
+
+
+class HubVoice(BaseModel):
+    enabled: bool = Field(description="The hub transcribes the message box's mic")
+    model: str = Field(description="fast or accurate")
+
+
 class HubSettings(BaseModel):
     """What this hub is set up with. Read-only: change it on the hub's machine."""
 
@@ -46,6 +57,13 @@ class HubSettings(BaseModel):
     experiences: list[HubExperience]
     personas_only: bool = Field(description="Patterns may start personas only, never workers")
     share_usage: bool = Field(description="Whether this hub sends its anonymous usage stats")
+    workers: HubWorkers
+    dependency_gate: bool = Field(
+        description="A row waiting on another can't be claimed, unless a room sets otherwise"
+    )
+    patterns_inline: bool = Field(description="A caller may send a scenario in the request")
+    sign_in: bool = Field(description="Callers must present a token")
+    voice: HubVoice
 
 
 #: The experiences Mycelium knows. Frozen in ``contracts/experiences.json``,
@@ -86,4 +104,14 @@ async def hub_settings() -> HubSettings:
         experiences=experiences,
         personas_only=settings.PATTERNS_PERSONAS_ONLY,
         share_usage=settings.TELEMETRY_SEND_PRODUCT_ANALYTICS,
+        workers=HubWorkers(
+            # As worker_engine.tooled() decides it: the sandbox can't see the checkout.
+            tools=settings.WORKER_TOOLS and not settings.ALIGNER_PI_OPENSHELL,
+            turn_timeout_s=settings.WORKER_PI_TIMEOUT_S,
+            max_turns_per_room=settings.WORKER_MAX_TURNS_PER_ROOM,
+        ),
+        dependency_gate=settings.BOARD_DEPENDENCY_GATE,
+        patterns_inline=settings.PATTERNS_ALLOW_INLINE,
+        sign_in=settings.AUTH_ENABLED,
+        voice=HubVoice(enabled=settings.VOICE_ENABLED, model=settings.VOICE_MODEL),
     )

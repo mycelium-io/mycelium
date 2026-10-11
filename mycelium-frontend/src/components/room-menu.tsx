@@ -3,10 +3,12 @@
 
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Link2, Lock, MoreHorizontal, Trash2, Users } from "lucide-react";
+import { Check, Copy, Link2, Lock, MoreHorizontal, Settings, Trash2, Users } from "lucide-react";
 import { setRoomPrivate } from "@/lib/api";
+import { settingHref } from "@/lib/client-settings";
 import { useRooms } from "@/lib/room-data";
 import { usePrincipal } from "@/components/current-user";
 import { DeleteRoomDialog } from "@/components/delete-room-dialog";
@@ -134,6 +136,10 @@ export function RoomMenu({
               {error}
             </p>
           )}
+          <Link href={settingHref("room", undefined, roomName)} onClick={() => setOpen(false)} className={item}>
+            <Settings className="size-3.5 flex-shrink-0 text-muted-foreground" />
+            <span className="text-text">Room settings</span>
+          </Link>
           <button
             type="button"
             onClick={() => {

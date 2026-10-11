@@ -9,7 +9,16 @@ import {
   fetchMessages,
   logFetchError,
 } from "@/lib/api";
-import { useMessageSearch, useRoomAgents, useRoomRowNames, useRoomThreads, type RowNaming, type ThreadOwner } from "@/lib/room-data";
+import {
+  useMessageSearch,
+  useRoomAgents,
+  useRoomRowNames,
+  useRoomSettings,
+  useRoomThreads,
+  type RowNaming,
+  type ThreadOwner,
+} from "@/lib/room-data";
+import { boardMovesInChat } from "@/lib/room-settings";
 import {
   NOTICE_TYPE,
   PING_TYPE,
@@ -283,21 +292,22 @@ function isActivity(event: Event): boolean {
 }
 
 /**
- * Activity the chat shows as well: a task's arrival and its finish, and what its
- * thread said (a ping, drawn as a quoted line when there is one to quote). Those
- * are the room's news, so they get a line where people are reading; each stays
- * on the rail too, where the task's whole life collects. Every other board event
- * (claimed, released, expired, blocked, the floor moving on each step of a flow)
- * stays on the rail alone. A task's pull request is the same: its merge and
- * its CI going red are news, and the rest of what GitHub says (a review asked
- * for, CI green again) is the task's own.
+ * Activity the chat shows as well: what a task's thread said (a ping, drawn as a
+ * quoted line when there is one to quote), and the board moves the room picked
+ * in its "Board moves shown in the chat" setting (by default a task's arrival
+ * and its finish). Those are the room's news, so they get a line where people
+ * are reading; each stays on the rail too, where the task's whole life
+ * collects. Every other board event (the floor moving on each step of a flow,
+ * and the moves the room left out) stays on the rail alone. A task's pull
+ * request is the same: its merge and its CI going red are news, and the rest
+ * of what GitHub says (a review asked for, CI green again) is the task's own.
  */
-function isAlsoInChat(event: Event): boolean {
+function isAlsoInChat(event: Event, boardMoves: ReadonlySet<string>): boolean {
   if (event.type === PING_TYPE) return true;
   if (event.type !== NOTICE_TYPE) return false;
   const subkind = (event.raw.subkind as string) || "filed";
   if (subkind === "upstream") return upstreamInChat(event.raw.change as string | undefined);
-  return subkind === "filed" || subkind === "resolved";
+  return boardMoves.has(subkind);
 }
 
 /**
@@ -588,6 +598,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // And what each row is called, so a notice, a ping and a memory push about one
   // task all print its name rather than three shapes of its key.
   const rowNames = useRoomRowNames(roomName);
+  // Which board moves the room shows in its chat (a room setting).
+  const { settings: roomSettings } = useRoomSettings(roomName);
+  const boardMoves = useMemo(() => boardMovesInChat(roomSettings), [roomSettings]);
   // What each agent is, said beside its name (`agentTag`): its CLI, an engine's
   // kind, or a bridged service as a2a.
   const agentTags = useMemo(() => new Map(agents.map((a) => [a.handle, agentTag(a)])), [agents]);
@@ -741,8 +754,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   );
 
   const candidates = useMemo(
-    () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e)),
-    [inChannel],
+    () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e, boardMoves)),
+    [inChannel, boardMoves],
   );
 
   // What you sent to the room that the feed doesn't have yet, drawn under it.

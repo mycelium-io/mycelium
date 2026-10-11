@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { BarChart3, Laptop, Server, SquareTerminal } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Runner } from "@/lib/api";
+import { settingHref } from "@/lib/client-settings";
 import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import { useRunners } from "@/lib/runners";
 import { useHubHealth, type HubHealth } from "@/lib/use-status";
@@ -203,12 +204,12 @@ export function hubSummary(health: HubHealth | null | undefined): HubSummary {
 export function HubStatus() {
   const { data: health } = useHubHealth();
   const hub = useHubLabel();
-  const active = usePathname() === "/settings";
+  const active = usePathname() === settingHref("hub");
   const summary = hubSummary(health);
   return (
     <Tooltip content={`Hub: ${summary.text}`} side="top" align="start">
       <Link
-        href="/settings"
+        href={settingHref("hub")}
         aria-label="Hub settings"
         aria-current={active ? "page" : undefined}
         className={`${CELL} flex-shrink-0 ${active ? "text-text" : ""}`}

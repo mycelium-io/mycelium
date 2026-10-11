@@ -35,6 +35,7 @@ import {
   fetchRoomFolders,
   fetchProtocols,
   fetchRooms,
+  fetchRoomSettings,
   fetchSchedules,
   fetchSkills,
   fetchUploads,
@@ -52,6 +53,7 @@ import {
   type RoomFloor,
   type RoomPresence,
   type RoomMessage,
+  type RoomSetting,
   type ScheduleList,
   type Skill,
   type UploadList,
@@ -75,6 +77,8 @@ const POLL = {
   messages: 30_000,
   memories: 30_000,
   skills: 30_000,
+  // A change made here revalidates at once; this catches one made elsewhere.
+  settings: 60_000,
   // A run is pushed (`schedule_changed`); this only catches a missed push.
   schedules: 30_000,
   uploads: 30_000,
@@ -134,6 +138,7 @@ const NO_MESSAGES: RoomMessage[] = [];
 const NO_POSTERS: string[] = [];
 const NO_MEMORIES: Memory[] = [];
 const NO_SKILLS: Skill[] = [];
+const NO_SETTINGS: RoomSetting[] = [];
 const NO_SCHEDULES: ScheduleList = { schedules: [], total: 0, checks: {} };
 const NO_UPLOADS: UploadList = { uploads: [], total: 0, accepted: [], max_bytes: 0 };
 const NO_PROTOCOLS: Protocol[] = [];
@@ -146,6 +151,7 @@ type RoomResource =
   | "messages"
   | "memories"
   | "skills"
+  | "settings"
   | "schedules"
   | "uploads"
   | "protocols"
@@ -495,6 +501,16 @@ export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {
     room, "memories", fetchMemories, NO_MEMORIES, POLL.memories, opts,
   );
   return { memories: data, loading, refresh };
+}
+
+/** A room's settings, with where each value comes from. One cache entry for the
+ *  settings page and every view that acts on a setting (the channel reads which
+ *  board moves to show from it). */
+export function useRoomSettings(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(
+    room, "settings", fetchRoomSettings, NO_SETTINGS, POLL.settings, opts,
+  );
+  return { settings: data, loading, refresh };
 }
 
 export function useRoomSkills(room: string, opts: RoomQueryOptions = {}) {

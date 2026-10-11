@@ -46,6 +46,7 @@ from app.routes.messages import router as messages_router
 from app.routes.participate import router as participate_router
 from app.routes.patterns import router as patterns_router
 from app.routes.protocols import router as protocols_router
+from app.routes.room_settings import router as room_settings_router
 from app.routes.rooms import router as rooms_router
 from app.routes.runners import router as runners_router
 from app.routes.schedules import router as schedules_router
@@ -415,6 +416,7 @@ app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(schedules_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
+app.include_router(room_settings_router, prefix="/api")
 app.include_router(uploads_router, prefix="/api")
 app.include_router(voice_router, prefix="/api")
 app.include_router(patterns_router, prefix="/api")

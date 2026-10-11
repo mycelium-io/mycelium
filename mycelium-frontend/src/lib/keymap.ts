@@ -9,6 +9,12 @@
  *  `findConflicts` is asserted empty by a unit test, so a duplicate is a red
  *  gate rather than a key that silently stops working.
  *
+ *  A person can change an action's keys on the Keyboard shortcuts settings
+ *  page. Those changes are client settings (`lib/client-settings.ts`), applied
+ *  here with `setKeyOverrides`, and every lookup reads the table with them
+ *  applied, so the dispatcher, the badges and the cheatsheet all show the
+ *  person's keys rather than the defaults.
+ *
  *  Notation: a chord is an optional `mod+` (⌘ on macOS, Ctrl elsewhere) and
  *  `alt+` (⌥ on macOS) prefix followed by the key — case-sensitive for bare
  *  letters, so "J" means shift+j. */
@@ -201,12 +207,59 @@ export function formatChord(chord: string, mac: boolean): string {
   return [...mods, chordKey(chord)].join(mac ? "" : "+");
 }
 
+/** Actions whose keys can't be changed: a run of keys (⌥1–9) that only makes
+ *  sense whole, and Escape, which every overlay already answers. */
+export const FIXED_BINDINGS: ReadonlySet<string> = new Set(["rooms.digit", "mode.command"]);
+
+/** ⌘/Ctrl chords a browser handles before any page sees them, so a page can't
+ *  bind them; the desktop app can. */
+const BROWSER_KEPT = new Set(["mod+w", "mod+t", "mod+n", "mod+q", "mod+Tab"]);
+
+export function isBrowserKept(chord: string): boolean {
+  return BROWSER_KEPT.has(chord);
+}
+
+let overrides: Readonly<Record<string, readonly string[]>> = {};
+let active: Binding[] = KEYMAP;
+
+/** Replace the person's changed shortcuts (from their client settings). An
+ *  override for an unknown or fixed action is ignored. */
+export function setKeyOverrides(next: Readonly<Record<string, readonly string[]>>): void {
+  overrides = next;
+  active = applyOverrides(KEYMAP, next);
+}
+
+/** The table with a set of overrides applied. */
+export function applyOverrides(
+  table: readonly Binding[],
+  changes: Readonly<Record<string, readonly string[]>>,
+): Binding[] {
+  return table.map(b =>
+    changes[b.id] && !FIXED_BINDINGS.has(b.id) && changes[b.id].length > 0 ? { ...b, keys: [...changes[b.id]] } : b,
+  );
+}
+
+/** The bindings in force: the table with the person's changes applied. */
+export function activeKeymap(): readonly Binding[] {
+  return active;
+}
+
+/** The keys an action has by default, before anyone changed them. */
+export function defaultKeys(id: string): string[] {
+  return KEYMAP.find(b => b.id === id)?.keys ?? [];
+}
+
+/** Whether the person changed an action's keys. */
+export function isOverridden(id: string): boolean {
+  return Boolean(overrides[id]) && !FIXED_BINDINGS.has(id);
+}
+
 function inScope(binding: Binding, scopes: readonly KeyScope[]): boolean {
   return scopes.includes(binding.scope);
 }
 
 export function bindingsInScope(scopes: readonly KeyScope[]): Binding[] {
-  return KEYMAP.filter(b => inScope(b, scopes));
+  return active.filter(b => inScope(b, scopes));
 }
 
 /** Bindings a command palette row can stand for: live here, and not opted out. */
@@ -216,12 +269,21 @@ export function paletteBindings(scopes: readonly KeyScope[]): Binding[] {
 
 /** The binding a chord fires, if any. */
 export function matchBinding(chord: string, scopes: readonly KeyScope[]): Binding | undefined {
-  return KEYMAP.find(b => inScope(b, scopes) && b.keys.includes(chord));
+  return active.find(b => inScope(b, scopes) && b.keys.includes(chord));
 }
 
 /** The chord a given action answers to — what a target draws on its badge. */
 export function chordFor(id: string): string | undefined {
-  return KEYMAP.find(b => b.id === id)?.keys[0];
+  return active.find(b => b.id === id)?.keys[0];
+}
+
+/** What giving ``id`` the keys ``keys`` would collide with, in the bindings in
+ *  force: the other actions sharing one of those keys where both are live. */
+export function conflictsFor(id: string, keys: readonly string[]): Binding[] {
+  const self = active.find(b => b.id === id);
+  if (!self) return [];
+  const overlap = (b: Binding) => b.scope === self.scope || b.scope === "global" || self.scope === "global";
+  return active.filter(b => b.id !== id && overlap(b) && b.keys.some(k => keys.includes(k)));
 }
 
 /** Two bindings collide if they share a chord in overlapping scopes, or reuse

@@ -42,8 +42,9 @@ It hears four things:
 Unlike a persona, a worker may ``@``-mention a teammate, because asking for a
 review is the collaboration; a mention of anything else is neutralized, so a
 worker never summons an engine. Turns are serial per worker and capped per
-room (:attr:`~app.config.Settings.WORKER_MAX_TURNS_PER_ROOM`), so workers
-mentioning each other cannot run forever.
+room (:attr:`~app.config.Settings.WORKER_MAX_TURNS_PER_ROOM`, which a room
+can lower with its ``worker-turns`` setting), so workers mentioning each other
+cannot run forever.
 """
 
 from __future__ import annotations
@@ -58,7 +59,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
-from app.services import activity, markers, message_format
+from app.services import activity, markers, message_format, room_settings
 from app.services.agreed import for_prompt as agreed_for_prompt
 from app.services.aligner import _norm, _registered_engine_kind
 from app.services.message_models import Kind
@@ -463,7 +464,8 @@ class WorkerEngine:
     ) -> None:
         self._manager = manager
         self._timeout_s = timeout_s if timeout_s is not None else settings.WORKER_PI_TIMEOUT_S
-        self._max_turns = max_turns if max_turns is not None else settings.WORKER_MAX_TURNS_PER_ROOM
+        #: A cap given here (tests) wins; otherwise each room's own, read per turn.
+        self._max_turns = max_turns
         # One turn at a time per worker: a second ask waits its turn rather
         # than being dropped, since a worker is often asked twice in a row (a
         # conductor step, then a row filed for it).
@@ -668,7 +670,12 @@ class WorkerEngine:
         from app.services import tasks
 
         used = self._turns.get(room, 0)
-        if used >= self._max_turns:
+        cap = (
+            self._max_turns
+            if self._max_turns is not None
+            else room_settings.value(room, "worker-turns")
+        )
+        if used >= cap:
             logger.info("room %s spent its %d worker turns; @%s stays quiet", room, used, handle)
             return None
         self._turns[room] = used + 1

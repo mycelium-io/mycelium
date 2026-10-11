@@ -103,8 +103,9 @@ mycelium memory set work/run-the-migration "Run the migration" \
 ```
 
 By default a waiting task can still be claimed. To refuse that, set
-`board.dependency_gate` to `true` in the hub's config. `board claim --force`
-claims it anyway.
+`board.dependency_gate` to `true` in the hub's config, or turn on one room's
+`dependency-gate` [room setting](#rooms).
+`board claim --force` claims it anyway.
 
 ## Hand work off
 

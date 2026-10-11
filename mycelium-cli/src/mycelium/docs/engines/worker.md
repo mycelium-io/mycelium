@@ -94,7 +94,7 @@ restart the hub:
 |---|---|---|
 | `worker.tools` | `true` | Let workers edit files and run commands. `false` makes them write replies only. |
 | `worker.pi_timeout_s` | `600` | Seconds one request can take. |
-| `worker.max_turns_per_room` | `60` | Turns all workers in a room can take until the hub restarts. After that, they stay quiet in that room. |
+| `worker.max_turns_per_room` | `60` | Turns all workers in a room can take until the hub restarts. After that, they stay quiet in that room. A room can lower it with its `worker-turns` [room setting](#rooms). |
 
 - **One thing at a time.** A worker handles one request at a time, and nothing
   keeps running between requests. It suits steps that take minutes rather than

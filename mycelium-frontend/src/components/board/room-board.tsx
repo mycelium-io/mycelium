@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/components/current-user";
+import { useClientSetting } from "@/lib/client-settings";
 import { useNotifications } from "@/components/notifications-provider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EmptyState } from "@/components/empty-state";
@@ -62,8 +63,6 @@ const TICK_MS = 30_000;
 /** How much chat the log reads back through. */
 const MESSAGE_HISTORY = 300;
 
-const TZ_KEY = "mycelium.board.tz";
-
 interface Props {
   roomName: string;
   /**
@@ -97,25 +96,16 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
   const [swarmTask, setSwarmTask] = useState<string | null>(null);
 
   // A day boundary is only meaningful in some zone, and which one is the
-  // reader's business — so it is remembered per browser, not per room.
-  const [tz, setTz] = useState(localZone);
+  // reader's business — so it is their time zone setting, not the room's.
+  const [savedZone, chooseTz] = useClientSetting("general.time-zone");
+  const tz = savedZone || localZone();
 
   // The clock starts on the client. Ages and TTLs are relative to *now*, which
   // the server render can't know without the two disagreeing on the markup.
   const [now, setNow] = useState(0);
   useEffect(() => {
     const tick = () => setNow(Date.now());
-    // Both the clock and the saved zone are facts only the client has; reading
-    // them after mount keeps the server's render and the browser's agreeing.
-    const first = setTimeout(() => {
-      tick();
-      try {
-        const saved = window.localStorage.getItem(TZ_KEY);
-        if (saved) setTz(saved);
-      } catch {
-        // A browser refusing storage just keeps the host's zone.
-      }
-    }, 0);
+    const first = setTimeout(tick, 0);
     const id = setInterval(tick, TICK_MS);
     return () => {
       clearTimeout(first);
@@ -129,14 +119,6 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
   const [captured, setCaptured] = useState<LiveItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const chooseTz = useCallback((zone: string) => {
-    setTz(zone);
-    try {
-      window.localStorage.setItem(TZ_KEY, zone);
-    } catch {
-      // A browser refusing storage still gets the zone for this session.
-    }
-  }, []);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const captureRef = useRef<HTMLInputElement>(null);
 

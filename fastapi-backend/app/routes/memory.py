@@ -40,7 +40,15 @@ from app.schemas import (
     SubscriptionCreate,
     SubscriptionRead,
 )
-from app.services import actor, in_memory_store, links, memory_sync, search_index, uploads
+from app.services import (
+    actor,
+    in_memory_store,
+    links,
+    memory_sync,
+    room_settings,
+    search_index,
+    uploads,
+)
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     EPISODE_META,
@@ -288,6 +296,18 @@ async def upsert_memories(
         existing_meta = existing[0] if existing else {}
         current_version = existing_meta.get("version", 0) if existing else 0
 
+        # A room setting is checked against the room settings table here, at the
+        # one write path, so every writer gets the same refusal.
+        setting_value: Any = None
+        if room_settings.is_setting_key(item.key):
+            try:
+                setting_value = room_settings.check_write(item.key, item.meta, existing_meta)
+            except room_settings.RoomSettingError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"error": "room_setting", "message": str(exc), "key": item.key},
+                ) from exc
+
         # Conflict check: a supplied base_version must match what's on disk.
         if item.base_version is not None and item.base_version != current_version:
             raise HTTPException(
@@ -323,6 +343,8 @@ async def upsert_memories(
         extra_meta: dict[str, Any] = unmanaged_meta(existing_meta)
         if item.meta:
             extra_meta.update({k: v for k, v in item.meta.items() if k not in MANAGED_META})
+        if room_settings.is_setting_key(item.key):
+            extra_meta[room_settings.VALUE_FIELD] = setting_value
 
         # The store's own minted keys, which nothing here recomputes. ``system``
         # supplies one; what the row already carries wins, so the binding is

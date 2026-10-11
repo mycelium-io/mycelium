@@ -19,6 +19,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { Tooltip } from "@/components/ui/tooltip";
 import { KbdChord } from "@/components/ui/kbd";
 import { KeymapCheatsheet } from "@/components/keymap-cheatsheet";
+import { useClientSetting } from "@/lib/client-settings";
 import { loadRecent, pushRecent, saveRecent, type PaletteCommand } from "@/lib/commands";
 import {
   chordFor,
@@ -97,6 +98,9 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
     setRecent(loadRecent());
   }, []);
   const mac = useIsMac();
+  // Reading the person's changed shortcuts installs them in the keymap, and a
+  // change re-renders the cheatsheet and the palette with the new keys.
+  useClientSetting("keys.overrides");
 
   // Reveal is pushed to subscribers rather than held in state: holding ⌥ would
   // otherwise re-render the whole app through the context value.
