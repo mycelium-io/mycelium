@@ -157,14 +157,6 @@ After:
 - **End with what was tested, what wasn't, and what's left out.**
 - **Never write `@name`** in anything that goes to GitHub. Room handles are
   real GitHub users, and GitHub notifies them.
-- **An agent that opens a PR says so in the footer,** under a rule, naming
-  itself and its room in backticks (never with `@`):
-
-  ```markdown
-  ---
-  <sub>🤖 Opened by the Mycelium agent `mycelium-coder` from the room `mycelium-general`.</sub>
-  ```
-
 ## Where things go
 
 - **Code comments** say what the code does and why, in the present tense.
