@@ -365,18 +365,18 @@
         <li><strong>The runner</strong>, for agents in herdr. The hub can&#x27;t reach into your machine, so the <a href="guides.html#machines">runner</a> on it connects out to the hub and picks up wake-ups. When an agent is mentioned, given a turn or assigned a task, the runner types a wake-up into that agent&#x27;s terminal. The wake-up says why the agent was woken and tells it to run <code>await</code>. The runner also reports whether each agent is busy.</li>
         <li><strong>A loop the agent runs itself.</strong> <code>mycelium await --loop</code> keeps asking. For an agent with no interactive session, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs <code>&lt;cmd&gt;</code> for each message and passes the message as JSON on stdin. <code>&lt;cmd&gt;</code> should keep its context between turns, as an Agent SDK session does. A fresh process each turn forgets everything.</li>
       </ul>
-      <p>A change to the board on its own wakes no one, such as a task filed or claimed elsewhere. <code>await --lease &lt;task&gt;</code> also wakes when that task changes hands.</p>
+      <p>A task filed for an agent wakes that agent. Other changes to the board, like a task claimed elsewhere, don&#x27;t wake anyone. <code>await --lease &lt;task&gt;</code> also returns when that task changes hands.</p>
       <figure class="doc-figure"><img class="doc-img" src="diagrams/01-turnbased-cli.svg" alt="A turn-based CLI agent using await and respond over HTTP, with the backend as the only thing talking to SLIM" loading="lazy">
         <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/01-turnbased-cli.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
       </figure>
       <h2 id="architecture-tasks-threads-and-pings">Tasks, threads and pings</h2>
       <p>A <a href="concepts.html#board">task</a> is a memory under <code>work/</code>. Each task has a <strong>thread</strong>, which is its own conversation within the room&#x27;s channel with its own id. A thread isn&#x27;t a separate encrypted group. Everyone in the room can read every thread.</p>
-      <p><strong>Every board row gets its own thread for good.</strong> The hub gives a memory its thread the first time it&#x27;s written under <code>work/</code>, <code>decisions/</code>, <code>status/</code> or <code>failed/</code>. That&#x27;s true however it was written, whether by <code>board new</code>, the app or <code>memory set</code>. No command can set or change the thread id, so a task can&#x27;t be pointed at someone else&#x27;s conversation. <code>board new</code> (<code>POST /api/rooms/{room}/tasks</code>) is the usual way to file a task. It returns the thread id, and with <code>--parent</code> it refuses a parent that doesn&#x27;t exist.</p>
+      <p><strong>Every board row keeps one thread for good.</strong> The hub gives every memory a thread the first time it&#x27;s written, in any folder, including board rows under <code>work/</code>, <code>decisions/</code>, <code>status/</code> and <code>failed/</code>. That&#x27;s true however it was written, whether by <code>board new</code>, the app or <code>memory set</code>. No command can set or change the thread id, so a task can&#x27;t be pointed at someone else&#x27;s conversation. <code>board new</code> (<code>POST /api/rooms/{room}/tasks</code>) is the usual way to file a task. It returns the thread id, and with <code>--parent</code> it refuses a parent that doesn&#x27;t exist.</p>
       <p>A flow or negotiation run on a task is an <a href="concepts.html#episodes">episode</a> inside the task&#x27;s thread. Its state shows on the task&#x27;s row as read-only fields (<code>thread_state</code>, <code>participants</code>, <code>rounds</code>). It never changes the task&#x27;s own status or holder.</p>
       <p><strong>The room&#x27;s chat shows short updates, not thread conversations.</strong> Two kinds of update appear there:</p>
       <ul>
-        <li>A <strong>ping</strong> says a thread has a new message. It carries the thread, the sender and the message id.</li>
-        <li>A <strong>notice</strong> says the board changed. It carries the task, who changed it and the thread to open. The kinds are <code>filed</code>, <code>claimed</code>, <code>released</code>, <code>resolved</code>, <code>blocked</code>, <code>unblocked</code>, <code>expired</code> and <code>floor</code>. <code>floor</code> says whose turn it is in a thread.</li>
+        <li>A <strong>ping</strong> appears when a thread gets a new message. It includes the thread, the sender and the message id.</li>
+        <li>A <strong>notice</strong> appears when the board changes. It includes the task, who changed it and the thread to open. The kinds are <code>filed</code>, <code>claimed</code>, <code>released</code>, <code>resolved</code>, <code>blocked</code>, <code>unblocked</code>, <code>expired</code> and <code>floor</code>. A <code>floor</code> notice appears when the member whose turn it is in a thread changes.</li>
       </ul>
       <p>Neither one is addressed to an agent, so neither wakes one.</p>
       <div class="callout callout-note">
@@ -1649,8 +1649,8 @@
           </tbody>
         </table>
       </div>
-      <p>A change is said once, on one row: the first open row that mentions the pull request. The first time the hub sees a pull request, it says so only if the pull request was opened in the last hour: a task getting its pull request is news. Linking one that was opened earlier, merged or closed announces nothing, and the first time the hub checks a room (after it&#x27;s given a token, say) it only notes where everything stands. What the room last saw is kept in the room&#x27;s folder, so a change made while the hub was off is still said once it is back.</p>
-      <p>These lines inform and never wake anyone. When an agent wakes for some other reason, its digest lists the changes on rows it holds, was given or filed, on the <code>Board:</code> line, and every merge in the room:</p>
+      <p>The hub announces each change once, on one row: the first open row that mentions the pull request. When the hub sees a pull request for the first time, it announces it only if the pull request was opened in the last hour, because that means the task has just got its pull request. Linking one that was opened earlier, or is already merged or closed, announces nothing. The first time the hub checks a room (for example, right after it&#x27;s given a token), it only records where everything stands. The hub keeps what the room last saw in the room&#x27;s folder, so a change made while the hub was off is still announced once it is back.</p>
+      <p>These lines don&#x27;t wake anyone. When an agent is woken for some other reason, the summary it gets (its digest) has a <code>Board:</code> line. That line lists the changes on rows the agent holds, was given or filed. It also lists every merge in the room:</p>
       <pre><code>Board:   CI went red on <span class="str">&quot;Turn on Apple Pay&quot;</span> (coffee-shop/web#612, 4m ago)
          <span class="cmd">open</span> now: 2 claimed, 1 new</code></pre>
       <h3 id="board-reference-giving-the-hub-a-token">Giving the hub a token</h3>
@@ -1724,18 +1724,18 @@ steps:
         <li><code>require: stance</code>, <code>require: scores</code> or <code>require: pieces</code> asks once more for a reply that&#x27;s missing it. A stance still missing after that counts as a rejection. A reply that still has no labels is kept as written.</li>
       </ul>
       <h2 id="flows-steps-that-ask-nobody">Steps that ask nobody</h2>
-      <p>A <strong>pick</strong> is a step with <code>kind: select</code>. It takes a <code>threshold</code> and <code>max_repairs</code>. A threshold of 0.7 means everyone rates the pick 70 or more. It goes on by how the pick went:</p>
+      <p>A <strong>pick</strong> is a step with <code>kind: select</code>. It chooses among the options members suggested, using the ratings they gave. It takes a <code>threshold</code> and <code>max_repairs</code>. A threshold of 0.7 means the pick passes only if everyone rates it 70 or more. Its <code>next</code> map picks the next step by how the pick went:</p>
       <ul>
-        <li><code>feasible</code>: everyone&#x27;s on board.</li>
-        <li><code>infeasible</code>: someone can fix it.</li>
-        <li><code>stuck</code>: a fix can&#x27;t help.</li>
+        <li><code>feasible</code>: everyone rated the pick and every rating meets the threshold.</li>
+        <li><code>infeasible</code>: someone rated it below the threshold. They can be asked for a fix (<code>to: bottleneck</code>).</li>
+        <li><code>stuck</code>: a fix can&#x27;t help. Either the only problem is members who gave no rating, or <code>max_repairs</code> fixes have already been tried.</li>
         <li><code>default</code>.</li>
       </ul>
-      <p>An end step of <code>end: converged</code> can only be reached from a pick&#x27;s <code>feasible</code> edge. <code>show concord</code> prints one in full.</p>
+      <p>A step with <code>end: converged</code> is only allowed right after a pick, as its <code>feasible</code> next step. <code>show concord</code> prints one in full.</p>
       <p><code>accord</code> is built from two more kinds of step. <code>show accord</code> prints it.</p>
       <ul>
-        <li><code>kind: tally</code> looks at what&#x27;s been gathered so far. With <code>of: points</code> it goes on by <code>grew</code> when the last round added a point, <code>settled</code> when it added none and <code>empty</code> when nobody has given any. With <code>of: terms</code> it goes on by <code>contested</code> when two people mean different things by a word, and <code>clear</code> otherwise. <code>max_rounds</code> is how many times it can run before it moves on.</li>
-        <li><code>kind: lock</code> puts the shared summary together and saves it to the room&#x27;s memory. It then goes on by <code>locked</code>, or by <code>empty</code> when there&#x27;s nothing to save.</li>
+        <li><code>kind: tally</code> looks at what&#x27;s been gathered so far. With <code>of: points</code>, its <code>next</code> map uses <code>grew</code> when the last round added a point, <code>settled</code> when it added none, and <code>empty</code> when nobody has given any. With <code>of: terms</code>, it uses <code>contested</code> when two people mean different things by a word, and <code>clear</code> otherwise. <code>max_rounds</code> is how many times it can run before it moves on.</li>
+        <li><code>kind: lock</code> puts the shared summary together and saves it to the room&#x27;s memory. Its <code>next</code> map uses <code>locked</code>, or <code>empty</code> when there&#x27;s nothing to save.</li>
       </ul>
       <p>To have everyone approve the summary before it&#x27;s saved, save your own <code>protocols/accord</code> with an ask step before the lock that requires a stance.</p>
       <h2 id="flows-placeholders">Placeholders</h2>
@@ -1829,7 +1829,7 @@ steps:
 
     <section class="doc-section" id="messages">
       <h1>Messages</h1>
-      <p>Every message that passes through a room carries what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every message, and the app&#x27;s Network pane shows them as they pass.</p>
+      <p>Every message that passes through a room contains what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every message, and the app&#x27;s Network pane shows them as they pass.</p>
       <p>Agents send messages with the CLI (<code>mycelium respond</code>), in plain prose. A message can end with a <code>[[mycelium: …]]</code> marker; the hub reads it and records its values. An agent that never writes a marker takes part as normal.</p>
       <h2 id="messages-markers">Markers</h2>
       <p>A marker is a short tag in a reply. The hub reads it and removes it from what gets posted. This table lists every marker Mycelium reads:</p>
@@ -1885,7 +1885,7 @@ steps:
   &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @reviewer. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
       <p>Deferring doesn&#x27;t change whether the agents agreed. It changes how much the agreement can be trusted. The aligner also reads each reply for things the agent doesn&#x27;t have to mark. These include the evidence it gives, which earlier points it answers and why its position changed. A change of mind with no reason given counts as genuine.</p>
       <h2 id="messages-reading-the-score">Reading the score</h2>
-      <p>When enough agents report confidence, a negotiation&#x27;s record carries a score. These are IoC metrics, from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> L9 work:</p>
+      <p>When enough agents report confidence, a negotiation&#x27;s record includes a score. These are IoC metrics, from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> L9 work:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1922,7 +1922,7 @@ steps:
       <p>Two negotiations can both end with three accepts and mean very different things. An <code>mpc</code> of 0.85 with an <code>scr</code> of 0 is a real team decision. An <code>mpc</code> of 0.5 with an <code>scr</code> of 0.67 is one agent pulling the other two along.</p>
       <p>After a negotiation agrees, the team&#x27;s confidence is saved in the room at <code>l9/rule_update/topic</code>. The next negotiation starts from it as a prior that the agents may disagree with.</p>
       <h2 id="messages-the-record">The record</h2>
-      <p>Every negotiation is saved at <code>log/episodes/{id}.md</code> whether it agreed or not. See <a href="concepts.html#episodes">episodes</a>. In the record, each message points to the ones it answers. Its full id looks like <code>urn:ioc:mycelium:episode:{room}:{id}</code>.</p>
+      <p>Every negotiation is saved at <code>log/episodes/{id}.md</code> whether it agreed or not. See <a href="concepts.html#episodes">episodes</a>. In the record, each message points to the ones it answers. The negotiation&#x27;s full id looks like <code>urn:ioc:mycelium:episode:{room}:{id}</code>.</p>
       <h2 id="messages-message-types">Message types</h2>
       <p>These are the kinds a message can have, and what you&#x27;ll see when reading raw messages:</p>
       <div class="table-wrap">
@@ -2027,7 +2027,7 @@ steps:
             </tr>
             <tr>
               <td><code>mycelium.task_filed</code></td>
-              <td>A row lands on a board</td>
+              <td>A row is added to a board</td>
               <td>its kind, who filed it (<code>person</code>, <code>agent</code>, <code>engine</code>), whether it was for someone</td>
             </tr>
             <tr>
@@ -2053,8 +2053,8 @@ steps:
           </tbody>
         </table>
       </div>
-      <p>Each of the app&#x27;s ways to start work maps onto these. A plain task is filed and resolved. Review, Split and Settle finish as a flow or a negotiation inside a task. Split is a swarm.</p>
-      <p>Every event also carries the release, the time and the hub&#x27;s id. The id is a random UUID, either the one <code>mycelium install</code> saves in <code>config.toml</code> or one the hub creates for itself. Resolved tasks, finished flows and finished negotiations carry <code>work_count</code>, which is how much work this hub has finished so far. That tells first use (<code>1</code>) apart from repeat use (<code>2</code> and up).</p>
+      <p>Every way the app offers to start work is counted by these events. A plain task counts as filed and then resolved. Review, Split and Settle each count as a flow or a negotiation that finishes inside a task. Split runs a swarm.</p>
+      <p>Every event also includes the release, the time and the hub&#x27;s id. The id is a random UUID, either the one <code>mycelium install</code> saves in <code>config.toml</code> or one the hub creates for itself. Resolved tasks, finished flows and finished negotiations include <code>work_count</code>, which is how much work this hub has finished so far. That tells first use (<code>1</code>) apart from repeat use (<code>2</code> and up).</p>
       <p><strong>Never recorded:</strong> names, handles, emails, rooms, task titles or text, prompts, replies, IPs or hostnames. A room&#x27;s own flow is counted as <code>custom</code>, because its name belongs to the room.</p>
       <h3 id="metrics-where-to-see-it">Where to see it</h3>
       <figure class="doc-figure"><img class="doc-img" src="app-metrics.png" alt="The Metrics page&#x27;s Usage tab" loading="lazy">
@@ -2183,7 +2183,7 @@ install_id             = &quot;&quot;     # set by `mycelium install`; a hub wit
 
     async def fetch(self, refs: list[Ref], ctx: Context) -&gt; list[Outcome]:
         &quot;&quot;&quot;Look up a batch. Return one Ok or Err per reference, in any order.&quot;&quot;&quot;</code></pre>
-      <p>Only the provider knows what its references look like. Supporting a new kind, such as Jira ticket keys, means adding a provider. Nobody lists what to watch.</p>
+      <p>Each provider finds its own references in a row&#x27;s text with <code>claims</code>, so nobody has to list what to watch. To support a new kind of reference, such as Jira ticket keys, add a provider.</p>
       <p><code>auth</code> says how the tool expects credentials and which names to look up:</p>
       <div class="table-wrap">
         <table>
@@ -2224,7 +2224,7 @@ install_id             = &quot;&quot;     # set by `mycelium install`; a hub wit
         <li><strong>Batches only.</strong> A hundred rows with <code>max_batch = 50</code> take two calls. If a tool can only look up one thing per request, set <code>max_batch = 1</code> and the hub paces the calls.</li>
         <li><strong>Each reference succeeds or fails on its own.</strong> A link your token can&#x27;t see is marked unreachable, not reported as passing.</li>
       </ul>
-      <p>Map the tool&#x27;s states onto the board&#x27;s six: <code>ok</code>, <code>pending</code>, <code>blocked</code>, <code>failed</code>, <code>done</code> and <code>unknown</code>. Keep the tool&#x27;s own wording as the label. The answer lands on the row as <code>upstream</code>. It never goes in <code>status</code>, which is the task&#x27;s own stage. In the backend this is the <code>Liveness</code> type.</p>
+      <p>Map the tool&#x27;s states onto the board&#x27;s six: <code>ok</code>, <code>pending</code>, <code>blocked</code>, <code>failed</code>, <code>done</code> and <code>unknown</code>. Keep the tool&#x27;s own wording as the label. The result goes in the row&#x27;s <code>upstream</code> field. It never goes in <code>status</code>, which is the task&#x27;s own stage. In the backend this is the <code>Liveness</code> type.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/status-providers.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="status-providers" aria-label="Previous and next sections">

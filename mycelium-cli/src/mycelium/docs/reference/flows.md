@@ -70,27 +70,30 @@ Other options:
 
 ## Steps that ask nobody
 
-A **pick** is a step with `kind: select`. It takes a `threshold` and
-`max_repairs`. A threshold of 0.7 means everyone rates the pick 70 or more. It
-goes on by how the pick went:
+A **pick** is a step with `kind: select`. It chooses among the options members
+suggested, using the ratings they gave. It takes a `threshold` and
+`max_repairs`. A threshold of 0.7 means the pick passes only if everyone rates
+it 70 or more. Its `next` map picks the next step by how the pick went:
 
-- `feasible`: everyone's on board.
-- `infeasible`: someone can fix it.
-- `stuck`: a fix can't help.
+- `feasible`: everyone rated the pick and every rating meets the threshold.
+- `infeasible`: someone rated it below the threshold. They can be asked for a
+  fix (`to: bottleneck`).
+- `stuck`: a fix can't help. Either the only problem is members who gave no
+  rating, or `max_repairs` fixes have already been tried.
 - `default`.
 
-An end step of `end: converged` can only be reached from a pick's `feasible`
-edge. `show concord` prints one in full.
+A step with `end: converged` is only allowed right after a pick, as its
+`feasible` next step. `show concord` prints one in full.
 
 `accord` is built from two more kinds of step. `show accord` prints it.
 
-- `kind: tally` looks at what's been gathered so far. With `of: points` it goes
-  on by `grew` when the last round added a point, `settled` when it added none
-  and `empty` when nobody has given any. With `of: terms` it goes on by
+- `kind: tally` looks at what's been gathered so far. With `of: points`, its
+  `next` map uses `grew` when the last round added a point, `settled` when it
+  added none, and `empty` when nobody has given any. With `of: terms`, it uses
   `contested` when two people mean different things by a word, and `clear`
   otherwise. `max_rounds` is how many times it can run before it moves on.
 - `kind: lock` puts the shared summary together and saves it to the room's
-  memory. It then goes on by `locked`, or by `empty` when there's nothing to
+  memory. Its `next` map uses `locked`, or `empty` when there's nothing to
   save.
 
 To have everyone approve the summary before it's saved, save your own

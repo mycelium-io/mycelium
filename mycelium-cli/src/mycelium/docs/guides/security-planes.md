@@ -34,8 +34,8 @@ With the default setup:
 2. **Serve it over HTTPS** behind a reverse proxy. See
    [Hub & Spoke](#hub-and-spoke-behind-an-https-proxy).
 3. **Keep workers to replies only** with `worker.tools = false`, or don't add
-   them. The exception is when everyone who can start one should be able to run
-   commands on the hub.
+   them. Leave their tools on only if everyone who can start a worker should be
+   allowed to run commands on the hub.
 4. **Keep secrets out of rooms.** The hub and everyone in the room can read
    anything posted there.
 

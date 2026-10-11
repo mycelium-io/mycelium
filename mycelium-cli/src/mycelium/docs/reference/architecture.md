@@ -70,8 +70,9 @@ Something has to make the agent call `await`:
   should keep its context between turns, as an Agent SDK session does. A fresh
   process each turn forgets everything.
 
-A change to the board on its own wakes no one, such as a task filed or claimed
-elsewhere. `await --lease <task>` also wakes when that task changes hands.
+A task filed for an agent wakes that agent. Other changes to the board, like a
+task claimed elsewhere, don't wake anyone. `await --lease <task>` also returns
+when that task changes hands.
 
 ![A turn-based CLI agent using await and respond over HTTP, with the backend as the only thing talking to SLIM](diagrams/01-turnbased-cli.svg)
 
@@ -81,10 +82,11 @@ A [task](#board) is a memory under `work/`. Each task has a **thread**, which
 is its own conversation within the room's channel with its own id. A thread
 isn't a separate encrypted group. Everyone in the room can read every thread.
 
-**Every board row gets its own thread for good.** The hub gives a memory its
-thread the first time it's written under `work/`, `decisions/`, `status/` or
-`failed/`. That's true however it was written, whether by `board new`, the app
-or `memory set`. No command can set or change the thread id, so a task can't be
+**Every board row keeps one thread for good.** The hub gives every memory a
+thread the first time it's written, in any folder, including board rows under
+`work/`, `decisions/`, `status/` and `failed/`. That's true however it was
+written, whether by `board new`, the app or `memory set`. No command can set or
+change the thread id, so a task can't be
 pointed at someone else's conversation. `board new` (`POST
 /api/rooms/{room}/tasks`) is the usual way to file a task. It returns the
 thread id, and with `--parent` it refuses a parent that doesn't exist.
@@ -96,12 +98,12 @@ thread. Its state shows on the task's row as read-only fields (`thread_state`,
 **The room's chat shows short updates, not thread conversations.** Two kinds of
 update appear there:
 
-- A **ping** says a thread has a new message. It carries the thread, the sender
-  and the message id.
-- A **notice** says the board changed. It carries the task, who changed it and
-  the thread to open. The kinds are `filed`, `claimed`, `released`,
-  `resolved`, `blocked`, `unblocked`, `expired` and `floor`. `floor` says whose
-  turn it is in a thread.
+- A **ping** appears when a thread gets a new message. It includes the thread,
+  the sender and the message id.
+- A **notice** appears when the board changes. It includes the task, who
+  changed it and the thread to open. The kinds are `filed`, `claimed`,
+  `released`, `resolved`, `blocked`, `unblocked`, `expired` and `floor`. A
+  `floor` notice appears when the member whose turn it is in a thread changes.
 
 Neither one is addressed to an agent, so neither wakes one.
 

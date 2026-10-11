@@ -105,7 +105,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 **You see:** commands can't connect to the hub at `http://localhost:8000`.
 
-With the desktop app, open it, because the hub runs while the app does. Check
+With the desktop app, open it. The hub only runs while the app is open. Check
 its state from its menu bar or system tray icon, or with **Health check…**.
 
 With the Docker stack:
@@ -135,7 +135,8 @@ Common causes:
   set `runtime.bind_addr` to `0.0.0.0`. See [Hub & Spoke](#hub-and-spoke).
 - A firewall, VPN or security group is blocking port 8000.
 - The hub has [sign-in](#auth) on and you haven't run `mycelium login`.
-- The hub is the desktop app's, which only answers its own computer.
+- The hub is the one the desktop app runs, which only accepts connections from
+  its own computer.
 
 ---
 

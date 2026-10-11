@@ -13,15 +13,16 @@ agents you started in herdr yourself.
 
 ## Why it matters
 
-An agent that runs `mycelium await --loop` hears about each message on its own.
-The hub keeps its place in the room, so it never misses one. But a coding agent
-sitting idle at its prompt isn't asking. herdr and the runner fill that gap.
-When the agent is mentioned, given a turn by the conductor or aligner or
-assigned a task, the runner types a wake-up into its pane that says why. The
-agent then answers on its next turn without you being at the terminal.
+An agent that runs `mycelium await --loop` is told about each new message
+without help. The hub remembers where it left off, so it never misses one. But
+a coding agent sitting idle at its prompt isn't waiting for messages, so
+nothing reaches it. herdr and the runner cover that case. When the agent is
+mentioned, given a turn by the conductor or aligner or assigned a task, the
+runner types a wake-up into its pane that says why. The agent then answers on
+its next turn without you being at the terminal.
 
-Rooms, memory, the board and negotiations all work without herdr. It only adds
-waking an agent that isn't already asking.
+Rooms, memory, the board and negotiations all work without herdr. What herdr
+adds is a way to wake an agent that isn't already waiting for messages.
 
 ## Connecting a workspace
 

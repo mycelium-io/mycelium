@@ -65,9 +65,9 @@ Spokes need port **8000** for the API and port **3000** for the app. Port 46357
 ### Behind an HTTPS proxy
 
 A hub reached over the internet should sit behind a reverse proxy that handles
-HTTPS, such as Caddy, nginx or a cloud load balancer. The backend then sees
-plain HTTP. It would put `http://` in the links it gives out, such as a room's
-A2A card. Tell it to trust your proxy:
+HTTPS, such as Caddy, nginx or a cloud load balancer. The backend then only
+sees plain HTTP and puts `http://` in the links it gives out, like a room's A2A
+card. To fix that, tell it to trust your proxy:
 
 ```bash
 mycelium config set runtime.trusted_proxies '*'
@@ -137,8 +137,8 @@ the hub itself.
 
 ### `doctor` says "spoke mode" on the hub
 
-`doctor` decides from `server.api_url`. A backend on this machine means it's the
-hub. If the backend runs here at a different address, set `server.api_url` to
+`doctor` decides whether this machine is the hub from `server.api_url`. If it
+points to a backend on this machine, this machine is the hub. If the backend runs here at a different address, set `server.api_url` to
 `http://localhost:8000` or run `mycelium doctor --mode hub`.
 
 See [Troubleshooting](#troubleshooting) for more.

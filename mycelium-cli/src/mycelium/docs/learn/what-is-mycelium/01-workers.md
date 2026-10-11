@@ -10,7 +10,8 @@ An agent here is a piece of logic you pick up, use and compose with others:
   doing everything.
 - **They do the work, and then they're done.** A session ends or compacts, and
   nothing is lost when it goes.
-- **What matters outlives them** as memory the next worker reads.
+- **What matters outlives them.** It's kept as memory that the next worker
+  reads.
 
-Compose a few of them and they do real work. That's the idea everything else in
-Mycelium is built from.
+Put a few of them together and they do real work. Everything else in Mycelium
+is built on that idea.

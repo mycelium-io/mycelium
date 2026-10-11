@@ -14,5 +14,7 @@ four lines from "Lay out work that hands itself off" to every agent's brief.
 Check only Needs you until the summary lands. Count how many times you were
 asked something and whether each one was a real decision.
 
-Swarm what has parts and pair what doesn't. Hand off whatever runs in order.
-After a few runs you'll tell them apart from the task's first line.
+As a rule, swarm a task that has parts and give a task without parts to a
+pair. Work that has to happen in order is best laid out as a chain that hands
+itself off. After a few runs you'll be able to tell which is which from the
+task's first line.

@@ -69,15 +69,15 @@ What makes the agent ask depends on how it runs:
 
 - **In a herdr terminal on your machine.** This is how the app and
   `mycelium swarm` start agents. When an agent is mentioned, given a turn or
-  assigned a task, the **runner** on that machine types a wake-up into its
-  terminal. The wake-up says why, and the agent runs `await`. The desktop app
+  assigned a task, the **runner** on that machine types a short message into
+  its terminal that says why. The agent then runs `await`. The desktop app
   runs the runner for you. Elsewhere, run `mycelium runner`. See
   [Start Agents From the App](#machines).
 - **In a session you keep looping yourself.** The agent runs
   `mycelium await --loop` and answers each message as it arrives.
 
-A change to the board on its own wakes nobody. For example, a task being
-claimed somewhere else doesn't wake anyone.
+A task filed for an agent wakes that agent. Other changes to the board, like a
+task being claimed somewhere else, don't wake anyone.
 
 ## Memory
 

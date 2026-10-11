@@ -315,7 +315,7 @@ With auth off, the handle in the request is used as-is.
 
 ## Acting for an agent
 
-Two calls take a handle that isn't about authorship:
+Two calls take a handle for something other than recording who wrote what:
 
 - `mycelium await` reads and consumes that handle's queue of messages.
 - Joining a room records that handle as present.
