@@ -4694,6 +4694,165 @@
         }
       }
     },
+    "/api/rooms/{room_name}/settings": {
+      "get": {
+        "tags": [
+          "room-settings"
+        ],
+        "summary": "List Room Settings",
+        "description": "Every room setting, with the room's own value where it set one.",
+        "operationId": "list_room_settings_api_rooms__room_name__settings_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RoomSettingRead"
+                  },
+                  "title": "Response List Room Settings Api Rooms  Room Name  Settings Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/settings/{setting_id}": {
+      "put": {
+        "tags": [
+          "room-settings"
+        ],
+        "summary": "Set Room Setting",
+        "description": "Set a room setting for this room, as a memory write at ``settings/<id>``.",
+        "operationId": "set_room_setting_api_rooms__room_name__settings__setting_id__put",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "setting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Setting Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomSettingWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomSettingRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "room-settings"
+        ],
+        "summary": "Reset Room Setting",
+        "description": "Drop the room's own value, so it runs with the hub's (or the default) again.",
+        "operationId": "reset_room_setting_api_rooms__room_name__settings__setting_id__delete",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "setting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Setting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomSettingRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/uploads": {
       "post": {
         "tags": [
@@ -7433,6 +7592,27 @@
             "type": "boolean",
             "title": "Share Usage",
             "description": "Whether this hub sends its anonymous usage stats"
+          },
+          "workers": {
+            "$ref": "#/components/schemas/HubWorkers"
+          },
+          "dependency_gate": {
+            "type": "boolean",
+            "title": "Dependency Gate",
+            "description": "A row waiting on another can't be claimed, unless a room sets otherwise"
+          },
+          "patterns_inline": {
+            "type": "boolean",
+            "title": "Patterns Inline",
+            "description": "A caller may send a scenario in the request"
+          },
+          "sign_in": {
+            "type": "boolean",
+            "title": "Sign In",
+            "description": "Callers must present a token"
+          },
+          "voice": {
+            "$ref": "#/components/schemas/HubVoice"
           }
         },
         "type": "object",
@@ -7440,10 +7620,61 @@
           "model",
           "experiences",
           "personas_only",
-          "share_usage"
+          "share_usage",
+          "workers",
+          "dependency_gate",
+          "patterns_inline",
+          "sign_in",
+          "voice"
         ],
         "title": "HubSettings",
         "description": "What this hub is set up with. Read-only: change it on the hub's machine."
+      },
+      "HubVoice": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "The hub transcribes the message box's mic"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "fast or accurate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "model"
+        ],
+        "title": "HubVoice"
+      },
+      "HubWorkers": {
+        "properties": {
+          "tools": {
+            "type": "boolean",
+            "title": "Tools",
+            "description": "Workers can run commands in their checkout"
+          },
+          "turn_timeout_s": {
+            "type": "number",
+            "title": "Turn Timeout S",
+            "description": "The longest one worker turn may take"
+          },
+          "max_turns_per_room": {
+            "type": "integer",
+            "title": "Max Turns Per Room",
+            "description": "Worker turns a room gets; a room may lower it"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tools",
+          "turn_timeout_s",
+          "max_turns_per_room"
+        ],
+        "title": "HubWorkers"
       },
       "JoinCreate": {
         "properties": {
@@ -9745,6 +9976,167 @@
           "created_at"
         ],
         "title": "RoomRead"
+      },
+      "RoomSettingRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "bool, int or set"
+          },
+          "value": {
+            "title": "Value",
+            "description": "What the room runs with"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "room (set here), hub (the hub's value) or default"
+          },
+          "hub_value": {
+            "title": "Hub Value",
+            "description": "What the room would run with if it set nothing"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options",
+            "description": "A set's choices"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max",
+            "description": "The hub's cap, for a setting a room may only lower"
+          },
+          "inherits": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inherits",
+            "description": "The hub's config key this comes from"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why the room set it (the memory's body)"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "value",
+          "source",
+          "hub_value"
+        ],
+        "title": "RoomSettingRead"
+      },
+      "RoomSettingWrite": {
+        "properties": {
+          "value": {
+            "title": "Value"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Reason",
+            "description": "Why, kept as the memory's body",
+            "default": ""
+          },
+          "by": {
+            "type": "string",
+            "minLength": 1,
+            "title": "By",
+            "description": "Who is changing it"
+          },
+          "base_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version",
+            "description": "The version this change was made against; a newer one refuses it (409)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "by"
+        ],
+        "title": "RoomSettingWrite"
       },
       "RoomStatusResponse": {
         "properties": {

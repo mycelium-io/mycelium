@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "Frozen table of a room's settings. A room setting is a memory at",
+    "settings/<id>: its value in the frontmatter as `setting:`, the reason for",
+    "it in the body, versioned and discussable like any memory. The hub checks",
+    "every write to settings/ against this table at the memory upsert",
+    "(fastapi-backend/app/services/room_settings.py), so the settings page, the",
+    "CLI's `memory set` and an agent all get the same 422. A setting with",
+    "`inherits` takes the hub's value (that config.toml key) until the room sets",
+    "its own; `at_most_hub` means a room may lower the hub's value, never raise",
+    "it. The frontend's copy (mycelium-frontend/src/lib/room-settings.ts) carries",
+    "the labels. Asserted by fastapi-backend/tests/test_room_settings.py and",
+    "mycelium-frontend/src/lib/room-settings.contract.test.ts."
+  ],
+  "version": 1,
+  "namespace": "settings/",
+  "value_field": "setting",
+  "settings": [
+    {
+      "id": "chat-board-moves",
+      "kind": "set",
+      "options": ["filed", "claimed", "released", "blocked", "unblocked", "expired", "resolved"],
+      "default": ["filed", "resolved"]
+    },
+    {
+      "id": "dependency-gate",
+      "kind": "bool",
+      "inherits": "board.dependency_gate"
+    },
+    {
+      "id": "worker-turns",
+      "kind": "int",
+      "min": 1,
+      "inherits": "worker.max_turns_per_room",
+      "at_most_hub": true
+    }
+  ]
+}

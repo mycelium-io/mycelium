@@ -54,6 +54,8 @@ export interface MockRoom {
   mas_id?: string | null;
   owner?: string | null;
   members?: string[];
+  /** The room's display title, once someone gives it one. */
+  title?: string | null;
   /** The pattern a room was loaded from, and the task its flow runs in. */
   pattern?: string | null;
   pattern_task?: string | null;

@@ -26,6 +26,7 @@ import {
 } from "@/lib/room-data";
 import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
+import { useClientSetting } from "@/lib/client-settings";
 import { Kbd, KbdChord } from "@/components/ui/kbd";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { IntentDialog } from "@/components/intent-dialog";
@@ -241,6 +242,7 @@ export function RoomChatBox({
   // "who am I" (the account menu), not a per-composer handle. Anonymous falls
   // back to "user" so the room still has a sender to attribute the message to.
   const { principal } = useCurrentUser();
+  const [sendKey] = useClientSetting("general.send");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trigger, setTrigger] = useState<Trigger | null>(null);
@@ -777,7 +779,9 @@ export function RoomChatBox({
         return;
       }
     }
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Which key sends is the person's setting; the other makes a new line.
+    const command = e.metaKey || e.ctrlKey;
+    if (e.key === "Enter" && !e.shiftKey && (sendKey === "mod-enter" ? command : !command)) {
       e.preventDefault();
       submit();
     }
@@ -967,7 +971,15 @@ export function RoomChatBox({
             )}
             <div className="ml-auto flex shrink-0 items-center gap-2">
             <span className="hidden items-center gap-1.5 text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100 @[34rem]:flex">
-              <Kbd size="xs" tone="muted">⇧↵</Kbd> newline
+              {sendKey === "mod-enter" ? (
+                <>
+                  <KbdChord size="xs" tone="muted" chord="mod+Enter" /> send
+                </>
+              ) : (
+                <>
+                  <Kbd size="xs" tone="muted">⇧↵</Kbd> newline
+                </>
+              )}
               <KbdChord size="xs" tone="muted" action="palette.open" /> commands
             </span>
             {mic.available && <MicToggle state={mic.state} speaking={mic.speaking} onToggle={mic.toggle} />}

@@ -42,6 +42,8 @@ async function errorDetail(res: Response): Promise<string> {
     const d = data?.detail;
     if (typeof d === "string") return d;
     if (Array.isArray(d) && d[0]?.msg) return String(d[0].msg);
+    // A structured refusal ({error, message, ...}) carries its own sentence.
+    if (d && typeof d === "object" && typeof d.message === "string") return d.message;
   } catch {
     // fall through to the status line
   }
@@ -158,6 +160,77 @@ export async function setRoomTitle(roomName: string, title: string): Promise<Roo
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),
   });
+}
+
+// ── Room settings ────────────────────────────────────────────────────────────
+
+/** One room setting as the hub reports it: its value, and where that comes from. */
+export interface RoomSetting {
+  id: string;
+  kind: "bool" | "int" | "set";
+  value: unknown;
+  /** room = set for this room; hub = the hub's value; default = the table's. */
+  source: "room" | "hub" | "default";
+  /** What the room runs with when it sets nothing. */
+  hub_value: unknown;
+  options: string[];
+  min: number | null;
+  /** The hub's cap, for a setting a room may only lower. */
+  max: number | null;
+  inherits: string | null;
+  reason: string | null;
+  version: number | null;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+export async function fetchRoomSettings(roomName: string): Promise<RoomSetting[]> {
+  return apiFetch<RoomSetting[]>(`${roomApiPath(roomName)}/settings`, {
+    cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is RoomSetting[],
+  });
+}
+
+/** Set a room setting for this room. Throws `ApiError` saying what's allowed. */
+export async function setRoomSetting(
+  roomName: string,
+  id: string,
+  value: unknown,
+  by: string,
+  baseVersion: number | null = null,
+): Promise<RoomSetting> {
+  return apiFetch<RoomSetting>(`${roomApiPath(roomName)}/settings/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value, by: by || "user", base_version: baseVersion }),
+  });
+}
+
+/** Go back to the hub's value (or the default) for a room setting. */
+export async function resetRoomSetting(roomName: string, id: string): Promise<RoomSetting> {
+  return apiFetch<RoomSetting>(`${roomApiPath(roomName)}/settings/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+// ── Hub settings ─────────────────────────────────────────────────────────────
+
+/** What a hub is set up with, read-only, never a key or an address. */
+export interface HubSettings {
+  model: { model: string | null; provider: string | null; has_key: boolean; custom_endpoint: boolean };
+  experiences: { id: string; title: string; description: string; open: string; unit: string; scenarios: number }[];
+  personas_only: boolean;
+  share_usage: boolean;
+  workers: { tools: boolean; turn_timeout_s: number; max_turns_per_room: number };
+  dependency_gate: boolean;
+  patterns_inline: boolean;
+  sign_in: boolean;
+  voice: { enabled: boolean; model: string };
+}
+
+export async function fetchHubSettings(): Promise<HubSettings | null> {
+  return apiFetch<HubSettings | null>("/api/hub/settings", { cache: "no-store", fallback: null });
 }
 
 /** The rooms listed for `viewer`: every shared room, and their private ones. */

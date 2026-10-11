@@ -11,6 +11,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { useDefaultLayout } from "react-resizable-panels";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
 import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
+import { SettingsCommands } from "@/components/settings/settings-commands";
 import { CommandPaletteButton, KeymapHelpButton } from "@/components/keymap-provider";
 import { InstallModalProvider, useOpenInstallModal } from "@/components/install-modal";
 import { DocsLink } from "@/components/docs-link";
@@ -186,6 +187,7 @@ export function AppShell({
   return (
     <GlobalSearch>
       <InstallModalProvider>
+        <SettingsCommands room={activeRoom} />
         <div
           className="flex h-screen flex-col overflow-hidden bg-bg text-text"
           data-app-shell="ready"

@@ -44,7 +44,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
-from app.config import settings
+from app.services import room_settings
 from app.services.filesystem import (
     EPISODE_META,
     get_room_dir,
@@ -317,8 +317,8 @@ async def claim(
     failure with extra steps.
 
     A row still waiting on a dependency is refused too, when the room's
-    dependency gate is on (:attr:`~app.config.Settings.BOARD_DEPENDENCY_GATE`,
-    off by default): the refusal names what it waits on, and ``force`` takes
+    dependency gate is on (the room's ``dependency-gate`` setting, else the
+    hub's :attr:`~app.config.Settings.BOARD_DEPENDENCY_GATE`, off by default): the refusal names what it waits on, and ``force`` takes
     the row anyway for the caller who knows better.
     """
     meta, content = _load(room, key)
@@ -333,7 +333,7 @@ async def claim(
             claimed_at=meta.get("claimed_at"),
             ttl_minutes=meta.get("ttl_minutes"),
         )
-    if settings.BOARD_DEPENDENCY_GATE and not force:
+    if not force and room_settings.value(room, "dependency-gate"):
         open_rows = waiting_on(room, meta, now)
         if open_rows:
             raise AssignmentError(

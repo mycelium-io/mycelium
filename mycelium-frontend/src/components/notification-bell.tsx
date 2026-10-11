@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Tooltip } from "@/components/ui/tooltip";
 import { iconButtonClass } from "@/components/ui/icon-button";
 import { useNotifications } from "@/components/notifications-provider";
-import { NotificationSettingsDialog } from "@/components/notification-settings";
+import { settingHref } from "@/lib/client-settings";
 import type { NotificationKind } from "@/lib/notifications";
 
 const KIND_LABEL: Record<NotificationKind, string> = {
@@ -49,7 +49,6 @@ export function NotificationBell() {
   const { notifications, unreadCount, settings, markRead, markAllRead, dismiss, clearAll, muteRoom } =
     useNotifications();
   const [open, setOpen] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
 
   // The bell is the "loud" inbox: only alert items (mentions, directs, consensus,
   // knowledge). Badge-only room activity badges the sidebar, never lands here.
@@ -107,13 +106,14 @@ export function NotificationBell() {
                 </Tooltip>
               )}
               <Tooltip content="Notification settings">
-                <button
-                  onClick={() => setShowSettings(true)}
+                <Link
+                  href={settingHref("notifications")}
+                  onClick={() => setOpen(false)}
                   aria-label="Notification settings"
                   className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
                 >
                   <Settings className="size-3.5" />
-                </button>
+                </Link>
               </Tooltip>
             </div>
           </div>
@@ -198,7 +198,6 @@ export function NotificationBell() {
           )}
         </PopoverContent>
       </Popover>
-      <NotificationSettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
     </>
   );
 }

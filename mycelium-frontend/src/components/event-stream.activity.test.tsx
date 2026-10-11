@@ -23,6 +23,7 @@ vi.mock("@/lib/api", () => ({
   fetchWireHistory: vi.fn().mockResolvedValue([]),
   fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
+  fetchRoomSettings: vi.fn().mockResolvedValue([]),
   logFetchError: () => () => undefined,
 }));
 

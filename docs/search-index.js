@@ -141,6 +141,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Concepts"
   },
   {
+    "u": "concepts.html#rooms-room-settings",
+    "t": "Room settings",
+    "s": "Rooms",
+    "x": "A room has a few settings of its own. They apply to everyone in the room. Setting Default What it does chat-board-moves filed, resolved Which board moves get a line in the chat. Every move stays on the activity rail. Choose from filed, claimed, released, blocked, unblocked, expired and resolved. dependency-gate the hub's board.dependency_gate Whether a task waiting on an unfinished one can be claimed. worker-turns th",
+    "p": "Concepts"
+  },
+  {
     "u": "concepts.html#rooms-what-a-room-is-on-disk",
     "t": "What a room is on disk",
     "s": "Rooms",
@@ -573,7 +580,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#worker-settings-and-limits",
     "t": "Settings and limits",
     "s": "Worker",
-    "x": "Set these in the hub's config.toml. Then run mycelium config apply and restart the hub: Setting Default What it does worker.tools true Let workers edit files and run commands. false makes them write replies only. worker.pi_timeout_s 600 Seconds one request can take. worker.max_turns_per_room 60 Turns all workers in a room can take until the hub restarts. After that, they stay quiet in that room. One thing at a time. ",
+    "x": "Set these in the hub's config.toml. Then run mycelium config apply and restart the hub: Setting Default What it does worker.tools true Let workers edit files and run commands. false makes them write replies only. worker.pi_timeout_s 600 Seconds one request can take. worker.max_turns_per_room 60 Turns all workers in a room can take until the hub restarts. After that, they stay quiet in that room. A room can lower it w",
     "p": "Engines"
   },
   {
