@@ -31,25 +31,39 @@ const LEGACY_IDS: Record<string, { id: View; title: string }> = {
 };
 
 /** A saved layout with its tabs' old ids replaced by the ones this version
- *  draws: every string equal to an old id (the panel's key, its component,
- *  and its place in the grid), and the tab's title with it. */
+ *  draws. Only the places a tab's id appears are touched: its entry under
+ *  `panels` (key, `id`, `contentComponent`, `title`) and the grid's `views` and
+ *  `activeView`. Anything else, like a memory tab's key, is left as it is. */
 export function migrateLayout(layout: unknown): unknown {
-  const walk = (node: unknown): unknown => {
-    if (typeof node === "string") return LEGACY_IDS[node]?.id ?? node;
-    if (Array.isArray(node)) return node.map(walk);
+  if (!layout || typeof layout !== "object") return layout;
+  const rename = (id: unknown) => (typeof id === "string" ? (LEGACY_IDS[id]?.id ?? id) : id);
+  const saved = layout as { panels?: unknown; grid?: unknown };
+
+  let panels = saved.panels;
+  if (panels && typeof panels === "object") {
+    panels = Object.fromEntries(
+      Object.entries(panels as Record<string, unknown>).map(([key, panel]) => {
+        const legacy = LEGACY_IDS[key];
+        if (!legacy || !panel || typeof panel !== "object") return [key, panel];
+        const p = panel as Record<string, unknown>;
+        return [legacy.id, { ...p, id: legacy.id, contentComponent: rename(p.contentComponent), title: legacy.title }];
+      }),
+    );
+  }
+
+  const walkGrid = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(walkGrid);
     if (!node || typeof node !== "object") return node;
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(node)) {
-      const legacy = LEGACY_IDS[key];
-      const next = walk(value);
-      if (legacy && next && typeof next === "object" && "title" in next) {
-        (next as Record<string, unknown>).title = legacy.title;
-      }
-      out[legacy?.id ?? key] = next;
+      if (key === "views" && Array.isArray(value)) out[key] = value.map(rename);
+      else if (key === "activeView") out[key] = rename(value);
+      else out[key] = walkGrid(value);
     }
     return out;
   };
-  return walk(layout);
+
+  return { ...saved, panels, grid: walkGrid(saved.grid) };
 }
 
 /** The params a tab carries in the saved layout: only what names it. */

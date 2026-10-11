@@ -86,6 +86,19 @@ describe("a saved room layout", () => {
     expect(loaded.grid.root.data).toEqual({ views: ["channel", "raw"], activeView: "raw" });
   });
 
+  it("leaves a memory tab for a key named network alone", () => {
+    const id = memoryPanelId("network");
+    const saved = {
+      grid: { root: { type: "leaf", data: { views: ["channel", id], activeView: id } } },
+      panels: {
+        channel: { id: "channel", contentComponent: "channel", title: "Channel" },
+        [id]: { id, contentComponent: "memory", title: "network", params: { key: "network" } },
+      },
+    };
+    saveLayout("checkout", saved);
+    expect(loadLayout("checkout")).toEqual(saved);
+  });
+
   it("reads as none when what is stored isn't JSON", () => {
     window.localStorage.setItem("mycelium.dock.checkout", "{not json");
     expect(loadLayout("checkout")).toBeNull();

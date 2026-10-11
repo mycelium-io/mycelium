@@ -555,7 +555,8 @@ function MessageMenu({
   const [rawOpen, setRawOpen] = useState(false);
   return (
     <>
-    {wire && <RawMessageDialog open={rawOpen} onClose={() => setRawOpen(false)} message={wire} />}
+    {/* Mounted only while open, so a long channel doesn't carry one per message. */}
+    {rawOpen && wire && <RawMessageDialog open onClose={() => setRawOpen(false)} message={wire} />}
     <ContextMenu>
       <ContextMenuTrigger>{children}</ContextMenuTrigger>
       <ContextMenuContent>
