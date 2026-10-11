@@ -703,7 +703,12 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (sub[1] === "wire" && method === "GET") {
         const limit = Number(searchParams.get("limit") ?? "200");
         const before = searchParams.get("before");
-        const frames = (fx.wire ?? []).filter((f) => olderThan(f.created_at as string | undefined, before));
+        // The hub's wire is the whole transcript: the room's messages and its
+        // notices in one time-ordered list, so the mock merges the two.
+        const said = fx.messages.map((m) => ({ ...m, room_name: roomName }) as Record<string, unknown>);
+        const frames = [...(fx.wire ?? []), ...said]
+          .filter((f) => olderThan(f.created_at as string | undefined, before))
+          .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
         return json(limit > 0 ? frames.slice(-limit) : frames);
       }
       if (method === "GET") {

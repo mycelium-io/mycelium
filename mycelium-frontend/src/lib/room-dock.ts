@@ -11,14 +11,15 @@
  * than a second copy.
  */
 
-export type View = "channel" | "board" | "schedules" | "raw";
+export type View = "channel" | "stream" | "board" | "schedules" | "raw";
 
 export type DockPanelKind = View | "memory" | "thread";
 
-export const ROOM_VIEWS: readonly View[] = ["channel", "board", "schedules", "raw"];
+export const ROOM_VIEWS: readonly View[] = ["channel", "stream", "board", "schedules", "raw"];
 
 export const VIEW_LABELS: Record<View, string> = {
   channel: "Channel",
+  stream: "Stream",
   board: "Board",
   schedules: "Schedules",
   raw: "Raw messages",

@@ -101,6 +101,7 @@ export const KEYMAP: Binding[] = [
   { id: "nav.home", keys: ["alt+h"], label: "Home", group: "Navigate", scope: "global" },
 
   { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },
+  { id: "pane.stream", keys: ["alt+l"], label: "Stream", group: "Panes", scope: "room" },
   { id: "pane.board", keys: ["alt+p"], label: "Board", group: "Panes", scope: "room" },
   { id: "pane.schedules", keys: ["alt+k"], label: "Schedules", group: "Panes", scope: "room" },
   { id: "tab.close", keys: ["alt+w"], label: "Close the tab", group: "Panes", scope: "room" },

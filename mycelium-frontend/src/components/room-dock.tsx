@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { EventStream } from "@/components/event-stream";
 import { RoomBoard } from "@/components/board/room-board";
 import { RoomSchedules } from "@/components/schedules/room-schedules";
+import { RoomStream } from "@/components/stream/room-stream";
 import { MessageInspector } from "@/components/message-inspector";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { MemoryView, type GuardHandle } from "@/components/memory-view";
@@ -104,6 +105,11 @@ function ChannelPanel() {
   );
 }
 
+function StreamPanel() {
+  const d = useDock();
+  return <RoomStream roomName={d.roomName} onOpenThread={d.onOpenThread} onOpenMemory={d.onOpenMemory} />;
+}
+
 function BoardPanel() {
   const d = useDock();
   return (
@@ -164,6 +170,7 @@ function ThreadPanel({ params, api }: IDockviewPanelProps<{ episode: string }>) 
 
 const COMPONENTS = {
   channel: ChannelPanel,
+  stream: StreamPanel,
   board: BoardPanel,
   raw: RawPanel,
   schedules: SchedulesPanel,
@@ -349,7 +356,7 @@ function GroupActions({ containerApi, group }: IDockviewHeaderActionsProps) {
 
 // ── Opening and moving ──────────────────────────────────────────────────────
 
-const VIEW_ORDER: View[] = ["channel", "board", "schedules", "raw"];
+const VIEW_ORDER: View[] = ["channel", "stream", "board", "schedules", "raw"];
 
 function addView(api: DockviewApi, view: View, position?: Parameters<DockviewApi["addPanel"]>[0]["position"]) {
   return api.addPanel({
@@ -363,9 +370,10 @@ function addView(api: DockviewApi, view: View, position?: Parameters<DockviewApi
   });
 }
 
-/** The room's first layout: Channel and Board as tabs, the Channel in front. */
+/** The room's first layout: Channel, Stream and Board as tabs, the Channel in front. */
 function defaultLayout(api: DockviewApi): void {
   addView(api, "channel");
+  addView(api, "stream", { referencePanel: "channel" });
   addView(api, "board", { referencePanel: "channel" });
   api.getPanel("channel")?.api.setActive();
 }
