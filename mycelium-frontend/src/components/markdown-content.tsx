@@ -9,20 +9,22 @@ import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useHighlighter, type Highlight } from "@/components/ui/highlight-text";
-import { SILENT_MENTION_SIGIL } from "@/lib/mentions";
+import { INTERRUPT_MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
 import { typeset } from "@/lib/typeset";
 
 // Mentions, memory links, transclusions, and skill references, in one pass so a
 // body is split once. `![[…]]` is listed before `[[…]]` so the transclusion form
 // wins. A silent mention `@~handle` (`lib/mentions.ts`) is its own token, drawn
-// quieter than one that asked for something. A skill reference `/name` (from
+// quieter than one that asked for something; an interrupting `@!handle` is one
+// too, with a tooltip saying what it did. A skill reference `/name` (from
 // the composer's `/` trigger) is only a token at a word boundary — `(?<![^\s])`
 // requires it be preceded by whitespace or the start — so a path, URL, or
 // `and/or` never lights up.
 const TOKEN_RE =
-  /(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'`]*[^\s)\]>"'`.,;:!?]|@~[A-Za-z0-9][\w-]*|@[\w-]+|(?<![^\s])\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)/g;
+  /(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'`]*[^\s)\]>"'`.,;:!?]|@~[A-Za-z0-9][\w-]*|@![A-Za-z0-9][\w-]*|@[\w-]+|(?<![^\s])\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)/g;
 
 const SILENT_HINT = "Mentioned silently, not notified";
+const INTERRUPT_HINT = "Interrupts the agent if it's working, so it reads this now";
 
 // `[[mycelium: confidence=0.85 stance=accept]]` is the agent skill's directive
 // syntax, not a link. A word followed by a colon *and whitespace* is a
@@ -207,6 +209,15 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
           return (
             <Tooltip key={i} content={SILENT_HINT}>
               <span aria-description={SILENT_HINT} className="text-muted-foreground font-semibold">
+                {marked(part)}
+              </span>
+            </Tooltip>
+          );
+        }
+        if (part.startsWith(INTERRUPT_MENTION_SIGIL)) {
+          return (
+            <Tooltip key={i} content={INTERRUPT_HINT}>
+              <span aria-description={INTERRUPT_HINT} className="text-accent font-semibold">
                 {marked(part)}
               </span>
             </Tooltip>

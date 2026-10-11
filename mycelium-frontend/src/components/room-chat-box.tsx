@@ -33,7 +33,7 @@ import { NewMemoryDialog } from "@/components/new-memory-dialog";
 import { AddMemberDialog, ENGINE_KINDS } from "@/components/add-member-dialog";
 import { expandPath, handleValid, normHandle, tildePath } from "@/components/launch-agent-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { MENTION_SIGIL, SILENT_MENTION_SIGIL, parseMentions, parseSilentMentions } from "@/lib/mentions";
+import { MENTION_SIGIL, parseMentions, parseSilentMentions } from "@/lib/mentions";
 import { RECENT_MENTIONS_CHANGED, readRecentMentions, recordMentions } from "@/lib/recent-mentions";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
@@ -123,8 +123,9 @@ interface Trigger {
   /** Cursor position (the end of the replaced span). */
   end: number;
   query: string;
-  /** An `@~` trigger: the member is named silently (`lib/mentions.ts`). */
-  silent?: boolean;
+  /** The sigil an agent trigger was typed with: `@`, `@~` (named silently) or
+   *  `@!` (interrupts it), per `lib/mentions.ts`. The pick keeps it. */
+  sigil?: string;
 }
 
 
@@ -135,11 +136,11 @@ function detectTrigger(prefix: string, cursor: number): Trigger | null {
   if (mem) {
     return { kind: "memory", start: cursor - mem[1].length - 2, end: cursor, query: mem[1] };
   }
-  const agent = prefix.match(/(?:^|\s)(@~?)([a-z0-9._-]*)$/i);
+  const agent = prefix.match(/(?:^|\s)(@[~!]?)([a-z0-9._-]*)$/i);
   if (agent) {
     const [, sigil, query] = agent;
     const start = cursor - query.length - sigil.length;
-    return { kind: "agent", start, end: cursor, query: query.toLowerCase(), silent: sigil === SILENT_MENTION_SIGIL };
+    return { kind: "agent", start, end: cursor, query: query.toLowerCase(), sigil };
   }
   const skill = prefix.match(/(?:^|\s)\/([a-z0-9._-]*)$/i);
   if (skill) {
@@ -447,7 +448,7 @@ export function RoomChatBox({
         .map((x) => x.r);
       return pool.slice(0, 8).map((r) => ({
         id: r.handle,
-        insert: `${trigger.silent ? SILENT_MENTION_SIGIL : MENTION_SIGIL}${r.handle}`,
+        insert: `${trigger.sigil ?? MENTION_SIGIL}${r.handle}`,
         primary: r.name ?? `@${r.handle}`,
         named: Boolean(r.name),
         secondary: r.name ? `@${r.handle} · ${r.secondary}` : r.secondary,
@@ -952,7 +953,7 @@ export function RoomChatBox({
                 it is this narrow on a phone and in a room with both rails open). */}
             {mic.state === "off" ? (
               <span className="min-w-0 truncate text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100">
-                @ mention · @~ silent · [[ memory · / command
+                @ mention · @~ silent · @! interrupt · [[ memory · / command
               </span>
             ) : (
               // While the mic is on, the row says so, whether or not the box has focus.

@@ -92,7 +92,7 @@ REVISE = (
 
 _ACTION = re.compile(r"\[\[\s*(new|done)\b\s*:?\s*([^\]]*)\]\]", re.IGNORECASE)
 _NEW_ARGS = re.compile(r"^(?P<title>.+?)\s*(?:->|→)\s*@?(?P<handle>[\w.-]+)\s*$")
-_MENTION = re.compile(r"@([\w.-]+)")
+_MENTION = re.compile(r"@!?([\w.-]+)")
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 DEFAULT_CHARACTER = (
@@ -218,12 +218,14 @@ def keep_team_mentions(text: str, team: list[str], me: str) -> str:
 
     A worker asks a teammate to act by naming them, so those mentions stay; a
     mention of anything else (an engine, an unknown handle, itself) loses its
-    sigil, so a worker can never summon the aligner or the conductor.
+    sigil, so a worker can never summon the aligner or the conductor. A kept
+    mention is a plain ``@``: a worker asks, it never interrupts (``@!``).
     """
     members = {_norm(h) for h in team} - {_norm(me)}
 
     def keep(match: re.Match[str]) -> str:
-        return match.group(0) if _norm(match.group(1)) in members else match.group(1)
+        name = match.group(1)
+        return f"@{name}" if _norm(name) in members else name
 
     return _MENTION.sub(keep, text)
 

@@ -252,6 +252,8 @@ Messages without an `@mention` are ignored by default (rooms set `requireMention
 
 To refer to someone without asking them for anything, write `@~handle` (a silent mention, as in `cc @~reviewer`). It doesn't wake or address them, so use it when you're crediting or pointing at someone, and a plain `@handle` when you need them to act.
 
+If a wake says someone interrupted you, your turn was stopped so you'd read their message now. Act on it, then carry on with what you were doing unless it says otherwise. Don't write `@!handle` yourself unless you own or lead that agent; for anyone else it's an ordinary mention.
+
 ### Writing things down (memory)
 
 For decisions, failed approaches, status that future agents should see, write it to room memory:
