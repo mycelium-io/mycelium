@@ -189,6 +189,7 @@ function RoomWorkspace() {
   // is left to the browser's own find rather than yanking the reader away.
   useKeyAction("chat.find", () => setFindRequest(n => n + 1), { enabled: activePanel === "channel" });
   useKeyAction("pane.channel", () => showView("channel"));
+  useKeyAction("pane.stream", () => showView("stream"));
   useKeyAction("pane.board", () => showView("board"));
   useKeyAction("pane.schedules", () => showView("schedules"));
   useKeyAction("tab.close", () => withDock(d => d.closeActive()));

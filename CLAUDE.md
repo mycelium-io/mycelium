@@ -998,12 +998,15 @@ is no litellm dependency.
   reserved for genuine client state — which rail is open, what's selected — not
   for anything the hub owns.
 - **The room's center is tabs and splits, one kind of tab for every view.**
-  `components/room-dock.tsx` lays the center out with dockview: Channel, Board,
-  Schedules, Raw messages, each open memory and each open thread is a tab
+  `components/room-dock.tsx` lays the center out with dockview: Channel, Stream,
+  Board, Schedules, Raw messages, each open memory and each open thread is a tab
   (`lib/room-dock.ts` names them: fixed ids for the room's views, `memory:<key>`
   and `thread:<episode>` for the rest, so opening one that is open shows it).
-  A room opens on Channel and Board; the others are added from the tab
-  strip's +. The room's connection details (its SLIM channel and A2A bridge)
+  A room opens on Channel, Stream and Board; the others are added from the tab
+  strip's +. Stream (`components/stream/room-stream.tsx`, modelled in
+  `lib/room-stream.ts`) is everything that happens in the room, one line
+  each: channel and thread messages, board and pull request changes, saved
+  memories, with a colored lane per task thread. The room's connection details (its SLIM channel and A2A bridge)
   are on its settings page, not a tab. Tabs
   drag to reorder and onto an edge to split; a thread opens in a group beside
   the Channel's. The layout is this browser's, per room, and a saved one this
