@@ -277,6 +277,13 @@ export function chordFor(id: string): string | undefined {
   return active.find(b => b.id === id)?.keys[0];
 }
 
+/** Whether a clash can be settled by swapping: a fixed action keeps its keys
+ *  whatever is written for it, so a swap onto one would leave two actions on
+ *  the same key. */
+export function canSwap(clashes: readonly Binding[]): boolean {
+  return clashes.every(b => !FIXED_BINDINGS.has(b.id));
+}
+
 /** What giving ``id`` the keys ``keys`` would collide with, in the bindings in
  *  force: the other actions sharing one of those keys where both are live. */
 export function conflictsFor(id: string, keys: readonly string[]): Binding[] {

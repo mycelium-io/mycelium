@@ -153,9 +153,11 @@ def value(room: str, setting_id: str) -> Any:
         own = validate(spec, found[0][VALUE_FIELD])
     except RoomSettingError:
         # A hand-edited file, or a hub that has since lowered its cap below what
-        # the room set: run with the hub's value rather than an unchecked one.
-        if spec.at_most_hub and isinstance(found[0][VALUE_FIELD], int):
-            return min(found[0][VALUE_FIELD], hub)
+        # the room set: run with the hub's value rather than an unchecked one,
+        # and never below the table's floor (a `setting: 0` would silence workers).
+        stored = found[0][VALUE_FIELD]
+        if spec.at_most_hub and isinstance(stored, int) and not isinstance(stored, bool):
+            return max(spec.min or 0, min(stored, hub))
         return hub
     return own
 

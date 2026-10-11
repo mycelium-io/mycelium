@@ -6,6 +6,7 @@ import {
   activeKeymap,
   applyOverrides,
   bindingsInScope,
+  canSwap,
   conflictsFor,
   defaultKeys,
   findConflicts,
@@ -43,6 +44,14 @@ describe("keymap overrides", () => {
     // ⌥C is the channel, a room binding; the home key is global, so they meet.
     expect(conflictsFor("nav.home", ["alt+c"]).map((b) => b.id)).toEqual(["pane.channel"]);
     expect(conflictsFor("nav.home", ["alt+z"])).toEqual([]);
+  });
+
+  it("won't swap onto a fixed action's key", () => {
+    // Recording ⌥1 for Home clashes with the room keys, which can't move.
+    const clashes = conflictsFor("nav.home", ["alt+1"]);
+    expect(clashes.map((b) => b.id)).toEqual(["rooms.digit"]);
+    expect(canSwap(clashes)).toBe(false);
+    expect(canSwap(conflictsFor("nav.home", ["alt+c"]))).toBe(true);
   });
 
   it("keeps the table conflict-free after a swap", () => {

@@ -116,6 +116,23 @@ async def test_a_lowered_hub_cap_wins_over_an_older_room_value(client, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_a_hand_edited_value_below_the_floor_runs_at_the_floor(client, monkeypatch):
+    """A file edited by hand to `setting: 0` never silences the room's workers."""
+    from app.services.filesystem import get_room_dir, write_memory_file
+
+    monkeypatch.setattr(settings, "WORKER_MAX_TURNS_PER_ROOM", 60)
+    await _make_room(client)
+    write_memory_file(
+        get_room_dir("demo"),
+        "settings/worker-turns",
+        "edited by hand\n",
+        created_by="julia",
+        extra_meta={"setting": 0},
+    )
+    assert room_settings.value("demo", "worker-turns") == 1
+
+
+@pytest.mark.asyncio
 async def test_memory_set_hits_the_same_check(client):
     """The table is enforced at the memory upsert, so a plain memory write is refused too."""
     await _make_room(client)

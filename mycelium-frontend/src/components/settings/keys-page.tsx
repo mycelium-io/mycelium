@@ -13,6 +13,7 @@ import { clientSettingHref, useClientSetting } from "@/lib/client-settings";
 import { useIsDesktop } from "@/lib/desktop";
 import {
   activeKeymap,
+  canSwap,
   conflictsFor,
   defaultKeys,
   eventToChord,
@@ -100,7 +101,7 @@ export function KeysPage() {
 
   // Swap: the action that had the key gets this one's old keys.
   const swap = () => {
-    if (!pending) return;
+    if (!pending || !canSwap(pending.clashes)) return;
     const mine = activeKeymap().find((b) => b.id === pending.id)?.keys ?? [];
     let next = setKeys(pending.id, [pending.chord]);
     for (const other of pending.clashes) {
@@ -247,16 +248,19 @@ export function KeysPage() {
                     >
                       <p className="text-micro text-text">
                         <KbdChord size="xs" chord={pending.chord} mac={mac} /> is already used for{" "}
-                        {pending.clashes.map((c) => c.label).join(" and ")}.
+                        {pending.clashes.map((c) => c.label).join(" and ")}
+                        {canSwap(pending.clashes) ? "." : ", which can't be moved. Pick another key."}
                       </p>
                       <div className="mt-1.5 flex gap-2">
-                        <button
-                          type="button"
-                          onClick={swap}
-                          className="rounded-md bg-accent px-2 py-0.5 text-micro font-medium text-accent-fg"
-                        >
-                          Swap them
-                        </button>
+                        {canSwap(pending.clashes) && (
+                          <button
+                            type="button"
+                            onClick={swap}
+                            className="rounded-md bg-accent px-2 py-0.5 text-micro font-medium text-accent-fg"
+                          >
+                            Swap them
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => setPending(null)}
