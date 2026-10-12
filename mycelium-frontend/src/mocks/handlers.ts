@@ -692,7 +692,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "messages": {
-      // GET /messages/wire — the wire feed for the Raw messages tab, and the half
+      // GET /messages/wire — the wire history Stream reads, and the half
       // of the channel's feed that carries pings and board notices. Oldest
       // first, the last `limit` of what is older than the cursor — the shape
       // the backend's transcript replay serves.

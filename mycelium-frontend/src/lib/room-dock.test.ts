@@ -70,20 +70,56 @@ describe("a saved room layout", () => {
     expect(loadLayout("storefront")).toBeNull();
   });
 
-  it("opens a tab saved as Network as Raw messages, in the same place", () => {
+  for (const retired of ["raw", "network"]) {
+    it(`loads a layout saved with the ${retired} tab without it, keeping the rest`, () => {
+      const saved = {
+        grid: { root: { type: "leaf", data: { views: ["channel", retired, "board"], activeView: retired } } },
+        panels: {
+          channel: { id: "channel", contentComponent: "channel", title: "Channel" },
+          [retired]: { id: retired, contentComponent: retired, title: "Raw messages" },
+          board: { id: "board", contentComponent: "board", title: "Board" },
+        },
+      };
+      saveLayout("checkout", saved);
+      const loaded = loadLayout("checkout") as typeof saved & { panels: Record<string, unknown> };
+      expect(restorableLayout(loaded)).toBe(true);
+      expect(Object.keys(loaded.panels)).toEqual(["channel", "board"]);
+      // The retired tab was in front, so its group now shows the first one left.
+      expect(loaded.grid.root.data).toEqual({ views: ["channel", "board"], activeView: "channel" });
+    });
+  }
+
+  it("opens the default layout when the retired tab was alone in its group", () => {
     const saved = {
-      grid: { root: { type: "leaf", data: { views: ["channel", "network"], activeView: "network" } } },
+      grid: {
+        root: {
+          type: "branch",
+          data: [
+            { type: "leaf", data: { views: ["channel"], activeView: "channel" }, size: 600 },
+            { type: "leaf", data: { views: ["raw"], activeView: "raw" }, size: 400 },
+          ],
+        },
+      },
       panels: {
         channel: { id: "channel", contentComponent: "channel", title: "Channel" },
-        network: { id: "network", contentComponent: "network", title: "Network" },
+        raw: { id: "raw", contentComponent: "raw", title: "Raw messages" },
       },
     };
     saveLayout("checkout", saved);
-    const loaded = loadLayout("checkout") as typeof saved & { panels: Record<string, unknown> };
-    expect(restorableLayout(loaded)).toBe(true);
-    expect(loaded.panels.raw).toEqual({ id: "raw", contentComponent: "raw", title: "Raw messages" });
-    expect(loaded.panels.network).toBeUndefined();
-    expect(loaded.grid.root.data).toEqual({ views: ["channel", "raw"], activeView: "raw" });
+    expect(loadLayout("checkout")).toBeNull();
+  });
+
+  it("leaves a memory tab for a key named raw alone", () => {
+    const id = memoryPanelId("raw");
+    const saved = {
+      grid: { root: { type: "leaf", data: { views: ["channel", id], activeView: id } } },
+      panels: {
+        channel: { id: "channel", contentComponent: "channel", title: "Channel" },
+        [id]: { id, contentComponent: "memory", title: "raw", params: { key: "raw" } },
+      },
+    };
+    saveLayout("checkout", saved);
+    expect(loadLayout("checkout")).toEqual(saved);
   });
 
   it("leaves a memory tab for a key named network alone", () => {

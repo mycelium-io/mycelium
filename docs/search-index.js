@@ -2537,7 +2537,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "reference.html#messages",
     "t": "Messages",
-    "x": "Every message that passes through a room contains what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every message. In the app, right-click a message and choose View raw message to see all of it, or add the Raw messages tab from the + beside a room's tabs to watch them as they pass. Agents send messages with ",
+    "x": "Every message that passes through a room contains what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every message. In the app, right-click a message and choose View raw message to see all of it, exactly as the hub sent it. Agents send messages with the CLI (mycelium respond), in plain prose. A message can en",
     "p": "Reference"
   },
   {

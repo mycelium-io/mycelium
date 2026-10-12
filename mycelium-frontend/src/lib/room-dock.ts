@@ -6,65 +6,60 @@
  * layout remembered per room in this browser.
  *
  * Every view in the center is one kind of tab. The room's own views (Channel,
- * Board, Schedules, Raw messages) have fixed ids; a memory and a thread are
- * keyed by what they show, so opening one that is already open shows it rather
- * than a second copy.
+ * Stream, Board, Schedules) have fixed ids; a memory and a thread are keyed by
+ * what they show, so opening one that is already open shows it rather than a
+ * second copy.
  */
 
-export type View = "channel" | "stream" | "board" | "schedules" | "raw";
+export type View = "channel" | "stream" | "board" | "schedules";
 
 export type DockPanelKind = View | "memory" | "thread";
 
-export const ROOM_VIEWS: readonly View[] = ["channel", "stream", "board", "schedules", "raw"];
+export const ROOM_VIEWS: readonly View[] = ["channel", "stream", "board", "schedules"];
 
 export const VIEW_LABELS: Record<View, string> = {
   channel: "Channel",
   stream: "Stream",
   board: "Board",
   schedules: "Schedules",
-  raw: "Raw messages",
 };
 
-/** The id the raw message feed had while it was the Network tab. A layout
- *  saved then opens the feed in the same place. */
-const LEGACY_IDS: Record<string, { id: View; title: string }> = {
-  network: { id: "raw", title: VIEW_LABELS.raw },
-};
+/** Tabs a room no longer has: the Network tab, and the Raw messages tab it
+ *  became. A layout saved with one open loads without it. */
+const RETIRED_IDS: ReadonlySet<string> = new Set(["network", "raw"]);
 
-/** A saved layout with its tabs' old ids replaced by the ones this version
- *  draws. Only the places a tab's id appears are touched: its entry under
- *  `panels` (key, `id`, `contentComponent`, `title`) and the grid's `views` and
- *  `activeView`. Anything else, like a memory tab's key, is left as it is. */
+/** A saved layout without the tabs this version no longer draws. A retired tab
+ *  is taken out of its group, and the group shows its first remaining tab if
+ *  the retired one was in front. If that leaves a group empty, the layout's
+ *  split sizes no longer add up, so `null` is returned and the room opens on
+ *  its default layout instead. A memory tab whose key happens to be "raw" is
+ *  untouched: only panel ids are compared. */
 export function migrateLayout(layout: unknown): unknown {
   if (!layout || typeof layout !== "object") return layout;
-  const rename = (id: unknown) => (typeof id === "string" ? (LEGACY_IDS[id]?.id ?? id) : id);
   const saved = layout as { panels?: unknown; grid?: unknown };
+  let emptied = false;
 
-  let panels = saved.panels;
-  if (panels && typeof panels === "object") {
-    panels = Object.fromEntries(
-      Object.entries(panels as Record<string, unknown>).map(([key, panel]) => {
-        const legacy = LEGACY_IDS[key];
-        if (!legacy || !panel || typeof panel !== "object") return [key, panel];
-        const p = panel as Record<string, unknown>;
-        return [legacy.id, { ...p, id: legacy.id, contentComponent: rename(p.contentComponent), title: legacy.title }];
-      }),
-    );
-  }
+  const panels =
+    saved.panels && typeof saved.panels === "object"
+      ? Object.fromEntries(Object.entries(saved.panels as Record<string, unknown>).filter(([id]) => !RETIRED_IDS.has(id)))
+      : saved.panels;
 
   const walkGrid = (node: unknown): unknown => {
     if (Array.isArray(node)) return node.map(walkGrid);
     if (!node || typeof node !== "object") return node;
     const out: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(node)) {
-      if (key === "views" && Array.isArray(value)) out[key] = value.map(rename);
-      else if (key === "activeView") out[key] = rename(value);
-      else out[key] = walkGrid(value);
+    for (const [key, value] of Object.entries(node)) out[key] = walkGrid(value);
+    if (Array.isArray(out.views)) {
+      const views = (out.views as unknown[]).filter((v) => !(typeof v === "string" && RETIRED_IDS.has(v)));
+      if (views.length === 0) emptied = true;
+      if (typeof out.activeView === "string" && RETIRED_IDS.has(out.activeView)) out.activeView = views[0];
+      out.views = views;
     }
     return out;
   };
 
-  return { ...saved, panels, grid: walkGrid(saved.grid) };
+  const grid = walkGrid(saved.grid);
+  return emptied ? null : { ...saved, panels, grid };
 }
 
 /** The params a tab carries in the saved layout: only what names it. */
