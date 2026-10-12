@@ -146,7 +146,8 @@ def change(data: dict[str, Any]) -> str:
         return f"{title} {subkind}"
     verb = subkind
     if subkind == "filed" and data.get("kind") and data["kind"] != "task":
-        verb = f"filed a {data['kind']}"
+        kind = str(data["kind"])
+        verb = f"filed {'an' if kind[:1].lower() in 'aeiou' else 'a'} {kind}"
     to = _norm(data.get("for"))
     return f"{who} {verb} {title}" + (f" for @{to}" if subkind == "filed" and to else "")
 
