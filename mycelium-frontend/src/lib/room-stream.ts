@@ -274,6 +274,35 @@ export function describe(event: StreamEvent, { withTitle = true }: { withTitle?:
   }
 }
 
+/** The calendar day an ISO time falls on, in this browser's time zone, as
+ *  `YYYY-MM-DD`: lines on the same day share it. */
+export function dayOf(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * The words on a date line: "Today", "Yesterday", or the weekday and date
+ * ("Thursday, Aug 27"), with the year added when it isn't this year's.
+ */
+export function dayLabel(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const day = dayOf(iso);
+  if (day === dayOf(now.toISOString())) return "Today";
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (day === dayOf(yesterday.toISOString())) return "Yesterday";
+  return d.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
+}
+
 /** The first non-blank line of a message, without markdown emphasis. */
 export function firstLine(text: string): string {
   const line = text.split("\n").find((l) => l.trim() && !/^[-*]\s*$/.test(l.trim())) ?? "";

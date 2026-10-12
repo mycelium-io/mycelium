@@ -10,6 +10,8 @@ const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
 const at = (m: number) => `2026-10-11T20:${String(m).padStart(2, "0")}:00Z`;
 
 const history = [
+  // A day before everything else, so the log crosses a day.
+  { id: "m0", sender_handle: "alice", message_type: "broadcast", created_at: "2026-10-10T20:00:00Z", content: "yesterday's note" },
   {
     id: "n1",
     sender_handle: "system",
@@ -54,6 +56,15 @@ describe("<RoomStream />", () => {
     const text = log.textContent ?? "";
     expect(text.indexOf("filed")).toBeLessThan(text.indexOf("morning all"));
     expect(text.indexOf("morning all")).toBeLessThan(text.indexOf("which preset?"));
+  });
+
+  it("draws a date line wherever the day changes", async () => {
+    await renderStream();
+    const dates = screen.getAllByRole("separator");
+    // One above the first line, and one where the 10th turns into the 11th.
+    expect(dates).toHaveLength(2);
+    const text = screen.getByRole("log").textContent ?? "";
+    expect(text.indexOf("yesterday's note")).toBeLessThan(text.indexOf(dates[1].textContent ?? ""));
   });
 
   it("filters to messages that mention you", async () => {

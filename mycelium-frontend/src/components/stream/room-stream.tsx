@@ -14,6 +14,8 @@ import { RoomChatBox } from "@/components/room-chat-box";
 import { Chip } from "@/components/ui/chip";
 import {
   ALL_KINDS,
+  dayLabel,
+  dayOf,
   describe,
   firstLine,
   foldEvents,
@@ -245,6 +247,19 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
             const open = expanded.has(ev.id);
             return (
               <Fragment key={ev.id}>
+                {/* A quiet line wherever the day changes, so 18:10 then 15:10
+                    reads as the next day rather than out of order. */}
+                {(i === 0 || dayOf(lines[i - 1].event.at) !== dayOf(ev.at)) && (
+                  <div
+                    role="separator"
+                    aria-label={dayLabel(ev.at)}
+                    className="mx-3 mb-0.5 mt-2 flex items-center gap-2 text-micro font-medium text-faint first:mt-0"
+                  >
+                    <span className="h-px flex-1 bg-border" aria-hidden />
+                    {dayLabel(ev.at)}
+                    <span className="h-px flex-1 bg-border" aria-hidden />
+                  </div>
+                )}
                 {i === newAt && (
                   <div className="mx-3 my-1 flex items-center gap-2 text-micro font-semibold text-red">
                     New since you last looked
