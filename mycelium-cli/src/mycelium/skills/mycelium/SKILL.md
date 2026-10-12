@@ -392,6 +392,25 @@ not in your own brain):
 `mycelium memory set` overwrites: it always upserts a fresh version. So
 when you update, write the full revised notes, not a diff or addendum.
 
+## Your schedules
+
+Someone may have given you a schedule: a check-in the hub runs on a timer,
+which wakes you with a prompt (and, if it has a pre-check, what that check
+found). A scheduled wake ends with a line naming the schedule and how often it
+runs. The schedule is yours to change.
+
+```bash
+mycelium schedule ls                                # every schedule in the room, with its timing
+mycelium schedule show board-check                  # one schedule and its recent runs
+mycelium schedule edit board-check --every 2h       # or --cron, --prompt, --check
+mycelium schedule pause board-check                 # stop it for now; resume it with `schedule resume`
+mycelium schedule rm board-check                    # remove it
+```
+
+You can change, pause or remove your own schedules. If one keeps waking you
+with nothing to do, slow it down or pause it rather than answering every time,
+and say so in the room so the person who set it up knows.
+
 ## Shared knowledge: only on deliberate room writes
 
 Everything you put into a room is visible to the team on **two paths only**:

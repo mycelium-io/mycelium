@@ -277,18 +277,20 @@ def moves(room: str, handle: str, since: list[Any], now: datetime) -> list[str]:
     return lines
 
 
-def _schedule_lines(room: str, name: str) -> list[str]:
-    """The schedule's prompt and its latest findings, as the owner is told them."""
+def _schedule_lines(room: str, name: str) -> tuple[list[str], str | None]:
+    """The schedule's prompt and its latest findings, as the owner is told them,
+    and the line saying how to change it, which the digest puts last."""
     from app.services import schedules
 
     try:
         schedule = schedules.get(room, name)
     except schedules.ScheduleError:
-        return []
+        return [], None
+    change = schedules.change_line(schedule, room)
     run = schedule.history[0] if schedule.history else None
     if run is None:
-        return [schedule.prompt] if schedule.prompt else []
-    return schedules.wake_text(schedule, run, room).splitlines()[1:]
+        return ([schedule.prompt] if schedule.prompt else []), change
+    return schedules.wake_text(schedule, run, room, change=False).splitlines()[1:], change
 
 
 def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | None = None) -> str:
@@ -390,8 +392,10 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
             lines.extend(f"         {p}" for p in pointers[1:])
 
     # What the schedule says to do, and what its pre-check found.
+    schedule_change = None
     if reason == "schedule" and wake.get("title"):
-        lines += ["", *_schedule_lines(room, str(wake["title"]))]
+        found, schedule_change = _schedule_lines(room, str(wake["title"]))
+        lines += ["", *found]
 
     # The messages that asked for it, newest kept, the latest given the most room.
     shown = asked[-SHOWN:]
@@ -435,4 +439,7 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         f'Find:   mycelium room search "<words> from:<handle> task:<row> after:1d" --room {room}'
         "   (any message, any field; --facets for counts)"
     )
+    # A scheduled wake ends on the schedule being the agent's own to change.
+    if schedule_change:
+        lines += ["", schedule_change]
     return "\n".join(lines)
