@@ -702,12 +702,35 @@ def _thread_of(room: str, schedule: Schedule) -> str | None:
     return tasks.episode_of(room, schedule.task)
 
 
-def wake_text(schedule: Schedule, run: ScheduleRun, room: str) -> str:
-    """What the owner is told when its schedule wakes it."""
-    when = (
+def timing(schedule: Schedule) -> str:
+    """How often it runs, in the words ``mycelium schedule ls`` uses: ``every 30m``, ``cron …``."""
+    return (
         f"every {format_every(schedule.every_s)}" if schedule.every_s else f"cron {schedule.cron}"
     )
-    lines = [f'Your schedule "{schedule.name}" fired ({when}).']
+
+
+def change_line(schedule: Schedule, room: str) -> str:
+    """The last line of a scheduled wake: this schedule is the agent's to change.
+
+    An agent woken on a timer with nothing to do would otherwise answer every
+    time, since nothing told it the timer is its own to slow down or stop.
+    """
+    name = schedule.name
+    return (
+        f'This is your schedule "{name}" ({timing(schedule)}). Change it with '
+        f"`mycelium schedule edit {name} --room {room} --every <interval>` "
+        f"(or --cron, --prompt, --check), or pause it with "
+        f"`mycelium schedule pause {name} --room {room}`."
+    )
+
+
+def wake_text(schedule: Schedule, run: ScheduleRun, room: str, *, change: bool = True) -> str:
+    """What the owner is told when its schedule wakes it.
+
+    It ends on :func:`change_line`, unless ``change`` is off for a caller that
+    places that line itself (the wake digest puts it last, under its commands).
+    """
+    lines = [f'Your schedule "{schedule.name}" fired ({timing(schedule)}).']
     if run.missed:
         lines.append(f"It stands in for {run.missed} missed run(s).")
     if schedule.prompt:
@@ -719,6 +742,8 @@ def wake_text(schedule: Schedule, run: ScheduleRun, room: str) -> str:
             lines.append(f"- and {run.found_total - len(run.found)} more")
     if schedule.task:
         lines += ["", f"Reply in its task: mycelium respond --task {schedule.task} --room {room}"]
+    if change:
+        lines += ["", change_line(schedule, room)]
     return "\n".join(lines)
 
 

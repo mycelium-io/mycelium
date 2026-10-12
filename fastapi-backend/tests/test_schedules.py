@@ -206,6 +206,47 @@ async def test_a_wake_waits_for_the_next_await_and_never_doubles(client: AsyncCl
     assert schedules.take_pending("ops", "builder") is None
 
 
+CHANGE_LINE = (
+    'This is your schedule "check-in" (every 17m). Change it with '
+    "`mycelium schedule edit check-in --room ops --every <interval>` "
+    "(or --cron, --prompt, --check), or pause it with "
+    "`mycelium schedule pause check-in --room ops`."
+)
+
+
+@pytest.mark.asyncio
+async def test_a_scheduled_wake_ends_on_how_to_change_it(client: AsyncClient, no_herdr):
+    # An agent woken on a timer with nothing to do should know the timer is its
+    # own to slow down or stop, in the same timing words `schedule ls` prints.
+    await make_room(client)
+    await add()
+    await schedules.fire("ops", "check-in", now=NOW)
+    wake = schedules.take_pending("ops", "builder")
+    assert wake is not None
+    assert wake["prompt"].splitlines()[-1] == CHANGE_LINE
+
+
+@pytest.mark.asyncio
+async def test_a_herdr_wake_digest_ends_on_how_to_change_its_schedule(
+    client: AsyncClient, monkeypatch
+):
+    from app.services import wake_digest
+
+    await make_room(client)
+    monkeypatch.setattr(manager, "herdr_status", lambda room, handle: "idle")
+    monkeypatch.setattr(manager, "pending_herdr_wakes", lambda room: set())
+    monkeypatch.setattr(manager, "enqueue_herdr_wake", lambda room, handle, **kw: None)
+    await add()
+    await schedules.fire("ops", "check-in", now=NOW)
+    digest = wake_digest.build(
+        "ops", {"handle": "builder", "reason": "schedule", "title": "check-in"}, [], NOW
+    )
+    # Last, under the commands, and said once rather than also in the middle.
+    assert digest.splitlines()[-1] == CHANGE_LINE
+    assert digest.count("This is your schedule") == 1
+    assert "look at the board" in digest
+
+
 @pytest.mark.asyncio
 async def test_a_herdr_owner_gets_its_doorbell(client: AsyncClient, monkeypatch):
     await make_room(client)
