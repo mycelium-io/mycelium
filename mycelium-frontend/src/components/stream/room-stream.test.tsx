@@ -22,6 +22,14 @@ const history = [
     }),
   },
   { id: "m1", sender_handle: "alice", message_type: "broadcast", created_at: at(2), content: "morning all" },
+  // A file saved in the room's own channel: an event line with no thread.
+  {
+    id: "k1",
+    sender_handle: "system",
+    message_type: "l9_knowledge",
+    created_at: at(2),
+    content: JSON.stringify({ content: "memory updated → uploads/shot.png" }),
+  },
   { id: "m2", sender_handle: "builder", message_type: "broadcast", created_at: at(3), episode: THREAD, content: "@bob which preset?\n\nZed or VS Code." },
 ];
 
@@ -40,6 +48,7 @@ vi.mock("@/components/room-chat-box", () => ({
 vi.mock("@/components/message-body", () => ({ MessageBody: ({ content }: { content: string }) => <div>{content}</div> }));
 
 import { RoomStream } from "@/components/stream/room-stream";
+import { laneColor } from "@/lib/room-stream";
 
 async function renderStream(onOpenThread = vi.fn()) {
   render(<RoomStream roomName="sprint" onOpenThread={onOpenThread} />);
@@ -65,6 +74,18 @@ describe("<RoomStream />", () => {
     expect(dates).toHaveLength(2);
     const text = screen.getByRole("log").textContent ?? "";
     expect(text.indexOf("yesterday's note")).toBeLessThan(text.indexOf(dates[1].textContent ?? ""));
+  });
+
+  it("colors an event's icon with its thread's lane, and a channel event's grey", async () => {
+    await renderStream();
+    // The gutter is hidden from screen readers (the line says it in words).
+    const colorOf = (name: string) =>
+      screen.getByRole("img", { name, hidden: true }).querySelector("svg")?.getAttribute("style") ?? "";
+    // The thread's only lane keeps the thread's own color.
+    const lane = document.createElement("span");
+    lane.style.color = laneColor(THREAD);
+    expect(colorOf("New task")).toContain(lane.style.color);
+    expect(colorOf("Memory updated")).toContain("var(--muted-foreground)");
   });
 
   it("filters to messages that mention you", async () => {

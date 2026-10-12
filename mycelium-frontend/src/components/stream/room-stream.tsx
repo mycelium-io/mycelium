@@ -45,6 +45,9 @@ const KEEP = 2000;
 /** The gutter: the channel's own rule, then one column per lane. */
 const LANE_X0 = 14;
 const LANE_STEP = 9;
+/** An event line in the room's own channel has no lane, so its icon is a
+ *  neutral grey rather than any thread's color. */
+const CHANNEL_TONE = "var(--muted-foreground)";
 
 const KIND_LABELS: { kind: StreamKind; label: string }[] = [
   { kind: "message", label: "Messages" },
@@ -317,7 +320,9 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
                         className="absolute top-1/2 flex -translate-x-[5px] -translate-y-1/2 rounded-sm bg-bg"
                         style={{ left: lane ? LANE_X0 + lane.column * LANE_STEP : 4 }}
                       >
-                        <EventIconMark icon={eventIconOf(ev)} />
+                        {/* Colored like the lane it sits on: the shape says what
+                            happened, the color which thread. */}
+                        <EventIconMark icon={eventIconOf(ev)} tone={lane?.color ?? CHANNEL_TONE} />
                       </span>
                     )}
                   </span>

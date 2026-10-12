@@ -9,11 +9,21 @@ import { cn } from "@/lib/utils";
  * doesn't grow taller. It's labelled with what happened, for screen readers
  * and as a tooltip.
  */
-export function EventIconMark({ icon, className }: { icon: EventIcon; className?: string }) {
-  const { Icon, tone, label } = icon;
+export function EventIconMark({
+  icon,
+  tone,
+  className,
+}: {
+  icon: EventIcon;
+  /** A color to draw it in instead of its own: the Stream colors an icon by
+   *  the thread it belongs to, where the chat colors it by what happened. */
+  tone?: string;
+  className?: string;
+}) {
+  const { Icon, label } = icon;
   return (
     <span role="img" aria-label={label} title={label} className={cn("inline-flex flex-shrink-0", className)}>
-      <Icon aria-hidden className="size-3" strokeWidth={2.2} style={{ color: tone }} />
+      <Icon aria-hidden className="size-3" strokeWidth={2.2} style={{ color: tone ?? icon.tone }} />
     </span>
   );
 }
