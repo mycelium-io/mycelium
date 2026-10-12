@@ -107,6 +107,7 @@ export function TaskConversation({
     useThreadMessages(roomName, episode);
   const { agents } = useRoomAgents(roomName);
   const agentHandles = new Set(agents.map(a => a.handle));
+  const engineHandles = new Set(agents.filter(a => a.adapter === "engine").map(a => a.handle));
   const agentTags = new Map(agents.map(a => [a.handle, agentTag(a)]));
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -274,6 +275,7 @@ export function TaskConversation({
                         handle={sender}
                         color={isAgent ? undefined : "var(--avatar-neutral)"}
                         className="size-6 text-[10px]"
+                        kind={engineHandles.has(sender) ? "engine" : isAgent ? "agent" : "person"}
                       />
                     )}
                   </div>

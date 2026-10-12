@@ -13,8 +13,10 @@ import {
   importClientSettings,
   resetClientSetting,
   useClientSetting,
+  type AgentAvatars,
   type SendKey,
 } from "@/lib/client-settings";
+import { Monogram } from "@/components/ui/monogram";
 import { useIsClient } from "@/lib/client-hooks";
 import { useIsDesktop } from "@/lib/desktop";
 import { Note, Row, Section, Segmented, SettingsPage } from "./settings-ui";
@@ -41,6 +43,7 @@ export function GeneralPage() {
   const mounted = useIsClient();
   const desktop = useIsDesktop();
   const [send, setSend] = useClientSetting("general.send");
+  const [agentAvatars, setAgentAvatars] = useClientSetting("general.agent-avatars");
   const [zone, setZone] = useClientSetting("general.time-zone");
   const fileRef = useRef<HTMLInputElement>(null);
   const [imported, setImported] = useState<string | null>(null);
@@ -88,6 +91,35 @@ export function GeneralPage() {
             options={THEMES}
             onChange={(t) => setTheme(t)}
           />
+        </Row>
+        <Row
+          id="general.agent-avatars"
+          label="Agents appear as"
+          help={
+            agentAvatars === "creatures"
+              ? "A small creature each agent's name picks, always the same one. People keep their initials."
+              : "Their initials, like people."
+          }
+          changed={agentAvatars !== "creatures"}
+          onReset={() => resetClientSetting("general.agent-avatars")}
+          defaultLabel="Creatures"
+        >
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5" aria-hidden>
+              {["mycelium-coder", "voice-model", "schedule-ux"].map((h) => (
+                <Monogram key={h} handle={h} className="size-6 text-[10px]" kind="agent" />
+              ))}
+            </span>
+            <Segmented<AgentAvatars>
+              label="Agents appear as"
+              value={agentAvatars}
+              options={[
+                { value: "creatures", label: "Creatures" },
+                { value: "initials", label: "Initials" },
+              ]}
+              onChange={setAgentAvatars}
+            />
+          </div>
         </Row>
       </Section>
 

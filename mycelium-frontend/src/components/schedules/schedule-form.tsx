@@ -490,7 +490,7 @@ function AgentPill({ handle, selected, onClick }: { handle: string; selected: bo
         !onClick && "cursor-default",
       )}
     >
-      <Monogram handle={handle} className="size-6 text-[10px]" />
+      <Monogram handle={handle} className="size-6 text-[10px]" kind="agent" />
       <span className="font-mono text-label">@{handle}</span>
       {selected && onClick && <Check className="size-3 text-accent" />}
     </button>

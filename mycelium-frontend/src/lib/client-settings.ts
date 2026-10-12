@@ -23,10 +23,15 @@ const LEGACY: Partial<Record<ClientSettingId, string>> = {
 };
 
 export type SendKey = "enter" | "mod-enter";
+/** How an agent's avatar is drawn: as its creature (`lib/sporelings.ts`) or its initials. */
+export type AgentAvatars = "creatures" | "initials";
 
 export interface ClientSettings {
   /** Which key sends a message; the other one starts a new line. */
   "general.send": SendKey;
+  /** Whether agents appear as their creature or their initials. People always
+   *  keep their initials. */
+  "general.agent-avatars": AgentAvatars;
   /** The zone the board draws day boundaries in; empty means this computer's. */
   "general.time-zone": string;
   /** Keyboard shortcuts changed from their defaults, by action id. */
@@ -37,6 +42,7 @@ export type ClientSettingId = keyof ClientSettings;
 
 export const CLIENT_DEFAULTS: ClientSettings = {
   "general.send": "enter",
+  "general.agent-avatars": "creatures",
   "general.time-zone": "",
   "keys.overrides": {},
 };
@@ -44,6 +50,7 @@ export const CLIENT_DEFAULTS: ClientSettings = {
 /** The settings page each client setting is on, for `settingHref`. */
 const PAGE_OF: Record<ClientSettingId, SettingsPage> = {
   "general.send": "general",
+  "general.agent-avatars": "general",
   "general.time-zone": "general",
   "keys.overrides": "keys",
 };
@@ -108,6 +115,9 @@ function sanitize(stored: Partial<ClientSettings>): ClientSettings {
   const out: ClientSettings = { ...CLIENT_DEFAULTS, "keys.overrides": {} };
   if (stored["general.send"] === "enter" || stored["general.send"] === "mod-enter") {
     out["general.send"] = stored["general.send"];
+  }
+  if (stored["general.agent-avatars"] === "creatures" || stored["general.agent-avatars"] === "initials") {
+    out["general.agent-avatars"] = stored["general.agent-avatars"];
   }
   if (typeof stored["general.time-zone"] === "string") out["general.time-zone"] = stored["general.time-zone"];
   const keys = stored["keys.overrides"];
