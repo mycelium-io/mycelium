@@ -55,7 +55,9 @@ export function SporeMark({ offset = 0 }: { offset?: number }) {
       ref={ref}
       aria-hidden
       data-testid="spore-mark"
-      className="inline-block w-3.5 flex-shrink-0 text-center font-mono text-[13px] leading-none"
+      // Lifted a pixel so the glyphs sit on the middle of the words' lowercase
+      // letters rather than just below it.
+      className="inline-block w-3.5 flex-shrink-0 -translate-y-px text-center font-mono text-[13px] leading-none"
       style={{ color: "var(--accent)" }}
     >
       {SPORE_STILL}
