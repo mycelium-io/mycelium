@@ -6,9 +6,14 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Settings } from "lucide-react";
 import { AccountMenu } from "@/components/account-menu";
 import { KeyBadge } from "@/components/key-badge";
 import { NotificationBell } from "@/components/notification-bell";
+import { iconButtonClass } from "@/components/ui/icon-button";
+import { Tooltip } from "@/components/ui/tooltip";
+import { settingHref } from "@/lib/client-settings";
 import { desktopMachine, useIsDesktop } from "@/lib/desktop";
 
 const noSubscribe = () => () => {};
@@ -28,6 +33,23 @@ export function useHubLabel(): string {
   const desktop = useIsDesktop();
   const host = useSyncExternalStore(noSubscribe, () => window.location.host, () => "");
   return hubLabel(host, desktop);
+}
+
+/** The way into Settings from every screen. Lit while a settings page is open. */
+function SettingsButton() {
+  const onSettings = (usePathname() ?? "").startsWith("/settings");
+  return (
+    <Tooltip content="Settings" side="bottom">
+      <Link
+        href={settingHref("general")}
+        aria-label="Settings"
+        aria-current={onSettings ? "page" : undefined}
+        className={iconButtonClass("md", "aria-[current=page]:bg-hairline")}
+      >
+        <Settings />
+      </Link>
+    </Tooltip>
+  );
 }
 
 /**
@@ -57,6 +79,7 @@ export function TitleBar({ crumb, right }: { crumb?: ReactNode; right?: ReactNod
       )}
       <div className="ml-auto flex flex-shrink-0 items-center gap-0.5">
         {right}
+        <SettingsButton />
         <NotificationBell />
         <AccountMenu />
       </div>

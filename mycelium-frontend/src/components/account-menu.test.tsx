@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const network = vi.fn();
@@ -9,7 +9,26 @@ vi.mock("@/lib/room-data", () => ({
   useNetworkStatus: () => network(),
 }));
 
-import { AboutView } from "@/components/account-menu";
+import { AboutView, MenuView } from "@/components/account-menu";
+
+describe("<MenuView />", () => {
+  it("offers Settings, which goes to the settings pages", () => {
+    const onSettings = vi.fn();
+    render(
+      <MenuView
+        me="julia"
+        signedIn={false}
+        canSignIn={false}
+        onGo={() => {}}
+        onSettings={onSettings}
+        onSignIn={() => {}}
+        onSignOut={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Settings/ }));
+    expect(onSettings).toHaveBeenCalledOnce();
+  });
+});
 
 describe("<AboutView />", () => {
   it("shows the hub's release and links to its notes", () => {
