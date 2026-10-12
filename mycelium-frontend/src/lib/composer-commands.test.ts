@@ -15,7 +15,13 @@ import {
 } from "./composer-commands";
 
 describe("/schedule", () => {
-  const draft = (text: string) => scheduleDraft(parseCommand(text)!);
+  const draft = (text: string) => scheduleDraft(text);
+
+  it("keeps a prompt's line breaks", () => {
+    expect(draft("/schedule @scout 1h check the board\nthen post a summary").prompt).toBe(
+      "check the board\nthen post a summary",
+    );
+  });
 
   it("opens the empty form with nothing typed, and needs nothing", () => {
     expect(draft("/schedule")).toEqual({});

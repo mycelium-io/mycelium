@@ -647,7 +647,7 @@ export function RoomChatBox({
     if (command?.command.name === "schedule") {
       // A schedule spends model turns again and again, so `/schedule` only
       // fills in the form: it's saved from there, once the person has looked.
-      setScheduling(scheduleDraft(command));
+      setScheduling(scheduleDraft(body));
       cleared();
       return;
     }

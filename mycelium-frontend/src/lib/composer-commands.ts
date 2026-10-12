@@ -245,27 +245,26 @@ const PRESET_INTERVALS = ["15m", "30m", "1h", "4h"];
  * `weekdays`), and everything after that is what to tell it. A word that isn't
  * a timing starts the prompt, so nothing is guessed.
  */
-export function scheduleDraft(parsed: ParsedCommand): ScheduleDraft {
+export function scheduleDraft(text: string): ScheduleDraft {
   const draft: ScheduleDraft = {};
-  const words = parsed.args
-    .map((a) => a?.value.trim() ?? "")
-    .filter(Boolean)
-    .join(" ")
-    .split(/\s+/)
-    .filter(Boolean);
+  const nameEnd = text.match(/^\/\S+/)?.[0].length ?? 0;
+  const words = [...text.slice(nameEnd).matchAll(/\S+/g)].map((m) => ({
+    value: m[0],
+    start: nameEnd + (m.index ?? 0),
+  }));
   let i = 0;
-  if (words[i]?.startsWith("@")) {
-    const owner = words[i].slice(1);
+  if (words[i]?.value.startsWith("@")) {
+    const owner = words[i].value.slice(1);
     if (owner) draft.owner = owner;
     i += 1;
   }
-  const when = words[i]?.toLowerCase() ?? "";
+  const when = words[i]?.value.toLowerCase() ?? "";
   if (/^\d+[mh]$/.test(when)) {
     draft.timing = PRESET_INTERVALS.includes(when) ? { kind: "every", every: when } : { kind: "custom", text: when };
     i += 1;
   } else if (when === "daily" || when === "weekdays") {
     // A time right after the word belongs to it, not to the prompt.
-    const time = TIME.exec(words[i + 1] ?? "");
+    const time = TIME.exec(words[i + 1]?.value ?? "");
     draft.timing = {
       kind: "daily",
       weekdays: when === "weekdays",
@@ -273,7 +272,8 @@ export function scheduleDraft(parsed: ParsedCommand): ScheduleDraft {
     };
     i += time ? 2 : 1;
   }
-  const prompt = words.slice(i).join(" ");
+  // The prompt is the rest of what was typed, as typed: line breaks kept.
+  const prompt = i < words.length ? text.slice(words[i].start).trim() : "";
   if (prompt) draft.prompt = prompt;
   return draft;
 }
