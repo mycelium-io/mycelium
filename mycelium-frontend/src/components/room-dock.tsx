@@ -72,6 +72,8 @@ interface DockContextValue {
   requestClose: (id: string) => void;
   channelCount: number | null;
   setChannelCount: (n: number) => void;
+  /** Open one of the room's views, as a tab if it isn't one already. */
+  showView: (view: View) => void;
 }
 
 const DockContext = createContext<DockContextValue | null>(null);
@@ -101,7 +103,7 @@ function ChannelPanel() {
           onCountChange={d.setChannelCount}
         />
       </div>
-      <RoomChatBox roomName={d.roomName} onOpenMemory={d.onOpenMemory} />
+      <RoomChatBox roomName={d.roomName} onOpenMemory={d.onOpenMemory} onOpenView={d.showView} />
     </div>
   );
 }
@@ -613,6 +615,7 @@ export function RoomDock({
       requestClose,
       channelCount,
       setChannelCount,
+      showView: (view: View) => handleRef.current?.showView(view),
     }),
     [
       roomName,

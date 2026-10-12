@@ -10,6 +10,7 @@ const sendRoomMessage = vi.fn().mockResolvedValue(undefined);
 const createTask = vi.fn().mockResolvedValue({ key: "work/fix-the-flaky-tests", episode: "urn:e:t1" });
 const writeFields = vi.fn().mockResolvedValue({});
 const createMemories = vi.fn().mockResolvedValue(undefined);
+const createSchedule = vi.fn().mockResolvedValue(undefined);
 const launchRunnerAgent = vi.fn().mockResolvedValue({ id: "job1" });
 const createEngine = vi.fn().mockResolvedValue({ handle: "aligner" });
 
@@ -56,6 +57,8 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   launchRunnerAgent: (...args: unknown[]) => launchRunnerAgent(...args),
   createEngine: (...args: unknown[]) => createEngine(...args),
   createMemories: (...args: unknown[]) => createMemories(...args),
+  createSchedule: (...args: unknown[]) => createSchedule(...args),
+  fetchSchedules: async () => ({ schedules: [], checks: { always: "Every time" } }),
   fetchRoomAgents: vi.fn().mockResolvedValue([
     { handle: "aligner", adapter: "engine", kind: "aligner", description: "mediator", cwd: null, owner: null, team: null, allow_from: [] },
     { handle: "conductor", adapter: "engine", kind: "conductor", description: "", cwd: null, owner: null, team: null, allow_from: [] },
@@ -154,6 +157,7 @@ describe("<RoomChatBox /> attachments", () => {
     const clicked = vi.spyOn(picker(container), "click");
     await user.click(await screen.findByRole("button", { name: "Add to this thread" }));
     expect(screen.queryByRole("button", { name: /Task or flow…/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Schedule…/ })).not.toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: /Files…/ }));
     expect(clicked).toHaveBeenCalled();
   });
@@ -541,6 +545,33 @@ describe("<RoomChatBox /> commands", () => {
     expect(screen.getByRole("button", { name: /Agent…/ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Memory…/ }));
     expect(await screen.findByRole("dialog", { name: /New memory in/ })).toBeInTheDocument();
+  });
+
+  it("opens the New Schedule form from the +", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add to the room" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
+    expect(await screen.findByRole("dialog", { name: "New schedule" })).toBeInTheDocument();
+  });
+
+  it("opens the New Schedule form from /schedule with nothing after it", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/schedule{Escape}{Enter}");
+    expect(await screen.findByRole("dialog", { name: "New schedule" })).toBeInTheDocument();
+  });
+
+  it("fills the form from a one-line /schedule without saving it", async () => {
+    createSchedule.mockClear();
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/schedule @scout daily 08:15 check the board{Escape}{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: "New schedule" });
+    expect(dialog).toHaveTextContent("every day at 08:15 UTC");
+    expect(screen.getByDisplayValue("check the board")).toBeInTheDocument();
+    expect(createSchedule).not.toHaveBeenCalled();
   });
 
   it("asks what the task is when a command comes with nothing", async () => {

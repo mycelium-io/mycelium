@@ -12,7 +12,7 @@
 // own grammar out of it).
 
 /** Where an argument's values come from. The composer resolves each one. */
-export type ChoiceSource = "harness" | "folder" | "machine" | "engine" | "memory-key";
+export type ChoiceSource = "harness" | "folder" | "machine" | "engine" | "memory-key" | "agent" | "timing";
 
 export interface CommandArg {
   name: string;
@@ -90,6 +90,20 @@ export const COMPOSER_COMMANDS: ComposerCommand[] = [
       { name: "harness", choices: "harness", about: "Which agent program to start" },
       { name: "folder", optional: true, choices: "folder", about: "Where it works. The machine's first folder if left out" },
       { name: "machine", optional: true, choices: "machine", about: "Which machine. The first one that can start it if left out" },
+    ],
+  },
+  {
+    name: "schedule",
+    about: "wake an agent on a timer. Opens the form to check before it's saved",
+    args: [
+      { name: "agent", optional: true, choices: "agent", about: "Which agent it wakes, as in @scout" },
+      {
+        name: "when",
+        optional: true,
+        choices: "timing",
+        about: "How often: 15m, 30m, 1h, 4h, or daily / weekdays followed by a time like 09:00 (UTC)",
+      },
+      { name: "prompt", rest: true, optional: true, about: "What to tell it each time it wakes" },
     ],
   },
   {
@@ -185,6 +199,60 @@ export function missingArg(parsed: ParsedCommand): string | null {
 export function argValue(parsed: ParsedCommand, name: string): string {
   const i = parsed.command.args.findIndex((a) => a.name === name);
   return i < 0 ? "" : (parsed.args[i]?.value ?? "").trim();
+}
+
+// ── /schedule ───────────────────────────────────────────────────────────────
+//
+// `/schedule @scout daily 09:00 check the board` reads as: wake @scout, every
+// day at 09:00, and tell it "check the board". Every part is optional. It only
+// fills in the New Schedule form; nothing is saved until the person saves it
+// there, since a schedule spends model turns again and again.
+
+/** The `when` values `/schedule` completes. */
+export const SCHEDULE_TIMINGS: readonly Choice[] = [
+  { value: "15m", about: "every 15 minutes" },
+  { value: "30m", about: "every 30 minutes" },
+  { value: "1h", about: "every hour" },
+  { value: "4h", about: "every 4 hours" },
+  { value: "daily", about: "every day, at a time you give next (09:00 if not)" },
+  { value: "weekdays", about: "Monday to Friday, at a time you give next (09:00 if not)" },
+];
+
+/** What a `/schedule` line fills the form with. */
+export interface ScheduleDraft {
+  owner?: string;
+  timing?: { kind: "every"; every: string } | { kind: "daily"; time: string; weekdays: boolean };
+  prompt?: string;
+}
+
+const TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+/** The form a `/schedule` line describes. A `when` it doesn't know is left out
+ *  rather than guessed, so the form opens on its own default for it. */
+export function scheduleDraft(parsed: ParsedCommand): ScheduleDraft {
+  const draft: ScheduleDraft = {};
+  const owner = argValue(parsed, "agent").replace(/^@/, "");
+  if (owner) draft.owner = owner;
+  const when = argValue(parsed, "when").toLowerCase();
+  let prompt = argValue(parsed, "prompt");
+  if (/^\d+[mh]$/.test(when)) {
+    draft.timing = { kind: "every", every: when };
+  } else if (when === "daily" || when === "weekdays") {
+    // A time right after the word belongs to it, not to the prompt.
+    const first = prompt.split(/\s+/)[0] ?? "";
+    const time = TIME.exec(first);
+    if (time) prompt = prompt.slice(first.length).trim();
+    draft.timing = {
+      kind: "daily",
+      weekdays: when === "weekdays",
+      time: time ? `${time[1].padStart(2, "0")}:${time[2]}` : "09:00",
+    };
+  } else if (when) {
+    // Not a timing: it's the start of what to tell the agent.
+    prompt = [argValue(parsed, "when"), prompt].filter(Boolean).join(" ");
+  }
+  if (prompt) draft.prompt = prompt;
+  return draft;
 }
 
 // ── A conductor summon ───────────────────────────────────────────────────────
