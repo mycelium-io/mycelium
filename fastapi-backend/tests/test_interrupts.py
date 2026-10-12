@@ -36,8 +36,8 @@ def manager(monkeypatch: pytest.MonkeyPatch) -> room_channels.RoomChannelManager
 @pytest.fixture
 def runners(monkeypatch: pytest.MonkeyPatch) -> RunnerRegistry:
     """A registry with one connected machine running @coder in a herdr pane, and
-    the room's people and agents: @julia is a person, @lead leads @coder, @scout
-    is an agent that doesn't."""
+    the room's members: @julia is a person, @scout is another agent, and
+    @aligner is an engine."""
     registry = RunnerRegistry()
     registry.hello(
         RunnerHello(
@@ -56,15 +56,8 @@ def runners(monkeypatch: pytest.MonkeyPatch) -> RunnerRegistry:
         )
     )
     monkeypatch.setattr(interrupts, "registry", registry)
-    agents = {"coder", "lead", "scout"}
-    monkeypatch.setattr(
-        principals, "classify_sender", lambda _room, h: "agent" if h in agents else "user"
-    )
-    monkeypatch.setattr(
-        principals,
-        "delegates_to",
-        lambda _room, target, actor: (target, actor) == ("coder", "lead"),
-    )
+    kinds = {"coder": "agent", "scout": "agent", "aligner": "engine"}
+    monkeypatch.setattr(principals, "classify_sender", lambda _room, h: kinds.get(h, "user"))
     return registry
 
 
@@ -96,16 +89,20 @@ def test_an_idle_agent_gets_an_ordinary_mention(manager, runners):
     assert wake["reason"] == "mention"
 
 
-def test_only_its_lead_among_agents_may_interrupt_it(manager, runners):
+def test_any_agent_in_the_room_may_interrupt_another(manager, runners):
     manager.set_herdr_presence(ROOM, {"coder": "working"})
-    manager.enqueue_herdr_wakes_for_mentions(ROOM, "@!coder hold on", sender="scout")
-    assert _jobs(runners) == []
-    assert manager._herdr_wakes[ROOM][0]["reason"] == "mention"
-
-    manager.enqueue_herdr_wakes_for_mentions(ROOM, "@!coder hold on", sender="lead")
+    manager.enqueue_herdr_wakes_for_mentions(ROOM, "@!coder hold on, that's main", sender="scout")
     assert [k for k, _ in _jobs(runners)] == ["interrupt"]
     assert manager._herdr_wakes[ROOM][0]["reason"] == "interrupt"
-    assert "allow_from" in (interrupts.refusal(ROOM, "coder", "scout") or "")
+    assert interrupts.refusal(ROOM, "coder", "scout") is None
+
+
+def test_an_engine_never_interrupts(manager, runners):
+    manager.set_herdr_presence(ROOM, {"coder": "working"})
+    manager.enqueue_herdr_wakes_for_mentions(ROOM, "@!coder your turn", sender="aligner")
+    assert _jobs(runners) == []
+    assert manager._herdr_wakes[ROOM][0]["reason"] == "mention"
+    assert "engine" in (interrupts.refusal(ROOM, "coder", "aligner") or "")
 
 
 def test_an_agent_no_runner_reports_gets_an_ordinary_mention(manager, runners):
