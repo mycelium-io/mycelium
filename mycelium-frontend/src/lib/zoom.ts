@@ -71,8 +71,19 @@ export function panBy(view: View, dx: number, dy: number, box: Box): View {
   return clampPan({ scale: view.scale, x: view.x + dx, y: view.y + dy }, box);
 }
 
-/** A double-click: back to fit when zoomed, else to 100% at `point` (2x when
- *  the image already fits at its own size). */
+/** The part of the image in view, in the fitted box's pixels. */
+export function inView(view: View, box: Box): { x: number; y: number; width: number; height: number } {
+  return { x: -view.x / view.scale, y: -view.y / view.scale, width: box.width / view.scale, height: box.height / view.scale };
+}
+
+/** `view` moved so the image's `point` (in the fitted box's pixels) is in the middle, as far as the edges allow. */
+export function centerOn(view: View, point: Point, box: Box): View {
+  if (isFit(view)) return view;
+  return clampPan({ scale: view.scale, x: box.width / 2 - point.x * view.scale, y: box.height / 2 - point.y * view.scale }, box);
+}
+
+/** A click: back to fit when zoomed, else to 100% at `point` (2x when the
+ *  image already fits at its own size). */
 export function toggleAt(view: View, point: Point, box: Box, naturalWidth: number): View {
   if (!isFit(view)) return FIT;
   const actual = actualSize(box, naturalWidth);
