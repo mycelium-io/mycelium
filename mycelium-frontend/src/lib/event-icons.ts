@@ -31,9 +31,12 @@ import {
   LockOpen,
   Megaphone,
   MessageSquareText,
+  OctagonAlert,
   PencilLine,
   SquarePlus,
+  StickyNote,
   TimerOff,
+  TriangleAlert,
   Undo2,
   UserPlus,
   Vote,
@@ -56,7 +59,7 @@ const QUIET = "var(--muted-foreground)";
 
 /** What a board change did to a task, by notice subkind (`contracts/slim-wire.json`). */
 export const NOTICE_ICONS: Record<string, EventIcon> = {
-  filed: { Icon: SquarePlus, tone: GREEN, label: "Task filed" },
+  filed: { Icon: SquarePlus, tone: GREEN, label: "New task" },
   claimed: { Icon: Hand, tone: ACCENT, label: "Task claimed" },
   released: { Icon: Undo2, tone: YELLOW, label: "Task released" },
   resolved: { Icon: CircleCheckBig, tone: GREEN, label: "Task resolved" },
@@ -78,8 +81,17 @@ export const UPSTREAM_ICONS: Record<string, EventIcon> = {
   closed: { Icon: GitPullRequestClosed, tone: ACCENT, label: "Pull request closed" },
 };
 
-/** A decision filed reads as a vote rather than a new task. */
-const DECISION_FILED: EventIcon = { Icon: Vote, tone: GREEN, label: "Decision filed" };
+/** A filed row by its kind (the board's `kind` field), labelled with the words
+ *  the line itself says ("New blocker"), so the icon never contradicts them.
+ *  A blocker is red and a concern yellow, since filing one isn't work landing. */
+export const FILED_ICONS: Record<string, EventIcon> = {
+  action: { Icon: SquarePlus, tone: GREEN, label: "New task" },
+  review: { Icon: SquarePlus, tone: GREEN, label: "New task" },
+  decision: { Icon: Vote, tone: GREEN, label: "New decision" },
+  blocked: { Icon: OctagonAlert, tone: RED, label: "New blocker" },
+  concern: { Icon: TriangleAlert, tone: YELLOW, label: "New concern" },
+  signal: { Icon: StickyNote, tone: ACCENT, label: "New note" },
+};
 
 /** Lines that aren't board notices. */
 export const THREAD_ICON: EventIcon = { Icon: MessageSquareText, tone: ACCENT, label: "Message in a thread" };
@@ -93,9 +105,9 @@ const UNKNOWN_NOTICE: EventIcon = { Icon: SquarePlus, tone: ACCENT, label: "Task
 const UNKNOWN_UPSTREAM: EventIcon = { Icon: GitPullRequest, tone: ACCENT, label: "Pull request changed" };
 
 /** The icon for a board notice: its subkind, or for `upstream` the change,
- *  and for `filed` the kind of row (a decision gets its own). */
+ *  and for `filed` the kind of row that was filed. */
 export function noticeIcon(subkind: string, change?: string | null, kind?: string | null): EventIcon {
   if (subkind === "upstream") return (change && UPSTREAM_ICONS[change]) || UNKNOWN_UPSTREAM;
-  if (subkind === "filed" && kind === "decision") return DECISION_FILED;
+  if (subkind === "filed" && kind && FILED_ICONS[kind]) return FILED_ICONS[kind];
   return NOTICE_ICONS[subkind] ?? UNKNOWN_NOTICE;
 }

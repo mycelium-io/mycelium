@@ -304,10 +304,22 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
                           style={{ left: LANE_X0 + l.column * LANE_STEP, background: l.color }}
                         />
                       ))}
-                    <span
-                      className="absolute top-1/2 size-2 -translate-x-[3px] -translate-y-1/2 rounded-full ring-2 ring-bg"
-                      style={{ left: lane ? LANE_X0 + lane.column * LANE_STEP : 4, background: color }}
-                    />
+                    {/* A message is a dot in its thread's color; any other line is
+                        the chat's icon for what happened, in the same place, so
+                        every line's columns stay where they are. */}
+                    {isMessage ? (
+                      <span
+                        className="absolute top-1/2 size-2 -translate-x-[3px] -translate-y-1/2 rounded-full ring-2 ring-bg"
+                        style={{ left: lane ? LANE_X0 + lane.column * LANE_STEP : 4, background: color }}
+                      />
+                    ) : (
+                      <span
+                        className="absolute top-1/2 flex -translate-x-[5px] -translate-y-1/2 rounded-sm bg-bg"
+                        style={{ left: lane ? LANE_X0 + lane.column * LANE_STEP : 4 }}
+                      >
+                        <EventIconMark icon={eventIconOf(ev)} />
+                      </span>
+                    )}
                   </span>
                   <button
                     type="button"
@@ -323,8 +335,9 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
                     {ev.who}
                   </button>
                   <span className={cn("min-w-0 truncate text-label", isMessage ? "text-text" : "text-faint")}>
-                    {/* What happened, with the same icon the chat draws for it. */}
-                    {!isMessage && <EventIconMark icon={eventIconOf(ev)} className="mr-1.5 align-[-1px]" />}
+                    {/* The gutter is hidden from screen readers, so its icon's
+                        words are said here instead. */}
+                    {!isMessage && <span className="sr-only">{eventIconOf(ev).label}: </span>}
                     {ev.episode && (
                       <button
                         type="button"
