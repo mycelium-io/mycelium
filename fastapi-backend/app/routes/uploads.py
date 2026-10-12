@@ -12,6 +12,7 @@ POST   /rooms/{room}/uploads              add a file (multipart, one per request
 GET    /rooms/{room}/uploads              list the room's uploads
 GET    /rooms/{room}/uploads/{name}       one upload's record
 GET    /rooms/{room}/uploads/{name}/raw   its bytes (``?download=1`` to save)
+GET    /rooms/{room}/uploads/{name}/thumb a small WebP of an image, for a gallery
 DELETE /rooms/{room}/uploads/{name}       remove the record, and the bytes if unshared
 
 A file goes back out sandboxed: its type comes from the service's table rather
@@ -28,8 +29,14 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Upload
 from fastapi.responses import FileResponse
 
 from app.config import settings
-from app.schemas import MemoryBatchCreate, MemoryCreate, UploadListResponse, UploadRead
-from app.services import actor, links, search_index, uploads
+from app.schemas import (
+    MemoryBatchCreate,
+    MemoryCreate,
+    UploadListResponse,
+    UploadOrigin,
+    UploadRead,
+)
+from app.services import actor, links, search_index, upload_origins, uploads
 from app.services.filesystem import (
     EPISODE_META,
     UPLOAD_META,
@@ -61,7 +68,12 @@ def _require_room(room_name: str) -> None:
         raise HTTPException(status_code=404, detail="Room not found")
 
 
-def _upload_read(room_name: str, key: str, meta: dict[str, Any]) -> UploadRead:
+def _upload_read(
+    room_name: str,
+    key: str,
+    meta: dict[str, Any],
+    origin: upload_origins.Origin | None = None,
+) -> UploadRead:
     info = meta[UPLOAD_META]
     name = uploads.name_from_key(key)
     filename = str(info.get("filename") or name)
@@ -81,6 +93,15 @@ def _upload_read(room_name: str, key: str, meta: dict[str, Any]) -> UploadRead:
         created_at=created_at,
         episode=meta.get(EPISODE_META),
         url=f"/api/rooms/{quote(room_name)}/uploads/{quote(name)}/raw",
+        # The hash rides along so a name reused after a delete never shows the
+        # old file's thumbnail from the cache (it's served as immutable).
+        thumb_url=(
+            f"/api/rooms/{quote(room_name)}/uploads/{quote(name)}/thumb"
+            f"?v={str(info.get('sha256') or '')[:12]}"
+            if served and served.kind == "image"
+            else None
+        ),
+        posted_in=UploadOrigin(**vars(origin)) if origin else None,
     )
 
 
@@ -173,9 +194,17 @@ def _find_read(room_name: str, key: str) -> UploadRead:
 
 @router.get("", response_model=UploadListResponse)
 async def list_room_uploads(room_name: str) -> UploadListResponse:
-    """The room's uploads, newest first, with what this hub accepts."""
+    """The room's uploads, newest first, with what this hub accepts.
+
+    Each carries the message it was posted with, read from the room's history
+    in one pass (``upload_origins``).
+    """
     _require_room(room_name)
-    items = [_upload_read(room_name, key, meta) for key, meta, _ in uploads.list_uploads(room_name)]
+    found = await asyncio.to_thread(upload_origins.origins, room_name)
+    items = [
+        _upload_read(room_name, key, meta, found.get(key))
+        for key, meta, _ in uploads.list_uploads(room_name)
+    ]
     return UploadListResponse(
         uploads=items,
         total=len(items),
@@ -189,7 +218,8 @@ async def get_upload(room_name: str, name: str) -> UploadRead:
     """One upload's record."""
     _require_room(room_name)
     key, meta = _find(room_name, name)
-    return _upload_read(room_name, key, meta)
+    found = await asyncio.to_thread(upload_origins.origins, room_name)
+    return _upload_read(room_name, key, meta, found.get(key))
 
 
 @router.get("/{name}/raw", response_class=FileResponse)
@@ -215,6 +245,36 @@ async def get_upload_bytes(
             "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(read.filename)}",
             "Cache-Control": "private, max-age=300",
             "ETag": f'"{read.sha256}"',
+        },
+    )
+
+
+@router.get("/{name}/thumb", response_class=FileResponse)
+async def get_upload_thumbnail(room_name: str, name: str) -> FileResponse:
+    """A small WebP of an image upload, so a gallery doesn't load every full image.
+
+    Made the first time it's asked for and kept beside the blobs, named by the
+    image's hash, so it can be cached for as long as the browser likes.
+    """
+    _require_room(room_name)
+    key, meta = _find(room_name, name)
+    read = _upload_read(room_name, key, meta)
+    if read.kind != "image":
+        raise HTTPException(status_code=404, detail="Only an image has a thumbnail")
+    try:
+        path = await asyncio.to_thread(uploads.thumbnail, room_name, read.sha256)
+    except OSError as exc:
+        logger.warning("uploads: couldn't make a thumbnail of %s: %s", name, exc)
+        path = None
+    if path is None:
+        raise HTTPException(status_code=404, detail="This upload's file is missing on the hub")
+    return FileResponse(
+        path,
+        media_type="image/webp",
+        headers={
+            **SANDBOX_HEADERS,
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "ETag": f'"thumb-{read.sha256}"',
         },
     )
 

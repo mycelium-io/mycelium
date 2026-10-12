@@ -4,12 +4,15 @@
 """Uploads: files a room keeps, each an ``uploads/`` memory and a blob."""
 
 import io
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from PIL import Image
 
 from app.config import settings
-from app.services import uploads
+from app.services import message_format, persister, tasks, uploads
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 
 
 @pytest.fixture(autouse=True)
@@ -209,6 +212,102 @@ async def test_deleting_removes_the_bytes_once_nothing_names_them(client):
 async def test_upload_to_a_missing_room_is_404(client):
     resp = await _upload(client, "a.txt", b"hello", room="nowhere")
     assert resp.status_code == 404
+
+
+def _say(room: str, message_id: str, *, sender: str, text: str, at, episode: str | None = None):
+    """A message in the room's history, as a reply that rode the channel."""
+    env = message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=episode or message_format.live_episode_urn(room),
+        sender=sender,
+        recipients=[message_format.SYSTEM_ACTOR_ID],
+        topic=f"urn:concept:mycelium:{room}",
+        message_id=message_id,
+        payload_type="reply",
+    )
+    record = persister.record_from(
+        env, serialize_content(env, extra={"content": text}), now=at.isoformat()
+    )
+    persister.append_transcript(room, record)
+
+
+@pytest.mark.asyncio
+async def test_an_upload_says_which_message_it_was_posted_with(client, monkeypatch):
+    monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
+    await _make_room(client)
+    for name in ("shot.png", "notes.txt", "loose.txt", "quoted.txt"):
+        await _upload(client, name, _png() if name.endswith(".png") else name.encode())
+    row = await tasks.create_task("demo", "Fix the settings page", created_by="julia")
+    thread = tasks.episode_of("demo", row.key)
+    assert thread
+    first = datetime.now(UTC) - timedelta(minutes=10)
+    _say("demo", "m1", sender="julia", text="the bug\n\n[[uploads/shot.png]]", at=first)
+    # Linked again later, in a task: the first message still counts.
+    _say(
+        "demo",
+        "m2",
+        sender="builder",
+        text="same here [[uploads/shot.png]] and [[uploads/notes.txt]]",
+        at=first + timedelta(minutes=1),
+        episode=thread,
+    )
+    # A link written inside code is about the syntax, not an attachment.
+    _say("demo", "m3", sender="julia", text="write `[[uploads/quoted.txt]]`", at=first)
+
+    listing = (await client.get("/api/rooms/demo/uploads")).json()["uploads"]
+    by_name = {u["name"]: u for u in listing}
+    said = (await client.get("/api/rooms/demo/messages")).json()["messages"]
+    ids = {m["content"]: m["id"] for m in said}
+
+    shot = by_name["shot.png"]["posted_in"]
+    assert shot["sender"] == "julia"
+    assert shot["message_id"] == ids["the bug\n\n[[uploads/shot.png]]"]
+    assert shot["episode"] is None
+    assert shot["task"] is None
+
+    notes = by_name["notes.txt"]["posted_in"]
+    assert notes["sender"] == "builder"
+    assert notes["episode"] == thread
+    assert (notes["task"], notes["task_title"]) == (row.key, "Fix the settings page")
+
+    assert by_name["loose.txt"]["posted_in"] is None
+    assert by_name["quoted.txt"]["posted_in"] is None
+    single = (await client.get("/api/rooms/demo/uploads/notes.txt")).json()
+    assert single["posted_in"]["task"] == row.key
+
+
+@pytest.mark.asyncio
+async def test_an_image_has_a_small_thumbnail_and_other_files_none(client):
+    await _make_room(client)
+    big = io.BytesIO()
+    Image.new("RGB", (1600, 900), "teal").save(big, format="PNG")
+    up = (await _upload(client, "wide.png", big.getvalue())).json()
+    text = (await _upload(client, "a.txt", b"hello")).json()
+    assert text["thumb_url"] is None
+    assert up["thumb_url"].startswith("/api/rooms/demo/uploads/wide.png/thumb?v=")
+
+    resp = await client.get(up["thumb_url"])
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/webp"
+    assert "immutable" in resp.headers["cache-control"]
+    with Image.open(io.BytesIO(resp.content)) as thumb:
+        assert thumb.size == (uploads.THUMB_PX, 225)
+
+    # Made once and kept, then gone with the file.
+    path = uploads.thumb_path("demo", up["sha256"])
+    assert path is not None
+    assert path.is_file()
+    assert (await client.get("/api/rooms/demo/uploads/a.txt/thumb")).status_code == 404
+    assert (await client.delete("/api/rooms/demo/uploads/wide.png")).status_code == 204
+    assert not path.exists()
+
+
+def test_linked_keys_reads_links_like_the_app_does():
+    text = (
+        "see [[uploads/a.png]], [[uploads/b.pdf|the plan]] and [[uploads/a.png]]\n"
+        "```\n[[uploads/c.txt]]\n```\n![[uploads/d.png]]"
+    )
+    assert uploads.linked_keys(text) == ["uploads/a.png", "uploads/b.pdf"]
 
 
 def test_safe_name():

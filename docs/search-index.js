@@ -1192,6 +1192,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#files-the-files-tab",
+    "t": "The Files tab",
+    "s": "Work › Files",
+    "x": "The room's Files tab (⌥U) shows every file the room keeps, newest first and grouped by day. Images show as small pictures, and other files as a card with their type. Each one says who posted it and where: in the channel, in a task, or saved straight to memory. Click that line to open the message it was posted with, or the task's thread. Click a file to preview it. The preview's arrows step through the files the tab i",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#files-what-a-room-takes",
     "t": "What a room takes",
     "s": "Work › Files",

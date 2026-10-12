@@ -423,3 +423,75 @@ def forget_blob(room_name: str, sha256: str | None) -> None:
     if path is not None and path.exists():
         path.unlink()
         _cleanup_empty_dirs(path.parent, get_room_dir(room_name))
+    thumb = thumb_path(room_name, sha256)
+    if thumb is not None and thumb.exists():
+        thumb.unlink()
+        _cleanup_empty_dirs(thumb.parent, get_room_dir(room_name))
+
+
+# ── Thumbnails ───────────────────────────────────────────────────────────────
+
+THUMBS_DIR = ".thumbs"
+
+# The longest side of a thumbnail, in pixels: twice the gallery's tile, so it's
+# sharp on a high-density screen and still a few kilobytes.
+THUMB_PX = 400
+
+
+def thumb_path(room_name: str, sha256: str) -> Path | None:
+    """Where an image blob's thumbnail lives, or ``None`` for a hash that isn't one.
+
+    Named by the blob's hash, like the blob, so a thumbnail is made once and
+    never goes stale: different bytes are a different name.
+    """
+    if not re.fullmatch(r"[0-9a-f]{64}", sha256 or ""):
+        return None
+    return contained(
+        get_room_dir(room_name) / UPLOADS_PREFIX.rstrip("/") / THUMBS_DIR, f"{sha256}.webp"
+    )
+
+
+def thumbnail(room_name: str, sha256: str) -> Path | None:
+    """A small WebP of an image blob, made on first ask; ``None`` if there's no blob.
+
+    The blob was decoded and re-encoded when it was added, so it's an image
+    Pillow reads, within the pixel limit. An animated one is shown by its
+    first frame.
+    """
+    source = blob_path(room_name, sha256)
+    out = thumb_path(room_name, sha256)
+    if source is None or out is None or not source.is_file():
+        return None
+    if out.is_file():
+        return out
+    with Image.open(source) as image:
+        image.seek(0)
+        small = image.convert("RGBA" if image.mode in {"RGBA", "LA", "P"} else "RGB")
+        small.thumbnail((THUMB_PX, THUMB_PX))
+        buf = io.BytesIO()
+        small.save(buf, format="WEBP", quality=80, method=4)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f".{out.name}.{secrets.token_hex(4)}.part")
+    tmp.write_bytes(buf.getvalue())
+    tmp.replace(out)
+    return out
+
+
+# ── Where an upload was posted ───────────────────────────────────────────────
+
+_CODE = re.compile(r"```.*?```|`[^`\n]*`", re.DOTALL)
+_UPLOAD_LINK = re.compile(r"(?<!!)\[\[(uploads/[^\]|#\n]+)(?:[|#][^\]\n]*)?\]\]")
+
+
+def linked_keys(text: str) -> list[str]:
+    """The ``[[uploads/…]]`` keys a message links, in order, each once.
+
+    The app's ``uploadKeysIn`` reads them the same way: a link inside a code
+    span or block is prose about the syntax, not an attachment.
+    """
+    keys: list[str] = []
+    for match in _UPLOAD_LINK.finditer(_CODE.sub("", text or "")):
+        key = match.group(1).strip()
+        if key not in keys:
+            keys.append(key)
+    return keys

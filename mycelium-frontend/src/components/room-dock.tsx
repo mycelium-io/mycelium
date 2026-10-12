@@ -23,6 +23,7 @@ import { EventStream } from "@/components/event-stream";
 import { RoomBoard } from "@/components/board/room-board";
 import { RoomSchedules } from "@/components/schedules/room-schedules";
 import { RoomStream } from "@/components/stream/room-stream";
+import { RoomFiles } from "@/components/files/room-files";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { MemoryView, type GuardHandle } from "@/components/memory-view";
 import { ThreadView } from "@/components/thread-view";
@@ -61,6 +62,7 @@ interface DockContextValue {
   roomName: string;
   onOpenMemory: (key: string) => void;
   onOpenThread: (episode: string) => void;
+  onOpenMessage: (id: string) => void;
   onMemoryChanged: () => void;
   onConnectionChange: (connected: boolean) => void;
   focusMessageId: string | null;
@@ -107,6 +109,18 @@ function ChannelPanel() {
 function StreamPanel() {
   const d = useDock();
   return <RoomStream roomName={d.roomName} onOpenThread={d.onOpenThread} onOpenMemory={d.onOpenMemory} />;
+}
+
+function FilesPanel() {
+  const d = useDock();
+  return (
+    <RoomFiles
+      roomName={d.roomName}
+      onOpenThread={d.onOpenThread}
+      onOpenMessage={d.onOpenMessage}
+      onOpenMemory={d.onOpenMemory}
+    />
+  );
 }
 
 function BoardPanel() {
@@ -158,6 +172,7 @@ const COMPONENTS = {
   channel: ChannelPanel,
   stream: StreamPanel,
   board: BoardPanel,
+  files: FilesPanel,
   schedules: SchedulesPanel,
   memory: MemoryPanel,
   thread: ThreadPanel,
@@ -341,7 +356,7 @@ function GroupActions({ containerApi, group }: IDockviewHeaderActionsProps) {
 
 // ── Opening and moving ──────────────────────────────────────────────────────
 
-const VIEW_ORDER: View[] = ["channel", "stream", "board", "schedules"];
+const VIEW_ORDER: View[] = ["channel", "stream", "board", "files", "schedules"];
 
 function addView(api: DockviewApi, view: View, position?: Parameters<DockviewApi["addPanel"]>[0]["position"]) {
   return api.addPanel({
@@ -355,11 +370,12 @@ function addView(api: DockviewApi, view: View, position?: Parameters<DockviewApi
   });
 }
 
-/** The room's first layout: Channel, Stream and Board as tabs, the Channel in front. */
+/** The room's first layout: Channel, Stream, Board and Files as tabs, the Channel in front. */
 function defaultLayout(api: DockviewApi): void {
   addView(api, "channel");
   addView(api, "stream", { referencePanel: "channel" });
   addView(api, "board", { referencePanel: "channel" });
+  addView(api, "files", { referencePanel: "channel" });
   api.getPanel("channel")?.api.setActive();
 }
 
@@ -410,6 +426,8 @@ interface Props {
    *  any panel opens its tab through the same path the page does. */
   onOpenMemory: (key: string) => void;
   onOpenThread: (episode: string) => void;
+  /** Reveal a message said in the channel, the way a search hit does. */
+  onOpenMessage: (id: string) => void;
 }
 
 /**
@@ -428,6 +446,7 @@ export function RoomDock({
   onReady,
   onOpenMemory,
   onOpenThread,
+  onOpenMessage,
 }: Props) {
   const apiRef = useRef<DockviewApi | null>(null);
   const [channelCount, setChannelCount] = useState<number | null>(null);
@@ -584,6 +603,7 @@ export function RoomDock({
       roomName,
       onOpenMemory,
       onOpenThread,
+      onOpenMessage,
       onMemoryChanged,
       onConnectionChange,
       focusMessageId,
@@ -598,6 +618,7 @@ export function RoomDock({
       roomName,
       onOpenMemory,
       onOpenThread,
+      onOpenMessage,
       onMemoryChanged,
       onConnectionChange,
       focusMessageId,

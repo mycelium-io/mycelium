@@ -766,6 +766,24 @@ export interface Upload {
   episode?: string | null;
   /** The file's bytes, under `/api`. Add `?download=1` to save rather than show. */
   url: string;
+  /** A small WebP of an image, for a gallery; absent for other kinds. */
+  thumb_url?: string | null;
+  /** The first message that linked this upload; absent when none does (saved
+   *  straight to memory, or its message is gone). */
+  posted_in?: UploadOrigin | null;
+}
+
+/** The message an upload was posted with. */
+export interface UploadOrigin {
+  /** The message's id, as the room's history reads it. */
+  message_id: string;
+  sender: string;
+  at: string;
+  /** The task thread it was said in; null when it was said in the channel. */
+  episode?: string | null;
+  /** That thread's board row, when a row carries it. */
+  task?: string | null;
+  task_title?: string | null;
 }
 
 export interface UploadList {

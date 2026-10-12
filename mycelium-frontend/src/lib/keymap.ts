@@ -103,6 +103,8 @@ export const KEYMAP: Binding[] = [
   { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },
   { id: "pane.stream", keys: ["alt+l"], label: "Stream", group: "Panes", scope: "room" },
   { id: "pane.board", keys: ["alt+p"], label: "Board", group: "Panes", scope: "room" },
+  // U for uploads: alt+F opens the browser's own menu on Windows and Linux.
+  { id: "pane.files", keys: ["alt+u"], label: "Files", group: "Panes", scope: "room" },
   { id: "pane.schedules", keys: ["alt+k"], label: "Schedules", group: "Panes", scope: "room" },
   { id: "tab.close", keys: ["alt+w"], label: "Close the tab", group: "Panes", scope: "room" },
   { id: "tab.reopen", keys: ["alt+r"], label: "Reopen the last closed tab", group: "Panes", scope: "room" },

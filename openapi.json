@@ -4910,7 +4910,7 @@
           "uploads"
         ],
         "summary": "List Room Uploads",
-        "description": "The room's uploads, newest first, with what this hub accepts.",
+        "description": "The room's uploads, newest first, with what this hub accepts.\n\nEach carries the message it was posted with, read from the room's history\nin one pass (``upload_origins``).",
         "operationId": "list_room_uploads_api_rooms__room_name__uploads_get",
         "parameters": [
           {
@@ -5080,6 +5080,51 @@
               "title": "Download"
             },
             "description": "Save it rather than show it"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/uploads/{name}/thumb": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Get Upload Thumbnail",
+        "description": "A small WebP of an image upload, so a gallery doesn't load every full image.\n\nMade the first time it's asked for and kept beside the blobs, named by the\nimage's hash, so it can be cached for as long as the browser likes.",
+        "operationId": "get_upload_thumbnail_api_rooms__room_name__uploads__name__thumb_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
           }
         ],
         "responses": {
@@ -12120,6 +12165,67 @@
         ],
         "title": "UploadListResponse"
       },
+      "UploadOrigin": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "The message's id, as the room's history reads it"
+          },
+          "sender": {
+            "type": "string",
+            "title": "Sender"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "The task thread it was said in; none when it was said in the channel"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task",
+            "description": "That thread's board row key, when a row carries it"
+          },
+          "task_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "sender",
+          "at"
+        ],
+        "title": "UploadOrigin",
+        "description": "The message an upload was posted with."
+      },
       "UploadRead": {
         "properties": {
           "name": {
@@ -12187,6 +12293,29 @@
             "type": "string",
             "title": "Url",
             "description": "Path of the file's bytes on this hub, under /api"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url",
+            "description": "Path of a small WebP of an image, for a gallery; none for other kinds"
+          },
+          "posted_in": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UploadOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first message that linked this upload; none when no message does"
           }
         },
         "type": "object",
