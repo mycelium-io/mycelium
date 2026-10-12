@@ -13,4 +13,5 @@ def a_or_an(word: str) -> str:
     ``decision``, ``aligner``, ``persona``), so a vowel letter is a vowel sound
     and no list of exceptions is needed.
     """
-    return f"{'an' if word[:1].lower() in 'aeiou' else 'a'} {word}"
+    vowel = bool(word) and word[0].lower() in "aeiou"
+    return f"{'an' if vowel else 'a'} {word}"

@@ -19,6 +19,8 @@ from app.services.words import a_or_an
         ("decision", "a decision"),
         ("persona", "a persona"),
         ("worker", "a worker"),
+        # An empty string is "in" every string, so it must not count as a vowel.
+        ("", "a "),
     ],
 )
 def test_a_vowel_gets_an_and_anything_else_gets_a(word: str, said: str) -> None:
