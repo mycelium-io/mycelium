@@ -96,7 +96,12 @@ export const COMPOSER_COMMANDS: ComposerCommand[] = [
     name: "schedule",
     about: "wake an agent on a timer. Opens the form to check before it's saved",
     args: [
-      { name: "agent", optional: true, choices: "agent", about: "Which agent it wakes, as in @scout" },
+      {
+        name: "agent",
+        optional: true,
+        choices: "agent",
+        about: "Which agent it wakes, as in @scout. Leave it out and start with how often to pick it in the form",
+      },
       {
         name: "when",
         optional: true,
@@ -218,39 +223,57 @@ export const SCHEDULE_TIMINGS: readonly Choice[] = [
   { value: "weekdays", about: "Monday to Friday, at a time you give next (09:00 if not)" },
 ];
 
-/** What a `/schedule` line fills the form with. */
+/** What a `/schedule` line fills the form with. The timing takes the form's
+ *  own shapes, so the form opens on the matching choice. */
 export interface ScheduleDraft {
   owner?: string;
-  timing?: { kind: "every"; every: string } | { kind: "daily"; time: string; weekdays: boolean };
+  timing?:
+    | { kind: "every"; every: string }
+    | { kind: "daily"; time: string; weekdays: boolean }
+    | { kind: "custom"; text: string };
   prompt?: string;
 }
 
 const TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+/** The intervals the form offers as one click; any other one opens as Custom. */
+const PRESET_INTERVALS = ["15m", "30m", "1h", "4h"];
 
-/** The form a `/schedule` line describes. A `when` it doesn't know is left out
- *  rather than guessed, so the form opens on its own default for it. */
+/**
+ * The form a `/schedule` line describes. The words are read in order rather
+ * than by position, since any part can be left out: a first word starting with
+ * `@` is the agent, then a word that's a timing (with a time after `daily` or
+ * `weekdays`), and everything after that is what to tell it. A word that isn't
+ * a timing starts the prompt, so nothing is guessed.
+ */
 export function scheduleDraft(parsed: ParsedCommand): ScheduleDraft {
   const draft: ScheduleDraft = {};
-  const owner = argValue(parsed, "agent").replace(/^@/, "");
-  if (owner) draft.owner = owner;
-  const when = argValue(parsed, "when").toLowerCase();
-  let prompt = argValue(parsed, "prompt");
+  const words = parsed.args
+    .map((a) => a?.value.trim() ?? "")
+    .filter(Boolean)
+    .join(" ")
+    .split(/\s+/)
+    .filter(Boolean);
+  let i = 0;
+  if (words[i]?.startsWith("@")) {
+    const owner = words[i].slice(1);
+    if (owner) draft.owner = owner;
+    i += 1;
+  }
+  const when = words[i]?.toLowerCase() ?? "";
   if (/^\d+[mh]$/.test(when)) {
-    draft.timing = { kind: "every", every: when };
+    draft.timing = PRESET_INTERVALS.includes(when) ? { kind: "every", every: when } : { kind: "custom", text: when };
+    i += 1;
   } else if (when === "daily" || when === "weekdays") {
     // A time right after the word belongs to it, not to the prompt.
-    const first = prompt.split(/\s+/)[0] ?? "";
-    const time = TIME.exec(first);
-    if (time) prompt = prompt.slice(first.length).trim();
+    const time = TIME.exec(words[i + 1] ?? "");
     draft.timing = {
       kind: "daily",
       weekdays: when === "weekdays",
       time: time ? `${time[1].padStart(2, "0")}:${time[2]}` : "09:00",
     };
-  } else if (when) {
-    // Not a timing: it's the start of what to tell the agent.
-    prompt = [argValue(parsed, "when"), prompt].filter(Boolean).join(" ");
+    i += time ? 2 : 1;
   }
+  const prompt = words.slice(i).join(" ");
   if (prompt) draft.prompt = prompt;
   return draft;
 }

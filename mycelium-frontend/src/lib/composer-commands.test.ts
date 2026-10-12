@@ -44,6 +44,22 @@ describe("/schedule", () => {
     });
   });
 
+  it("reads the timing first when the agent is left out", () => {
+    expect(draft("/schedule daily 08:15 check the board")).toEqual({
+      timing: { kind: "daily", weekdays: false, time: "08:15" },
+      prompt: "check the board",
+    });
+    expect(draft("/schedule 30m check")).toEqual({
+      timing: { kind: "every", every: "30m" },
+      prompt: "check",
+    });
+  });
+
+  it("opens an interval that isn't a preset as Custom, the way the form reads it", () => {
+    expect(draft("/schedule @scout 90m check").timing).toEqual({ kind: "custom", text: "90m" });
+    expect(draft("/schedule 2h").timing).toEqual({ kind: "custom", text: "2h" });
+  });
+
   it("keeps words that aren't a timing as part of what to tell it", () => {
     expect(draft("/schedule @scout please triage new issues")).toEqual({
       owner: "scout",
