@@ -130,12 +130,12 @@ export const SHOTS: Shot[] = [
     caption: "The memory rail: namespaced markdown files with versions and contributors.",
   },
   {
-    id: "room-network",
+    id: "room-stream",
     route: "/room/checkout",
     theme: "dark",
     viewport: "desktop",
-    steps: ["Open a view", "Raw messages"],
-    caption: "The raw messages tab: every message crossing the room's channel, as the hub sent it.",
+    steps: ["Stream"],
+    caption: "The stream: everything happening in the room, line by line, one lane per thread.",
   },
 
   // ── The docs' concept and guide pages ────────────────────────────────────
