@@ -84,12 +84,11 @@ import {
   closedShortcode,
   emojiNow,
   loadEmoji,
-  mayHaveShortcode,
   readRecentEmoji,
   recordEmoji,
-  replaceShortcodes,
   searchEmoji,
   shortcodeAt,
+  withEmoji,
   type EmojiTable,
 } from "@/lib/emoji";
 import { cn } from "@/lib/utils";
@@ -358,9 +357,11 @@ export function RoomChatBox({
   // `:` names come from a list loaded the first time one is typed.
   const [emojiTable, setEmojiTable] = useState<EmojiTable | null>(emojiNow);
   const wantsEmoji = emojiTable === null && content.includes(":");
+  const emojiStart = trigger?.kind === "emoji" ? trigger.start : -1;
   useEffect(() => {
-    if (wantsEmoji) void loadEmoji().then(setEmojiTable);
-  }, [wantsEmoji]);
+    // A failed load leaves `:` plain for now; the next shortcode started tries again.
+    if (wantsEmoji) loadEmoji().then(setEmojiTable, () => {});
+  }, [wantsEmoji, emojiStart]);
   const [recentEmoji, setRecentEmoji] = useState<string[]>([]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- browser storage, read after mount
@@ -709,7 +710,7 @@ export function RoomChatBox({
     if (!command) {
       // A message keeps the emoji, never the `:name:` typed for it, so whoever
       // reads it (an agent through the CLI too) sees 🎉 with nothing to render.
-      const text = mayHaveShortcode(body) ? replaceShortcodes(body, emojiTable ?? (await loadEmoji())) : body;
+      const text = await withEmoji(body, emojiTable);
       // A message is drawn in its conversation straight away and the box is
       // free again; sending, and saying when it couldn't, is the pending row's.
       setError(null);

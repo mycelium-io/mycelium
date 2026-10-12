@@ -38,10 +38,33 @@ export function tableFrom(list: readonly Gemoji[]): EmojiTable {
 let table: EmojiTable | null = null;
 let loading: Promise<EmojiTable> | null = null;
 
-/** The table, loading it the first time it's asked for. */
+/** The table, loading it the first time it's asked for. A load that fails
+ *  (offline, or a deploy replaced the chunk) is forgotten, so the next ask
+ *  tries again rather than failing forever. */
 export function loadEmoji(): Promise<EmojiTable> {
-  loading ??= import("gemoji").then((m) => (table = tableFrom(m.gemoji)));
+  loading ??= import("gemoji").then(
+    (m) => (table = tableFrom(m.gemoji)),
+    (err: unknown) => {
+      loading = null;
+      throw err;
+    },
+  );
   return loading;
+}
+
+/** `text` with its shortcodes converted, or as typed when the list can't be
+ *  had: an unconverted `:tada:` beats a message that won't send. */
+export async function withEmoji(
+  text: string,
+  t: EmojiTable | null,
+  load: () => Promise<EmojiTable> = loadEmoji,
+): Promise<string> {
+  if (!mayHaveShortcode(text)) return text;
+  try {
+    return replaceShortcodes(text, t ?? (await load()));
+  } catch {
+    return text;
+  }
 }
 
 /** The table if it has loaded, for code that can't wait (typing). */

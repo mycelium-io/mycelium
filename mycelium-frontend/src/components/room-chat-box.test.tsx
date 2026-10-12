@@ -114,6 +114,21 @@ vi.mock("@/components/keymap-provider", () => ({
   useKeyAction: () => undefined,
 }));
 
+// The real emoji list, unless a case turns `fail` on: then the list's chunk
+// won't load, as when offline or after a deploy replaced it.
+const emojiLoad = vi.hoisted(() => ({ fail: false }));
+vi.mock("@/lib/emoji", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/emoji")>();
+  const failing = () => Promise.reject(new Error("Loading chunk failed"));
+  return {
+    ...actual,
+    emojiNow: () => (emojiLoad.fail ? null : actual.emojiNow()),
+    loadEmoji: () => (emojiLoad.fail ? failing() : actual.loadEmoji()),
+    withEmoji: (text: string, t: import("@/lib/emoji").EmojiTable | null) =>
+      emojiLoad.fail ? actual.withEmoji(text, null, failing) : actual.withEmoji(text, t),
+  };
+});
+
 import { RoomChatBox } from "@/components/room-chat-box";
 import { recordMentions } from "@/lib/recent-mentions";
 
@@ -846,6 +861,20 @@ describe("<RoomChatBox /> emoji", () => {
     await screen.findByRole("button", { name: /:tada:/ });
     await userEvent.type(box, "da: done");
     expect(box).toHaveValue("so 🎉 done");
+  });
+
+  it("still sends, as typed, when the emoji list can't load", async () => {
+    emojiLoad.fail = true;
+    try {
+      renderWithSWR(<RoomChatBox roomName="demo" />);
+      const box = await textarea();
+      await userEvent.click(box);
+      await userEvent.type(box, "build failed :x: on main{Enter}");
+      await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+      expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ content: "build failed :x: on main" });
+    } finally {
+      emojiLoad.fail = false;
+    }
   });
 
   it("sends the emoji, not the shortcode", async () => {
