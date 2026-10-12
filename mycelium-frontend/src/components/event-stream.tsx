@@ -63,6 +63,17 @@ import { RawMessageDialog } from "@/components/raw-message-dialog";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import { agentTag } from "@/lib/agent-label";
+import { EventIconMark } from "@/components/event-icon";
+import {
+  AGREED_ICON,
+  DONE_ICON,
+  JOIN_ICON,
+  MEMORY_ICON,
+  noticeIcon,
+  THREAD_ICON,
+  TIMEOUT_ICON,
+  type EventIcon,
+} from "@/lib/event-icons";
 
 /** Stable empties: find writes these back on every close, and a fresh array
  *  each time would re-run the effects that read them. */
@@ -203,7 +214,7 @@ function SystemNotice({
   time,
   at,
   prevAt,
-  dot,
+  icon,
   label,
   labelColor,
   strong,
@@ -215,7 +226,8 @@ function SystemNotice({
   at?: string;
   /** When the notice above it landed, so a run doesn't repeat one age down the column. */
   prevAt?: string;
-  dot: string;
+  /** What kind of line it is, as an icon in its color (`lib/event-icons.ts`). */
+  icon: EventIcon;
   label?: string;
   labelColor?: string;
   strong?: boolean;
@@ -230,7 +242,7 @@ function SystemNotice({
       data-system-notice=""
       className="group mt-3 flex items-center gap-2 px-5 py-0.5 text-micro text-muted-foreground first:mt-0 [[data-system-notice]+&]:mt-0"
     >
-      <span aria-hidden className="inline-block size-1.5 flex-shrink-0 rounded-full" style={{ background: dot }} />
+      <EventIconMark icon={icon} />
       {label && (
         <span
           className={`flex-shrink-0 whitespace-nowrap ${strong ? "font-semibold" : "font-medium"}`}
@@ -1295,7 +1307,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     time={ev.time}
                     at={ev.at}
                     prevAt={prevAt}
-                    dot="var(--accent)"
+                    icon={THREAD_ICON}
                     label={`@${said.sender || ev.pingSenders[0] || "someone"}`}
                     labelColor="var(--text)"
                   >
@@ -1321,31 +1333,16 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 const by = ev.raw.by as string | undefined;
                 const subkind = (ev.raw.subkind as string) || "filed";
                 const change = ev.raw.change as string | undefined;
-                // Green when work lands, closes or clears; red when it stalls on a
-                // blocker; yellow when it comes back up for grabs, handed back or
-                // drained; accent in hand. A pull request reads the same way:
-                // merged or green is green, red CI or changes asked for is red.
-                const dot =
-                  subkind === "upstream"
-                    ? change === "merged" || change === "ci_passed" || change === "approved"
-                      ? "var(--green)"
-                      : change === "ci_failed" || change === "changes_requested"
-                        ? "var(--red)"
-                        : "var(--accent)"
-                    : subkind === "resolved" || subkind === "filed" || subkind === "unblocked"
-                      ? "var(--green)"
-                      : subkind === "blocked"
-                        ? "var(--red)"
-                        : subkind === "released" || subkind === "expired"
-                          ? "var(--yellow)"
-                          : "var(--accent)";
+                // The icon says what happened and its color how it went; the
+                // table is shared with the Stream tab (`lib/event-icons.ts`).
+                const icon = noticeIcon(subkind, change, ev.raw.kind as string | undefined);
                 const ref = ev.raw.ref as string | undefined;
                 const prUrl = ev.raw.url as string | undefined;
                 return (
                   <SystemNotice
                     key={ev.id}
                     time={ev.time} at={ev.at} prevAt={prevAt}
-                    dot={dot}
+                    icon={icon}
                     label={noticeLabel(subkind, ev.raw.kind as string | undefined, change)}
                   >
                     <button
@@ -1390,7 +1387,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 // in the mono span beside it.
                 const named = key ? nameActivity(key, [ev], threads, rowNames) : null;
                 return (
-                  <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} dot="var(--yellow)" label="Knowledge">
+                  <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} icon={MEMORY_ICON} label="Knowledge">
                     <span>updated</span>
                     {named ? (
                       <button
@@ -1434,7 +1431,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     ? ((ev.raw.select as { pick?: string } | undefined)?.pick ?? null)
                     : null;
                   return (
-                    <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} dot={tone} label={agreed ? "Agreed" : "Done"} labelColor={tone} strong>
+                    <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} icon={agreed ? AGREED_ICON : DONE_ICON} label={agreed ? "Agreed" : "Done"} labelColor={tone} strong>
                       <span>in</span>
                       {shortId ? (
                         <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
@@ -1453,7 +1450,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                   <SystemNotice
                     key={ev.id}
                     time={ev.time} at={ev.at} prevAt={prevAt}
-                    dot={tone}
+                    icon={broken ? TIMEOUT_ICON : AGREED_ICON}
                     label={broken ? "Timeout" : "Consensus"}
                     labelColor={tone}
                     strong
@@ -1493,7 +1490,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 const episodeUrn = (ev.raw.episode as string | undefined) ?? (ev.raw.session as string | undefined);
                 const shortId = episodeUrn ? episodeUrn.split(":").pop() : undefined;
                 return (
-                  <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} dot="var(--muted-foreground)">
+                  <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} icon={JOIN_ICON}>
                     <span className="font-medium text-muted-foreground">@{handle}</span>
                     <span>joined</span>
                     {shortId ? (
