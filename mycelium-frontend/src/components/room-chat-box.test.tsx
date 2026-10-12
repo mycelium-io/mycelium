@@ -807,3 +807,66 @@ describe("<RoomChatBox /> targeting", () => {
     expect(await screen.findByPlaceholderText(/Reply in this thread/)).toBeInTheDocument();
   });
 });
+
+describe("<RoomChatBox /> emoji", () => {
+  beforeEach(() => {
+    sendRoomMessage.mockClear();
+  });
+
+  it("offers :tada for :ta and inserts the emoji itself on Enter", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "shipped :ta");
+
+    expect(await screen.findByRole("button", { name: /🎉\s+:tada:/ })).toBeInTheDocument();
+    await userEvent.keyboard("{Enter}");
+    expect(box).toHaveValue("shipped 🎉 ");
+    expect(sendRoomMessage).not.toHaveBeenCalled();
+  });
+
+  it("moves through the list and picks with Tab, as @ does", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, ":thumbs");
+    const options = await screen.findAllByRole("button", { name: /:thumbs/ });
+    expect(options.length).toBeGreaterThan(1);
+    const second = options[1].textContent?.match(/^\S+/)?.[0];
+    await userEvent.keyboard("{ArrowDown}{Tab}");
+    expect(box).toHaveValue(`${second} `);
+  });
+
+  it("turns a whole :name: into its emoji when a space follows", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    // The list loads with the first `:`; then the shortcode is typed out.
+    await userEvent.type(box, "so :ta");
+    await screen.findByRole("button", { name: /:tada:/ });
+    await userEvent.type(box, "da: done");
+    expect(box).toHaveValue("so 🎉 done");
+  });
+
+  it("sends the emoji, not the shortcode", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "merged :+1:{Enter}");
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ content: "merged 👍" });
+  });
+
+  it.each([["at 12:30"], ["see https://x"], ["a: b"], ["run `x :ta"], ["run `x :tada: y"]])("leaves %s alone", async (typed) => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    // Typed once to load the list, then cleared, so a miss isn't just the list loading.
+    await userEvent.type(box, ":ta");
+    await screen.findByRole("button", { name: /:tada:/ });
+    await userEvent.clear(box);
+    await userEvent.type(box, typed);
+    expect(screen.queryByRole("button", { name: /:tada:|:taco:|:thirty/ })).toBeNull();
+    expect(box).toHaveValue(typed);
+  });
+});

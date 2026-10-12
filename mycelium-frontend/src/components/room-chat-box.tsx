@@ -80,6 +80,18 @@ import {
 import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import { STANDARD_FOLDERS, keyProblem, threadKey } from "@/lib/memory-location";
 import { agentLabel } from "@/lib/agent-label";
+import {
+  closedShortcode,
+  emojiNow,
+  loadEmoji,
+  mayHaveShortcode,
+  readRecentEmoji,
+  recordEmoji,
+  replaceShortcodes,
+  searchEmoji,
+  shortcodeAt,
+  type EmojiTable,
+} from "@/lib/emoji";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -118,19 +130,20 @@ const ADD_ITEMS = [
   { kind: "member", label: "Agent…", about: "bring an agent or a person in", icon: UserPlus },
 ] as const;
 
-// Three sigils, three vocabularies, one composer:
+// Four sigils, four vocabularies, one composer:
 //   @   → agents        → inserts `@handle`
 //   [[  → memories      → inserts `[[key]]` (resolves to myc://, clickable in chat)
 //   /   → skills        → inserts `/name`
+//   :   → emoji         → inserts the emoji itself (🎉 for `:tada`), per `lib/emoji.ts`
 // Each detects an in-flight token by the cursor's prefix, offers a candidate
 // popover, and inserts on select — the same machinery the `@` mention always had.
 // A command's argument with a known set of values (`arg`) completes the same way.
 // A conductor summon's flow name (`flow`) completes the same way again.
-type TriggerKind = "agent" | "memory" | "skill" | "arg" | "flow";
+type TriggerKind = "agent" | "memory" | "skill" | "emoji" | "arg" | "flow";
 
 interface Trigger {
   kind: TriggerKind;
-  /** Index where the sigil begins (`@`, `[[`, or `/`) — the start of the replaced span. */
+  /** Index where the sigil begins (`@`, `[[`, `/` or `:`) — the start of the replaced span. */
   start: number;
   /** Cursor position (the end of the replaced span). */
   end: number;
@@ -158,6 +171,9 @@ function detectTrigger(prefix: string, cursor: number): Trigger | null {
   if (skill) {
     return { kind: "skill", start: cursor - skill[1].length - 1, end: cursor, query: skill[1].toLowerCase() };
   }
+  // Last: a `:` only starts one after whitespace and outside code (`lib/emoji.ts`).
+  const emoji = shortcodeAt(prefix);
+  if (emoji) return { kind: "emoji", start: emoji.start, end: cursor, query: emoji.query };
   return null;
 }
 
@@ -339,10 +355,39 @@ export function RoomChatBox({
     { enabled: mic.available },
   );
 
+  // `:` names come from a list loaded the first time one is typed.
+  const [emojiTable, setEmojiTable] = useState<EmojiTable | null>(emojiNow);
+  const wantsEmoji = emojiTable === null && content.includes(":");
+  useEffect(() => {
+    if (wantsEmoji) void loadEmoji().then(setEmojiTable);
+  }, [wantsEmoji]);
+  const [recentEmoji, setRecentEmoji] = useState<string[]>([]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser storage, read after mount
+    setRecentEmoji(readRecentEmoji());
+  }, []);
+  const usedEmoji = useCallback((emoji: string) => {
+    recordEmoji(emoji);
+    setRecentEmoji(readRecentEmoji());
+  }, []);
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const next = e.target.value;
+    let next = e.target.value;
+    let at = e.target.selectionStart ?? next.length;
+    // A space (or a new line) typed after a whole `:name:` turns it into its emoji.
+    const typed = next.length === content.length + 1 ? next[at - 1] : "";
+    const closed = emojiTable && /\s/.test(typed) ? closedShortcode(next.slice(0, at - 1), emojiTable) : null;
+    if (closed) {
+      const before = next.slice(0, closed.start) + closed.emoji;
+      next = before + next.slice(at - 1);
+      at = before.length + 1;
+      usedEmoji(closed.emoji);
+      requestAnimationFrame(() => {
+        const node = inputRef.current;
+        if (node && node.value === next) node.setSelectionRange(at, at);
+      });
+    }
     setContent(next);
-    const at = e.target.selectionStart ?? next.length;
     setCursor(at);
     const found = triggerAt(next, at, conductors);
     setTrigger(found);
@@ -478,6 +523,15 @@ export function RoomChatBox({
         tertiary: r.tertiary,
       }));
     }
+    if (trigger.kind === "emoji") {
+      if (!emojiTable) return [];
+      return searchEmoji(emojiTable, trigger.query, recentEmoji).map((m) => ({
+        id: `emoji:${m.name}`,
+        insert: m.emoji,
+        primary: `${m.emoji}  :${m.name}:`,
+        secondary: m.description,
+      }));
+    }
     if (trigger.kind === "memory") {
       const q = trigger.query.toLowerCase();
       const pool = q
@@ -512,11 +566,12 @@ export function RoomChatBox({
         tertiary: s.description || undefined,
       })),
     ];
-  }, [choicesFor, mentionRoster, memories, parsed, protocols, recent, skills, summon, trigger]);
+  }, [choicesFor, emojiTable, mentionRoster, memories, parsed, protocols, recent, recentEmoji, skills, summon, trigger]);
 
   const accept = useCallback(
     (candidate: Candidate) => {
       if (trigger === null) return;
+      if (trigger.kind === "emoji") usedEmoji(candidate.insert);
       const before = content.slice(0, trigger.start);
       const after = content.slice(trigger.end);
       const insertion = candidate.open ? candidate.insert : `${candidate.insert} `;
@@ -537,7 +592,7 @@ export function RoomChatBox({
         node.setSelectionRange(pos, pos);
       });
     },
-    [conductors, content, trigger],
+    [conductors, content, trigger, usedEmoji],
   );
 
   // `/agent <handle> <harness> [folder] [machine]`: the same launch the Add
@@ -652,6 +707,9 @@ export function RoomChatBox({
       return;
     }
     if (!command) {
+      // A message keeps the emoji, never the `:name:` typed for it, so whoever
+      // reads it (an agent through the CLI too) sees 🎉 with nothing to render.
+      const text = mayHaveShortcode(body) ? replaceShortcodes(body, emojiTable ?? (await loadEmoji())) : body;
       // A message is drawn in its conversation straight away and the box is
       // free again; sending, and saying when it couldn't, is the pending row's.
       setError(null);
@@ -662,7 +720,7 @@ export function RoomChatBox({
       recordMentions(roomName, [...parseMentions(body), ...parseSilentMentions(body)]);
       void sendPending(roomName, {
         sender: handle,
-        content: [body, files.join(" ")].filter(Boolean).join("\n\n"),
+        content: [text, files.join(" ")].filter(Boolean).join("\n\n"),
         episode,
       }).then((sent) => {
         if (sent) onSent?.();
@@ -763,7 +821,7 @@ export function RoomChatBox({
       // render, so refocus after that commit lands to keep the user typing.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [content, episode, onSent, onOpenMemory, roomName, principal, sending, startAgent, revalidateRoom, memories, attachments]);
+  }, [content, emojiTable, episode, onSent, onOpenMemory, roomName, principal, sending, startAgent, revalidateRoom, memories, attachments]);
 
   const attachFrom = (list: FileList | null | undefined) => {
     if (list?.length) attachments.add(Array.from(list));
@@ -1002,7 +1060,7 @@ export function RoomChatBox({
                 it is this narrow on a phone and in a room with both rails open). */}
             {mic.state === "off" ? (
               <span className="min-w-0 truncate text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100">
-                @ mention · @~ silent · @! interrupt · [[ memory · / command
+                @ mention · @~ silent · @! interrupt · [[ memory · / command · : emoji
               </span>
             ) : (
               // While the mic is on, the row says so, whether or not the box has focus.
