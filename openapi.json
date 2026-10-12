@@ -1001,7 +1001,7 @@
           "messages"
         ],
         "summary": "List Wire",
-        "description": "The room's wire feed, replayed from the transcript (oldest first).\n\nBackfills the live message inspector: the SSE bus carries no history, so a freshly\nopened tab would otherwise start empty. Frames are the exact shape the bus\npushes, so the client projects backfill and live frames identically.\n\n``before`` is the same backward cursor ``GET /messages`` takes, and the\nchannel needs both: its feed is those two reads merged, so paging only the\nprose would hand back older pages with the control frames missing.",
+        "description": "The room's wire feed, replayed from the transcript (oldest first).\n\nBackfills the channel and Stream: the SSE bus carries no history, so a freshly\nopened tab would otherwise start empty. Frames are the exact shape the bus\npushes, so the client projects backfill and live frames identically.\n\n``before`` is the same backward cursor ``GET /messages`` takes, and the\nchannel needs both: its feed is those two reads merged, so paging only the\nprose would hand back older pages with the control frames missing.",
         "operationId": "list_wire_api_rooms__room_name__messages_wire_get",
         "parameters": [
           {
