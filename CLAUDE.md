@@ -777,7 +777,7 @@ is no litellm dependency.
   popover; `[[` is matched before `/` and `@` since a memory key can contain
   slashes. Skills insert a reference token — the resident agent/engine interprets
   it; the composer never runs the skill. **Commands** are the one `/` that runs:
-  `/task`, `/swarm`, `/memory`, `/thread`, `/agent` and `/engine`, only as a message's
+  `/task`, `/swarm`, `/memory`, `/thread`, `/schedule`, `/agent` and `/engine`, only as a message's
   first word, listed ahead of the skills. Each declares its arguments in
   `lib/composer-commands.ts` (one parser for all of them), so the composer
   draws the signature over the box with the argument under the cursor lit,
@@ -786,7 +786,11 @@ is no litellm dependency.
   is named before anything runs. `/task` files a task with the board capture's
   grammar through the same `lib/board/file-capture.ts` the board's File button
   uses (the tasks route, then ordinary fields); `/swarm` opens the swarm
-  dialog, since a swarm spends model turns; `/agent` queues the same runner
+  dialog, since a swarm spends model turns; `/schedule [@agent] [when]
+  [prompt…]` opens the New Schedule form (`schedules/new-schedule-dialog.tsx`,
+  also behind the composer's +) filled in from what was typed, and only the
+  form saves it, since a schedule spends model turns again and again;
+  `/agent` queues the same runner
   launch the Add member dialog does; `/memory <key> <text>` writes inline,
   replacing a taken key only at the version it saw, and with no text opens
   the new-memory dialog (`new-memory-dialog.tsx`, also behind the memory

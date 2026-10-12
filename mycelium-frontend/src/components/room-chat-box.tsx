@@ -39,7 +39,9 @@ import { RECENT_MENTIONS_CHANGED, readRecentMentions, recordMentions } from "@/l
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
 import { sendPending } from "@/lib/pending-messages";
-import { FileText, ListTodo, Paperclip, Plus, UserPlus, X } from "lucide-react";
+import { Clock, FileText, ListTodo, Paperclip, Plus, UserPlus, X } from "lucide-react";
+import { NewScheduleDialog } from "@/components/schedules/new-schedule-dialog";
+import type { View } from "@/lib/room-dock";
 import { PendingAttachments, usePendingUploads } from "@/components/uploads/composer-attachments";
 import { acceptAttribute } from "@/lib/uploads";
 import { MicToggle } from "@/components/voice/mic-toggle";
@@ -55,6 +57,9 @@ import {
   missingArg,
   parseCommand,
   parseSummon,
+  SCHEDULE_TIMINGS,
+  scheduleDraft,
+  type ScheduleDraft,
   type ParsedSummon,
   type Choice,
   type ChoiceSource,
@@ -92,11 +97,16 @@ interface Props {
   threadLabel?: string | null;
   /** Opens a memory by key, e.g. the one the + or `/memory` just wrote. */
   onOpenMemory?: (key: string) => void;
+  /** Opens one of the room's views, e.g. Schedules after `/schedule` saves one. */
+  onOpenView?: (view: View) => void;
   /** Set inside a column of content (a task's Discussion) rather than at the
    *  foot of a pane: no rule above it and no inset of its own, so its box lines
    *  up with the text above it. */
   inline?: boolean;
 }
+
+/** What the composer says once a schedule is saved; it links to the Schedules tab. */
+const SCHEDULED = "Scheduled.";
 
 /** What the composer's + adds. Files ride on the message, so they're offered
  *  in a thread too; the rest add to the room, so only its own composer has them. */
@@ -104,6 +114,7 @@ const ADD_ITEMS = [
   { kind: "files", label: "Files…", about: "attach to this message", icon: Paperclip },
   { kind: "task", label: "Task or flow…", about: "work for someone to pick up", icon: ListTodo },
   { kind: "memory", label: "Memory…", about: "something the room should keep", icon: FileText },
+  { kind: "schedule", label: "Schedule…", about: "wake an agent on a timer", icon: Clock },
   { kind: "member", label: "Agent…", about: "bring an agent or a person in", icon: UserPlus },
 ] as const;
 
@@ -221,6 +232,7 @@ export function RoomChatBox({
   episode = null,
   threadLabel = null,
   onOpenMemory,
+  onOpenView,
   inline = false,
 }: Props) {
   const [content, setContent] = useState("");
@@ -249,6 +261,8 @@ export function RoomChatBox({
   const [highlight, setHighlight] = useState(0);
   // The task a `/swarm` is being started on, while its dialog is open.
   const [swarmTask, setSwarmTask] = useState<string | null>(null);
+  // A schedule being made, as `/schedule` or the + filled it in, while its dialog is open.
+  const [scheduling, setScheduling] = useState<ScheduleDraft | null>(null);
   const [starting, setStarting] = useState(false);
   // What the + offers, and the title a `/memory` opened the memory dialog with.
   const [adding, setAdding] = useState(false);
@@ -369,9 +383,16 @@ export function RoomChatBox({
           const r = pickMachine(machines, argValue(p, "machine"), argValue(p, "harness"));
           return (r?.roots ?? []).map((root) => ({ value: tildePath(root), about: runnerName(r) }));
         }
+        case "agent":
+          // The agents a schedule can wake: the room's members, not its engines.
+          return agents
+            .filter((a) => a.adapter !== "engine")
+            .map((a) => ({ value: `@${a.handle}`, about: agentLabel(a) }));
+        case "timing":
+          return [...SCHEDULE_TIMINGS];
       }
     },
-    [machines, memoryKeys],
+    [agents, machines, memoryKeys],
   );
 
   // Agents first, then people — the roster's order, labeled for the popover.
@@ -623,6 +644,13 @@ export function RoomChatBox({
       cleared();
       return;
     }
+    if (command?.command.name === "schedule") {
+      // A schedule spends model turns again and again, so `/schedule` only
+      // fills in the form: it's saved from there, once the person has looked.
+      setScheduling(scheduleDraft(command));
+      cleared();
+      return;
+    }
     if (!command) {
       // A message is drawn in its conversation straight away and the box is
       // free again; sending, and saying when it couldn't, is the pending row's.
@@ -797,6 +825,22 @@ export function RoomChatBox({
   ) : notice ? (
     <StatusLine onDismiss={() => setNotice(null)}>
       {notice}
+      {notice === SCHEDULED && onOpenView && (
+        <>
+          {" "}
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onOpenView("schedules");
+              setNotice(null);
+            }}
+            className="text-accent hover:underline"
+          >
+            See it in Schedules
+          </button>
+        </>
+      )}
       {noticeKey && onOpenMemory && (
         <>
           {" "}
@@ -924,6 +968,7 @@ export function RoomChatBox({
                         setMemoryFolder("context");
                         setMemoryTitle("");
                       }
+                      else if (item.kind === "schedule") setScheduling({});
                       else setAddingMember(true);
                     }}
                     className="flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-hairline"
@@ -1012,6 +1057,19 @@ export function RoomChatBox({
         onCreated={onOpenMemory}
       />
       {addingMember && <AddMemberDialog open onOpenChange={setAddingMember} roomName={roomName} />}
+
+      {scheduling !== null && (
+        <NewScheduleDialog
+          roomName={roomName}
+          draft={scheduling}
+          onClose={() => setScheduling(null)}
+          onSaved={() => {
+            setScheduling(null);
+            setNoticeKey(null);
+            setNotice(SCHEDULED);
+          }}
+        />
+      )}
 
       {swarmTask !== null && (
         <StartSwarmDialog

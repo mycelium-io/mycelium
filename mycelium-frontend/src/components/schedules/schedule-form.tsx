@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Monogram } from "@/components/ui/monogram";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import type { ScheduleDraft } from "@/lib/composer-commands";
 
 /** The timings offered as one click; anything else is Custom. */
 export const PRESETS = ["15m", "30m", "1h", "4h"] as const;
@@ -126,12 +127,16 @@ export function defaultName(owner: string, check: string): string {
 export function ScheduleForm({
   roomName,
   schedule,
+  draft,
   checks,
   onClose,
   onSaved,
 }: {
   roomName: string;
   schedule: Schedule | null;
+  /** For a new schedule: what to fill in first, as `/schedule` in the composer
+   *  parsed it. The person still checks it and saves. */
+  draft?: ScheduleDraft;
   checks: Record<string, string>;
   onClose: () => void;
   onSaved: () => void;
@@ -145,14 +150,14 @@ export function ScheduleForm({
     [memories],
   );
 
-  const [owner, setOwner] = useState(schedule?.owner ?? "");
-  const [timing, setTiming] = useState<Timing>(() => timingOf(schedule));
+  const [owner, setOwner] = useState(schedule?.owner ?? draft?.owner ?? "");
+  const [timing, setTiming] = useState<Timing>(() => (schedule ? timingOf(schedule) : (draft?.timing ?? timingOf(null))));
   const [check, setCheck] = useState(schedule?.check ?? "always");
   const [query, setQuery] = useState(
     schedule?.check.startsWith("search:") ? schedule.check.slice("search:".length) : "",
   );
   const [task, setTask] = useState(schedule?.task ?? "");
-  const [prompt, setPrompt] = useState(schedule?.prompt ?? "");
+  const [prompt, setPrompt] = useState(schedule?.prompt ?? draft?.prompt ?? "");
   const [name, setName] = useState(schedule?.name ?? "");
   const [more, setMore] = useState(Boolean(schedule?.task));
   const [saving, setSaving] = useState(false);
