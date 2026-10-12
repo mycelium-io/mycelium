@@ -17,6 +17,8 @@ interface Props {
   /** The host's inset (`px-…`), so the heading, the replies and the composer
    *  line up with the task's body above them. */
   className?: string;
+  /** Told how many messages the discussion shows (see `TaskConversation`). */
+  onCountChange?: (count: number) => void;
 }
 
 /** A task with no replies yet: where its conversation starts, and where it goes. */
@@ -40,14 +42,14 @@ function NoReplies() {
 /**
  * A task's Discussion, under its body: the heading, the conversation and a
  * composer into the thread. One component for every surface that shows a task
- * as a page (the memory page, a memory tab, the memory panel's drawer), so a
- * task reads the same wherever it is opened.
+ * as a page (`MemoryView`: the memory page, a memory tab, the graph's drawer),
+ * so a task reads the same wherever it is opened.
  *
  * It draws no card: it sits on the surface the body sits on, and the composer's
  * own box is the only box. The conversation's rows carry their own inset, which
  * the negative margin cancels so they line up with the host's.
  */
-export function TaskDiscussion({ roomName, episode, onOpenMemory, className }: Props) {
+export function TaskDiscussion({ roomName, episode, onOpenMemory, className, onCountChange }: Props) {
   const refresh = useRef<(() => void) | null>(null);
   const onReady = useCallback((r: () => void) => {
     refresh.current = r;
@@ -64,6 +66,7 @@ export function TaskDiscussion({ roomName, episode, onOpenMemory, className }: P
           onReady={onReady}
           empty={<NoReplies />}
           surface="paper"
+          onCountChange={onCountChange}
         />
       </div>
       <RoomChatBox roomName={roomName} episode={episode} inline onSent={() => refresh.current?.()} />
