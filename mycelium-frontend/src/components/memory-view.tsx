@@ -12,6 +12,7 @@ import { isLiveEpisode } from "@/lib/threads";
 import { EmptyState } from "@/components/empty-state";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
+import { JumpToLatest, useJumpToLatest } from "@/components/jump-to-latest";
 import { TaskDiscussion } from "@/components/task/task-discussion";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
@@ -64,6 +65,11 @@ export function MemoryView({
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
   const { setDirty, guard, dialog: unsavedDialog } = useUnsavedGuard();
+  // The page's one scroll and its discussion's message count, for the same
+  // "Jump to latest" the channel has: the newest message is at the bottom.
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const [discussionCount, setDiscussionCount] = useState<number | null>(null);
+  const latest = useJumpToLatest(scroller, discussionCount);
 
   // The room's memories revalidate on every write in the room, so a new
   // version of this one (saved here or anywhere else) shows without a reload.
@@ -148,8 +154,8 @@ export function MemoryView({
   );
 
   return (
-    <div className="@container flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-paper">
-      <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="@container relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-paper">
+      <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto">
         {/* The toolbar spans the view, as every tab's does; a page centers
             what is under it. The app's breadcrumb already leads back to the room. */}
         <div className={page ? "pb-12" : undefined}>
@@ -194,6 +200,7 @@ export function MemoryView({
                     episode={memory.episode}
                     onOpenMemory={open}
                     className="px-6 md:px-8"
+                    onCountChange={setDiscussionCount}
                   />
                 </div>
               )}
@@ -201,6 +208,9 @@ export function MemoryView({
           )}
         </div>
       </div>
+      {hasDiscussion && !editing && !latest.atBottom && (discussionCount ?? 0) > 0 && (
+        <JumpToLatest unread={latest.unread} onClick={latest.jump} />
+      )}
       {unsavedDialog}
     </div>
   );

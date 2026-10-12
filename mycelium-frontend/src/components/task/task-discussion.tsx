@@ -17,6 +17,8 @@ interface Props {
   /** The host's inset (`px-…`), so the heading, the replies and the composer
    *  line up with the task's body above them. */
   className?: string;
+  /** Told how many messages the discussion shows (see `TaskConversation`). */
+  onCountChange?: (count: number) => void;
 }
 
 /** A task with no replies yet: where its conversation starts, and where it goes. */
@@ -47,7 +49,7 @@ function NoReplies() {
  * own box is the only box. The conversation's rows carry their own inset, which
  * the negative margin cancels so they line up with the host's.
  */
-export function TaskDiscussion({ roomName, episode, onOpenMemory, className }: Props) {
+export function TaskDiscussion({ roomName, episode, onOpenMemory, className, onCountChange }: Props) {
   const refresh = useRef<(() => void) | null>(null);
   const onReady = useCallback((r: () => void) => {
     refresh.current = r;
@@ -64,6 +66,7 @@ export function TaskDiscussion({ roomName, episode, onOpenMemory, className }: P
           onReady={onReady}
           empty={<NoReplies />}
           surface="paper"
+          onCountChange={onCountChange}
         />
       </div>
       <RoomChatBox roomName={roomName} episode={episode} inline onSent={() => refresh.current?.()} />

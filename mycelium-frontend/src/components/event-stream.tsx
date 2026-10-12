@@ -57,8 +57,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
-import { ArrowDown, AtSign, Braces, Copy, Link2, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
+import { JumpToLatest } from "@/components/jump-to-latest";
+import { AtSign, Braces, Copy, Link2, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
 import { RawMessageDialog } from "@/components/raw-message-dialog";
 import { Shimmer, SporeMark } from "@/components/responding-mark";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -1596,20 +1596,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         <ChatMinimap viewportRef={scrollRef} ticks={ticks} activeId={activeId} onJump={setStanding} />
       )}
       </div>
-      {!atBottom && visible.length > 0 && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={jumpToLatest}
-            aria-label={unread > 0 ? `Jump to latest, ${unread} new` : "Jump to latest"}
-            className="pointer-events-auto rounded-full border-border bg-elevated shadow-lg motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1"
-          >
-            <ArrowDown className="size-3.5" />
-            {unread > 0 ? `${unread} new ${unread === 1 ? "message" : "messages"}` : "Jump to latest"}
-          </Button>
-        </div>
-      )}
+      {!atBottom && visible.length > 0 && <JumpToLatest unread={unread} onClick={jumpToLatest} />}
       </div>
       {/* Outside the scroll, so it stays over the composer wherever the
           channel is scrolled to, and sending a message can't push it away. */}

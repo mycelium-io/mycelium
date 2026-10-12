@@ -47,6 +47,9 @@ interface Props {
   surface?: "bg" | "paper";
   /** What an empty thread shows, for a host that frames it its own way. */
   empty?: ReactNode;
+  /** Told how many messages the conversation shows, whenever that changes, so
+   *  a host can count what landed while the reader was scrolled away. */
+  onCountChange?: (count: number) => void;
 }
 
 /** The prose a thread message carries, or "" when it carries none. */
@@ -91,7 +94,15 @@ function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
  * rendering. The read is its own SWR entry (`useThreadMessages`), so showing a
  * conversation never replaces the room's feed with a filtered slice of itself.
  */
-export function TaskConversation({ roomName, episode, onOpenMemory, onReady, empty, surface = "bg" }: Props) {
+export function TaskConversation({
+  roomName,
+  episode,
+  onOpenMemory,
+  onReady,
+  empty,
+  surface = "bg",
+  onCountChange,
+}: Props) {
   const { messages, loading, refresh, hasOlder, loadOlder, loadingOlder } =
     useThreadMessages(roomName, episode);
   const { agents } = useRoomAgents(roomName);
@@ -185,6 +196,11 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady, emp
   // column, sticking unconditionally would scroll the body out of view the
   // moment anything arrived.
   const count = ordered.length + pending.length;
+  useEffect(() => {
+    // Only once the thread has loaded, so a host never counts the first page
+    // of messages as ones that just arrived.
+    if (!loading) onCountChange?.(count);
+  }, [count, loading, onCountChange]);
   const seen = useRef<number | null>(null);
   useEffect(() => {
     const first = seen.current === null;
