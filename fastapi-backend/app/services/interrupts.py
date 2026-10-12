@@ -12,7 +12,7 @@ and carries on rather than taking the interrupt as "the person stopped me".
 
 Three properties keep it safe.
 
-**Only a person or an agent.** Anyone in the room, person or agent, may
+**Not the hub's own members.** Anyone in the room, person or agent, may
 interrupt any agent, so an agent can stop a teammate that is about to do
 something wrong. Engines (the aligner, the conductor) never interrupt, and
 personas and workers lose the ``!`` before their text is posted, so nothing the
