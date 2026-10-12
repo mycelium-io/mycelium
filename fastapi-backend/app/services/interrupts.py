@@ -12,10 +12,12 @@ and carries on rather than taking the interrupt as "the person stopped me".
 
 Three properties keep it safe.
 
-**Only someone with the right to.** A person in the room may interrupt any
-agent. An agent may interrupt another only when it is that agent's owner or in
-its ``allow_from``, the same delegation every act-as check uses. Anything else
-is an ordinary mention.
+**Not the hub's own members.** Anyone in the room, person or agent, may
+interrupt any agent, so an agent can stop a teammate that is about to do
+something wrong. Engines (the aligner, the conductor) never interrupt, and
+personas and workers lose the ``!`` before their text is posted, so nothing the
+hub runs itself can stop an agent. From an engine, ``@!`` is an ordinary
+mention.
 
 **Only a working agent.** An idle one is woken as for ``@handle`` and is sent
 no key, since on an idle session the key could clear what a person was typing
@@ -47,14 +49,9 @@ def refusal(room: str, target: str, by: str | None) -> str | None:
     actor = norm_handle(by or "") or ""
     if not actor:
         return "nobody named sent it"
-    if principals.classify_sender(room, actor) not in {"agent", "engine"}:
-        return None
-    if principals.delegates_to(room, target, actor):
-        return None
-    return (
-        f"@{actor} is an agent, and @{target} doesn't name it as owner or in allow_from. "
-        "A person may interrupt any agent; an agent only one it owns or leads."
-    )
+    if principals.classify_sender(room, actor) == "engine":
+        return f"@{actor} is an engine, and engines don't interrupt agents (@{target})"
+    return None
 
 
 def runner_for(room: str, handle: str) -> tuple[str, str | None] | None:
