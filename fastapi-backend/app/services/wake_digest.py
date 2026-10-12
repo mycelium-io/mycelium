@@ -28,6 +28,7 @@ from typing import Any
 from app.services import assignments, message_format
 from app.services.agent_registry import norm_handle
 from app.services.persister import _conversational_text, parse_recorded_at, record_episode
+from app.services.words import a_or_an
 
 #: How much of each message the digest carries. The latest is usually the ask;
 #: the ones before it are context.
@@ -146,8 +147,7 @@ def change(data: dict[str, Any]) -> str:
         return f"{title} {subkind}"
     verb = subkind
     if subkind == "filed" and data.get("kind") and data["kind"] != "task":
-        kind = str(data["kind"])
-        verb = f"filed {'an' if kind[:1].lower() in 'aeiou' else 'a'} {kind}"
+        verb = f"filed {a_or_an(str(data['kind']))}"
     to = _norm(data.get("for"))
     return f"{who} {verb} {title}" + (f" for @{to}" if subkind == "filed" and to else "")
 

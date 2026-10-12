@@ -449,7 +449,7 @@ async def test_a_scenario_in_the_request_is_checked_like_any_other(client, pack)
                 ],
                 "summon": {"flow": "gated", "members": ["ops", "judge"], "ask": "x"},
             },
-            "cannot ask",
+            "'judge' is an aligner, which a flow cannot ask",
         ),
         ({"members": [{"handle": "conductor", "kind": "hello"}]}, "not 'conductor'"),
         (

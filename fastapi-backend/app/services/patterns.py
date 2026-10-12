@@ -29,6 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from app.config import settings
 from app.services.protocols import BUILTIN_PROTOCOLS, Protocol, builtin, parse_protocol
+from app.services.words import a_or_an
 
 #: The conductor's handle in a loaded room; a scenario does not cast it.
 CONDUCTOR = "conductor"
@@ -230,7 +231,7 @@ def _fit(
     if personas_only:
         for m in scenario.members:
             if m.kind not in PERSONAS_ONLY_KINDS:
-                problems.append(f"{m.handle!r} is a {m.kind}; this hub loads personas only")
+                problems.append(f"{m.handle!r} is {a_or_an(m.kind)}; this hub loads personas only")
     if bool(scenario.flow_file) != (flow_body is not None):
         problems.append(
             "flow_file is set but no flow came with it"
@@ -277,10 +278,14 @@ def _cast_fits(scenario: Scenario, summon: Summon, protocol: Protocol) -> list[s
         return problems
     for role, handle in zip(protocol.roles, summon.members, strict=False):
         if by_handle[handle].kind not in ASKABLE:
-            problems.append(f"role {role!r} is bound to {handle!r}, a {by_handle[handle].kind}")
+            problems.append(
+                f"role {role!r} is bound to {handle!r}, {a_or_an(by_handle[handle].kind)}"
+            )
     for handle in summon.members:
         if by_handle[handle].kind not in ASKABLE:
-            problems.append(f"{handle!r} is a {by_handle[handle].kind}, which a flow cannot ask")
+            problems.append(
+                f"{handle!r} is {a_or_an(by_handle[handle].kind)}, which a flow cannot ask"
+            )
     held = set(summon.members[: len(protocol.roles)])
     if any(s.to == "workers" for s in protocol.steps) and held >= set(summon.members):
         problems.append(f"flow {summon.flow!r} asks workers, but every named member holds a role")
