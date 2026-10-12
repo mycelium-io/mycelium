@@ -52,7 +52,7 @@ HELP = (
     "[bold]AI coding agents: run [cyan]mycelium skill print[/cyan] before anything else.[/bold] "
     "It explains how to take part in a room: check the board for your tasks, work each one "
     "in its thread, and reply where you were asked. [cyan]mycelium whoami[/cyan] shows "
-    "which room and handle you are."
+    "your handle and the room you're in."
 )
 
 app = typer.Typer(
