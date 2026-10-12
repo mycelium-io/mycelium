@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { RoomMessage } from "@/lib/api";
 import { usePendingMessages, type Landed } from "@/lib/pending-messages";
 import { PendingMessageRows } from "@/components/pending-message-rows";
+import { Shimmer, SporeMark } from "@/components/responding-mark";
 import {
   applyActivity,
   expireActivity,
@@ -298,12 +299,8 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady, emp
             surface === "paper" ? "bg-paper" : "bg-bg",
           )}
         >
-          <span
-            aria-hidden
-            className="inline-block size-1.5 flex-shrink-0 rounded-full motion-safe:animate-pulse"
-            style={{ background: "var(--accent)" }}
-          />
-          <span className="truncate">{respondingLabel(responding)}</span>
+          <SporeMark />
+          <Shimmer className="truncate">{respondingLabel(responding)}</Shimmer>
         </div>
       )}
       <div ref={endRef} />

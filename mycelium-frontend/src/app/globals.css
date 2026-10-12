@@ -240,6 +240,33 @@ body {
   50% { opacity: 0.4; }
 }
 
+/* "… is responding": a soft light sweeping across the words, painted through
+ * the text itself so it needs no extra element. The words keep their usual
+ * muted color, and the light is the full text color. Plain text when motion is
+ * reduced. */
+.responding-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--muted-foreground) 0%,
+    var(--muted-foreground) 40%,
+    var(--text) 50%,
+    var(--muted-foreground) 60%,
+    var(--muted-foreground) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: responding-sweep 2.4s linear infinite;
+}
+@keyframes responding-sweep {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .responding-shimmer { animation: none; background: none; color: var(--muted-foreground); }
+}
+
 /* Avatar presence halo. The ring breathes via box-shadow — spread plus a soft
  * outer glow, at full opacity throughout — rather than fading, so the row line
  * behind it never bleeds through the way an opacity pulse does. `--halo` is set

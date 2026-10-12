@@ -60,6 +60,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { ArrowDown, AtSign, Braces, Copy, Link2, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
 import { RawMessageDialog } from "@/components/raw-message-dialog";
+import { Shimmer, SporeMark } from "@/components/responding-mark";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import { agentTag } from "@/lib/agent-label";
@@ -129,15 +130,12 @@ const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...RAISE_UP_TYPES, PING_TYPE,
 const SYSTEM_TYPES = new Set([...RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
 
 /** One line of "who is responding": the system-notice scale the channel already
- *  speaks in, with the dot breathing for a turn in flight. */
-function RespondingRow({ children }: { children: React.ReactNode }) {
+ *  speaks in, with a spore growing for a turn in flight. `offset` staggers the
+ *  spores of several rows. */
+function RespondingRow({ children, offset = 0 }: { children: React.ReactNode; offset?: number }) {
   return (
     <div className="flex items-center gap-2 py-0.5 text-micro text-muted-foreground">
-      <span
-        aria-hidden
-        className="inline-block size-1.5 flex-shrink-0 rounded-full motion-safe:animate-pulse"
-        style={{ background: "var(--accent)" }}
-      />
+      <SporeMark offset={offset} />
       <span className="flex min-w-0 items-center gap-1.5 truncate">{children}</span>
     </div>
   );
@@ -166,13 +164,17 @@ function RespondingLine({
       data-testid="responding-line"
       className="flex flex-shrink-0 flex-col px-5 py-1 motion-safe:animate-in motion-safe:fade-in-0"
     >
-      {here.length > 0 && <RespondingRow>{respondingLabel(here)}</RespondingRow>}
-      {[...elsewhere.entries()].map(([thread, group]) => {
+      {here.length > 0 && (
+        <RespondingRow>
+          <Shimmer className="truncate">{respondingLabel(here)}</Shimmer>
+        </RespondingRow>
+      )}
+      {[...elsewhere.entries()].map(([thread, group], i) => {
         const shortId = threadShortId(thread) ?? "thread";
         const title = threads.get(thread)?.title ?? shortId;
         return (
-          <RespondingRow key={thread}>
-            <span className="truncate">{respondingLabel(group, "elsewhere")}</span>
+          <RespondingRow key={thread} offset={(i + 1) * 4}>
+            <Shimmer className="truncate">{respondingLabel(group, "elsewhere")}</Shimmer>
             <button
               type="button"
               onClick={() => onOpenThread?.(thread)}
