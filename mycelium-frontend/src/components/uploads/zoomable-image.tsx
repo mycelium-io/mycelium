@@ -272,7 +272,7 @@ function Minimap({
   src: string;
   view: View;
   box: Box;
-  /** Shown fully; otherwise faded until the pointer moves or rests on it. */
+  /** Shown fully; otherwise faded, letting presses through, until the pointer moves. */
   awake: boolean;
   /** Center the view on this point of the image, in the fitted box's pixels. */
   onCenter: (point: Point) => void;
@@ -292,8 +292,11 @@ function Minimap({
       data-testid="minimap"
       aria-hidden
       className={cn(
-        "absolute right-2 bottom-2 hidden cursor-pointer touch-none overflow-hidden rounded border border-white/70 bg-surface shadow-md transition-opacity duration-300 hover:opacity-100 sm:block",
-        awake ? "opacity-100" : "opacity-0",
+        "absolute right-2 bottom-2 hidden cursor-pointer touch-none overflow-hidden rounded border border-white/70 bg-surface shadow-md transition-opacity duration-300 sm:block",
+        // Faded, it lets presses through to the image, so a tap on a tablet
+        // (which may send no move first) zooms out rather than moving the
+        // view. Any movement over the image wakes it again.
+        awake ? "opacity-100" : "pointer-events-none opacity-0",
       )}
       style={{ width, height: box.height * k }}
       onClick={(e) => e.stopPropagation()}
