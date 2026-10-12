@@ -27,9 +27,10 @@ export function isFiltered(f: FileFilter): boolean {
   return f.kind !== "all" || f.by !== null || f.where !== "any" || f.query.trim() !== "";
 }
 
-/** Who posted a file: the sender of its message, else whoever added it. */
+/** Who posted a file: whoever added it. Not the sender of the message it was
+ *  posted with, which can be a teammate sharing someone else's upload. */
 export function posterOf(u: Upload): string {
-  return u.posted_in?.sender ?? u.created_by;
+  return u.created_by;
 }
 
 function whereMatches(u: Upload, where: Where): boolean {

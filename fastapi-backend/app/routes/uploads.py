@@ -200,11 +200,10 @@ async def list_room_uploads(room_name: str) -> UploadListResponse:
     in one pass (``upload_origins``).
     """
     _require_room(room_name)
-    found = await asyncio.to_thread(upload_origins.origins, room_name)
-    items = [
-        _upload_read(room_name, key, meta, found.get(key))
-        for key, meta, _ in uploads.list_uploads(room_name)
-    ]
+    records = uploads.list_uploads(room_name)
+    uploaders = {key: str(meta.get("created_by") or "") for key, meta, _ in records}
+    found = await asyncio.to_thread(upload_origins.origins, room_name, uploaders)
+    items = [_upload_read(room_name, key, meta, found.get(key)) for key, meta, _ in records]
     return UploadListResponse(
         uploads=items,
         total=len(items),
@@ -218,7 +217,8 @@ async def get_upload(room_name: str, name: str) -> UploadRead:
     """One upload's record."""
     _require_room(room_name)
     key, meta = _find(room_name, name)
-    found = await asyncio.to_thread(upload_origins.origins, room_name)
+    uploaders = {key: str(meta.get("created_by") or "")}
+    found = await asyncio.to_thread(upload_origins.origins, room_name, uploaders)
     return _upload_read(room_name, key, meta, found.get(key))
 
 

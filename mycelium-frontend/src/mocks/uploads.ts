@@ -69,26 +69,30 @@ function titleOf(value: string | Record<string, unknown>, key: string): string {
   return (text.split("\n")[0] || key).replace(/^#+\s*/, "");
 }
 
-/** The first message that links each upload, as the hub's `upload_origins` reads it. */
-function postedIn(fx: RoomFixture): Map<string, UploadOrigin> {
-  const found = new Map<string, UploadOrigin>();
+/** The message each upload was posted with, as the hub's `upload_origins`
+ *  reads it: the uploader's own first message that links it, else anyone's. */
+function postedIn(fx: RoomFixture, uploaders: Map<string, string>): Map<string, UploadOrigin> {
+  const first = new Map<string, UploadOrigin>();
+  const own = new Map<string, UploadOrigin>();
   const said = [...fx.messages].sort((a, b) => a.created_at.localeCompare(b.created_at));
   for (const m of said) {
     for (const key of uploadKeysIn(m.content ?? "")) {
-      if (found.has(key)) continue;
+      if (own.has(key)) continue;
       const episode = m.episode && !m.episode.endsWith(":live") ? m.episode : null;
       const row = episode ? fx.memories.find((mem) => mem.episode === episode) : undefined;
-      found.set(key, {
+      const origin: UploadOrigin = {
         message_id: m.id,
         sender: m.sender_handle,
         at: m.created_at,
         episode,
         task: row?.key ?? null,
         task_title: row ? titleOf(row.value, row.key) : null,
-      });
+      };
+      if (!first.has(key)) first.set(key, origin);
+      if (uploaders.get(key) === m.sender_handle) own.set(key, origin);
     }
   }
-  return found;
+  return new Map([...first, ...own]);
 }
 
 /** `/api/rooms/:room/uploads/...`, or null for a route this doesn't serve. */
@@ -103,7 +107,7 @@ export async function handleUploads(
   const [, name, tail] = sub.map(decodeURIComponent);
 
   if (sub.length === 1 && method === "GET") {
-    const origins = postedIn(fx);
+    const origins = postedIn(fx, new Map([...store.values()].map((s) => [s.record.key, s.record.created_by])));
     const uploads = [...store.values()].map((s) => ({ ...s.record, posted_in: origins.get(s.record.key) ?? null })).reverse();
     return json({ uploads, total: uploads.length, accepted: accepted(), max_bytes: MAX_BYTES });
   }

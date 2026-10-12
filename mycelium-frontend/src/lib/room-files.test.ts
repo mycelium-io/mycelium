@@ -24,12 +24,13 @@ function file(name: string, at: string, extra: Partial<Upload> = {}): Upload {
   };
 }
 
-const channel = { message_id: "m1", sender: "builder", at: "", episode: null };
+// Julia shared builder's screenshot in the channel.
+const channel = { message_id: "m1", sender: "julia", at: "", episode: null };
 const inTask = { message_id: "m2", sender: "julia", at: "", episode: THREAD, task: "work/settings", task_title: "Fix settings" };
 
 const FILES = [
   file("old-plan.pdf", "2026-10-09T10:00:00"),
-  file("shot-1.png", "2026-10-11T09:00:00", { posted_in: channel }),
+  file("shot-1.png", "2026-10-11T09:00:00", { posted_in: channel, created_by: "builder" }),
   file("shot-2.png", "2026-10-11T15:00:00", { posted_in: inTask }),
   file("spec.pdf", "2026-10-10T12:00:00", { posted_in: inTask }),
 ];
@@ -43,8 +44,9 @@ describe("filterFiles", () => {
     const names = (f: Partial<typeof NO_FILTER>) => filterFiles(FILES, { ...NO_FILTER, ...f }).map((u) => u.name);
     expect(names({ kind: "images" })).toEqual(["shot-2.png", "shot-1.png"]);
     expect(names({ kind: "other" })).toEqual(["spec.pdf", "old-plan.pdf"]);
-    // The sender of its message, else whoever added it.
+    // Whoever added it, not whoever shared the link.
     expect(names({ by: "builder" })).toEqual(["shot-1.png"]);
+    expect(names({ by: "julia" })).not.toContain("shot-1.png");
     expect(names({ where: "channel" })).toEqual(["shot-1.png"]);
     expect(names({ where: { task: "work/settings" } })).toEqual(["shot-2.png", "spec.pdf"]);
     expect(names({ where: "memory" })).toEqual(["old-plan.pdf"]);

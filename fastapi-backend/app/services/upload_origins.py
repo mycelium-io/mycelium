@@ -2,14 +2,17 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Where each of a room's uploads was posted: the first message that linked it.
+Where each of a room's uploads was posted: the message that linked it.
 
 A file sent from a message box is uploaded first and linked from the message
 as ``[[uploads/<name>]]``, so the message is the only record of where it went.
 This reads the room's history once and keeps, for each upload key, the
-earliest message that links it: who sent it, when, and the task whose thread
-it was said in (none when it was said in the room's channel). An upload saved
-straight to memory, or one no message links any more, has none.
+message it was posted with: the uploader's own first message that links it,
+or, when they never linked it themselves (an agent uploads with the CLI and a
+teammate shares the link), the first message from anyone. It says who sent it,
+when, and the task whose thread it was said in (none when it was said in the
+room's channel). An upload saved straight to memory, or one no message links
+any more, has none. Who *added* the file is the upload's own ``created_by``.
 """
 
 from __future__ import annotations
@@ -36,15 +39,21 @@ class Origin:
     task_title: str | None
 
 
-def origins(room: str) -> dict[str, Origin]:
-    """``upload key → Origin`` for every upload a message in ``room`` links."""
+def origins(room: str, uploaders: dict[str, str] | None = None) -> dict[str, Origin]:
+    """``upload key → Origin`` for every upload a message in ``room`` links.
+
+    ``uploaders`` maps a key to who added the upload; their own message wins
+    over an earlier one from someone else.
+    """
+    uploaders = uploaders or {}
     live = message_format.live_episode_urn(room)
     rows = message_search.thread_rows(room)
-    found: dict[str, Origin] = {}
+    first: dict[str, Origin] = {}
+    own: dict[str, Origin] = {}
     for m in sorted(persister.room_conversation(room), key=lambda m: m.created_at):
         if m.message_type not in PROSE_MESSAGE_TYPES:
             continue
-        keys = [k for k in uploads.linked_keys(m.content or "") if k not in found]
+        keys = [k for k in uploads.linked_keys(m.content or "") if k not in own]
         if not keys:
             continue
         thread = m.episode if m.episode and m.episode != live else None
@@ -58,5 +67,7 @@ def origins(room: str) -> dict[str, Origin]:
             task_title=row[1] if row else None,
         )
         for key in keys:
-            found[key] = origin
-    return found
+            first.setdefault(key, origin)
+            if uploaders.get(key) == m.sender_handle:
+                own[key] = origin
+    return first | own

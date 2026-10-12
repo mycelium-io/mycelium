@@ -277,6 +277,27 @@ async def test_an_upload_says_which_message_it_was_posted_with(client, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_the_uploaders_own_message_wins_over_a_teammate_linking_it_first(client):
+    """An agent uploads with the CLI; a teammate links it before the agent does."""
+    await _make_room(client)
+    await _upload(client, "report.txt", b"the report", who="worker")
+    first = datetime.now(UTC) - timedelta(minutes=10)
+    _say("demo", "t1", sender="julia", text="look [[uploads/report.txt]]", at=first)
+    _say(
+        "demo",
+        "t2",
+        sender="worker",
+        text="done: [[uploads/report.txt]]",
+        at=first + timedelta(minutes=2),
+    )
+    up = (await client.get("/api/rooms/demo/uploads/report.txt")).json()
+    assert up["created_by"] == "worker"
+    assert up["posted_in"]["sender"] == "worker"
+    listed = (await client.get("/api/rooms/demo/uploads")).json()["uploads"][0]
+    assert listed["posted_in"]["sender"] == "worker"
+
+
+@pytest.mark.asyncio
 async def test_an_image_has_a_small_thumbnail_and_other_files_none(client):
     await _make_room(client)
     big = io.BytesIO()
