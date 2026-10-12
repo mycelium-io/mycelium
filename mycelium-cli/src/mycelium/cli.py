@@ -45,9 +45,19 @@ from mycelium.commands import (
     login as login_cmd,
 )
 
+#: The top of `mycelium --help`. Coding agents often start a new tool by
+#: reading its help, so the first thing it tells them is where the skill is.
+HELP = (
+    "[bold]Mycelium[/bold]: Multi-agent coordination + persistent memory\n\n"
+    "[bold]AI coding agents: run [cyan]mycelium skill print[/cyan] before anything else.[/bold] "
+    "It explains how to take part in a room: check the board for your tasks, work each one "
+    "in its thread, and reply where you were asked. [cyan]mycelium whoami[/cyan] shows "
+    "which room and handle you are."
+)
+
 app = typer.Typer(
     name="mycelium",
-    help="[bold]Mycelium[/bold]: Multi-agent coordination + persistent memory",
+    help=HELP,
     add_completion=True,
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
@@ -77,7 +87,6 @@ def main(
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress non-essential output"),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
 ) -> None:
-    """[bold]Mycelium[/bold]: Multi-agent coordination + persistent memory."""
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet
