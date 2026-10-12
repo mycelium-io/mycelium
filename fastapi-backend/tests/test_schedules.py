@@ -207,9 +207,9 @@ async def test_a_wake_waits_for_the_next_await_and_never_doubles(client: AsyncCl
 
 
 CHANGE_LINE = (
-    'This is your schedule "check-in" (every 17m). Change it with '
+    'This is your schedule "check-in" (every 17m). To change it: '
     "`mycelium schedule edit check-in --room ops --every <interval>` "
-    "(or --cron, --prompt, --check), or pause it with "
+    "(or --cron, --prompt, --check). To pause it: "
     "`mycelium schedule pause check-in --room ops`."
 )
 

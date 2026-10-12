@@ -717,9 +717,9 @@ def change_line(schedule: Schedule, room: str) -> str:
     """
     name = schedule.name
     return (
-        f'This is your schedule "{name}" ({timing(schedule)}). Change it with '
+        f'This is your schedule "{name}" ({timing(schedule)}). To change it: '
         f"`mycelium schedule edit {name} --room {room} --every <interval>` "
-        f"(or --cron, --prompt, --check), or pause it with "
+        f"(or --cron, --prompt, --check). To pause it: "
         f"`mycelium schedule pause {name} --room {room}`."
     )
 
