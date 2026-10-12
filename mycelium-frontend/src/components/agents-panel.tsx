@@ -636,7 +636,7 @@ function AgentRow({
           marked ? "bg-accent/15" : ""
         }`}
       >
-        <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
+        <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence engine={a.adapter === "engine"} />
         <span className="shrink-0 font-mono text-label text-text">{a.handle}</span>
         {schedules > 0 && (
           <Clock

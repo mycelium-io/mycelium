@@ -4,6 +4,9 @@
 import { Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { avatarTint, initials, softAvatar } from "@/lib/avatar-color";
+import { useClientSetting } from "@/lib/client-settings";
+import { detailFor, pxOfSizeClass } from "@/lib/sporelings";
+import { Sporeling } from "@/components/ui/sporeling";
 import { Tooltip } from "@/components/ui/tooltip";
 
 export { initials };
@@ -33,6 +36,9 @@ interface Props {
    *  larger hover target (a roster row's card, a facepile chip) that already
    *  names the presence, otherwise the dot's bubble intercepts that hover. */
   mutePresence?: boolean;
+  /** An engine (the aligner, the conductor). Drawn as a lantern when agents
+   *  are shown as creatures. */
+  engine?: boolean;
 }
 
 interface Halo {
@@ -76,10 +82,16 @@ function halo(presence: Presence, status?: string | null): Halo {
  *  without the discs shouting over the names beside them. Presence rides as a
  *  **halo** around it — color for the tier, a breathing ring for a poll in
  *  flight — plus a corner dot that carries the tier on its own for anyone the
- *  ring's color doesn't reach. */
-export function Monogram({ handle, color, className, presence, status, wakePending, mutePresence }: Props) {
+ *  ring's color doesn't reach.
+ *
+ *  An agent (no `color` given, which is how callers already say "an agent") is
+ *  drawn as its creature inside the same disc when the person has agents shown
+ *  as creatures (Settings → General). The disc, ring and dot don't change. */
+export function Monogram({ handle, color, className, presence, status, wakePending, mutePresence, engine }: Props) {
   const tint = color ?? avatarTint(handle);
   const ring = presence ? halo(presence, status) : null;
+  const [agentAvatars] = useClientSetting("general.agent-avatars");
+  const creature = color === undefined && agentAvatars === "creatures";
   return (
     <div className="relative flex-shrink-0">
       <div
@@ -92,7 +104,11 @@ export function Monogram({ handle, color, className, presence, status, wakePendi
         )}
         style={{ ...softAvatar(tint), ...(ring ? ({ "--halo": ring.color } as React.CSSProperties) : {}) }}
       >
-        {initials(handle)}
+        {creature ? (
+          <Sporeling handle={handle} tint={tint} detail={detailFor(pxOfSizeClass(className))} engine={engine} />
+        ) : (
+          initials(handle)
+        )}
       </div>
       {ring && <PresenceDot halo={ring} mute={mutePresence} />}
       {wakePending && <MailBadge />}

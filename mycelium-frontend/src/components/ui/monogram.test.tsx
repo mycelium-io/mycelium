@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
 import { Monogram } from "@/components/ui/monogram";
 import { RoomAvatar } from "@/components/ui/room-avatar";
 import { avatarTint, initials } from "@/lib/avatar-color";
+import { __resetClientSettingsCache, setClientSetting } from "@/lib/client-settings";
+
+beforeEach(() => {
+  window.localStorage.clear();
+  __resetClientSettingsCache();
+});
 
 describe("avatarTint", () => {
   it("gives a handle the same tint every time", () => {
@@ -78,6 +84,45 @@ describe("<Monogram />", () => {
     const style = disc.getAttribute("style") ?? "";
     expect(style).toMatch(/background: color-mix\(in srgb, var\(--avatar-[1-6]\) 45%, var\(--surface\)\)/);
     expect(style).not.toContain("transparent");
+  });
+
+  it("draws an agent as its creature, inside the same disc", () => {
+    // No color is how callers say "an agent".
+    const { container } = render(<Monogram handle="mycelium-coder" className="size-6" />);
+    const svg = container.querySelector("svg[data-family]");
+    expect(svg).toBeTruthy();
+    expect(screen.queryByText("MC")).toBeNull();
+    // 24px is too small for features: it's the glyph.
+    expect(svg).toHaveAttribute("data-detail", "glyph");
+  });
+
+  it("draws the simple creature from 28px up", () => {
+    const { container } = render(<Monogram handle="mycelium-coder" className="size-10" />);
+    expect(container.querySelector("svg[data-family]")).toHaveAttribute("data-detail", "simple");
+  });
+
+  it("keeps a person's initials", () => {
+    render(<Monogram handle="julia" color="var(--avatar-neutral)" />);
+    expect(screen.getByText("JU")).toBeInTheDocument();
+  });
+
+  it("draws an engine as a lantern", () => {
+    const { container } = render(<Monogram handle="aligner" engine />);
+    expect(container.querySelector("svg[data-family]")).toHaveAttribute("data-family", "lantern");
+  });
+
+  it("goes back to initials when the setting says so", () => {
+    const { container } = render(<Monogram handle="mycelium-coder" />);
+    expect(container.querySelector("svg[data-family]")).toBeTruthy();
+    act(() => setClientSetting("general.agent-avatars", "initials"));
+    expect(container.querySelector("svg[data-family]")).toBeNull();
+    expect(screen.getByText("MC")).toBeInTheDocument();
+  });
+
+  it("keeps the presence ring and dot around a creature", () => {
+    const { container } = render(<Monogram handle="mycelium-coder" presence="herdr" status="working" />);
+    expect(container.querySelector(".avatar-halo.pulse svg[data-family]")).toBeTruthy();
+    expect(screen.getByLabelText("working")).toBeInTheDocument();
   });
 });
 

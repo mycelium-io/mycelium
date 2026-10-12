@@ -633,6 +633,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // kind, or a bridged service as a2a.
   const agentTags = useMemo(() => new Map(agents.map((a) => [a.handle, agentTag(a)])), [agents]);
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
+  const engineHandles = useMemo(() => new Set(agents.filter((a) => a.adapter === "engine").map((a) => a.handle)), [agents]);
   const searchHandles = useMemo(() => [...agentHandles], [agentHandles]);
   const agentOwners = useMemo(
     () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
@@ -1550,7 +1551,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     {!grouped && (
                       <Tooltip content={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
                         <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
-                          <Monogram handle={ev.sender} color={color} className="size-6 text-[10px]" />
+                          <Monogram handle={ev.sender} color={color} className="size-6 text-[10px]" engine={engineHandles.has(ev.sender)} />
                         </span>
                       </Tooltip>
                     )}
