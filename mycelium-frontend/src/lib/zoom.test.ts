@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { clampPan, FIT, maxScale, panBy, readout, toggleAt, zoomAt } from "@/lib/zoom";
+import { centerOn, clampPan, FIT, inView, maxScale, panBy, readout, toggleAt, zoomAt } from "@/lib/zoom";
 
 const BOX = { width: 500, height: 400 };
 // Twice the box's width, so 100% is a scale of 2.
@@ -50,6 +50,19 @@ describe("toggleAt", () => {
 
   it("goes to 2x when the image already fits at its own size", () => {
     expect(toggleAt(FIT, { x: 0, y: 0 }, BOX, 400).scale).toBe(2);
+  });
+});
+
+describe("the part in view", () => {
+  it("is the box shrunk by the scale, at the offset", () => {
+    expect(inView({ scale: 2, x: -100, y: -50 }, BOX)).toEqual({ x: 50, y: 25, width: 250, height: 200 });
+  });
+
+  it("can be centered on a point, as far as the edges allow", () => {
+    const v = { scale: 2, x: 0, y: 0 };
+    expect(centerOn(v, { x: 250, y: 200 }, BOX)).toEqual({ scale: 2, x: -250, y: -200 });
+    expect(centerOn(v, { x: 0, y: 0 }, BOX)).toEqual({ scale: 2, x: 0, y: 0 });
+    expect(centerOn(FIT, { x: 250, y: 200 }, BOX)).toBe(FIT);
   });
 });
 

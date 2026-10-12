@@ -142,29 +142,76 @@ describe("<UploadPreviewDialog /> zooming an image", () => {
     expect(transform()).toBe("");
   });
 
-  it("toggles between fit and 100% with a double-click", () => {
+  // A press as a browser sends it: down, any moves, up, then the click.
+  const press = (el: HTMLElement, from: [number, number], to: [number, number] = from, detail = 1) => {
+    fireEvent.pointerDown(el, { pointerId: 1, button: 0, clientX: from[0], clientY: from[1] });
+    if (to !== from) fireEvent.pointerMove(el, { pointerId: 1, clientX: to[0], clientY: to[1] });
+    fireEvent.pointerUp(el, { pointerId: 1, clientX: to[0], clientY: to[1] });
+    fireEvent.click(el, { clientX: to[0], clientY: to[1], detail });
+  };
+
+  it("zooms in to 100% at the point clicked, and a click while zoomed goes back to fit", () => {
     render(<Opened set={SET} first={SET[0]} />);
-    fireEvent.doubleClick(screen.getByTestId("zoom-frame"), { clientX: 0, clientY: 0 });
+    const frame = screen.getByTestId("zoom-frame");
+    press(frame, [100, 50]);
     expect(level()).toHaveTextContent("100%");
-    fireEvent.doubleClick(screen.getByTestId("zoom-frame"), { clientX: 0, clientY: 0 });
+    // The point clicked stays under the pointer: (100, 50) at twice the size.
+    expect(transform()).toBe("translate(-100px, -50px) scale(2)");
+    // A press that wanders a pixel or two is still a click.
+    press(frame, [300, 200], [302, 201]);
     expect(level()).toHaveTextContent("Fit");
   });
 
-  it("pans with a drag only when zoomed in", () => {
+  it("counts a double-click as one click", () => {
     render(<Opened set={SET} first={SET[0]} />);
     const frame = screen.getByTestId("zoom-frame");
-    const dragBy = (dx: number) => {
-      fireEvent.pointerDown(frame, { pointerId: 1, button: 0, clientX: 300, clientY: 200 });
-      fireEvent.pointerMove(frame, { pointerId: 1, clientX: 300 + dx, clientY: 200 });
-      fireEvent.pointerUp(frame, { pointerId: 1 });
-    };
-    dragBy(-50);
-    expect(transform()).toBe("");
-
+    press(frame, [0, 0]);
+    press(frame, [0, 0], [0, 0], 2);
     fireEvent.doubleClick(frame, { clientX: 0, clientY: 0 });
+    expect(level()).toHaveTextContent("100%");
+  });
+
+  it("pans with a drag when zoomed in, without going back to fit", () => {
+    render(<Opened set={SET} first={SET[0]} />);
+    const frame = screen.getByTestId("zoom-frame");
+    // At fit, a drag neither pans nor zooms.
+    press(frame, [300, 200], [250, 200]);
+    expect(transform()).toBe("");
+    expect(level()).toHaveTextContent("Fit");
+
+    press(frame, [0, 0]);
     expect(transform()).toBe("translate(0px, 0px) scale(2)");
-    dragBy(-50);
+    press(frame, [300, 200], [250, 200]);
     expect(transform()).toBe("translate(-50px, 0px) scale(2)");
+    expect(level()).toHaveTextContent("100%");
+  });
+
+  it("shows a minimap only when zoomed in, framing the part in view, and pans when it's dragged", () => {
+    render(<Opened set={SET} first={SET[0]} />);
+    expect(screen.queryByTestId("minimap")).toBeNull();
+
+    press(screen.getByTestId("zoom-frame"), [0, 0]);
+    const map = screen.getByTestId("minimap");
+    // 150px wide (30% of the 500px box), so a scale of 0.3; at 2x the view is
+    // the top-left quarter of the image.
+    expect(map.style.width).toBe("150px");
+    const rect = screen.getByTestId("minimap-view");
+    expect([rect.style.left, rect.style.top, rect.style.width, rect.style.height]).toEqual(["0px", "0px", "75px", "60px"]);
+
+    // Grab the rectangle at its middle and drag it to the map's middle.
+    fireEvent.pointerDown(map, { pointerId: 2, button: 0, clientX: 37.5, clientY: 30 });
+    expect(transform()).toBe("translate(0px, 0px) scale(2)");
+    fireEvent.pointerMove(map, { pointerId: 2, clientX: 75, clientY: 60 });
+    fireEvent.pointerUp(map, { pointerId: 2 });
+    fireEvent.click(map);
+    expect(transform()).toBe("translate(-250px, -200px) scale(2)");
+    expect([rect.style.left, rect.style.top]).toEqual(["37.5px", "30px"]);
+    // Pressing the map isn't a click on the image: it's still zoomed in.
+    expect(level()).toHaveTextContent("100%");
+
+    // Clicking elsewhere on it centers the view there, as far as the edges allow.
+    fireEvent.pointerDown(map, { pointerId: 3, button: 0, clientX: 0, clientY: 0 });
+    expect(transform()).toBe("translate(0px, 0px) scale(2)");
   });
 
   it("steps with the arrows at fit, and pans with them when zoomed", () => {
@@ -172,7 +219,7 @@ describe("<UploadPreviewDialog /> zooming an image", () => {
     key("ArrowRight");
     expect(screen.getByText("2 of 3")).toBeInTheDocument();
 
-    fireEvent.doubleClick(screen.getByTestId("zoom-frame"), { clientX: 0, clientY: 0 });
+    press(screen.getByTestId("zoom-frame"), [0, 0]);
     key("ArrowRight");
     expect(screen.getByText("2 of 3")).toBeInTheDocument();
     expect(transform()).toBe("translate(-50px, 0px) scale(2)");

@@ -3,11 +3,13 @@
 
 "use client";
 
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type PointerEvent, type Ref } from "react";
 import { Minus, Plus } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
 import {
+  centerOn,
   FIT,
+  inView,
   isFit,
   maxScale,
   panBy,
@@ -30,12 +32,24 @@ export interface ZoomKeys {
 /** An arrow key moves this share of the box. */
 const PAN_STEP = 0.1;
 
+/** A press that moves no further than this many pixels is a click, not a drag. */
+const CLICK_SLOP = 4;
+
+/** The minimap fades after the pointer has been still this long. */
+const MINIMAP_IDLE_MS = 2000;
+
+/** The minimap's width: this many pixels, or less on a narrow image. */
+const MINIMAP_WIDTH = 160;
+
 /**
- * An image fitted to the window that can be zoomed and moved around: wheel or
- * pinch around the pointer, double-click between fit and 100%, drag or
- * two-finger scroll to pan, and the keys the window passes on through `ref`.
- * The readout under it says how far in it is, with − and + beside it, and goes
- * back to fit when clicked.
+ * An image fitted to the window that zooms and pans the way image viewers do.
+ * A click zooms in to 100% at the point clicked, and a click while zoomed goes
+ * back to fit (a double-click counts as one click). Dragging pans while zoomed
+ * in, and so does a two-finger scroll. The wheel or a pinch zooms around the
+ * pointer, and the window passes its keys on through `ref`. While zoomed in, a
+ * minimap in the corner shows the part in view and moves it when dragged. The
+ * readout under the image says how far in it is, with − and + beside it, and
+ * goes back to fit when clicked.
  */
 export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref?: Ref<ZoomKeys> }) {
   const frameRef = useRef<HTMLDivElement>(null);
@@ -44,7 +58,19 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
   const [box, setBox] = useState<Box>({ width: 0, height: 0 });
   const [natural, setNatural] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const drag = useRef<{ id: number; x: number; y: number } | null>(null);
+  const press = useRef<{ id: number; startX: number; startY: number; x: number; y: number; moved: boolean } | null>(null);
+  // The press that ended last was a drag, so the click that follows it isn't one.
+  const endedDrag = useRef(false);
+
+  // The minimap shows while the pointer moves, and fades once it's been still.
+  const [awake, setAwake] = useState(true);
+  const sleep = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const wake = useCallback(() => {
+    setAwake(true);
+    clearTimeout(sleep.current);
+    sleep.current = setTimeout(() => setAwake(false), MINIMAP_IDLE_MS);
+  }, []);
+  useEffect(() => () => clearTimeout(sleep.current), []);
   // The wheel listener is attached once; it reads the latest of these.
   const latest = useRef({ view, box, natural });
   useEffect(() => {
@@ -82,6 +108,7 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
 
   useImperativeHandle(ref, () => ({
     key(key: string) {
+      wake();
       if (key === "+" || key === "=") {
         zoomBy(ZOOM_STEP);
       } else if (key === "-" || key === "_") {
@@ -113,6 +140,7 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
       // pans: a fast swipe can send a whole number too, just rarely one of those.
       const pinch = e.ctrlKey;
       const notched = e.deltaMode !== 0 || (e.deltaX === 0 && e.deltaY !== 0 && (e.deltaY % 100 === 0 || e.deltaY % 120 === 0));
+      wake();
       if (pinch || notched) {
         e.preventDefault();
         const factor = Math.exp(-e.deltaY * (pinch ? 0.01 : 0.002));
@@ -124,11 +152,17 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
     };
     frame.addEventListener("wheel", onWheel, { passive: false });
     return () => frame.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [wake]);
 
   const pointIn = (e: { clientX: number; clientY: number }): Point => {
     const r = frameRef.current?.getBoundingClientRect();
     return { x: e.clientX - (r?.left ?? 0), y: e.clientY - (r?.top ?? 0) };
+  };
+
+  const endPress = () => {
+    endedDrag.current = press.current?.moved ?? false;
+    press.current = null;
+    setDragging(false);
   };
 
   const fit = isFit(view);
@@ -138,32 +172,43 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
         ref={frameRef}
         data-testid="zoom-frame"
         className={cn(
-          "max-w-full overflow-hidden rounded-md select-none",
+          "relative max-w-full overflow-hidden rounded-md select-none",
           // Touch keeps the browser's own pinch and scroll at fit; zoomed in, a
           // finger drags the image instead.
           fit ? "cursor-zoom-in" : cn("touch-none", dragging ? "cursor-grabbing" : "cursor-grab"),
         )}
-        onDoubleClick={(e) => setView((v) => toggleAt(v, pointIn(e), box, natural))}
+        onClick={(e) => {
+          if (endedDrag.current) {
+            endedDrag.current = false;
+            return;
+          }
+          // The second click of a double-click: the first already zoomed.
+          if (e.detail >= 2) return;
+          wake();
+          setView((v) => toggleAt(v, pointIn(e), box, natural));
+        }}
         onPointerDown={(e) => {
-          if (fit || e.button !== 0) return;
-          drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
-          e.currentTarget.setPointerCapture?.(e.pointerId);
-          setDragging(true);
+          if (e.button !== 0) return;
+          press.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY, moved: false };
+          endedDrag.current = false;
+          if (!fit) e.currentTarget.setPointerCapture?.(e.pointerId);
         }}
         onPointerMove={(e) => {
-          const from = drag.current;
-          if (!from || from.id !== e.pointerId) return;
-          drag.current = { id: from.id, x: e.clientX, y: e.clientY };
-          setView((v) => panBy(v, e.clientX - from.x, e.clientY - from.y, box));
+          wake();
+          const p = press.current;
+          if (!p || p.id !== e.pointerId) return;
+          if (!p.moved && Math.hypot(e.clientX - p.startX, e.clientY - p.startY) > CLICK_SLOP) {
+            p.moved = true;
+            if (!fit) setDragging(true);
+          }
+          const dx = e.clientX - p.x;
+          const dy = e.clientY - p.y;
+          p.x = e.clientX;
+          p.y = e.clientY;
+          if (!fit) setView((v) => panBy(v, dx, dy, box));
         }}
-        onPointerUp={() => {
-          drag.current = null;
-          setDragging(false);
-        }}
-        onPointerCancel={() => {
-          drag.current = null;
-          setDragging(false);
-        }}
+        onPointerUp={endPress}
+        onPointerCancel={endPress}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset */}
         <img
@@ -175,6 +220,18 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
           className="block max-h-[70vh] max-w-full origin-top-left object-contain"
           style={fit ? undefined : { transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
         />
+        {!fit && box.width > 0 && (
+          <Minimap
+            src={src}
+            view={view}
+            box={box}
+            awake={awake || dragging}
+            onCenter={(point) => {
+              wake();
+              setView((v) => centerOn(v, point, box));
+            }}
+          />
+        )}
       </div>
       <div role="group" aria-label="Zoom" className="flex items-center gap-1">
         <IconButton label="Zoom out" side="top" disabled={fit} onClick={() => zoomBy(1 / ZOOM_STEP)}>
@@ -194,6 +251,88 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
           <Plus />
         </IconButton>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The whole image, small, in the bottom-right corner, with a rectangle around
+ * the part in view. Pressing it moves the view there and dragging carries the
+ * view along; grabbing the rectangle keeps the point grabbed under the
+ * pointer. Its presses stay its own, so the image under it doesn't pan or
+ * zoom. Not shown on small screens, where it would cover what it maps.
+ */
+function Minimap({
+  src,
+  view,
+  box,
+  awake,
+  onCenter,
+}: {
+  src: string;
+  view: View;
+  box: Box;
+  /** Shown fully; otherwise faded, letting presses through, until the pointer moves. */
+  awake: boolean;
+  /** Center the view on this point of the image, in the fitted box's pixels. */
+  onCenter: (point: Point) => void;
+}) {
+  const width = Math.min(MINIMAP_WIDTH, box.width * 0.3);
+  const k = width / box.width;
+  const seen = inView(view, box);
+  const grab = useRef<{ id: number; dx: number; dy: number } | null>(null);
+
+  const at = (e: PointerEvent<HTMLDivElement>): Point => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k };
+  };
+
+  return (
+    <div
+      data-testid="minimap"
+      aria-hidden
+      className={cn(
+        "absolute right-2 bottom-2 hidden cursor-pointer touch-none overflow-hidden rounded border border-white/70 bg-surface shadow-md transition-opacity duration-300 sm:block",
+        // Faded, it lets presses through to the image, so a tap on a tablet
+        // (which may send no move first) zooms out rather than moving the
+        // view. Any movement over the image wakes it again.
+        awake ? "opacity-100" : "pointer-events-none opacity-0",
+      )}
+      style={{ width, height: box.height * k }}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        if (e.button !== 0) return;
+        const p = at(e);
+        const inside = p.x >= seen.x && p.x <= seen.x + seen.width && p.y >= seen.y && p.y <= seen.y + seen.height;
+        const dx = inside ? p.x - (seen.x + seen.width / 2) : 0;
+        const dy = inside ? p.y - (seen.y + seen.height / 2) : 0;
+        grab.current = { id: e.pointerId, dx, dy };
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        onCenter({ x: p.x - dx, y: p.y - dy });
+      }}
+      onPointerMove={(e) => {
+        e.stopPropagation();
+        const g = grab.current;
+        if (!g || g.id !== e.pointerId) return;
+        const p = at(e);
+        onCenter({ x: p.x - g.dx, y: p.y - g.dy });
+      }}
+      onPointerUp={(e) => {
+        e.stopPropagation();
+        grab.current = null;
+      }}
+      onPointerCancel={() => {
+        grab.current = null;
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset */}
+      <img src={src} alt="" draggable={false} className="block size-full" />
+      <div
+        data-testid="minimap-view"
+        className="pointer-events-none absolute border-2 border-accent bg-accent/15"
+        style={{ left: seen.x * k, top: seen.y * k, width: seen.width * k, height: seen.height * k }}
+      />
     </div>
   );
 }
