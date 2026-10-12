@@ -531,9 +531,11 @@ function PersonRow({
         }`}
       >
         <Monogram handle={p.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
-        {/* Their name when they gave one, the handle quieter beside it. */}
+        {/* Their name when they gave one, the handle quieter beside it. It
+            keeps its width up to two thirds of the row, so a long floor label
+            beside it is cut first rather than the name. */}
         {name ? (
-          <span className="flex min-w-0 shrink items-baseline gap-1.5">
+          <span className="flex min-w-0 max-w-[66%] shrink-0 items-baseline gap-1.5">
             <span className="truncate text-label text-text">{name}</span>
             <span className="shrink-0 font-mono text-micro text-faint">@{p.handle}</span>
           </span>
