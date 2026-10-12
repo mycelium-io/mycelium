@@ -76,10 +76,18 @@ export function CandidateList({
             i === highlight ? "bg-surface" : "hover:bg-surface/60",
           )}
         >
-          <span className={cn("max-w-56 truncate text-label", c.named ? "text-text" : "font-mono text-accent")}>
+          <span
+            className={cn(
+              "max-w-56 truncate",
+              dense ? "text-micro" : "text-label",
+              c.named ? "text-text" : "font-mono text-accent",
+            )}
+          >
             {c.primary}
           </span>
-          <span className="min-w-0 truncate text-micro text-muted-foreground">{c.tertiary}</span>
+          <span className={cn("min-w-0 truncate text-muted-foreground", dense ? "text-[11px]" : "text-micro")}>
+            {c.tertiary}
+          </span>
           <span className="max-w-40 truncate text-right text-micro text-muted-foreground/70">
             {mixedKinds && c.secondary}
           </span>
