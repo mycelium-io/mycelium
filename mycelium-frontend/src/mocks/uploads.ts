@@ -7,8 +7,8 @@
 // a memory's detail show it. The hub's checks are mirrored only by extension
 // and size; the bytes are kept as sent.
 
-import type { Upload, UploadKind } from "@/lib/api";
-import { extensionOf } from "@/lib/uploads";
+import type { Upload, UploadKind, UploadOrigin } from "@/lib/api";
+import { extensionOf, uploadKeysIn } from "@/lib/uploads";
 import type { RoomFixture } from "./fixtures";
 
 const KINDS: Record<string, [UploadKind, string]> = {
@@ -63,6 +63,38 @@ function keyFor(name: string): string {
 
 const accepted = () => Object.keys(KINDS).sort();
 
+/** A row's title as the board reads it: the first line of its text. */
+function titleOf(value: string | Record<string, unknown>, key: string): string {
+  const text = typeof value === "string" ? value : String(value.title ?? "");
+  return (text.split("\n")[0] || key).replace(/^#+\s*/, "");
+}
+
+/** The message each upload was posted with, as the hub's `upload_origins`
+ *  reads it: the uploader's own first message that links it, else anyone's. */
+function postedIn(fx: RoomFixture, uploaders: Map<string, string>): Map<string, UploadOrigin> {
+  const first = new Map<string, UploadOrigin>();
+  const own = new Map<string, UploadOrigin>();
+  const said = [...fx.messages].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  for (const m of said) {
+    for (const key of uploadKeysIn(m.content ?? "")) {
+      if (own.has(key)) continue;
+      const episode = m.episode && !m.episode.endsWith(":live") ? m.episode : null;
+      const row = episode ? fx.memories.find((mem) => mem.episode === episode) : undefined;
+      const origin: UploadOrigin = {
+        message_id: m.id,
+        sender: m.sender_handle,
+        at: m.created_at,
+        episode,
+        task: row?.key ?? null,
+        task_title: row ? titleOf(row.value, row.key) : null,
+      };
+      if (!first.has(key)) first.set(key, origin);
+      if (uploaders.get(key) === m.sender_handle) own.set(key, origin);
+    }
+  }
+  return new Map([...first, ...own]);
+}
+
 /** `/api/rooms/:room/uploads/...`, or null for a route this doesn't serve. */
 export async function handleUploads(
   req: Request,
@@ -75,7 +107,8 @@ export async function handleUploads(
   const [, name, tail] = sub.map(decodeURIComponent);
 
   if (sub.length === 1 && method === "GET") {
-    const uploads = [...store.values()].map((s) => s.record).reverse();
+    const origins = postedIn(fx, new Map([...store.values()].map((s) => [s.record.key, s.record.created_by])));
+    const uploads = [...store.values()].map((s) => ({ ...s.record, posted_in: origins.get(s.record.key) ?? null })).reverse();
     return json({ uploads, total: uploads.length, accepted: accepted(), max_bytes: MAX_BYTES });
   }
 
@@ -109,6 +142,8 @@ export async function handleUploads(
       created_at: now,
       episode: null,
       url: `/api/rooms/${encodeURIComponent(room)}/uploads/${encodeURIComponent(uploadName)}/raw`,
+      thumb_url:
+        kind[0] === "image" ? `/api/rooms/${encodeURIComponent(room)}/uploads/${encodeURIComponent(uploadName)}/thumb` : null,
     };
     store.set(key, { record, bytes });
     const text = kind[0] === "text" ? new TextDecoder().decode(bytes) : `${kind[0]} file \`${file.name}\`.`;
@@ -120,6 +155,11 @@ export async function handleUploads(
   if (!stored) return name ? json({ detail: "Upload not found" }, 404) : null;
 
   if (sub.length === 2 && method === "GET") return json(stored.record);
+  // The hub sends a small WebP; here the image itself stands in for it.
+  if (sub.length === 3 && tail === "thumb" && method === "GET") {
+    if (stored.record.kind !== "image") return json({ detail: "Only an image has a thumbnail" }, 404);
+    return new Response(stored.bytes, { headers: { "Content-Type": stored.record.content_type } });
+  }
   if (sub.length === 3 && tail === "raw" && method === "GET") {
     const download = new URL(req.url).searchParams.get("download") === "1";
     return new Response(stored.bytes, {

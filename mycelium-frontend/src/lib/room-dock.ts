@@ -6,21 +6,22 @@
  * layout remembered per room in this browser.
  *
  * Every view in the center is one kind of tab. The room's own views (Channel,
- * Stream, Board, Schedules) have fixed ids; a memory and a thread are keyed by
- * what they show, so opening one that is already open shows it rather than a
- * second copy.
+ * Stream, Board, Files, Schedules) have fixed ids; a memory and a thread are
+ * keyed by what they show, so opening one that is already open shows it rather
+ * than a second copy.
  */
 
-export type View = "channel" | "stream" | "board" | "schedules";
+export type View = "channel" | "stream" | "board" | "files" | "schedules";
 
 export type DockPanelKind = View | "memory" | "thread";
 
-export const ROOM_VIEWS: readonly View[] = ["channel", "stream", "board", "schedules"];
+export const ROOM_VIEWS: readonly View[] = ["channel", "stream", "board", "files", "schedules"];
 
 export const VIEW_LABELS: Record<View, string> = {
   channel: "Channel",
   stream: "Stream",
   board: "Board",
+  files: "Files",
   schedules: "Schedules",
 };
 

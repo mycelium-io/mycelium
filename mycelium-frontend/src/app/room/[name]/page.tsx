@@ -145,6 +145,16 @@ function RoomWorkspace() {
   const focusParam = searchParams.get("focus");
   const [focus, setFocus] = useState<FocusTarget | null>(null);
   const clearFocus = useCallback(() => setFocus(null), []);
+  // A message said in the channel, opened from elsewhere in the room (a file
+  // in the Files tab names the message it was posted with): the same reveal a
+  // search hit gets, without a trip through the URL.
+  const openMessage = useCallback(
+    (id: string) => {
+      setFocus({ type: "message", id });
+      showView("channel");
+    },
+    [showView],
+  );
   // Acted on once per value: the request is a one-shot, and a re-run over the
   // same parameter would drag you back to the item you had just dismissed.
   const applied = useRef<string | null>(null);
@@ -191,6 +201,7 @@ function RoomWorkspace() {
   useKeyAction("pane.channel", () => showView("channel"));
   useKeyAction("pane.stream", () => showView("stream"));
   useKeyAction("pane.board", () => showView("board"));
+  useKeyAction("pane.files", () => showView("files"));
   useKeyAction("pane.schedules", () => showView("schedules"));
   useKeyAction("tab.close", () => withDock(d => d.closeActive()));
   useKeyAction("tab.reopen", () => withDock(d => d.reopenClosed()));
@@ -392,6 +403,7 @@ function RoomWorkspace() {
                 onReady={onDockReady}
                 onOpenMemory={openMemory}
                 onOpenThread={openThread}
+                onOpenMessage={openMessage}
               />
             </main>
           </ResizablePanel>

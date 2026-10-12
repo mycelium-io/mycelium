@@ -600,6 +600,19 @@ class SkillListResponse(BaseModel):
     total: int
 
 
+class UploadOrigin(BaseModel):
+    """The message an upload was posted with."""
+
+    message_id: str = Field(..., description="The message's id, as the room's history reads it")
+    sender: str
+    at: datetime
+    episode: str | None = Field(
+        None, description="The task thread it was said in; none when it was said in the channel"
+    )
+    task: str | None = Field(None, description="That thread's board row key, when a row carries it")
+    task_title: str | None = None
+
+
 class UploadRead(BaseModel):
     """A file the room keeps: an ``uploads/<name>`` memory and the bytes it names."""
 
@@ -616,6 +629,13 @@ class UploadRead(BaseModel):
     created_at: datetime
     episode: str | None = Field(None, description="The upload's own thread, as every memory has")
     url: str = Field(..., description="Path of the file's bytes on this hub, under /api")
+    thumb_url: str | None = Field(
+        None, description="Path of a small WebP of an image, for a gallery; none for other kinds"
+    )
+    posted_in: UploadOrigin | None = Field(
+        None,
+        description="The first message that linked this upload; none when no message does",
+    )
 
 
 class UploadListResponse(BaseModel):
