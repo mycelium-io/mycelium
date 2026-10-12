@@ -1158,16 +1158,16 @@ class SubscriptionRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── episodes (protocol inspector) ─────────────────────────────────────────
+# ── episodes ──────────────────────────────────────────────────────────────
 #
-# The episode read API projects persisted episode records into JSON the UI
-# inspector renders. These models are the typed seam: the backend routes declare
+# The episode read API projects persisted episode records into JSON the UI's
+# episode views render. These models are the typed seam: the backend routes declare
 # them as `response_model`, so FastAPI validates + filters the raw parsed dicts
 # into exactly this shape. They mirror the frontend `MyceliumMessage` / `EpisodeDetail`
 # TypeScript interfaces 1:1, so neither side can silently read a field the other
 # doesn't send. Fields are permissive (most optional) because these records are
 # historical markdown files, not freshly minted objects — a single odd envelope
-# must not 500 the whole inspector. The one invariant: every envelope has a kind.
+# must not 500 the whole read. The one invariant: every envelope has a kind.
 
 
 class EnvelopeActorRead(BaseModel):

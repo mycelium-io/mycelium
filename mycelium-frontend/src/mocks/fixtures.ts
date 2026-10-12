@@ -116,7 +116,7 @@ export interface RoomFixture {
   links?: MemoryGraph;
   // Wire frames served at GET /messages/wire, which the channel and Stream read.
   // Shaped like the persister's bus frames (a bare `{header, payload}` envelope
-  // under `content`, plus the flat fields the inspector reads).
+  // under `content`, plus the flat fields the channel and Stream read).
   wire?: Record<string, unknown>[];
   /** The room's A2A bridge, served at GET /a2a/state. Undefined means "no
    *  bridge" — the handler answers with an empty one, like the backend. */
@@ -291,7 +291,7 @@ const checkoutNegotiation: MockMessage[] = (() => {
 })();
 
 // The message chain as persister bus frames: bare `{header, payload}` under content,
-// with the flat sender_handle/message_type/created_at the inspector reads.
+// with the flat sender_handle/message_type/created_at the channel and Stream read.
 const checkoutWireFrames: Record<string, unknown>[] = checkoutMessageChain.map((env, i) => ({
   message_type: `l9_${env.header.kind}`,
   sender_handle: env.header.participants?.actors?.[0]?.id ?? "aligner",

@@ -101,7 +101,7 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 
 def episode_summary(key: str, meta: dict[str, Any], content: str) -> dict[str, Any]:
-    """Project one episode record into the inspector's summary shape."""
+    """Project one episode record into the episode summary shape the UI reads."""
     envelopes = parse_envelopes(content)
     short_id = key.rsplit("/", 1)[-1]
 

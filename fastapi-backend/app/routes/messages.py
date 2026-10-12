@@ -351,7 +351,7 @@ async def list_wire(
 ) -> list[dict]:
     """The room's wire feed, replayed from the transcript (oldest first).
 
-    Backfills the live message inspector: the SSE bus carries no history, so a freshly
+    Backfills the channel and Stream: the SSE bus carries no history, so a freshly
     opened tab would otherwise start empty. Frames are the exact shape the bus
     pushes, so the client projects backfill and live frames identically.
 

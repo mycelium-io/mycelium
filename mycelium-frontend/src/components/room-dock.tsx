@@ -118,7 +118,6 @@ function BoardPanel() {
   );
 }
 
-
 function SchedulesPanel() {
   const d = useDock();
   return (
