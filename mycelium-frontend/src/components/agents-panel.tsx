@@ -21,7 +21,7 @@ import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
 import { Button } from "@/components/ui/button";
-import { Monogram } from "@/components/ui/monogram";
+import { Monogram, type AvatarKind } from "@/components/ui/monogram";
 import { HerdrRam } from "@/components/ui/herdr-ram";
 import { EmptyState } from "@/components/empty-state";
 import { FadeScroll } from "@/components/ui/fade-scroll";
@@ -170,11 +170,13 @@ function presenceDetail(member?: PresenceMember): React.ReactNode {
 function MemberTooltipCard({
   handle,
   color,
+  kind,
   presence,
   children,
 }: {
   handle: string;
   color?: string;
+  kind?: AvatarKind;
   presence?: PresenceMember;
   children?: React.ReactNode;
 }) {
@@ -184,6 +186,7 @@ function MemberTooltipCard({
         <Monogram
           handle={handle}
           color={color}
+          kind={kind}
           className="size-6"
           presence={presence?.kind}
           status={presence?.status}
@@ -611,7 +614,7 @@ function AgentRow({
       side="left"
       className="w-72 max-w-72 p-3"
       content={
-        <MemberTooltipCard handle={a.handle} presence={memberPresence}>
+        <MemberTooltipCard handle={a.handle} kind={a.adapter === "engine" ? "engine" : "agent"} presence={memberPresence}>
           <DetailRow label="floor" value={floor ? floorLabel(a.handle, floor) : undefined} color="var(--accent)" />
           <DetailRow label="owner" value={a.owner ? `@${a.owner}` : undefined} />
           <DetailRow label="team" value={a.team ?? undefined} />
@@ -636,7 +639,7 @@ function AgentRow({
           marked ? "bg-accent/15" : ""
         }`}
       >
-        <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence engine={a.adapter === "engine"} />
+        <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence kind={a.adapter === "engine" ? "engine" : "agent"} />
         <span className="shrink-0 font-mono text-label text-text">{a.handle}</span>
         {schedules > 0 && (
           <Clock

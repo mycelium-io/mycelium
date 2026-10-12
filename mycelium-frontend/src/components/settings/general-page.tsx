@@ -107,7 +107,7 @@ export function GeneralPage() {
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1.5" aria-hidden>
               {["mycelium-coder", "voice-model", "schedule-ux"].map((h) => (
-                <Monogram key={h} handle={h} className="size-6 text-[10px]" />
+                <Monogram key={h} handle={h} className="size-6 text-[10px]" kind="agent" />
               ))}
             </span>
             <Segmented<AgentAvatars>

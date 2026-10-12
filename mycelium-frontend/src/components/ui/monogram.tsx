@@ -36,10 +36,14 @@ interface Props {
    *  larger hover target (a roster row's card, a facepile chip) that already
    *  names the presence, otherwise the dot's bubble intercepts that hover. */
   mutePresence?: boolean;
-  /** An engine (the aligner, the conductor). Drawn as a lantern when agents
-   *  are shown as creatures. */
-  engine?: boolean;
+  /** Who this is. Only an agent or an engine is ever drawn as a creature (an
+   *  engine as a lantern), and only when the person has agents shown as
+   *  creatures; a person always keeps their initials. Defaults to a person, so
+   *  a caller that doesn't say can never turn someone into a creature. */
+  kind?: AvatarKind;
 }
+
+export type AvatarKind = "person" | "agent" | "engine";
 
 interface Halo {
   color: string;
@@ -84,14 +88,14 @@ function halo(presence: Presence, status?: string | null): Halo {
  *  flight — plus a corner dot that carries the tier on its own for anyone the
  *  ring's color doesn't reach.
  *
- *  An agent (no `color` given, which is how callers already say "an agent") is
- *  drawn as its creature inside the same disc when the person has agents shown
- *  as creatures (Settings → General). The disc, ring and dot don't change. */
-export function Monogram({ handle, color, className, presence, status, wakePending, mutePresence, engine }: Props) {
+ *  An agent or engine (`kind`) is drawn as its creature inside the same disc
+ *  when the person has agents shown as creatures (Settings → General). The
+ *  disc, ring and dot don't change. */
+export function Monogram({ handle, color, className, presence, status, wakePending, mutePresence, kind = "person" }: Props) {
   const tint = color ?? avatarTint(handle);
   const ring = presence ? halo(presence, status) : null;
   const [agentAvatars] = useClientSetting("general.agent-avatars");
-  const creature = color === undefined && agentAvatars === "creatures";
+  const creature = kind !== "person" && agentAvatars === "creatures";
   return (
     <div className="relative flex-shrink-0">
       <div
@@ -105,7 +109,7 @@ export function Monogram({ handle, color, className, presence, status, wakePendi
         style={{ ...softAvatar(tint), ...(ring ? ({ "--halo": ring.color } as React.CSSProperties) : {}) }}
       >
         {creature ? (
-          <Sporeling handle={handle} tint={tint} detail={detailFor(pxOfSizeClass(className))} engine={engine} />
+          <Sporeling handle={handle} tint={tint} detail={detailFor(pxOfSizeClass(className))} engine={kind === "engine"} />
         ) : (
           initials(handle)
         )}

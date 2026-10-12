@@ -288,7 +288,7 @@ export function IdentityRow({
   const bad = trimmed.length > 0 && !HANDLE_RE.test(trimmed);
   return (
     <div className="flex items-center gap-3">
-      <Monogram handle={trimmed || "?"} className="size-10 text-label" />
+      <Monogram handle={trimmed || "?"} className="size-10 text-label" kind={trimmed ? "agent" : "person"} />
       <div className="min-w-0 flex-1">
         <label htmlFor="member-handle" className="sr-only">
           Handle
@@ -809,7 +809,7 @@ function LaunchProgress({
   return (
     <div className="px-5 py-4">
       <div className="flex items-center gap-3">
-        <Monogram handle={handle} className="size-10 text-label" />
+        <Monogram handle={handle} className="size-10 text-label" kind="agent" />
         <div>
           <p className="font-mono text-ui text-text">@{handle}</p>
           <p className="text-micro text-muted-foreground">

@@ -275,7 +275,7 @@ export function TaskConversation({
                         handle={sender}
                         color={isAgent ? undefined : "var(--avatar-neutral)"}
                         className="size-6 text-[10px]"
-                        engine={engineHandles.has(sender)}
+                        kind={engineHandles.has(sender) ? "engine" : isAgent ? "agent" : "person"}
                       />
                     )}
                   </div>

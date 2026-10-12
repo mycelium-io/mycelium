@@ -1551,7 +1551,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     {!grouped && (
                       <Tooltip content={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
                         <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
-                          <Monogram handle={ev.sender} color={color} className="size-6 text-[10px]" engine={engineHandles.has(ev.sender)} />
+                          <Monogram handle={ev.sender} color={color} className="size-6 text-[10px]" kind={engineHandles.has(ev.sender) ? "engine" : isAgent ? "agent" : "person"} />
                         </span>
                       </Tooltip>
                     )}
