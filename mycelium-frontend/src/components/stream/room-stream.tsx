@@ -12,6 +12,15 @@ import { useCurrentUser } from "@/components/current-user";
 import { MessageBody } from "@/components/message-body";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { Chip } from "@/components/ui/chip";
+import { EventIconMark } from "@/components/event-icon";
+import { MEMORY_ICON, noticeIcon, type EventIcon } from "@/lib/event-icons";
+
+/** The icon for a board, pull request or saved-memory line: the chat's table. */
+function eventIconOf(ev: StreamEvent): EventIcon {
+  if (ev.kind === "saved") return MEMORY_ICON;
+  if (ev.kind === "github") return noticeIcon("upstream", ev.change);
+  return noticeIcon(ev.subkind ?? "", null, ev.rowKind);
+}
 import {
   ALL_KINDS,
   dayLabel,
@@ -314,6 +323,8 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
                     {ev.who}
                   </button>
                   <span className={cn("min-w-0 truncate text-label", isMessage ? "text-text" : "text-faint")}>
+                    {/* What happened, with the same icon the chat draws for it. */}
+                    {!isMessage && <EventIconMark icon={eventIconOf(ev)} className="mr-1.5 align-[-1px]" />}
                     {ev.episode && (
                       <button
                         type="button"

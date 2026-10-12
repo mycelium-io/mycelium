@@ -41,6 +41,8 @@ export interface StreamEvent {
   ref: string | null;
   /** For a `filed` notice, who the task is for. */
   assignee: string | null;
+  /** For a `filed` notice, the kind of row (`action`, `decision`…). */
+  rowKind?: string | null;
   /** For a review request, who was asked. */
   asked: string[];
   /** Handles the message asks for with `@handle` (not silent `@~` ones). */
@@ -111,6 +113,7 @@ export function streamEventOf(raw: Record<string, unknown>, room: string): Strea
       change: notice.change,
       ref: notice.ref,
       assignee: notice.assignee,
+      rowKind: notice.kind,
       asked: notice.who,
     };
   }
