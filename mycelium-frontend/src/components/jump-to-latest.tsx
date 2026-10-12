@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -35,16 +35,27 @@ const AT_BOTTOM_PX = 64;
  * the reader left it, for a page whose newest message is at the end (a memory
  * with its discussion under it). `count` is how many messages the page shows,
  * or `null` until they have loaded, so the first batch never reads as new.
+ * `resetKey` names what the messages belong to (a memory's key): when it
+ * changes, the count starts over rather than measuring one memory's replies
+ * against another's.
  */
-export function useJumpToLatest(el: HTMLElement | null, count: number | null) {
+export function useJumpToLatest(el: HTMLElement | null, count: number | null, resetKey?: string) {
   const [atBottom, setAtBottom] = useState(true);
   const atBottomRef = useRef(true);
-  // How many messages there were when the reader left the bottom.
-  const [countAtLeave, setCountAtLeave] = useState<number | null>(null);
+  // How many messages there were when the reader left the bottom, and for
+  // which `resetKey`: a baseline from another key doesn't count.
+  const [leftAt, setLeftAt] = useState<{ key: string | undefined; count: number | null } | null>(null);
+  const countAtLeave = leftAt && leftAt.key === resetKey ? leftAt.count : null;
   const countRef = useRef(count);
+  const keyRef = useRef(resetKey);
+  const setCountAtLeave = useCallback(
+    (n: number | null) => setLeftAt(n === null ? null : { key: keyRef.current, count: n }),
+    [],
+  );
   useEffect(() => {
     countRef.current = count;
-  }, [count]);
+    keyRef.current = resetKey;
+  }, [count, resetKey]);
 
   useEffect(() => {
     if (!el) return;
@@ -66,13 +77,13 @@ export function useJumpToLatest(el: HTMLElement | null, count: number | null) {
       el.removeEventListener("scroll", measure);
       observer.disconnect();
     };
-  }, [el]);
+  }, [el, setCountAtLeave]);
 
-  // Left the bottom before the messages loaded: count from when they did.
+  // Left the bottom before the messages loaded (or before switching to other
+  // messages): count from when they did.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- sets the baseline once the count is known
     if (!atBottom && countAtLeave === null && count !== null) setCountAtLeave(count);
-  }, [atBottom, countAtLeave, count]);
+  }, [atBottom, countAtLeave, count, setCountAtLeave]);
 
   const unread = atBottom || countAtLeave === null || count === null ? 0 : Math.max(0, count - countAtLeave);
   const jump = () => {

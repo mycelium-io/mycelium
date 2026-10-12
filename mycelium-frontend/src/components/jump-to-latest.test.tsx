@@ -57,12 +57,28 @@ describe("useJumpToLatest", () => {
   it("doesn't count the first page of messages as new", () => {
     const el = region(0);
     const { result, rerender } = renderHook(({ count }: { count: number | null }) => useJumpToLatest(el, count), {
-      initialProps: { count: null },
+      initialProps: { count: null as number | null },
     });
     expect(result.current.atBottom).toBe(false);
     rerender({ count: 12 });
     expect(result.current.unread).toBe(0);
     rerender({ count: 13 });
+    expect(result.current.unread).toBe(1);
+  });
+
+  it("starts over when the messages belong to something else", () => {
+    const el = region(100);
+    const { result, rerender } = renderHook(
+      ({ count, key }: { count: number | null; key: string }) => useJumpToLatest(el, count, key),
+      { initialProps: { count: 3 as number | null, key: "work/a" } },
+    );
+    rerender({ count: 4, key: "work/a" });
+    expect(result.current.unread).toBe(1);
+    // Another memory: its replies load, and none of them are new.
+    rerender({ count: null, key: "work/b" });
+    rerender({ count: 20, key: "work/b" });
+    expect(result.current.unread).toBe(0);
+    rerender({ count: 21, key: "work/b" });
     expect(result.current.unread).toBe(1);
   });
 

@@ -4,7 +4,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, Eye, FileQuestion, Pencil } from "lucide-react";
 import { fetchMemory, fetchMemoryExpanded, type Memory } from "@/lib/api";
 import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
@@ -67,9 +67,13 @@ export function MemoryView({
   const { setDirty, guard, dialog: unsavedDialog } = useUnsavedGuard();
   // The page's one scroll and its discussion's message count, for the same
   // "Jump to latest" the channel has: the newest message is at the bottom.
+  // The count is kept with the memory it belongs to, so a view reused for
+  // another memory starts from "not loaded" rather than from the last one's.
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
-  const [discussionCount, setDiscussionCount] = useState<number | null>(null);
-  const latest = useJumpToLatest(scroller, discussionCount);
+  const [counted, setCounted] = useState<{ key: string; count: number } | null>(null);
+  const discussionCount = counted?.key === memoryKey ? counted.count : null;
+  const setDiscussionCount = useCallback((count: number) => setCounted({ key: memoryKey, count }), [memoryKey]);
+  const latest = useJumpToLatest(scroller, discussionCount, memoryKey);
 
   // The room's memories revalidate on every write in the room, so a new
   // version of this one (saved here or anywhere else) shows without a reload.
