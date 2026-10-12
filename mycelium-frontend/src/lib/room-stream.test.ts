@@ -4,6 +4,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL_KINDS,
+  dayLabel,
+  dayOf,
   describe as describeEvent,
   foldEvents,
   lanesOf,
@@ -125,6 +127,30 @@ describe("lanesOf", () => {
   it("reuses a column once the thread in it has ended", () => {
     const lines = [T1, T1, T2].map((episode, i) => ({ event: { episode, id: String(i) } as StreamEvent, more: [] }));
     expect(lanesOf(lines).map((l) => l.column)).toEqual([0, 0]);
+  });
+});
+
+describe("dayLabel", () => {
+  // Noon local time, so a time zone can't move it to another day.
+  const now = new Date(2026, 9, 12, 12, 0);
+  const at = (y: number, m: number, d: number) => new Date(y, m, d, 9, 30).toISOString();
+
+  it("says Today and Yesterday for the last two days", () => {
+    expect(dayLabel(at(2026, 9, 12), now)).toBe("Today");
+    expect(dayLabel(at(2026, 9, 11), now)).toBe("Yesterday");
+  });
+
+  it("names the weekday and date further back, adding the year only when it differs", () => {
+    const label = dayLabel(at(2026, 7, 27), now);
+    expect(label).toMatch(/Thursday/);
+    expect(label).toMatch(/27/);
+    expect(label).not.toMatch(/2026/);
+    expect(dayLabel(at(2025, 7, 27), now)).toMatch(/2025/);
+  });
+
+  it("puts two times on the same day under one date", () => {
+    expect(dayOf(at(2026, 7, 27))).toBe(dayOf(new Date(2026, 7, 27, 23, 59).toISOString()));
+    expect(dayOf(at(2026, 7, 27))).not.toBe(dayOf(at(2026, 7, 28)));
   });
 });
 
