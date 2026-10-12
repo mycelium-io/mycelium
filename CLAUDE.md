@@ -772,12 +772,20 @@ is no litellm dependency.
   An engine's `@!` is an ordinary mention, and personas and workers lose the
   `!` with their other sigils, so nothing the hub runs itself ever interrupts.
   A sender the room has no manifest for counts as a person.
-- **Three composer sigils, one mechanism.** The chat composer
+- **Four composer sigils, one mechanism.** The chat composer
   (`room-chat-box.tsx`) autocompletes `@` → agents, `[[` → room memories (inserts
-  `[[key]]`, which resolves to `myc://` and is clickable in chat), and `/` → the
-  room's skills (inserts `/name`). One cursor-prefix detector feeds one candidate
+  `[[key]]`, which resolves to `myc://` and is clickable in chat), `/` → the
+  room's skills (inserts `/name`), and `:` → emoji (inserts the character: `:ta`
+  offers 🎉). One cursor-prefix detector feeds one candidate
   popover; `[[` is matched before `/` and `@` since a memory key can contain
-  slashes. Skills insert a reference token — the resident agent/engine interprets
+  slashes, and `:` last. A `:` starts a shortcode only after whitespace or at a
+  line's start, with a letter (or `+`/`-`) after it, and never inside code, so
+  `12:30`, `https://` and `key: value` stay as typed (`lib/emoji.ts`). A whole
+  `:name:` turns into its emoji when a space follows it, and sending converts
+  any left, so a message stores 🎉, never `:tada:`, and an agent reading it
+  through the CLI sees the same. The names are GitHub's (`gemoji`), loaded the
+  first time a `:` is typed, so the list stays out of the app's first load;
+  recently used emoji, kept in this browser, come first. Skills insert a reference token — the resident agent/engine interprets
   it; the composer never runs the skill. **Commands** are the one `/` that runs:
   `/task`, `/swarm`, `/memory`, `/thread`, `/schedule`, `/agent` and `/engine`, only as a message's
   first word, listed ahead of the skills. Each declares its arguments in
