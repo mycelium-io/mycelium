@@ -76,8 +76,7 @@ export function RoomConnection({ room }: { room: string }) {
       </div>
     </Section>
     <Note>
-      To see a message as the hub sent it, right-click it in the chat and choose View raw message, or add the
-      Raw messages tab from the + beside the room&apos;s tabs.
+      To see a message as the hub sent it, right-click it in the chat and choose View raw message.
     </Note>
     </>
   );

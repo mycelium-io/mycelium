@@ -724,7 +724,7 @@ def prose_messages(room: str) -> list[StoredMessage]:
 def bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     """Project a transcript record into the wire frame the SSE bus carries.
 
-    The single shape the frontend message inspector reads (``l9_<kind>`` + the full
+    The single shape the frontend's channel and Stream read (``l9_<kind>`` + the full
     ``content`` envelope). Shared by the live push (:meth:`Persister._publish_to_bus`)
     and the history replay (:func:`l9_wire_history`) so backfilled and live frames
     are byte-identical.
@@ -746,7 +746,7 @@ def wire_history(
 ) -> list[dict[str, Any]]:
     """The room's wire feed replayed from the durable transcript (oldest first).
 
-    The live inspector is fed only by the bus (SSE, no history), so a freshly
+    The channel and Stream are fed live only by the bus (SSE, no history), so a freshly
     opened tab misses everything before it connected. This projects the transcript
     through the same frame shape so the tab can seed itself, then append live — the
     history-then-live pattern the room chat feed already uses. Returns at most the

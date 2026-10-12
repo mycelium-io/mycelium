@@ -57,6 +57,21 @@ describe("<EventStream /> live message rendering", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
   });
 
+  it("shows a message exactly as the hub sent it from its right-click menu", async () => {
+    const user = userEvent.setup();
+    renderWithSWR(<EventStream roomName="sprint" />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(exchangeMessage("look under the hood", { id: "m-raw" }));
+    });
+
+    await user.pointer({ keys: "[MouseRight]", target: await screen.findByText("look under the hood") });
+    await user.click(await screen.findByText("View raw message"));
+    expect(await screen.findByRole("dialog", { name: "Raw message" })).toHaveTextContent('"message_type": "l9_exchange"');
+  });
+
   it("renders an l9_exchange streamed over SSE as a chat message", async () => {
     renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});

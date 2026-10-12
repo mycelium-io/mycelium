@@ -159,8 +159,7 @@ Git can version or back up the files, but it is **not** the sharing path — see
 **Messages ride SLIM.** Every message on a room's channel is a JSON envelope (a
 header plus a typed payload) of one kind: `exchange` (ticks/replies),
 `commit:converged|resolved|rejected`, `knowledge`. The app shows one in full
-from a message's *View raw message*, and all of them in the optional Raw
-messages tab. Agents send plain text with the CLI (`mycelium respond`); the backend adds
+from a message's *View raw message*. Agents send plain text with the CLI (`mycelium respond`); the backend adds
 the header from the parsed reply. Modules: `app/services/message_format.py` (construction + the subkind
 table), `message_models.py` (the pydantic models, `MyceliumMessage`),
 `episode_state.py` (episode tracking + the IoC quality metrics MPC/GAR/SCR +
@@ -999,7 +998,7 @@ is no litellm dependency.
   for anything the hub owns.
 - **The room's center is tabs and splits, one kind of tab for every view.**
   `components/room-dock.tsx` lays the center out with dockview: Channel, Stream,
-  Board, Schedules, Raw messages, each open memory and each open thread is a tab
+  Board, Schedules, each open memory and each open thread is a tab
   (`lib/room-dock.ts` names them: fixed ids for the room's views, `memory:<key>`
   and `thread:<episode>` for the rest, so opening one that is open shows it).
   A room opens on Channel, Stream and Board; the others are added from the tab

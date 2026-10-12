@@ -23,7 +23,6 @@ import { EventStream } from "@/components/event-stream";
 import { RoomBoard } from "@/components/board/room-board";
 import { RoomSchedules } from "@/components/schedules/room-schedules";
 import { RoomStream } from "@/components/stream/room-stream";
-import { MessageInspector } from "@/components/message-inspector";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { MemoryView, type GuardHandle } from "@/components/memory-view";
 import { ThreadView } from "@/components/thread-view";
@@ -119,19 +118,6 @@ function BoardPanel() {
   );
 }
 
-/** Every message crossing the room's channel as the hub sent it, with the
- *  episode records behind them. Not open by default: it's for looking under
- *  the chat, so it's added from the tab strip's +. The room's connection
- *  details are on its settings page. */
-function RawPanel() {
-  const d = useDock();
-  return (
-    <div className="h-full min-h-0 bg-bg">
-      <MessageInspector roomName={d.roomName} />
-    </div>
-  );
-}
-
 function SchedulesPanel() {
   const d = useDock();
   return (
@@ -172,7 +158,6 @@ const COMPONENTS = {
   channel: ChannelPanel,
   stream: StreamPanel,
   board: BoardPanel,
-  raw: RawPanel,
   schedules: SchedulesPanel,
   memory: MemoryPanel,
   thread: ThreadPanel,
@@ -356,7 +341,7 @@ function GroupActions({ containerApi, group }: IDockviewHeaderActionsProps) {
 
 // ── Opening and moving ──────────────────────────────────────────────────────
 
-const VIEW_ORDER: View[] = ["channel", "stream", "board", "schedules", "raw"];
+const VIEW_ORDER: View[] = ["channel", "stream", "board", "schedules"];
 
 function addView(api: DockviewApi, view: View, position?: Parameters<DockviewApi["addPanel"]>[0]["position"]) {
   return api.addPanel({

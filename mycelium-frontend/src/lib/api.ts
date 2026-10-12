@@ -1595,9 +1595,10 @@ export async function fetchUsage(days = 30): Promise<UsageKpis | null> {
 
 // ── Messages / episodes ─────────────────────────────────────────────────────
 // Episodes are the persisted, causally-linked message record of a coordination
-// session (one markdown file per session under `log/episodes/`). The protocol
-// inspector reads them for the rich causal chain + consensus metrics; wire
-// envelopes carry empty `message.parents` — the chain lives here instead.
+// session (one markdown file per session under `log/episodes/`). The episode
+// detail view and the metrics page read them for the causal chain and the
+// consensus metrics; wire envelopes carry empty `message.parents`, so the chain
+// lives here instead.
 
 export interface MessageActor {
   id: string;

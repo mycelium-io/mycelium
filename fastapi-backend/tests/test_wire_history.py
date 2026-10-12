@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``GET /rooms/{room}/messages/wire`` — transcript replay that backfills the inspector.
+"""``GET /rooms/{room}/messages/wire`` — transcript replay that backfills the channel and Stream.
 
-The live message inspector is fed only by the SSE bus (no history), so a freshly opened
+The channel and Stream are fed live only by the SSE bus (no history), so a freshly opened
 tab starts empty. This endpoint replays the durable transcript through the same
 frame shape the bus pushes, envelope intact — the part the conversational messages
 API drops.
@@ -57,7 +57,7 @@ async def test_message_history_replays_frames_with_envelope(client) -> None:
     assert len(rows) == 1
 
     frame = rows[0]
-    # The bus frame shape the inspector reads: l9_<kind> + the full envelope in content.
+    # The bus frame shape the channel and Stream read: l9_<kind> + the full envelope in content.
     assert frame["message_type"] == "l9_exchange"
     assert frame["sender_handle"] == "avery"
     content = json.loads(frame["content"])

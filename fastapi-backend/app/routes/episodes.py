@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-episode read API — backs the protocol inspector.
+episode read API — backs the episode detail view, the flow panel and the metrics page.
 
 The projection from a ``log/episodes/{short_id}.md`` record to structured fields
 lives in :mod:`app.services.episode_records`; these endpoints only serve it.
