@@ -265,6 +265,13 @@ def test_the_board_line_lists_what_changed_newest_first_then_whats_open():
     assert "board move" not in digest
 
 
+def test_a_kind_starting_with_a_vowel_reads_an():
+    line = wake_digest.change(
+        {"subkind": "filed", "title": "Add a settings button", "by": "chat-buddy", "kind": "action"}
+    )
+    assert line == '@chat-buddy filed an action "Add a settings button"'
+
+
 def test_the_board_line_keeps_the_newest_changes_and_counts_the_rest():
     records = [_said(0, "builder", "back", 60)] + [
         _notice(n, 50 - n, subkind="claimed", key=f"work/t{n}", title=f"Task {n}", by="hay")
