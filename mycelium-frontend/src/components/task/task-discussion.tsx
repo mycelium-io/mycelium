@@ -42,8 +42,8 @@ function NoReplies() {
 /**
  * A task's Discussion, under its body: the heading, the conversation and a
  * composer into the thread. One component for every surface that shows a task
- * as a page (the memory page, a memory tab, the memory panel's drawer), so a
- * task reads the same wherever it is opened.
+ * as a page (`MemoryView`: the memory page, a memory tab, the graph's drawer),
+ * so a task reads the same wherever it is opened.
  *
  * It draws no card: it sits on the surface the body sits on, and the composer's
  * own box is the only box. The conversation's rows carry their own inset, which
