@@ -530,7 +530,8 @@ export function RoomChatBox({
         id: `emoji:${m.name}`,
         insert: m.emoji,
         primary: `${m.emoji}  :${m.name}:`,
-        secondary: m.description,
+        secondary: "emoji",
+        tertiary: m.description,
       }));
     }
     if (trigger.kind === "memory") {
@@ -934,7 +935,13 @@ export function RoomChatBox({
         {(showCandidates || parsed || summon || status) && (
         <div className="absolute bottom-full left-0 z-20 mb-2 flex w-full max-w-md flex-col gap-1.5">
         {showCandidates && (
-          <CandidateList candidates={candidates} highlight={highlight} onPick={accept} onHover={setHighlight} />
+          <CandidateList
+            candidates={candidates}
+            highlight={highlight}
+            onPick={accept}
+            onHover={setHighlight}
+            dense={trigger?.kind === "emoji"}
+          />
         )}
         {parsed && <CommandSignature parsed={parsed} completes={showCandidates} />}
         {summon && <SummonSignature summon={summon} completes={showCandidates} inTask={Boolean(episode)} />}

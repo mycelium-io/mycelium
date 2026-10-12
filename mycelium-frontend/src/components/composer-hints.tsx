@@ -44,12 +44,15 @@ export function CandidateList({
   onPick,
   onHover,
   label,
+  dense = false,
 }: {
   candidates: Candidate[];
   highlight: number;
   onPick: (candidate: Candidate) => void;
   onHover: (index: number) => void;
   label?: string;
+  /** Tighter rows, for a list scanned at a glance (emoji). */
+  dense?: boolean;
 }) {
   const mixedKinds = new Set(candidates.map((c) => c.secondary)).size > 1;
   return (
@@ -68,7 +71,8 @@ export function CandidateList({
           }}
           onMouseEnter={() => onHover(i)}
           className={cn(
-            "col-span-full grid grid-cols-subgrid items-baseline gap-x-3 rounded-lg px-2.5 py-1.5 text-left transition-colors",
+            "col-span-full grid grid-cols-subgrid items-baseline gap-x-3 rounded-lg px-2.5 text-left transition-colors",
+            dense ? "py-0.5 leading-tight" : "py-1.5",
             i === highlight ? "bg-surface" : "hover:bg-surface/60",
           )}
         >
