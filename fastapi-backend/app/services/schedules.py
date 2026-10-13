@@ -509,27 +509,47 @@ def paused_by_someone_else(schedule: Schedule) -> bool:
 async def tell_owner_paused(room: str, schedule: Schedule) -> bool:
     """Tell a schedule's owner that someone else paused it, before a run is missed.
 
-    Said in the schedule's task thread, or the room when it has none, from
-    whoever paused it, and mentioning the owner so its next turn hears it. The
-    one thing about a schedule said in the room: a run is not (see the module's
-    docstring), but someone stopping another's is. Returns whether it was
-    said; with no live channel there is nobody to tell.
+    Said in the schedule's task thread, or the room when it has none, by the
+    hub itself (the system actor, as the hold sweep's flag is), naming who
+    paused it silently and mentioning the owner so its next turn hears it. Never
+    in the pauser's name: they didn't write it, and with sign-in off their name
+    is only what the request claimed. The one thing about a schedule said in
+    the room: a run is not (see the module's docstring), but someone stopping
+    another's is. Returns whether it was said; with no live channel there is
+    nobody to tell.
     """
-    from app.services import room_channels
+    from app.services import message_format, room_channels
+    from app.services.message_models import Kind
 
     if not paused_by_someone_else(schedule):
         return False
-    by = schedule.paused_by or ""
-    episode = _thread_of(room, schedule)
-    text = (
-        f"Paused @{schedule.owner}'s schedule \"{schedule.name}\". It won't run until it is "
-        f"resumed: mycelium schedule resume {schedule.name} --room {room}"
-    )
     manager = room_channels.manager
-    result = await manager.publish_human(room, sender=by, text=text, episode=episode)
-    if result is None:
+    managed = manager.get(room)
+    if managed is None:
         return False
-    await manager.raise_ping(room, episode=episode, sender=by, message_id=result.message_id)
+    by = (schedule.paused_by or "").partition("#")[0]
+    thread = _thread_of(room, schedule)
+    text = (
+        f'@{schedule.owner}, your schedule "{schedule.name}" was paused by @~{by}. '
+        f"It won't run until it's resumed: `mycelium schedule resume {schedule.name} --room {room}`."
+    )
+    envelope = message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=thread or message_format.live_episode_urn(room),
+        sender=message_format.SYSTEM_ACTOR_ID,
+        sender_role=message_format.SYSTEM_ACTOR_ROLE,
+        topic=message_format.topic_urn(room),
+        payload_type="message",
+    )
+    await managed.post(envelope, text, list_write=True)
+    manager.enqueue_herdr_wakes_for_mentions(
+        room, text, sender=message_format.SYSTEM_ACTOR_ID, episode=thread
+    )
+    if thread:
+        message_id = envelope.header.message.id if envelope.header.message else None
+        await manager.raise_ping(
+            room, episode=thread, sender=message_format.SYSTEM_ACTOR_ID, message_id=message_id
+        )
     return True
 
 

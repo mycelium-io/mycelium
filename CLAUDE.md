@@ -882,9 +882,10 @@ is no litellm dependency.
   change records who made it (`updated_by`, from the token when there is
   one), and a pause keeps `paused_by`/`paused_at` until it is resumed, which
   the Schedules tab shows. Pausing a schedule that isn't yours is the one
-  thing said about a schedule: the hub tells its owner, as the person who
-  paused it, in the schedule's task thread or the room
-  (`schedules.tell_owner_paused`). Guardrails:
+  thing said about a schedule: the hub tells its owner in its own name (the
+  system actor, as the hold sweep's flag is), naming who paused it silently,
+  in the schedule's task thread or the room (`schedules.tell_owner_paused`).
+  Guardrails:
   a minimum interval, a per-agent cap, an expiry renewed by hand, and writing
   one needs the right to act as its owner.
 - **A row waits on its dependencies, derived and never stored.** A `work/`

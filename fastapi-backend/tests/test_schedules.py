@@ -17,7 +17,8 @@ from httpx import AsyncClient
 from starlette.requests import Request
 
 from app.routes import participate
-from app.services import schedules
+from app.services import message_format, schedules
+from app.services.persister import envelope_sender
 from app.services.room_channels import manager
 from app.services.schedules import ScheduleError
 
@@ -419,14 +420,25 @@ def told(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     """What the hub said in the room, with a live channel standing in."""
     said: list[dict] = []
 
-    async def publish_human(room, *, sender, text, episode=None, **_):
-        said.append({"room": room, "sender": sender, "text": text, "episode": episode})
-        return type("Result", (), {"message_id": f"m{len(said)}"})()
+    class Channel:
+        async def post(self, envelope, text, **_):
+            said.append(
+                {
+                    "sender": envelope_sender(envelope),
+                    "episode": envelope.header.message.episode,
+                    "text": text,
+                }
+            )
+
+    def wakes(room, content, *, sender=None, episode=None, **_):
+        said[-1]["woke"] = (sender, episode)
+        return []
 
     async def raise_ping(room, *, episode, sender, message_id):
-        said[-1]["ping"] = message_id
+        said[-1]["ping"] = (sender, episode)
 
-    monkeypatch.setattr(manager, "publish_human", publish_human)
+    monkeypatch.setattr(manager, "get", lambda room: Channel())
+    monkeypatch.setattr(manager, "enqueue_herdr_wakes_for_mentions", wakes)
     monkeypatch.setattr(manager, "raise_ping", raise_ping)
     return said
 
@@ -503,14 +515,14 @@ async def test_pausing_someone_elses_schedule_tells_them(client: AsyncClient, no
     await client.patch(
         "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "julia"}
     )
+    # Said by the hub, never in julia's name: she didn't write it.
     assert told == [
         {
-            "room": "ops",
-            "sender": "julia",
-            "text": "Paused @builder's schedule \"check-in\". It won't run until it is resumed: "
-            "mycelium schedule resume check-in --room ops",
-            "episode": None,
-            "ping": "m1",
+            "sender": message_format.SYSTEM_ACTOR_ID,
+            "episode": message_format.live_episode_urn("ops"),
+            "text": '@builder, your schedule "check-in" was paused by @~julia. '
+            "It won't run until it's resumed: `mycelium schedule resume check-in --room ops`.",
+            "woke": (message_format.SYSTEM_ACTOR_ID, None),
         }
     ]
 
@@ -556,8 +568,24 @@ async def test_the_owner_is_told_in_the_schedules_task(client: AsyncClient, no_h
     )
     from app.services import tasks
 
-    assert told[0]["episode"] == tasks.episode_of("ops", "work/harvest")
-    assert told[0]["episode"]
+    thread = tasks.episode_of("ops", "work/harvest")
+    assert thread
+    assert told[0]["episode"] == thread
+    # A thread's line surfaces in the room as a ping, and wakes in that thread.
+    assert told[0]["ping"] == (message_format.SYSTEM_ACTOR_ID, thread)
+    assert told[0]["woke"] == (message_format.SYSTEM_ACTOR_ID, thread)
+
+
+@pytest.mark.asyncio
+async def test_with_no_live_channel_nobody_is_told(client: AsyncClient, no_herdr, monkeypatch):
+    await make_room(client)
+    await add()
+    monkeypatch.setattr(manager, "get", lambda room: None)
+    paused = await client.patch(
+        "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "julia"}
+    )
+    assert paused.json()["paused_by"] == "julia"
+    assert not await schedules.tell_owner_paused("ops", schedules.get("ops", "check-in"))
 
 
 @pytest.mark.asyncio
