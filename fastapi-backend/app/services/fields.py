@@ -140,14 +140,17 @@ async def write(room: str, key: str, patch: dict, handle: str, *, reassign: bool
 
 
 def _new_assignee(key: str, meta: dict, patch: dict) -> str | None:
-    """The handle ``patch`` gives an assignable row to, when it changes who it's for."""
+    """The handle ``patch`` gives an assignable row to, unless that handle holds
+    it already. Giving a row to the person it was for still counts when their
+    hold expired or was released, so the write replaces the old claim."""
+    from datetime import UTC, datetime
+
     from app.services import assignments
 
     if "assignee" not in patch or not assignments.assignable(key):
         return None
     to = str(patch.get("assignee") or "").lstrip("@").strip()
-    current = str(meta.get("assignee") or "").lstrip("@")
-    return to if to and to != current else None
+    return to if to and assignments.holder(meta, datetime.now(UTC)) != to else None
 
 
 async def _give(room: str, key: str, meta: dict, to: str, by: str, *, reassign: bool) -> None:
