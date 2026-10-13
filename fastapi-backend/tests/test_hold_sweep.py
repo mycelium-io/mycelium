@@ -87,6 +87,22 @@ def test_a_pane_that_comes_back_is_not_released(monkeypatch, notices):
     assert assignments.state_of(_meta(), datetime.now(UTC)) == "held"
 
 
+def test_an_agent_holding_two_rows_gets_the_same_grace(monkeypatch, notices):
+    # The closed count goes up once per sweep, not once per row it holds.
+    other = "work/turn-on-google-pay"
+    _row()
+    write_memory_file(
+        get_room_dir(ROOM),
+        other,
+        "# Turn on Google Pay",
+        created_by="lead",
+        extra_meta={"assignee": "coder", "episode": "urn:ioc:mycelium:episode:holds:t2"},
+    )
+    monkeypatch.setattr(hold_sweep, "signal_of", lambda _r, _h: "closed")
+    assert _sweep(0) == []
+    assert sorted(_sweep(0)) == [(ROOM, KEY, "released"), (ROOM, other, "released")]
+
+
 def test_removing_an_agent_releases_what_it_held(notices):
     from app.routes.memory import delete_memory
 
