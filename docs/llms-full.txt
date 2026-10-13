@@ -2065,6 +2065,11 @@ these items:
   Mycelium with the change.
 - **Check for Updates…**
 
+To make the window bigger or smaller, zoom it as you would a browser: ⌘+ and
+⌘− (Ctrl+ and Ctrl− on Windows and Linux), and ⌘0 or Ctrl+0 for actual size.
+On a Mac these are also in the **View** menu. The app remembers the size you
+chose the next time it opens.
+
 ![The health check](desktop-health.png)
 
 ## Updates
