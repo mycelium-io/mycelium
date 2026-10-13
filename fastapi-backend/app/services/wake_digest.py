@@ -47,8 +47,9 @@ TITLE_CHARS = 48
 NAME_CHARS = 32
 #: The notices that say the board moved. ``floor`` is whose turn it is in a
 #: thread, which is not the board's news; ``upstream`` is a row's pull request
-#: changing, which :func:`moves` says in its own words.
-BOARD_NOTICES = message_format.NOTICE_SUBKINDS - {"floor", "upstream"}
+#: changing, which :func:`moves` says in its own words; ``check`` is the verifier
+#: on one message, which the agent it is about reads as its ``Check:`` line.
+BOARD_NOTICES = message_format.NOTICE_SUBKINDS - {"floor", "upstream", "check"}
 #: How far back the transcript is read for the agent's last turn.
 SCAN = 2000
 
