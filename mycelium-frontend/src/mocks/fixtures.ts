@@ -1237,6 +1237,7 @@ const checkout: RoomFixture = {
     { id: "t1", sender_handle: "builder", message_type: "broadcast", content: "apple pay is behind the `checkout.apple_pay` switch, off for now.", created_at: iso(22), episode: LAUNCH_THREAD },
     { id: "t2", sender_handle: "reviewer", message_type: "broadcast", content: "don't switch it on until i've placed test orders on a real phone. i'll post the results here.", created_at: iso(21), episode: LAUNCH_THREAD },
     { id: "t3", sender_handle: "builder", message_type: "broadcast", content: "sounds good, waiting on you.", created_at: iso(20), episode: LAUNCH_THREAD },
+    { id: "t4", sender_handle: "builder", message_type: "broadcast", content: "reviewer approved #502, so i'm putting it on staging for the test orders.", created_at: iso(19), episode: LAUNCH_THREAD },
     // The old card form's own thread: a leftover chased down.
     { id: "r1", sender_handle: "builder", message_type: "broadcast", content: "12 orders last week still used the old card form after stripe went live. all from one cached page.", created_at: iso(16), episode: OLD_FORM_THREAD },
     { id: "r2", sender_handle: "builder", message_type: "broadcast", content: "cleared the cache. every order today went through stripe.", created_at: iso(15), episode: OLD_FORM_THREAD },
@@ -1326,6 +1327,29 @@ const checkout: RoomFixture = {
       state: "shown",
       fine_by: null,
       at: iso(139),
+    },
+    // The same claim again, inside the launch task's thread.
+    {
+      flag_id: "vf2",
+      failure: "ungranted_approval",
+      message_id: "t4",
+      key: "work/turn-on-apple-pay",
+      about: "builder",
+      by: "verifier",
+      claim: "approval",
+      ref: "#502",
+      line: "Can't find an approval for #502.",
+      sure: false,
+      quotes: ["reviewer approved #502"],
+      sentence: "reviewer approved #502, so i'm putting it on staging for the test orders.",
+      why: "Reviewer hasn't approved #502 in this room. They said they'd test it on a real phone first.",
+      checked: [
+        { what: "Approvals of #502 in this room", found: "none" },
+        { what: "Pull request changes for #502", found: "opened, review requested" },
+      ],
+      state: "shown",
+      fine_by: null,
+      at: iso(18.5),
     },
   ],
   // Builder looks in on its own leases twice an hour; reviewer was set to chase

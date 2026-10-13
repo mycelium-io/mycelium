@@ -16,7 +16,9 @@ import {
   settleActivity,
   type Responding,
 } from "@/lib/activity";
-import { useRoomAgents, useThreadMessages } from "@/lib/room-data";
+import { useRoomAgents, useRoomVerifierFlags, useThreadMessages } from "@/lib/room-data";
+import { claimNeedles } from "@/lib/verifier";
+import { VerifierLines } from "@/components/verifier-line";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf } from "@/lib/threads";
 import { conductorLineOf } from "@/lib/conductor-line";
@@ -106,6 +108,10 @@ export function TaskConversation({
   const { messages, loading, refresh, hasOlder, loadOlder, loadingOlder } =
     useThreadMessages(roomName, episode);
   const { agents } = useRoomAgents(roomName);
+  // The verifier's flags name a message by the history read's id, which is
+  // what a thread message carries. The channel's read of the same entry
+  // refreshes it when a check lands, so this one needs no listener of its own.
+  const { byMessage: flagsByMessage, refresh: refreshFlags } = useRoomVerifierFlags(roomName);
   const agentHandles = new Set(agents.map(a => a.handle));
   const engineHandles = new Set(agents.filter(a => a.adapter === "engine").map(a => a.handle));
   const agentTags = new Map(agents.map(a => [a.handle, agentTag(a)]));
@@ -264,6 +270,7 @@ export function TaskConversation({
               const previous = prev && !prev.line ? prev.message : undefined;
               const grouped = previous && (previous.sender_handle ?? previous.updated_by) === sender;
               const isAgent = agentHandles.has(sender);
+              const flags = message.id ? flagsByMessage.get(message.id) : undefined;
               return (
                 <div
                   key={message.id ?? `${sender}-${i}`}
@@ -291,7 +298,13 @@ export function TaskConversation({
                         )}
                       </div>
                     )}
-                    <MessageBody content={text} onOpenMemory={onOpenMemory} roomName={roomName} />
+                    <MessageBody
+                      content={text}
+                      claims={flags ? claimNeedles(text, flags.flatMap((f) => f.quotes)) : undefined}
+                      onOpenMemory={onOpenMemory}
+                      roomName={roomName}
+                    />
+                    {flags && <VerifierLines roomName={roomName} flags={flags} onChanged={refreshFlags} />}
                   </div>
                 </div>
               );
