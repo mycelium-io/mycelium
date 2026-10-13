@@ -170,7 +170,9 @@ export function MemoryEditor({
       content_text: body,
       created_by: actor || memory.created_by,
       base_version: memory.version,
-      ...(tags.length > 0 && { tags }),
+      // Always sent, even empty: the store keeps a memory's tags when a write
+      // names none, so leaving them out would make removing the last one a no-op.
+      tags,
       // Always sent, both true and false: the backend carries unmanaged
       // frontmatter forward across writes, so omitting the flag when unchecked
       // would leave a previously-set `expandable: true` on disk.

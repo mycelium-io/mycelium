@@ -242,6 +242,20 @@ describe("MemoryEditor", () => {
     expect(screen.getByText("draft")).toBeInTheDocument();
   });
 
+  it("clears the tags when the last one is removed", async () => {
+    // The store keeps a memory's tags when a write names none, so an empty list
+    // has to be sent for removing the last tag to stick.
+    const user = userEvent.setup();
+    renderEditor({ memory: { ...baseMemory, tags: ["draft"] } });
+    await user.click(screen.getByRole("button", { name: "Remove draft" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(createMemories).toHaveBeenCalledWith("test-room", [
+        expect.objectContaining({ tags: [] }),
+      ]);
+    });
+  });
+
   it("commits a tag typed into the input when Save is clicked without pressing Enter", async () => {
     const user = userEvent.setup();
     renderEditor();

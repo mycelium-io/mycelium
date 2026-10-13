@@ -228,7 +228,8 @@ function NewMemoryForm({
           value: body,
           content_text: body,
           created_by: principal.trim() || "user",
-          ...(tags.length > 0 && { tags }),
+          // Sent even empty: replacing a memory with none should leave it with none.
+          tags,
           ...(expandable && { meta: { expandable: true } }),
           // Replacing one on purpose: only the version this dialog saw.
           ...(existing && { base_version: existing.version }),
