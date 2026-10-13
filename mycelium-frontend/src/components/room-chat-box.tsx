@@ -229,10 +229,12 @@ function triggerAt(text: string, cursor: number, conductors: readonly string[]):
   return found && wholeToken(found, text);
 }
 
-/** What still belongs to a trigger's word after the cursor, by kind. */
+/** What still belongs to a trigger's word after the cursor, by kind. A handle
+ *  has the mention parser's characters (`lib/mentions.ts`). A skill name can
+ *  hold a dot but never ends on one, so a sentence's full stop stays put. */
 const TOKEN_TAIL: Partial<Record<TriggerKind, RegExp>> = {
-  agent: /^[a-z0-9._-]+/i,
-  skill: /^[a-z0-9._-]+/i,
+  agent: /^[\w-]+/,
+  skill: /^[a-z0-9._-]*[a-z0-9_-]/i,
   memory: /^[^\]\n]*\]\]/,
 };
 
@@ -641,9 +643,11 @@ export function RoomChatBox({
       if (trigger.kind === "emoji") usedEmoji(candidate.insert);
       const before = content.slice(0, trigger.start);
       const after = content.slice(trigger.end);
-      // A word picked in the middle of the text keeps the space already after it.
+      // A word picked in the middle of the text keeps the space already after
+      // it, and adds none before punctuation that ends it.
       const spaced = !candidate.open && /^\s/.test(after);
-      const insertion = candidate.open || spaced ? candidate.insert : `${candidate.insert} `;
+      const punctuated = /^[.,;:!?)\]]/.test(after);
+      const insertion = candidate.open || spaced || punctuated ? candidate.insert : `${candidate.insert} `;
       const next = `${before}${insertion}${after}`;
       const pos = before.length + insertion.length + (spaced ? 1 : 0);
       setContent(next);

@@ -357,6 +357,17 @@ describe("<RoomChatBox /> composer triggers", () => {
     expect(box.value).toBe("ask @aligner now");
   });
 
+  it("leaves a full stop after a handle alone when the cursor is inside it", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = (await textarea()) as HTMLTextAreaElement;
+    await userEvent.click(box);
+    await userEvent.type(box, "ask @aligner. Thanks");
+    await userEvent.type(box, "{backspace}g", { initialSelectionStart: 9, initialSelectionEnd: 9 });
+    await userEvent.click(await screen.findByRole("button", { name: /@aligner/ }));
+
+    expect(box.value).toBe("ask @aligner. Thanks");
+  });
+
   it("says in the popover, and aloud, when a mention is silent or interrupts", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
