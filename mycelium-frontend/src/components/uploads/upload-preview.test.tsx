@@ -91,6 +91,22 @@ describe("<UploadPreviewDialog /> in a set", () => {
     expect(screen.getByText("2 of 2")).toBeInTheDocument();
   });
 
+  it("keeps one window size while stepping between an image and another kind", () => {
+    const notes: Upload = { ...image(4), kind: "audio", filename: "notes.mp3", key: "uploads/notes.mp3" };
+    render(<Opened set={[SET[0], notes]} first={SET[0]} />);
+    const size = () => screen.getByRole("dialog").className.includes("h-[calc(100dvh-2rem)]");
+    expect(size()).toBe(true);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "ArrowRight" });
+    expect(screen.getByText("2 of 2")).toBeInTheDocument();
+    expect(size()).toBe(true);
+  });
+
+  it("opens a file with no image beside it at its usual size", () => {
+    const notes: Upload = { ...image(4), kind: "audio", filename: "notes.mp3", key: "uploads/notes.mp3" };
+    render(<Opened set={[notes]} first={notes} />);
+    expect(screen.getByRole("dialog").className).toContain("max-h-[90vh]");
+  });
+
   it("shows no arrows or strip for a single file", () => {
     render(<Opened set={[SET[0]]} first={SET[0]} />);
     expect(screen.queryByRole("button", { name: "Next file" })).toBeNull();
@@ -100,25 +116,29 @@ describe("<UploadPreviewDialog /> in a set", () => {
 });
 
 describe("<UploadPreviewDialog /> zooming an image", () => {
-  // jsdom lays nothing out: the image is fitted to 500x400 and is 1000px wide
-  // itself, so 100% is twice the fitted size.
-  const sizes: [string, number | boolean][] = [
-    ["clientWidth", 500],
-    ["clientHeight", 400],
-    ["naturalWidth", 1000],
-    ["complete", true],
+  // jsdom lays nothing out: the frame is 500x400 and the image is 1000x800
+  // itself, so it fits the frame exactly and 100% is twice the fitted size.
+  // A case can give the image another shape.
+  const natural = { width: 1000, height: 800 };
+  const stubs: [object, string, () => number | boolean][] = [
+    [HTMLDivElement.prototype, "clientWidth", () => 500],
+    [HTMLDivElement.prototype, "clientHeight", () => 400],
+    [HTMLImageElement.prototype, "naturalWidth", () => natural.width],
+    [HTMLImageElement.prototype, "naturalHeight", () => natural.height],
+    [HTMLImageElement.prototype, "complete", () => true],
   ];
   beforeEach(() => {
-    for (const [name, value] of sizes) {
-      Object.defineProperty(HTMLImageElement.prototype, name, { configurable: true, get: () => value });
-    }
+    Object.assign(natural, { width: 1000, height: 800 });
+    for (const [proto, name, get] of stubs) Object.defineProperty(proto, name, { configurable: true, get });
   });
   afterEach(() => {
-    for (const [name] of sizes) delete (HTMLImageElement.prototype as unknown as Record<string, unknown>)[name];
+    for (const [proto, name] of stubs) delete (proto as Record<string, unknown>)[name];
   });
 
   const level = () => screen.getByRole("group", { name: "Zoom" }).querySelector("button:not([aria-label^='Zoom'])")!;
-  const transform = () => (screen.getByRole("img") as HTMLImageElement).style.transform;
+  const image = () => screen.getByRole("img") as HTMLImageElement;
+  const transform = () => image().style.transform;
+  const AT_FIT = "translate(0px, 0px) scale(1)";
   const key = (k: string) => fireEvent.keyDown(screen.getByRole("dialog"), { key: k });
 
   it("zooms in and out with the keys and the buttons, and 0 goes back to fit", async () => {
@@ -139,7 +159,7 @@ describe("<UploadPreviewDialog /> zooming an image", () => {
     key("=");
     key("0");
     expect(level()).toHaveTextContent("Fit");
-    expect(transform()).toBe("");
+    expect(transform()).toBe(AT_FIT);
   });
 
   // A press as a browser sends it: down, any moves, up, then the click.
@@ -176,7 +196,7 @@ describe("<UploadPreviewDialog /> zooming an image", () => {
     const frame = screen.getByTestId("zoom-frame");
     // At fit, a drag neither pans nor zooms.
     press(frame, [300, 200], [250, 200]);
-    expect(transform()).toBe("");
+    expect(transform()).toBe(AT_FIT);
     expect(level()).toHaveTextContent("Fit");
 
     press(frame, [0, 0]);
@@ -212,6 +232,43 @@ describe("<UploadPreviewDialog /> zooming an image", () => {
     // Clicking elsewhere on it centers the view there, as far as the edges allow.
     fireEvent.pointerDown(map, { pointerId: 3, button: 0, clientX: 0, clientY: 0 });
     expect(transform()).toBe("translate(0px, 0px) scale(2)");
+  });
+
+  it("gives a tall image the whole frame: fitted and centered, then filling its width when zoomed in", () => {
+    // A phone screenshot, 1:3, in the 500x400 frame.
+    Object.assign(natural, { width: 600, height: 1800 });
+    render(<Opened set={SET} first={SET[0]} />);
+    const fitted = 400 / 3;
+    expect(parseFloat(image().style.width)).toBeCloseTo(fitted);
+    expect(image().style.height).toBe("400px");
+    // Whole and centered: the frame is the window's shape, not the image's.
+    const [fx, fy, fs] = transform().match(/-?[\d.]+/g)!.map(Number);
+    expect(fx).toBeCloseTo((500 - fitted) / 2);
+    expect([fy, fs]).toEqual([0, 1]);
+
+    for (let i = 0; i < 12; i += 1) key("+");
+    const [x, y, scale] = transform().match(/-?[\d.]+/g)!.map(Number);
+    // Past the frame on both axes, with no empty space at any edge.
+    expect(fitted * scale).toBeGreaterThan(500);
+    expect(x).toBeLessThanOrEqual(0);
+    expect(x + fitted * scale).toBeGreaterThanOrEqual(500);
+    expect(y).toBeLessThanOrEqual(0);
+
+    // Dragging up the image moves down it, and stops at its bottom edge.
+    const frame = screen.getByTestId("zoom-frame");
+    press(frame, [250, 300], [250, -100_000]);
+    const [, bottom] = transform().match(/-?[\d.]+/g)!.map(Number);
+    expect(Math.round(bottom + 400 * scale)).toBe(400);
+  });
+
+  it("keeps a small image at its own size, centered", () => {
+    Object.assign(natural, { width: 200, height: 100 });
+    render(<Opened set={SET} first={SET[0]} />);
+    expect([image().style.width, image().style.height]).toEqual(["200px", "100px"]);
+    expect(transform()).toBe("translate(150px, 150px) scale(1)");
+    // 100% is already shown, so a click goes to 2x.
+    press(screen.getByTestId("zoom-frame"), [250, 200]);
+    expect(level()).toHaveTextContent("200%");
   });
 
   it("steps with the arrows at fit, and pans with them when zoomed", () => {

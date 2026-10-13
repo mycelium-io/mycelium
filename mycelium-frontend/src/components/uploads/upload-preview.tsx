@@ -252,6 +252,10 @@ export function UploadPreviewDialog({
 
   const zoom = useRef<ZoomKeys>(null);
   const stepping = Boolean(onShow) && set.length > 1;
+  const image = shown?.kind === "image";
+  // Stepping through a set with an image in it keeps the window one size, so
+  // the arrows don't make it jump between a PDF's size and an image's.
+  const large = image || (stepping && set.some((u) => u.kind === "image"));
   const at = shown ? set.findIndex((u) => u.key === shown.key) : -1;
   const go = (step: 1 | -1) => {
     const next = stepThrough(set, shown, step);
@@ -261,7 +265,14 @@ export function UploadPreviewDialog({
   return (
     <Dialog open={upload !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        className="flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-4xl"
+        className={cn(
+          "flex flex-col gap-0 p-0",
+          // An image gets nearly the whole window, whatever its shape: the
+          // frame is the viewport, so zooming in has room on both axes.
+          large
+            ? "h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-4rem)] sm:h-[calc(100dvh-4rem)]"
+            : "max-h-[90vh] sm:max-w-4xl",
+        )}
         onKeyDown={(e) => {
           // Not while typing, or while a player has focus and wants its own keys.
           const tag = (e.target as HTMLElement).tagName;
@@ -305,9 +316,15 @@ export function UploadPreviewDialog({
               )}
               <DownloadButton upload={shown} />
             </div>
-            <div className="min-h-0 overflow-auto p-4">
+            <div className={cn("min-h-0", image ? "flex-1 p-2" : cn("overflow-auto p-4", large && "flex-1"))}>
               {/* Keyed by file, so each one opens at fit. */}
-              <UploadPreview key={shown.key} upload={shown} onOpenMemory={onOpenMemory} zoom={zoom} />
+              <UploadPreview
+                key={shown.key}
+                upload={shown}
+                onOpenMemory={onOpenMemory}
+                zoom={zoom}
+                className={image ? "h-full" : undefined}
+              />
             </div>
             {stepping && onShow && (
               <div className="flex items-center gap-2 border-t border-border px-3 py-1.5">
