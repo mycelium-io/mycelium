@@ -293,6 +293,36 @@ def _schedule_lines(room: str, name: str) -> tuple[list[str], str | None]:
     return schedules.wake_text(schedule, run, room, change=False).splitlines()[1:], change
 
 
+def reply_episode(room: str, wake: dict[str, Any], records: list[Any]) -> str | None:
+    """The thread ``wake``'s agent is told to reply in, for the room's "is
+    responding in" line; ``None`` for the room itself.
+
+    The one place the messages that asked for it since its last turn were said
+    (the digest's ``Reply:`` line names it), the wake's own place when none did,
+    and ``None`` when they were said in more than one place: then the agent is
+    shown responding with no thread named, rather than in a guessed one.
+    """
+    from app.routes.participate import _addressed_to
+
+    handle = str(wake.get("handle") or "")
+    me = _norm(handle)
+    window = records[-SCAN:]
+    last = max((i for i, r in enumerate(window) if _norm(r.sender) == me), default=-1)
+    asked = [
+        r
+        for r in window[last + 1 :]
+        if _addressed_to(r.content, handle) and _conversational_text(r.content)
+    ]
+
+    def thread(episode: str | None) -> str | None:
+        return None if message_format.is_live_episode(room, episode) else episode
+
+    if not asked:
+        return thread(wake.get("episode"))
+    places = {thread(record_episode(r)) for r in asked}
+    return places.pop() if len(places) == 1 else None
+
+
 def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | None = None) -> str:
     """The digest typed into ``wake``'s agent: why, what changed, what asked for it."""
     from app.routes.participate import _addressed_to

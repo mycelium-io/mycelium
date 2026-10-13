@@ -42,6 +42,16 @@ def _reset_a2a_activity():
     a2a_activity.clear()
 
 
+@pytest.fixture(autouse=True)
+def _reset_responding():
+    """Isolate who is standing as "responding" per test."""
+    from app.services import activity
+
+    activity.reset()
+    yield
+    activity.reset()
+
+
 @pytest_asyncio.fixture()
 async def client():
     """AsyncClient wired to the FastAPI app (no database)."""
