@@ -54,6 +54,8 @@ from app.services.filesystem import (
 )
 
 FIELD = "assignment"
+#: Who a row is for (``tasks.ASSIGNEE_FIELD``); a row with one is held by them.
+ASSIGNEE_FIELD = "assignee"
 
 STATES = ("unclaimed", "held", "released", "expired", "resolved")
 STORED_STATES = ("held", "released", "resolved")
@@ -61,7 +63,9 @@ DERIVED_STATES = ("unclaimed", "expired")
 
 #: Fraction of a lease that may be spent before a renewal is due.
 STALE_AFTER = 0.5
-DEFAULT_TTL_MINUTES = 30
+#: A claim has no timer unless it asks for one (#1136): what ends a hold is the
+#: holder going away, handing it off or finishing, not a clock.
+DEFAULT_TTL_MINUTES = None
 
 RUNTIME_AUTHOR = "runtime"
 ASSIGNABLE_NAMESPACES = ("work",)
@@ -129,21 +133,39 @@ def freshness(meta: dict, now: datetime) -> str | None:
     return "stale" if fraction < 1.0 else "expired"
 
 
+def open_ended(meta: dict) -> bool:
+    """A hold with no timer: nothing about the clock ends it (#1136), only what
+    :mod:`app.services.hold_sweep` sees."""
+    return meta.get("ttl_minutes") in (None, "", 0)
+
+
 def state_of(meta: dict, now: datetime) -> str:
     """A row's assignment state, read off its frontmatter and the clock.
 
-    A ``held`` lease that nobody renewed reads ``expired`` here with nothing on
-    disk having changed, and one that cannot be dated at all reads the same way:
-    a claim that cannot be shown to be alive is not evidence that it is.
+    A row given to someone (``assignee``) is held by them until it's released,
+    handed off or resolved: being assigned the work is holding it, with no
+    claim to make. A hold with no ``ttl_minutes`` has no timer and stays held
+    until something real ends it (:mod:`app.services.lease_sweep`). Only a hold
+    taken with a lease (``claim --ttl``) drains: one nobody renewed reads
+    ``expired`` here with nothing on disk having changed.
     """
     stored = meta.get(FIELD)
-    if stored not in STATES:
-        return "unclaimed"
-    if stored != "held":
+    if stored in ("released", "resolved"):
         return str(stored)
-    if not meta.get("owner"):
-        return "unclaimed"
-    return "held" if freshness(meta, now) in ("fresh", "stale") else "expired"
+    if stored == "held" and meta.get("owner"):
+        if open_ended(meta):
+            return "held"
+        return "held" if freshness(meta, now) in ("fresh", "stale") else "expired"
+    return "held" if meta.get(ASSIGNEE_FIELD) else "unclaimed"
+
+
+def holder(meta: dict, now: datetime) -> str | None:
+    """Who holds the row: whoever claimed it, else whoever it was given to."""
+    if state_of(meta, now) != "held":
+        return None
+    who = meta.get("owner") if meta.get(FIELD) == "held" else meta.get(ASSIGNEE_FIELD)
+    name = str(who or "").lstrip("@")
+    return name or None
 
 
 def assignable(key: str) -> bool:
@@ -247,12 +269,13 @@ def _load(room: str, key: str) -> tuple[dict, str]:
 def _describe(room: str, key: str, meta: dict, now: datetime) -> dict:
     """The row's assignment, as the wire says it."""
     state = state_of(meta, now)
-    owner = meta.get("owner")
+    owner = holder(meta, now) or meta.get("owner")
     body = {
         "key": key,
         "assignment": state,
         WAITING_FIELD: waiting_on(room, meta, now),
         "owner": str(owner).lstrip("@") if owner else None,
+        "assignee": str(meta.get(ASSIGNEE_FIELD) or "").lstrip("@") or None,
         "claimed_at": meta.get("claimed_at"),
         "ttl_minutes": meta.get("ttl_minutes"),
         "freshness": freshness(meta, now),
@@ -284,7 +307,7 @@ async def _write(
     return _describe(room, key, fresh_meta, datetime.now(UTC))
 
 
-async def raise_notice(room: str, key: str, subkind: str, by: str) -> None:
+async def raise_notice(room: str, key: str, subkind: str, by: str, **extra: str | None) -> None:
     """Tell the room the board moved: a task was claimed, handed back, resolved or drained.
 
     A custody write is news the timeline should carry, so it raises a notice the
@@ -303,18 +326,27 @@ async def raise_notice(room: str, key: str, subkind: str, by: str) -> None:
         title=first.lstrip("# ").strip(),
         episode=episode,
         by=by.lstrip("@"),
+        **extra,
     )
 
 
 async def claim(
-    room: str, key: str, handle: str, ttl_minutes: int, now: datetime, *, force: bool = False
+    room: str,
+    key: str,
+    handle: str,
+    ttl_minutes: int | None,
+    now: datetime,
+    *,
+    force: bool = False,
 ) -> dict:
-    """Take assignment of a row, for as long as the lease runs.
+    """Take a row nobody holds. With ``ttl_minutes`` the hold is a lease that
+    drains unless renewed; without, it has no timer (#1136).
 
-    A live claim is not stealable — that is the point of holding one — but an
-    expired one is: the row is back in the pool, and refusing the next taker
-    because a dead session's handle is still in the file would be the original
-    failure with extra steps.
+    A live hold is not stealable — that is the point of holding one — and a row
+    given to someone is held by them, so taking it is a reassignment
+    (:func:`reassign`), not a claim. An expired lease is takeable: the row is
+    back in the pool, and refusing the next taker because a dead session's
+    handle is still in the file would be the original failure with extra steps.
 
     A row still waiting on a dependency is refused too, when the room's
     dependency gate is on (the room's ``dependency-gate`` setting, else the
@@ -322,14 +354,16 @@ async def claim(
     the row anyway for the caller who knows better.
     """
     meta, content = _load(room, key)
-    current = state_of(meta, now)
-    holder = str(meta.get("owner") or "").lstrip("@")
-    if current == "held" and holder and holder != handle.lstrip("@"):
+    held_by = holder(meta, now)
+    if held_by and held_by != handle.lstrip("@"):
+        given = meta.get(FIELD) != "held"
         raise AssignmentError(
-            f"'{key}' is held by @{holder}",
+            f"'{key}' is assigned to @{held_by}; reassign it to take it over"
+            if given
+            else f"'{key}' is held by @{held_by}",
             status=409,
             key=key,
-            owner=holder,
+            owner=held_by,
             claimed_at=meta.get("claimed_at"),
             ttl_minutes=meta.get("ttl_minutes"),
         )
@@ -353,6 +387,50 @@ async def claim(
     }
     described = await _write(room, key, meta, content, patch, handle)
     await raise_notice(room, key, "claimed", handle)
+    return described
+
+
+async def reassign(room: str, key: str, to: str, by: str, now: datetime) -> dict:
+    """Give a row to ``to``, taking it from whoever holds it, and say so.
+
+    A row given to someone is theirs until it's handed off, so moving it is
+    never silent: the ``claimed`` notice names who it was taken ``from`` and
+    who it is ``for``, and the room reads "@to took over from @from".
+    """
+    meta, content = _load(room, key)
+    previous = holder(meta, now)
+    who = to.lstrip("@")
+    patch = {
+        ASSIGNEE_FIELD: who,
+        FIELD: "held",
+        "owner": f"@{who}",
+        "claimed_at": now.isoformat(),
+        "ttl_minutes": None,
+        "assignment_note": f"taken over from @{previous}" if previous and previous != who else None,
+        "assignment_note_by": by.lstrip("@") if previous and previous != who else None,
+    }
+    described = await _write(room, key, meta, content, patch, by)
+    await raise_notice(
+        room, key, "claimed", by, **{"for": who, "from": previous if previous != who else None}
+    )
+    return described
+
+
+async def end_hold(room: str, key: str, why: str, *, subkind: str, by: str, now: datetime) -> dict:
+    """End a hold for a reason the hub saw rather than one someone wrote: the
+    row goes back to the pool, signed by the runtime, and a ``subkind`` notice
+    (``released`` or ``expired``) says so with ``why``."""
+    meta, content = _load(room, key)
+    patch = {
+        FIELD: "released",
+        "owner": None,
+        "claimed_at": None,
+        "ttl_minutes": None,
+        "assignment_note": why,
+        "assignment_note_by": RUNTIME_AUTHOR,
+    }
+    described = await _write(room, key, meta, content, patch, RUNTIME_AUTHOR)
+    await raise_notice(room, key, subkind, by, why=why)
     return described
 
 

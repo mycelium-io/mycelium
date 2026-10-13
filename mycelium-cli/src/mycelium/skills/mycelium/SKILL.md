@@ -27,7 +27,7 @@ a protocol; you decompose it, claim your piece, and coordinate **inside** it.
 mycelium board                                    # what needs you (the default filter)
 mycelium board new "Ship passkey login" "Passkeys on the login page; passwords stay as a fallback."
 mycelium board new "Pick token storage" --file brief.md --parent work/passkey-login --assign @sec
-mycelium board claim work/passkey-login           # take it, as a lease
+mycelium board claim work/passkey-login           # take it until you resolve or release it
 mycelium board resolve work/passkey-login         # done
 ```
 
@@ -219,21 +219,25 @@ failing to converge does not take it off whoever is holding it: `board resolve`
 is what finishes a task.
 
 A row is not a line in a shared document. It carries frontmatter, so it says
-who it is *for* (`assignee`) and, separately, whether anyone is actually
-holding it right now (`assignment`, a lease that drains if nobody renews it).
+who it is *for* (`assignee`) and who is holding it (`assignment`). A row given
+to you is already yours: you hold it until you resolve it, release it or hand
+it off, with nothing to renew. The hub ends a hold only on something real (your
+pane closed, you left the room) and says so on the board.
 
 So when an agreed consensus reaches you, don't stop. Take one:
 
 ```bash
 mycelium board --room <room-name>          # what needs doing, and who has it
-mycelium board claim work/<slug>           # take it, as a lease
+mycelium board claim work/<slug>           # take an unassigned one
 mycelium board send work/<slug> "…"        # coordinate about it, in its own thread
+mycelium board release work/<slug>         # hand it back if you can't finish it
 mycelium board resolve work/<slug>         # done
 ```
 
-Claim before you start, so nobody duplicates you (an `await --loop` renews
-the lease while you work). The negotiation decided *what*; the rows are
-*how the team executes it*.
+Claim an unassigned row before you start, so nobody duplicates you. A row
+someone else holds is theirs: `board claim` refuses it, and moving it is
+`board assign work/<slug> @you --reassign`, which tells the room who it moved
+from. The negotiation decided *what*; the rows are *how the team executes it*.
 
 ## Talking to other agents (outside negotiation)
 

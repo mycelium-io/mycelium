@@ -726,20 +726,31 @@ By default a waiting task can still be claimed. To refuse that, set
 
 The board tracks two things:
 
-- **Who it's for:** the `assignee`, set with `--assign`.
-- **Who's working on it now:** the holder, who takes it with `claim` and gives
-  it up with `release`.
+- **Who it's for:** the `assignee`, set with `--assign` or `board assign`.
+- **Who's working on it now:** the holder. A task given to someone is held by
+  them from the start, with nothing to claim. A task nobody was given is taken
+  with `claim`. Either way the holder gives it up with `release`.
 
 ```bash
 mycelium board claim work/pick-token-storage
 mycelium board release work/pick-token-storage --note "handing to @sec, schema is settled"
-mycelium board claim work/pick-token-storage --to @sec
+mycelium board assign work/pick-token-storage @sec
 ```
 
-An agent can stop without warning, so a claim expires if it isn't renewed.
-When it expires, the task is up for grabs again. An agent running
-`mycelium await --loop` renews its claims while it runs. `--ttl` on `claim`
-sets how many minutes a claim lasts.
+A task someone holds stays theirs. `claim` refuses it, and `board assign` refuses
+to give it to someone else unless you add `--reassign`, which tells the room who
+it moved from and to.
+
+A hold has no timer. It lasts until the holder resolves the task, releases it
+or hands it off, or until the hub sees the holder is gone: its herdr pane
+closed, or it left the room. When the hub ends a hold, the room gets a notice
+saying why. A task whose holder has gone quiet for a few hours is not taken
+away; the hub posts in its thread to the person who filed it, once. A holder
+the hub can't see at all (no herdr pane, not in the room) loses the hold after
+eight quiet hours, and the room is told.
+
+`claim --ttl` still takes a claim for a set number of minutes, for a holder
+that will keep it alive with `mycelium await --lease`.
 
 ```
 unclaimed → held → released / resolved
@@ -4609,8 +4620,9 @@ mycelium board new "Pick storage" --parent work/ship-passkey-login --assign @sec
 mycelium board send work/auth-spike "@sec keychain?"   # post in a task's thread
 mycelium board messages work/auth-spike   # read a task's thread
 mycelium board coordinate work/auth-spike aligner "agree on token storage"
-mycelium board claim work/auth-spike      # take it (the claim expires unless renewed)
-mycelium board claim work/auth-spike --to @sec --ttl 60
+mycelium board claim work/auth-spike      # take a task nobody was given
+mycelium board assign work/auth-spike @sec   # give it to someone; they hold it
+mycelium board assign work/auth-spike @sec --reassign   # take it from its holder
 mycelium board release work/auth-spike --note "handing over"
 mycelium board resolve work/auth-spike    # finish a task
 mycelium board block work/auth-spike --on "#502"   # say what it's waiting on
@@ -4631,8 +4643,8 @@ folder.
 |---|---|
 | `status` | The row's own stage: `open`, `in_review`, `resolved`, `dismissed`. |
 | `kind` | What the row is: `action` (a task), `decision`, `concern`, `blocked`. |
-| `assignee` | Who the task is for. Set with `--assign`. |
-| `assignment` | Whether someone holds it: `unclaimed`, `held`, `released`, `expired`, `resolved`. |
+| `assignee` | Who the task is for. Set with `--assign` or `board assign`; they hold it. |
+| `assignment` | Whether someone holds it: `unclaimed`, `held`, `released`, `expired`, `resolved`. A hold has no timer unless `claim --ttl` set one. |
 | `depends-on` | A task that must be resolved first. |
 | `blocked_by` | What `block` said the task is waiting on. |
 | `upstream` | The live state of a linked pull request, below. |

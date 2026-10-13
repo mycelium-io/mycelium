@@ -101,7 +101,7 @@ def test_a_mention_digest_says_why_what_changed_and_what_asked():
         in digest
     )
     assert 'Tasks:   claimed "Fix the receipt tax" (1h ago)' in digest
-    assert 'Board:   @builder claimed "Fix the receipt tax"\n         open now: 1 claimed' in digest
+    assert 'Board:   @builder claimed "Fix the receipt tax"\n         open now: 1 held' in digest
     # Each message says who, when and how long, and is cut with the rest counted.
     assert f"--- @scout, 2m ago, {len(LONG.strip()):,} chars, latest ---" in digest
     assert "--- @reviewer, 40m ago," in digest
@@ -206,7 +206,24 @@ def test_a_task_filed_for_the_agent_says_how_to_take_it():
     )
     assert 'Why:     @operator gave you a task: "Do X" (work/x)' in digest
     assert "Since:   you joined" in digest
-    assert "Claim:  mycelium board claim work/x --room digest-room --to @builder" in digest
+    # Given to it, it already holds the row (#1136): no claim to make.
+    assert "Held:   it's yours until you resolve it or hand it back; no claim needed" in digest
+    assert "board claim" not in digest
+    assert "Read:   mycelium board messages work/x --room digest-room" in digest
+
+
+def test_a_row_given_to_the_agent_reads_as_its_own_not_unclaimed():
+    write_memory_file(
+        get_room_dir(ROOM),
+        "work/given",
+        "# A row given to builder",
+        created_by="lead",
+        extra_meta={"assignee": "builder"},
+    )
+    digest = wake_digest.build(ROOM, {"handle": "builder"}, [], NOW)
+    assert 'Tasks:   yours "A row given to builder"' in digest
+    assert "unclaimed" not in digest
+    assert "Board:   1 held" in digest
 
 
 def _board_lines(digest: str) -> list[str]:

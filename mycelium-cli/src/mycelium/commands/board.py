@@ -257,7 +257,7 @@ def _assignment_chip(item: LiveItem, now: datetime) -> Text:
         return chip
 
     if state == "held":
-        chip.append(f"held @{item.owner}", style="cyan")
+        chip.append(f"held @{assignment.holder_of(item, now)}", style="cyan")
         fraction = assignment.elapsed_fraction(
             assignment.claimed_at(item), item.get("ttl_minutes"), now
         )
@@ -536,8 +536,12 @@ def board_resolve(
 
 
 @doc_ref(
-    usage="mycelium board claim <id> [--to @handle] [--ttl 30]",
-    desc="Take assignment of a work/ row: a lease with your handle on it, which drains unless renewed.",
+    usage="mycelium board claim <id> [--to @handle] [--ttl N]",
+    desc=(
+        "Take a work/ row nobody was given. You hold it until you resolve it or hand it back; "
+        "a row assigned to you is already yours, with nothing to claim. <code>--ttl</code> "
+        "makes the hold a lease that drains unless renewed."
+    ),
     group="board",
 )
 @app.command(name="claim")
@@ -545,8 +549,10 @@ def board_resolve(
 def board_claim(
     row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. work/auth-spike)"),
     to: str | None = typer.Option(None, "--to", help="Handle to claim it for (default: you)"),
-    ttl: int = typer.Option(
-        assignment.DEFAULT_TTL_MINUTES, "--ttl", help="Minutes the claim holds without a renewal"
+    ttl: int | None = typer.Option(
+        assignment.DEFAULT_TTL_MINUTES,
+        "--ttl",
+        help="Make the hold a lease: minutes it lasts without a renewal. Default: no timer",
     ),
     force: bool = typer.Option(
         False,
@@ -555,9 +561,12 @@ def board_claim(
     ),
     room: str | None = None,
 ) -> None:
-    """Claim a row, as a lease rather than a fact.
+    """Claim a row nobody was given.
 
-    A row that depends on rows not yet resolved is shown waiting on them, and a
+    The hold lasts until you resolve the row or hand it back, or the hub sees
+    you go (your pane closes, you leave the room). A row assigned to someone is
+    already theirs: claiming it is refused, and moving it is ``board assign
+    --reassign``. A row that depends on rows not yet resolved is shown waiting on them, and a
     room whose dependency gate is on refuses the claim until they are; ``--force``
     takes it anyway.
     """
@@ -583,6 +592,32 @@ def board_claim(
         ttl_minutes=ttl,
         force=force or None,
     )
+
+
+@doc_ref(
+    usage="mycelium board assign <id> @handle [--reassign]",
+    desc=(
+        "Give a work/ row to someone, who then holds it until they resolve it or hand it back. "
+        "Taking a row someone else holds needs <code>--reassign</code>, and the room is told who "
+        "it moved from."
+    ),
+    group="board",
+)
+@app.command(name="assign")
+@in_room()
+def board_assign(
+    row_id: str = typer.Argument(..., help="Row id as shown on the board"),
+    handle: str = typer.Argument(..., help="Who to give it to (@handle)"),
+    reassign: bool = typer.Option(
+        False, "--reassign", help="Take it from whoever holds it now, and say so"
+    ),
+    room: str | None = None,
+) -> None:
+    """Give a row to someone. A row given to someone is theirs: they hold it
+    with no claim to make, until they resolve it or hand it back."""
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    _write_fields(cfg, name, row_id, {"assignee": handle.lstrip("@")}, reassign=reassign)
 
 
 @doc_ref(
@@ -758,7 +793,8 @@ def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) 
         held_by = detail.get("owner") if isinstance(detail, dict) else None
         console.print(
             f"[yellow]·[/yellow] {payload.get('key')} is already held by @{held_by}. "
-            "[dim]Its lease has to drain (or its holder release it) before anyone else takes it.[/dim]"
+            f"[dim]They hand it back, or someone moves it with "
+            f"`mycelium board assign {payload.get('key')} @<handle> --reassign`.[/dim]"
         )
         raise typer.Exit(1)
     if resp.status_code >= 400:
@@ -766,10 +802,15 @@ def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) 
         raise typer.Exit(1)
     data = resp.json()
     if action == "claim":
+        ttl = data.get("ttl_minutes")
+        until = (
+            f"for {ttl}m, renewed by your loop, or it drains back to the pool."
+            if ttl
+            else "until you resolve it or hand it back."
+        )
         console.print(
             f"[green]✓[/green] held [bold]{data.get('key')}[/bold] by @{data.get('owner')} "
-            f"[dim]for {data.get('ttl_minutes')}m — renewed by your loop, or it drains back to "
-            "the pool.[/dim]"
+            f"[dim]{until}[/dim]"
         )
     elif action == "release":
         console.print(
@@ -780,7 +821,9 @@ def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) 
         console.print(f"[green]✓[/green] {action}d [bold]{data.get('key')}[/bold]")
 
 
-def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> None:
+def _write_fields(
+    cfg: MyceliumConfig, room: str, row_id: str, patch: dict, *, reassign: bool = False
+) -> None:
     """Put an action's frontmatter on the row, and say what landed.
 
     The same upsert a ``memory set --meta`` goes through, so an action typed here
@@ -804,13 +847,23 @@ def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> N
         )
         raise typer.Exit(1)
     key = board_fields.memory_key_of(item)
-    body = {"key": key, "handle": cfg.get_current_identity(), "fields": patch}
+    body: dict[str, Any] = {"key": key, "handle": cfg.get_current_identity(), "fields": patch}
+    if reassign:
+        body["reassign"] = True
     try:
         with hub_client(cfg, timeout=30) as client:
             resp = client.post(f"/api/rooms/{room}/fields", json=body)
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
+    if resp.status_code == 409:
+        detail = resp.json().get("detail", {})
+        held_by = detail.get("owner") if isinstance(detail, dict) else None
+        console.print(
+            f"[yellow]·[/yellow] {key} is held by @{held_by}. "
+            "[dim]Pass --reassign to take it from them; the room is told who it moved from.[/dim]"
+        )
+        raise typer.Exit(1)
     if resp.status_code >= 400:
         console.print(f"[red]✗[/red] write failed: {resp.text}")
         raise typer.Exit(1)

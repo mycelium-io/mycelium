@@ -2,12 +2,13 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * Assignment: who holds a row, and for how much longer.
+ * Assignment: who holds a row.
  *
- * An agent is resident rather than one-shot, and a session can end without
- * announcing it — a container is reclaimed, a cloud session times out, a job
- * is canceled. Assignment is a lease rather than a stored fact: an abandoned
- * claim drains and the row returns to the pool.
+ * A row given to someone (`assignee`) is held by them until it is released,
+ * handed off or resolved, and a hold has no timer unless a claim asks for one
+ * (#1136): the hub ends it when its holder's pane closes or it leaves the
+ * room. A claim taken with a TTL is a lease instead, which drains if nobody
+ * renews it.
  *
  * **Assignment is not a stage.** `status` is a stage vocabulary. `in_review`
  * says nothing about whether anyone is alive; `held, renewed 30s ago` says
@@ -48,7 +49,10 @@ export type AssignmentFreshness = (typeof ASSIGNMENT_FRESHNESS)[number];
 
 /** Fraction of a lease that may be spent before a renewal is due. */
 export const STALE_AFTER = 0.5;
-export const DEFAULT_TTL_MINUTES = 30;
+/** A claim has no timer unless it asks for one (#1136). */
+export const DEFAULT_TTL_MINUTES: number | null = null;
+/** Who a row is for; a row with one is held by them. */
+export const ASSIGNEE_FIELD = "assignee";
 
 export const ASSIGNMENT_COMPANION_FIELDS = [
   "claimed_at",
@@ -167,15 +171,32 @@ export function remainingMinutes(item: LiveItem, now: number): number | null {
  */
 export function assignmentOf(item: LiveItem, now: number): Assignment | null {
   const stored = fieldAsString(item, ASSIGNMENT_FIELD);
-  if (!stored || !(ASSIGNMENT_STATES as readonly string[]).includes(stored)) return null;
-  if (stored !== "held") return stored as Assignment;
+  if (stored === "released" || stored === "resolved") return stored;
+  if (stored === "held" && ownerOf(item)) {
+    // A hold with no timer stays held until something real ends it (#1136);
+    // only a lease, taken with a TTL, drains by the clock.
+    if (isOpenEnded(item)) return "held";
+    const fresh = leaseFreshness(item, now);
+    return fresh === "fresh" || fresh === "stale" ? "held" : "expired";
+  }
+  // A row given to someone is held by them, with no claim to make (#1136).
+  if (fieldAsString(item, ASSIGNEE_FIELD)) return "held";
   // Held by nobody is not held. A row that lost its holder is in the pool.
-  if (!ownerOf(item)) return "unclaimed";
-  // A claim that cannot be shown to be alive is not evidence that it is — and an
-  // undatable one (no stamp, or no window) is the purest form of the assertion
-  // this model refuses: held forever, on nobody's word.
-  const fresh = leaseFreshness(item, now);
-  return fresh === "fresh" || fresh === "stale" ? "held" : "expired";
+  return stored && (ASSIGNMENT_STATES as readonly string[]).includes(stored) ? "unclaimed" : null;
+}
+
+/** A hold with no timer (#1136). */
+export function isOpenEnded(item: LiveItem): boolean {
+  const ttl = item.fields.ttl_minutes;
+  return ttl === null || ttl === undefined || ttl === "" || ttl === 0;
+}
+
+/** Who holds the row: whoever claimed it, else whoever it was given to. */
+export function holderOf(item: LiveItem, now: number): string | null {
+  if (assignmentOf(item, now) !== "held") return null;
+  const owner = ownerOf(item);
+  if (fieldAsString(item, ASSIGNMENT_FIELD) === "held" && owner) return owner;
+  return fieldAsString(item, ASSIGNEE_FIELD)?.replace(/^@/, "") || null;
 }
 
 /** A row is blocked because it names a blocker, never because it says so. */
@@ -225,7 +246,7 @@ export function assignmentRefusal(item: LiveItem): string | null {
 export function claimPatch(
   handle: string,
   now: string,
-  ttlMinutes = DEFAULT_TTL_MINUTES,
+  ttlMinutes: number | null = DEFAULT_TTL_MINUTES,
 ): Record<string, unknown> {
   return {
     [ASSIGNMENT_FIELD]: "held",

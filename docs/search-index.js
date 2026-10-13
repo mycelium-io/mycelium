@@ -213,7 +213,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#board-hand-work-off",
     "t": "Hand work off",
     "s": "Board",
-    "x": "The board tracks two things: Who it's for: the assignee, set with --assign. Who's working on it now: the holder, who takes it with claim and gives it up with release. mycelium board claim work/pick-token-storage mycelium board release work/pick-token-storage --note \"handing to @sec, schema is settled\" mycelium board claim work/pick-token-storage --to @sec An agent can stop without warning, so a claim expires if it is",
+    "x": "The board tracks two things: Who it's for: the assignee, set with --assign or board assign. Who's working on it now: the holder. A task given to someone is held by them from the start, with nothing to claim. A task nobody was given is taken with claim. Either way the holder gives it up with release. mycelium board claim work/pick-token-storage mycelium board release work/pick-token-storage --note \"handing to @sec, sc",
     "p": "Concepts"
   },
   {
@@ -1967,9 +1967,17 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-board",
-    "t": "mycelium board claim <id> [--to @handle] [--ttl 30]",
+    "t": "mycelium board claim <id> [--to @handle] [--ttl N]",
     "s": "CLI Reference",
-    "x": "Take assignment of a work/ row: a lease with your handle on it, which drains unless renewed.",
+    "x": "Take a work/ row nobody was given. You hold it until you resolve it or hand it back; a row assigned to you is already yours, with nothing to claim. --ttl makes the hold a lease that drains unless renewed.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board assign <id> @handle [--reassign]",
+    "s": "CLI Reference",
+    "x": "Give a work/ row to someone, who then holds it until they resolve it or hand it back. Taking a row someone else holds needs --reassign, and the room is told who it moved from.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -2498,7 +2506,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#board-reference-fields",
     "t": "Fields",
     "s": "Board",
-    "x": "Field Means status The row's own stage: open, in_review, resolved, dismissed. kind What the row is: action (a task), decision, concern, blocked. assignee Who the task is for. Set with --assign. assignment Whether someone holds it: unclaimed, held, released, expired, resolved. depends-on A task that must be resolved first. blocked_by What block said the task is waiting on. upstream The live state of a linked pull requ",
+    "x": "Field Means status The row's own stage: open, in_review, resolved, dismissed. kind What the row is: action (a task), decision, concern, blocked. assignee Who the task is for. Set with --assign or board assign; they hold it. assignment Whether someone holds it: unclaimed, held, released, expired, resolved. A hold has no timer unless claim --ttl set one. depends-on A task that must be resolved first. blocked_by What bl",
     "p": "Reference"
   },
   {

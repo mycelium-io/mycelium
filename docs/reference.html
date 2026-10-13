@@ -671,9 +671,16 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> <span class="arg">&lt;id&gt;</span> [<span class="flag">--to</span> @handle] [<span class="flag">--ttl</span> 30]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> <span class="arg">&lt;id&gt;</span> [<span class="flag">--to</span> @handle] [<span class="flag">--ttl</span> N]</code>
         </div>
-        <div class="cmd-ref-body">Take assignment of a work/ row: a lease with your handle on it, which drains unless renewed.</div>
+        <div class="cmd-ref-body">Take a work/ row nobody was given. You hold it until you resolve it or hand it back; a row assigned to you is already yours, with nothing to claim. <code>--ttl</code> makes the hold a lease that drains unless renewed.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">assign</span> <span class="arg">&lt;id&gt;</span> @handle [<span class="flag">--reassign</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Give a work/ row to someone, who then holds it until they resolve it or hand it back. Taking a row someone else holds needs <code>--reassign</code>, and the room is told who it moved from.</div>
       </div>
 
       <div class="cmd-ref">
@@ -1523,8 +1530,9 @@
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> work/auth-spike <span class="str">&quot;@sec keychain?&quot;</span>   # post in a task&#x27;s thread
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/auth-spike   # read a task&#x27;s thread
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/auth-spike aligner <span class="str">&quot;agree on token storage&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/auth-spike      # take it (the claim expires unless renewed)
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/auth-spike <span class="flag">--to</span> @sec <span class="flag">--ttl</span> 60
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/auth-spike      # take a task nobody was given
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">assign</span> work/auth-spike @sec   # give it to someone; they hold it
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">assign</span> work/auth-spike @sec <span class="flag">--reassign</span>   # take it from its holder
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">release</span> work/auth-spike <span class="flag">--note</span> <span class="str">&quot;handing over&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> work/auth-spike    # finish a task
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> work/auth-spike <span class="flag">--on</span> <span class="str">&quot;#502&quot;</span>   # say what it&#x27;s waiting on
@@ -1555,11 +1563,11 @@
             </tr>
             <tr>
               <td><code>assignee</code></td>
-              <td>Who the task is for. Set with <code>--assign</code>.</td>
+              <td>Who the task is for. Set with <code>--assign</code> or <code>board assign</code>; they hold it.</td>
             </tr>
             <tr>
               <td><code>assignment</code></td>
-              <td>Whether someone holds it: <code>unclaimed</code>, <code>held</code>, <code>released</code>, <code>expired</code>, <code>resolved</code>.</td>
+              <td>Whether someone holds it: <code>unclaimed</code>, <code>held</code>, <code>released</code>, <code>expired</code>, <code>resolved</code>. A hold has no timer unless <code>claim --ttl</code> set one.</td>
             </tr>
             <tr>
               <td><code>depends-on</code></td>

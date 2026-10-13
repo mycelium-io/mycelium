@@ -111,20 +111,31 @@ By default a waiting task can still be claimed. To refuse that, set
 
 The board tracks two things:
 
-- **Who it's for:** the `assignee`, set with `--assign`.
-- **Who's working on it now:** the holder, who takes it with `claim` and gives
-  it up with `release`.
+- **Who it's for:** the `assignee`, set with `--assign` or `board assign`.
+- **Who's working on it now:** the holder. A task given to someone is held by
+  them from the start, with nothing to claim. A task nobody was given is taken
+  with `claim`. Either way the holder gives it up with `release`.
 
 ```bash
 mycelium board claim work/pick-token-storage
 mycelium board release work/pick-token-storage --note "handing to @sec, schema is settled"
-mycelium board claim work/pick-token-storage --to @sec
+mycelium board assign work/pick-token-storage @sec
 ```
 
-An agent can stop without warning, so a claim expires if it isn't renewed.
-When it expires, the task is up for grabs again. An agent running
-`mycelium await --loop` renews its claims while it runs. `--ttl` on `claim`
-sets how many minutes a claim lasts.
+A task someone holds stays theirs. `claim` refuses it, and `board assign` refuses
+to give it to someone else unless you add `--reassign`, which tells the room who
+it moved from and to.
+
+A hold has no timer. It lasts until the holder resolves the task, releases it
+or hands it off, or until the hub sees the holder is gone: its herdr pane
+closed, or it left the room. When the hub ends a hold, the room gets a notice
+saying why. A task whose holder has gone quiet for a few hours is not taken
+away; the hub posts in its thread to the person who filed it, once. A holder
+the hub can't see at all (no herdr pane, not in the room) loses the hold after
+eight quiet hours, and the room is told.
+
+`claim --ttl` still takes a claim for a set number of minutes, for a holder
+that will keep it alive with `mycelium await --lease`.
 
 ```
 unclaimed → held → released / resolved
