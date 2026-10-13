@@ -11578,10 +11578,40 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "updated_by": {
+            "type": "string",
+            "title": "Updated By",
+            "description": "Who made the last change",
+            "default": ""
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "paused_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused By",
+            "description": "Who paused it, while it is paused"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
           },
           "expires_at": {
             "type": "string",
@@ -11832,6 +11862,18 @@
             ],
             "title": "Renew Days",
             "description": "Renew for this many days"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By",
+            "description": "Who is making the change"
           }
         },
         "type": "object",

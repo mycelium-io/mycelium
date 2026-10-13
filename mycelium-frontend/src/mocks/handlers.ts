@@ -988,6 +988,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
           paused: false,
           created_by: String(body.created_by ?? "web-ui"),
           created_at: now,
+          updated_by: String(body.created_by ?? "web-ui"),
           updated_at: now,
           expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
           next_run: new Date(Date.now() + 30 * 60_000).toISOString(),
@@ -1029,9 +1030,13 @@ export async function handleMock(req: Request): Promise<Response | null> {
       }
       if (method !== "PATCH") return null;
       const body = await readJson(req);
-      if (typeof body.paused === "boolean") {
+      const by = typeof body.updated_by === "string" && body.updated_by ? body.updated_by : "unknown";
+      const at = new Date().toISOString();
+      if (typeof body.paused === "boolean" && body.paused !== found.paused) {
         found.paused = body.paused;
         found.state = body.paused ? "paused" : "active";
+        found.paused_by = body.paused ? by : null;
+        found.paused_at = body.paused ? at : null;
       }
       if (body.renew) found.expires_at = new Date(Date.now() + 7 * 86_400_000).toISOString();
       for (const field of ["every", "cron", "prompt", "check", "task"] as const) {
@@ -1039,7 +1044,8 @@ export async function handleMock(req: Request): Promise<Response | null> {
       }
       if (typeof body.every === "string") found.cron = null;
       if (typeof body.cron === "string") found.every = null;
-      found.updated_at = new Date().toISOString();
+      found.updated_by = by;
+      found.updated_at = at;
       return json(read(found));
     }
 

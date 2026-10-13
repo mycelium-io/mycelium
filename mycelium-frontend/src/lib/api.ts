@@ -685,7 +685,12 @@ export interface Schedule {
   paused: boolean;
   created_by: string;
   created_at: string;
+  /** Who made the last change, and when. */
+  updated_by?: string;
   updated_at: string;
+  /** Who paused it and when, while it is paused. */
+  paused_by?: string | null;
+  paused_at?: string | null;
   expires_at: string;
   next_run?: string | null;
   last_run?: string | null;
@@ -711,6 +716,8 @@ export interface ScheduleEdit {
   paused?: boolean;
   renew?: boolean;
   renew_days?: number;
+  /** Who is making the change; the hub records it as `updated_by`. */
+  updated_by?: string;
 }
 
 function schedulePath(roomName: string, name?: string): string {

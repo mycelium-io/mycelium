@@ -899,7 +899,14 @@ is no litellm dependency.
   (`reason: schedule`, held while it works), else the owner's next `await`
   hands it over (`schedules.take_pending`). A wake already waiting makes the
   run `held`, a herdr owner mid-turn makes it `busy`. Nothing a run does is
-  said in the room; `schedule_changed` on the bus redraws the app. Guardrails:
+  said in the room; `schedule_changed` on the bus redraws the app. Every
+  change records who made it (`updated_by`, from the token when there is
+  one), and a pause keeps `paused_by`/`paused_at` until it is resumed, which
+  the Schedules tab shows. Pausing a schedule that isn't yours is the one
+  thing said about a schedule: the hub tells its owner in its own name (the
+  system actor, as the hold sweep's flag is), naming who paused it silently,
+  in the schedule's task thread or the room (`schedules.tell_owner_paused`).
+  Guardrails:
   a minimum interval, a per-agent cap, an expiry renewed by hand, and writing
   one needs the right to act as its owner.
 - **A row waits on its dependencies, derived and never stored.** A `work/`

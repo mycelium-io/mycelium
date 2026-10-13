@@ -19,6 +19,7 @@ import {
   type ScheduleResult,
 } from "@/lib/api";
 import { useRoomSchedules } from "@/lib/room-data";
+import { useCurrentUser } from "@/components/current-user";
 import { useRoomStream } from "@/lib/stream-hub";
 import { Ago, NowProvider, useNow } from "@/lib/relative-time";
 import { EmptyState } from "@/components/empty-state";
@@ -59,6 +60,20 @@ export function until(at: string | null | undefined, now: number): string {
   const h = Math.floor(min / 60);
   if (h < 48) return `in ${h}h`;
   return `in ${Math.floor(h / 24)}d`;
+}
+
+/** A stamp as a clock time ("08:06"), with the day in front when it isn't today ("Oct 12, 08:06"). */
+export function clockTime(at: string, now: number): string {
+  const d = new Date(at);
+  const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  if (d.toDateString() === new Date(now).toDateString()) return time;
+  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${time}`;
+}
+
+/** "by @julia, 08:06": who paused a paused schedule and when, or "" when the hub didn't say. */
+export function pausedBy(s: Pick<Schedule, "paused" | "paused_by" | "paused_at">, now: number): string {
+  if (!s.paused || !s.paused_by || s.paused_by === "unknown") return "";
+  return s.paused_at ? `by @${s.paused_by}, ${clockTime(s.paused_at, now)}` : `by @${s.paused_by}`;
 }
 
 export function RoomSchedules({ roomName }: { roomName: string }) {
@@ -198,6 +213,7 @@ function ScheduleRow({
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-text">
           <span aria-hidden className="size-1.5 rounded-full" style={{ background: state.tone }} />
           {state.word}
+          {pausedBy(s, now) && <span className="text-faint">{pausedBy(s, now)}</span>}
         </span>
       </td>
       <td className={cn(TD, "whitespace-nowrap text-muted-foreground")}>
@@ -234,6 +250,8 @@ function RowMenu({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Who is acting, so the hub records who paused, resumed or renewed it.
+  const by = useCurrentUser().principal.trim() || undefined;
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -274,7 +292,7 @@ function RowMenu({
             type="button"
             disabled={busy}
             className={item}
-            onClick={() => void act(() => updateSchedule(roomName, s.name, { paused: !s.paused }))}
+            onClick={() => void act(() => updateSchedule(roomName, s.name, { paused: !s.paused, updated_by: by }))}
           >
             {s.paused ? "Resume" : "Pause"}
           </button>
@@ -283,7 +301,7 @@ function RowMenu({
           type="button"
           disabled={busy}
           className={item}
-          onClick={() => void act(() => updateSchedule(roomName, s.name, { renew: true }))}
+          onClick={() => void act(() => updateSchedule(roomName, s.name, { renew: true, updated_by: by }))}
         >
           Renew
         </button>
@@ -330,7 +348,17 @@ function ScheduleDetailDialog({ schedule: s, onClose }: { schedule: Schedule | n
             </DialogHeader>
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-label">
               <dt className="text-faint">Status</dt>
-              <dd className="text-text">{STATE_LABEL[s.state].word}</dd>
+              <dd className="text-text">
+                {[STATE_LABEL[s.state].word, pausedBy(s, now)].filter(Boolean).join(" ")}
+              </dd>
+              {s.updated_by && s.updated_by !== "unknown" && (
+                <>
+                  <dt className="text-faint">Last changed</dt>
+                  <dd className="text-text">
+                    by @{s.updated_by}, {clockTime(s.updated_at, now)}
+                  </dd>
+                </>
+              )}
               <dt className="text-faint">Next run</dt>
               <dd className="text-text">{s.state === "active" ? until(s.next_run, now) : "–"}</dd>
               <dt className="text-faint">Expires</dt>

@@ -204,7 +204,8 @@ def schedule_ls(
             f"@{s['owner']}",
             _when(s),
             s["check"],
-            f"[{style}]{state}[/]",
+            f"[{style}]{state}[/]"
+            + (f" [dim]by @{s['paused_by']}[/dim]" if s.get("paused_by") else ""),
             _rel(s.get("next_run"), now) if state == "active" else "-",
             last if s.get("last_run") else "[dim]never[/dim]",
         )
@@ -236,11 +237,16 @@ def schedule_show(
         return
     now = datetime.now(UTC)
     console.print(f"[cyan]{s['name']}[/cyan]  @{s['owner']}  [dim]{s['state']}[/dim]")
+    if s.get("paused_by"):
+        console.print(f"  paused   by @{s['paused_by']} {_rel(s.get('paused_at'), now)}")
     console.print(f"  when     {_when(s)}  (next {_rel(s.get('next_run'), now)})")
     console.print(f"  check    {s['check']}")
     if s.get("task"):
         console.print(f"  task     {s['task']}")
     console.print(f"  expires  {_rel(s.get('expires_at'), now)}")
+    console.print(
+        f"  changed  by @{s.get('updated_by') or 'unknown'} {_rel(s.get('updated_at'), now)}"
+    )
     console.print(f"  runs     {s['runs']} total, {s['wakes']} woke the agent")
     if s.get("prompt"):
         console.print(f"\n{s['prompt']}")
@@ -283,6 +289,7 @@ def _patch(room: str, name: str, **fields: Any) -> dict[str, Any]:
 )
 @app.command(name="edit")
 @in_room("room")
+@acts_as("handle")
 @emits_json("as_json")
 def schedule_edit(
     name: str = typer.Argument(..., help="Schedule name"),
@@ -292,19 +299,29 @@ def schedule_edit(
     prompt: str | None = typer.Option(None, "--prompt", "-p", help="What the agent is told"),
     task: str | None = typer.Option(None, "--task", "-t", help="Bind to a row ('' unbinds)"),
     room: str | None = None,
+    handle: str | None = None,
     as_json: bool = False,
 ) -> None:
     """Edit a schedule."""
     assert room is not None
-    data = _patch(room, name, every=every, cron=cron, check=check, prompt=prompt, task=task)
+    data = _patch(
+        room,
+        name,
+        every=every,
+        cron=cron,
+        check=check,
+        prompt=prompt,
+        task=task,
+        updated_by=handle,
+    )
     if as_json:
         _echo_json(data)
         return
     console.print(f"[green]Updated[/green] {name}: {_when(data)}, check {data['check']}")
 
 
-def _toggle(room: str, name: str, *, paused: bool, as_json: bool) -> None:
-    data = _patch(room, name, paused=paused)
+def _toggle(room: str, name: str, *, paused: bool, handle: str | None, as_json: bool) -> None:
+    data = _patch(room, name, paused=paused, updated_by=handle)
     if as_json:
         _echo_json(data)
         return
@@ -320,15 +337,17 @@ def _toggle(room: str, name: str, *, paused: bool, as_json: bool) -> None:
 )
 @app.command(name="pause")
 @in_room("room")
+@acts_as("handle")
 @emits_json("as_json")
 def schedule_pause(
     name: str = typer.Argument(..., help="Schedule name"),
     room: str | None = None,
+    handle: str | None = None,
     as_json: bool = False,
 ) -> None:
     """Pause a schedule."""
     assert room is not None
-    _toggle(room, name, paused=True, as_json=as_json)
+    _toggle(room, name, paused=True, handle=handle, as_json=as_json)
 
 
 @doc_ref(
@@ -338,15 +357,17 @@ def schedule_pause(
 )
 @app.command(name="resume")
 @in_room("room")
+@acts_as("handle")
 @emits_json("as_json")
 def schedule_resume(
     name: str = typer.Argument(..., help="Schedule name"),
     room: str | None = None,
+    handle: str | None = None,
     as_json: bool = False,
 ) -> None:
     """Resume a paused schedule."""
     assert room is not None
-    _toggle(room, name, paused=False, as_json=as_json)
+    _toggle(room, name, paused=False, handle=handle, as_json=as_json)
 
 
 @doc_ref(
@@ -356,6 +377,7 @@ def schedule_resume(
 )
 @app.command(name="renew")
 @in_room("room")
+@acts_as("handle")
 @emits_json("as_json")
 def schedule_renew(
     name: str = typer.Argument(..., help="Schedule name"),
@@ -363,11 +385,12 @@ def schedule_renew(
         None, "--days", help="Days from now (hub default if omitted)"
     ),
     room: str | None = None,
+    handle: str | None = None,
     as_json: bool = False,
 ) -> None:
     """Renew a schedule's expiry."""
     assert room is not None
-    data = _patch(room, name, renew=True, renew_days=days)
+    data = _patch(room, name, renew=True, renew_days=days, updated_by=handle)
     if as_json:
         _echo_json(data)
         return
