@@ -463,19 +463,27 @@ export async function writeFields(
   });
 }
 
-/** `fetchMemories`'s page size — exported so a caller showing a raw count
- *  (the dashboard's room cards) can tell "exactly this many" apart from
- *  "at least this many" instead of reporting the cap as a true total. */
-export const MEMORIES_PAGE_LIMIT = 50;
+/** The most the hub serves in one list call. */
+export const MEMORIES_PAGE_LIMIT = 1000;
+/** The most `fetchMemories` reads, newest first. A room with this many may
+ *  have more, so a caller showing a count says "the newest" rather than "all". */
+export const MEMORIES_MAX = 5000;
 
+/** Every memory in a room (or under `prefix`), newest first, up to `MEMORIES_MAX`. */
 export async function fetchMemories(roomName: string, prefix?: string): Promise<Memory[]> {
-  const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT) });
-  if (prefix) params.set("prefix", prefix);
-  return apiFetch<Memory[]>(`${roomApiPath(roomName)}/memory?${params}`, {
-    cache: "no-store",
-    fallback: [],
-    guard: isArray as (d: unknown) => d is Memory[],
-  });
+  const all: Memory[] = [];
+  while (all.length < MEMORIES_MAX) {
+    const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT), offset: String(all.length) });
+    if (prefix) params.set("prefix", prefix);
+    const page = await apiFetch<Memory[]>(`${roomApiPath(roomName)}/memory?${params}`, {
+      cache: "no-store",
+      fallback: [],
+      guard: isArray as (d: unknown) => d is Memory[],
+    });
+    all.push(...page);
+    if (page.length < MEMORIES_PAGE_LIMIT) break;
+  }
+  return all;
 }
 
 /** One memory by key. Returns null when it isn't there (or the read failed). */
