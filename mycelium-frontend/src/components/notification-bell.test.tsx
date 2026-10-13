@@ -12,12 +12,11 @@ const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
 const NOTE_THREAD = "urn:ioc:mycelium:episode:sprint:n1";
 
 vi.mock("@/lib/api", () => ({
-  // The board's rows when asked for `work/`, the room's newest memories otherwise.
-  fetchMemories: vi.fn(async (_room: string, prefix?: string) =>
-    prefix === "work/"
-      ? [{ key: "work/zoom", value: { text: "Zoom and pan images\n\nbody" }, episode: THREAD }]
-      : [{ key: "context/chat-buddy", value: "Talking with the chat buddy", episode: NOTE_THREAD }],
-  ),
+  // Every memory in the room: a board row and a note, each with its thread.
+  fetchMemories: vi.fn(async () => [
+    { key: "work/zoom", value: { text: "Zoom and pan images\n\nbody" }, episode: THREAD },
+    { key: "context/chat-buddy", value: "Talking with the chat buddy", episode: NOTE_THREAD },
+  ]),
 }));
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));

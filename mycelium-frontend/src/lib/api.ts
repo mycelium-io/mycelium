@@ -463,19 +463,29 @@ export async function writeFields(
   });
 }
 
-/** `fetchMemories`'s page size — exported so a caller showing a raw count
- *  (the dashboard's room cards) can tell "exactly this many" apart from
- *  "at least this many" instead of reporting the cap as a true total. */
-export const MEMORIES_PAGE_LIMIT = 50;
+/** The most the hub serves in one list call. */
+export const MEMORIES_PAGE_LIMIT = 1000;
+/** The most `fetchMemories` reads, newest first. A room with this many may
+ *  have more, so a caller showing a count says "the newest" rather than "all". */
+export const MEMORIES_MAX = 5000;
 
+/** Every memory in a room (or under `prefix`), newest first, up to `MEMORIES_MAX`. */
 export async function fetchMemories(roomName: string, prefix?: string): Promise<Memory[]> {
-  const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT) });
-  if (prefix) params.set("prefix", prefix);
-  return apiFetch<Memory[]>(`${roomApiPath(roomName)}/memory?${params}`, {
-    cache: "no-store",
-    fallback: [],
-    guard: isArray as (d: unknown) => d is Memory[],
-  });
+  // Pages are offsets into a newest-first list, so a write between two calls
+  // shifts the next page by one: keyed, a memory read twice is kept once.
+  const byKey = new Map<string, Memory>();
+  for (let offset = 0; offset < MEMORIES_MAX; offset += MEMORIES_PAGE_LIMIT) {
+    const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT), offset: String(offset) });
+    if (prefix) params.set("prefix", prefix);
+    const page = await apiFetch<Memory[]>(`${roomApiPath(roomName)}/memory?${params}`, {
+      cache: "no-store",
+      fallback: [],
+      guard: isArray as (d: unknown) => d is Memory[],
+    });
+    for (const memory of page) if (!byKey.has(memory.key)) byKey.set(memory.key, memory);
+    if (page.length < MEMORIES_PAGE_LIMIT) break;
+  }
+  return [...byKey.values()].slice(0, MEMORIES_MAX);
 }
 
 /** One memory by key. Returns null when it isn't there (or the read failed). */
@@ -1236,6 +1246,23 @@ export interface MachineReport {
   missing_integrations: string[];
   workspaces: MachineWorkspace[];
   problems: MachineProblem[];
+  /** Agent CLIs running in herdr panes that no room has yet. Absent from an older runner. */
+  unenrolled?: MachineUnenrolled[];
+}
+
+/** An agent CLI running on a machine that no room has yet, which Members → Add can bring in. */
+export interface MachineUnenrolled {
+  pane: string;
+  /** The agent CLI, as herdr names its kind. */
+  kind: string | null;
+  state: "working" | "idle" | "blocked" | "unknown";
+  folder: string | null;
+  workspace: string | null;
+  workspace_label: string | null;
+  /** The pane's tab name. */
+  tab_label: string | null;
+  /** A handle made from the tab name, for the person to edit. */
+  suggested_handle: string | null;
 }
 
 /** A device paired with a machine, and what the pairing covers (set on that machine). */
@@ -1267,7 +1294,15 @@ export interface PairingOutcome {
   reason?: string | null;
 }
 
-export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm" | "restart" | "pair" | "interrupt";
+export type RunnerJobKind =
+  | "launch"
+  | "stop"
+  | "scan"
+  | "swarm"
+  | "restart"
+  | "pair"
+  | "interrupt"
+  | "adopt";
 /** `waiting`: the machine's runner is asking the person there before it starts anything. */
 export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
 
@@ -1342,6 +1377,19 @@ export interface RunnerAgentLaunch {
 /** Register an agent in a room and start it in a herdr pane on a machine. Throws `ApiError`. */
 export async function launchRunnerAgent(id: string, data: RunnerAgentLaunch): Promise<RunnerJob> {
   return apiFetch<RunnerJob>(`${runnerApiPath(id)}/agents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** Bring an agent already running on a machine into a room as `handle`; the machine asks
+ *  first, then types its introduction once it's idle. Throws `ApiError`. */
+export async function adoptRunnerAgent(
+  id: string,
+  data: { room: string; pane: string; handle: string; created_by?: string },
+): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/adopt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

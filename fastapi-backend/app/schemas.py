@@ -804,7 +804,7 @@ class AgentRead(BaseModel):
 RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
-RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart", "pair", "interrupt"]
+RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt"]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
@@ -860,6 +860,22 @@ class MachineAgentRead(BaseModel):
     )
 
 
+class MachineUnenrolledRead(BaseModel):
+    """An agent CLI running in a herdr pane on a machine that no room has yet,
+    which Members → Add can bring into a room (an ``adopt`` job)."""
+
+    pane: str
+    kind: str | None = Field(None, description="The agent CLI, as herdr names its kind")
+    state: Literal["working", "idle", "blocked", "unknown"] = "unknown"
+    folder: str | None = None
+    workspace: str | None = None
+    workspace_label: str | None = None
+    tab_label: str | None = Field(
+        None, description="The pane's tab name, where a handle comes from"
+    )
+    suggested_handle: str | None = Field(None, description="A handle made from the tab name")
+
+
 class MachineWorkspaceRead(BaseModel):
     """A herdr workspace on a machine, and the room it's bound to."""
 
@@ -901,6 +917,9 @@ class MachineReportRead(BaseModel):
     )
     workspaces: list[MachineWorkspaceRead] = Field(default_factory=list)
     problems: list[MachineProblemRead] = Field(default_factory=list)
+    #: Agents running here that aren't in any room yet. Empty from a runner
+    #: from before it sent them.
+    unenrolled: list[MachineUnenrolledRead] = Field(default_factory=list)
 
 
 class DeviceSignature(BaseModel):
@@ -1062,6 +1081,19 @@ class RunnerAgentLaunch(BaseModel):
     signature: DeviceSignature | None = Field(
         None, description="From a device paired with the machine: starts without asking there"
     )
+
+
+class RunnerAgentAdopt(BaseModel):
+    """Bring an agent already running in a herdr pane on a runner's machine into
+    a room, as ``handle``. The runner asks the person there first, since it
+    types the agent's introduction into their terminal."""
+
+    room: str = Field(..., min_length=1)
+    pane: str = Field(
+        ..., min_length=1, description="The pane, from the machine's unenrolled agents"
+    )
+    handle: str = Field(..., min_length=1, max_length=64)
+    created_by: str | None = None
 
 
 # ── Join codes ───────────────────────────────────────────────────────────────

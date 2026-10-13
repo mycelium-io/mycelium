@@ -1448,3 +1448,127 @@ def test_a_binding_that_fails_leaves_the_others_and_the_wakes_going(
     r.sync_pass()
     assert r.sync_health()["bindings"] == []
     assert r.sync_health()["error"] is None
+
+
+# ── adopt: an agent already running here joins a room ────────────────────────
+
+
+def _already_running(herdr: Herdr, status: str = "idle") -> str:
+    """A claude someone started themselves in a herdr pane, in no room."""
+    pane = herdr._pane("w5")  # noqa: SLF001 - the fake's own pane maker
+    herdr.live[pane] = status
+    return pane
+
+
+def test_adopt_asks_on_the_machine_first(make_runner, herdr: Herdr, hub: Hub):
+    assert "adopt" in daemon.ASK_FIRST
+    pane = _already_running(herdr)
+    question = make_runner().question(
+        {
+            "kind": "adopt",
+            "spec": {"room": "eng", "handle": "shop", "pane": pane, "framework": "claude"},
+            "created_by": "julia",
+        }
+    )
+    assert question["title"] == f"Bring the Claude Code in pane {pane} into eng as @shop?"
+    assert "type a short introduction into it once it's idle" in question["message"]
+    assert "@julia" in question["message"]
+
+
+def test_a_signed_adopt_still_asks(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, quick: None
+):
+    from mycelium.runner import pairing
+
+    r = make_runner(trust_hub=False)
+    key, x, y = _device()
+    _pair(r, x, y, pairing.Limits.make(swarms=True))
+    spec = {"room": "eng", "handle": "shop", "pane": _already_running(herdr), "framework": "claude"}
+    r.take({"id": "f1f1f1", "kind": "adopt", "spec": spec, "signature": _sign(key, "adopt", spec)})
+
+    waiting = _until(lambda: _report(hub, "f1f1f1", "waiting"))
+    assert waiting["pairing"] == {
+        "accepted": False,
+        "reason": "bringing in a running agent is always asked",
+    }
+    assert len(approvals.pending(base=tmp_path)) == 1
+
+
+def test_adopt_maps_the_pane_and_introduces_an_idle_agent(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    pane = _already_running(herdr)
+    result = r.adopt({"room": "eng", "handle": "shop", "pane": pane, "framework": "claude"})
+    assert result == {"pane": pane, "introduced": True}
+    mapping = r.bridge.registry.get("eng", "shop")
+    assert (mapping.pane, mapping.managed) == (pane, False)
+    [prompt] = herdr.of("agent prompt")
+    assert prompt[2] == pane
+    intro = prompt[3]
+    assert "You are @shop, a member of the Mycelium room 'eng'" in intro
+    assert "mycelium skill print" in intro
+    assert "mycelium board --room eng" in intro
+    # Its workspace isn't bound: that would enroll every other agent in it.
+    assert r.bridge.registry.bindings() == {}
+    # The runner lists it, so the app can stop it.
+    assert [a["handle"] for a in r.hello_body()["agents"]] == ["shop"]
+
+
+def test_adopt_waits_for_a_working_agent_to_be_idle(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    pane = _already_running(herdr, "working")
+    assert r.adopt({"room": "eng", "handle": "shop", "pane": pane})["introduced"] is False
+    assert herdr.of("agent prompt") == []
+    herdr.live[pane] = "idle"
+    r.refresh()
+    assert [p[2] for p in herdr.of("agent prompt")] == [pane]
+
+
+def test_adopt_refuses_a_pane_another_member_has(make_runner, herdr: Herdr, hub: Hub):
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    r = make_runner()
+    pane = _already_running(herdr)
+    r.bridge.registry.set(HerdrPaneMapping(room="ops", handle="taken", pane=pane, kind="claude"))
+    with pytest.raises(daemon.JobError, match=f"Pane {pane} is already @taken in ops"):
+        r.adopt({"room": "eng", "handle": "shop", "pane": pane})
+
+
+def test_adopt_refuses_a_pane_with_no_agent_left(make_runner, herdr: Herdr, hub: Hub):
+    with pytest.raises(daemon.JobError, match="No agent is running in pane w5:p7"):
+        make_runner().adopt({"room": "eng", "handle": "shop", "pane": "w5:p7"})
+
+
+def test_an_adopt_that_fails_after_mapping_lets_go_of_the_pane(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    r = make_runner()
+    pane = _already_running(herdr)
+
+    def broken(*_a: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(r.state, "save", broken)
+    with pytest.raises(daemon.JobError, match=f"pane {pane}: disk full"):
+        r.adopt({"room": "eng", "handle": "shop", "pane": pane})
+    assert r.bridge.registry.get("eng", "shop") is None
+    assert "eng/shop" not in r.state.agents
+
+
+def test_stopping_an_adopted_agent_never_closes_its_pane(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    pane = _already_running(herdr)
+    r.adopt({"room": "eng", "handle": "shop", "pane": pane})
+    r.stop_agent({"room": "eng", "handle": "shop"})
+    assert herdr.of("pane close") == []
+    assert pane in herdr.live
+    assert r.bridge.registry.get("eng", "shop") is None
+    assert r.hello_body()["agents"][0]["status"] == "stopped"
+
+
+def test_the_machine_reports_agents_no_room_has(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    pane = _already_running(herdr)
+    [unenrolled] = r.hello_body()["machine"]["unenrolled"]
+    assert (unenrolled["pane"], unenrolled["kind"], unenrolled["state"]) == (pane, "claude", "idle")
+    assert unenrolled["suggested_handle"] == "claude"

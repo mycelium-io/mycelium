@@ -71,5 +71,5 @@ async def get_expanded(
     _require_room(room_name)
     result = links.expand(room_name, key)
     if not result["found"]:
-        raise HTTPException(status_code=404, detail="Memory not found")
+        raise HTTPException(status_code=404, detail=f"No memory '{key}' in room '{room_name}'")
     return result

@@ -5,6 +5,9 @@
 Mycelium CLI: Multi-agent coordination + persistent memory.
 """
 
+import os
+import sys
+
 import typer
 
 from mycelium import __version__
@@ -54,6 +57,14 @@ HELP = (
     "in its thread, and reply where you were asked. [cyan]mycelium whoami[/cyan] shows "
     "your handle and the room you're in."
 )
+
+# A PyInstaller build tells what it starts where it unpacked itself, so that a
+# one-file `mycelium` started under it reuses that temporary folder instead of
+# unpacking its own. What a long-running `mycelium` starts (herdr, and the
+# shells agents run in) lives on after it, so that folder goes away under them
+# (#1269). Everything started from here starts afresh instead.
+if getattr(sys, "frozen", False):
+    os.environ["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
 
 app = typer.Typer(
     name="mycelium",

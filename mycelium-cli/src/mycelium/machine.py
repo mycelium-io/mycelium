@@ -88,6 +88,34 @@ class Agent:
 
 
 @dataclass
+class Unenrolled:
+    """An agent CLI running in a herdr pane here that no room has yet: one the
+    app can bring into a room (Members → Add, the runner's ``adopt`` job)."""
+
+    pane: str
+    kind: str | None = None
+    state: State = "unknown"
+    folder: str | None = None
+    workspace: str | None = None
+    workspace_label: str | None = None
+    #: The pane's tab name, and a handle made from it.
+    tab_label: str | None = None
+    suggested_handle: str | None = None
+
+
+def _suggest_handle(tab_label: str, kind: str | None) -> str | None:
+    """A handle from a tab's name, or from the agent CLI when the tab has none."""
+    from mycelium.commands.herdr import _sanitize_handle
+
+    numbered = tab_label.strip().isdigit()
+    return (
+        _sanitize_handle("" if numbered else tab_label, "")
+        or _sanitize_handle(kind or "", "")
+        or None
+    )
+
+
+@dataclass
 class Workspace:
     """A herdr workspace, and the room it's bound to."""
 
@@ -133,6 +161,8 @@ class Report:
     #: herdr's integrations not current for agent CLIs with agents running here.
     missing_integrations: list[str] = field(default_factory=list)
     herdr_minimum: str = MIN_VERSION
+    #: Agents running here that aren't in any room yet.
+    unenrolled: list[Unenrolled] = field(default_factory=list)
 
     @property
     def agents(self) -> list[Agent]:
@@ -237,6 +267,16 @@ def report(
         w.agents.sort(key=lambda a: a.handle)
     agents = [a for w in ordered for a in w.agents]
     missing = _restores(bridge, agents)
+    mapped = {a.pane for a in agents}
+    tabs = bridge.tab_labels() if live else {}
+    unenrolled = sorted(
+        (
+            _unenrolled(pane, running, tabs, labels)
+            for pane, running in live.items()
+            if pane not in mapped
+        ),
+        key=lambda u: (u.workspace_label or "", u.pane),
+    )
     return Report(
         machine=machine,
         herdr=herdr_up,
@@ -248,6 +288,25 @@ def report(
             agents, ordered, herdr_up, server, client, machine, missing, runner, sync
         ),
         missing_integrations=missing,
+        unenrolled=unenrolled,
+    )
+
+
+def _unenrolled(
+    pane: str, running: dict, tabs: dict[str, str], labels: dict[str, str]
+) -> Unenrolled:
+    kind = str(running.get("agent") or "") or None
+    workspace = str(running.get("workspace_id") or "") or None
+    tab_label = tabs.get(str(running.get("tab_id") or ""), "")
+    return Unenrolled(
+        pane=pane,
+        kind=kind,
+        state=_STATES.get(str(running.get("agent_status") or ""), "unknown"),
+        folder=running.get("foreground_cwd") or running.get("cwd"),
+        workspace=workspace,
+        workspace_label=labels.get(workspace or "") or workspace,
+        tab_label=tab_label or None,
+        suggested_handle=_suggest_handle(tab_label, kind),
     )
 
 

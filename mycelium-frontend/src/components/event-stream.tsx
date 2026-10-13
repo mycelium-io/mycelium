@@ -58,10 +58,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { JumpToLatest } from "@/components/jump-to-latest";
-import { AtSign, Braces, Copy, Link2, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
+import { AtSign, Braces, Copy, Link2, Loader2, MessageSquare, MessagesSquare, Reply, TextQuote } from "lucide-react";
+import { MessageActions } from "@/components/message-actions";
+import { insertIntoComposer, messagePath, quoteText, replyText } from "@/lib/message-actions";
 import { RawMessageDialog } from "@/components/raw-message-dialog";
 import { Shimmer, SporeMark } from "@/components/responding-mark";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import { agentTag } from "@/lib/agent-label";
 import { EventIconMark } from "@/components/event-icon";
@@ -574,18 +582,26 @@ function MessageMenu({
     <ContextMenu>
       <ContextMenuTrigger>{children}</ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem icon={Copy} onClick={() => void copyText(content)}>
+        <ContextMenuItem
+          icon={Reply}
+          action="message.reply"
+          onClick={() => insertIntoComposer({ room: roomName, text: replyText(sender) })}
+        >
+          Reply
+        </ContextMenuItem>
+        <ContextMenuItem
+          icon={TextQuote}
+          action="message.quote"
+          onClick={() => insertIntoComposer({ room: roomName, text: quoteText(content, sender) })}
+        >
+          Quote
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem icon={Copy} action="message.copy" onClick={() => void copyText(content)}>
           Copy text
         </ContextMenuItem>
         {messageId && (
-          <ContextMenuItem
-            icon={Link2}
-            onClick={() =>
-              void copyText(
-                absoluteUrl(`/room/${encodeURIComponent(roomName)}?focus=${encodeURIComponent(`message:${messageId}`)}`),
-              )
-            }
-          >
+          <ContextMenuItem icon={Link2} onClick={() => void copyText(absoluteUrl(messagePath(roomName, messageId)))}>
             Copy link to message
           </ContextMenuItem>
         )}
@@ -1539,14 +1555,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     marked ? "bg-accent/15" : ""
                   } ${hit?.active ? "bg-yellow/10 ring-1 ring-inset ring-yellow/40" : ""}`}
                 >
-                  {/* A follow-up line keeps its clock time in the gutter, on
-                      hover; the group's header already says how long ago. */}
-                  {grouped && (
-                    <span className="pointer-events-none absolute right-5 top-1.5 text-micro tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
-                      {ev.time.slice(0, 5)}
-                    </span>
-                  )}
-
                   <div className="w-6 flex-shrink-0">
                     {!grouped && (
                       <Tooltip content={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
@@ -1579,6 +1587,17 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                       </span>
                     )}
                   </div>
+                  <MessageActions
+                    roomName={roomName}
+                    messageId={ev.messageId}
+                    content={ev.content}
+                    sender={ev.sender}
+                    wire={ev.wire}
+                    onOpenThread={onOpenThread}
+                    // A follow-up line shows its clock time on hover, in the
+                    // bar; the group's header already says how long ago.
+                    time={grouped ? ev.time.slice(0, 5) : undefined}
+                  />
                 </div>
                 </MessageMenu>
               );

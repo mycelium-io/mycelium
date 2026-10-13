@@ -85,11 +85,34 @@ class LocateError(Exception):
 # ── finding the programs ─────────────────────────────────────────────────────
 
 
+#: The folder the app ships ``mycelium`` in, among its resources: a PyInstaller
+#: directory build, which unpacks nothing at run time (#1269).
+CLI_DIR = "cli"
+
+
 def bundle_dir() -> Path | None:
-    """The directory this binary runs from, when it is a bundled (frozen) build."""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return None
+    """Where the app's programs are, when this is a bundled (frozen) build.
+
+    A standalone binary's own folder. The app's ``mycelium`` runs from its
+    ``cli`` folder among the resources, so its programs are found from there:
+    ``Contents/MacOS`` on a Mac, ``usr/bin`` in an AppImage (resources in
+    ``usr/lib/Mycelium``), and the install folder on Windows.
+    """
+    if not getattr(sys, "frozen", False):
+        return None
+    return programs_dir(Path(sys.executable).resolve().parent)
+
+
+def programs_dir(here: Path) -> Path:
+    """The app's programs folder, for a ``mycelium`` that runs from ``here``."""
+    if here.name != CLI_DIR:
+        return here
+    resources = here.parent
+    if resources.name == "Resources" and resources.parent.name == "Contents":
+        return resources.parent / "MacOS"
+    if resources.name == "Mycelium" and resources.parent.name == "lib":
+        return resources.parent.parent / "bin"
+    return resources
 
 
 def repo_root(start: Path | None = None) -> Path | None:

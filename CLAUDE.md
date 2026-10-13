@@ -443,8 +443,15 @@ is no litellm dependency.
   and only dials out: it says hello with its scan (agent CLIs found on `PATH`,
   launchable when its host says it can start their kind), its
   roots and its agents, heartbeats, and long-polls `GET
-  /api/runners/{id}/jobs/next` for `launch`, `stop`, `scan`, `swarm` and `restart` jobs
+  /api/runners/{id}/jobs/next` for `launch`, `stop`, `scan`, `swarm`, `restart`
+  and `adopt` jobs
   (`app/services/runners.py`, in memory like presence; `routes/runners.py`).
+  `adopt` brings in an agent CLI already running in a herdr pane that no room
+  has (the machine report's `unenrolled`, offered as Members → Add → Running
+  agent): the hub writes the member, and the runner, after asking, maps that
+  one pane without binding its workspace (which would enroll everything else
+  in it) and types the introduction once the agent is idle. Stopping it
+  unmaps the pane rather than closing it, since the session is the person's.
   The pattern is LangGraph Studio's (a hosted UI driving a local server),
   turned around so the hub never reaches into the machine. A job names a
   framework id from the runner's scan and a folder inside its roots, never a

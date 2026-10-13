@@ -325,7 +325,12 @@ async def await_message(
                 room_channels.manager.refresh_lease(room_name, handle)
                 # The turn is handed over: from here until this handle's reply
                 # lands, the room is waiting on it. Transient, bus-only (#513).
-                activity.signal(room_name, handle, "responding", episode=ep)
+                # A wake already said where it's replying (the thread its
+                # digest named); await serves the oldest message first, so it
+                # doesn't override that with an older thread. Scoped to a task,
+                # the agent chose the thread, so that wins.
+                if scoped or not activity.is_responding(room_name, handle):
+                    activity.signal(room_name, handle, "responding", episode=ep)
                 _metrics.record_await_poll(
                     room=room_name,
                     handle=handle,

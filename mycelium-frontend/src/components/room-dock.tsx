@@ -103,7 +103,7 @@ function ChannelPanel() {
           onCountChange={d.setChannelCount}
         />
       </div>
-      <RoomChatBox roomName={d.roomName} onOpenMemory={d.onOpenMemory} onOpenView={d.showView} />
+      <RoomChatBox roomName={d.roomName} onOpenMemory={d.onOpenMemory} onOpenView={d.showView} receivesInserts />
     </div>
   );
 }

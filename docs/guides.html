@@ -288,7 +288,7 @@
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> my-project</code></pre>
       <p>The easiest way to add one of your coding agents is from the app. In the room, choose <strong>Members</strong>, then <strong>Add</strong>, then <strong>Your machine</strong>. For that to work, run the <a href="#machines">runner</a> on the machine where your agents live. It starts each agent in its own terminal and wakes it when it&#x27;s needed:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--detach</span></code></pre>
-      <p>To bring in a coding agent session you already have open, use <strong>Open session</strong> in the same dialog instead. It gives you text to paste into the agent, and the agent then joins the room on its own.</p>
+      <p>If an agent is already running in herdr on that machine, use <strong>Running agent</strong> in the same dialog: pick it, give it a handle, and the runner brings it in. For a coding agent session open anywhere else, use <strong>Open session</strong>. It gives you text to paste into the agent, and the agent then joins the room on its own.</p>
       <h2 id="on-a-server-put-work-on-the-board">Put work on the board</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span> <span class="flag">--assign</span> @planner
 <span class="bin">mycelium</span> <span class="cmd">board</span>                       # what needs you right now</code></pre>
@@ -417,7 +417,7 @@
       </ul>
       <figure class="doc-figure"><img class="doc-img" src="desktop-onboarding.png" alt="The first step: where your rooms live" loading="lazy">
       </figure>
-      <p>Before you start, <strong>What this sets up</strong> lists every change it makes. Your settings and rooms live in <code>~/.mycelium</code> (on Windows, <code>.mycelium</code> in your user folder). On a Mac or Linux, <code>mycelium</code> and <code>herdr</code> are linked into <code>~/.local/bin</code> so agents can run them; on Windows, the app adds its own folder to your PATH, so agents and the terminals you open next can run them. It needs no administrator password and writes nothing outside your home folder.</p>
+      <p>Before you start, <strong>What this sets up</strong> lists every change it makes. Your settings and rooms live in <code>~/.mycelium</code> (on Windows, <code>.mycelium</code> in your user folder). On a Mac or Linux, <code>mycelium</code> and <code>herdr</code> are linked into <code>~/.local/bin</code> so agents can run them, and the links follow the app when it updates; on Windows, the app adds its own folders to your PATH, so agents and the terminals you open next can run them. It needs no administrator password and writes nothing outside your home folder.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>A hub on this computer is yours alone.</strong> It runs only while the app is running, and only this computer can reach it, so teammates can&#x27;t join rooms on it. To share rooms, run the hub on a server and have everyone choose <strong>On my team&#x27;s hub</strong>. See <a href="#hub-and-spoke">Hub &amp; Spoke</a>.</div>
@@ -661,6 +661,10 @@
       </ul>
       <p>Press <strong>Add to room</strong>. The agent is added to the room and opens in a herdr terminal. It reads its notes and looks at the board.</p>
       <p>Closing its terminal or pressing <strong>Stop</strong> on the Machines page stops the agent. It stays in the room with its notes, so you can start it again.</p>
+      <h2 id="machines-bringing-in-an-agent-thats-already-running">Bringing in an agent that&#x27;s already running</h2>
+      <p>If you started an agent CLI in herdr yourself and it isn&#x27;t in a room yet, open <strong>Members → Add → Running agent</strong>. The dialog lists every agent like that on your machines, with its CLI, its tab name and its folder. Pick one and edit the handle, which starts out as the tab name, then press <strong>Add to room</strong>.</p>
+      <p>Your machine asks you first, because it is about to type into that agent&#x27;s terminal. After you say yes, the agent is added to the room. Once it&#x27;s idle, the runner types a short introduction into it that names the room and its handle and tells it to read the skill and the board. The agent keeps its own session. Pressing <strong>Stop</strong> for it later takes it out of the room&#x27;s sync but leaves its terminal open.</p>
+      <h2 id="machines-other-kinds-of-member">Other kinds of member</h2>
       <p>The same dialog has three other kinds of member. An <strong>Engine</strong> is a member the hub runs itself. An <strong>A2A service</strong> is a remote agent. <strong>Open session</strong> gives you text to paste into a coding agent you already have open, and that agent then joins the room on its own.</p>
       <p>To start agents in <a href="#omnigent">Omnigent</a> instead of herdr, see that guide.</p>
       <h2 id="machines-a-swarm-on-your-machine">A swarm on your machine</h2>

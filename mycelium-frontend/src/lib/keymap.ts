@@ -126,6 +126,11 @@ export const KEYMAP: Binding[] = [
     group: "Focus",
     scope: "room",
   },
+  // Live only while the pointer is on a channel message: its hover bar
+  // registers them, and an unclaimed binding leaves the key alone.
+  { id: "message.reply", keys: ["r"], label: "Reply to the message", group: "Messages", scope: "room", palette: false },
+  { id: "message.quote", keys: ["q"], label: "Quote the message", group: "Messages", scope: "room", palette: false },
+  { id: "message.copy", keys: ["c"], label: "Copy the message's text", group: "Messages", scope: "room", palette: false },
   {
     id: "mode.command",
     keys: ["Escape"],

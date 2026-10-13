@@ -261,6 +261,16 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
     const body = await readJson(req);
     return json(queueJob(runner.id, "restart", { all: Boolean(body.all), agents: body.agents ?? [] }), 201);
   }
+  if (sub === "adopt" && method === "POST") {
+    const body = await readJson(req);
+    const pane = String(body.pane ?? "");
+    if (!runner.machine?.unenrolled?.some((u) => u.pane === pane)) {
+      return json({ detail: `No agent outside a room is running in pane ${pane} on ${runner.label}.` }, 422);
+    }
+    const spec = { room: String(body.room ?? ""), handle: String(body.handle ?? ""), pane };
+    const by = typeof body.created_by === "string" ? body.created_by : null;
+    return json(queueJob(runner.id, "adopt", spec, by), 201);
+  }
   if (sub === "agents" && method === "POST") {
     if (a !== undefined && b !== undefined && c === "stop") {
       const spec = { room: decodeURIComponent(a), handle: decodeURIComponent(b) };
@@ -654,12 +664,15 @@ export async function handleMock(req: Request): Promise<Response | null> {
           ? json(memoryRead(roomName, fx.memories[index]))
           : notFound(`memory ${key} not found (mock)`);
       }
-      // GET /memory?prefix=
+      // GET /memory?prefix=&limit=&offset=
       const prefix = searchParams.get("prefix");
+      const offset = Number(searchParams.get("offset") ?? "0");
+      const limit = Number(searchParams.get("limit") ?? "100");
       return json(
         fx.memories
           .map((m) => memoryRead(roomName, m))
-          .filter((m) => !prefix || String(m.key).startsWith(prefix)),
+          .filter((m) => !prefix || String(m.key).startsWith(prefix))
+          .slice(offset, offset + limit),
       );
     }
 

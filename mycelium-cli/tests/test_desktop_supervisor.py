@@ -317,6 +317,28 @@ def test_programs_are_found_in_each_platforms_bundle(
     assert loc.models() == res / "models"
 
 
+@pytest.mark.parametrize(
+    ("cli", "programs"),
+    [
+        # The app's mycelium is a directory build among its resources (#1269).
+        (
+            "/Applications/Mycelium.app/Contents/Resources/cli",
+            "/Applications/Mycelium.app/Contents/MacOS",
+        ),
+        ("/tmp/.mount_Myc/usr/lib/Mycelium/cli", "/tmp/.mount_Myc/usr/bin"),
+        ("C:/Users/me/AppData/Local/Mycelium/cli", "C:/Users/me/AppData/Local/Mycelium"),
+        # A standalone binary, or an app from before, is its own programs folder.
+        ("/usr/local/bin", "/usr/local/bin"),
+        (
+            "/Applications/Mycelium.app/Contents/MacOS",
+            "/Applications/Mycelium.app/Contents/MacOS",
+        ),
+    ],
+)
+def test_the_apps_programs_are_found_from_its_cli_folder(cli: str, programs: str):
+    assert sv.programs_dir(Path(cli)) == Path(programs)
+
+
 def test_a_ui_build_without_its_static_files_is_not_used(tmp_path: Path):
     # `next build` puts the static files beside the standalone server; a
     # server without them renders every page blank.

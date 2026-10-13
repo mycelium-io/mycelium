@@ -69,14 +69,34 @@ fn login_path() -> Option<String> {
     None
 }
 
-/// The folder the programs the app starts should find first: ~/.local/bin,
-/// where macOS and Linux link them, or on Windows the app's own folder.
-fn first_dir() -> PathBuf {
+/// The folders the programs the app starts should find first: ~/.local/bin,
+/// where macOS and Linux link them, or on Windows the app's own folder and
+/// the `mycelium` folder inside it.
+fn first_dirs() -> Vec<PathBuf> {
     #[cfg(windows)]
     if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
-        return dir;
+        return vec![dir.join(CLI_DIR), dir];
     }
-    local_bin()
+    vec![local_bin()]
+}
+
+/// The folder `mycelium` ships in, among the app's resources. It is a
+/// PyInstaller directory build: a one-file build unpacks itself into a
+/// temporary folder on every run and has what it starts reuse that folder,
+/// which broke agents' commands once the folder was gone (#1269).
+const CLI_DIR: &str = "cli";
+
+/// Where the app keeps its resources: `Contents/Resources` on a Mac,
+/// `usr/lib/Mycelium` in an AppImage, the install folder on Windows.
+fn resources() -> Option<PathBuf> {
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    if cfg!(target_os = "macos") {
+        Some(dir.parent()?.join("Resources"))
+    } else if cfg!(windows) {
+        Some(dir)
+    } else {
+        Some(dir.parent()?.join("lib").join("Mycelium"))
+    }
 }
 
 pub fn local_bin() -> PathBuf {
@@ -91,10 +111,11 @@ pub fn shell_path() -> &'static str {
         let base = login_path()
             .or_else(|| std::env::var("PATH").ok())
             .unwrap_or_else(|| "/usr/bin:/bin:/usr/sbin:/sbin".into());
-        let first = first_dir();
         let mut dirs: Vec<PathBuf> = std::env::split_paths(&base).collect();
-        if !dirs.contains(&first) {
-            dirs.insert(0, first);
+        for first in first_dirs().into_iter().rev() {
+            if !dirs.contains(&first) {
+                dirs.insert(0, first);
+            }
         }
         std::env::join_paths(dirs)
             .map(|p| p.to_string_lossy().to_string())
@@ -106,15 +127,15 @@ pub fn shell_path() -> &'static str {
 /// app adds their folder for the processes it starts).
 #[cfg(unix)]
 pub fn local_bin_on_user_path() -> bool {
-    let first = first_dir();
+    let first = local_bin();
     login_shell_path().is_some_and(|p| std::env::split_paths(&p).any(|d| d == first))
 }
 
 /// On Windows, whether the user's PATH (the registry's, not this process's)
-/// has the app's folder.
+/// has the app's folders.
 #[cfg(windows)]
 pub fn local_bin_on_user_path() -> bool {
-    windows_path::has(&first_dir())
+    first_dirs().iter().all(|dir| windows_path::has(dir))
 }
 
 /// The user's own PATH on Windows: the `Path` value under HKCU\Environment,
@@ -210,10 +231,14 @@ pub fn clear_moved_aside() {
     }
 }
 
-/// A program shipped inside the app bundle, beside the app's executable.
+/// A program shipped inside the app bundle: beside the app's executable, or
+/// for `mycelium`, in its own folder among the app's resources.
 pub fn bundled(name: &str) -> Option<PathBuf> {
-    let current = std::env::current_exe().ok()?;
-    let candidate = current.parent()?.join(exe(name));
+    let candidate = if name == "mycelium" {
+        resources()?.join(CLI_DIR).join(exe(name))
+    } else {
+        std::env::current_exe().ok()?.parent()?.join(exe(name))
+    };
     candidate.is_file().then_some(candidate)
 }
 
@@ -270,17 +295,20 @@ pub struct PathSetup {
 /// `mycelium`. The installer keeps that folder across updates.
 #[cfg(windows)]
 pub fn link_bundled() -> PathSetup {
-    let dir = first_dir();
+    let dirs = first_dirs();
     let linked: Vec<String> = ["mycelium", "herdr"]
         .into_iter()
         .filter(|name| bundled(name).is_some())
         .map(String::from)
         .collect();
     if !linked.is_empty() {
-        if let Err(e) = windows_path::add(&dir) {
-            eprintln!("[mycelium] could not add {} to your PATH: {e}", dir.display());
+        for dir in &dirs {
+            if let Err(e) = windows_path::add(dir) {
+                eprintln!("[mycelium] could not add {} to your PATH: {e}", dir.display());
+            }
         }
     }
+    let dir = dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(";");
     PathSetup {
         linked,
         skipped: Vec::new(),
@@ -290,8 +318,7 @@ pub fn link_bundled() -> PathSetup {
         // result at 1024 characters, which damages a typical developer's PATH.
         line: format!(
             "[Environment]::SetEnvironmentVariable(\"Path\", \
-             [Environment]::GetEnvironmentVariable(\"Path\", \"User\") + \";{}\", \"User\")",
-            dir.display()
+             [Environment]::GetEnvironmentVariable(\"Path\", \"User\") + \";{dir}\", \"User\")"
         ),
     }
 }
@@ -354,13 +381,16 @@ fn stable_copy(source: &Path, name: &str) -> Option<PathBuf> {
     if std::env::var_os("APPIMAGE").is_none() {
         return Some(source.to_path_buf());
     }
-    let dir = home().join(".local").join("share").join("mycelium").join("bin");
+    let share = home().join(".local").join("share").join("mycelium");
+    // `mycelium` is a folder (the program and the libraries beside it), so
+    // the whole folder is copied.
+    if name == "mycelium" {
+        let folder = stable_folder(source.parent()?, &share.join(CLI_DIR), source)?;
+        return Some(folder.join(exe(name)));
+    }
+    let dir = share.join("bin");
     let target = dir.join(name);
-    let same = |a: &Path, b: &Path| -> bool {
-        let (Ok(a), Ok(b)) = (std::fs::metadata(a), std::fs::metadata(b)) else { return false };
-        a.len() == b.len() && a.modified().ok() == b.modified().ok()
-    };
-    if same(source, &target) {
+    if same_file(source, &target) {
         return Some(target);
     }
     std::fs::create_dir_all(&dir).ok()?;
@@ -375,6 +405,61 @@ fn stable_copy(source: &Path, name: &str) -> Option<PathBuf> {
     }
     std::fs::rename(&partial, &target).ok()?;
     Some(target)
+}
+
+/// Whether two files look like the same copy: same size and modified time.
+#[cfg(unix)]
+fn same_file(a: &Path, b: &Path) -> bool {
+    let (Ok(a), Ok(b)) = (std::fs::metadata(a), std::fs::metadata(b)) else { return false };
+    a.len() == b.len() && a.modified().ok() == b.modified().ok()
+}
+
+/// A lasting copy of the folder `source` at `target`, refreshed when its
+/// program (`program`, inside `source`) differs from the copy's. The new copy
+/// is written beside the old one and swapped in; the old one's files are
+/// unlinked, which an agent still running them doesn't notice.
+#[cfg(unix)]
+fn stable_folder(source: &Path, target: &Path, program: &Path) -> Option<PathBuf> {
+    let name = program.file_name()?;
+    if same_file(program, &target.join(name)) {
+        return Some(target.to_path_buf());
+    }
+    let parent = target.parent()?;
+    std::fs::create_dir_all(parent).ok()?;
+    let partial = parent.join(".cli.partial");
+    let old = parent.join(".cli.old");
+    let _ = std::fs::remove_dir_all(&partial);
+    copy_dir(source, &partial).ok()?;
+    let _ = std::fs::remove_dir_all(&old);
+    if target.exists() {
+        std::fs::rename(target, &old).ok()?;
+    }
+    std::fs::rename(&partial, target).ok()?;
+    let _ = std::fs::remove_dir_all(&old);
+    Some(target.to_path_buf())
+}
+
+/// Copy a folder, keeping each file's modified time and permissions, and its
+/// symlinks as symlinks.
+#[cfg(unix)]
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let (src, dst) = (entry.path(), to.join(entry.file_name()));
+        let kind = entry.file_type()?;
+        if kind.is_symlink() {
+            symlink(&std::fs::read_link(&src)?, &dst)?;
+        } else if kind.is_dir() {
+            copy_dir(&src, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst)?;
+            if let Ok(modified) = std::fs::metadata(&src).and_then(|m| m.modified()) {
+                let _ = std::fs::File::options().write(true).open(&dst).and_then(|f| f.set_modified(modified));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Open a web or mail link, or a file, with what this machine opens it with.

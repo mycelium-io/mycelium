@@ -149,6 +149,18 @@ def test_skill_get(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "the body" in result.output
 
 
+def test_skill_get_prints_links_and_brackets_as_written(monkeypatch: pytest.MonkeyPatch) -> None:
+    body = "follow [[context/rubric]] and [b]this[/b]"
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.skills.get_skill_api_rooms_room_name_skills_name_get.sync",
+        lambda *, room_name, name, client: _skill_read(name, body=body, description="uses [[x]]"),
+    )
+    result = runner.invoke(skill_cmd.app, ["get", "alpha", "--room", "demo"])
+    assert result.exit_code == 0, result.output
+    assert body in result.output
+    assert "uses [[x]]" in result.output
+
+
 def test_skill_get_json(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "mycelium_backend_client.api.skills.get_skill_api_rooms_room_name_skills_name_get.sync",

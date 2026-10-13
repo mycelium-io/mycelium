@@ -25,7 +25,11 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+const limits = vi.hoisted(() => ({ max: 5000 }));
 vi.mock("@/lib/api", () => ({
+  get MEMORIES_MAX() {
+    return limits.max;
+  },
   fetchMemories: vi.fn(),
   searchMemories: vi.fn(),
   deleteMemory: vi.fn(),
@@ -55,6 +59,25 @@ const treeMemory = {
 const expandDecisions = async () => {
   fireEvent.click(await screen.findByText("decisions"));
 };
+
+describe("<MemoryPanel /> count", () => {
+  afterEach(() => {
+    limits.max = 5000;
+  });
+
+  it("counts every memory it holds", async () => {
+    vi.mocked(fetchMemories).mockResolvedValue([treeMemory, { ...treeMemory, key: "agents/scout" }]);
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={vi.fn()} />);
+    expect(await screen.findByText(/^2 memories/)).toBeInTheDocument();
+  });
+
+  it("says it holds only the newest when the room reaches the cap", async () => {
+    limits.max = 2;
+    vi.mocked(fetchMemories).mockResolvedValue([treeMemory, { ...treeMemory, key: "agents/scout" }]);
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={vi.fn()} />);
+    expect(await screen.findByText(/^Newest 2 memories \(↵ searches them all\)/)).toBeInTheDocument();
+  });
+});
 
 describe("<MemoryPanel /> opening a memory", () => {
   beforeEach(() => {

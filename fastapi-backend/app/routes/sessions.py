@@ -297,8 +297,13 @@ async def drain_herdr_wakes(room_name: str):
             logger.exception("wake log failed for @%s in %s", wake.get("handle"), room_name)
         # Handed to its host to type now, so the room hears it's being worked
         # on whether or not the agent reads through ``await``. Its reply, or
-        # the TTL, settles it.
-        activity.signal(room_name, wake["handle"], "responding", episode=wake.get("episode"))
+        # the TTL, settles it. The thread named is the one its digest tells it
+        # to reply in, or none when what woke it was said in several.
+        try:
+            where = wake_digest.reply_episode(room_name, wake, records)
+        except Exception:
+            where = None
+        activity.signal(room_name, wake["handle"], "responding", episode=where)
     return {"wakes": wakes}
 
 

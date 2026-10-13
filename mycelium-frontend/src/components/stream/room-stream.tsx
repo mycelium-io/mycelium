@@ -13,6 +13,7 @@ import { MessageBody } from "@/components/message-body";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { Chip } from "@/components/ui/chip";
 import { EventIconMark } from "@/components/event-icon";
+import { JumpToLatest, useJumpToLatest } from "@/components/jump-to-latest";
 import { MEMORY_ICON, noticeIcon, type EventIcon } from "@/lib/event-icons";
 
 /** The icon for a board, pull request or saved-memory line: the chat's table. */
@@ -195,12 +196,24 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
 
   // Open at the newest line, and stay there as lines arrive unless you've
   // scrolled up to read.
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const attachScroller = useCallback((el: HTMLDivElement | null) => {
+    scrollRef.current = el;
+    setScroller(el);
+  }, []);
   const pinned = useRef(true);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
   }, [lines]);
+
+  // Scrolled up, the same "Jump to latest" the channel has, counting the
+  // messages that arrived meanwhile. A change of filter starts the count over,
+  // since the lines it would measure against are different ones.
+  const messageCount = useMemo(() => lines.filter((l) => l.event.kind === "message").length, [lines]);
+  const filterKey = `${roomName}|${[...kinds].sort().join(",")}|${mineOnly}|${who ?? ""}`;
+  const jumpTo = useJumpToLatest(scroller, lines.length ? messageCount : null, filterKey);
 
   const titleOf = useCallback((episode: string) => threads.get(episode)?.title ?? null, [threads]);
   const toggleKind = (kind: StreamKind) =>
@@ -237,7 +250,7 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
       </div>
 
       <div
-        ref={scrollRef}
+        ref={attachScroller}
         onScroll={(e) => {
           const el = e.currentTarget;
           pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
@@ -374,6 +387,10 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
             );
           })
         )}
+      </div>
+      {/* No height of its own: the pill floats up from here over the log's bottom edge. */}
+      <div className="relative h-0 flex-shrink-0">
+        {!jumpTo.atBottom && lines.length > 0 && <JumpToLatest unread={jumpTo.unread} onClick={jumpTo.jump} />}
       </div>
 
       {target && (

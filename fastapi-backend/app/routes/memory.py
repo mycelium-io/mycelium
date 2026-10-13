@@ -80,6 +80,11 @@ def _require_room(room_name: str) -> None:
         raise HTTPException(status_code=404, detail="Room not found")
 
 
+def _not_found(room_name: str, key: str) -> str:
+    """A 404 that says what was missing, so a caller printing it can act on it."""
+    return f"No memory '{key}' in room '{room_name}'"
+
+
 def _flatten_value(value: dict | str) -> str:
     """Convert a memory value to flat text for embedding."""
     if isinstance(value, str):
@@ -615,7 +620,7 @@ async def get_memory(room_name: str, key: str):
     room_dir = get_room_dir(room_name)
     file_data = read_memory_file(room_dir, key)
     if not file_data:
-        raise HTTPException(status_code=404, detail="Memory not found")
+        raise HTTPException(status_code=404, detail=_not_found(room_name, key))
     meta, content = file_data
     return _memory_read_from_file(room_name, key, meta, content)
 
@@ -633,7 +638,7 @@ async def delete_memory(room_name: str, key: str):
     index_deleted = search_index.remove(room_name, key)
     links.remove(room_name, key)
     if not file_deleted and not index_deleted:
-        raise HTTPException(status_code=404, detail="Memory not found")
+        raise HTTPException(status_code=404, detail=_not_found(room_name, key))
     upload = found[0].get(UPLOAD_META) if found else None
     if isinstance(upload, dict):
         uploads.forget_blob(room_name, upload.get("sha256"))

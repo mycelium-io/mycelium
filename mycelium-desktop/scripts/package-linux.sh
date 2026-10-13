@@ -9,8 +9,8 @@
 # package would install as /usr/bin/node over the distribution's.
 #
 # Inside it the layout is usr/bin (the app and its programs) beside
-# usr/lib/Mycelium (hub/, ui/, models/, pi/), which is where the supervisor
-# and the Pi launcher look.
+# usr/lib/Mycelium (cli/, hub/, ui/, models/, pi/), which is where the
+# supervisor and the Pi launcher look.
 #
 # Needs FUSE-less tooling only (the AppImages it runs unpack themselves),
 # and downloads appimagetool and the AppImage runtime, pinned by hash.
@@ -54,30 +54,33 @@ fetch() {
 
 # Tauri builds the AppImage with linuxdeploy, which walks every program and
 # library in it to bring along what each needs, and rewrites their library
-# paths. The hub (a PyInstaller build) already carries its own, under names
-# linuxdeploy can't resolve, and a rewritten herdr (static-pie) crashes. So
-# the AppImage is built without the hub, then the hub and the programs the
-# app carries are put in as they were staged.
+# paths. The hub and mycelium (PyInstaller builds) already carry their own,
+# under names linuxdeploy can't resolve, and a rewritten herdr (static-pie)
+# crashes. So the AppImage is built without them, then they and the programs
+# the app carries are put in as they were staged.
 cd "$here"
 # Tauri adds to an AppDir left from an earlier build rather than starting over.
 rm -rf src-tauri/target/release/bundle/appimage src-tauri/target/release/bundle/appimage_deb
-# The bundle config less the hub (a merged config can add keys, not drop them).
-without_hub="$(node -e '
+# The bundle config less the PyInstaller builds (a merged config can add keys,
+# not drop them).
+without_pyinstaller="$(node -e '
   const c = require("./src-tauri/tauri.bundle.conf.json");
   delete c.bundle.resources["resources/hub/"];
+  delete c.bundle.resources["resources/cli/"];
   process.stdout.write(JSON.stringify(c));
 ')"
-npx tauri build --bundles appimage --config "$without_hub"
+npx tauri build --bundles appimage --config "$without_pyinstaller"
 built="$(ls -t src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null | head -n 1)"
 if [ -z "$built" ]; then
   echo "tauri build made no AppImage" >&2
   exit 1
 fi
 
-echo "adding the hub and the programs…"
+echo "adding the hub, mycelium and the programs…"
 (cd "$tmp" && "$here/$built" --appimage-extract >/dev/null)
 cp -R src-tauri/resources/hub "$tmp/squashfs-root/usr/lib/Mycelium/hub"
-for program in mycelium herdr slimctl node; do
+cp -R src-tauri/resources/cli "$tmp/squashfs-root/usr/lib/Mycelium/cli"
+for program in herdr slimctl node; do
   cp "src-tauri/binaries/$program-$(rustc --print host-tuple)" "$tmp/squashfs-root/usr/bin/$program"
 done
 fetch "$APPIMAGETOOL_URL" "$APPIMAGETOOL_SHA256" appimagetool

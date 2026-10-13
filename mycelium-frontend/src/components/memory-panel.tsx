@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/context-menu";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import {
+  MEMORIES_MAX,
   deleteMemory,
   searchMemories,
   type Memory,
@@ -583,7 +584,11 @@ export function MemoryPanel({
       <div className="flex h-8 flex-shrink-0 items-center gap-1 px-3 text-micro tabular text-muted-foreground">
         {/* A count, not a control: it sits back behind the actions beside it. */}
         <span className="text-faint">
-          {memories.length} {memories.length === 1 ? "memory" : "memories"} · {contributors.length}{" "}
+          {/* At the cap the room may hold more: say these are the newest, and that ↵ search reaches the rest. */}
+          {memories.length >= MEMORIES_MAX
+            ? `Newest ${MEMORIES_MAX.toLocaleString()} memories (↵ searches them all)`
+            : `${memories.length} ${memories.length === 1 ? "memory" : "memories"}`}{" "}
+          · {contributors.length}{" "}
           {contributors.length === 1 ? "contributor" : "contributors"}
         </span>
         <Tooltip content="Open the memory link graph">

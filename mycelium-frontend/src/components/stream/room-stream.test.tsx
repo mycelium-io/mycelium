@@ -37,7 +37,13 @@ vi.mock("@/lib/api", () => ({
   fetchWireHistory: vi.fn(async () => history),
   logFetchError: () => () => {},
 }));
-vi.mock("@/lib/stream-hub", () => ({ useRoomStream: () => {} }));
+// The live feed: a test pushes a frame through what the Stream subscribed with.
+const live = vi.hoisted(() => ({ push: (() => {}) as (frame: unknown) => void }));
+vi.mock("@/lib/stream-hub", () => ({
+  useRoomStream: (_room: string, onFrame: (frame: unknown) => void) => {
+    live.push = onFrame;
+  },
+}));
 vi.mock("@/lib/room-data", () => ({
   useRoomThreads: () => new Map([[THREAD, { keys: ["work/zoom"], title: "Zoom and pan" }]]),
 }));
@@ -55,6 +61,57 @@ async function renderStream(onOpenThread = vi.fn()) {
   await act(async () => {});
   return onOpenThread;
 }
+
+/** Make the log 1000px tall in a 400px window and scroll it to `top`. */
+function scrollLog(top: number) {
+  const el = screen.getByRole("log");
+  Object.defineProperty(el, "scrollHeight", { configurable: true, value: 1000 });
+  Object.defineProperty(el, "clientHeight", { configurable: true, value: 400 });
+  el.scrollTo = vi.fn(({ top: to }: ScrollToOptions) => {
+    el.scrollTop = Number(to);
+  }) as unknown as typeof el.scrollTo;
+  el.scrollTop = top;
+  act(() => {
+    el.dispatchEvent(new Event("scroll"));
+  });
+  return el;
+}
+
+describe("<RoomStream /> jump to latest", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("offers no jump at the newest line", async () => {
+    await renderStream();
+    scrollLog(600);
+    expect(screen.queryByRole("button", { name: /Jump to latest/ })).not.toBeInTheDocument();
+  });
+
+  it("counts the messages that arrive while you're scrolled up, and jumps back down", async () => {
+    await renderStream();
+    const log = scrollLog(0);
+    expect(screen.getByRole("button", { name: "Jump to latest" })).toBeInTheDocument();
+
+    act(() => {
+      live.push({ id: "m9", sender_handle: "alice", message_type: "broadcast", created_at: at(9), content: "back from lunch" });
+      // A board change is a line, not a message, so it isn't counted.
+      live.push({
+        id: "n9",
+        sender_handle: "system",
+        message_type: "l9_exchange",
+        created_at: at(9),
+        content: JSON.stringify({
+          l9: { payload: { type: "notice", data: { subkind: "claimed", key: "work/zoom", title: "Zoom and pan", episode: THREAD, by: "bob" } } },
+        }),
+      });
+    });
+    const jump = screen.getByRole("button", { name: "Jump to latest, 1 new" });
+    expect(jump).toHaveTextContent("1 new message");
+
+    await userEvent.click(jump);
+    expect(log.scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: "smooth" });
+    expect(screen.queryByRole("button", { name: /Jump to latest/ })).not.toBeInTheDocument();
+  });
+});
 
 describe("<RoomStream />", () => {
   beforeEach(() => window.localStorage.clear());

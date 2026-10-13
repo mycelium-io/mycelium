@@ -188,6 +188,32 @@ async def test_a_served_turn_says_the_handle_is_responding(wired):
     assert len(log.records) == 1  # nothing was written to the transcript
 
 
+@pytest.mark.asyncio
+async def test_await_keeps_the_thread_a_wake_already_named(wired):
+    """A wake said where the agent is replying; await serves the oldest message
+    first and must not move the room's "responding in" line to an older place."""
+    from app.bus import bus, room_channel
+    from app.services import activity
+
+    log = persister.DeliveryLog()
+    log.record(
+        _addressed_record("m1", to="claude-code-agent"),
+        delivered_to=set(),
+        recipients=["claude-code-agent"],
+    )
+    wired(log)
+    activity.signal("r", "claude-code-agent", "responding", episode="urn:the-newest-thread")
+    queue = bus.subscribe(room_channel("r"))
+    try:
+        result = await participate.await_message(
+            "r", _REQUEST, handle="claude-code-agent", timeout=0
+        )
+        assert result["message_id"] == "m1"
+        assert queue.empty()  # nothing re-raised over the wake's thread
+    finally:
+        bus.unsubscribe(room_channel("r"), queue)
+
+
 def _said(
     message_id: str,
     text: str,
