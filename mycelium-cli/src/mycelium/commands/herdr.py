@@ -212,6 +212,7 @@ def herdr_enroll(
                 f"Already a member: [cyan]@{escape(here.handle)}[/cyan] in "
                 f"{escape(room_name)}, pane {escape(pane_id)}."
             )
+            console.print(_next_step(room_name))
             return
 
         taken = {m.handle for m in mappings}
@@ -256,18 +257,21 @@ def herdr_enroll(
             )
         )
         console.print(
-            f"[green]Enrolled[/green] [cyan]@{wanted}[/cyan] in {escape(room_name)}, "
-            f"pane {escape(pane_id)}. Mentions of @{wanted} now wake this pane."
+            f"[green]Joined[/green] {escape(room_name)} as [cyan]@{wanted}[/cyan]. "
+            f"Mentions of @{wanted} now wake pane {escape(pane_id)}."
         )
-        console.print(
-            "[dim]Check with `mycelium whoami --sources`: the handle should come from "
-            "this herdr pane's agent.[/dim]"
-        )
+        console.print(_next_step(room_name))
     except typer.Exit:
         raise
     except Exception as e:
         print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
         raise typer.Exit(1) from None
+
+
+def _next_step(room: str) -> str:
+    """What an agent that just joined does next. The app's introduction to an
+    adopted agent names the same two commands, so both ways in say one thing."""
+    return f"Next: run `mycelium skill print`, then `mycelium board --room {escape(room)}`."
 
 
 def _room_members(config: MyceliumConfig, room_name: str) -> dict[str, str] | None:
