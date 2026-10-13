@@ -90,10 +90,10 @@ describe("<ActivityRail />", () => {
     expect(lastChange(update("Review requested", "acme/shop#12 · @ana"))).toBe("review requested from @ana");
   });
 
-  it("says an expired lease ran out on its holder, rather than that the holder expired it", () => {
-    expect(lastChange(update("Expired", "held by @ana", "expired"))).toBe("@ana's lease ran out");
+  it("says an expired hold ran out on its holder, rather than that the holder expired it", () => {
+    expect(lastChange(update("Expired", "held by @ana", "expired"))).toBe("@ana's hold ran out");
     render(<ActivityRail items={[item("drained", "expired", [update("Expired", "held by @ana", "expired")])]} />);
-    expect(screen.getByText("@ana's lease ran out")).toBeTruthy();
+    expect(screen.getByText("@ana's hold ran out")).toBeTruthy();
   });
 
   it("says whose turn it is when the floor was the last thing to move", () => {

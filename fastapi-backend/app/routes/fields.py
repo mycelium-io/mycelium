@@ -53,6 +53,13 @@ class WriteBody(BaseModel):
             "Assignment keys are refused: those move through /assignments."
         ),
     )
+    reassign: bool = Field(
+        False,
+        description=(
+            "Give the row to a new assignee even though someone else holds it. "
+            "Without it, changing the assignee of a held row is refused (409)."
+        ),
+    )
 
 
 @router.post("")
@@ -61,7 +68,9 @@ async def write_fields(room_name: str, body: WriteBody, request: Request):
     _require_room(room_name)
     handle = actor.bind_delegated_actor(request, room_name, body.handle, field="handle")
     try:
-        return await fields.write(room_name, body.key, dict(body.fields), handle)
+        return await fields.write(
+            room_name, body.key, dict(body.fields), handle, reassign=body.reassign
+        )
     except fields.FieldError as e:
         raise _fail(e) from e
 

@@ -148,8 +148,8 @@ export function lastChange(update: ActivityUpdate): string {
     const said = update.label.startsWith("CI") ? update.label : update.label.toLowerCase();
     return who ? `${said} from ${who}` : said;
   }
-  // The handle on an expired lease is whoever stopped renewing it, not who did it.
-  if (update.label === "Expired") return who ? `${who}'s lease ran out` : "its lease ran out";
+  // The handle on an expired hold is whoever was holding it, not who ended it.
+  if (update.label === "Expired") return who ? `${who}'s hold ran out` : "its hold ran out";
   // Whose turn it is in the thread: the holder alone, the handles it gave the
   // floor to, or the floor opening back up.
   if (update.label === "Floor") {

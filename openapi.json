@@ -6462,11 +6462,17 @@
             "description": "The handle taking assignment"
           },
           "ttl_minutes": {
-            "type": "integer",
-            "minimum": 1.0,
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Ttl Minutes",
-            "description": "Minutes the claim holds without a renewal before it drains",
-            "default": 30
+            "description": "Make the hold a lease: minutes it lasts without a renewal before it drains. Omit for a hold with no timer, which ends only when the holder goes away, hands it off or resolves it."
           },
           "force": {
             "type": "boolean",
@@ -12902,6 +12908,12 @@
             "type": "object",
             "title": "Fields",
             "description": "Frontmatter to merge onto the row. A null value clears its key. Assignment keys are refused: those move through /assignments."
+          },
+          "reassign": {
+            "type": "boolean",
+            "title": "Reassign",
+            "description": "Give the row to a new assignee even though someone else holds it. Without it, changing the assignee of a held row is refused (409).",
+            "default": false
           }
         },
         "type": "object",

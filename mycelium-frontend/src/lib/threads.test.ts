@@ -97,6 +97,8 @@ describe("reading a notice", () => {
       by: "aligner",
       kind: "action",
       assignee: "@growth",
+      from: null,
+      why: null,
       speakers: [],
       released: false,
       change: null,

@@ -51,10 +51,14 @@ def _fail(error: assignments.AssignmentError) -> HTTPException:
 class ClaimBody(BaseModel):
     key: str = Field(..., description="Memory key of the work/ row being claimed")
     handle: str = Field(..., description="The handle taking assignment")
-    ttl_minutes: int = Field(
+    ttl_minutes: int | None = Field(
         assignments.DEFAULT_TTL_MINUTES,
         ge=1,
-        description="Minutes the claim holds without a renewal before it drains",
+        description=(
+            "Make the hold a lease: minutes it lasts without a renewal before it "
+            "drains. Omit for a hold with no timer, which ends only when the "
+            "holder goes away, hands it off or resolves it."
+        ),
     )
     force: bool = Field(
         False,

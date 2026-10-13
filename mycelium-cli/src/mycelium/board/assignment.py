@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Assignment: who holds a row, and for how much longer.
+"""Assignment: who holds a row.
 
-An agent is resident rather than one-shot, and a session can end without
-announcing it — a container is reclaimed, a cloud session times out, a job is
-canceled. Assignment is a lease rather than a stored fact: a live claim reads
-fresh/stale/expired against ``claimed_at`` + a TTL, the same freshness model
-the upstream half uses against ``fetched_at``. An abandoned claim drains and
-the row returns to the pool.
+A row given to someone (``assignee``) is held by them until it's released,
+handed off or resolved, and a hold has no timer unless a claim asks for one
+(#1136): the hub ends it when its holder's pane closes or it leaves the room.
+A claim taken with a TTL is a lease instead, which reads fresh/stale/expired
+against ``claimed_at``, the same freshness model the upstream half uses
+against ``fetched_at``, and drains if nobody renews it.
 
 **Assignment is not a stage.** ``status`` is a stage vocabulary. Assignment is
 the axis that says whether anyone is actually on this: ``in_review`` says
@@ -46,7 +46,10 @@ FRESHNESS = ["fresh", "stale", "expired"]
 #: on the far side of this, so a renewal is a heartbeat rather than a rewrite.
 STALE_AFTER = 0.5
 
-DEFAULT_TTL_MINUTES = 30
+#: A claim has no timer unless it asks for one (#1136).
+DEFAULT_TTL_MINUTES: int | None = None
+#: Who a row is for; a row with one is held by them.
+ASSIGNEE_FIELD = "assignee"
 
 COMPANION_FIELDS = ["claimed_at", "ttl_minutes", "assignment_note", "assignment_note_by"]
 
@@ -132,21 +135,37 @@ def assignment_of(item: LiveItem, now: datetime) -> str | None:
     remembered to write it down.
     """
     stored = item.text(FIELD)
-    if stored not in STATES:
-        return None
-    if stored != "held":
+    if stored in ("released", "resolved"):
         return stored
-    if not item.owner:
-        # Held by nobody is not held. A row that lost its holder is in the pool.
-        return "unclaimed"
-    # A claim that cannot be shown to be alive is not evidence that it is. An
-    # undatable one — no stamp, or no window to age it against — is the purest
-    # form of the assertion this model refuses: held forever, by nobody's word.
-    return (
-        "held"
-        if freshness(claimed_at(item), item.get("ttl_minutes"), now) in ("fresh", "stale")
-        else "expired"
-    )
+    if stored == "held" and item.owner:
+        # A hold with no timer stays held until something real ends it (#1136);
+        # only a lease, taken with a TTL, drains by the clock.
+        if open_ended(item.get("ttl_minutes")):
+            return "held"
+        return (
+            "held"
+            if freshness(claimed_at(item), item.get("ttl_minutes"), now) in ("fresh", "stale")
+            else "expired"
+        )
+    # A row given to someone is held by them, with no claim to make (#1136).
+    if item.text(ASSIGNEE_FIELD):
+        return "held"
+    # Held by nobody is not held: a row that lost its holder is in the pool.
+    return "unclaimed" if stored in STATES else None
+
+
+def open_ended(ttl_minutes: Any) -> bool:
+    """A hold with no timer (#1136)."""
+    return ttl_minutes in (None, "", 0)
+
+
+def holder_of(item: LiveItem, now: datetime) -> str | None:
+    """Who holds the row: whoever claimed it, else whoever it was given to."""
+    if assignment_of(item, now) != "held":
+        return None
+    if item.text(FIELD) == "held" and item.owner:
+        return item.owner
+    return (item.text(ASSIGNEE_FIELD) or "").lstrip("@") or None
 
 
 def is_blocked(item: LiveItem) -> bool:
@@ -199,7 +218,7 @@ def assignment_refusal(item: LiveItem) -> str | None:
     return REFUSALS["memory"]
 
 
-def claim_patch(handle: str, now: datetime, ttl_minutes: int = DEFAULT_TTL_MINUTES) -> dict:
+def claim_patch(handle: str, now: datetime, ttl_minutes: int | None = DEFAULT_TTL_MINUTES) -> dict:
     """The frontmatter a claim writes. One shape, whoever is doing the claiming."""
     return {
         FIELD: "held",

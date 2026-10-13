@@ -44,6 +44,14 @@ def held(minutes_ago: float, ttl: int = 30, owner: str = "@growth", **extra) -> 
 class TestVocabularyContract:
     """The GUI carries its own copy of every word here."""
 
+    @pytest.mark.parametrize("case", CONTRACT["hold_cases"], ids=lambda c: str(c["meta"]))
+    def test_who_holds_a_row_matches_the_contract(self, case):
+        item = row(**case["meta"])
+        # A row with no assignment fields at all has no assignment axis here,
+        # which the hub reads as unclaimed.
+        assert (assignment.assignment_of(item, NOW) or "unclaimed") == case["state"]
+        assert assignment.holder_of(item, NOW) == case["holder"]
+
     def test_states_match_the_contract(self):
         assert CONTRACT["states"] == assignment.STATES
         assert CONTRACT["stored_states"] == assignment.STORED_STATES
@@ -66,6 +74,7 @@ class TestVocabularyContract:
     def test_thresholds_and_fields_match_the_contract(self):
         assert CONTRACT["stale_after"] == assignment.STALE_AFTER
         assert CONTRACT["default_ttl_minutes"] == assignment.DEFAULT_TTL_MINUTES
+        assert CONTRACT["assignee_field"] == assignment.ASSIGNEE_FIELD
         assert CONTRACT["companion_fields"] == assignment.COMPANION_FIELDS
         assert CONTRACT["runtime_author"] == assignment.RUNTIME_AUTHOR
         assert CONTRACT["assignable_namespaces"] == assignment.ASSIGNABLE_NAMESPACES
@@ -141,11 +150,11 @@ class TestAssignmentState:
             == "expired"
         )
 
-    def test_a_claim_with_no_window_is_not_a_lease(self):
-        """`held` with no TTL says "mine, indefinitely" — the exact assertion an
-        actor that can vanish is not entitled to make."""
-        item = row(assignment="held", owner="@growth", claimed_at=ago(1))
-        assert assignment.assignment_of(item, NOW) == "expired"
+    def test_a_hold_with_no_timer_stays_held(self):
+        """#1136: a hold with no TTL lasts until something real ends it (the
+        holder's pane closes, it leaves, it hands the row off), not a clock."""
+        item = row(assignment="held", owner="@growth", claimed_at=ago(60 * 24 * 3))
+        assert assignment.assignment_of(item, NOW) == "held"
 
     def test_a_hand_written_claim_dates_from_the_file(self):
         """`claimed_at` falls back to when the row last moved: someone typing

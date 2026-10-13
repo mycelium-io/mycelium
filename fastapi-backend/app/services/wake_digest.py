@@ -175,23 +175,28 @@ def board(room: str, handle: str, now: datetime) -> tuple[list[str], str]:
         word = (
             "blocked"
             if blocked
-            else {"held": "claimed", "unclaimed": "new", "released": "released"}.get(state, state)
+            else {"held": "held", "unclaimed": "new", "released": "released"}.get(state, state)
         )
         tally[word] += 1
         title = _title(key, content)
         if word in named:
             named[word].append(_short(title, NAME_CHARS))
-        holder = _norm(meta.get("owner")) if state == "held" else ""
+        holder = _norm(assignments.holder(meta, now))
         if me not in (holder, _norm(meta.get("assignee"))):
             continue
         if blocked:
             mine.append(f'blocked "{title}" (waiting on {blocked})')
+        elif state == "held" and holder == me:
+            # Given to it, or claimed by it: either way it's holding the row (#1136).
+            claimed = meta.get("assignment") == "held"
+            since = assignments._parse(meta.get("claimed_at") or meta.get("created_at"))
+            verb = "claimed" if claimed else "yours"
+            mine.append(f'{verb} "{title}" ({age(since, now)})')
         elif state == "held":
-            since = assignments._parse(meta.get("claimed_at"))
-            mine.append(f'claimed "{title}" ({age(since, now)})')
+            mine.append(f'"{title}" is for you, but @{holder} holds it')
         else:
-            mine.append(f'{word} "{title}" (for you, unclaimed)')
-    order = ["claimed", "blocked", "new", "released", "expired"]
+            mine.append(f'{word} "{title}" (for you; nobody holds it)')
+    order = ["held", "blocked", "new", "released", "expired"]
     parts = [f"{tally[w]} {w}{_names(named.get(w, []))}" for w in order if tally[w]]
     return mine, ", ".join(parts) or "nothing open"
 
@@ -442,8 +447,9 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     lines.append("")
     if reason == "assigned" and wake.get("key"):
         key = wake["key"]
+        # Given to it, it already holds the row: there is nothing to claim (#1136).
         lines += [
-            f"Claim:  mycelium board claim {key} --room {room} --to @{me}",
+            "Held:   it's yours until you resolve it or hand it back; no claim needed",
             f"Read:   mycelium board messages {key} --room {room}",
             f'Post:   mycelium board send {key} --room {room} --as {me} --body "..."',
         ]
