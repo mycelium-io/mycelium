@@ -258,6 +258,13 @@ describe("<RoomChatBox /> composer triggers", () => {
     sendRoomMessage.mockClear();
   });
 
+  it("draws each sigil in the hint row as a keycap", async () => {
+    const { container } = renderWithSWR(<RoomChatBox roomName="demo" />);
+    await textarea();
+    const caps = [...container.querySelectorAll("kbd")].map((k) => k.textContent);
+    expect(caps).toEqual(expect.arrayContaining(["@", "@~", "@!", "[[", "/", ":"]));
+  });
+
   it("autocompletes a memory on [[ and inserts [[key]]", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
