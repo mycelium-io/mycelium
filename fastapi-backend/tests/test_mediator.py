@@ -836,7 +836,7 @@ def test_rejecting_your_own_offer_asks_again_and_takes_a_yes():
 
     assert resp == mediator.ResponseType.ACCEPT_OFFER
     assert len(asked) == 1
-    assert "You proposed ('30',) yourself" in asked[0]
+    assert "You proposed cap = 30 yourself" in asked[0]  # plain text, not a tuple
 
 
 def test_rejecting_your_own_offer_and_meaning_it_stays_a_reject():

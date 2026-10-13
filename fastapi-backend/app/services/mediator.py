@@ -284,13 +284,20 @@ class MediatedNegotiation:
     def _history_block(self) -> str:
         return "\n".join(self.history[-12:]) if self.history else "(negotiation just started)"
 
+    def said(self, offer: tuple[Any, ...] | None) -> str:
+        """An offer as people read it, ``issue = value`` per issue, not a tuple."""
+        if not offer:
+            return "none yet"
+        return "; ".join(
+            f"{name} = {value}" for name, value in zip(self._names, offer, strict=False)
+        )
+
     def broker(self, offer: tuple[Any, ...] | None, round_n: int) -> str:
         """The mediator's per-turn framing — where everyone stands + a nudge."""
-        order = ", ".join(self._names)
         try:
             return self._llm(
                 f"You are the negotiation mediator (a neutral camp counselor). It is step "
-                f"{round_n} of {self._cap}. Issue order: {order}. Offer on the table: {offer}.\n\n"
+                f"{round_n} of {self._cap}. Offer on the table: {self.said(offer)}.\n\n"
                 f"History so far:\n{self._history_block()}\n\nWrite 2 sentences to the group: "
                 "summarize where each agent stands, name who has hit a genuine hard limit, and "
                 "surface the space that's still open between them. Be concrete and fair, not "
@@ -358,13 +365,12 @@ class MediatedNegotiation:
         self, handle: str, offer: tuple[Any, ...] | None, proposing: bool, note: str, round_n: int
     ) -> str:
         space = "; ".join(f"{n} ∈ {{{', '.join(self._options[n])}}}" for n in self._names)
-        order = ", ".join(self._names)
         role = (
-            f"It is your turn to PROPOSE. Current standing offer: {offer}. State the offer you "
-            "want (a value per issue) with one line of why."
+            f"It is your turn to PROPOSE. Current standing offer: {self.said(offer)}. State the "
+            "offer you want (a value per issue) with one line of why."
             if proposing
-            else f"The offer on the table is {offer} (issue order: {order}). ACCEPT it or REJECT "
-            "it, with one line of why."
+            else f"The offer on the table is {self.said(offer)}. ACCEPT it or REJECT it, with one "
+            "line of why."
         )
         return (
             f"@{handle} — step {round_n}. Issue space: {space}.\n\n"
@@ -407,7 +413,7 @@ class MediatedNegotiation:
             return False
         self._confirmed.add(key)
         prompt = (
-            f"@{handle} — step {round_n}. You proposed {offer} yourself, and just turned it "
+            f"@{handle} — step {round_n}. You proposed {self.said(offer)} yourself, and just turned it "
             "down. Do you still want it? ACCEPT it or REJECT it, with one line of why. "
             "(2 sentences max.)"
         )
