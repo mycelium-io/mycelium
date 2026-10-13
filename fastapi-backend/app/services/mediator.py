@@ -250,6 +250,8 @@ class MediatedNegotiation:
         self.stop_reason: str | None = None
         # How many times each offer has been rejected, to catch a loop.
         self._rejections: dict[tuple[str, ...], int] = {}
+        # (agent, offer) pairs already asked "you proposed this; still want it?".
+        self._confirmed: set[tuple[str, tuple[str, ...]]] = set()
         self._names = [i["name"] for i in issues]
         self._options = {i["name"]: i["options"] for i in issues}
         self._cap = cap
@@ -378,7 +380,10 @@ class MediatedNegotiation:
         the backend event loop and this call blocks on the agent's real reply.
         """
         note = self.broker(offer, round_n)
-        prompt = self._prompt_for(handle, offer, proposing, note, round_n)
+        return self._ask(handle, self._prompt_for(handle, offer, proposing, note, round_n), round_n)
+
+    def _ask(self, handle: str, prompt: str, round_n: int) -> str:
+        """Put ``prompt`` to ``handle`` over the channel and block on its reply."""
         future = asyncio.run_coroutine_threadsafe(
             self._fetch_prose(handle, prompt, round_n), self._loop
         )
@@ -387,6 +392,27 @@ class MediatedNegotiation:
         except Exception:
             logger.warning("mediator got no reply from @%s (step %d)", handle, round_n)
             return ""
+
+    def confirm_own_offer(self, handle: str, offer: tuple[str, ...], round_n: int) -> bool:
+        """``handle`` turned down the very offer it last proposed: ask it once more
+        whether it still wants it, and take the answer as given.
+
+        It may have misspoken (two agreeing agents trading their own offer back
+        and forth is the loop this catches) or really changed its mind; only
+        asking tells which, and a reply that doesn't say yes is a no. Asked once
+        per offer per agent, so a real change of mind isn't asked about again.
+        """
+        key = (handle, tuple(offer))
+        if key in self._confirmed:
+            return False
+        self._confirmed.add(key)
+        prompt = (
+            f"@{handle} — step {round_n}. You proposed {offer} yourself, and just turned it "
+            "down. Do you still want it? ACCEPT it or REJECT it, with one line of why. "
+            "(2 sentences max.)"
+        )
+        reading = self.interpret(handle, self._ask(handle, prompt, round_n), proposing=False)
+        return isinstance(reading, dict) and reading.get("action") == "accept"
 
     def last_offer(self, handle: str) -> tuple[str, ...] | None:
         """The last outcome we actually read from *handle*, if any."""
@@ -510,10 +536,11 @@ class RemoteAgentNegotiator(SAONegotiator):
             resp is ResponseType.REJECT_OFFER
             and offer is not None
             and self._neg.last_offer(self.handle) == offer
+            and self._neg.confirm_own_offer(self.handle, offer, state.step)
         ):
-            # Turning down the very offer this agent last proposed itself is a
-            # misreading, not a position: it agrees. (Reading it as a reject is
-            # what kept two agreeing agents trading the same offer in a loop.)
+            # It turned down the very offer it last proposed, and asked again it
+            # says it does want it. (Taken as given either way: a reject is never
+            # turned into an accept on our reading alone.)
             resp = ResponseType.ACCEPT_OFFER
         if resp is ResponseType.REJECT_OFFER:
             self._neg.note_rejection(offer)

@@ -794,28 +794,91 @@ async def test_a_run_going_in_circles_stops_and_says_why():
     assert len(asked) < 12  # well short of the 40-step cap
 
 
-def test_rejecting_the_offer_you_proposed_yourself_reads_as_accepting_it():
-    """What kept two agreeing agents in a loop: each 'rejected' the very offer it
-    had proposed. That's a misreading, so it counts as acceptance."""
+def _own_offer_negotiation(answer_when_asked_again: str) -> tuple[Any, list[str]]:
+    """``risk`` proposed 30 and is now asked about 30, which it turns down; when
+    asked again whether it still wants its own offer, it answers as given."""
+    asked: list[str] = []
+
+    def llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
+        # The reader maps what the agent said; "yes" is an accept, anything else a reject.
+        return json.dumps({"action": "accept" if '"""yes"""' in prompt else "reject"})
+
     neg = mediator.MediatedNegotiation(
         issues=[{"name": "cap", "options": ["25", "30"]}],
         cap=8,
         loop=asyncio.new_event_loop(),
         fetch_prose=lambda h, p, r: _never(),
         turn_timeout_s=1.0,
-        llm=lambda *a, **k: json.dumps({"action": "reject"}),
+        llm=llm,
     )
     neg.agent_move = lambda *a, **k: "no"  # type: ignore[method-assign]
+
+    def ask(handle: str, prompt: str, round_n: int) -> str:
+        asked.append(prompt)
+        return answer_when_asked_again
+
+    neg._ask = ask  # type: ignore[method-assign]
     neg.set_last_offer("risk", ("30",))
+    return neg, asked
 
-    class _State:
-        current_offer = ("30",)
-        step = 3
 
-    assert (
-        mediator.RemoteAgentNegotiator("risk", neg).respond(_State())
-        == mediator.ResponseType.ACCEPT_OFFER
-    )
+class _OwnOffer:
+    current_offer = ("30",)
+    step = 3
+
+
+def test_rejecting_your_own_offer_asks_again_and_takes_a_yes():
+    """What kept two agreeing agents in a loop: each turned down the very offer
+    it had proposed. It's asked once whether it still wants it."""
+    neg, asked = _own_offer_negotiation("yes")
+
+    resp = mediator.RemoteAgentNegotiator("risk", neg).respond(_OwnOffer())
+
+    assert resp == mediator.ResponseType.ACCEPT_OFFER
+    assert len(asked) == 1
+    assert "You proposed ('30',) yourself" in asked[0]
+
+
+def test_rejecting_your_own_offer_and_meaning_it_stays_a_reject():
+    """Never fabricated: an agent that really changed its mind is taken at its
+    word, and asked only once about that offer."""
+    neg, asked = _own_offer_negotiation("no, I've changed my mind")
+    negotiator = mediator.RemoteAgentNegotiator("risk", neg)
+
+    assert negotiator.respond(_OwnOffer()) == mediator.ResponseType.REJECT_OFFER
+    assert negotiator.respond(_OwnOffer()) == mediator.ResponseType.REJECT_OFFER
+    assert len(asked) == 1  # not asked again about the same offer
+
+
+def _changed_mind_llm() -> Any:
+    """Both propose 30 and then turn it down, even when asked again."""
+
+    def llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
+        if "TERM MISMATCHES" in prompt:
+            return json.dumps({"mismatches": []})
+        if "identify the negotiable ISSUES" in prompt:
+            return json.dumps({"issues": [{"name": "cap", "options": ["25", "30", "35"]}]})
+        if "Interpret @" in prompt:
+            if '"action":"counter"' in prompt:
+                return json.dumps({"action": "counter", "offer": {"cap": "30"}})
+            return json.dumps({"action": "reject"})
+        return "Still apart."
+
+    return llm
+
+
+@pytest.mark.asyncio
+async def test_a_run_whose_agents_reject_their_own_offer_and_mean_it_never_converges():
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    manager = FakeManager(FakeManaged(_ROOM, "mycelium", channel, persister), ["growth", "risk"])
+    engine = _engine(manager, llm_session_factory=lambda _ep: _changed_mind_llm(), max_steps=40)
+
+    verdict = await engine.mediate(_ROOM, scoped_participants=_PARTIES)
+
+    assert verdict is not None
+    assert verdict["header"]["subkind"] == "rejected"
+    assert verdict["payload"]["data"]["assignments"] == {}
 
 
 @pytest.mark.asyncio

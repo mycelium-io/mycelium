@@ -622,8 +622,9 @@ is no litellm dependency.
   how to add one. Each turn `@`-mentions the agent it asks
   (`addressed_turn(mention=True)`), so the wake is an ordinary mention. It
   settles at once when every party's stated opening position names the same
-  outcome, reads a reject of an offer the agent itself proposed as acceptance,
-  and stops after the same offer is rejected three times. `POST
+  outcome, asks an agent that rejects the very offer it proposed once whether
+  it still wants it (taking the answer as given, never turning a reject into an
+  accept itself), and stops after the same offer is rejected three times. `POST
   /rooms/{room}/engines/stop` (`mycelium engine stop`, the rail's Stop) ends a
   run before its next turn. Every ending commits with a `reason` when it ended
   early (`stopped`, `party_left`, `circles`) and posts one plain line; a commit
