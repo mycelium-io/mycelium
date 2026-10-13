@@ -821,6 +821,41 @@ def fetch_wakes(config: MyceliumConfig, room: str) -> list[dict]:
     return [w for w in wakes if isinstance(w, dict)]
 
 
+def outcome(wake: dict, *, delivered: bool, why: str | None = None) -> dict | None:
+    """What became of ``wake``, for :func:`report_wakes`; None for one with no id
+    (from a hub that keeps no wake log)."""
+    if not wake.get("id"):
+        return None
+    said: dict = {"id": str(wake["id"]), "delivered": delivered}
+    if why:
+        said["why"] = why[:300]
+    return said
+
+
+def report_wakes(config: MyceliumConfig, room: str, outcomes: list[dict | None]) -> None:
+    """Tell the hub what became of the wakes this pass drained, for its wake log.
+
+    Best-effort: a hub that can't be reached, or is from before the log, just
+    records them as handed without a word from here.
+    """
+    said = [o for o in outcomes if o]
+    if not said:
+        return
+    import httpx
+
+    from mycelium.client import auth_headers
+
+    try:
+        httpx.post(
+            f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-wakes/outcomes",
+            json={"outcomes": said},
+            timeout=5.0,
+            headers=auth_headers(config),
+        )
+    except Exception as e:  # noqa: BLE001 - the log says "handed" without it
+        _sync.info("couldn't report %d wake outcome(s) in %s: %s", len(said), room, e)
+
+
 def _drain_wakes(
     config: MyceliumConfig,
     bridge: HerdrBridge,
@@ -840,12 +875,14 @@ def _drain_wakes(
     """
     out = log if log is not None else console
     woke = 0
+    outcomes: list[dict | None] = []
     for w in fetch_wakes(config, room):
         handle = str(w.get("handle") or "")
         reason = w.get("reason") or "mention"
         mapping = bridge.registry.get(room, handle)
         if mapping is None:
             _sync.warning("wake @%s (%s) in %s: no pane here is bound to it", handle, reason, room)
+            outcomes.append(outcome(w, delivered=False, why="no herdr pane here is bound to it"))
             continue
         prompt = wake_prompt_for(room, w)
         line = f"wake @{handle} ({reason}) -> {mapping.pane}"
@@ -856,14 +893,18 @@ def _drain_wakes(
             )
         except HerdrError as e:
             _sync.warning("%s failed %dms: %s", line, ms(started), e)
+            outcomes.append(outcome(w, delivered=False, why=f"herdr refused it: {e}"))
             continue
         if result.ok:
             woke += 1
             _sync.info("%s ok %dms", line, ms(started))
             out.print(f"[green]↯ woke[/green] @{handle} [dim]on {reason} → {mapping.pane}[/dim]")
+            outcomes.append(outcome(w, delivered=True))
         else:
             _sync.info("%s skipped %dms: %s", line, ms(started), result.detail)
             out.print(f"[yellow]↯ skip[/yellow] @{handle} [dim]{result.detail}[/dim]")
+            outcomes.append(outcome(w, delivered=False, why=result.detail))
+    report_wakes(config, room, outcomes)
     return woke
 
 

@@ -293,24 +293,42 @@ def _schedule_lines(room: str, name: str) -> tuple[list[str], str | None]:
     return schedules.wake_text(schedule, run, room, change=False).splitlines()[1:], change
 
 
-def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | None = None) -> str:
-    """The digest typed into ``wake``'s agent: why, what changed, what asked for it."""
+def _since(handle: str, records: list[Any]) -> tuple[list[Any], int, list[Any], list[Any]]:
+    """What happened since ``handle``'s last turn: the window read, the index of
+    its last message in it (-1 for none), the records after it, and the ones
+    among them that asked for it."""
     from app.routes.participate import _addressed_to
 
+    me = _norm(handle)
+    window = records[-SCAN:]
+    # Since its last turn: after the last thing it said.
+    last = max((i for i, r in enumerate(window) if _norm(r.sender) == me), default=-1)
+    since = window[last + 1 :]
+    asked = [
+        r for r in since if _addressed_to(r.content, handle) and _conversational_text(r.content)
+    ]
+    return window, last, since, asked
+
+
+def coverage(wake: dict[str, Any], records: list[Any]) -> dict[str, Any]:
+    """Which messages a wake covers, as ids: the ones that asked for its agent,
+    and the range its digest summarized (from just after its last turn to the
+    newest). Text stays in the transcript; the wake log keeps these."""
+    _, _, since, asked = _since(str(wake.get("handle") or ""), records)
+    covered: dict[str, Any] = {"messages": [r.message_id for r in asked]}
+    if since:
+        covered["range"] = [since[0].message_id, since[-1].message_id]
+    return covered
+
+
+def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | None = None) -> str:
+    """The digest typed into ``wake``'s agent: why, what changed, what asked for it."""
     now = now or datetime.now(UTC)
     handle = str(wake.get("handle") or "")
     me = _norm(handle)
     reason = wake.get("reason") or "mention"
-    window = records[-SCAN:]
-
-    # Since its last turn: after the last thing it said.
-    last = max((i for i, r in enumerate(window) if _norm(r.sender) == me), default=-1)
-    since = window[last + 1 :]
+    window, last, since, asked = _since(handle, records)
     last_at = parse_recorded_at(window[last].recorded_at) if last >= 0 else None
-
-    asked = [
-        r for r in since if _addressed_to(r.content, handle) and _conversational_text(r.content)
-    ]
     episode = record_episode(asked[-1]) if asked else wake.get("episode")
     where = _where(room, episode)
 

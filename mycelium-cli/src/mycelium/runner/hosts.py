@@ -619,7 +619,13 @@ class OmnigentHost:
         Omnigent queues a message sent to a busy session, so a wake is handed
         over whatever the agent is doing.
         """
-        from mycelium.commands.herdr import _push_presence, fetch_wakes, wake_prompt_for
+        from mycelium.commands.herdr import (
+            _push_presence,
+            fetch_wakes,
+            outcome,
+            report_wakes,
+            wake_prompt_for,
+        )
 
         live = [a for a in state.agents.values() if a.live]
         if not live:
@@ -634,11 +640,15 @@ class OmnigentHost:
                 {h: {"status": a.status, "title": a.detail} for h, a in members.items()},
                 self._ttl_s,
             )
+            outcomes: list[dict | None] = []
             for wake in fetch_wakes(config, room):
                 handle, reason = str(wake.get("handle") or ""), wake.get("reason") or "mention"
                 agent = members.get(handle)
                 if agent is None:
                     _log.warning("wake @%s (%s) in %s: no session here is it", handle, reason, room)
+                    outcomes.append(
+                        outcome(wake, delivered=False, why="no Omnigent session here is it")
+                    )
                     continue
                 line = f"wake @{handle} ({reason}) -> {agent.pane}"
                 started = time.monotonic()
@@ -647,12 +657,15 @@ class OmnigentHost:
                 except HostError as e:
                     _log.warning("%s failed %dms: %s", line, ms(started), e)
                     log.print(f"[yellow]↯ skip[/yellow] @{agent.handle} [dim]{e}[/dim]")
+                    outcomes.append(outcome(wake, delivered=False, why=f"Omnigent refused it: {e}"))
                     continue
                 _log.info("%s ok %dms", line, ms(started))
                 log.print(
                     f"[green]↯ woke[/green] @{agent.handle} "
                     f"[dim]on {wake.get('reason') or 'mention'} → {agent.pane}[/dim]"
                 )
+                outcomes.append(outcome(wake, delivered=True))
+            report_wakes(config, room, outcomes)
 
 
 def branch_for(room: str, handle: str) -> str:

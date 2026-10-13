@@ -1904,6 +1904,14 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
+    "t": "mycelium room wakes [<room> | --room <room>] [--agent <handle>] [--limit N]",
+    "s": "CLI Reference",
+    "x": "What each wake the hub raised in a room delivered, newest first: who it was for, why, the messages it covered, and whether it reached the agent.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-room",
     "t": "mycelium room search [\"<query>\"] [--from <handle>] [--task <row>] [--since <when>] [--before <when>] [--in channel|thread] [--sort newest|oldest|relevance] [--facets] [--context N]",
     "s": "CLI Reference",
     "x": "Search every message in a room by any field: words, \"phrases\", from: to: mentions: task: in: stance: has: is: type: kind: step: day:, time bounds (after:2h, on:2026-09-03) and - to exclude. Prints counts per field to narrow by; --facets prints only those.",

@@ -39,6 +39,7 @@ from app.services import (
     room_channels,
     tasks,
     wake_digest,
+    wake_log,
 )
 from app.services.filesystem import (
     ensure_room_structure,
@@ -288,11 +289,86 @@ async def drain_herdr_wakes(room_name: str):
             wake["prompt"] = wake_digest.build(room_name, wake, records)
         except Exception:
             logger.exception("wake digest failed for @%s in %s", wake.get("handle"), room_name)
+        # What it covered goes in the wake log, kept until the runner says
+        # whether it reached the agent (``POST herdr-wakes/outcomes``).
+        try:
+            wake_log.handed(room_name, wake, wake_digest.coverage(wake, records))
+        except Exception:
+            logger.exception("wake log failed for @%s in %s", wake.get("handle"), room_name)
         # Handed to its host to type now, so the room hears it's being worked
         # on whether or not the agent reads through ``await``. Its reply, or
         # the TTL, settles it.
         activity.signal(room_name, wake["handle"], "responding", episode=wake.get("episode"))
     return {"wakes": wakes}
+
+
+class WakeOutcome(BaseModel):
+    """What a runner did with one wake it was handed."""
+
+    id: str = Field(..., min_length=1, max_length=64)
+    delivered: bool
+    why: str | None = Field(
+        None, max_length=300, description="Why it wasn't delivered: no pane, herdr refused"
+    )
+
+
+class WakeOutcomes(BaseModel):
+    outcomes: list[WakeOutcome] = Field(default_factory=list, max_length=200)
+
+
+@router.post("/herdr-wakes/outcomes")
+async def report_herdr_wakes(room_name: str, body: WakeOutcomes):
+    """A runner says what happened to the wakes it drained: delivered, or not and why.
+
+    Each settles the wake's line in the room's wake log; one already settled,
+    or not awaited, is ignored, so a retried report records nothing twice.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    recorded = sum(
+        wake_log.report(room_name, o.id, delivered=o.delivered, why=o.why) for o in body.outcomes
+    )
+    return {"recorded": recorded}
+
+
+class WakeRecord(BaseModel):
+    """One wake the hub raised for an agent, and what became of it."""
+
+    id: str | None = None
+    agent: str
+    reason: str = Field(..., description="mention, turn, interrupt, assigned or schedule")
+    outcome: str = Field(
+        ...,
+        description="delivered; dropped (see why); handed (the runner didn't say); "
+        "pending (handed, the runner hasn't said yet)",
+    )
+    why: str | None = None
+    sender: str | None = Field(None, alias="from")
+    episode: str | None = None
+    task: str | None = None
+    messages: list[str] = Field(
+        default_factory=list, description="Ids of the messages that asked for the agent"
+    )
+    range: list[str] | None = Field(
+        None, description="First and last message id the wake's digest summarized"
+    )
+    handed_at: str | None = None
+    at: str | None = Field(None, description="When it was settled")
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/wakes", response_model=list[WakeRecord], response_model_by_alias=True)
+async def list_wakes(room_name: str, agent: str | None = None, limit: int = 50):
+    """What each wake in this room delivered, newest first (``log/wakes.jsonl``).
+
+    For telling "it was told and didn't act" from "it was never woken with it":
+    each names the messages it covered by id, so the transcript holds the text.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    who = agent.lstrip("@").lower() if agent else None
+    return wake_log.read(room_name, agent=who, limit=max(1, min(limit, 1000)))
 
 
 @router.delete("/{session_id}", status_code=204)

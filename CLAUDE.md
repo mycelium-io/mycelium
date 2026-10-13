@@ -188,6 +188,13 @@ expired and blocked rows), the messages that asked for it (cut, with the rest
 counted), then `await` first and a reply line that names the task's thread.
 Delivering a wake raises
 `responding`, so the room sees the agent on it whatever host typed the prompt.
+Every wake is recorded, one line each, in the room's `log/wakes.jsonl`
+(`app/services/wake_log.py`, read with `mycelium room wakes`): who it was for,
+why, the ids of the messages it covered, and whether it reached the agent. The
+runner reports that back (`POST …/herdr-wakes/outcomes`); the hub records what
+it dropped itself (held too long, or a mention of an agent nothing runs). Ids
+only, never text, rotated past 2 MB. It tells "it was told and didn't act" from
+"it was never woken with it".
 
 **Tasks are the surface.** A board row is a markdown memory (body + frontmatter)
 and, through a store-owned episode binding, a thread on the room's channel
