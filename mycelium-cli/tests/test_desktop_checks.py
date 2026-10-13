@@ -131,7 +131,7 @@ def test_herdr_older_than_mycelium_needs_is_an_error_with_its_fix(
     monkeypatch.setattr(HerdrBridge, "available", lambda _self: True)
     monkeypatch.setattr(HerdrBridge, "server_version", lambda _self: server)
     monkeypatch.setattr(HerdrBridge, "version", lambda _self: client)
-    monkeypatch.setattr(herdr_server, "stale", lambda: None)
+    monkeypatch.setattr(herdr_server, "stale", lambda _app: None)
     result = checks.herdr()
     assert result.status == status
     if fix:

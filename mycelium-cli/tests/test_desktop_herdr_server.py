@@ -57,6 +57,23 @@ def test_a_program_written_after_the_server_started_is_replaced(tmp_path: Path):
     assert Server(1, tmp_path / "gone", started=written).replaced_at() is not None
 
 
+def test_only_the_apps_own_herdr_counts(tmp_path: Path, monkeypatch):
+    # A herdr installed some other way (Homebrew, say) is the person's own: an
+    # upgrade replacing it must not make the app ask to restart it.
+    app_herdr, brew_herdr = tmp_path / "app" / "herdr", tmp_path / "brew" / "herdr"
+    for program in (app_herdr, brew_herdr):
+        program.parent.mkdir()
+        program.write_text("")
+    replaced = app_herdr.stat().st_ctime - 3600
+
+    monkeypatch.setattr(herdr_server, "running", lambda: Server(7, brew_herdr, replaced))
+    assert herdr_server.stale(app_herdr) is None
+    monkeypatch.setattr(herdr_server, "running", lambda: Server(7, app_herdr, replaced))
+    assert herdr_server.stale(app_herdr) is not None
+    # Outside the app (a checkout) there's no copy of its own to compare with.
+    assert herdr_server.stale(None) is None
+
+
 def test_what_happens_to_agents_depends_on_herdrs_integrations(monkeypatch):
     from mycelium import machine
 
@@ -82,15 +99,15 @@ class Events(list):
         return [e for e in self if e["type"] == kind]
 
 
-APP_HERDR = ["/Applications/Mycelium.app/Contents/MacOS/herdr", "server"]
+APP_HERDR = Path("/Applications/Mycelium.app/Contents/MacOS/herdr")
 
 
 class AppLocator(Locator):
-    def herdr(self) -> list[str]:
+    def app_herdr(self) -> Path | None:
         return APP_HERDR
 
 
-def _supervisor(tmp_path: Path, found: list[Server | None], restarted: list) -> tuple:
+def _supervisor(tmp_path: Path, found: list[Server | None] | None, restarted: list) -> tuple:
     events = Events()
     sup = Supervisor(
         "client",
@@ -99,8 +116,8 @@ def _supervisor(tmp_path: Path, found: list[Server | None], restarted: list) -> 
         env={},
         start_runner=False,
         locator=AppLocator(None, None),
-        stale_herdr=lambda: found[-1],
-        restart_herdr=lambda server, argv: restarted.append((server.pid, argv)),
+        stale_herdr=(lambda: found[-1]) if found is not None else None,
+        restart_herdr=lambda server: restarted.append(server.pid),
         requests_base=tmp_path,
     )
     herdr = Component(name="herdr", argv=lambda: ([], None), ready=lambda: True, state="running")
@@ -138,7 +155,15 @@ def test_a_stale_server_is_reported_and_restarted_on_a_yes(tmp_path: Path, monke
 
     _answer(tmp_path, events, yes=True)
     _settle(lambda: restarted)
-    assert restarted == [(42, APP_HERDR)]
+    assert restarted == [42]
+
+
+def test_the_supervisor_compares_with_the_apps_own_herdr(tmp_path: Path, monkeypatch):
+    compared: list = []
+    monkeypatch.setattr(herdr_server, "stale", lambda app: compared.append(app))
+    sup, _events = _supervisor(tmp_path, None, [])
+    sup._watch_herdr(now=1.0)
+    assert compared == [APP_HERDR]
 
 
 def test_herdr_is_left_alone_on_a_no_and_each_server_is_asked_once(tmp_path, monkeypatch):
@@ -176,22 +201,22 @@ def test_nothing_is_checked_until_herdr_is_running(tmp_path: Path):
 # ── restarting ──────────────────────────────────────────────────────────────
 
 
-def test_restart_stops_the_old_server_and_starts_the_new_one(tmp_path: Path, monkeypatch):
+def test_restart_stops_the_old_server_and_starts_the_same_program(tmp_path: Path, monkeypatch):
     from mycelium.integrations.herdr import HerdrBridge
 
     monkeypatch.setattr(herdr_server, "LOG_PATH", tmp_path / "herdr.log")
     monkeypatch.setattr(HerdrBridge, "available", lambda _self: True)
-    # A program whose `server stop` does nothing, so the old one has to be signalled.
+    # A program whose `server stop` does nothing, so the old one has to be
+    # signalled, and whose `server` leaves a mark saying it was started.
+    marker = tmp_path / "started"
     program = tmp_path / "herdr"
-    program.write_text("#!/bin/sh\nexit 0\n")
+    program.write_text(f'#!/bin/sh\n[ "$1 $2" = "server stop" ] || touch {marker}\n')
     program.chmod(0o755)
     old = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     reaper = threading.Thread(target=old.wait, daemon=True)
     reaper.start()
-    marker = tmp_path / "started"
-    start = [sys.executable, "-c", f"open({str(marker)!r}, 'w').close()"]
 
-    herdr_server.restart(Server(old.pid, program, started=0.0), start, timeout=5)
+    herdr_server.restart(Server(old.pid, program, started=0.0), timeout=5)
 
     reaper.join(timeout=5)
     assert old.poll() is not None
@@ -215,7 +240,7 @@ def test_the_health_check_warns_and_says_how_to_restart(monkeypatch, tmp_path: P
         monkeypatch.setattr(HerdrBridge, name, lambda _self, v=value: v)
     monkeypatch.setattr(HerdrBridge, "server_version", lambda _self: "0.9.3")
     monkeypatch.setattr(HerdrBridge, "version", lambda _self: "0.9.3")
-    monkeypatch.setattr(herdr_server, "stale", lambda: Server(1, tmp_path / "herdr", 0.0))
+    monkeypatch.setattr(herdr_server, "stale", lambda _app: Server(1, tmp_path / "herdr", 0.0))
     monkeypatch.setattr(herdr_server, "agents_after_restart", lambda: "agents line")
     result = checks.herdr()
     assert result.status == "warning"
@@ -227,16 +252,22 @@ def test_the_command_restarts_only_a_stale_server(monkeypatch, tmp_path: Path):
     from mycelium.cli import app
 
     restarted: list = []
-    monkeypatch.setattr(herdr_server, "restart", lambda server, argv: restarted.append(argv))
+    monkeypatch.setattr(herdr_server, "restart", lambda server: restarted.append(server.pid))
     monkeypatch.setattr(herdr_server, "agents_after_restart", lambda: "agents line")
-    monkeypatch.setattr(Locator, "herdr", lambda _self: ["/x/herdr", "server"])
+    monkeypatch.setattr(Locator, "app_herdr", lambda _self: APP_HERDR)
 
-    monkeypatch.setattr(herdr_server, "stale", lambda: None)
+    monkeypatch.setattr(herdr_server, "stale", lambda _app: None)
     result = CliRunner().invoke(app, ["desktop", "restart-herdr", "--yes"])
     assert result.exit_code == 0
     assert restarted == []
 
-    monkeypatch.setattr(herdr_server, "stale", lambda: Server(1, tmp_path / "herdr", 0.0))
+    compared: list = []
+
+    def stale(app_herdr: Path) -> Server:
+        compared.append(app_herdr)
+        return Server(9, tmp_path / "herdr", 0.0)
+
+    monkeypatch.setattr(herdr_server, "stale", stale)
     result = CliRunner().invoke(app, ["desktop", "restart-herdr", "--yes"])
     assert result.exit_code == 0, result.output
-    assert restarted == [["/x/herdr", "server"]]
+    assert (restarted, compared) == ([9], [APP_HERDR])

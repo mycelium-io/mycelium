@@ -214,6 +214,10 @@ class Locator:
             )
         return [str(exe), "server"]
 
+    def app_herdr(self) -> Path | None:
+        """The app's own herdr, or ``None`` outside the app (a checkout)."""
+        return self._program("herdr")
+
     def pi(self) -> str | None:
         """Pi, which the engines think with: the app's own, else one on PATH.
 
@@ -350,7 +354,7 @@ class Supervisor:
         voice_model: str | None = None,
         look: Callable[[], list[Any]] | None = None,
         stale_herdr: Callable[[], Any] | None = None,
-        restart_herdr: Callable[[Any, list[str]], None] | None = None,
+        restart_herdr: Callable[[Any], None] | None = None,
         requests_base: Path | None = None,
     ) -> None:
         if mode == "client" and not hub_url:
@@ -703,7 +707,8 @@ class Supervisor:
         self._herdr_checked_at = now
         from mycelium.desktop import herdr_server
 
-        server = (self.find_stale_herdr or herdr_server.stale)()
+        find = self.find_stale_herdr or (lambda: herdr_server.stale(self.locator.app_herdr()))
+        server = find()
         wire = server.wire() if server is not None else None
         if wire != self.stale_herdr:
             self.stale_herdr = wire
@@ -751,8 +756,8 @@ class Supervisor:
         restart = self.restart_herdr or herdr_server.restart
         self.emit({"type": "log", "component": "herdr", "line": "restarting herdr's server"})
         try:
-            restart(server, self.locator.herdr())
-        except (herdr_server.RestartError, LocateError) as e:
+            restart(server)
+        except herdr_server.RestartError as e:
             self.emit({"type": "error", "component": "herdr", "message": str(e)})
         else:
             self.emit({"type": "log", "component": "herdr", "line": "herdr's server restarted"})

@@ -241,7 +241,7 @@ def herdr() -> CheckResult:
     from mycelium.desktop import herdr_server
     from mycelium.desktop.supervisor import STALE_HERDR_WARNING
 
-    if herdr_server.stale() is not None:
+    if herdr_server.stale(Locator().app_herdr()) is not None:
         return CheckResult(
             name="herdr",
             status="warning",

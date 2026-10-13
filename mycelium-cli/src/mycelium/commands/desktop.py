@@ -263,19 +263,19 @@ def restart_herdr(yes: bool = False) -> None:
         mycelium desktop restart-herdr --yes
     """
     from mycelium.desktop import herdr_server
-    from mycelium.desktop.supervisor import STALE_HERDR_WARNING, LocateError, Locator
+    from mycelium.desktop.supervisor import STALE_HERDR_WARNING, Locator
 
-    server = herdr_server.stale()
+    server = herdr_server.stale(Locator().app_herdr())
     if server is None:
-        console.print("herdr's server is current; there's nothing to restart.")
+        console.print("The app's herdr server is current; there's nothing to restart.")
         return
     console.print(STALE_HERDR_WARNING)
     console.print(herdr_server.agents_after_restart())
     if not yes and not typer.confirm("Restart herdr's server now?", default=False):
         raise typer.Exit(1)
     try:
-        herdr_server.restart(server, Locator().herdr())
-    except (herdr_server.RestartError, LocateError) as exc:
+        herdr_server.restart(server)
+    except herdr_server.RestartError as exc:
         console.print(f"[red]{exc}[/]")
         raise typer.Exit(1) from None
     console.print("[green]✓[/] herdr's server restarted.")

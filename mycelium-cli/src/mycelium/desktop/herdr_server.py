@@ -11,11 +11,13 @@ program file is a new one, and macOS can refuse that server, and every shell it
 started, access to those folders until it restarts. Shells there print
 ``getcwd: Operation not permitted``.
 
-This finds that case: a herdr server whose program file was written after the
-server started. The file's change time (``st_ctime``) is used, because an
-update unpacks files with the times they were built at, so their modification
-times can be older than the server. Restarting stops the server, which ends the
-agents in it, and starts it again from the app's own program.
+This finds that case: a server running the app's own herdr, whose program file
+was written after the server started. A herdr installed some other way (by
+Homebrew, say) is the person's own and is left alone. The file's change time
+(``st_ctime``) is used, because an update unpacks files with the times they
+were built at, so their modification times can be older than the server.
+Restarting stops the server, which ends the agents in it, and starts the same
+program again.
 """
 
 from __future__ import annotations
@@ -31,9 +33,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-#: How long after the server started its program file may still be written
-#: without counting as replaced (the install finishing as it starts).
-SLACK_S = 5.0
+#: How long after the server started its program file may still change
+#: without counting as replaced. The change time also moves when only a file's
+#: attributes do, which macOS can do around an app's first launch.
+SLACK_S = 120.0
 #: How long a stopped or started server is waited for.
 WAIT_S = 20.0
 #: Where a restarted server's output goes.
@@ -125,10 +128,23 @@ def running() -> Server | None:
     return servers[0] if servers else None
 
 
-def stale() -> Server | None:
-    """The running herdr server, when its program was replaced after it started."""
+def _same(a: Path, b: Path) -> bool:
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return False
+
+
+def stale(app_herdr: Path | None) -> Server | None:
+    """The running herdr server, when it runs ``app_herdr`` (the app's own copy)
+    and that program was replaced after it started. ``None`` when there's no
+    app copy to compare with, as in a checkout."""
+    if app_herdr is None:
+        return None
     server = running()
-    return server if server is not None and server.replaced_at() is not None else None
+    if server is None or not _same(server.program, app_herdr):
+        return None
+    return server if server.replaced_at() is not None else None
 
 
 def agents_after_restart() -> str:
@@ -172,13 +188,15 @@ def _wait(until: Any, timeout: float) -> bool:
     return bool(until())
 
 
-def restart(server: Server, start: list[str], *, timeout: float = WAIT_S) -> None:
-    """Stop ``server`` and start herdr's server again with ``start``.
+def restart(server: Server, start: list[str] | None = None, *, timeout: float = WAIT_S) -> None:
+    """Stop ``server`` and start herdr's server again: ``start``, or by default
+    the same program it was running.
 
     Asks the server to stop through its own command first, then signals it if
     it hasn't gone. The new server runs on its own, past whatever started it,
     and writes to :data:`LOG_PATH`.
     """
+    start = start or [str(server.program), "server"]
     from mycelium.integrations.herdr import HerdrBridge
 
     with contextlib.suppress(OSError, subprocess.SubprocessError):
@@ -196,7 +214,7 @@ def restart(server: Server, start: list[str], *, timeout: float = WAIT_S) -> Non
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
         with LOG_PATH.open("a") as log:
-            subprocess.Popen(  # noqa: S603 - argv comes from the Locator, never a shell string
+            subprocess.Popen(  # noqa: S603 - the server's own program, never a shell string
                 start,
                 stdin=subprocess.DEVNULL,
                 stdout=log,
