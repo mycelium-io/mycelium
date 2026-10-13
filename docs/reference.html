@@ -120,6 +120,7 @@
         <a href="engines.html#synthesizer" class="nav-link sub">Synthesizer</a>
         <a href="engines.html#persona" class="nav-link sub">Persona</a>
         <a href="engines.html#worker" class="nav-link sub">Worker</a>
+        <a href="engines.html#verifier" class="nav-link sub">Verifier</a>
         <a href="engines.html#hello" class="nav-link sub">Hello</a>
       </div>
     </div>
@@ -206,6 +207,7 @@
           <a href="#config-slim" class="nav-link sub">slim</a>
           <a href="#config-engine" class="nav-link sub">engine</a>
           <a href="#config-voice" class="nav-link sub">voice</a>
+          <a href="#config-verifier" class="nav-link sub">verifier</a>
           <a href="#config-auth" class="nav-link sub">auth</a>
           <a href="#config-login" class="nav-link sub">login</a>
           <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
@@ -1220,6 +1222,15 @@
 
 <span class="comment"># Let the hub download the speech model when voice is on and the model isn&#x27;t there. Off, put the files in the hub&#x27;s data folder under models/voice yourself.</span>
 <span class="arg">download</span> = <span class="flag">true</span>
+
+<span class="comment"># The verifier: checks what agents say about approvals and merges against the</span>
+<span class="cmd" id="config-verifier">[verifier]</span>
+
+<span class="comment"># Turn the verifier on for this hub. It then reads only the rooms that add it (`/engine verifier`, or Add member). Off, nothing is checked.</span>
+<span class="arg">enabled</span> = <span class="flag">false</span>
+
+<span class="comment"># Have the hub&#x27;s model read the thread before a line is shown, so a claim the records got wrong is dropped. It runs on a few messages in a hundred. Off, the records alone decide: cheaper, and noisier.</span>
+<span class="arg">confirm</span> = <span class="flag">true</span>
 
 <span class="comment"># HTTP-API JWT gate, off by default.</span>
 <span class="cmd" id="config-auth">[auth]</span>

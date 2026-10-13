@@ -54,6 +54,7 @@ from app.services.persister import (
     ConvergedHook,
     RoomPersister,
     SummonHook,
+    TranscriptRecord,
     bus_frame,
     parse_interrupt_mentions,
     parse_mentions,
@@ -90,6 +91,9 @@ RoomAddressedHook = Callable[[str, str, "MyceliumMessage", str], None]
 # is the notice's payload (``subkind``, ``key``, ``title``, ``episode``, ``by``,
 # and ``for`` on a ``filed`` row given to someone).
 RoomNoticeHook = Callable[[str, dict[str, str]], None]
+# The every-message hook: ``(room, record)`` once per message the room records,
+# after it is durable. The verifier reads agents' prose off it.
+RoomRecordedHook = Callable[[str, "TranscriptRecord"], None]
 
 logger = logging.getLogger(__name__)
 
@@ -339,6 +343,9 @@ class RoomChannelManager:
         # worker engine, the herdr doorbell) hears it move without polling it.
         # A notice still wakes no ``await``; this is an in-process listener.
         self.on_notice: RoomNoticeHook | None = None
+        # Fired for every recorded message, so something that reads the room as
+        # it goes (the verifier) doesn't poll the transcript. Wakes nobody.
+        self.on_recorded: RoomRecordedHook | None = None
         self._metrics = ChannelMetrics()
         # Server-held presence: a handle that participates over HTTP (the CLI
         # ``await``/``respond`` long-poll) never holds a client SLIM connection,
@@ -951,6 +958,7 @@ class RoomChannelManager:
             on_summon=self._summon_adapter(room),
             on_converged=self._converged_adapter(room),
             on_addressed=self._addressed_adapter(room),
+            on_recorded=self._recorded_adapter(room),
             on_member_left=lambda handle, _room=room: self._drop_member(_room, handle),
         )
         managed.persister_task = asyncio.create_task(managed.persister.run())
@@ -1059,6 +1067,17 @@ class RoomChannelManager:
             handle: str, envelope: MyceliumMessage, message_text: str = "", _room: str = room
         ) -> None:
             hook(_room, handle, envelope, message_text)
+
+        return adapter
+
+    def _recorded_adapter(self, room: str) -> Callable[[TranscriptRecord], None] | None:
+        """Bind ``room`` onto the room-aware ``on_recorded`` hook. Read at call
+        time, so a hook wired after the room's persister started still fires."""
+
+        def adapter(record: TranscriptRecord, _room: str = room) -> None:
+            hook = self.on_recorded
+            if hook is not None:
+                hook(_room, record)
 
         return adapter
 

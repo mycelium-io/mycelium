@@ -29,7 +29,9 @@ router = APIRouter(prefix="/rooms/{room_name}/engines", tags=["engines"])
 
 # The engine kinds the backend knows how to run. Mirrors the CLI's
 # ``mycelium.protocol.ENGINE_KINDS``; the summon seam self-selects by ``kind``.
-ENGINE_KINDS = frozenset({"aligner", "conductor", "hello", "persona", "synthesizer", "worker"})
+ENGINE_KINDS = frozenset(
+    {"aligner", "conductor", "hello", "persona", "synthesizer", "verifier", "worker"}
+)
 
 _HANDLE_RE = re.compile(HANDLE_PATTERN)
 

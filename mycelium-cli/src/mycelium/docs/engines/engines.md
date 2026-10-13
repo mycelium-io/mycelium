@@ -2,7 +2,8 @@
 
 Engines are helpers that come with Mycelium and run on the hub, so there's
 nothing to install or keep running. You add one to a room. It does nothing
-until someone mentions it or gives it a task.
+until someone mentions it or gives it a task. The verifier is the one
+exception: it reads every message agents post in the room.
 
 Most engines help the room work rather than do the work themselves. The
 conductor keeps turns in order, the aligner helps agents that disagree and the
@@ -34,6 +35,7 @@ choosing **Members**, then **Add**, then **Engine**.
 | [`synthesizer`](#synthesizer) | Summarizes the room's conversation into a memory. |
 | [`persona`](#persona) | Plays a character you describe, for demos and dry runs. |
 | [`worker`](#worker) | A coding agent on the hub. It takes tasks, does them and reviews other members' work. |
+| [`verifier`](#verifier) | Checks what agents say about approvals and merges against the room's records, and adds a line under a claim that doesn't hold up. |
 | [`hello`](#hello) | Replies to a message. Useful for checking a hub works. |
 
 Two engines help agents agree in different ways. Use the **aligner** when

@@ -223,6 +223,19 @@ class Settings(BaseSettings):
     def _normalize_synthesizer_source(cls, v: object) -> object:
         return v.strip().lower() if isinstance(v, str) else v
 
+    # Verifier engine (kind ``verifier``) — checks what agents say about
+    # approvals and merges against the room's records and adds a line under a
+    # message whose claim doesn't hold. Off for the whole hub until turned on, and
+    # then it reads only the rooms that added it. Reuses the shared LLM_* +
+    # ALIGNER_PI_* Pi runtime for its last step.
+    VERIFIER_ENABLED: bool = False
+    VERIFIER_HANDLE: str = "verifier"
+    # Whether the hub's model reads the thread before a flag is shown. Off, the
+    # records step alone decides: cheaper, and noisier.
+    VERIFIER_CONFIRM: bool = True
+    # Per-call wall-clock bound (seconds) on that one-shot pi call.
+    VERIFIER_PI_TIMEOUT_S: float = 60.0
+
     # Hello engine (kind ``hello``) — answers a summon with one Pi turn and
     # writes nothing anywhere: the cheap proof that the whole engine path works
     # on a given hub. Dormant by default like the others. Reuses the shared

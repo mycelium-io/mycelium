@@ -1444,3 +1444,72 @@ class ScheduleListResponse(BaseModel):
     checks: dict[str, str] = Field(
         default_factory=dict, description="The pre-checks the hub runs, and what each finds"
     )
+
+
+# --- Verifier ---------------------------------------------------------------
+
+
+class VerifierCheckedRead(BaseModel):
+    """One record the verifier looked at, for *Show why*."""
+
+    what: str = Field(..., description="What was looked at: 'approvals of #1278 in this room'")
+    found: str = Field(..., description="What it found: 'none', 'approved', 'merged at 20:08'")
+    id: str | None = Field(None, description="The message or notice it found, when there is one")
+    at: str | None = None
+
+
+class VerifierFlagRead(BaseModel):
+    """A claim the verifier couldn't confirm, drawn as a line under its message."""
+
+    flag_id: str
+    message_id: str = Field(
+        ..., description="The message the line goes under: its id in the room's history read"
+    )
+    key: str = Field(..., description="The thread's short id, or 'live'")
+    about: str = Field(..., description="The agent that made the claim")
+    by: str = Field(..., description="The verifier engine's handle")
+    claim: Literal["approval", "open"]
+    ref: str = Field(..., description="The pull request it is about: '#1278'")
+    line: str = Field(..., description="The line to show, written by the verifier")
+    sure: bool = Field(
+        ..., description="True when the records say the opposite, false when nothing was found"
+    )
+    quotes: list[str] = Field(default_factory=list, description="The exact words to underline")
+    sentence: str
+    why: str = ""
+    checked: list[VerifierCheckedRead] = []
+    state: Literal["shown", "fine"]
+    fine_by: str | None = None
+    at: str
+
+
+class VerifierFineRequest(BaseModel):
+    by: str | None = Field(
+        None, description="Who says it's fine (bound to the caller when sign-in is on)"
+    )
+
+
+class VerifierEstimateRead(BaseModel):
+    messages: int
+    approx_tokens: int
+    approx_usd: float
+
+
+class VerifierLearningRead(BaseModel):
+    state: Literal["idle", "running", "done", "failed"]
+    done: int = 0
+    total: int = 0
+    error: str | None = None
+
+
+class VerifierSettingsRead(BaseModel):
+    enabled: bool
+    rooms: list[str] = Field(default_factory=list, description="The rooms that added the verifier")
+    model: str = Field(..., description="The search model its claim spotter runs on")
+    using: Literal["starting", "learned", "none"]
+    learned: int | None = Field(
+        None, description="Messages it learned from, or null on the starting model"
+    )
+    answers_since_learned: int = 0
+    estimate: VerifierEstimateRead
+    learning: VerifierLearningRead

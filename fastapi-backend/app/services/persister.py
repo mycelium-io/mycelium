@@ -389,6 +389,11 @@ def record_episode(record: TranscriptRecord) -> str | None:
     return episode if isinstance(episode, str) and episode else None
 
 
+def read_id(record: TranscriptRecord) -> uuid.UUID:
+    """The id the room's history read gives ``record`` (``MessageRead.id``)."""
+    return uuid.uuid5(_MESSAGE_ID_NS, record.message_id or f"{record.recorded_at}:{record.sender}")
+
+
 def record_from(
     envelope: MyceliumMessage, content: dict[str, Any], *, now: str | None = None
 ) -> TranscriptRecord:
@@ -595,7 +600,6 @@ def stored_message_from_record(
         return None
     header = record.content.get("l9", {}).get("header", {})
     episode = header.get("message", {}).get("episode")
-    seed = record.message_id or f"{record.recorded_at}:{record.sender}"
     # A conductor post carries a structured line beside its prose (see
     # ``conductor.LINE_KEY``). The chat projection keeps only prose, so the line
     # rides the message's metadata, and a reload draws the run as the live
@@ -611,7 +615,7 @@ def stored_message_from_record(
         episode=episode if isinstance(episode, str) else None,
         message_id=record.message_id or None,
         amends=amended_target(record.subkind, header.get("message", {}).get("parents")),
-        id=uuid.uuid5(_MESSAGE_ID_NS, seed),
+        id=read_id(record),
     )
     recorded = parse_recorded_at(record.recorded_at) or fallback
     if recorded is not None:
@@ -849,6 +853,9 @@ ConvergedHook = Callable[["MyceliumMessage"], None]
 # Called with the handle of a member that dropped off the channel, so the
 # moderator can update its membership — presence, not a fatal error.
 MemberLeftHook = Callable[[str], None]
+#: Fired once per recorded message with the record as stored (the verifier reads
+#: agents' prose off it). Runs after the record is durable and on the bus.
+RecordedHook = Callable[["TranscriptRecord"], None]
 
 # Consecutive genuine transport failures before the loop gives up — keeps a
 # torn-down channel from spinning a hot loop while tolerating transient hiccups.
@@ -939,6 +946,7 @@ class RoomPersister:
         on_converged: ConvergedHook | None = None,
         on_member_left: MemberLeftHook | None = None,
         on_addressed: AddressedHook | None = None,
+        on_recorded: RecordedHook | None = None,
         feed_bus: bool = True,
     ) -> None:
         self.room = room
@@ -946,6 +954,7 @@ class RoomPersister:
         self._members_provider = members_provider
         self.on_summon = on_summon or _default_summon_hook
         self.on_addressed = on_addressed
+        self.on_recorded = on_recorded
         self.on_converged = on_converged or _default_converged_hook
         self.on_member_left = on_member_left
         self._feed_bus = feed_bus
@@ -1220,6 +1229,11 @@ class RoomPersister:
             self._record_to_list_store(record)
         if self._feed_bus:
             self._publish_to_bus(record)
+        if self.on_recorded is not None:
+            try:
+                self.on_recorded(record)
+            except Exception:
+                logger.exception("recorded hook failed for %s", record.message_id)
         # Triggers: @-summon and commit:converged (skeleton hooks). The full
         # summon list is passed to every hook call so an engine summoned alongside
         # other handles (``@aligner @a @b``) can scope the run to those co-mentions.

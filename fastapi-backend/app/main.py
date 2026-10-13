@@ -59,6 +59,7 @@ from app.routes.swarms import router as swarms_router
 from app.routes.tasks import router as tasks_router
 from app.routes.uploads import router as uploads_router
 from app.routes.users import router as users_router
+from app.routes.verifier import router as verifier_router
 from app.routes.voice import router as voice_router
 from app.services.auth import auth_gate
 from app.services.filesystem import UnsafePathError
@@ -197,6 +198,9 @@ async def lifespan(app: FastAPI):
     app.state.conductor.on_step = app.state.standing.on_step
     app.state.persona = PersonaEngine(room_channel_manager)
     app.state.worker = WorkerEngine(room_channel_manager)
+    from app.services.verifier import VerifierEngine
+
+    app.state.verifier = VerifierEngine(room_channel_manager)
     # The A2A responder shares the seam too: it answers @-mentions of a
     # registered a2a agent by calling the remote endpoint, gating on the manifest
     # like the engines gate on their kind, so only one handler ever acts.
@@ -262,6 +266,9 @@ async def lifespan(app: FastAPI):
             logger.exception("usage notice handler failed in %s", room)
 
     room_channel_manager.on_notice = _dispatch_notice
+    # Every recorded message: the verifier reads agents' prose in rooms that
+    # added it, and adds a line under a claim the records don't back up.
+    room_channel_manager.on_recorded = app.state.verifier.handle_recorded
     logger.info(
         "engines wired (aligner @%s, synthesizer @%s, hello @%s, conductor @%s, "
         "persona @%s, workers by kind; llm=pi via %s)",
@@ -419,6 +426,7 @@ app.include_router(skills_router, prefix="/api")
 app.include_router(room_settings_router, prefix="/api")
 app.include_router(uploads_router, prefix="/api")
 app.include_router(voice_router, prefix="/api")
+app.include_router(verifier_router, prefix="/api")
 app.include_router(patterns_router, prefix="/api")
 app.include_router(protocols_router, prefix="/api")
 app.include_router(status_router, prefix="/api")

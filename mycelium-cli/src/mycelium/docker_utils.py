@@ -323,6 +323,9 @@ def generate_env_file(
         f"VOICE_ENABLED={str(config.voice.enabled).lower()}",
         f"VOICE_MODEL={config.voice.model}",
         f"VOICE_DOWNLOAD={str(config.voice.download).lower()}",
+        # The verifier; off unless turned on, then only in rooms that add it.
+        f"VERIFIER_ENABLED={str(config.verifier.enabled).lower()}",
+        f"VERIFIER_CONFIRM={str(config.verifier.confirm).lower()}",
         "",
         "# ── Auth (HTTP-API JWT gate; off unless auth.enabled is set) ─────────────",
         f"AUTH_ENABLED={str(config.auth.enabled).lower()}",

@@ -210,6 +210,7 @@ stage_hub() {
       --hidden-import uvicorn.protocols.http.auto --hidden-import uvicorn.protocols.websockets.auto \
       --hidden-import uvicorn.lifespan.on \
       --add-data "$repo/fastapi-backend/pyproject.toml:." \
+      --add-data "$repo/fastapi-backend/app/data/verifier:app/data/verifier" \
       hub_entry.py
   )
   rm -rf "$res/hub" && cp -R "$work/hub-dist/mycelium-hub" "$res/hub"

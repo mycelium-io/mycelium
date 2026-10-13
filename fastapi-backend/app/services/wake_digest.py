@@ -398,6 +398,13 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         why = f"{count} you in {_place(room, where)}{latest}"
     lines.append(f"Why:     {why}")
 
+    # What the verifier couldn't confirm in what it said since its last turn. It
+    # rides along on whatever wake comes next; a flag never wakes anyone itself.
+    from app.services.verifier import check_lines
+
+    for i, check in enumerate(check_lines(room, handle, since)):
+        lines.append(f"{'Check:' if i == 0 else '':<9}{check}")
+
     # What changed since its last turn.
     who = ", ".join(f"@{h} {c}" for h, c in by.most_common())
     first = f"your last turn, {age(last_at, now)}" if last >= 0 else "you joined"
