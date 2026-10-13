@@ -28,11 +28,19 @@ export function replyText(sender: string): string {
   return `@${sender} `;
 }
 
-/** A quote names the sender silently (`@~`), so quoting someone doesn't
- *  notify them; the reply button is the one that does. Blank lines stay
- *  inside the quote. */
+/** Every mention in `text` made silent: `@name` and `@!name` become `@~name`,
+ *  where a mention can start (`lib/mentions.ts`), so an address in `a@b.com`
+ *  stays as it is. */
+export function silenceMentions(text: string): string {
+  return text.replace(/(^|[\s(<])@!?(?=[A-Za-z0-9])/g, "$1@~");
+}
+
+/** A quote notifies nobody: it names the sender silently (`@~`), and every
+ *  mention in the quoted text is made silent too, so quoting "@aligner run
+ *  it" doesn't summon the aligner again. The reply button is the one that
+ *  notifies. Blank lines stay inside the quote. */
 export function quoteText(content: string, sender: string): string {
-  const lines = content.trim().split("\n");
+  const lines = silenceMentions(content.trim()).split("\n");
   const quoted = lines.map((line, i) => {
     const text = i === 0 ? `@~${sender}: ${line}` : line;
     return text.trim() ? `> ${text}` : ">";
@@ -79,10 +87,10 @@ export function taskTitle(content: string): string {
   return `${(space > TITLE_MAX / 2 ? cut.slice(0, space) : cut).replace(/[\s,.;:]+$/, "")}…`;
 }
 
-/** A task's body from a message: the message quoted, and where it was said. */
+/** A task's body from a message: the message quoted, its mentions silent as
+ *  in `quoteText`, and where it was said. */
 export function taskBody(content: string, sender: string, link: string | null): string {
-  const quoted = content
-    .trim()
+  const quoted = silenceMentions(content.trim())
     .split("\n")
     .map((line) => (line.trim() ? `> ${line}` : ">"))
     .join("\n");

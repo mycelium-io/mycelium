@@ -3,12 +3,24 @@
 
 import { describe, expect, it } from "vitest";
 import { appendToDraft, quoteText, replyText, taskBody, taskTitle } from "./message-actions";
+import { parseInterruptMentions, parseMentions } from "./mentions";
 
 describe("quoteText", () => {
   it("quotes every line and names the sender silently on the first", () => {
     expect(quoteText("merged #499\n\nstarting on apple pay", "builder")).toBe(
       "> @~builder: merged #499\n>\n> starting on apple pay\n\n",
     );
+  });
+
+  it("notifies nobody it quotes: every mention in it is made silent", () => {
+    const quote = quoteText("@builder @reviewer we need a day\n@aligner run it (@!coder stop)", "julia");
+    expect(quote).toBe("> @~julia: @~builder @~reviewer we need a day\n> @~aligner run it (@~coder stop)\n\n");
+    expect(parseMentions(quote)).toEqual([]);
+    expect(parseInterruptMentions(quote)).toEqual([]);
+  });
+
+  it("leaves what isn't a mention alone", () => {
+    expect(quoteText("mail a@b.com, already @~sam", "julia")).toBe("> @~julia: mail a@b.com, already @~sam\n\n");
   });
 });
 
@@ -60,5 +72,9 @@ describe("taskBody", () => {
       "> a\n>\n> b\n\nFrom [a message](http://hub/room/r?focus=message%3A1) by @~builder in the channel.\n",
     );
     expect(taskBody("a", "builder", null)).toBe("> a\n\nFrom a message by @~builder in the channel.\n");
+  });
+
+  it("makes the quoted mentions silent", () => {
+    expect(taskBody("@aligner run it", "builder", null)).toBe("> @~aligner run it\n\nFrom a message by @~builder in the channel.\n");
   });
 });
