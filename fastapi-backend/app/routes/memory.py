@@ -42,6 +42,7 @@ from app.schemas import (
 )
 from app.services import (
     actor,
+    hold_sweep,
     in_memory_store,
     links,
     memory_sync,
@@ -642,3 +643,7 @@ async def delete_memory(room_name: str, key: str):
     upload = found[0].get(UPLOAD_META) if found else None
     if isinstance(upload, dict):
         uploads.forget_blob(room_name, upload.get("sha256"))
+    # Deleting an agent's manifest removes it from the room, so the rows it
+    # held go back to the pool.
+    if file_deleted and _is_agent_manifest(key):
+        await hold_sweep.holder_removed(room_name, key.removeprefix("agents/"))

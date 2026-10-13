@@ -5,9 +5,9 @@
  * Assignment: who holds a row.
  *
  * A row given to someone (`assignee`) is held by them until it is released,
- * handed off or resolved, and a hold has no timer unless a claim asks for one
- * (#1136): the hub ends it when its holder's pane closes or it leaves the
- * room. A claim taken with a TTL is a lease instead, which drains if nobody
+ * handed off or resolved, and a hold has no timer unless a claim asks for one.
+ * The hub ends it when its holder's pane closes or the agent is removed from
+ * the room. A claim taken with a TTL is a lease instead, which drains if nobody
  * renews it.
  *
  * **Assignment is not a stage.** `status` is a stage vocabulary. `in_review`

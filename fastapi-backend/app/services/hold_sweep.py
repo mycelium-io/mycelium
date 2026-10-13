@@ -1,19 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""What ends a hold with no timer, and what says a held row has gone quiet (#1136).
+"""What ends a hold with no timer, and what says a held row has gone quiet.
 
-A row given to someone, or claimed without a lease, is held until something
-real ends it. A 30-minute lease that only ``await --loop`` renewed expired rows
-every day while their agents were still on them, so the clock is no longer
-what ends a hold. These are, each checked once a minute and each said on the
-room's timeline:
+A row given to someone, or claimed with no time limit, is held until one of
+these ends it. Each is said on the room's timeline:
 
 - **The holder's herdr pane closed.** A connected runner's machine report
-  (``RunnerHello.machine``) lists every herdr agent on its machine; one whose
-  every pane reads ``gone`` has stopped, and its rows are released.
-- **The holder left the room.** No ``agents/<handle>`` and no person by that
-  name: released.
+  (``RunnerHello.machine``) lists every herdr agent on its machine. When every
+  pane reported for the holder reads ``gone`` on two sweeps in a row, its rows
+  are released.
+- **The holder was removed from the room.** Deleting an agent's
+  ``agents/<handle>`` manifest releases its rows at once
+  (:func:`holder_removed`, called by the memory delete route).
 - **No sign of the holder at all, for a long time.** A holder the hub has no
   signal for (no pane on any runner, no herdr presence, no ``await``) keeps
   the row for :data:`FALLBACK_HOURS` of no activity on it, then it expires
@@ -48,6 +47,11 @@ FLAG_HOURS = 3
 FALLBACK_HOURS = 8
 #: The frontmatter that remembers a hold was flagged, so it's flagged once.
 FLAGGED_FIELD = "hold_flagged_at"
+#: Sweeps in a row a holder's pane must read closed before its rows are released.
+CLOSED_SWEEPS = 2
+
+#: How many sweeps in a row each ``(room, handle)`` has read closed.
+_closed_sweeps: dict[tuple[str, str], int] = {}
 
 
 def _stamp(raw: Any) -> datetime | None:
@@ -74,9 +78,12 @@ def pane_states(room: str, handle: str) -> list[str]:
 
 
 def signal_of(room: str, handle: str) -> str:
-    """What the hub can see of ``handle``: ``person``, ``engine``, ``gone``
-    (not in the room any more), ``closed`` (every herdr pane it had is closed),
-    ``present`` or ``unseen``."""
+    """What the hub can see of ``handle``: ``person``, ``engine``, ``closed``
+    (every herdr pane it had is closed), ``present`` or ``unseen``.
+
+    A handle with no manifest and no user record is ``unseen``, not gone: a
+    person who never set up a user record looks the same. Leaving the room ends
+    a hold only when an agent is removed (:func:`holder_removed`)."""
     from app.services.principals import classify_sender
     from app.services.room_channels import manager
 
@@ -85,8 +92,6 @@ def signal_of(room: str, handle: str) -> str:
         return "person"
     if kind == "engine":
         return "engine"
-    if kind == "unknown":
-        return "gone"
     panes = pane_states(room, handle)
     if panes and all(state == "gone" for state in panes):
         return "closed"
@@ -172,6 +177,23 @@ async def _end(room: str, key: str, why: str, subkind: str, by: str, now: dateti
     await assignments.end_hold(room, key, why, subkind=subkind, by=by, now=now)
 
 
+async def holder_removed(room: str, handle: str, now: datetime | None = None) -> list[str]:
+    """Release every row ``handle`` holds in ``room``, because the agent was
+    removed from it. Returns the keys released."""
+    now = now or datetime.now(UTC)
+    handle = handle.lstrip("@")
+    released: list[str] = []
+    room_dir = get_room_dir(room)
+    for namespace in assignments.ASSIGNABLE_NAMESPACES:
+        for key, meta, _content in list_memory_files(room_dir, prefix=f"{namespace}/"):
+            if assignments.holder(meta, now) != handle:
+                continue
+            why = f"@{handle} was removed from the room"
+            await _end(room, key, why, "released", assignments.RUNTIME_AUTHOR, now)
+            released.append(key)
+    return released
+
+
 async def sweep(now: datetime | None = None) -> list[tuple[str, str, str]]:
     """End or flag every hold the evidence says to. Returns ``(room, key, what)``."""
     now = now or datetime.now(UTC)
@@ -200,12 +222,16 @@ async def _one(
 ) -> str | None:
     seen = signal_of(room, who)
     runtime = assignments.RUNTIME_AUTHOR
-    if seen == "gone":
-        await _end(room, key, f"@{who} isn't in the room any more", "released", runtime, now)
-        return "released"
+    # While an agent restarts, a runner can report only its old, closed pane
+    # until the new one is mapped, so a pane must read closed on two sweeps in
+    # a row before the row is released.
     if seen == "closed":
-        await _end(room, key, f"@{who}'s herdr pane closed", "released", runtime, now)
-        return "released"
+        _closed_sweeps[(room, who)] = _closed_sweeps.get((room, who), 0) + 1
+        if _closed_sweeps[(room, who)] >= CLOSED_SWEEPS:
+            await _end(room, key, f"@{who}'s herdr pane closed", "released", runtime, now)
+            return "released"
+        return None
+    _closed_sweeps.pop((room, who), None)
     last = last_activity(room, key, meta) or now
     quiet = now - last
     if seen == "unseen" and quiet >= timedelta(hours=FALLBACK_HOURS):

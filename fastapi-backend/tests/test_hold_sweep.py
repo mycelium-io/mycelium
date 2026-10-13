@@ -59,9 +59,16 @@ def _sweep(hours: float) -> list[tuple[str, str, str]]:
     return asyncio.run(hold_sweep.sweep(datetime.now(UTC) + timedelta(hours=hours)))
 
 
-def test_a_closed_pane_ends_the_hold_and_says_so(monkeypatch, notices):
+@pytest.fixture(autouse=True)
+def _fresh_sweep_counts() -> None:
+    hold_sweep._closed_sweeps.clear()
+
+
+def test_a_closed_pane_ends_the_hold_on_the_second_sweep_and_says_so(monkeypatch, notices):
     _row()
     monkeypatch.setattr(hold_sweep, "signal_of", lambda _r, _h: "closed")
+    # An agent restarting can show only its old, closed pane for one sweep.
+    assert _sweep(0) == []
     assert _sweep(0) == [(ROOM, KEY, "released")]
     meta = _meta()
     assert assignments.state_of(meta, datetime.now(UTC)) == "released"
@@ -72,11 +79,44 @@ def test_a_closed_pane_ends_the_hold_and_says_so(monkeypatch, notices):
     assert notice["why"] == "@coder's herdr pane closed"
 
 
-def test_leaving_the_room_ends_the_hold(monkeypatch, notices):
+def test_a_pane_that_comes_back_is_not_released(monkeypatch, notices):
     _row()
-    monkeypatch.setattr(hold_sweep, "signal_of", lambda _r, _h: "gone")
-    assert _sweep(0) == [(ROOM, KEY, "released")]
-    assert "isn't in the room" in _meta()["assignment_note"]
+    seen = iter(["closed", "present", "closed"])
+    monkeypatch.setattr(hold_sweep, "signal_of", lambda _r, _h: next(seen))
+    assert [_sweep(0) for _ in range(3)] == [[], [], []]
+    assert assignments.state_of(_meta(), datetime.now(UTC)) == "held"
+
+
+def test_removing_an_agent_releases_what_it_held(notices):
+    from app.routes.memory import delete_memory
+
+    _row()
+    write_memory_file(get_room_dir(ROOM), "agents/coder", "handle: coder", created_by="lead")
+    write_memory_file(get_room_dir(ROOM), "agents/coder/notes", "notes", created_by="lead")
+    # Its notes going is not the agent leaving.
+    asyncio.run(delete_memory(ROOM, "agents/coder/notes"))
+    assert assignments.state_of(_meta(), datetime.now(UTC)) == "held"
+    asyncio.run(delete_memory(ROOM, "agents/coder"))
+    meta = _meta()
+    assert assignments.state_of(meta, datetime.now(UTC)) == "released"
+    assert meta["assignment_note"] == "@coder was removed from the room"
+    (notice,) = notices
+    assert (notice["subkind"], notice["why"]) == ("released", "@coder was removed from the room")
+
+
+def test_a_holder_with_no_manifest_or_user_record_keeps_the_row(monkeypatch, notices):
+    # A person who never set up a user record looks like this, so it is unseen,
+    # not gone: the row stays held until the long fallback.
+    from app.services.room_channels import manager
+
+    _row(assignee="operator", hold_flagged_at=(datetime.now(UTC) + timedelta(hours=1)).isoformat())
+    monkeypatch.setattr(manager, "herdr_status", lambda _r, _h: None)
+    monkeypatch.setattr(manager, "members", lambda _r: [])
+    assert hold_sweep.signal_of(ROOM, "operator") == "unseen"
+    assert _sweep(0) == []
+    assert _sweep(1) == []
+    assert assignments.state_of(_meta(), datetime.now(UTC)) == "held"
+    assert notices == []
 
 
 def test_a_holder_the_hub_can_see_is_never_expired_for_being_slow(monkeypatch, notices):
