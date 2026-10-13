@@ -57,4 +57,4 @@ export function mentionMode(sigil: string | undefined): MentionMode | null {
 
 /** What an interrupt says about an engine: it only acts when it's mentioned,
  *  so `@!` reaches it as a plain mention. */
-export const NOT_INTERRUPTIBLE = "can't be interrupted";
+export const NOT_INTERRUPTIBLE = "mentioned as usual, not interrupted";

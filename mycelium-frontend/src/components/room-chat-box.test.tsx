@@ -342,8 +342,8 @@ describe("<RoomChatBox /> composer triggers", () => {
     const option = await screen.findByRole("button", { name: /@aligner/ });
     expect(screen.getByTestId("mention-mode")).toHaveTextContent("Interruptstops a working agent");
     expect(announced()).toBe("Interrupt mention: stops a working agent");
-    // An engine only acts when mentioned, so an interrupt has nothing to stop.
-    expect(option).toHaveTextContent("can't be interrupted");
+    // An engine only acts when mentioned, so an interrupt reaches it as a mention.
+    expect(option).toHaveTextContent("mentioned as usual, not interrupted");
   });
 
   it("also autocompletes a person (present member), not just agents", async () => {
