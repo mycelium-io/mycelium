@@ -260,6 +260,28 @@ def test_giving_a_row_replaces_an_expired_hold(notices, to):
     assert (notice["subkind"], notice["for"]) == ("claimed", to)
 
 
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"assignment": "resolved"},
+        {"status": "resolved"},
+        {"assignment": "released", "assignment_note": "handing over"},
+    ],
+)
+def test_resaving_a_row_with_its_own_assignee_changes_nothing(notices, state):
+    # A form that sends every field, or a script re-saving a row, must not
+    # claim a finished or handed-back task again.
+    from app.services import fields
+
+    _row(**state)
+    before = assignments.state_of(_meta(), datetime.now(UTC))
+    asyncio.run(fields.write(ROOM, KEY, {"assignee": "coder", "priority": "high"}, "lead"))
+    meta = _meta()
+    assert assignments.state_of(meta, datetime.now(UTC)) == before
+    assert meta["priority"] == "high"
+    assert notices == []
+
+
 def test_claiming_a_row_given_to_someone_else_is_refused():
     _row()
     with pytest.raises(assignments.AssignmentError) as refused:
