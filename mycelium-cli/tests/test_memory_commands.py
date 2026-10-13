@@ -207,6 +207,30 @@ def test_memory_get_reads_from_hub_without_local_files(monkeypatch: pytest.Monke
     assert "we chose postgres" in result.output
 
 
+BRACKETED = "see [[context/rubric]], [b]not bold[/b] and [red]"
+
+
+def test_memory_get_prints_links_and_brackets_as_written(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A body is the author's text: Rich must not read `[[key]]` as markup and drop it."""
+    _stub_get(monkeypatch, _memory_read("context/labels", BRACKETED))
+
+    for flags in ([], ["--raw"]):
+        result = runner.invoke(memory_cmd.app, ["get", "context/labels", *flags, "--room", "demo"])
+        assert result.exit_code == 0, result.output
+        assert BRACKETED in result.output
+
+
+def test_memory_get_raw_adds_no_line_breaks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--raw` is the file's form, so a line longer than the terminal stays one line."""
+    long_line = " ".join(f"word{i}" for i in range(60))
+    _stub_get(monkeypatch, _memory_read("context/long", long_line))
+
+    for flags in ([], ["--raw"]):
+        result = runner.invoke(memory_cmd.app, ["get", "context/long", *flags, "--room", "demo"])
+        assert result.exit_code == 0, result.output
+        assert long_line in result.output
+
+
 def test_memory_get_names_the_thread_and_the_verb_that_reaches_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
