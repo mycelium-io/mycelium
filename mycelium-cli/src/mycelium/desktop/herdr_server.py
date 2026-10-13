@@ -109,10 +109,10 @@ def parse_ps(output: str) -> list[Server]:
     return found
 
 
-def running() -> Server | None:
-    """The herdr server running on this machine, or ``None`` (and always on Windows)."""
+def running() -> list[Server]:
+    """The herdr servers running on this machine (none on Windows)."""
     if sys.platform == "win32":
-        return None
+        return []
     try:
         out = subprocess.run(
             ["ps", "-axo", "pid=,lstart=,command="],  # noqa: S607 - ps is the system's
@@ -123,9 +123,8 @@ def running() -> Server | None:
             check=False,
         ).stdout
     except (OSError, subprocess.SubprocessError):
-        return None
-    servers = parse_ps(out)
-    return servers[0] if servers else None
+        return []
+    return parse_ps(out)
 
 
 def _same(a: Path, b: Path) -> bool:
@@ -136,15 +135,16 @@ def _same(a: Path, b: Path) -> bool:
 
 
 def stale(app_herdr: Path | None) -> Server | None:
-    """The running herdr server, when it runs ``app_herdr`` (the app's own copy)
-    and that program was replaced after it started. ``None`` when there's no
-    app copy to compare with, as in a checkout."""
+    """The herdr server running ``app_herdr`` (the app's own copy), when that
+    program was replaced after it started. Other herdr servers, such as one
+    from Homebrew, are skipped. ``None`` when there's no app copy to compare
+    with, as in a checkout."""
     if app_herdr is None:
         return None
-    server = running()
-    if server is None or not _same(server.program, app_herdr):
-        return None
-    return server if server.replaced_at() is not None else None
+    for server in running():
+        if _same(server.program, app_herdr) and server.replaced_at() is not None:
+            return server
+    return None
 
 
 def agents_after_restart() -> str:

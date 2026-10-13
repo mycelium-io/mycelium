@@ -66,10 +66,14 @@ def test_only_the_apps_own_herdr_counts(tmp_path: Path, monkeypatch):
         program.write_text("")
     replaced = app_herdr.stat().st_ctime - 3600
 
-    monkeypatch.setattr(herdr_server, "running", lambda: Server(7, brew_herdr, replaced))
+    brew, app = Server(7, brew_herdr, replaced), Server(8, app_herdr, replaced)
+    monkeypatch.setattr(herdr_server, "running", lambda: [brew])
     assert herdr_server.stale(app_herdr) is None
-    monkeypatch.setattr(herdr_server, "running", lambda: Server(7, app_herdr, replaced))
-    assert herdr_server.stale(app_herdr) is not None
+    monkeypatch.setattr(herdr_server, "running", lambda: [app])
+    assert herdr_server.stale(app_herdr) is app
+    # With both running, the app's is found whichever ps lists first.
+    monkeypatch.setattr(herdr_server, "running", lambda: [brew, app])
+    assert herdr_server.stale(app_herdr) is app
     # Outside the app (a checkout) there's no copy of its own to compare with.
     assert herdr_server.stale(None) is None
 
