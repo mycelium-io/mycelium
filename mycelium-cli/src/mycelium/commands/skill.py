@@ -156,7 +156,7 @@ def skill_ls(room: str | None = None, as_json: bool = False) -> None:
             f"[cyan]/{skill.name}[/cyan]  [dim]v{skill.version}  {skill.created_by}[/dim]"
         )
         if desc:
-            console.print(f"  {desc}")
+            console.print(f"  {desc}", markup=False)
 
 
 @doc_ref(
@@ -199,8 +199,9 @@ def skill_get(
     desc = skill.description or ""
     console.print(f"[cyan]/{skill.name}[/cyan]  [dim]v{skill.version}  {skill.created_by}[/dim]")
     if desc:
-        console.print(f"[dim]{desc}[/dim]")
-    console.print(skill.body or "")
+        console.print(desc, style="dim", markup=False)
+    # The body is the author's text, not Rich markup: `[[key]]` links would vanish.
+    console.print(skill.body or "", markup=False)
 
 
 @doc_ref(

@@ -335,7 +335,8 @@ def memory_get(
                 created_at=mem.created_at,
                 updated_at=mem.updated_at,
                 extra_meta=_meta_dict(mem.meta) or None,
-            )
+            ),
+            markup=False,
         )
         return
 
@@ -344,7 +345,8 @@ def memory_get(
     console.print(
         f"{header}  thread {thread.rsplit(':', 1)[-1]}[/dim]" if thread else f"{header}[/dim]"
     )
-    console.print(content)
+    # The body is the author's text, not Rich markup: `[[key]]` links would vanish.
+    console.print(content, markup=False)
     # Every memory a person wrote carries a thread, and nothing else in the CLI
     # says so — a reader who does not know the verb has no way to find it.
     if thread:
@@ -521,7 +523,7 @@ def _print_expanded(room_name: str, key: str) -> None:
     """
     data = _fetch_links(room_name, "/expand", {"key": key})
     console.print(f"[cyan]{key}[/cyan]  [dim]expanded[/dim]")
-    console.print(data.get("rendered", ""))
+    console.print(data.get("rendered", ""), markup=False)
 
     failed = [e for e in (data.get("expansions") or []) if not e.get("expanded")]
     if failed:
