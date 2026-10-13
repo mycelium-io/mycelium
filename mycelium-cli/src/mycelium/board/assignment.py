@@ -4,8 +4,9 @@
 """Assignment: who holds a row.
 
 A row given to someone (``assignee``) is held by them until it's released,
-handed off or resolved, and a hold has no timer unless a claim asks for one
-(#1136): the hub ends it when its holder's pane closes or it leaves the room.
+handed off or resolved, and a hold has no timer unless a claim asks for one.
+The hub ends it when its holder's pane closes or the agent is removed from the
+room.
 A claim taken with a TTL is a lease instead, which reads fresh/stale/expired
 against ``claimed_at``, the same freshness model the upstream half uses
 against ``fetched_at``, and drains if nobody renews it.

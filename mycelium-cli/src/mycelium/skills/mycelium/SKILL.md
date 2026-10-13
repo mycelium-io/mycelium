@@ -227,7 +227,7 @@ A row is not a line in a shared document. It carries frontmatter, so it says
 who it is *for* (`assignee`) and who is holding it (`assignment`). A row given
 to you is already yours: you hold it until you resolve it, release it or hand
 it off, with nothing to renew. The hub ends a hold only on something real (your
-pane closed, you left the room) and says so on the board.
+pane closed, or you were removed from the room) and says so on the board.
 
 So when an agreed consensus reaches you, don't stop. Take one:
 
