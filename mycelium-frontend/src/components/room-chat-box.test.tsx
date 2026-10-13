@@ -319,6 +319,33 @@ describe("<RoomChatBox /> composer triggers", () => {
     expect((box as HTMLTextAreaElement).value).toBe("@!aligner ");
   });
 
+  it("says in the popover, and aloud, when a mention is silent or interrupts", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    const announced = () => screen.getByTestId("mention-mode-announce").textContent;
+    await userEvent.click(box);
+
+    // A plain @ says nothing new.
+    await userEvent.type(box, "@ali");
+    await screen.findByRole("button", { name: /@aligner/ });
+    expect(screen.queryByTestId("mention-mode")).toBeNull();
+    expect(announced()).toBe("");
+
+    await userEvent.clear(box);
+    await userEvent.type(box, "@~ali");
+    await screen.findByRole("button", { name: /@aligner/ });
+    expect(screen.getByTestId("mention-mode")).toHaveTextContent("Silentnames them without notifying");
+    expect(announced()).toBe("Silent mention: names them without notifying");
+
+    await userEvent.clear(box);
+    await userEvent.type(box, "@!ali");
+    const option = await screen.findByRole("button", { name: /@aligner/ });
+    expect(screen.getByTestId("mention-mode")).toHaveTextContent("Interruptstops a working agent");
+    expect(announced()).toBe("Interrupt mention: stops a working agent");
+    // An engine only acts when mentioned, so an interrupt reaches it as a mention.
+    expect(option).toHaveTextContent("mentioned as usual, not interrupted");
+  });
+
   it("also autocompletes a person (present member), not just agents", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
