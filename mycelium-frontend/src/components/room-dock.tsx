@@ -15,8 +15,14 @@ import {
   type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from "dockview-react";
-import { Copy, FileText, Link2, MessageSquare, Plus, X } from "lucide-react";
+import { ChevronDown, Copy, FileText, Link2, MessageSquare, Plus, X } from "lucide-react";
 import { KbdChord } from "@/components/ui/kbd";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { iconButtonClass } from "@/components/ui/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EventStream } from "@/components/event-stream";
@@ -199,21 +205,11 @@ function ThreadTabLabel({ episode }: { episode: string }) {
   return <>{title || `Thread ${threadShortId(episode) ?? ""}`.trim()}</>;
 }
 
-/**
- * One tab, for every kind: the room's own views wear the key that selects them
- * (shown while the reveal modifier is held) and the Channel its count; a memory
- * or a thread closes with its ×, a middle click, or its menu. Dragging it is
- * dockview's: onto another tab bar to move it, onto an edge to split.
- */
-function DockTab({ api, containerApi }: IDockviewPanelHeaderProps) {
-  const d = useDock();
-  const shown = useShown(api);
-  const parsed = parsePanelId(api.id);
-  const closable = isClosable(api.id);
-  const close = () => d.requestClose(api.id);
-
+/** How a tab names itself, the same in the strip and in its overflow menu. */
+function tabFace(id: string, fallback: string | undefined) {
+  const parsed = parsePanelId(id);
   let icon: React.ReactNode = null;
-  let label: React.ReactNode = api.title ?? api.id;
+  let label: React.ReactNode = fallback ?? id;
   let title: string | undefined;
   if (parsed?.kind === "memory") {
     icon = <FileText className="size-3.5 flex-shrink-0 text-faint" />;
@@ -227,6 +223,21 @@ function DockTab({ api, containerApi }: IDockviewPanelHeaderProps) {
     label = VIEW_LABELS[parsed.kind];
   }
   const view = parsed && parsed.kind !== "memory" && parsed.kind !== "thread" ? (parsed.kind as View) : null;
+  return { parsed, icon, label, title, view };
+}
+
+/**
+ * One tab, for every kind: the room's own views wear the key that selects them
+ * (shown while the reveal modifier is held) and the Channel its count; a memory
+ * or a thread closes with its ×, a middle click, or its menu. Dragging it is
+ * dockview's: onto another tab bar to move it, onto an edge to split.
+ */
+function DockTab({ api, containerApi }: IDockviewPanelHeaderProps) {
+  const d = useDock();
+  const shown = useShown(api);
+  const { parsed, icon, label, title, view } = tabFace(api.id, api.title);
+  const closable = isClosable(api.id);
+  const close = () => d.requestClose(api.id);
 
   const others = () => api.group.panels.filter(p => p.id !== api.id && isClosable(p.id)).map(p => p.id);
 
@@ -237,6 +248,7 @@ function DockTab({ api, containerApi }: IDockviewPanelHeaderProps) {
           role="tab"
           aria-selected={shown}
           title={title}
+          data-panel-id={api.id}
           data-tour={view ? `tab-${view}` : undefined}
           onMouseDown={e => {
             if (e.button === 1 && closable) {
@@ -300,6 +312,126 @@ function DockTab({ api, containerApi }: IDockviewPanelHeaderProps) {
         )}
       </ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+// ── The strip's overflow ────────────────────────────────────────────────────
+
+/** The panels whose tabs aren't wholly in view in `strip`, in strip order. A
+ *  tab cut by a pixel or less at either edge counts as shown, and so does a
+ *  tab wider than the strip whose start is in view: it can't show more. */
+export function clippedTabs(strip: Element): string[] {
+  const box = strip.getBoundingClientRect();
+  const out: string[] = [];
+  for (const tab of strip.querySelectorAll<HTMLElement>("[data-panel-id]")) {
+    const r = tab.getBoundingClientRect();
+    const startShown = r.left >= box.left - 1;
+    const endShown = r.right <= box.right + 1 || (r.width > box.width && Math.abs(r.left - box.left) <= 1);
+    if (!startShown || !endShown) out.push(tab.dataset.panelId as string);
+  }
+  return out;
+}
+
+const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
+
+/**
+ * At the right of a group's strip, while some of its tabs are scrolled out of
+ * view: a count of them, opening the app's own menu of those tabs. Picking one
+ * shows it and scrolls it into the strip. (Dockview's own overflow list is off,
+ * `disableTabsOverflowList`: it kept its own type and spacing, and moved tabs
+ * out of the strip rather than letting it scroll.)
+ */
+function GroupOverflow({ group }: IDockviewHeaderActionsProps) {
+  const anchor = useRef<HTMLDivElement>(null);
+  const strip = useRef<HTMLElement | null>(null);
+  const [hidden, setHidden] = useState<string[]>([]);
+  const [active, setActive] = useState<string | undefined>(group.activePanel?.id);
+
+  const reveal = useCallback((id: string | undefined) => {
+    if (!id) return;
+    const tab = strip.current?.querySelector(`[data-panel-id="${CSS.escape(id)}"]`);
+    tab?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, []);
+
+  useEffect(() => {
+    const header = anchor.current?.closest(".dv-tabs-and-actions-container");
+    const el = header?.querySelector<HTMLElement>(".dv-tabs-container") ?? null;
+    strip.current = el;
+    if (!el) return;
+    let frame = 0;
+    // The shown tab is brought into view when the strip appears and whenever
+    // another tab is shown (the memory tree, a link). Tabs keep resizing for a
+    // moment after (fonts, a thread's title arriving), so for a second after,
+    // every measure brings it back if it's been pushed out; past that the
+    // strip is the reader's to scroll.
+    let revealUntil = performance.now() + 1000;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        let next = clippedTabs(el);
+        const shown = group.activePanel?.id;
+        if (shown && next.includes(shown) && performance.now() < revealUntil) {
+          reveal(shown);
+          next = clippedTabs(el);
+        }
+        setHidden(prev => (sameIds(prev, next) ? prev : next));
+      });
+    };
+    measure();
+    const resized = new ResizeObserver(measure);
+    resized.observe(el);
+    const changed = new MutationObserver(measure);
+    changed.observe(el, { childList: true, subtree: true });
+    el.addEventListener("scroll", measure, { passive: true });
+    const sub = group.api.onDidActivePanelChange(e => {
+      setActive(e.panel?.id);
+      revealUntil = performance.now() + 1000;
+      measure();
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      resized.disconnect();
+      changed.disconnect();
+      el.removeEventListener("scroll", measure);
+      sub.dispose();
+    };
+  }, [group, reveal]);
+
+  const show = (id: string) => {
+    group.panels.find(p => p.id === id)?.api.setActive();
+    requestAnimationFrame(() => reveal(id));
+  };
+
+  return (
+    <div ref={anchor} className="flex h-full items-center">
+      {hidden.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={`${hidden.length} more ${hidden.length === 1 ? "tab" : "tabs"}`}
+            title="Tabs out of view"
+            className="flex h-full items-center gap-0.5 border-l border-border px-2 text-label tabular text-muted-foreground outline-none transition-colors hover:bg-hairline hover:text-text focus-visible:bg-hairline focus-visible:text-text data-[popup-open]:bg-hairline data-[popup-open]:text-text"
+          >
+            <ChevronDown className="size-3.5" />
+            {hidden.length}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-72">
+            {hidden.map(id => {
+              const panel = group.panels.find(p => p.id === id);
+              const face = tabFace(id, panel?.title);
+              const isActive = id === active;
+              return (
+                <DropdownMenuItem key={id} onClick={() => show(id)} title={face.title} aria-current={isActive || undefined}>
+                  {face.icon ?? <span className="w-3.5 shrink-0" />}
+                  <span className={`min-w-0 flex-1 truncate ${isActive ? "font-medium" : ""}`}>{face.label}</span>
+                  {isActive && <span aria-label="Shown" className="size-1.5 shrink-0 rounded-full bg-accent" />}
+                  {face.view && <KbdChord action={`pane.${face.view}`} size="xs" tone="muted" />}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
   );
 }
 
@@ -641,6 +773,8 @@ export function RoomDock({
         components={COMPONENTS}
         defaultTabComponent={DockTab}
         leftHeaderActionsComponent={GroupActions}
+        rightHeaderActionsComponent={GroupOverflow}
+        disableTabsOverflowList
         onReady={ready}
         disableDnd={narrow}
         disableFloatingGroups
