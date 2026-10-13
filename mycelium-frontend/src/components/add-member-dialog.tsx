@@ -74,6 +74,10 @@ export const ENGINE_KINDS: { kind: EngineKind; blurb: string }[] = [
   { kind: "persona", blurb: "Plays a member in character, from its notes, and remembers." },
   { kind: "worker", blurb: "Takes work off the board in its own checkout, asks for review, resolves it." },
   { kind: "conductor", blurb: "Runs a protocol inside a task, giving the floor one step at a time." },
+  {
+    kind: "verifier",
+    blurb: "Checks what agents say about approvals and merges against this room's records, and notes what it can't find.",
+  },
   { kind: "hello", blurb: "Answers once and writes nothing. Proves the path works." },
 ];
 

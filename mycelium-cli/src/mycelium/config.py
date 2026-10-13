@@ -592,6 +592,27 @@ class WorkerConfig(BaseModel):
     )
 
 
+class VerifierConfig(BaseModel):
+    """The verifier: checks what agents say about approvals and merges against the
+    room's records, and adds a line under a message when a claim doesn't hold up."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Turn the verifier on for this hub. It then reads only the rooms that add it "
+            "(`/engine verifier`, or Add member). Off, nothing is checked."
+        ),
+    )
+    confirm: bool = Field(
+        default=True,
+        description=(
+            "Have the hub's model read the thread before a line is shown, so a claim the "
+            "records got wrong is dropped. It runs on a few messages in a hundred. Off, the "
+            "records alone decide: cheaper, and noisier."
+        ),
+    )
+
+
 class BoardConfig(BaseModel):
     """Board rules the hub enforces."""
 
@@ -808,6 +829,7 @@ class MyceliumConfig(BaseModel):
     worker: WorkerConfig = Field(default_factory=WorkerConfig)
     board: BoardConfig = Field(default_factory=BoardConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    verifier: VerifierConfig = Field(default_factory=VerifierConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     login: LoginConfig = Field(default_factory=LoginConfig)
     agent_auth: AgentAuthConfig = Field(default_factory=AgentAuthConfig)

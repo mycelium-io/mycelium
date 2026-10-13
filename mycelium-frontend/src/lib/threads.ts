@@ -110,6 +110,7 @@ export const NOTICE_SUBKINDS = [
   "quiet",
   "floor",
   "upstream",
+  "check",
 ] as const;
 
 export type NoticeSubkind = (typeof NOTICE_SUBKINDS)[number];
@@ -255,6 +256,8 @@ export function noticeLabel(
       return "Quiet";
     case "floor":
       return "Floor";
+    case "check":
+      return "Verifier";
     default:
       return subkind;
   }

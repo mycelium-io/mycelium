@@ -14,6 +14,7 @@ import { DOCS_URL } from "@/lib/install";
 import { useNetworkStatus } from "@/lib/room-data";
 import { useHubHealth } from "@/lib/use-status";
 import { Note, Row, Section, SettingsPage, Value } from "./settings-ui";
+import { VerifierSection } from "./verifier-section";
 
 /** What each channel identity tier means, in a line. */
 const IDENTITY: Record<string, string> = {
@@ -230,6 +231,8 @@ export function HubPage() {
               <Value>{hub.share_usage ? "on" : "off"}</Value>
             </Row>
           </Section>
+
+          <VerifierSection configKey={(name) => <Key name={name} />} />
         </>
       )}
 

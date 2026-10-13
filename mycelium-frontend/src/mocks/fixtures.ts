@@ -34,6 +34,7 @@ import type {
   PresenceMember,
   RoomFloor,
   Schedule,
+  VerifierFlag,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
 import { demoCheckout, isDemoScenario } from "./demo";
@@ -128,6 +129,9 @@ export interface RoomFixture {
   /** The room's schedules, served at GET /schedules; runs and edits are
    *  session-local, like the rest of the mock's writes. */
   schedules?: Schedule[];
+  /** The verifier's lines, served at GET /verifier/flags; *It's fine* is
+   *  session-local. */
+  verifierFlags?: VerifierFlag[];
 }
 
 /**
@@ -1202,7 +1206,7 @@ const checkout: RoomFixture = {
     { id: "h2", sender_handle: "builder", message_type: "broadcast", content: "on it. moving card payments to stripe first, apple pay is easier on top of that.", created_at: iso(1440) },
     { id: "h3", sender_handle: "builder", message_type: "broadcast", content: "stripe payments are merged (#499). starting on apple pay.", created_at: iso(1400) },
     // ── Apple Pay gets built, and the work hanging off it ──
-    { id: "h4", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. it's up as #502 so it can go to staging.", created_at: iso(140) },
+    { id: "h4", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is approved and green, so it can go to staging.", created_at: iso(140) },
     { id: "h5", sender_handle: "reviewer", message_type: "broadcast", content: "i'll do the testing. i need it on staging to try real phones and real cards.", created_at: iso(130) },
     { id: "h6", sender_handle: "operator", message_type: "broadcast", content: "adding an alert for when payments start failing, so we hear about it before customers email us.", created_at: iso(95) },
     { id: "h7", sender_handle: "builder", message_type: "broadcast", content: "some order emails are going out twice when stripe retries a webhook. filing it, i'll fix it after apple pay.", created_at: iso(58) },
@@ -1297,6 +1301,32 @@ const checkout: RoomFixture = {
   presence: [
     { handle: "builder", kind: "slim", last_seen: null },
     { handle: "reviewer", kind: "lease", last_seen: iso(1) },
+  ],
+  // The verifier couldn't find an approval for #502, which builder called
+  // approved: nobody in the room had reviewed it yet.
+  verifierFlags: [
+    {
+      flag_id: "vf1",
+      failure: "ungranted_approval",
+      message_id: "h4",
+      key: "live",
+      about: "builder",
+      by: "verifier",
+      claim: "approval",
+      ref: "#502",
+      line: "Can't find an approval for #502.",
+      sure: false,
+      quotes: ["#502 is approved and green"],
+      sentence: "#502 is approved and green, so it can go to staging.",
+      why: "Nobody in this room has approved #502. It's still waiting for review.",
+      checked: [
+        { what: "Approvals of #502 in this room", found: "none" },
+        { what: "Pull request changes for #502", found: "opened, review requested" },
+      ],
+      state: "shown",
+      fine_by: null,
+      at: iso(139),
+    },
   ],
   // Builder looks in on its own leases twice an hour; reviewer was set to chase
   // anyone who goes quiet on a claimed row, and is paused for the launch.

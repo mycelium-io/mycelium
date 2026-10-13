@@ -102,7 +102,9 @@ NOTICE_PAYLOAD_TYPE = "notice"
 #: ``released`` marks the floor opening back up. ``upstream`` says the thing a
 #: row points at changed outside the room (a pull request's review or CI moved,
 #: or it merged): ``change`` is one of :data:`UPSTREAM_CHANGES`, and nobody but
-#: the status watcher (:mod:`app.services.status.watch`) raises it.
+#: the status watcher (:mod:`app.services.status.watch`) raises it. ``check`` is
+#: about a message, not a task: the verifier (:mod:`app.services.verifier`)
+#: couldn't confirm a claim in it, and ``message_id`` names the message.
 NOTICE_SUBKINDS = frozenset(
     {
         "filed",
@@ -115,6 +117,7 @@ NOTICE_SUBKINDS = frozenset(
         "quiet",
         "floor",
         "upstream",
+        "check",
     }
 )
 

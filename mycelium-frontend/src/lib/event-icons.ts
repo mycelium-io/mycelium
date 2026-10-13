@@ -18,6 +18,7 @@ import {
   Ban,
   BadgeCheck,
   BookOpen,
+  CircleAlert,
   CircleCheck,
   CircleCheckBig,
   CircleX,
@@ -68,6 +69,7 @@ export const NOTICE_ICONS: Record<string, EventIcon> = {
   expired: { Icon: Clock, tone: YELLOW, label: "Claim expired" },
   quiet: { Icon: Clock, tone: QUIET, label: "Gone quiet" },
   floor: { Icon: Megaphone, tone: ACCENT, label: "Turn to speak" },
+  check: { Icon: CircleAlert, tone: YELLOW, label: "Verifier" },
 };
 
 /** What happened to a linked pull request, by `upstream` change. */

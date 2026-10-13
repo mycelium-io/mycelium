@@ -96,6 +96,27 @@ def parse_stamp(text: str, *, now: datetime | None = None) -> datetime:
     return stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp
 
 
+def _checks(config: MyceliumConfig, room_name: str, *, since: datetime) -> dict[str, list[str]]:
+    """The verifier's lines still shown in ``room_name``, by the message they go
+    under. Empty when the room has none, or the hub has no verifier."""
+    from mycelium_backend_client.api.verifier import (
+        list_flags_api_rooms_room_name_verifier_flags_get as flags_api,
+    )
+
+    try:
+        with _typed_client(config) as client:
+            flags = flags_api.sync(room_name=room_name, client=client, since=since)
+    except Exception:  # noqa: BLE001 - a line under a message is never worth failing the read
+        return {}
+    from mycelium_backend_client.models import VerifierFlagRead
+
+    out: dict[str, list[str]] = {}
+    for flag in flags if isinstance(flags, list) else []:
+        if isinstance(flag, VerifierFlagRead) and flag.state == "shown":
+            out.setdefault(flag.message_id, []).append(flag.line)
+    return out
+
+
 def readable(message_type: str, content: str) -> str:
     """The words a person reads for a message, never a raw protocol record.
 
@@ -194,6 +215,7 @@ def read(
 
     plural = "message" if len(msgs) == 1 else "messages"
     owners = _agent_owner_map(room_name)
+    checks = _checks(config, room_name, since=msgs[-1].created_at)
     typer.secho(f"\n  {where}  ", fg=typer.colors.CYAN, bold=True, nl=False)
     typer.secho(f"({len(msgs)} {plural}, newest first)\n", fg=typer.colors.BRIGHT_BLACK)
     for m in msgs:
@@ -211,6 +233,8 @@ def read(
         )
         for line in rest:
             typer.echo(f"              {line}")
+        for line in checks.get(str(m.id), []):
+            typer.secho(f"              ⚠ verifier: {line}", fg=typer.colors.YELLOW)
     if older_before and older_with:
         remaining = total - len(msgs)
         typer.secho(

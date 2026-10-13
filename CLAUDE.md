@@ -263,10 +263,11 @@ is no litellm dependency.
   `_addressed_to`): a **ping** carries the episode, sender and message id when a
   thread moves; a **notice** carries the task, who moved it and the thread to open
   when the board moves. `NOTICE_SUBKINDS` is a closed set (`filed`, `claimed`,
-  `released`, `resolved`, `blocked`, `unblocked`, `expired`, `floor`, `upstream`)
-  frozen in `contracts/slim-wire.json` and asserted on both sides; `floor` is the
-  one notice about a thread rather than a task, raised when whose turn it is
-  changes. `upstream` is a linked pull request changing (`change` from the
+  `released`, `resolved`, `blocked`, `unblocked`, `expired`, `floor`, `upstream`,
+  `check`) frozen in `contracts/slim-wire.json` and asserted on both sides;
+  `floor` is the one notice about a thread rather than a task, raised when whose
+  turn it is changes, and `check` the one about a message (the verifier, below).
+  `upstream` is a linked pull request changing (`change` from the
   frozen `upstream_changes`: opened, review requested, approved, changes
   requested, CI red/green, merged, closed), raised by the status watcher
   (`app/services/status/watch.py`): GitHub can't call a hub on localhost, so
@@ -868,6 +869,29 @@ is no litellm dependency.
   cell a key already reaches names that key (in its tooltip, via `action=`) and
   the way in teaches the way past. `key-badge.tsx` stays separate — that is the
   ⌥-reveal badge drawn *on* a target, not a cap set in copy.
+- **The verifier classifies multi-agent failures in a room, and never blocks
+  or wakes (#1288).** Each flag names one of the spike's failure kinds
+  (`verifier_records.FAILURES`). The checks so far find two of them, an
+  approval nobody gave and acting on a merged pull request; a new check is a
+  function over records the hub already keeps. Engine kind `verifier`
+  (`app/services/verifier.py`),
+  off for the hub until `verifier.enabled`, then on in each room that adds it.
+  It is the one engine that acts without a mention: the persister's
+  `on_recorded` hook hands it every agent message (not people's, not engines')
+  in such a room. Three steps, each on what the last passed: a local
+  classifier over the search embeddings marks claim sentences
+  (`verifier_claims.py`; one logistic regression per kind, weights tied to the
+  embedding model, a starting model shipped in `app/data/verifier/`); plain
+  code checks approvals and merges of a `#N` against this room's transcript
+  only (`verifier_records.py`); a one-shot Pi turn reads the thread and can
+  drop the flag (`verifier.confirm`), and a failed turn shows nothing. A kept
+  flag is stored in the room's `.verifier-flags.json` and raised as a `check`
+  notice whose `message_id` is the history read's id; the agent reads it as the
+  `Check:` line of its next wake. Learn (`verifier_learn.py`, numpy only, since
+  the Mac app's hub has no scikit-learn) has the hub's model label the past
+  agent messages of the rooms that added it, once, and fits a new classifier;
+  the labels are kept tagged by room, so a search-model change refits from them
+  with no model calls.
 - **The synthesizer distills messages into memory (#808).** Its input is the
   room's transcript — the ephemeral half, where a decision is argued and settled
   and nothing indexes it for meaning — and its output is a `knowledge` memory at

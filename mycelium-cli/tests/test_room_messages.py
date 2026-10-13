@@ -323,6 +323,51 @@ def test_json_cursor_is_null_when_the_page_is_everything(monkeypatch: pytest.Mon
     assert json.loads(result.output)["older_before"] is None
 
 
+def test_a_verifier_line_shows_under_its_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mycelium_backend_client.models import (
+        MessageListResponse,
+        VerifierFlagRead,
+        VerifierFlagReadClaim,
+        VerifierFlagReadState,
+    )
+
+    msgs = _make_messages()
+    _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=msgs, total=len(msgs)))
+
+    def flag(message_id: str, line: str, state: VerifierFlagReadState) -> VerifierFlagRead:
+        return VerifierFlagRead(
+            flag_id="f1",
+            message_id=message_id,
+            key="live",
+            about="cc-x",
+            by="verifier",
+            claim=VerifierFlagReadClaim.APPROVAL,
+            ref="#1278",
+            line=line,
+            sure=False,
+            sentence="#1278 is approved.",
+            state=state,
+            at="2026-06-11T21:23:00Z",
+        )
+
+    flags = [
+        flag(str(msgs[1].id), "Can't find an approval for #1278.", VerifierFlagReadState.SHOWN),
+        flag(str(msgs[0].id), "Someone said this one is fine.", VerifierFlagReadState.FINE),
+    ]
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.verifier.list_flags_api_rooms_room_name_verifier_flags_get.sync",
+        lambda **_kw: flags,
+    )
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest"])
+
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    at = next(i for i, line in enumerate(lines) if "OK from cc-x" in line)
+    assert lines[at + 1].strip() == "⚠ verifier: Can't find an approval for #1278."
+    assert "fine" not in result.output
+
+
 def test_parse_stamp_reads_iso_and_ages() -> None:
     from mycelium import chat
 

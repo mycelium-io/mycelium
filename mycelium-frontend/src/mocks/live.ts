@@ -72,6 +72,8 @@ export function noticeFrame(
     for?: string;
     speakers?: string;
     released?: string;
+    /** Any other flat field a subkind carries, such as a `check` notice's. */
+    [field: string]: string | null | undefined;
   },
 ): Record<string, unknown> {
   const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== ""));

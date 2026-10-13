@@ -5502,6 +5502,178 @@
         }
       }
     },
+    "/api/rooms/{room_name}/verifier/flags": {
+      "get": {
+        "tags": [
+          "verifier"
+        ],
+        "summary": "List Flags",
+        "description": "The room's flags, oldest first: shown ones and ones someone said are fine.",
+        "operationId": "list_flags_api_rooms__room_name__verifier_flags_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only flags raised at or after this time",
+              "title": "Since"
+            },
+            "description": "Only flags raised at or after this time"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VerifierFlagRead"
+                  },
+                  "title": "Response List Flags Api Rooms  Room Name  Verifier Flags Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/verifier/flags/{flag_id}/fine": {
+      "post": {
+        "tags": [
+          "verifier"
+        ],
+        "summary": "Mark Fine",
+        "description": "Someone says the claim is fine: the line goes away for everyone, and the\nanswer is kept for the verifier to learn from.",
+        "operationId": "mark_fine_api_rooms__room_name__verifier_flags__flag_id__fine_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "flag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Flag Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifierFineRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifierFlagRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/verifier/settings": {
+      "get": {
+        "tags": [
+          "verifier"
+        ],
+        "summary": "Get Settings",
+        "description": "On or off, the rooms it checks, which model it's using, and Learn's state.",
+        "operationId": "get_settings_api_verifier_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifierSettingsRead"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/verifier/learn": {
+      "post": {
+        "tags": [
+          "verifier"
+        ],
+        "summary": "Start Learn",
+        "description": "Label the past messages of the rooms it checks with the hub's model, once,\nthen fit the claim spotter to them. Runs in the background; poll the settings.\n\nIt spends the hub's model budget, so with sign-in on only a person may start\nit, never an agent's token.",
+        "operationId": "start_learn_api_verifier_learn_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifierSettingsRead"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/patterns": {
       "get": {
         "tags": [
@@ -13065,6 +13237,315 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VerifierCheckedRead": {
+        "properties": {
+          "what": {
+            "type": "string",
+            "title": "What",
+            "description": "What was looked at: 'approvals of #1278 in this room'"
+          },
+          "found": {
+            "type": "string",
+            "title": "Found",
+            "description": "What it found: 'none', 'approved', 'merged at 20:08'"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "The message or notice it found, when there is one"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "what",
+          "found"
+        ],
+        "title": "VerifierCheckedRead",
+        "description": "One record the verifier looked at, for *Show why*."
+      },
+      "VerifierEstimateRead": {
+        "properties": {
+          "messages": {
+            "type": "integer",
+            "title": "Messages"
+          },
+          "approx_tokens": {
+            "type": "integer",
+            "title": "Approx Tokens"
+          },
+          "approx_usd": {
+            "type": "number",
+            "title": "Approx Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "messages",
+          "approx_tokens",
+          "approx_usd"
+        ],
+        "title": "VerifierEstimateRead"
+      },
+      "VerifierFineRequest": {
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who says it's fine (bound to the caller when sign-in is on)"
+          }
+        },
+        "type": "object",
+        "title": "VerifierFineRequest"
+      },
+      "VerifierFlagRead": {
+        "properties": {
+          "flag_id": {
+            "type": "string",
+            "title": "Flag Id"
+          },
+          "failure": {
+            "type": "string",
+            "title": "Failure",
+            "description": "Which failure it is: ungranted_approval, unsupported_completion, decision_taken, dropped_directive, misread_intent, stale_state, handoff_loss, scope_violation or unasked_side_effect. The checks so far find ungranted_approval and stale_state.",
+            "default": ""
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "The message the line goes under: its id in the room's history read"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "The thread's short id, or 'live'"
+          },
+          "about": {
+            "type": "string",
+            "title": "About",
+            "description": "The agent that made the claim"
+          },
+          "by": {
+            "type": "string",
+            "title": "By",
+            "description": "The verifier engine's handle"
+          },
+          "claim": {
+            "type": "string",
+            "enum": [
+              "approval",
+              "open"
+            ],
+            "title": "Claim"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref",
+            "description": "The pull request it is about: '#1278'"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line",
+            "description": "The line to show, written by the verifier"
+          },
+          "sure": {
+            "type": "boolean",
+            "title": "Sure",
+            "description": "True when the records say the opposite, false when nothing was found"
+          },
+          "quotes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Quotes",
+            "description": "The exact words to underline"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why",
+            "default": ""
+          },
+          "checked": {
+            "items": {
+              "$ref": "#/components/schemas/VerifierCheckedRead"
+            },
+            "type": "array",
+            "title": "Checked",
+            "default": []
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "shown",
+              "fine"
+            ],
+            "title": "State"
+          },
+          "fine_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fine By"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "flag_id",
+          "message_id",
+          "key",
+          "about",
+          "by",
+          "claim",
+          "ref",
+          "line",
+          "sure",
+          "sentence",
+          "state",
+          "at"
+        ],
+        "title": "VerifierFlagRead",
+        "description": "A multi-agent failure the verifier found, drawn as a line under its message."
+      },
+      "VerifierLearningRead": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done",
+            "default": 0
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "VerifierLearningRead"
+      },
+      "VerifierSettingsRead": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "rooms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rooms",
+            "description": "The rooms that added the verifier"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "The search model its claim spotter runs on"
+          },
+          "using": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "learned",
+              "none"
+            ],
+            "title": "Using"
+          },
+          "learned": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learned",
+            "description": "Messages it learned from, or null on the starting model"
+          },
+          "answers_since_learned": {
+            "type": "integer",
+            "title": "Answers Since Learned",
+            "default": 0
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/VerifierEstimateRead"
+          },
+          "learning": {
+            "$ref": "#/components/schemas/VerifierLearningRead"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "model",
+          "using",
+          "estimate",
+          "learning"
+        ],
+        "title": "VerifierSettingsRead"
       },
       "VoiceHeard": {
         "properties": {

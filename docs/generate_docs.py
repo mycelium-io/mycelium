@@ -45,7 +45,7 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "How Mycelium works: rooms, the board, memory, episodes, swarms, users and identity, and SLIM."),
     ("engines", "engines.html", "Engines · mycelium", "Engines",
      "ENG-001", "ENGINES · CONDUCTOR · ALIGNER · SYNTHESIZER · PERSONA · WORKER",
-     "The engines a room runs on the hub: the conductor, the aligner, the synthesizer, personas, workers and hello."),
+     "The engines a room runs on the hub: the conductor, the aligner, the synthesizer, personas, workers, the verifier and hello."),
     ("guides", "guides.html", "Guides · mycelium", "Guides",
      "GDE-001", "GUIDES · SETUP · AGENTS · WORK · SECURITY · HELP",
      "Step-by-step guides: running Mycelium on a server, the desktop app, sharing a hub, starting and managing agents, the board, sign-in, and troubleshooting."),
@@ -88,6 +88,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("engines/synthesizer.md",        "synthesizer",        "engines",     "Engines",      "Synthesizer"),
     ("engines/persona.md",            "persona",            "engines",     "Engines",      "Persona"),
     ("engines/worker.md",             "worker",             "engines",     "Engines",      "Worker"),
+    ("engines/verifier.md",           "verifier",           "engines",     "Engines",      "Verifier"),
     ("engines/hello.md",              "hello",              "engines",     "Engines",      "Hello"),
     # ── guides (guides.html) ──
     ("guides/server.md",              "on-a-server",        "guides",      "Setup",        "Run It on a Server"),
