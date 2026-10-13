@@ -84,8 +84,9 @@ Talk about a merge that hasn't happened yet, like "once #1266 is merged" or
 
 - **The line** under the message, with the words that made the claim
   underlined.
-- **Show why** lists what the verifier looked at and what it found, such as
-  "approvals of #1278 in this room: none".
+- **Show why** names the failure, such as "Approval nobody gave", and lists
+  what the verifier looked at and what it found, such as "approvals of #1278
+  in this room: none".
 - **It's fine** hides the line for everyone in the room. Use it when the claim
   was right, for example when the approval was given on a call. The answer is
   kept on the hub with the room it came from.

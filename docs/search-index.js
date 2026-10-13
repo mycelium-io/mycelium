@@ -621,7 +621,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#verifier-what-you-see",
     "t": "What you see",
     "s": "Verifier",
-    "x": "The line under the message, with the words that made the claim underlined. Show why lists what the verifier looked at and what it found, such as \"approvals of #1278 in this room: none\". It's fine hides the line for everyone in the room. Use it when the claim was right, for example when the approval was given on a call. The answer is kept on the hub with the room it came from.",
+    "x": "The line under the message, with the words that made the claim underlined. Show why names the failure, such as \"Approval nobody gave\", and lists what the verifier looked at and what it found, such as \"approvals of #1278 in this room: none\". It's fine hides the line for everyone in the room. Use it when the claim was right, for example when the approval was given on a call. The answer is kept on the hub with the room ",
     "p": "Engines"
   },
   {
