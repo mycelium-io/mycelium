@@ -1077,6 +1077,86 @@ def messages(
         print_error(e, verbose=verbose)
 
 
+#: How each wake outcome reads, and its color.
+WAKE_OUTCOME = {
+    "delivered": ("delivered", "green"),
+    "dropped": ("dropped", "red"),
+    "unreached": ("unreached, reads it on its next await", "yellow"),
+    "handed": ("handed over, no word from its runner", "yellow"),
+}
+
+
+@doc_ref(
+    usage="mycelium room wakes [<room> | --room <room>] [--agent <handle>] [--limit N]",
+    desc="What each wake the hub raised in a room delivered, newest first: who it was for, why, the messages it covered, and whether it reached the agent.",
+    group="room",
+)
+@app.command("wakes")
+@in_room("room_opt", resolve=False)
+@paged()
+@emits_json()
+def wakes(
+    ctx: typer.Context,
+    room: str | None = typer.Argument(None, help="Room to read (defaults to active room)"),
+    room_opt: str | None = None,
+    agent: str | None = typer.Option(None, "--agent", help="Only wakes for this handle"),
+    limit: int = 20,
+) -> None:
+    """
+    What each wake in a room delivered, newest first.
+
+    When an agent misses something, this tells "it was woken with it and didn't
+    act" from "it was never woken with it". Each wake names the messages that
+    asked for the agent by id (read them with `mycelium room messages`), and
+    says whether it was delivered, or dropped and why (no pane bound to the
+    agent, or held too long while it worked). A mention of an agent nothing
+    runs is unreached: it reads the message on its next await.
+
+    Examples:
+        mycelium room wakes
+        mycelium room wakes --agent builder --limit 5
+        mycelium room wakes design-review --json
+    """
+    try:
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, _one_room(room, room_opt))
+        params: dict[str, str | int] = {"limit": limit}
+        if agent:
+            params["agent"] = agent.lstrip("@")
+        with hub_client(config) as client:
+            resp = client.get(f"/api/rooms/{room_name}/sessions/wakes", params=params)
+            resp.raise_for_status()
+            records = resp.json()
+        if json_output:
+            typer.echo(json_module.dumps(records, indent=2))
+            return
+        from rich.console import Console
+
+        console = Console()
+        if not records:
+            console.print(f"[dim]No wakes recorded in {room_name} yet.[/dim]")
+            return
+        for r in records:
+            said, color = WAKE_OUTCOME.get(r.get("outcome", ""), (r.get("outcome"), "dim"))
+            when = (r.get("at") or "")[:19].replace("T", " ")
+            sender = f" from @{r['from']}" if r.get("from") else ""
+            line = (
+                f"{when}  @{r.get('agent')}  {r.get('reason')}{sender}  [{color}]{said}[/{color}]"
+            )
+            if r.get("why"):
+                line += f" [dim]({escape(str(r['why']))})[/dim]"
+            console.print(line)
+            covered = r.get("messages") or []
+            if covered:
+                console.print(f"[dim]    asked in: {', '.join(covered)}[/dim]")
+    except (typer.Exit, typer.Abort):
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
 @doc_ref(
     usage="mycelium room export [<room> | --room <room>] [--out <dir>] [--since <stamp|age>] [--redact]",
     desc=(

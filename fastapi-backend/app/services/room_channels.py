@@ -31,6 +31,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import secrets
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -587,6 +588,9 @@ class RoomChannelManager:
                 ):
                     w.update({k: v for k, v in entry.items() if k != "handle"})
                 return
+        # Its id follows it to the runner and back, so the wake log
+        # (:mod:`app.services.wake_log`) records it once, with its outcome.
+        entry["id"] = secrets.token_hex(6)
         queue.append(entry)
 
     def enqueue_herdr_wakes_for_mentions(
@@ -633,7 +637,28 @@ class RoomChannelManager:
                         reason = "interrupt"
                 self.enqueue_herdr_wake(room, handle, reason=reason, sender=who, episode=episode)
                 enqueued.append(handle)
+            elif self._unreachable_agent(room, handle):
+                from app.services import wake_log
+
+                # Not lost: the agent reads it on its next `await`. Nothing
+                # could be woken with it now, which is what the log says.
+                wake_log.dropped(
+                    room,
+                    {"handle": handle, "reason": "mention", "from": who, "episode": episode},
+                    "nothing is running it: no herdr pane reports it and it isn't awaiting",
+                    outcome="unreached",
+                )
         return enqueued
+
+    def _unreachable_agent(self, room: str, handle: str) -> bool:
+        """Whether ``handle`` is a registered agent that a mention can't reach
+        right now: no herdr pane reports it and it holds no ``await`` lease. A
+        person or an engine is reached some other way, and isn't one."""
+        from app.services.principals import classify_sender
+
+        if classify_sender(room, handle) != "agent":
+            return False
+        return handle not in self.members(room)
 
     def herdr_wake_addressed(
         self,
@@ -710,9 +735,20 @@ class RoomChannelManager:
         released: list[dict] = []
         held: list[dict] = []
         for w in queue:
-            if now - float(w.get("ts", now)) > hold_ttl_s:
-                continue  # stale hold — drop
             status = live.get(w["handle"], (None,))[0]
+            if now - float(w.get("ts", now)) > hold_ttl_s:
+                # Stale hold: dropped, and said why in the wake log.
+                from app.services import wake_log
+
+                minutes = round(hold_ttl_s / 60)
+                why = (
+                    f"held {minutes} min while it was {status}"
+                    if status
+                    else f"held {minutes} min with no herdr pane reporting it "
+                    "(no runner syncing this room)"
+                )
+                wake_log.dropped(room, w, why)
+                continue
             if status in {"idle", "done", "unknown"}:
                 released.append(w)
             else:  # working/blocked (or presence briefly gone) → keep holding

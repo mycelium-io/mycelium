@@ -620,6 +620,13 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">wakes</span> [<span class="arg">&lt;room&gt;</span> | <span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--agent</span> <span class="arg">&lt;handle&gt;</span>] [<span class="flag">--limit</span> N]</code>
+        </div>
+        <div class="cmd-ref-body">What each wake the hub raised in a room delivered, newest first: who it was for, why, the messages it covered, and whether it reached the agent.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">export</span> [<span class="arg">&lt;room&gt;</span> | <span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--out</span> <span class="arg">&lt;dir&gt;</span>] [<span class="flag">--since</span> &lt;stamp|age&gt;] [<span class="flag">--redact</span>]</code>
         </div>
         <div class="cmd-ref-body">Write a room's whole history to local files: every message, channel and task threads alike, as JSON lines, plus the board. Run it again with the same <code>--out</code> to add only what is new. <code>--redact</code> replaces emails, tokens and non-GitHub URLs.</div>

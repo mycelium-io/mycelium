@@ -315,38 +315,46 @@ def _reply_thread(room: str, asked: list[Any]) -> str | None:
 def reply_episode(room: str, wake: dict[str, Any], records: list[Any]) -> str | None:
     """The thread ``wake``'s agent is told to reply in, for the room's "is
     responding in" line; ``None`` for the room itself (:func:`_reply_thread`)."""
+    _, _, _, asked = _since(str(wake.get("handle") or ""), records)
+    return _reply_thread(room, asked)
+
+
+def _since(handle: str, records: list[Any]) -> tuple[list[Any], int, list[Any], list[Any]]:
+    """What happened since ``handle``'s last turn: the window read, the index of
+    its last message in it (-1 for none), the records after it, and the ones
+    among them that asked for it."""
     from app.routes.participate import _addressed_to
 
-    handle = str(wake.get("handle") or "")
     me = _norm(handle)
     window = records[-SCAN:]
+    # Since its last turn: after the last thing it said.
     last = max((i for i, r in enumerate(window) if _norm(r.sender) == me), default=-1)
+    since = window[last + 1 :]
     asked = [
-        r
-        for r in window[last + 1 :]
-        if _addressed_to(r.content, handle) and _conversational_text(r.content)
+        r for r in since if _addressed_to(r.content, handle) and _conversational_text(r.content)
     ]
-    return _reply_thread(room, asked)
+    return window, last, since, asked
+
+
+def coverage(wake: dict[str, Any], records: list[Any]) -> dict[str, Any]:
+    """Which messages a wake covers, as ids: the ones that asked for its agent,
+    and the range its digest summarized (from just after its last turn to the
+    newest). Text stays in the transcript; the wake log keeps these."""
+    _, _, since, asked = _since(str(wake.get("handle") or ""), records)
+    covered: dict[str, Any] = {"messages": [r.message_id for r in asked]}
+    if since:
+        covered["range"] = [since[0].message_id, since[-1].message_id]
+    return covered
 
 
 def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | None = None) -> str:
     """The digest typed into ``wake``'s agent: why, what changed, what asked for it."""
-    from app.routes.participate import _addressed_to
-
     now = now or datetime.now(UTC)
     handle = str(wake.get("handle") or "")
     me = _norm(handle)
     reason = wake.get("reason") or "mention"
-    window = records[-SCAN:]
-
-    # Since its last turn: after the last thing it said.
-    last = max((i for i, r in enumerate(window) if _norm(r.sender) == me), default=-1)
-    since = window[last + 1 :]
+    window, last, since, asked = _since(handle, records)
     last_at = parse_recorded_at(window[last].recorded_at) if last >= 0 else None
-
-    asked = [
-        r for r in since if _addressed_to(r.content, handle) and _conversational_text(r.content)
-    ]
     episode = record_episode(asked[-1]) if asked else wake.get("episode")
     where = _where(room, episode)
 

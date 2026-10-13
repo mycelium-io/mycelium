@@ -1918,6 +1918,14 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
+    "t": "mycelium room wakes [<room> | --room <room>] [--agent <handle>] [--limit N]",
+    "s": "CLI Reference",
+    "x": "What each wake the hub raised in a room delivered, newest first: who it was for, why, the messages it covered, and whether it reached the agent.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-room",
     "t": "mycelium room export [<room> | --room <room>] [--out <dir>] [--since <stamp|age>] [--redact]",
     "s": "CLI Reference",
     "x": "Write a room's whole history to local files: every message, channel and task threads alike, as JSON lines, plus the board. Run it again with the same --out to add only what is new. --redact replaces emails, tokens and non-GitHub URLs.",

@@ -1003,6 +1003,31 @@ def test_each_wake_is_a_line_with_its_pane_outcome_and_time(
     assert r.sync_health()["running_s"] is None
 
 
+def test_the_hub_is_told_what_became_of_each_wake(
+    make_runner, hub: Hub, quiet_hub: list[dict], monkeypatch: pytest.MonkeyPatch
+):
+    told: list[tuple[str, list]] = []
+    monkeypatch.setattr(
+        "mycelium.commands.herdr.report_wakes",
+        lambda _config, room, outcomes: told.append((room, outcomes)),
+    )
+    r = make_runner()
+    r.launch(LAUNCH)
+    quiet_hub += [
+        {"room": "eng", "id": "w1", "handle": "a", "reason": "mention"},
+        {"room": "eng", "id": "w2", "handle": "ghost", "reason": "turn"},
+        # From a hub that keeps no wake log: nothing to say about it.
+        {"room": "eng", "handle": "a", "reason": "mention"},
+    ]
+    r.sync_pass()
+    ((room, outcomes),) = [t for t in told if any(t[1])]
+    assert room == "eng"
+    assert [o for o in outcomes if o] == [
+        {"id": "w1", "delivered": True},
+        {"id": "w2", "delivered": False, "why": "no herdr pane here is bound to it"},
+    ]
+
+
 def test_each_job_is_a_line_with_its_outcome_and_time(make_runner, hub: Hub):
     r = make_runner()
     r.take({"id": "j1", "kind": "launch", "spec": LAUNCH})
