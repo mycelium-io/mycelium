@@ -12,7 +12,12 @@ Two modes, which are what the desktop app offers on its first screen:
   pointed at it.
 
 herdr's server is started only when none is running, and is left running
-when the supervisor stops: agents live in its panes.
+when the supervisor stops: agents live in its panes. So after the app is
+updated, the server still running is the old one, and macOS can refuse it and
+its terminals access to protected folders such as ``~/Documents``. The
+supervisor checks for that once a minute (``herdr_server``), says so in its
+status, and asks once per server, through the app, whether to restart it.
+herdr is never restarted without a yes, since that stops the agents in it.
 
 Everything the app shows comes from here as JSON lines on stdout (a status
 object on every change, log lines, errors), so the app is a window over this
@@ -72,6 +77,19 @@ TICK_S = 0.5
 TAIL_LINES = 40
 #: Everything the supervisor says, for when something goes wrong.
 LOG_PATH = Path.home() / ".mycelium" / "logs" / "desktop.log"
+#: How often the running herdr server is checked for a replaced program.
+HERDR_CHECK_S = 60.0
+#: How long the question about restarting herdr waits for an answer.
+HERDR_ASK_S = 6 * 3600.0
+#: Where the supervisor's own questions to the app are written.
+REQUESTS_BASE = Path.home() / ".mycelium" / "desktop"
+#: What the app, the log and the health check say about a herdr server from
+#: before the app was updated.
+STALE_HERDR_WARNING = (
+    "herdr, which runs your agents' terminals, was started before Mycelium was "
+    "updated. Until it restarts, macOS can refuse it and its terminals access to "
+    'folders like Documents, so commands there fail with "Operation not permitted".'
+)
 WINDOWS = sys.platform == "win32"
 #: Pi's JavaScript entry point inside the app's resources, which the hub runs
 #: on node on Windows (see ``Locator.pi``).
@@ -195,6 +213,10 @@ class Locator:
                 "herdr isn't installed, so no agent can start here. See https://herdr.dev"
             )
         return [str(exe), "server"]
+
+    def app_herdr(self) -> Path | None:
+        """The app's own herdr, or ``None`` outside the app (a checkout)."""
+        return self._program("herdr")
 
     def pi(self) -> str | None:
         """Pi, which the engines think with: the app's own, else one on PATH.
@@ -331,6 +353,9 @@ class Supervisor:
         voice: bool | None = None,
         voice_model: str | None = None,
         look: Callable[[], list[Any]] | None = None,
+        stale_herdr: Callable[[], Any] | None = None,
+        restart_herdr: Callable[[Any], None] | None = None,
+        requests_base: Path | None = None,
     ) -> None:
         if mode == "client" and not hub_url:
             raise ValueError("client mode needs the hub's URL")
@@ -367,6 +392,16 @@ class Supervisor:
         self.runner_id: str | None = None
         self.runner_state: State = "stopped"
         self.runner_detail: str | None = None
+        #: How a herdr server from before the app was updated is found and
+        #: restarted (``herdr_server.stale`` and ``herdr_server.restart``).
+        self.find_stale_herdr = stale_herdr
+        self.restart_herdr = restart_herdr
+        self.requests_base = requests_base or REQUESTS_BASE
+        #: The herdr server whose program was replaced after it started, as wire.
+        self.stale_herdr: dict[str, Any] | None = None
+        self._herdr_checked_at = 0.0
+        #: The servers already asked about, so each is asked once.
+        self._herdr_asked: set[int] = set()
         self.components: list[Component] = [self._herdr()]
         if mode == "hub":
             self.components += self._components()
@@ -472,10 +507,12 @@ class Supervisor:
             "runner_id": self.runner_id,
             "components": components,
             # More than one hub here, a hub on someone else's store, an old one.
-            "warnings": self.warnings,
+            "warnings": self.warnings + ([STALE_HERDR_WARNING] if self.stale_herdr else []),
             "hubs": self.hubs,
             # The hub on the app's port that the app is using but didn't start.
             "existing_hub": self.adopted_hub,
+            # A herdr server from before the app was updated.
+            "stale_herdr": self.stale_herdr,
         }
 
     def _publish(self) -> None:
@@ -657,6 +694,76 @@ class Supervisor:
             self.runner_state, self.runner_detail = state, detail
             self._publish()
 
+    # ── a herdr server from before the app was updated ───────────────────────
+
+    def _watch_herdr(self, *, now: float | None = None) -> None:
+        """Once a minute while herdr runs: is its server from before an update?"""
+        herdr = next((c for c in self.components if c.name == "herdr"), None)
+        if herdr is None or herdr.state != "running":
+            return
+        now = time.monotonic() if now is None else now
+        if self._herdr_checked_at and now - self._herdr_checked_at < HERDR_CHECK_S:
+            return
+        self._herdr_checked_at = now
+        from mycelium.desktop import herdr_server
+
+        find = self.find_stale_herdr or (lambda: herdr_server.stale(self.locator.app_herdr()))
+        server = find()
+        wire = server.wire() if server is not None else None
+        if wire != self.stale_herdr:
+            self.stale_herdr = wire
+            if wire is not None:
+                self.emit({"type": "warning", "message": STALE_HERDR_WARNING})
+            self._publish()
+        if server is not None and server.pid not in self._herdr_asked:
+            self._herdr_asked.add(server.pid)
+            self._ask_to_restart_herdr(server)
+
+    def _ask_to_restart_herdr(self, server: Any) -> None:
+        """Put the restart to the person through the app, and do it on a yes."""
+        import secrets
+
+        from mycelium.desktop import herdr_server
+        from mycelium.runner import approvals
+
+        job = secrets.token_hex(8)
+        request = approvals.ask(
+            job,
+            {
+                "title": "Restart herdr?",
+                "message": f"{STALE_HERDR_WARNING}\n\n{herdr_server.agents_after_restart()}",
+                "yes": "Restart herdr",
+                "no": "Not now",
+            },
+            base=self.requests_base,
+        )
+        folder = approvals.requests_dir(self.requests_base)
+        self.emit({"type": "request", "request": request, "folder": str(folder)})
+
+        def wait() -> None:
+            try:
+                yes = approvals.wait(job, self._stop, timeout=HERDR_ASK_S, base=self.requests_base)
+            finally:
+                approvals.forget(job, base=self.requests_base)
+            if yes:
+                self._restart_herdr(server)
+
+        threading.Thread(target=wait, name="herdr-restart", daemon=True).start()
+
+    def _restart_herdr(self, server: Any) -> None:
+        from mycelium.desktop import herdr_server
+
+        restart = self.restart_herdr or herdr_server.restart
+        self.emit({"type": "log", "component": "herdr", "line": "restarting herdr's server"})
+        try:
+            restart(server)
+        except herdr_server.RestartError as e:
+            self.emit({"type": "error", "component": "herdr", "message": str(e)})
+        else:
+            self.emit({"type": "log", "component": "herdr", "line": "herdr's server restarted"})
+        # Look again on the next tick, so the warning clears once it's fixed.
+        self._herdr_checked_at = 0.0
+
     # ── a hub this supervisor didn't start ───────────────────────────────────
 
     def data_dir(self) -> Path:
@@ -713,6 +820,7 @@ class Supervisor:
                 if ready and self.start_runner and self.runner is None:
                     self._start_runner()
                 self._tick_runner()
+                self._watch_herdr()
                 self._stop.wait(TICK_S)
         finally:
             self._shutdown()

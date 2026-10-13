@@ -238,6 +238,20 @@ def herdr() -> CheckResult:
             details=[fix, "`mycelium machine` says which agents that stops."],
         )
     version = server or client
+    from mycelium.desktop import herdr_server
+    from mycelium.desktop.supervisor import STALE_HERDR_WARNING
+
+    if herdr_server.stale(Locator().app_herdr()) is not None:
+        return CheckResult(
+            name="herdr",
+            status="warning",
+            message="running from before Mycelium was updated",
+            details=[
+                STALE_HERDR_WARNING,
+                herdr_server.agents_after_restart(),
+                "Restart it with `mycelium desktop restart-herdr`.",
+            ],
+        )
     return CheckResult(
         name="herdr", status="ok", message=f"running{f' ({version})' if version else ''}"
     )

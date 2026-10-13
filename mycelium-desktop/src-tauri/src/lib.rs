@@ -319,6 +319,9 @@ pub(crate) fn on_request(app: &AppHandle, event: &Value) {
     }
     let text = |key: &str| request.get(key).and_then(Value::as_str).unwrap_or("").to_string();
     let (title, message) = (text("title"), text("message"));
+    // A launch says Start; the supervisor's own questions name their buttons.
+    let label = |key: &str, default: &str| Some(text(key)).filter(|s| !s.is_empty()).unwrap_or(default.into());
+    let (yes_label, no_label) = (label("yes", "Start"), label("no", "Decline"));
     let folder = std::path::PathBuf::from(folder);
     let app = app.clone();
     std::thread::spawn(move || {
@@ -327,7 +330,7 @@ pub(crate) fn on_request(app: &AppHandle, event: &Value) {
             .message(message)
             .title(title)
             .kind(MessageDialogKind::Warning)
-            .buttons(MessageDialogButtons::OkCancelCustom("Start".into(), "Decline".into()))
+            .buttons(MessageDialogButtons::OkCancelCustom(yes_label, no_label))
             .blocking_show();
         let answer = folder.join(format!("{id}.{}", if yes { "yes" } else { "no" }));
         if let Err(e) = std::fs::write(&answer, "") {
@@ -373,10 +376,14 @@ fn status_line(status: &Value) -> String {
     let parts: Vec<String> = ["herdr", "slim", "hub", "ui", "runner"].iter().map(|p| state(p)).collect();
     // A hub the app didn't start, on its port: running, but not on its own.
     let other_hub = status.get("existing_hub").is_some_and(|h| !h.is_null());
+    // herdr from before the app was updated: its terminals can lose folders.
+    let stale_herdr = status.get("stale_herdr").is_some_and(|h| !h.is_null());
     if parts.iter().any(|s| s == "failed" || s == "stopped") {
         "○ Something stopped: open Health check".into()
     } else if parts.iter().all(|s| s == "running" || s == "disabled") {
-        if other_hub {
+        if stale_herdr {
+            "● herdr needs a restart: open Health check".into()
+        } else if other_hub {
             "● Running on another hub: open Health check".into()
         } else {
             "● Mycelium is running".into()

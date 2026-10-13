@@ -583,7 +583,18 @@ is no litellm dependency.
   status: owner, version, data folder), which the app shows with the command
   to stop it. It never stops another hub itself: that one may be someone's on
   purpose, so the person decides. It leaves herdr running on stop
-  (agents live in it), and writes everything to
+  (agents live in it), so after an in-place update the herdr still running
+  is the old one, whose program file was replaced; macOS can then refuse it
+  and its shells protected folders like `~/Documents`.
+  `mycelium/desktop/herdr_server.py` finds that case (a server running the
+  app's own herdr, whose program file has a change time later than the
+  server's start; modification times come from the build, so they can't be
+  used). A herdr installed another way, such as by Homebrew, is the person's
+  and never flagged. The supervisor checks once a minute and reports it as
+  `stale_herdr` in its status, and asks once per server through the app's
+  approval dialog. herdr restarts only on a yes, since that stops its agents,
+  and restarts the same program it was running; `mycelium desktop
+  restart-herdr` and the health check say the same. It writes everything to
   `~/.mycelium/logs/desktop.log`. Programs are found in the app bundle, then
   a checkout, then PATH. `mycelium-desktop/` (Tauri 2) adds first run, the
   menu bar, `mycelium://join|terminal|settings` links and an agents terminal that can

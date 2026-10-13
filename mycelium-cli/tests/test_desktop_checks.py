@@ -124,12 +124,14 @@ def test_a_hub_reached_at_its_ui_answers_under_api(monkeypatch: pytest.MonkeyPat
 def test_herdr_older_than_mycelium_needs_is_an_error_with_its_fix(
     monkeypatch: pytest.MonkeyPatch, server: str, client: str, status: str, fix: str | None
 ):
+    from mycelium.desktop import herdr_server
     from mycelium.integrations.herdr import HerdrBridge
 
     monkeypatch.setattr(HerdrBridge, "binary_present", lambda _self: True)
     monkeypatch.setattr(HerdrBridge, "available", lambda _self: True)
     monkeypatch.setattr(HerdrBridge, "server_version", lambda _self: server)
     monkeypatch.setattr(HerdrBridge, "version", lambda _self: client)
+    monkeypatch.setattr(herdr_server, "stale", lambda _app: None)
     result = checks.herdr()
     assert result.status == status
     if fix:
