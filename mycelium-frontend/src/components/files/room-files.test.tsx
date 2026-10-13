@@ -141,4 +141,22 @@ describe("<RoomFiles />", () => {
     expect(screen.getByText("No files in this room yet")).toBeInTheDocument();
     expect(screen.getByText(/mycelium file upload/)).toBeInTheDocument();
   });
+
+  it("copies a card's link from its right-click menu, which offers Copy image only on an image", async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>(async () => {});
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    renderFiles();
+    const card = (name: string) => screen.getByRole("button", { name: `Preview ${name}` }).closest("li")!;
+    const items = async (name: string) => {
+      fireEvent.contextMenu(card(name), { clientX: 10, clientY: 10 });
+      const menu = await screen.findByRole("menu");
+      return within(menu).getAllByRole("menuitem").map((m) => m.textContent?.replace(/⌘C|Ctrl\+C/, "").trim());
+    };
+    expect(await items("spec.pdf")).toEqual(["Copy link", "Download"]);
+    fireEvent.click(screen.getByText("Copy link"));
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/api/rooms/r/uploads/spec.pdf/raw`));
+    expect(await screen.findByText("Link copied")).toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    expect(await items("shot-1.png")).toEqual(["Copy image", "Copy link", "Download"]);
+  });
 });

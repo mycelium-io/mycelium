@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Button, buttonVariants } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { ZoomableImage, type ZoomKeys } from "@/components/uploads/zoomable-image";
+import { CopyNotice, FileMenu, useFileCopy } from "@/components/uploads/image-menu";
 import { Ago } from "@/lib/relative-time";
 import { fetchUploadText, type Upload, type UploadKind } from "@/lib/api";
 import { downloadUrl, formatBytes, kindLabel, parseDelimited, textViewFor } from "@/lib/uploads";
@@ -251,6 +252,7 @@ export function UploadPreviewDialog({
   if (upload && upload !== shown) setShown(upload);
 
   const zoom = useRef<ZoomKeys>(null);
+  const copy = useFileCopy();
   const stepping = Boolean(onShow) && set.length > 1;
   const image = shown?.kind === "image";
   // Stepping through a set with an image in it keeps the window one size, so
@@ -277,6 +279,13 @@ export function UploadPreviewDialog({
           // Not while typing, or while a player has focus and wants its own keys.
           const tag = (e.target as HTMLElement).tagName;
           if (tag === "INPUT" || tag === "TEXTAREA" || tag === "AUDIO" || tag === "VIDEO") return;
+          // ⌘C (Ctrl+C) copies the image, unless some text is selected to copy instead.
+          const selected = window.getSelection()?.toString().trim();
+          if (image && shown && (e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "c" && !selected) {
+            e.preventDefault();
+            copy.image(shown);
+            return;
+          }
           if (e.metaKey || e.ctrlKey || e.altKey) return;
           // A zoomed image takes + − 0 and the arrows first.
           if (zoom.current?.key(e.key)) {
@@ -316,15 +325,18 @@ export function UploadPreviewDialog({
               )}
               <DownloadButton upload={shown} />
             </div>
-            <div className={cn("min-h-0", image ? "flex-1 p-2" : cn("overflow-auto p-4", large && "flex-1"))}>
+            <div className={cn("relative min-h-0", image ? "flex-1 p-2" : cn("overflow-auto p-4", large && "flex-1"))}>
               {/* Keyed by file, so each one opens at fit. */}
-              <UploadPreview
-                key={shown.key}
-                upload={shown}
-                onOpenMemory={onOpenMemory}
-                zoom={zoom}
-                className={image ? "h-full" : undefined}
-              />
+              {image ? (
+                <FileMenu upload={shown} copy={copy}>
+                  <div className="h-full">
+                    <UploadPreview key={shown.key} upload={shown} onOpenMemory={onOpenMemory} zoom={zoom} className="h-full" />
+                  </div>
+                </FileMenu>
+              ) : (
+                <UploadPreview key={shown.key} upload={shown} onOpenMemory={onOpenMemory} zoom={zoom} />
+              )}
+              <CopyNotice notice={copy.notice} className="absolute inset-x-0 bottom-12 flex justify-center" />
             </div>
             {stepping && onShow && (
               <div className="flex items-center gap-2 border-t border-border px-3 py-1.5">

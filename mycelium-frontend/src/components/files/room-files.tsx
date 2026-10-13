@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { KIND_ICON, UploadPreviewDialog } from "@/components/uploads/upload-preview";
+import { CopyNotice, FileMenu, downloadFile, useFileCopy } from "@/components/uploads/image-menu";
 import { deleteUpload, type Upload } from "@/lib/api";
 import { useRoomUploads } from "@/lib/room-data";
 import {
@@ -24,7 +25,7 @@ import {
   type FileFilter,
   type Where,
 } from "@/lib/room-files";
-import { downloadUrl, formatBytes } from "@/lib/uploads";
+import { formatBytes } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -58,6 +59,7 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [preview, setPreview] = useState<Upload | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const copy = useFileCopy();
 
   const shown = useMemo(() => filterFiles(uploads, filter), [uploads, filter]);
   const groups = useMemo(() => groupByDay(shown), [shown]);
@@ -76,14 +78,7 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
   const downloadChosen = () => {
     // One link per file; the browser may ask once whether this page can save
     // several files.
-    for (const u of chosen) {
-      const a = document.createElement("a");
-      a.href = downloadUrl(u);
-      a.download = u.filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
+    for (const u of chosen) downloadFile(u);
   };
 
   const openOrigin = (u: Upload) => {
@@ -158,7 +153,8 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
           ))}
           <option value="memory">Saved to memory</option>
         </select>
-        <span className="ml-auto tabular text-micro text-muted-foreground">
+        <CopyNotice notice={copy.notice} className="ml-auto" />
+        <span className={cn("tabular text-micro text-muted-foreground", !copy.notice && "ml-auto")}>
           {shown.length === uploads.length ? `${uploads.length} files` : `${shown.length} of ${uploads.length}`}
         </span>
       </div>
@@ -201,6 +197,7 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
                       onSelect={(on) => toggle(u.key, on)}
                       onOpen={() => setPreview(u)}
                       onOrigin={() => openOrigin(u)}
+                      copy={copy}
                     />
                   ))}
                 </ul>
@@ -237,6 +234,7 @@ function FileCard({
   onSelect,
   onOpen,
   onOrigin,
+  copy,
 }: {
   upload: Upload;
   selected: boolean;
@@ -245,57 +243,61 @@ function FileCard({
   onSelect: (on: boolean) => void;
   onOpen: () => void;
   onOrigin: () => void;
+  copy: ReturnType<typeof useFileCopy>;
 }) {
   const Icon = KIND_ICON[upload.kind];
   const time = new Date(upload.created_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   return (
-    <li
-      className={cn(
-        "group relative flex flex-col overflow-hidden rounded-lg border bg-surface transition-colors",
-        selected ? "border-accent ring-1 ring-accent" : "border-border hover:border-border2",
-      )}
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-label={`Preview ${upload.filename}`}
-        className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-hairline/40 outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-      >
-        {upload.kind === "image" ? (
-          // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
-          <img src={upload.thumb_url || upload.url} alt="" loading="lazy" draggable={false} className="size-full object-cover" />
-        ) : (
-          <span className="flex flex-col items-center gap-1.5 px-2 text-center">
-            <Icon className="size-7 text-muted-foreground" strokeWidth={1.5} />
-            <span className="text-micro uppercase tracking-wide text-faint">{upload.filename.split(".").pop()}</span>
-          </span>
-        )}
-      </button>
-      <span
+    // A right-click anywhere on the card copies or saves the file.
+    <FileMenu upload={upload} copy={copy}>
+      <li
         className={cn(
-          "absolute top-1.5 left-1.5 rounded bg-bg/80 p-0.5 transition-opacity",
-          selected || selecting ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+          "group relative flex flex-col overflow-hidden rounded-lg border bg-surface transition-colors",
+          selected ? "border-accent ring-1 ring-accent" : "border-border hover:border-border2",
         )}
       >
-        <Checkbox checked={selected} onCheckedChange={(on) => onSelect(Boolean(on))} aria-label={`Select ${upload.filename}`} />
-      </span>
-      <div className="flex min-w-0 flex-col gap-0.5 px-2 py-1.5">
-        <span className="truncate text-label text-text" title={upload.filename}>
-          {upload.filename}
-        </span>
-        <span className="truncate tabular text-micro text-muted-foreground">
-          {posterOf(upload)} · {time} · {formatBytes(upload.size)}
-        </span>
         <button
           type="button"
-          onClick={onOrigin}
-          title={upload.posted_in ? "Open the message it was posted with" : "Open it in memory"}
-          className="truncate text-left text-micro text-accent hover:underline"
+          onClick={onOpen}
+          aria-label={`Preview ${upload.filename}`}
+          className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-hairline/40 outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
-          {originLabel(upload)}
+          {upload.kind === "image" ? (
+            // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
+            <img src={upload.thumb_url || upload.url} alt="" loading="lazy" draggable={false} className="size-full object-cover" />
+          ) : (
+            <span className="flex flex-col items-center gap-1.5 px-2 text-center">
+              <Icon className="size-7 text-muted-foreground" strokeWidth={1.5} />
+              <span className="text-micro uppercase tracking-wide text-faint">{upload.filename.split(".").pop()}</span>
+            </span>
+          )}
         </button>
-      </div>
-    </li>
+        <span
+          className={cn(
+            "absolute top-1.5 left-1.5 rounded bg-bg/80 p-0.5 transition-opacity",
+            selected || selecting ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+          )}
+        >
+          <Checkbox checked={selected} onCheckedChange={(on) => onSelect(Boolean(on))} aria-label={`Select ${upload.filename}`} />
+        </span>
+        <div className="flex min-w-0 flex-col gap-0.5 px-2 py-1.5">
+          <span className="truncate text-label text-text" title={upload.filename}>
+            {upload.filename}
+          </span>
+          <span className="truncate tabular text-micro text-muted-foreground">
+            {posterOf(upload)} · {time} · {formatBytes(upload.size)}
+          </span>
+          <button
+            type="button"
+            onClick={onOrigin}
+            title={upload.posted_in ? "Open the message it was posted with" : "Open it in memory"}
+            className="truncate text-left text-micro text-accent hover:underline"
+          >
+            {originLabel(upload)}
+          </button>
+        </div>
+      </li>
+    </FileMenu>
   );
 }
 
