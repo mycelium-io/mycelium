@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { MarkdownEditorHandle } from "@fedoup/markdown-editor";
+import type { MarkdownEditorHandle } from "@/components/markdown-editor";
 import { Check, Copy, Loader2, Pencil } from "lucide-react";
 import { ApiError, createMemories, type Memory, type MemoryCreate } from "@/lib/api";
 import { Button } from "@/components/ui/button";
