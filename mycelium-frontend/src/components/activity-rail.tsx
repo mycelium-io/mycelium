@@ -87,6 +87,7 @@ const STANDING: Record<string, { word: string; tone: string }> = {
   blocked: { word: "Blocked", tone: "var(--red)" },
   released: { word: "Released", tone: "var(--yellow)" },
   expired: { word: "Expired", tone: "var(--yellow)" },
+  quiet: { word: "Quiet", tone: "var(--muted-foreground)" },
   unblocked: { word: "Unblocked", tone: "var(--green)" },
   resolved: { word: "Done", tone: "var(--faint)" },
 };

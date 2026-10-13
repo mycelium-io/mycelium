@@ -112,6 +112,7 @@ NOTICE_SUBKINDS = frozenset(
         "blocked",
         "unblocked",
         "expired",
+        "quiet",
         "floor",
         "upstream",
     }

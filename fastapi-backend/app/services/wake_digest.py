@@ -143,6 +143,8 @@ def change(data: dict[str, Any]) -> str:
     who = f"@{by}" if by and by != assignments.RUNTIME_AUTHOR else ""
     if subkind == "expired":
         return f"{title} expired" + (f", {who} stopped renewing" if who else "")
+    if subkind == "quiet":
+        return f"{title} has gone quiet" + (f" ({data['why']})" if data.get("why") else "")
     if not who:
         return f"{title} {subkind}"
     verb = subkind

@@ -1,17 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""What ends a hold with no timer, and what flags a quiet one (#1136).
+"""What ends a hold with no timer, and what says a held row has gone quiet.
 
 A row given to someone is held until something real ends it: the holder's pane
 closes, it leaves the room, or the hub has seen nothing of it for a long time.
-A quiet row whose holder is around is flagged once, never released.
+A quiet row gets one notice, is never released for it, and nobody is woken.
 """
 
 from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any, Literal
 
 import pytest
@@ -60,8 +61,10 @@ def _sweep(hours: float) -> list[tuple[str, str, str]]:
 
 
 @pytest.fixture(autouse=True)
-def _fresh_sweep_counts() -> None:
+def _fresh_sweep_counts(monkeypatch: pytest.MonkeyPatch) -> None:
     hold_sweep._closed_sweeps.clear()
+    # No linked pull requests unless a test says so.
+    monkeypatch.setattr(hold_sweep, "open_pull_requests", lambda _room: {})
 
 
 def test_a_closed_pane_ends_the_hold_on_the_second_sweep_and_says_so(monkeypatch, notices):
@@ -151,28 +154,82 @@ def test_a_holder_with_no_sign_expires_after_the_fallback_with_a_notice(monkeypa
     assert (notice["subkind"], notice["by"]) == ("expired", "coder")
 
 
-def test_a_quiet_row_is_flagged_once_and_never_released(monkeypatch, notices):
+def test_a_quiet_row_gets_one_notice_and_wakes_nobody(monkeypatch, notices):
     from app.services.room_channels import manager
 
     _row()
     posted: list[str] = []
+    woken: list[Any] = []
 
     class Managed:
         async def post(self, _envelope: Any, text: str, **_kw: Any) -> None:
             posted.append(text)
 
     monkeypatch.setattr(manager, "get", lambda _r: Managed())
-    monkeypatch.setattr(manager, "enqueue_herdr_wakes_for_mentions", lambda *_a, **_kw: [])
+    monkeypatch.setattr(
+        manager, "enqueue_herdr_wakes_for_mentions", lambda *a, **_kw: woken.append(a)
+    )
+    monkeypatch.setattr(manager, "enqueue_herdr_wake", lambda *a, **_kw: woken.append(a))
     monkeypatch.setattr(hold_sweep, "signal_of", lambda _r, _h: "present")
     monkeypatch.setattr(hold_sweep, "last_activity", lambda *_a: datetime.now(UTC))
 
     assert _sweep(1) == []
-    assert _sweep(hold_sweep.FLAG_HOURS + 1) == [(ROOM, KEY, "flagged")]
-    (line,) = posted
-    assert line.startswith("@lead @~coder has held this for 3h with no activity")
+    assert _sweep(hold_sweep.QUIET_HOURS + 1) == [(ROOM, KEY, "quiet")]
+    (notice,) = notices
+    assert (notice["subkind"], notice["by"]) == ("quiet", "runtime")
+    assert notice["why"] == "nothing on it for 3h; @coder holds it"
+    # Nothing said in the thread, nobody rung.
+    assert (posted, woken) == ([], [])
     # Once per hold, and the row is still held.
-    assert _sweep(hold_sweep.FLAG_HOURS + 2) == []
+    assert _sweep(hold_sweep.QUIET_HOURS + 2) == []
     assert assignments.state_of(_meta(), datetime.now(UTC)) == "held"
+
+
+def _waiting(review: str | None, state: str, label: str, pr: str = "OPEN") -> dict:
+    return {"state": state, "label": label, "detail": {"pr": pr, "review": review}}
+
+
+@pytest.mark.parametrize(
+    ("readings", "blocked", "waiting"),
+    [
+        ([_waiting("APPROVED", "ok", "approved")], None, True),
+        ([_waiting(None, "pending", "awaiting review")], None, True),
+        ([_waiting("CHANGES_REQUESTED", "blocked", "changes requested")], None, False),
+        ([_waiting(None, "failed", "CI failing")], None, False),
+        ([_waiting(None, "pending", "draft")], None, False),
+        ([_waiting("APPROVED", "ok", "merged", pr="MERGED")], None, False),
+        ([], ["#502"], True),
+        ([], None, False),
+    ],
+)
+def test_a_row_waiting_on_someone_else_is_not_quiet(readings, blocked, waiting):
+    assert hold_sweep.waiting_on_someone({"blocked_by": blocked}, readings) is waiting
+
+
+def test_a_row_waiting_on_a_review_neither_goes_quiet_nor_expires(monkeypatch, notices):
+    _row()
+    monkeypatch.setattr(
+        hold_sweep, "open_pull_requests", lambda _r: {KEY: [_waiting("APPROVED", "ok", "approved")]}
+    )
+    monkeypatch.setattr(hold_sweep, "signal_of", lambda _r, _h: "unseen")
+    assert _sweep(hold_sweep.FALLBACK_HOURS + 1) == []
+    assert notices == []
+    assert assignments.state_of(_meta(), datetime.now(UTC)) == "held"
+
+
+def test_the_quiet_notice_is_not_activity(monkeypatch):
+    # Otherwise each notice would put the row's quiet hours back to zero.
+    from app.services.room_channels import manager
+
+    notice = SimpleNamespace(
+        sender="system",
+        recorded_at="2026-10-13T10:00:00+00:00",
+        content={"l9": {"payload": {"type": "notice", "data": {"key": KEY, "subkind": "quiet"}}}},
+    )
+    managed = SimpleNamespace(persister=SimpleNamespace(log=SimpleNamespace(records=[notice])))
+    monkeypatch.setattr(manager, "get", lambda _r: managed)
+    meta = {"created_at": "2026-10-13T08:00:00+00:00"}
+    assert hold_sweep.last_activity(ROOM, KEY, meta) == datetime(2026, 10, 13, 8, tzinfo=UTC)
 
 
 def test_a_lease_drains_by_its_clock_not_this_sweep(monkeypatch, notices):

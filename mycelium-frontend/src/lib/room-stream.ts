@@ -256,6 +256,7 @@ const BOARD_WORDS: Record<string, string> = {
   blocked: "marked blocked",
   unblocked: "unblocked",
   expired: "stopped holding",
+  quiet: "no activity on",
 };
 
 /** What a line says happened, in words, for everything but a message (whose

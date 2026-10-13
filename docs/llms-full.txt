@@ -744,11 +744,13 @@ it moved from and to.
 A hold has no timer. It lasts until the holder resolves the task, releases it
 or hands it off, or until the hub sees the holder is gone: its herdr pane
 closed, or the agent was removed from the room (`mycelium agent rm`). When the
-hub ends a hold, the room gets a notice saying why. A task whose holder has
-gone quiet for a few hours is not taken away; the hub posts in its thread to
-the person who filed it, once. A holder the hub can't see at all (no herdr
-pane and no connection to the room) loses the hold after eight hours with
-nothing happening on the task, and the room is told.
+hub ends a hold, the room gets a notice saying why. A task with nothing
+happening on it for a few hours is not taken away; the room's timeline says
+once that it has gone quiet, and nobody is messaged or woken. A holder the hub
+can't see at all (no herdr pane and no connection to the room) loses the hold
+after eight hours with nothing happening on the task, and the room is told. A
+task waiting on someone else, because its pull request is waiting on a review
+or a merge or because it's blocked, is never called quiet and never expires.
 
 `claim --ttl` still takes a claim for a set number of minutes, for a holder
 that will keep it alive with `mycelium await --lease`.
