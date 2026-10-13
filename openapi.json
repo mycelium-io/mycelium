@@ -5605,7 +5605,7 @@
           "verifier"
         ],
         "summary": "Start Learn",
-        "description": "Label the past messages of the rooms it checks with the hub's model, once,\nthen fit the claim spotter to them. Runs in the background; poll the settings.",
+        "description": "Label the past messages of the rooms it checks with the hub's model, once,\nthen fit the claim spotter to them. Runs in the background; poll the settings.\n\nIt spends the hub's model budget, so with sign-in on only a person may start\nit, never an agent's token.",
         "operationId": "start_learn_api_verifier_learn_post",
         "responses": {
           "202": {
