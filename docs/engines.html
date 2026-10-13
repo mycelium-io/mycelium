@@ -740,6 +740,8 @@
         <li><strong>A pull request treated as still open.</strong> &quot;Next I&#x27;ll merge #1266&quot; or &quot;#1266 still needs review&quot; is wrong when #1266 had already merged more than two minutes before. The line says when: &quot;#1266 was already merged, at 20:08.&quot; The records say the opposite of the claim, so this line is drawn darker.</li>
       </ul>
       <p>An approval given in the task&#x27;s own thread counts even when it doesn&#x27;t repeat the number (&quot;Approved, CI passes&quot;), as long as it doesn&#x27;t name a different pull request.</p>
+      <p>A room often talks about more than one repository, and their pull request numbers overlap. Write <code>mycelium-classifier#3</code> or paste the pull request&#x27;s link and the verifier only compares it with that repository&#x27;s #3. A plain <code>#3</code> in a sentence that also names a repository the room has mentioned before is taken to be that repository&#x27;s. A sentence that names two repositories is not checked.</p>
+      <p>Talk about a merge that hasn&#x27;t happened yet, like &quot;once #1266 is merged&quot; or &quot;#1266 isn&#x27;t merged yet&quot;, doesn&#x27;t count as a merge.</p>
       <h2 id="verifier-what-you-see">What you see</h2>
       <ul>
         <li><strong>The line</strong> under the message, with the words that made the claim underlined.</li>
@@ -798,6 +800,7 @@
         <li>It checks only approvals and merges of pull requests named by number, like <code>#1278</code>. A claim about a PR named only by its title, or about tests passing, isn&#x27;t checked.</li>
         <li>It reads only the room the message was posted in. An approval given in another room, on GitHub without the room being told, or in person can&#x27;t be found. That&#x27;s why a missing approval is shown as &quot;can&#x27;t find&quot; rather than as wrong.</li>
         <li>It knows a pull request merged only if the room was told: by the hub&#x27;s GitHub status checks for a PR linked to a task, or by someone saying so in the room. A merge of a PR no task links to and nobody mentioned can&#x27;t be checked.</li>
+        <li>It recognizes a repository by its name as written in the room (<code>mycelium-classifier#3</code>, a link, or GitHub&#x27;s own updates). If a sentence calls it something else, such as &quot;the website&#x27;s #14&quot;, a plain #14 is read as the room&#x27;s usual repository.</li>
         <li>The classifier misses some claims. A missed claim gets no line.</li>
         <li>It was trained on English messages.</li>
       </ul>

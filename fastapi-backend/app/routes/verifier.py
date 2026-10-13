@@ -65,7 +65,13 @@ async def get_settings(request: Request) -> VerifierSettingsRead:
 @router.post("/verifier/learn", response_model=VerifierSettingsRead, status_code=202)
 async def start_learn(request: Request) -> VerifierSettingsRead:
     """Label the past messages of the rooms it checks with the hub's model, once,
-    then fit the claim spotter to them. Runs in the background; poll the settings."""
+    then fit the claim spotter to them. Runs in the background; poll the settings.
+
+    It spends the hub's model budget, so with sign-in on only a person may start
+    it, never an agent's token."""
+    principal = actor.current_principal(request)
+    if principal is not None and principal.role != "user":
+        raise HTTPException(status_code=403, detail="Only a person can start Learn")
     engine = request.app.state.verifier
     if not engine.rooms():
         raise HTTPException(status_code=409, detail="No room has added the verifier yet")

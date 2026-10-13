@@ -204,6 +204,61 @@ def test_a_merge_an_agent_reported_counts_as_a_record() -> None:
     assert finding.checked[0]["found"].endswith("(@reviewer)")
 
 
+def test_another_repositorys_number_is_not_this_ones_merge() -> None:
+    records = [
+        _upstream(1, "merged", "mycelium-io/mycelium#1", 120),
+        _upstream(2, "merged", "mycelium-io/mycelium#14", 120),
+        _said(3, "hay", "The website#3 copy is in.", 100),
+    ]
+    pr_state = frozenset({"pr_state"})
+    assert _check("mycelium-classifier#1 is ready to merge.", records, kinds=pr_state) == []
+    assert (
+        _check(
+            "https://github.com/mycelium-io/mycelium-classifier/pull/1 still needs review.",
+            records,
+            kinds=pr_state,
+        )
+        == []
+    )
+    # A bare number in a sentence naming another repository the room knows is that one's.
+    assert _check("The website's #14 is open.", records, kinds=pr_state) == []
+    # The same words about the room's own repository are still checked.
+    (finding,) = _check("mycelium#14 is open.", records, kinds=pr_state)
+    assert finding.line == "mycelium#14 was already merged, at 18:30."
+    (finding,) = _check("#14 is open.", records, kinds=pr_state)
+    assert finding.ref == "#14"
+
+
+def test_a_bare_number_two_repositories_were_reported_for_is_not_called_merged() -> None:
+    records = [
+        _upstream(1, "merged", "mycelium-io/mycelium#7", 120),
+        _upstream(2, "opened", "juliarvalenti/shotkit#7", 110),
+    ]
+    assert _check("#7 is open.", [*records], kinds=frozenset({"pr_state"})) == []
+
+
+def test_an_approval_of_another_repositorys_number_does_not_count() -> None:
+    records = [_upstream(1, "approved", "mycelium-io/mycelium#3", 10)]
+    (finding,) = _check("mycelium-classifier#3 is approved.", records)
+    assert finding.line == "Can't find an approval for mycelium-classifier#3."
+    assert finding.quotes == ["mycelium-classifier#3", "approved"]
+
+
+def test_a_merge_still_to_come_is_not_a_merge() -> None:
+    pr_state = frozenset({"pr_state"})
+    for future in (
+        "Merge this after #1266 is merged.",
+        "Once #1266 is merged I'll rebase.",
+        "#1266 isn't merged yet.",
+        "Hold until #1266 is merged.",
+        "#1266 will be merged tonight.",
+    ):
+        records = [_said(1, "reviewer", future, 30)]
+        assert _check("#1266 still needs review.", records, kinds=pr_state) == [], future
+    assert verifier_records.merged_in("Merged #1266.") == [(None, "1266")]
+    assert verifier_records.merged_in("Once #1266 is merged, ship it.") == []
+
+
 def test_a_sentence_without_a_pr_number_is_not_checked() -> None:
     assert _check("Everything is approved and merged.", []) == []
 
@@ -343,7 +398,7 @@ async def test_marking_fine_hides_the_flag_and_keeps_the_answer(engine, monkeypa
 def test_the_hook_ignores_engines_people_and_rooms_without_a_verifier(engine) -> None:
     eng, _manager = engine
     scheduled: list[str] = []
-    eng._serial = lambda room, record: scheduled.append(record.sender)  # type: ignore[method-assign]
+    eng._serial = lambda room, record: scheduled.append(record.sender)
     # No running loop here, so even a message it would check is dropped quietly.
     eng.handle_recorded(ROOM, _said(1, "builder", "#1 approved", 0))
     eng.handle_recorded(ROOM, _said(2, "verifier", "#1 approved", 0))
@@ -451,6 +506,23 @@ async def test_the_settings_route_says_what_it_runs_on(client, app_verifier) -> 
     assert body["rooms"] == [ROOM]
     assert body["learning"]["state"] == "idle"
     assert body["estimate"]["messages"] == 0
+
+
+@pytest.mark.asyncio
+async def test_with_sign_in_only_a_person_can_start_learn(client, app_verifier, monkeypatch):
+    from app.services import actor
+    from app.services.auth import Principal
+
+    started: list[bool] = []
+    monkeypatch.setattr(app_verifier, "start_learn", lambda: started.append(True) or True)
+    # What the sign-in gate leaves on the request for a verified token.
+    monkeypatch.setattr(
+        actor, "current_principal", lambda _r: Principal("s", "builder", "agent", "iss")
+    )
+    assert (await client.post("/api/verifier/learn")).status_code == 403
+    monkeypatch.setattr(actor, "current_principal", lambda _r: Principal("s", "hay", "user", "iss"))
+    assert (await client.post("/api/verifier/learn")).status_code == 202
+    assert started == [True]
 
 
 @pytest.mark.asyncio

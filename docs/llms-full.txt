@@ -1862,6 +1862,15 @@ An approval given in the task's own thread counts even when it doesn't repeat
 the number ("Approved, CI passes"), as long as it doesn't name a different
 pull request.
 
+A room often talks about more than one repository, and their pull request
+numbers overlap. Write `mycelium-classifier#3` or paste the pull request's link
+and the verifier only compares it with that repository's #3. A plain `#3` in a
+sentence that also names a repository the room has mentioned before is taken
+to be that repository's. A sentence that names two repositories is not checked.
+
+Talk about a merge that hasn't happened yet, like "once #1266 is merged" or
+"#1266 isn't merged yet", doesn't count as a merge.
+
 ## What you see
 
 - **The line** under the message, with the words that made the claim
@@ -1950,6 +1959,10 @@ Start it from the verifier's section in **Settings**, or over the API with
   GitHub status checks for a PR linked to a task, or by someone saying so in
   the room. A merge of a PR no task links to and nobody mentioned can't be
   checked.
+- It recognizes a repository by its name as written in the room
+  (`mycelium-classifier#3`, a link, or GitHub's own updates). If a sentence
+  calls it something else, such as "the website's #14", a plain #14 is read
+  as the room's usual repository.
 - The classifier misses some claims. A missed claim gets no line.
 - It was trained on English messages.
 
