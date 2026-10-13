@@ -3,16 +3,18 @@
 
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import useSWR from "swr";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { hubSummary, StatusDot, TONE_COLOR } from "@/components/status-items";
 import { useHubLabel } from "@/components/title-bar";
-import { fetchHubSettings, fetchVoiceStatus } from "@/lib/api";
+import { fetchHubSettings, fetchVoiceStatus, restartHub, type HubEditing } from "@/lib/api";
 import { desktopMachine, settingsLink, useIsDesktop } from "@/lib/desktop";
 import { DOCS_URL } from "@/lib/install";
 import { useNetworkStatus } from "@/lib/room-data";
 import { useHubHealth } from "@/lib/use-status";
+import { HubSettingRow, useHubSettingControl } from "./hub-setting-control";
 import { Note, Row, Section, SettingsPage, Value } from "./settings-ui";
 import { VerifierSection } from "./verifier-section";
 
@@ -21,6 +23,10 @@ const IDENTITY: Record<string, string> = {
   psk: "one shared key for every room",
   signerjwt: "each member signs as itself",
 };
+
+/** How often to ask whether a restarting hub is back, and for how long. */
+const RESTART_POLL_MS = 1_000;
+const RESTART_WAIT_MS = 60_000;
 
 /** The config key a row comes from, so it can be found on the hub's machine. */
 function Key({ name }: { name: string }) {
@@ -39,13 +45,14 @@ function minutes(seconds: number): string {
   return seconds >= 60 ? `${Math.round(seconds / 60)} min` : `${seconds} s`;
 }
 
-/** The hub this window talks to and how it is set up. Nothing here changes
- *  from the page: a hub is set up on its own machine, and every value it holds
- *  is shared by everyone on it, so this page shows them and says where they're
- *  set. Keys are only ever "set" or "not set". */
+/** The hub this window talks to and how it is set up. Someone who may change
+ *  the hub (on a desktop hub, or a person when sign-in is on) changes its
+ *  settings here; they are saved to config.toml and apply when it restarts.
+ *  Anyone else sees them read-only, with where they're set. A key is only
+ *  ever "set" or "not set". */
 export function HubPage() {
   const { data: health } = useHubHealth();
-  const { data: hub } = useSWR("hub-settings", fetchHubSettings, { revalidateOnFocus: false });
+  const { data: hub, mutate } = useSWR("hub-settings", fetchHubSettings, { revalidateOnFocus: false });
   const { data: voice } = useSWR("voice-status", fetchVoiceStatus, { revalidateOnFocus: false });
   const label = useHubLabel();
   const desktop = useIsDesktop();
@@ -55,11 +62,25 @@ export function HubPage() {
   const identity = health?.identity?.mode ?? null;
   const { network } = useNetworkStatus();
   const node = network?.coordination ?? null;
+  const editing = hub?.editing;
+  const mayEdit = editing?.may_edit ?? false;
+  const reload = () => void mutate();
+  const field = { editing, onSaved: reload };
+  const verifier = useHubSettingControl({
+    configKey: "verifier.enabled",
+    label: "Verifier",
+    display: null,
+    ...field,
+  });
 
   return (
     <SettingsPage
       title="Hub"
-      scope="This hub, for everyone on it. Read-only here: it's set up on the hub's machine."
+      scope={
+        mayEdit
+          ? "This hub, for everyone on it. Changes apply when the hub restarts."
+          : "This hub, for everyone on it. Read-only here: it's set up on the hub's machine."
+      }
       actions={
         <span className="flex items-center gap-1.5 text-micro" style={{ color: TONE_COLOR[summary.tone] }}>
           <StatusDot tone={summary.tone} />
@@ -68,16 +89,24 @@ export function HubPage() {
       }
     >
       <div className="mt-5 rounded-lg border border-border bg-surface px-3 py-2.5 text-micro leading-relaxed text-muted-foreground">
-        {ownHub ? (
+        {mayEdit ? (
           <>
-            This {desktopMachine()} runs this hub.{" "}
-            <a href={settingsLink()} className="text-accent hover:underline">
-              Open Mycelium Settings
-            </a>{" "}
-            to change it. A change the hub reads at startup restarts it; agents connected to it reconnect on their own.
+            Changes are saved to the hub&apos;s <code className="font-mono text-text">config.toml</code> and apply when
+            the hub restarts. Agents connected to it reconnect on their own.
+            {ownHub && (
+              <>
+                {" "}
+                Voice and usage counts are set in{" "}
+                <a href={settingsLink()} className="text-accent hover:underline">
+                  Mycelium Settings
+                </a>
+                .
+              </>
+            )}
           </>
         ) : (
           <>
+            {editing?.reason && <>{editing.reason} </>}
             Change these on the hub&apos;s machine with <code className="font-mono text-text">mycelium config set</code>{" "}
             and <code className="font-mono text-text">mycelium config apply</code>, then restart the hub. Agents
             connected to it reconnect on their own.{" "}
@@ -87,6 +116,8 @@ export function HubPage() {
           </>
         )}
       </div>
+
+      {editing && editing.pending.length > 0 && <PendingChanges editing={editing} onBack={reload} />}
 
       {health === undefined && <Skeleton className="mt-6 h-40 w-full rounded-xl" />}
       {health === null && <Note tone="error">The hub isn&apos;t answering.</Note>}
@@ -144,50 +175,79 @@ export function HubPage() {
       {hub && (
         <>
           <Section title="Model">
-            <Row id="hub.model" label="Model the hub's agents use" help={help("Engines, personas and workers think with it.", "llm.model")}>
-              <Value mono>{hub.model.model ?? "not set"}</Value>
-            </Row>
-            <Row id="hub.model-key" label="API key" help={help("The key itself never leaves the hub.", "llm.api_key")}>
-              <Value risk={!hub.model.has_key && Boolean(hub.model.model)}>{hub.model.has_key ? "set" : "not set"}</Value>
-            </Row>
-            {hub.model.custom_endpoint && (
-              <Row label="Endpoint" help={help("Answers at an address set by hand.", "llm.base_url")}>
-                <Value>set</Value>
-              </Row>
+            <HubSettingRow
+              id="hub.model"
+              label="Model the hub's agents use"
+              help={help("Engines, personas and workers think with it, written as provider/model.", "llm.model")}
+              configKey="llm.model"
+              display={<Value mono>{hub.model.model ?? "not set"}</Value>}
+              {...field}
+            />
+            <HubSettingRow
+              id="hub.model-key"
+              label="API key"
+              help={help("The key itself never leaves the hub.", "llm.api_key")}
+              configKey="llm.api_key"
+              display={
+                <Value risk={!hub.model.has_key && Boolean(hub.model.model)}>{hub.model.has_key ? "set" : "not set"}</Value>
+              }
+              {...field}
+            />
+            {(mayEdit || hub.model.custom_endpoint) && (
+              <HubSettingRow
+                id="hub.model-endpoint"
+                label="Endpoint"
+                help={help("An address set by hand, for a model served somewhere else. Empty uses the provider's own.", "llm.base_url")}
+                configKey="llm.base_url"
+                display={<Value>set</Value>}
+                {...field}
+              />
             )}
           </Section>
 
           <Section title="Workers">
-            <Row
+            <HubSettingRow
               id="hub.worker-tools"
               label="Workers can run commands"
               help={help("A worker edits and runs code in its own checkout, as the hub's user.", "worker.tools")}
-            >
-              <Value risk={hub.workers.tools}>{hub.workers.tools ? "on" : "off"}</Value>
-            </Row>
-            <Row id="hub.worker-timeout" label="Longest worker turn" help={help("A turn that runs longer is stopped.", "worker.pi_timeout_s")}>
-              <Value>{minutes(hub.workers.turn_timeout_s)}</Value>
-            </Row>
-            <Row
+              configKey="worker.tools"
+              display={<Value risk={hub.workers.tools}>{hub.workers.tools ? "on" : "off"}</Value>}
+              {...field}
+            />
+            <HubSettingRow
+              id="hub.worker-timeout"
+              label="Longest worker turn"
+              help={help("A turn that runs longer is stopped.", "worker.pi_timeout_s")}
+              configKey="worker.pi_timeout_s"
+              unit="seconds"
+              display={<Value>{minutes(hub.workers.turn_timeout_s)}</Value>}
+              {...field}
+            />
+            <HubSettingRow
               id="hub.worker-turns"
               label="Worker turns per room"
               help={help("A room can lower this in its own settings.", "worker.max_turns_per_room")}
-            >
-              <Value>{hub.workers.max_turns_per_room}</Value>
-            </Row>
+              configKey="worker.max_turns_per_room"
+              display={<Value>{hub.workers.max_turns_per_room}</Value>}
+              {...field}
+            />
           </Section>
 
           <Section title="Board">
-            <Row
+            <HubSettingRow
               id="hub.dependency-gate"
               label="Tasks wait for what they depend on"
               help={help("A room can set this for itself.", "board.dependency_gate")}
-            >
-              <Value>{hub.dependency_gate ? "on" : "off"}</Value>
-            </Row>
+              configKey="board.dependency_gate"
+              display={<Value>{hub.dependency_gate ? "on" : "off"}</Value>}
+              {...field}
+            />
           </Section>
 
-          <Section title="Access">
+          <Section
+            title="Access"
+            note={mayEdit ? "Set on the hub's machine, since a change here could lock everyone out." : undefined}
+          >
             <Row id="hub.sign-in" label="Sign-in required" help={help("Off, anyone who can reach the hub can use it.", "auth.enabled")}>
               <Value risk={!hub.sign_in}>{hub.sign_in ? "on" : "off"}</Value>
             </Row>
@@ -213,30 +273,103 @@ export function HubPage() {
           </Section>
 
           <Section title="Voice and usage">
-            <Row
+            <HubSettingRow
               id="hub.voice"
               label="Voice"
               help={help(
                 voice?.state === "not_downloaded" ? voice.detail || "The speech model is downloading." : "The message box's mic, transcribed on the hub.",
                 "voice.enabled",
               )}
-            >
-              <Value>{hub.voice.enabled ? `on · ${hub.voice.model}` : "off"}</Value>
-            </Row>
-            <Row
+              configKey="voice.enabled"
+              display={<Value>{hub.voice.enabled ? `on · ${hub.voice.model}` : "off"}</Value>}
+              {...field}
+            />
+            {mayEdit && !editing?.app_owned.includes("voice.model") && (
+              <HubSettingRow
+                id="hub.voice-model"
+                label="Speech model"
+                help={help("fast starts sooner; accurate makes fewer mistakes.", "voice.model")}
+                configKey="voice.model"
+                display={<Value>{hub.voice.model}</Value>}
+                {...field}
+              />
+            )}
+            <HubSettingRow
               id="hub.share-usage"
               label="Share anonymous usage counts"
               help={help("Counts of tasks and runs, never names, rooms or text.", "telemetry.send_product_analytics")}
-            >
-              <Value>{hub.share_usage ? "on" : "off"}</Value>
-            </Row>
+              configKey="telemetry.send_product_analytics"
+              display={<Value>{hub.share_usage ? "on" : "off"}</Value>}
+              {...field}
+            />
           </Section>
 
-          <VerifierSection configKey={(name) => <Key name={name} />} />
+          <VerifierSection
+            configKey={(name) => <Key name={name} />}
+            editor={mayEdit ? verifier : undefined}
+          />
         </>
       )}
 
       <Note>Secrets in the hub&apos;s config (keys, the channel secret, sign-in client secrets) never reach this page.</Note>
     </SettingsPage>
+  );
+}
+
+/** Saved changes waiting for the hub to restart, and the way to restart it. */
+function PendingChanges({ editing, onBack }: { editing: HubEditing; onBack: () => void }) {
+  const [restarting, setRestarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const count = editing.pending.length;
+
+  // A restarted hub has nothing pending: once it answers that way, it's back.
+  useEffect(() => {
+    if (!restarting) return;
+    const started = Date.now();
+    const tick = window.setInterval(async () => {
+      const now = await fetchHubSettings();
+      if (now && now.editing.pending.length === 0) {
+        window.clearInterval(tick);
+        setRestarting(false);
+        onBack();
+      } else if (Date.now() - started > RESTART_WAIT_MS) {
+        window.clearInterval(tick);
+        setRestarting(false);
+        setError("The hub hasn't come back yet. Mycelium's health check says why.");
+      }
+    }, RESTART_POLL_MS);
+    return () => window.clearInterval(tick);
+  }, [restarting, onBack]);
+
+  const restart = async () => {
+    setError(null);
+    try {
+      await restartHub();
+      setRestarting(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <div
+      role="status"
+      className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-accent/30 bg-accent-soft px-3 py-2.5 text-micro"
+    >
+      <p className="min-w-0 flex-1 text-text">
+        {restarting
+          ? "Restarting the hub…"
+          : `${count === 1 ? "1 change is" : `${count} changes are`} saved and will apply when the hub restarts.`}
+        {!editing.can_restart && !restarting && (
+          <span className="text-muted-foreground"> Restart it on its machine.</span>
+        )}
+        {error && <span className="block text-red">{error}</span>}
+      </p>
+      {editing.can_restart && (
+        <Button size="sm" disabled={restarting} onClick={() => void restart()}>
+          {restarting ? "Restarting…" : "Restart the hub"}
+        </Button>
+      )}
+    </div>
   );
 }

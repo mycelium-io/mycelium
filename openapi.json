@@ -5960,7 +5960,7 @@
           "hub"
         ],
         "summary": "Hub Settings",
-        "description": "What this hub is set up with, without a key or an address in it.",
+        "description": "What this hub is set up with, without a key or an address in it unless the\ncaller may change it (and never a key).",
         "operationId": "hub_settings_api_hub_settings_get",
         "responses": {
           "200": {
@@ -5969,6 +5969,72 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HubSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Change Hub Settings",
+        "description": "Save settings to config.toml through the CLI. They apply at the hub's next start.",
+        "operationId": "change_hub_settings_api_hub_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HubSettingsChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubSettingsSaved"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hub/restart": {
+      "post": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Restart Hub",
+        "description": "Restart this hub so saved settings apply. A desktop hub only: its\nsupervisor starts it again. Answers before it goes.",
+        "operationId": "restart_hub_api_hub_restart_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Restart Hub Api Hub Restart Post"
                 }
               }
             }
@@ -7939,6 +8005,60 @@
         "title": "HerdrPresenceBody",
         "description": "The host-side ``mycelium herdr sync`` push: handle \u2192 herdr agent state.\n\nEach value may be a bare status string (simple form) or a\n:class:`HerdrAgentState` object carrying the status + current task title."
       },
+      "HubEditing": {
+        "properties": {
+          "may_edit": {
+            "type": "boolean",
+            "title": "May Edit"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why not, when it may not"
+          },
+          "can_restart": {
+            "type": "boolean",
+            "title": "Can Restart",
+            "description": "The hub can restart itself to apply changes"
+          },
+          "app_owned": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "App Owned",
+            "description": "Keys the desktop app sets itself; changed in the app's own settings"
+          },
+          "pending": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pending",
+            "description": "Keys saved since the hub started: they apply at its next start"
+          },
+          "values": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Values",
+            "description": "What each editable key is set to, saved changes included, for an editor only. A key is sent only as whether it is set."
+          }
+        },
+        "type": "object",
+        "required": [
+          "may_edit",
+          "can_restart"
+        ],
+        "title": "HubEditing",
+        "description": "Whether this caller may change the hub's settings from the page, and how."
+      },
       "HubExperience": {
         "properties": {
           "id": {
@@ -8066,6 +8186,15 @@
           },
           "voice": {
             "$ref": "#/components/schemas/HubVoice"
+          },
+          "verifier": {
+            "type": "boolean",
+            "title": "Verifier",
+            "description": "The verifier is on for this hub",
+            "default": false
+          },
+          "editing": {
+            "$ref": "#/components/schemas/HubEditing"
           }
         },
         "type": "object",
@@ -8078,10 +8207,58 @@
           "dependency_gate",
           "patterns_inline",
           "sign_in",
-          "voice"
+          "voice",
+          "editing"
         ],
         "title": "HubSettings",
-        "description": "What this hub is set up with. Read-only: change it on the hub's machine."
+        "description": "What this hub is set up with, and whether this caller may change it."
+      },
+      "HubSettingsChange": {
+        "properties": {
+          "changes": {
+            "additionalProperties": true,
+            "type": "object",
+            "minProperties": 1,
+            "title": "Changes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "changes"
+        ],
+        "title": "HubSettingsChange",
+        "description": "Settings to save, by config key (``contracts/hub-settings.json``). An empty\ntext or key clears it."
+      },
+      "HubSettingsSaved": {
+        "properties": {
+          "saved": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Saved"
+          },
+          "pending": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pending",
+            "description": "Everything saved since the hub started"
+          },
+          "restart_needed": {
+            "type": "boolean",
+            "title": "Restart Needed",
+            "description": "Saved settings apply when the hub next starts",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "saved",
+          "pending"
+        ],
+        "title": "HubSettingsSaved"
       },
       "HubVoice": {
         "properties": {

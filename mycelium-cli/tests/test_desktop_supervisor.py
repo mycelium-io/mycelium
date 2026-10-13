@@ -12,6 +12,7 @@ runs, where programs are found, and that stopping stops the children.
 
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
@@ -415,3 +416,60 @@ def test_the_hubs_settings_come_from_config():
     env = sv.hub_env(config)
     assert env["LLM_MODEL"] == "anthropic/claude-sonnet-4-6"
     assert "LLM_API_KEY" not in env  # empty values are left to the hub's defaults
+
+
+def test_the_hub_is_told_which_cli_saves_its_settings():
+    sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None))
+    [hub_component] = [c for c in sup._components() if c.name == "hub"]
+    assert json.loads(hub_component.env["MYCELIUM_CONFIG_CLI"]) == sv.own_cli()
+    assert sv.own_cli()[0] == sys.executable
+
+
+def test_a_hub_that_asks_to_restart_is_started_again_at_once_with_config_read_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # The hub's Hub page saved a setting: the hub leaves the marker and exits
+    # cleanly. Its second run stays up.
+    marker = tmp_path / sv.HUB_RESTART_MARKER
+    once = tmp_path / "ran-once"
+    script = (
+        "import pathlib, time\n"
+        f"once = pathlib.Path({str(once)!r})\n"
+        "if not once.exists():\n"
+        "    once.write_text('1')\n"
+        f"    pathlib.Path({str(marker)!r}).write_text('restart')\n"
+        "    raise SystemExit(0)\n"
+        "time.sleep(60)\n"
+    )
+    events = Events()
+    restarting = comp("hub", [sys.executable, "-c", script])
+    sup = hub(events, [restarting])
+    sup.env = {"MYCELIUM_DATA_DIR": str(tmp_path)}
+    sup._env_from_config = True
+    monkeypatch.setattr(
+        sv,
+        "hub_env",
+        lambda _config: {"MYCELIUM_DATA_DIR": str(tmp_path), "LLM_MODEL": "new/model"},
+    )
+
+    def restarted() -> bool:
+        # The first run is up too before it exits, so wait for the restart
+        # itself, then for the second run.
+        details = [s["components"]["hub"]["detail"] or "" for s in events.statuses()]
+        asked = any("restarting to apply new settings" in d for d in details)
+        return asked and restarting.state == "running" and restarting.proc is not None
+
+    run_until(sup, restarted)
+    assert restarting.restarts == 0  # not counted as a crash
+    assert not marker.exists()
+    assert restarting.env["LLM_MODEL"] == "new/model"
+
+
+def test_a_hub_that_exits_without_the_marker_is_a_crash(tmp_path: Path):
+    events = Events()
+    crashing = comp("hub", EXIT, ready=lambda: False)
+    sup = hub(events, [crashing])
+    sup.env = {"MYCELIUM_DATA_DIR": str(tmp_path)}
+    run_until(sup, lambda: crashing.state == "failed")
+    details = [s["components"]["hub"]["detail"] or "" for s in events.statuses()]
+    assert not any("restarting to apply" in d for d in details)

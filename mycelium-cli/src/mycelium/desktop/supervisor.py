@@ -71,6 +71,9 @@ READY_TIMEOUT_S = 90.0
 BACKOFF_S = (1.0, 2.0, 4.0, 8.0, 16.0)
 #: A component that crashes this many times in a row is left failed.
 MAX_RESTARTS = len(BACKOFF_S)
+#: What the hub leaves in its data folder before it exits to be restarted with
+#: new settings (`contracts/hub-settings.json`'s `restart_marker`).
+HUB_RESTART_MARKER = ".hub-restart-requested"
 #: How often the supervisor looks at its processes.
 TICK_S = 0.5
 #: How many lines of each component's output are kept to explain a crash.
@@ -366,6 +369,9 @@ class Supervisor:
         self.locator = locator or Locator()
         self.config = config
         self.env = env if env is not None else hub_env(config)
+        #: Whether the hub's settings came from config.toml, so a restart the
+        #: Hub page asks for reads it again (an env passed in is kept as is).
+        self._env_from_config = env is None
         self.start_runner = start_runner
         #: The desktop app's answer to "share usage stats", which wins over
         #: config.toml for the hub it starts. None leaves config.toml's.
@@ -438,7 +444,8 @@ class Supervisor:
             outlives=True,
         )
 
-    def _components(self) -> list[Component]:
+    def _hub_env_vars(self) -> dict[str, str]:
+        """The hub's environment: its settings from config.toml, then the app's own."""
         loc = self.locator
         hub_env_vars = {
             **self.env,
@@ -446,6 +453,9 @@ class Supervisor:
             "MYCELIUM_SLIM_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
             "FASTEMBED_CACHE_PATH": str(loc.models()),
             "MYCELIUM_HUB_MODE": "desktop",
+            # The CLI the hub's Hub page saves settings through
+            # (`config set`), so a change takes the one validated path.
+            "MYCELIUM_CONFIG_CLI": json.dumps(own_cli()),
             # Files read and written as UTF-8 on Windows too (the bundled
             # hub is built in this mode; a checkout's `uv run` needs telling).
             "PYTHONUTF8": "1",
@@ -460,6 +470,11 @@ class Supervisor:
             hub_env_vars["VOICE_MODEL"] = self.voice_model
         if pi := loc.pi():
             hub_env_vars["ALIGNER_PI_BINARY"] = pi
+        return hub_env_vars
+
+    def _components(self) -> list[Component]:
+        loc = self.locator
+        hub_env_vars = self._hub_env_vars()
         ui_env = {
             "PORT": str(UI_PORT),
             "HOSTNAME": HOST,
@@ -581,6 +596,17 @@ class Supervisor:
             self._spawn(c)
             return c.state == "running"
         code = c.proc.poll()
+        if code is not None and c.name == "hub" and self._hub_asked_to_restart():
+            # The Hub page saved settings and asked for a restart: start it
+            # again at once with config.toml read afresh, not as a crash.
+            c.proc = None
+            c.restarts = 0
+            c.retry_at = 0.0
+            if self._env_from_config:
+                self.env = hub_env(None)
+            c.env = self._hub_env_vars()
+            self._set(c, "starting", "restarting to apply new settings")
+            return False
         if code is not None:
             c.proc = None
             c.restarts += 1
@@ -770,6 +796,14 @@ class Supervisor:
         """Where the hub this supervisor starts keeps its data."""
         return Path(self.env.get("MYCELIUM_DATA_DIR") or Path.home() / ".mycelium").expanduser()
 
+    def _hub_asked_to_restart(self) -> bool:
+        """Whether the hub left the restart marker before it exited; takes it away."""
+        marker = self.data_dir() / HUB_RESTART_MARKER
+        if not marker.exists():
+            return False
+        marker.unlink(missing_ok=True)
+        return True
+
     def _preflight(self) -> None:
         """Before anything starts: every hub here, and the one on our port, reported."""
         from mycelium import __version__
@@ -838,6 +872,14 @@ class Supervisor:
                 self._terminate(c)
                 c.state = "stopped"
         self._publish()
+
+
+def own_cli() -> list[str]:
+    """How to run this same CLI again: the app's bundled program, or this Python
+    with the package from a checkout."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, "-m", "mycelium"]
 
 
 def hub_env(config: Any) -> dict[str, str]:

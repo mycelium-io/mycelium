@@ -216,7 +216,24 @@ export async function resetRoomSetting(roomName: string, id: string): Promise<Ro
 
 // ── Hub settings ─────────────────────────────────────────────────────────────
 
-/** What a hub is set up with, read-only, never a key or an address. */
+/** Whether this caller may change the hub's settings from the Hub page. */
+export interface HubEditing {
+  may_edit: boolean;
+  /** Why not, when it may not. */
+  reason: string | null;
+  /** The hub can restart itself to apply what was saved (a desktop hub). */
+  can_restart: boolean;
+  /** Keys the desktop app sets itself, changed in the app's own settings. */
+  app_owned: string[];
+  /** Keys saved since the hub started, which apply at its next start. */
+  pending: string[];
+  /** What each editable key is set to, for an editor only. A key is only
+   *  whether it is set. */
+  values: Record<string, unknown>;
+}
+
+/** What a hub is set up with. A key or an address is never sent, except an
+ *  address to someone who may change it. */
 export interface HubSettings {
   model: { model: string | null; provider: string | null; has_key: boolean; custom_endpoint: boolean };
   experiences: { id: string; title: string; description: string; open: string; unit: string; scenarios: number }[];
@@ -227,10 +244,30 @@ export interface HubSettings {
   patterns_inline: boolean;
   sign_in: boolean;
   voice: { enabled: boolean; model: string };
+  verifier: boolean;
+  editing: HubEditing;
 }
 
 export async function fetchHubSettings(): Promise<HubSettings | null> {
   return apiFetch<HubSettings | null>("/api/hub/settings", { cache: "no-store", fallback: null });
+}
+
+/** Save settings to the hub's config.toml, by config key. An empty text or key
+ *  clears it. They apply when the hub next starts. Throws `ApiError` saying
+ *  why a change was refused; a refused change saves nothing. */
+export async function updateHubSettings(
+  changes: Record<string, unknown>,
+): Promise<{ saved: string[]; pending: string[]; restart_needed: boolean }> {
+  return apiFetch("/api/hub/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ changes }),
+  });
+}
+
+/** Restart a desktop hub so what was saved applies. It answers before it goes. */
+export async function restartHub(): Promise<void> {
+  await apiFetch("/api/hub/restart", { method: "POST" });
 }
 
 /** The rooms listed for `viewer`: every shared room, and their private ones. */

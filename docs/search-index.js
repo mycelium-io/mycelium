@@ -600,7 +600,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#verifier-turning-it-on",
     "t": "Turning it on",
     "s": "Verifier",
-    "x": "The verifier is off on a new hub. Turn it on in the hub's config, then add it to each room you want checked: mycelium config set verifier.enabled true mycelium config apply mycelium engine create verifier --kind verifier --room sprint-plan In the app, add it from Members, then Add, then Engine. Unlike the other engines it doesn't wait to be mentioned. Once a room has it, it reads every message an agent posts there. I",
+    "x": "The verifier is off on a new hub. Turn it on in the hub's config, then add it to each room you want checked: mycelium config set verifier.enabled true mycelium config apply mycelium engine create verifier --kind verifier --room sprint-plan You can also turn it on in the app, under Settings, then Hub, when the hub runs in the desktop app on your computer, or when sign-in is on and you're signed in as a person. The cha",
     "p": "Engines"
   },
   {
