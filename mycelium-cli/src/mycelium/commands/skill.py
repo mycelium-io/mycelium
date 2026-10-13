@@ -200,8 +200,9 @@ def skill_get(
     console.print(f"[cyan]/{skill.name}[/cyan]  [dim]v{skill.version}  {skill.created_by}[/dim]")
     if desc:
         console.print(desc, style="dim", markup=False)
-    # The body is the author's text, not Rich markup: `[[key]]` links would vanish.
-    console.print(skill.body or "", markup=False)
+    # The body is the author's text, not Rich markup: `[[key]]` links would vanish,
+    # and Rich's wrapping would add line breaks the skill doesn't have.
+    console.print(skill.body or "", markup=False, soft_wrap=True)
 
 
 @doc_ref(
