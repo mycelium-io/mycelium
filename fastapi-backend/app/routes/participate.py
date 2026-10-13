@@ -52,7 +52,7 @@ from app.services.agent_registry import norm_handle
 from app.services.filesystem import room_exists
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content, serialize_envelope
-from app.services.persister import _conversational_text, record_episode
+from app.services.persister import _conversational_text, parse_mentions, record_episode
 
 router = APIRouter(prefix="/rooms/{room_name}", tags=["participate"])
 
@@ -91,9 +91,10 @@ _parse_marker = markers.parse_marker
 def _addressed_to(content: dict[str, Any], handle: str) -> bool:
     """True when a transcript record is an exchange addressed to ``handle``.
 
-    Addressed = the handle is a message recipient, or ``@handle`` appears in the human
-    text — and the sender is not the handle itself (loop guard). Presence/keepalive
-    are never addressed turns.
+    Addressed = the handle is a message recipient, or the human text mentions it
+    by the hub's one rule (``persister.parse_mentions``: not inside code, not
+    silent) — and the sender is not the handle itself (loop guard).
+    Presence/keepalive are never addressed turns.
     """
     env = content.get("l9") or {}
     header = env.get("header") or {}
@@ -108,13 +109,8 @@ def _addressed_to(content: dict[str, Any], handle: str) -> bool:
     recipients = [a.get("id") for a in actors[1:] if isinstance(a, dict)]
     if any(_norm(r) == _norm(handle) for r in recipients if r):
         return True
-    text = (content.get("content") or "").lower()
-    needle = f"@{handle.lower()}"
-    idx = text.find(needle)
-    if idx == -1:
-        return False
-    nxt = text[idx + len(needle)] if idx + len(needle) < len(text) else ""
-    return not (nxt.isalnum() or nxt in "_-")
+    text = content.get("content") or ""
+    return any(_norm(m) == _norm(handle) for m in parse_mentions(str(text)))
 
 
 def _refuse_thread_write(refusal: tasks.ThreadRefusal | None) -> None:
