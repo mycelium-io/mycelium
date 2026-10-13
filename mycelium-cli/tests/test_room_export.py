@@ -213,7 +213,7 @@ def test_since_bounds_a_first_export(tmp_path) -> None:
 def test_redact_replaces_secrets_and_keeps_github(tmp_path) -> None:
     text = (
         "mail a@b.co, see https://example.com/x and https://github.com/o/r/pull/1, "
-        "token ghp_abcdefghijklmnopqrstuvwxyz0123, in /Users/someone/code"
+        "token ghp_abcdefghijklmnopqrstuvwxyz0123, password=hunter2hunter2, in /Users/someone/code"
     )
     hub = FakeHub([_frame(0, "coder", text=text)])
 
@@ -222,7 +222,7 @@ def test_redact_replaces_secrets_and_keeps_github(tmp_path) -> None:
 
     assert line["text"] == (
         "mail <EMAIL>, see <URL> and https://github.com/o/r/pull/1, "
-        "token <TOKEN>, in /Users/<USER>/code"
+        "token <TOKEN>, password=<TOKEN>, in /Users/<USER>/code"
     )
 
 

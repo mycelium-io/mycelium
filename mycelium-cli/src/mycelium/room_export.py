@@ -274,7 +274,7 @@ _REDACTIONS = [
     (re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"), "<TOKEN>"),
     (
         re.compile(
-            r"(?i)\b((?:api[_-]?key|token|secret|password|passwd)\s*[:=]\s*)['\"]?[^\s'\"`]{8,}"
+            r"(?i)\b((?:api[_-]?key|token|secret|password|passwd)\s*[:=]\s*)['\"]?[^\s'\"`,;]{8,}"
         ),
         r"\1<TOKEN>",
     ),
