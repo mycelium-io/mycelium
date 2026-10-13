@@ -47,8 +47,16 @@ PROSE_TYPES = frozenset({"message", "reply"})
 WIRE_PAGE = 1000
 MEMORY_PAGE = 1000
 
-_MENTION = re.compile(r"(?<![\w`/.])@([!~]?)([A-Za-z0-9][A-Za-z0-9_-]*)")
+# The hub's rule (``contracts/mentions.json``, asserted in
+# ``tests/test_mentions_contract.py``): a token at the start of the text or
+# after whitespace, ``(`` or ``<``, and never inside code.
+_MENTION = re.compile(r"(?:^|(?<=[\s(<]))@([!~]?)([A-Za-z0-9][\w-]*)")
 _MENTION_MODES = {"!": "urgent", "~": "silent"}
+_FENCE_OPEN = re.compile(r"^[ \t]*(`{3,}|~{3,})(.*)$")
+_BLANK_LINE = re.compile(r"\n[ \t]*\n")
+#: What code is replaced with before matching: no word character, no
+#: whitespace, so it neither extends a handle nor starts one.
+_CODE_MASK = "\x00"
 _ROLE_KINDS = {"human": "person", "agent": "agent", "coordinator": "engine"}
 _UNTHREADED = {None, "live", "knowledge"}
 
@@ -210,11 +218,80 @@ def _notice_text(data: dict[str, Any]) -> str:
     return f"[{sub}] {title}{by}{for_}"
 
 
+def _mask(text: str) -> str:
+    return "".join("\n" if c == "\n" else _CODE_MASK for c in text)
+
+
+def _blank_fences(text: str) -> str:
+    out: list[str] = []
+    fence: str | None = None
+    for line in text.split("\n"):
+        if fence is not None:
+            if re.fullmatch(rf"[ \t]*{re.escape(fence[0])}{{{len(fence)},}}[ \t]*", line):
+                fence = None
+            out.append(_mask(line))
+            continue
+        opened = _FENCE_OPEN.match(line)
+        if opened and not (opened.group(1)[0] == "`" and "`" in opened.group(2)):
+            fence = opened.group(1)
+            out.append(_mask(line))
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _backtick_run(text: str, start: int) -> int:
+    end = start
+    while end < len(text) and text[end] == "`":
+        end += 1
+    return end
+
+
+def blank_code(text: str) -> str:
+    """``text`` with its fenced blocks and code spans masked, same length.
+
+    The CLI's copy of the hub's ``persister.blank_code``: a code span closes on
+    the next backtick run of its own length within its paragraph, a run with no
+    such close is literal backticks, and a fence runs to its close or the end.
+    """
+    text = _blank_fences(text)
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        if text[i] != "`":
+            out.append(text[i])
+            i += 1
+            continue
+        run_end = _backtick_run(text, i)
+        run = run_end - i
+        close = -1
+        k = run_end
+        while k < len(text):
+            if text[k] != "`":
+                k += 1
+                continue
+            k_end = _backtick_run(text, k)
+            if k_end - k == run:
+                close = k
+                break
+            k = k_end
+        if close == -1 or _BLANK_LINE.search(text, run_end, close):
+            out.append(text[i:run_end])
+            i = run_end
+            continue
+        out.append(_mask(text[i : close + run]))
+        i = close + run
+    return "".join(out)
+
+
 def mentions(text: str) -> list[dict[str, str]]:
-    """Every ``@handle`` in prose, with how it was said: plain, silent ``@~`` or urgent ``@!``."""
+    """Every ``@handle`` in prose, with how it was said: plain, silent ``@~`` or urgent ``@!``.
+
+    A handle inside code is quoted, not mentioned, so it isn't listed.
+    """
     return [
         {"handle": handle, "mode": _MENTION_MODES.get(mode, "plain")}
-        for mode, handle in _MENTION.findall(text)
+        for mode, handle in _MENTION.findall(blank_code(text))
     ]
 
 

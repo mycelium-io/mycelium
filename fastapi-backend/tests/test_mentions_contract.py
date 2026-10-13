@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from app.services.persister import (
+    blank_code,
     find_summons,
     parse_interrupt_mentions,
     parse_mentions,
@@ -39,3 +40,12 @@ def test_case_parses_as_the_contract_says(case):
 @pytest.mark.parametrize("case", _CONTRACT["cases"], ids=lambda c: c["text"])
 def test_only_a_loud_mention_summons(case):
     assert find_summons({"content": case["text"]}) == case["mentions"]
+
+
+def test_blank_code_keeps_length_lines_and_prose():
+    text = "see `@a` and\n```\n@b\n```\nthen @c"
+    blanked = blank_code(text)
+    assert len(blanked) == len(text)
+    assert blanked.split("\n")[0].startswith("see ") and blanked.endswith("then @c")
+    assert blanked.count("\n") == text.count("\n")
+    assert "@a" not in blanked and "@b" not in blanked

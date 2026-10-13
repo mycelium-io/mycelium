@@ -804,9 +804,11 @@ is no litellm dependency.
   them the message; if they're an agent that's working, they read it when
   their turn ends. A silent mention (`@~foo`) names them without notifying
   them or waking an agent. An interrupting mention (`@!foo`) stops a working
-  agent mid-turn so it reads the message straight away. `contracts/mentions.json`
-  freezes the three forms, asserted by the hub's parser (`persister.py`) and
-  the app's (`lib/mentions.ts`). How `@!` works (`app/services/interrupts.py`):
+  agent mid-turn so it reads the message straight away. A handle inside a
+  code span or a fenced block is quoted, none of the three
+  (`persister.blank_code`). `contracts/mentions.json` freezes the forms and
+  the code rule, asserted by the hub's parser (`persister.py`), the app's
+  (`lib/mentions.ts`) and the CLI's room export (`room_export.mentions`). How `@!` works (`app/services/interrupts.py`):
   when any person or agent in the room sends it and herdr shows the target
   working, the hub queues an `interrupt` job for the runner whose machine runs
   the target. The runner presses the agent CLI's own key

@@ -86,6 +86,84 @@ _SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@!?([A-Za-z0-9][\w-]*)")
 _SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~([A-Za-z0-9][\w-]*)")
 _INTERRUPT_RE = re.compile(r"(?:^|(?<=[\s(<]))@!([A-Za-z0-9][\w-]*)")
 
+# Code is quoted, never addressed: a handle inside a code span or a fenced block
+# is no mention of any kind (``contracts/mentions.json``). A fence opens on a
+# line of three or more backticks or tildes (any indent) and runs to a line of
+# the same character at least as long, or to the end of the text, as Markdown
+# draws it. A backtick fence's info string holds no backtick.
+_FENCE_OPEN = re.compile(r"^[ \t]*(`{3,}|~{3,})(.*)$")
+_BLANK_LINE = re.compile(r"\n[ \t]*\n")
+#: What code is replaced with before matching: no word character, no
+#: whitespace, so it neither extends a handle nor starts one.
+_CODE_MASK = "\x00"
+
+
+def _mask(text: str) -> str:
+    return "".join("\n" if c == "\n" else _CODE_MASK for c in text)
+
+
+def _blank_fences(text: str) -> str:
+    out: list[str] = []
+    fence: str | None = None
+    for line in text.split("\n"):
+        if fence is not None:
+            if re.fullmatch(rf"[ \t]*{re.escape(fence[0])}{{{len(fence)},}}[ \t]*", line):
+                fence = None
+            out.append(_mask(line))
+            continue
+        opened = _FENCE_OPEN.match(line)
+        if opened and not (opened.group(1)[0] == "`" and "`" in opened.group(2)):
+            fence = opened.group(1)
+            out.append(_mask(line))
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _backtick_run(text: str, start: int) -> int:
+    end = start
+    while end < len(text) and text[end] == "`":
+        end += 1
+    return end
+
+
+def blank_code(text: str) -> str:
+    """``text`` with its fenced blocks and code spans masked, same length.
+
+    A code span opens on a run of backticks and closes on the next run of the
+    same length within its paragraph; a run with no such close is literal
+    backticks, not code. Newlines are kept, so the start-of-line rule for a
+    mention still holds outside code.
+    """
+    text = _blank_fences(text)
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        if text[i] != "`":
+            out.append(text[i])
+            i += 1
+            continue
+        run_end = _backtick_run(text, i)
+        run = run_end - i
+        close = -1
+        k = run_end
+        while k < len(text):
+            if text[k] != "`":
+                k += 1
+                continue
+            k_end = _backtick_run(text, k)
+            if k_end - k == run:
+                close = k
+                break
+            k = k_end
+        if close == -1 or _BLANK_LINE.search(text, run_end, close):
+            out.append(text[i:run_end])
+            i = run_end
+            continue
+        out.append(_mask(text[i : close + run]))
+        i = close + run
+    return "".join(out)
+
 
 # ── Envelope helpers ─────────────────────────────────────────────────────────
 
@@ -146,10 +224,11 @@ def parse_mentions(text: str) -> list[str]:
     The backend's ``@``-parse: map ``@agent-x`` tokens in a human's
     message to message recipients. De-duplicated preserving first-seen order. A bare
     ``word@host`` is **not** a mention (the ``@`` must start the string or follow
-    whitespace / ``(`` / ``<``), so an email address never wakes an agent.
+    whitespace / ``(`` / ``<``), so an email address never wakes an agent, and
+    a handle inside code (:func:`blank_code`) is quoted, not mentioned.
     """
     seen: dict[str, None] = {}
-    for match in _SUMMON_RE.findall(text):
+    for match in _SUMMON_RE.findall(blank_code(text)):
         seen.setdefault(match, None)
     return list(seen)
 
@@ -163,7 +242,7 @@ def parse_silent_mentions(text: str) -> list[str]:
     :func:`parse_mentions`.
     """
     seen: dict[str, None] = {}
-    for match in _SILENT_RE.findall(text):
+    for match in _SILENT_RE.findall(blank_code(text)):
         seen.setdefault(match, None)
     return list(seen)
 
@@ -176,7 +255,7 @@ def parse_interrupt_mentions(text: str) -> list[str]:
     turn ends. Same boundary rule and order as :func:`parse_mentions`.
     """
     seen: dict[str, None] = {}
-    for match in _INTERRUPT_RE.findall(text):
+    for match in _INTERRUPT_RE.findall(blank_code(text)):
         seen.setdefault(match, None)
     return list(seen)
 
