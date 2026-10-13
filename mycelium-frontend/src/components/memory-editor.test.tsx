@@ -11,7 +11,7 @@ import type { Memory } from "@/lib/api";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-vi.mock("@fedoup/markdown-editor", async () => {
+vi.mock("@/components/markdown-editor", async () => {
   const { forwardRef, useImperativeHandle } = await import("react");
   return {
     MarkdownEditor: forwardRef(function MockMdEditor(

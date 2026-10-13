@@ -8,7 +8,7 @@ import { createPortal } from "react-dom";
 import { redo, undo } from "@codemirror/commands";
 import { Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { MarkdownEditor, type MarkdownEditorHandle } from "@fedoup/markdown-editor";
+import { MarkdownEditor, type MarkdownEditorHandle } from "@/components/markdown-editor";
 import {
   Bold,
   Code,
@@ -197,7 +197,9 @@ export function MemoryBodyEditor({
       const insert = `${wikilinkMatch.sigil}${target}]]`;
       // Through the live cursor, so a keystroke landing after the match was
       // made isn't stranded behind the inserted link.
-      const to = Math.max(view.state.selection.main.head, wikilinkMatch.from);
+      const head = Math.max(view.state.selection.main.head, wikilinkMatch.from);
+      // `[` closes itself, so `[[` arrives as `[[]]`: the link takes those over.
+      const to = view.state.sliceDoc(head, head + 2) === "]]" ? head + 2 : head;
       view.dispatch({
         changes: { from: wikilinkMatch.from, to, insert },
         selection: { anchor: wikilinkMatch.from + insert.length },
@@ -347,6 +349,7 @@ export function MemoryBodyEditor({
             sourceMode={mode === "source"}
             placeholder={placeholder}
             onChange={onChange}
+            onOpenLink={onNavigate}
             extraExtensions={extensions}
             className={cn("h-full min-h-[200px] w-full px-4 py-3", mode === "source" && "font-mono")}
           />
@@ -361,6 +364,8 @@ export function MemoryBodyEditor({
               , <span className="font-mono">![[</span> embeds one
             </>
           )}
+          {/* Tab indents here, so the way out is said where it's needed. */}
+          {formatting && <> · Esc then Tab leaves the editor</>}
         </span>
         <span className="ml-auto flex-shrink-0 tabular" aria-live="polite">
           {stats.words} {stats.words === 1 ? "word" : "words"}

@@ -4,7 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MarkdownEditorHandle } from "@fedoup/markdown-editor";
+import type { MarkdownEditorHandle } from "@/components/markdown-editor";
 import { FileText, Folder, FolderPlus, Loader2, type LucideIcon } from "lucide-react";
 import { ApiError, createMemories } from "@/lib/api";
 import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
