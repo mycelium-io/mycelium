@@ -130,6 +130,17 @@ interface Props {
 /** What the composer says once a schedule is saved; it links to the Schedules tab. */
 const SCHEDULED = "Scheduled.";
 
+/** The hint row under the composer: what each typed sigil does. The sigils
+ *  are drawn as keycaps, since they're what you type. */
+const COMPOSER_SIGILS = [
+  ["@", "mention"],
+  ["@~", "silent"],
+  ["@!", "interrupt"],
+  ["[[", "memory"],
+  ["/", "command"],
+  [":", "emoji"],
+] as const;
+
 /** What the composer's + adds. Files ride on the message, so they're offered
  *  in a thread too; the rest add to the room, so only its own composer has them. */
 const ADD_ITEMS = [
@@ -1110,7 +1121,15 @@ export function RoomChatBox({
                 it is this narrow on a phone and in a room with both rails open). */}
             {mic.state === "off" ? (
               <span className="min-w-0 truncate text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100">
-                @ mention · @~ silent · @! interrupt · [[ memory · / command · : emoji
+                {COMPOSER_SIGILS.map(([sigil, label], i) => (
+                  <span key={sigil}>
+                    {i > 0 && " · "}
+                    <Kbd size="xs" tone="muted">
+                      {sigil}
+                    </Kbd>{" "}
+                    {label}
+                  </span>
+                ))}
               </span>
             ) : (
               // While the mic is on, the row says so, whether or not the box has focus.
