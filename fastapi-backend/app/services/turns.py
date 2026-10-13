@@ -63,15 +63,21 @@ async def addressed_turn(
     payload_data: dict[str, Any] | None = None,
     on_tick: Callable[[MyceliumMessage], None] | None = None,
     on_reply: Callable[[TranscriptRecord], None] | None = None,
+    mention: bool = False,
+    cancelled: Callable[[], bool] | None = None,
 ) -> str:
     """Post ``prompt`` to ``handle`` alone, wait for its reply, return the prose.
 
     The prompt is recorded into the transcript like any message, so the room can
     follow along; the reply is the first record past it from ``handle`` that
-    ``is_reply`` accepts. ``""`` when the send fails or ``timeout_s`` passes
-    with no such record. ``on_tick`` sees the envelope once it is posted and
-    ``on_reply`` the record that answered it, for a caller keeping its own
-    episode record.
+    ``is_reply`` accepts. ``""`` when the send fails, ``timeout_s`` passes
+    with no such record, or ``cancelled`` says to give up. ``on_tick`` sees the
+    envelope once it is posted and ``on_reply`` the record that answered it,
+    for a caller keeping its own episode record.
+
+    ``mention`` keeps a real ``@handle`` at the front, so the member wakes the
+    way any mention wakes it rather than only because the turn names it as
+    recipient. Every other ``@`` in the prose is still neutralized: one wake.
     """
     before = len(persister.log.records)
     env = message_format.build_envelope(
@@ -83,8 +89,12 @@ async def addressed_turn(
         payload_type=payload_type,
         payload_data=payload_data,
     )
+    text = neutralize_mentions(prompt)
+    if mention:
+        bare = norm_handle(handle) or handle
+        text = f"@{text}" if text.startswith(bare) else f"@{bare} {text}"
     try:
-        await managed.post(env, neutralize_mentions(prompt), raise_on_send_failure=True)
+        await managed.post(env, text, raise_on_send_failure=True)
     except Exception:
         logger.warning("failed to put a turn to @%s in %s", handle, episode)
         return ""
@@ -100,6 +110,6 @@ async def addressed_turn(
                 if on_reply is not None:
                     on_reply(record)
                 return record.content.get("content") or ""
-        if loop.time() >= deadline:
+        if loop.time() >= deadline or (cancelled is not None and cancelled()):
             return ""
         await asyncio.sleep(poll_interval_s)

@@ -96,3 +96,28 @@ async def test_missing_room_404(client):
         "/api/rooms/nope/engines", json={"handle": "aligner", "kind": "aligner"}
     )
     assert resp.status_code == 404
+
+
+# ── stopping a negotiation ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_stop_ends_the_running_negotiation_as_who_asked(client, monkeypatch):
+    from app.main import app
+    from app.services.aligner import AlignerEngine
+    from app.services.room_channels import manager
+
+    await _make_room(client)
+    engine = AlignerEngine(manager)
+    monkeypatch.setattr(app.state, "aligner", engine, raising=False)
+
+    # Nothing running: says so.
+    resp = await client.post("/api/rooms/portfolio/engines/stop", json={"by": "julia"})
+    assert resp.status_code == 409
+    assert "No negotiation is running" in resp.json()["detail"]
+
+    engine._active.add("portfolio")  # a run in flight, as a summon marks it
+    resp = await client.post("/api/rooms/portfolio/engines/stop", json={"by": "@Julia"})
+    assert resp.status_code == 200
+    assert resp.json() == {"stopped": True}
+    assert engine._stops["portfolio"] == ("stopped", "julia")

@@ -334,3 +334,54 @@ def test_parse_stamp_reads_iso_and_ages() -> None:
     assert chat.parse_stamp("2h", now=now) == now - datetime.timedelta(hours=2)
     assert chat.parse_stamp("1d", now=now) == now - datetime.timedelta(days=1)
     assert chat.parse_stamp(" 15 s ", now=now) == now - datetime.timedelta(seconds=15)
+
+
+def test_protocol_records_print_as_their_line_not_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A negotiation's end and a memory update arrive as whole envelopes; the
+    transcript shows the line they carry (or names them), never the JSON."""
+    import json
+
+    from mycelium import chat
+    from mycelium_backend_client.models import MessageListResponse, MessageRead
+
+    stamp = datetime.datetime(2026, 10, 13, 20, 0)  # noqa: DTZ001
+    commit = {
+        "content": "Stopped by julia.",
+        "l9": {"header": {"kind": "commit", "subkind": "rejected"}},
+    }
+    bare = {"l9": {"header": {"kind": "commit", "subkind": "rejected"}}}
+    memory = {"l9": {"header": {"kind": "knowledge"}, "payload": {"data": {"key": "work/x"}}}}
+    msgs = [
+        MessageRead(
+            id=uuid4(),
+            sender_handle="aligner",
+            message_type="l9_commit",
+            content=json.dumps(commit),
+            created_at=stamp,
+        ),
+        MessageRead(
+            id=uuid4(),
+            sender_handle="system",
+            message_type="l9_commit",
+            content=json.dumps(bare),
+            created_at=stamp,
+        ),
+        MessageRead(
+            id=uuid4(),
+            sender_handle="system",
+            message_type="l9_knowledge",
+            content=json.dumps(memory),
+            created_at=stamp,
+        ),
+    ]
+    _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=msgs, total=len(msgs)))
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest"])
+
+    assert result.exit_code == 0, result.output
+    assert "Stopped by julia." in result.output
+    assert "Negotiation rejected." in result.output
+    assert "Memory updated: work/x." in result.output
+    assert '"l9"' not in result.output
+    # Plain messages are untouched.
+    assert chat.readable("broadcast", '{"looks": "like json"}') == '{"looks": "like json"}'

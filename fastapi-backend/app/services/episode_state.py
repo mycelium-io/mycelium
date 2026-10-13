@@ -461,11 +461,14 @@ def build_consensus_envelope(
     assignments: dict[str, Any],
     metrics: dict[str, Any] | None,
     task: str | None = None,
+    reason: str | None = None,
 ) -> dict[str, Any]:
     """The ``commit`` envelope closing the episode (converged or rejected).
 
     ``task`` is the key of the row the negotiation was held in; it rides as
     ``within``, so the work compiled from an agreement is filed under that row.
+    ``reason`` says why a rejected run ended early (``stopped``, ``party_left``,
+    ``circles``); a run that simply ran out carries none.
     """
     parents = sorted(ep.last_reply_ids.values()) or ([ep.intent_id] if ep.intent_id else [])
     payload: dict[str, Any] = {"assignments": assignments}
@@ -473,6 +476,8 @@ def build_consensus_envelope(
         payload["metrics"] = metrics
     if task:
         payload["within"] = task
+    if reason:
+        payload["reason"] = reason
     env = message_format.build_envelope(
         kind=Kind.commit,
         subkind="rejected" if broken else "converged",

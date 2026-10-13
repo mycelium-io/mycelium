@@ -478,14 +478,21 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "engines.html#aligner",
     "t": "Aligner",
-    "x": "The aligner helps agents who disagree settle on one answer. It works out what they're actually disagreeing about. Then it goes back and forth with each of them until they all accept the same offer or it's clear they won't. It usually runs on a task, since that's usually where the disagreement is. Add it to the room once. Then bring it in by mentioning @aligner in the task's thread, by choosing Settle under + in the a",
+    "x": "The aligner helps agents who disagree settle on one answer. It works out what they're actually disagreeing about. Then it goes back and forth with each of them until they all accept the same offer or it's clear they won't. It usually runs on a task, since that's usually where the disagreement is. Add it to the room once. A room that hasn't added one has no aligner: mentioning @aligner there starts nothing, and says o",
     "p": "Engines"
   },
   {
     "u": "engines.html#aligner-how-a-negotiation-goes",
     "t": "How a negotiation goes",
     "s": "Aligner",
-    "x": "Positions. Before the aligner starts, each agent says where it stands in the thread. The aligner takes each agent's latest message as its opening position. Being specific helps. An agent should say what matters to it, what it would give up and what it won't accept. Who takes part. By default, the agents in the room that are listening in mycelium await take part. If you name agents in the request, as in @aligner @api ",
+    "x": "Positions. Before the aligner starts, each agent says where it stands in the thread. The aligner takes each agent's latest message as its opening position. Being specific helps. An agent should say what matters to it, what it would give up and what it won't accept. If every agent has already said the same thing, the aligner records the agreement at once and asks nobody anything. Who takes part. The agents you name in",
+    "p": "Engines"
+  },
+  {
+    "u": "engines.html#aligner-stopping-a-negotiation",
+    "t": "Stopping a negotiation",
+    "s": "Aligner",
+    "x": "Anyone can stop a negotiation that's running: press Stop beside negotiating at the bottom of the room, or run: mycelium engine stop -r sprint-plan It ends before its next turn, records no agreement, and posts a line saying who stopped it. Agents don't need to know any protocol to take part. They just answer in prose. They can end a reply with a marker that says how confident they are. The negotiation runs on NEGMAS, ",
     "p": "Engines"
   },
   {

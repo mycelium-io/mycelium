@@ -200,8 +200,10 @@ class FakeManager:
     def members(self, room: str) -> list[str]:
         return list(self._members)
 
-    def open_episode(self, room: str, episode: str) -> bool:
+    def open_episode(self, room: str, episode: str, *, parties: Any = ()) -> bool:
         self.opened.append(episode)
+        # Who the negotiation froze on, so a test can read back its parties.
+        self.parties = sorted(parties)
         return True
 
     # The floor, as ``RoomChannelManager`` holds it: one per thread, and a log

@@ -453,22 +453,26 @@
     <section class="doc-section" id="aligner">
       <h1>Aligner</h1>
       <p>The aligner helps agents who disagree settle on one answer. It works out what they&#x27;re actually disagreeing about. Then it goes back and forth with each of them until they all accept the same offer or it&#x27;s clear they won&#x27;t.</p>
-      <p>It usually runs on a task, since that&#x27;s usually where the disagreement is. Add it to the room once. Then bring it in by mentioning <code>@aligner</code> in the task&#x27;s thread, by choosing <strong>Settle</strong> under <strong>+</strong> in the app or from the command line:</p>
+      <p>It usually runs on a task, since that&#x27;s usually where the disagreement is. Add it to the room once. A room that hasn&#x27;t added one has no aligner: mentioning <code>@aligner</code> there starts nothing, and says once how to add it. Then bring it in by mentioning <code>@aligner</code> in the task&#x27;s thread, by choosing <strong>Settle</strong> under <strong>+</strong> in the app or from the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
 
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on where we store tokens&quot;</span></code></pre>
-      <p>For a question that doesn&#x27;t belong to any task, ask it in the room instead:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;agree on the budget split and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <p>For a question that doesn&#x27;t belong to any task, ask it in the room instead, and name the agents who should agree:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;@api @sec agree on the budget split and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
       <h2 id="aligner-how-a-negotiation-goes">How a negotiation goes</h2>
       <ol class="steps">
-        <li><strong>Positions.</strong> Before the aligner starts, each agent says where it stands in the thread. The aligner takes each agent&#x27;s latest message as its opening position. Being specific helps. An agent should say what matters to it, what it would give up and what it won&#x27;t accept.</li>
-        <li><strong>Who takes part.</strong> By default, the agents in the room that are listening in <code>mycelium await</code> take part. If you name agents in the request, as in <code>@aligner @api @sec</code>, only those take part. The list is fixed for the whole negotiation, and only those agents can post in the thread until it ends.</li>
+        <li><strong>Positions.</strong> Before the aligner starts, each agent says where it stands in the thread. The aligner takes each agent&#x27;s latest message as its opening position. Being specific helps. An agent should say what matters to it, what it would give up and what it won&#x27;t accept. If every agent has already said the same thing, the aligner records the agreement at once and asks nobody anything.</li>
+        <li><strong>Who takes part.</strong> The agents you name in the request, as in <code>@aligner @api @sec</code>. On a task you can leave the names out, and then the task&#x27;s own members take part: who it&#x27;s for and the agents who&#x27;ve posted in its thread. In the room you have to name them, because the aligner doesn&#x27;t pick from everyone present. The list is fixed for the whole negotiation, and only those agents can post in the thread until it ends. Members coming and going from the room don&#x27;t affect it. It only ends early if one of the agents taking part is removed from the room.</li>
         <li><strong>Checking terms.</strong> Two agents might seem to use the same word in different senses, such as &quot;done&quot; or &quot;blocked&quot;. If so, the aligner asks each of them once what they mean. Usually there&#x27;s nothing to clarify.</li>
-        <li><strong>Rounds.</strong> The aligner works out the questions to decide and the options for each. Then it asks one agent at a time about the current offer. The agent replies in plain language in the same thread with <code>mycelium respond --task &lt;task&gt;</code>. The aligner reads the reply as accept, reject or a counter-offer. An agent that doesn&#x27;t answer in time keeps its last position for that round.</li>
-        <li><strong>The end.</strong> It stops as soon as everyone accepts the same offer. If they can&#x27;t agree, the negotiation ends as rejected. That&#x27;s a valid result rather than an error, and the decision goes back to the people.</li>
+        <li><strong>Rounds.</strong> The aligner works out the questions to decide and the options for each. Then it asks one agent at a time about the current offer, mentioning that agent, so it wakes the way any mention wakes it. The agent replies in plain language in the same thread with <code>mycelium respond --task &lt;task&gt;</code>. The aligner reads the reply as accept, reject or a counter-offer. An agent that doesn&#x27;t answer in time keeps its last position for that round.</li>
+        <li><strong>The end.</strong> It stops as soon as everyone accepts the same offer. If they can&#x27;t agree, the negotiation ends as rejected. That&#x27;s a valid result rather than an error, and the decision goes back to the people. It also stops when the same offer has been turned down three times, since asking again won&#x27;t change it. Every ending posts one plain line in the thread saying what happened and why.</li>
         <li><strong>Turning it into work.</strong> When they agree, the agreement becomes new tasks on the board. Each one is assigned to someone and filed under the task the negotiation ran in. The tasks exist before the agents hear about the agreement, so they can start straight away.</li>
       </ol>
       <p>The negotiation never changes the task it ran in. Agreeing doesn&#x27;t resolve it, and failing doesn&#x27;t take it from whoever holds it. Either way, the run is recorded as an <a href="concepts.html#episodes">episode</a>.</p>
+      <h2 id="aligner-stopping-a-negotiation">Stopping a negotiation</h2>
+      <p>Anyone can stop a negotiation that&#x27;s running: press <strong>Stop</strong> beside <em>negotiating</em> at the bottom of the room, or run:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">stop</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <p>It ends before its next turn, records no agreement, and posts a line saying who stopped it.</p>
       <p>Agents don&#x27;t need to know any protocol to take part. They just answer in prose. They can end a reply with a <a href="reference.html#messages-markers">marker</a> that says how confident they are.</p>
       <p>The negotiation runs on <a href="https://github.com/yasserfarouk/negmas">NEGMAS</a>, an established negotiation library. NEGMAS decides whose turn it is and when everyone has agreed, so the model can&#x27;t declare agreement on its own. The model&#x27;s job is to understand the positions and read each reply. It keeps one session for the whole negotiation, so it remembers what each agent said earlier.</p>
       <h2 id="aligner-settings">Settings</h2>
@@ -506,7 +510,7 @@
             <tr>
               <td><code>aligner.handle</code></td>
               <td><code>aligner</code></td>
-              <td>The handle the built-in aligner answers to when the room has no aligner of its own.</td>
+              <td>The handle that, mentioned in a room with no aligner, gets a reply saying how to add one.</td>
             </tr>
           </tbody>
         </table>

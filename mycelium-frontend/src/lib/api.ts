@@ -1106,6 +1106,17 @@ export async function createEngine(
   });
 }
 
+/** Stop the aligner's negotiation running in a room, as `by`. It ends before
+ *  its next turn and posts one line saying who stopped it. Throws `ApiError`
+ *  (409 when nothing is running there). */
+export async function stopNegotiation(roomName: string, by?: string): Promise<{ stopped: boolean }> {
+  return apiFetch<{ stopped: boolean }>(`${roomApiPath(roomName)}/engines/stop`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ by: by || null }),
+  });
+}
+
 /** Register an external A2A agent as a room member. The backend resolves the
  *  agent card at `card` (a base URL) to discover its endpoint + skills; a
  *  bad/unreachable card surfaces as a 502 whose detail we let propagate. */

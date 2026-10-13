@@ -81,6 +81,9 @@ TEAMMATE_ENGINES = frozenset({"persona", "worker"})
 # that strip a summon's ``@`` the same way.
 _AT_MENTION = turns.MENTION_SIGIL
 
+#: How the opening position of a party that hasn't spoken starts.
+_NO_POSITION = "(no opening position stated by"
+
 # Round number stamped on the pre-negotiation clarifying tick. SAO steps are
 # NEGMAS's own, counted from 1, so round 0 marks the turn that ran before the
 # mechanism existed.
@@ -183,6 +186,10 @@ class AlignerEngine:
         self._llm_session_factory = llm_session_factory
         # Rooms with a run in flight — a re-summon while active is ignored.
         self._active: set[str] = set()
+        # Rooms already told they have no aligner, so a repeated mention isn't answered twice.
+        self._told_absent: set[str] = set()
+        # A run's stop, per room: why and by whom, set by `stop` or an abort.
+        self._stops: dict[str, tuple[str, str | None]] = {}
         # Strong refs to scheduled runs so they aren't GC'd mid-flight.
         self._tasks: set[asyncio.Task[Any]] = set()
 
@@ -200,25 +207,26 @@ class AlignerEngine:
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
-        """Fire the aligner when a registered ``engine`` (kind ``aligner``) — or
-        the legacy reserved handle — is summoned; else ignore.
+        """Fire the aligner when a registered ``engine`` (kind ``aligner``) is
+        summoned; else ignore.
 
         The persister fires this for every ``@``-mention, so the identity gate is
-        what keeps an ``@teammate`` from spawning an engine.
-        The aligner is a first-class registered agent: a summon of a handle whose
-        manifest is ``adapter=engine, kind=aligner`` runs *as that handle*. The
-        reserved ``ALIGNER_HANDLE`` stays a back-compat fallback.
+        what keeps an ``@teammate`` from spawning an engine. Only a room that
+        registered an aligner (``mycelium engine create aligner --kind aligner``)
+        has one: a mention of the usual handle in a room without it starts
+        nothing, and says so once. (It used to fall back to a built-in aligner
+        every room had, which is how a room nobody added one to got a run.)
         A self-authored envelope never re-summons; a room already active is left
         alone.
         """
-        is_reserved = _norm(handle) == _norm(self._handle)
-        if not is_reserved and _registered_engine_kind(room, handle) != "aligner":
+        if _registered_engine_kind(room, handle) != "aligner":
+            if _norm(handle) == _norm(self._handle):
+                self._say_not_added(room, envelope)
             return
-        # When ENGINE_RUNTIME=host the host daemon owns a *registered* engine's
+        # When ENGINE_RUNTIME=host the host daemon owns a registered engine's
         # run (it drives NEGMAS where `pi` lives), so the backend must not also
-        # mediate or the negotiation double-runs. The reserved ALIGNER_HANDLE
-        # fallback has no host manifest, so it always runs backend-side regardless.
-        if not is_reserved and settings.ENGINE_RUNTIME == "host":
+        # mediate or the negotiation double-runs.
+        if settings.ENGINE_RUNTIME == "host":
             logger.info(
                 "engine @%s summoned in %s but ENGINE_RUNTIME=host — host daemon owns the run",
                 handle,
@@ -233,7 +241,6 @@ class AlignerEngine:
         if room in self._active:
             logger.debug("aligner already active on room %s; ignoring re-summon", room)
             return
-        self._active.add(room)
         scoped = self._scoped_participants(handle, co_summons)
         # The negotiation is held where it was asked for: a summon in a task's
         # thread negotiates in that thread, one in the room in the room. So
@@ -241,7 +248,47 @@ class AlignerEngine:
         # that place (``respond --task <row>``, or a bare ``respond``).
         summoned_in = envelope.header.message.episode if envelope.header.message else None
         thread = summoned_in or message_format.live_episode_urn(room)
+        # Who negotiates is who was named, or a task's own members. In the room
+        # with nobody named there's no one to ask, and asking everyone present
+        # is how a busy room pulled in members nobody meant.
+        if scoped is None and message_format.is_live_episode(room, thread):
+            self._say_later(
+                room,
+                "Mention the members who should agree in the same message as me, and "
+                "I'll mediate between them. I don't pick from everyone in the room.",
+                thread,
+                sender=handle,
+            )
+            return
+        self._active.add(room)
         task = asyncio.create_task(self._run_and_release(room, handle, scoped, thread))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    def _say_not_added(self, room: str, envelope: MyceliumMessage) -> None:
+        """Say once, where it was asked, that this room has no aligner and how to add one."""
+        if room in self._told_absent:
+            return
+        self._told_absent.add(room)
+        where = envelope.header.message.episode if envelope.header.message else None
+        self._say_later(
+            room,
+            "There's no aligner in this room, so nothing started. To add one, run "
+            f"`mycelium engine create aligner --kind aligner --room {room}`.",
+            where,
+            sender=message_format.SYSTEM_ACTOR_ID,
+        )
+
+    def _say_later(self, room: str, text: str, episode: str | None, *, sender: str) -> None:
+        """Post one plain line from a sync caller, on the running loop if there is one."""
+        managed = self._manager.get(room)
+        if managed is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(self._say(managed, room, sender, text, episode))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
@@ -358,11 +405,15 @@ class AlignerEngine:
             return None
         persister = managed.persister
         me = engine_handle or self._handle
-        participants = self._roster(room, me, named=scoped_participants)
-        if scoped_participants:
-            scoped = {_norm(h) for h in scoped_participants}
-            participants = [m for m in participants if _norm(m) in scoped]
-            logger.info("aligner (mediator) room %s scoped to %s", room, participants)
+        # Who negotiates: the members the summon named, else a task's own
+        # members (who's posted in its thread, and who it's for). Never everyone
+        # present: that's how a busy room pulled in members nobody meant.
+        wanted = scoped_participants or self._task_members(
+            persister, room, episode or message_format.live_episode_urn(room)
+        )
+        asked = {_norm(h) for h in wanted}
+        participants = [m for m in self._roster(room, me, named=wanted) if _norm(m) in asked]
+        logger.info("aligner (mediator) room %s: parties %s", room, participants)
 
         # Nothing to broker: a negotiation needs at least two participants that are
         # present with opening positions. Rather than open a throwaway episode and
@@ -386,7 +437,7 @@ class AlignerEngine:
         episode_id = _new_episode_id()
         topic = message_format.topic_urn(room)
 
-        self._manager.open_episode(room, episode)
+        self._manager.open_episode(room, episode, parties=participants)
         positions = self._opening_positions(persister, participants)
         ep = episode_state.open_episode(
             parent_room=room,
@@ -442,7 +493,31 @@ class AlignerEngine:
                 on_reading=lambda handle, reading, proposing: self._fold_reading(
                     ep, handle, reading, proposing
                 ),
+                stop_requested=lambda: (self._stops.get(room) or (None, None))[0],
             )
+            # Already agreed: when every party has stated a position and they all
+            # name the same outcome, there's nothing to mediate, so settle it now
+            # rather than walk them through rounds over what they've both said.
+            # A party that hasn't spoken hasn't agreed to anything.
+            all_stated = not any(p.startswith(_NO_POSITION) for p in positions.values())
+            agreed = (
+                await asyncio.to_thread(negotiation.opening_agreement, positions)
+                if all_stated and room not in self._stops
+                else None
+            )
+            if agreed is not None:
+                assignments = dict(zip(negotiation.names, agreed, strict=True))
+                logger.info("aligner (mediator) room %s: already agreed on %s", room, assignments)
+                terms = "; ".join(f"{issue} = {value}" for issue, value in assignments.items())
+                return await self._emit_verdict(
+                    managed,
+                    ep,
+                    assignments,
+                    converged=True,
+                    metrics=None,
+                    text=f"Already agreed, nothing to mediate: {terms}.",
+                    task=row[0] if row else None,
+                )
             mech = mediator.build_mechanism(issues, participants, negotiation, cap=self._max_steps)
             _mech_t0 = __import__("time").monotonic()
             # Snapshot Pi time before mech.run() so we only subtract Pi calls
@@ -497,10 +572,17 @@ class AlignerEngine:
                 assignments or {},
                 converged=converged,
                 metrics=metrics,
-                text=self._mediator_text(converged, assignments, mech.current_step),
+                text=self._mediator_text(
+                    converged,
+                    assignments,
+                    mech.current_step,
+                    stopped=None if converged else self._stop_line(room, negotiation.stop_reason),
+                ),
                 task=row[0] if row else None,
+                reason=None if converged else self._stop_reason_key(room, negotiation.stop_reason),
             )
         finally:
+            self._stops.pop(room, None)
             await self._manager.close_episode(room)
 
     def _open_llm_session(self, episode: str, room: str = "") -> Callable[..., str]:
@@ -609,6 +691,37 @@ class AlignerEngine:
             roster.setdefault(_norm(handle), handle)
         return [roster[k] for k in sorted(roster)]
 
+    def _task_members(self, persister: RoomPersister, room: str, episode: str) -> list[str]:
+        """A task's own members: who it's for, and the agents who've posted in its thread.
+
+        Empty for the room itself, which has no members of its own to ask.
+        """
+        if message_format.is_live_episode(room, episode):
+            return []
+        members: dict[str, str] = {}
+        for record in persister.log.records:
+            header = (
+                record.content.get("l9", {}).get("header", {})
+                if isinstance(record.content, dict)
+                else {}
+            )
+            if (header.get("message") or {}).get("episode") != episode or not self._is_position(
+                record
+            ):
+                continue
+            members.setdefault(_norm(record.sender), record.sender)
+        from app.services.tasks import row_of_episode
+
+        row = row_of_episode(room, episode)
+        if row is not None:
+            from app.services.filesystem import get_room_dir, read_memory_file
+
+            found = read_memory_file(get_room_dir(room), row[0])
+            assignee = found[0].get("assignee") if found else None
+            if isinstance(assignee, str) and assignee.strip():
+                members.setdefault(_norm(assignee), assignee.strip().lstrip("@"))
+        return list(members.values())
+
     def _opening_positions(
         self, persister: RoomPersister, participants: list[str]
     ) -> dict[str, str]:
@@ -628,7 +741,7 @@ class AlignerEngine:
                 if isinstance(text, str) and text.strip():
                     latest[wanted[key]] = text.strip()
         for handle in participants:
-            latest.setdefault(handle, f"(no opening position stated by @{handle})")
+            latest.setdefault(handle, f"{_NO_POSITION} @{handle})")
         return latest
 
     async def _clarify_terms(
@@ -715,10 +828,13 @@ class AlignerEngine:
     ) -> str:
         """Publish one ``@handle`` prompt, wait for the reply, return its prose.
 
-        Bounded by ``round_timeout_s`` (a silent agent yields ``""``, read as a
-        reject) so the mechanism can never hang on one participant. ``action`` is
-        what the tick asks for: an SAO ``position``, or a ``clarify`` definition on
-        the pre-negotiation round.
+        The turn names its agent with a real ``@`` mention, so the agent wakes
+        the way any mention wakes it: whoever summoned the aligner named these
+        agents, and the run asks only them. Bounded by ``round_timeout_s`` (a
+        silent agent yields ``""``, read as a reject) so the mechanism can never
+        hang on one participant, and cut short when the run is stopped.
+        ``action`` is what the tick asks for: an SAO ``position``, or a
+        ``clarify`` definition on the pre-negotiation round.
         """
         return await turns.addressed_turn(
             managed,
@@ -732,6 +848,8 @@ class AlignerEngine:
             is_reply=self._is_position,
             timeout_s=self._round_timeout_s,
             poll_interval_s=self._poll_interval_s,
+            mention=True,
+            cancelled=lambda: managed.room in self._stops,
         )
 
     async def _explain_stall(
@@ -832,13 +950,66 @@ class AlignerEngine:
         episode_state.record_reply(ep, handle=handle, reply=reply, round_n=None)
 
     def _mediator_text(
-        self, converged: bool, assignments: dict[str, str] | None, steps: int
+        self,
+        converged: bool,
+        assignments: dict[str, str] | None,
+        steps: int,
+        *,
+        stopped: str | None = None,
     ) -> str:
-        """The human-facing summary the agents read on a mediated verdict."""
+        """The one plain line a run ends on, saying what happened and why."""
         if converged and assignments:
-            terms = " · ".join(f"{issue} = {value}" for issue, value in assignments.items())
-            return f"✓ agreement in {steps} steps — {terms}."
-        return f"✗ no agreement — the negotiation ran {steps} steps without unanimity."
+            terms = "; ".join(f"{issue} = {value}" for issue, value in assignments.items())
+            return f"Agreed in {steps} {'step' if steps == 1 else 'steps'}: {terms}."
+        if stopped:
+            return stopped
+        if steps >= self._max_steps:
+            return f"No agreement after {steps} steps, the most a negotiation runs."
+        return f"No agreement after {steps} {'step' if steps == 1 else 'steps'}."
+
+    # -- stopping a run --
+
+    def stop(self, room: str, *, by: str | None = None, reason: str = "stopped") -> bool:
+        """Stop the negotiation running in ``room``; False when none is.
+
+        Takes effect before the next turn (and cuts short a turn being waited
+        on). The run then commits ``rejected`` with ``reason`` and posts one
+        line saying who stopped it.
+        """
+        if room not in self._active:
+            return False
+        self._stops.setdefault(room, (reason, by))
+        return True
+
+    def party_left(self, room: str, episode: str, handle: str) -> bool:
+        """``manager.on_party_left``: one of the parties left, so stop the run here."""
+        return self.stop(room, by=handle, reason="party_left")
+
+    def running(self, room: str) -> bool:
+        """Whether a negotiation is running in ``room`` now."""
+        return room in self._active
+
+    def _stop_reason_key(self, room: str, circles: str | None) -> str | None:
+        """The reason a stopped run commits with, or ``None`` when it simply ended."""
+        stop = self._stops.get(room)
+        if stop is not None:
+            return stop[0]
+        return "circles" if circles == "circles" else None
+
+    def _stop_line(self, room: str, circles: str | None) -> str | None:
+        """The closing line for a run that was stopped rather than run out."""
+        stop = self._stops.get(room)
+        if stop is not None:
+            reason, who = stop
+            if reason == "party_left":
+                return f"Stopped: {who} left the room, so there's no agreement."
+            return f"Stopped by {who}." if who else "Stopped."
+        if circles == "circles":
+            return (
+                "Stopped: the same offer was turned down three times, so asking again "
+                "won't change it. Say what would change your answers, then summon me again."
+            )
+        return None
 
     # -- scoring (delegates the math to episode_state) --
 
@@ -878,15 +1049,23 @@ class AlignerEngine:
         metrics: dict[str, Any] | None,
         text: str | None = None,
         task: str | None = None,
+        reason: str | None = None,
     ) -> dict[str, Any]:
         """Broadcast the ``commit`` envelope and record it once locally.
 
         Emitting a ``commit:converged`` here is exactly the plan-compile trigger
         the persister watches — ``on_converged`` is wired to ``task_compiler``.
-        ``task`` is the row the negotiation was held in, carried as ``within``.
+        ``task`` is the row the negotiation was held in, carried as ``within``;
+        ``reason`` why a rejected run ended early. ``text`` is the one plain
+        line the room reads; the record carries it, never only the protocol.
         """
         env_dict = episode_state.build_consensus_envelope(
-            ep, broken=not converged, assignments=assignments, metrics=metrics, task=task
+            ep,
+            broken=not converged,
+            assignments=assignments,
+            metrics=metrics,
+            task=task,
+            reason=reason,
         )
         # The verdict is a *broadcast* terminal statement. Its record-side parents
         # (built above: the episode's synthesized reply ids) are never on the

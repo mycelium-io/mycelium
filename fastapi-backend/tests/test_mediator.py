@@ -32,6 +32,8 @@ from tests.fakes import (
 )
 
 _ROOM = "mediate-room"
+#: Who the summon named: in the room, a run asks only the members named.
+_PARTIES = ["growth", "risk"]
 
 
 def _engine(manager: FakeManager, **kw: Any) -> aligner.AlignerEngine:
@@ -168,7 +170,7 @@ async def test_mediate_terminates_at_agreement() -> None:
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-    verdict = await _engine(manager).mediate(_ROOM)
+    verdict = await _engine(manager).mediate(_ROOM, scoped_participants=_PARTIES)
 
     assert verdict is not None
     assert verdict["header"]["kind"] == "commit"
@@ -219,7 +221,9 @@ async def test_round_duration_excludes_pi_session_time(
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-    await _engine(manager, llm_session_factory=lambda _episode: TimedLlm()).mediate(_ROOM)
+    await _engine(manager, llm_session_factory=lambda _episode: TimedLlm()).mediate(
+        _ROOM, scoped_participants=_PARTIES
+    )
 
     assert recorded["duration_ms"] > 0.0
     assert recorded["duration_excl_llm_ms"] == 0.0
@@ -244,7 +248,7 @@ async def test_two_convenings_write_distinct_episode_records() -> None:
         channel = FakeChannel(persister, reply_conf=0.9)
         managed = FakeManaged(_ROOM, "mycelium", channel, persister)
         manager = FakeManager(managed, ["growth", "risk", "aligner"])
-        verdict = await _engine(manager).mediate(_ROOM)
+        verdict = await _engine(manager).mediate(_ROOM, scoped_participants=_PARTIES)
         assert verdict is not None
         return manager.opened[0]
 
@@ -295,7 +299,7 @@ async def test_mediate_rejects_when_no_issues_discovered(
 
     monkeypatch.setattr(mediator, "discover_issues", lambda *a, **k: [])
 
-    verdict = await _engine(manager).mediate(_ROOM)
+    verdict = await _engine(manager).mediate(_ROOM, scoped_participants=_PARTIES)
 
     assert verdict is not None
     assert verdict["header"]["subkind"] == "rejected"
@@ -411,7 +415,7 @@ async def test_mediate_injects_one_clarifying_round_on_term_mismatch() -> None:
     engine = _engine(manager, llm_session_factory=lambda _ep: _mismatch_llm())
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(mediator, "discover_issues", spy_discover)
-        verdict = await engine.mediate(_ROOM)
+        verdict = await engine.mediate(_ROOM, scoped_participants=_PARTIES)
 
     assert verdict is not None
     ticks = [s for s, _ in channel.sent if s.header.kind == _Kind.exchange]
@@ -440,7 +444,7 @@ async def test_mediate_records_the_term_check_on_the_episode() -> None:
     manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
     await _engine(manager, llm_session_factory=lambda _ep: _mismatch_llm()).mediate(
-        "term-record-room"
+        "term-record-room", scoped_participants=_PARTIES
     )
 
     records = list((room_dir / "log" / "episodes").glob("*.md"))
@@ -465,7 +469,7 @@ async def test_mediate_without_term_mismatch_adds_no_round() -> None:
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-    verdict = await _engine(manager).mediate(_ROOM)
+    verdict = await _engine(manager).mediate(_ROOM, scoped_participants=_PARTIES)
 
     assert verdict is not None
     ticks = [s for s, _ in channel.sent if s.header.kind == _Kind.exchange]
@@ -492,7 +496,9 @@ async def test_term_check_can_be_switched_off(monkeypatch: pytest.MonkeyPatch) -
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-    await _engine(manager, llm_session_factory=lambda _ep: _mismatch_llm()).mediate(_ROOM)
+    await _engine(manager, llm_session_factory=lambda _ep: _mismatch_llm()).mediate(
+        _ROOM, scoped_participants=_PARTIES
+    )
 
     assert calls == []
 
@@ -512,7 +518,7 @@ async def test_mediate_survives_a_failing_term_check(monkeypatch: pytest.MonkeyP
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-    verdict = await _engine(manager).mediate(_ROOM)
+    verdict = await _engine(manager).mediate(_ROOM, scoped_participants=_PARTIES)
 
     assert verdict is not None
     assert verdict["header"]["subkind"] == "converged"
@@ -620,7 +626,7 @@ async def test_least_satisfied_order_preserves_termination() -> None:
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-    verdict = await _engine(manager).mediate(_ROOM)
+    verdict = await _engine(manager).mediate(_ROOM, scoped_participants=_PARTIES)
 
     assert verdict is not None
     assert verdict["header"]["subkind"] == "converged"
@@ -649,7 +655,9 @@ async def test_a_negotiation_summoned_in_a_task_is_held_in_its_thread(
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-    verdict = await _engine(manager).mediate(_ROOM, episode=task.episode)
+    verdict = await _engine(manager).mediate(
+        _ROOM, episode=task.episode, scoped_participants=_PARTIES
+    )
 
     assert verdict is not None
     assert manager.opened == [task.episode]
@@ -675,9 +683,179 @@ async def test_a_negotiation_summoned_in_the_room_is_held_in_the_room() -> None:
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-    verdict = await _engine(manager).mediate(_ROOM)
+    verdict = await _engine(manager).mediate(_ROOM, scoped_participants=_PARTIES)
 
     assert verdict is not None
     prompts = [s for s, _ in channel.sent if s.header.kind == Kind.exchange]
     assert {p.header.message.episode for p in prompts} == {message_format.live_episode_urn(_ROOM)}
     assert "within" not in verdict["payload"]["data"]
+
+
+# ── who it asks, how it asks, and how it ends ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_each_turn_mentions_the_agent_it_asks():
+    """The agent the run asks is @-mentioned for real, so it wakes the way any
+    mention wakes it; no one else in the prose is."""
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    manager = FakeManager(FakeManaged(_ROOM, "mycelium", channel, persister), ["growth", "risk"])
+
+    await _engine(manager).mediate(_ROOM, scoped_participants=_PARTIES)
+
+    turns = [
+        extra["content"]
+        for env, extra in channel.sent
+        if env.header.kind.value == "exchange" and extra
+    ]
+    assert turns
+    for text in turns:
+        assert text.startswith(("@growth", "@risk"))
+        assert text.count("@") == 1
+
+
+@pytest.mark.asyncio
+async def test_the_run_freezes_only_the_members_named():
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    manager = FakeManager(
+        FakeManaged(_ROOM, "mycelium", channel, persister), ["growth", "risk", "reviewer"]
+    )
+
+    await _engine(manager).mediate(_ROOM, scoped_participants=_PARTIES)
+
+    assert manager.parties == ["growth", "risk"]
+
+
+@pytest.mark.asyncio
+async def test_parties_who_already_agree_settle_at_once():
+    """Both said the same thing before anyone summoned the aligner: it commits
+    converged without asking either of them anything."""
+    from tests.fakes import position_record
+
+    persister = FakePersister(
+        [
+            position_record(
+                "growth", prose="Cap it at 30.", episode=message_format.live_episode_urn(_ROOM)
+            ),
+            position_record(
+                "risk", prose="30 works for me.", episode=message_format.live_episode_urn(_ROOM)
+            ),
+        ]
+    )
+    channel = FakeChannel(persister, reply_conf=0.9)
+    manager = FakeManager(FakeManaged(_ROOM, "mycelium", channel, persister), ["growth", "risk"])
+
+    verdict = await _engine(manager).mediate(_ROOM, scoped_participants=_PARTIES)
+
+    assert verdict is not None
+    assert verdict["header"]["subkind"] == "converged"
+    assert verdict["payload"]["data"]["assignments"] == {"cap": "30"}
+    asked = [env for env, _ in channel.sent if env.header.kind.value == "exchange"]
+    assert asked == []
+    assert persister.ingested[-1][1]["content"] == "Already agreed, nothing to mediate: cap = 30."
+
+
+def _disagreeing_llm() -> Any:
+    """growth always proposes 30, risk always 25, and each rejects the other."""
+
+    def llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
+        if "TERM MISMATCHES" in prompt:
+            return json.dumps({"mismatches": []})
+        if "identify the negotiable ISSUES" in prompt:
+            return json.dumps({"issues": [{"name": "cap", "options": ["25", "30", "35"]}]})
+        if "Interpret @" in prompt:
+            if '"action":"counter"' in prompt:
+                return json.dumps(
+                    {"action": "counter", "offer": {"cap": "30" if "@growth" in prompt else "25"}}
+                )
+            return json.dumps({"action": "reject"})
+        return "Still apart."
+
+    return llm
+
+
+@pytest.mark.asyncio
+async def test_a_run_going_in_circles_stops_and_says_why():
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    manager = FakeManager(FakeManaged(_ROOM, "mycelium", channel, persister), ["growth", "risk"])
+    engine = _engine(manager, llm_session_factory=lambda _ep: _disagreeing_llm(), max_steps=40)
+
+    verdict = await engine.mediate(_ROOM, scoped_participants=_PARTIES)
+
+    assert verdict is not None
+    assert verdict["header"]["subkind"] == "rejected"
+    assert verdict["payload"]["data"]["reason"] == "circles"
+    line = persister.ingested[-1][1]["content"]
+    assert line.startswith("Stopped: the same offer was turned down three times")
+    asked = [env for env, _ in channel.sent if env.header.kind.value == "exchange"]
+    assert len(asked) < 12  # well short of the 40-step cap
+
+
+def test_rejecting_the_offer_you_proposed_yourself_reads_as_accepting_it():
+    """What kept two agreeing agents in a loop: each 'rejected' the very offer it
+    had proposed. That's a misreading, so it counts as acceptance."""
+    neg = mediator.MediatedNegotiation(
+        issues=[{"name": "cap", "options": ["25", "30"]}],
+        cap=8,
+        loop=asyncio.new_event_loop(),
+        fetch_prose=lambda h, p, r: _never(),
+        turn_timeout_s=1.0,
+        llm=lambda *a, **k: json.dumps({"action": "reject"}),
+    )
+    neg.agent_move = lambda *a, **k: "no"  # type: ignore[method-assign]
+    neg.set_last_offer("risk", ("30",))
+
+    class _State:
+        current_offer = ("30",)
+        step = 3
+
+    assert (
+        mediator.RemoteAgentNegotiator("risk", neg).respond(_State())
+        == mediator.ResponseType.ACCEPT_OFFER
+    )
+
+
+@pytest.mark.asyncio
+async def test_stopping_a_run_ends_it_with_who_stopped_it():
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    manager = FakeManager(FakeManaged(_ROOM, "mycelium", channel, persister), ["growth", "risk"])
+    engine = _engine(manager)
+    engine._active.add(_ROOM)  # as a summon marks it
+    assert engine.stop(_ROOM, by="julia") is True
+
+    verdict = await engine.mediate(_ROOM, scoped_participants=_PARTIES)
+
+    assert verdict is not None
+    assert verdict["header"]["subkind"] == "rejected"
+    assert verdict["payload"]["data"]["reason"] == "stopped"
+    assert persister.ingested[-1][1]["content"] == "Stopped by julia."
+    asked = [env for env, _ in channel.sent if env.header.kind.value == "exchange"]
+    assert asked == []
+
+
+def test_stopping_with_nothing_running_says_so():
+    manager = FakeManager(FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister()), [])
+    assert _engine(manager).stop(_ROOM, by="julia") is False
+
+
+@pytest.mark.asyncio
+async def test_a_party_leaving_stops_the_run_and_names_them():
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    manager = FakeManager(FakeManaged(_ROOM, "mycelium", channel, persister), ["growth", "risk"])
+    engine = _engine(manager)
+    engine._active.add(_ROOM)
+    assert engine.party_left(_ROOM, message_format.live_episode_urn(_ROOM), "risk") is True
+
+    verdict = await engine.mediate(_ROOM, scoped_participants=_PARTIES)
+
+    assert verdict is not None
+    assert verdict["payload"]["data"]["reason"] == "party_left"
+    assert (
+        persister.ingested[-1][1]["content"]
+        == "Stopped: risk left the room, so there's no agreement."
+    )
