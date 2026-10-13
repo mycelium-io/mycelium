@@ -173,8 +173,10 @@ async def test_memory_not_found(client: AsyncClient):
     """Test 404 for non-existent memory."""
     await client.post("/api/rooms", json={"name": "nf-test"})
 
-    resp = await client.get("/api/rooms/nf-test/memory/does-not-exist")
+    resp = await client.get("/api/rooms/nf-test/memory/agents/does-not-exist")
     assert resp.status_code == 404
+    # It says what was missing, so a client that prints it can be acted on.
+    assert resp.json()["detail"] == "No memory 'agents/does-not-exist' in room 'nf-test'"
 
 
 @pytest.mark.asyncio

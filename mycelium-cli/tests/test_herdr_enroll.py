@@ -16,13 +16,20 @@ import pytest
 from typer.testing import CliRunner
 
 from mycelium.cli import app
+from mycelium.commands.agent import _load_manifest_remote
 from mycelium.integrations.herdr import HerdrBridge, HerdrPaneMapping, HerdrRegistry
 from tests.test_herdr_bridge import ScriptedRunner, _ok, _proc
+
+#: The real manifest lookup, kept before any fixture stubs it out.
+REAL_LOOKUP = _load_manifest_remote
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 runner = CliRunner()
+
+#: The line enroll ends on, for a room named "checkout".
+NEXT = "Next: run `mycelium skill print`, then `mycelium board --room checkout`."
 
 AGENT = {
     "pane_id": "w5:p3",
@@ -77,7 +84,9 @@ def _enroll(*args: str) -> Any:  # noqa: ANN401 - typer's Result, which ty can't
 def test_it_joins_under_the_tab_name_with_a_plain_mapping(herdr: dict) -> None:
     result = _enroll()
     assert result.exit_code == 0, result.output
-    assert "Enrolled" in result.output and "@release-notes" in result.output
+    assert "Joined checkout as @release-notes" in result.output
+    # It says the next step, in the words the app's introduction uses too.
+    assert NEXT in result.output
     assert [m.handle for m in herdr["written"]] == ["release-notes"]
     mapping = herdr["registry"].get("checkout", "release-notes")
     assert mapping is not None and mapping.pane == "w5:p3"
@@ -113,7 +122,80 @@ def test_running_it_again_changes_nothing(herdr: dict) -> None:
     result = _enroll()
     assert result.exit_code == 0, result.output
     assert "Already a member" in result.output and "@scribe" in result.output
+    assert NEXT in result.output
     assert herdr["written"] == []
+
+
+@pytest.fixture
+def first_time(herdr: dict, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The real manifest lookup, against a hub that has no agents yet.
+
+    The hub answers a missing ``agents/<handle>`` with a 404 its OpenAPI spec
+    doesn't declare, so the generated client raises on it. The fixture above
+    stubs the lookup out, which is how enroll shipped unable to enroll anyone.
+    """
+    import httpx
+
+    from mycelium_backend_client import Client
+
+    asked: list[str] = []
+
+    def hub(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        return httpx.Response(404, json={"detail": "No memory in room 'checkout'"})
+
+    monkeypatch.setattr(
+        "mycelium.client.typed_client",
+        lambda *_a, **_k: Client(
+            base_url="http://hub",
+            raise_on_unexpected_status=True,
+            httpx_args={"transport": httpx.MockTransport(hub)},
+        ),
+    )
+    monkeypatch.setattr("mycelium.commands.agent._load_manifest_remote", REAL_LOOKUP)
+    return asked
+
+
+def test_a_first_time_agent_is_enrolled_under_its_tab_name(
+    herdr: dict, first_time: list[str]
+) -> None:
+    result = _enroll()
+    assert result.exit_code == 0, result.output
+    assert "Memory not found" not in result.output
+    assert first_time == ["/api/rooms/checkout/memory/agents/release-notes"]
+    assert [m.handle for m in herdr["written"]] == ["release-notes"]
+    assert herdr["registry"].get("checkout", "release-notes") is not None
+
+
+def test_a_first_time_agent_is_enrolled_under_a_handle_given(
+    herdr: dict, first_time: list[str]
+) -> None:
+    result = _enroll("@scribe")
+    assert result.exit_code == 0, result.output
+    assert [m.handle for m in herdr["written"]] == ["scribe"]
+    assert herdr["registry"].get("checkout", "scribe") is not None
+
+
+def test_a_missing_memory_is_none_and_a_hub_error_still_raises() -> None:
+    import httpx
+
+    from mycelium.commands.agent import _remote_memory_text
+    from mycelium_backend_client import Client
+    from mycelium_backend_client.errors import UnexpectedStatus
+
+    def client(status: int) -> Client:
+        return Client(
+            base_url="http://hub",
+            raise_on_unexpected_status=True,
+            httpx_args={
+                "transport": httpx.MockTransport(lambda _r: httpx.Response(status, json={}))
+            },
+        )
+
+    assert _remote_memory_text(client(404), "checkout", "agents/scribe") is None
+    # "Couldn't look" must never read as "not there".
+    with pytest.raises(UnexpectedStatus):
+        _remote_memory_text(client(500), "checkout", "agents/scribe")
 
 
 def test_outside_a_herdr_pane_it_says_so(herdr: dict, monkeypatch: pytest.MonkeyPatch) -> None:
