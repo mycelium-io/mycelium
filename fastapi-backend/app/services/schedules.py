@@ -25,7 +25,12 @@ found is handed to the agent with the wake.
 
 **Nothing a schedule does is said in the room.** A quiet run posts nothing, and
 a run that wakes reaches only its owner. What changed is published on the
-room's event bus (``schedule_changed``) so the app redraws its list.
+room's event bus (``schedule_changed``) so the app redraws its list. The one
+exception is anyone pausing a schedule that isn't theirs, which tells the owner
+(:func:`tell_owner_paused`): a run they don't know is stopped is a run missed.
+
+**Every change says who made it.** ``updated_by`` is the last writer, and
+``paused_by``/``paused_at`` stay with a paused schedule until it is resumed.
 
 The store is one JSON file per room (``.schedules.json`` beside ``.room.json``),
 not memories: a run writes ``last_run`` and its history every time it fires,
@@ -119,7 +124,13 @@ class Schedule(BaseModel):
     paused: bool = False
     created_by: str = "unknown"
     created_at: datetime
+    #: Who made the last change (an edit, a pause, a resume, a renewal), and when.
+    updated_by: str = ""
     updated_at: datetime
+    #: Who paused it and when, kept until it is resumed, so a later edit to a
+    #: paused schedule doesn't hide who stopped it.
+    paused_by: str | None = None
+    paused_at: datetime | None = None
     expires_at: datetime
     next_run: datetime | None = None
     last_run: datetime | None = None
@@ -411,6 +422,7 @@ async def create(
             task=task,
             created_by=created_by,
             created_at=now,
+            updated_by=created_by,
             updated_at=now,
             expires_at=now + _ttl(expires_in_days),
         )
@@ -442,9 +454,14 @@ async def update(
     paused: bool | None = None,
     renew_days: float | None = None,
     renew: bool = False,
+    by: str = "",
     now: datetime | None = None,
 ) -> Schedule:
-    """Change what a schedule does; only the fields given move."""
+    """Change what a schedule does; only the fields given move.
+
+    ``by`` is who is making the change, recorded as ``updated_by``, and as
+    ``paused_by`` when this change pauses it.
+    """
     now = now or datetime.now(UTC)
     async with _lock(room):
         schedules = load(room)
@@ -470,14 +487,50 @@ async def update(
             retimed = retimed or schedule.next_run is None or schedule.next_run <= now
         if paused is not None and paused != schedule.paused:
             schedule.paused = paused
+            schedule.paused_by = (by or "unknown") if paused else None
+            schedule.paused_at = now if paused else None
             # Resuming starts the clock again rather than firing for the pause.
             retimed = retimed or not paused
         if retimed:
             schedule.next_run = next_run(schedule, now)
+        schedule.updated_by = by or "unknown"
         schedule.updated_at = now
         _save(room, schedules)
     _changed(room, name)
     return schedule
+
+
+def paused_by_someone_else(schedule: Schedule) -> bool:
+    """Whether a paused schedule was paused by someone other than its owner."""
+    by = (schedule.paused_by or "").partition("#")[0]
+    return schedule.paused and by not in {"", "unknown", schedule.owner}
+
+
+async def tell_owner_paused(room: str, schedule: Schedule) -> bool:
+    """Tell a schedule's owner that someone else paused it, before a run is missed.
+
+    Said in the schedule's task thread, or the room when it has none, from
+    whoever paused it, and mentioning the owner so its next turn hears it. The
+    one thing about a schedule said in the room: a run is not (see the module's
+    docstring), but someone stopping another's is. Returns whether it was
+    said; with no live channel there is nobody to tell.
+    """
+    from app.services import room_channels
+
+    if not paused_by_someone_else(schedule):
+        return False
+    by = schedule.paused_by or ""
+    episode = _thread_of(room, schedule)
+    text = (
+        f"Paused @{schedule.owner}'s schedule \"{schedule.name}\". It won't run until it is "
+        f"resumed: mycelium schedule resume {schedule.name} --room {room}"
+    )
+    manager = room_channels.manager
+    result = await manager.publish_human(room, sender=by, text=text, episode=episode)
+    if result is None:
+        return False
+    await manager.raise_ping(room, episode=episode, sender=by, message_id=result.message_id)
+    return True
 
 
 async def remove(room: str, name: str) -> None:

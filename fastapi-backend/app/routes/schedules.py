@@ -123,7 +123,8 @@ async def update_schedule(
 ) -> ScheduleRead:
     """Change a schedule: its timing, prompt, check or task; pause, resume or renew it."""
     _require_room(room_name)
-    _owned(request, room_name, name)
+    was_paused = _owned(request, room_name, name).paused
+    by = actor.bind_optional_actor(request, payload.updated_by, field="updated_by") or ""
     try:
         schedule = await schedules.update(
             room_name,
@@ -136,9 +137,12 @@ async def update_schedule(
             paused=payload.paused,
             renew=payload.renew,
             renew_days=payload.renew_days,
+            by=by,
         )
     except schedules.ScheduleError as err:
         raise _refuse(err) from err
+    if schedule.paused and not was_paused:
+        await schedules.tell_owner_paused(room_name, schedule)
     return _read(schedule)
 
 

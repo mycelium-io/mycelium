@@ -189,7 +189,13 @@ export function ScheduleForm({
     const when = timingEdit(timing);
     try {
       if (schedule) {
-        await updateSchedule(roomName, schedule.name, { ...when, check: sentCheck, prompt, task: task.trim() });
+        await updateSchedule(roomName, schedule.name, {
+          ...when,
+          check: sentCheck,
+          prompt,
+          task: task.trim(),
+          updated_by: principal.trim() || undefined,
+        });
       } else {
         await createSchedule(roomName, {
           name: name.trim() || defaultName(handle, sentCheck),

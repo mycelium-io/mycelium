@@ -414,6 +414,152 @@ async def test_a_schedule_is_written_as_its_owner(client: AsyncClient, as_princi
     assert resp.status_code == 403
 
 
+@pytest.fixture
+def told(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+    """What the hub said in the room, with a live channel standing in."""
+    said: list[dict] = []
+
+    async def publish_human(room, *, sender, text, episode=None, **_):
+        said.append({"room": room, "sender": sender, "text": text, "episode": episode})
+        return type("Result", (), {"message_id": f"m{len(said)}"})()
+
+    async def raise_ping(room, *, episode, sender, message_id):
+        said[-1]["ping"] = message_id
+
+    monkeypatch.setattr(manager, "publish_human", publish_human)
+    monkeypatch.setattr(manager, "raise_ping", raise_ping)
+    return said
+
+
+@pytest.mark.asyncio
+async def test_every_change_records_who_made_it(client: AsyncClient, no_herdr, told):
+    await make_room(client)
+    created = await client.post(
+        "/api/rooms/ops/schedules",
+        json={"name": "check-in", "owner": "builder", "every": "30m", "created_by": "julia"},
+    )
+    assert created.json()["updated_by"] == "julia"
+
+    edited = await client.patch(
+        "/api/rooms/ops/schedules/check-in", json={"prompt": "look", "updated_by": "sam"}
+    )
+    assert edited.json()["updated_by"] == "sam"
+    assert edited.json()["paused_by"] is None
+
+    paused = (
+        await client.patch(
+            "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "julia"}
+        )
+    ).json()
+    assert (paused["updated_by"], paused["paused_by"]) == ("julia", "julia")
+    assert paused["paused_at"] == paused["updated_at"]
+
+    # An edit while it is paused moves updated_by, and leaves who paused it.
+    renewed = (
+        await client.patch(
+            "/api/rooms/ops/schedules/check-in", json={"renew": True, "updated_by": "sam"}
+        )
+    ).json()
+    assert (renewed["updated_by"], renewed["paused_by"]) == ("sam", "julia")
+
+    resumed = (
+        await client.patch(
+            "/api/rooms/ops/schedules/check-in", json={"paused": False, "updated_by": "builder"}
+        )
+    ).json()
+    assert (resumed["updated_by"], resumed["paused_by"], resumed["paused_at"]) == (
+        "builder",
+        None,
+        None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_change_with_no_writer_says_so(client: AsyncClient, no_herdr, told):
+    await make_room(client)
+    await add()
+    paused = (await client.patch("/api/rooms/ops/schedules/check-in", json={"paused": True})).json()
+    assert (paused["updated_by"], paused["paused_by"]) == ("unknown", "unknown")
+    assert told == []  # nobody to say did it
+
+
+@pytest.mark.asyncio
+async def test_the_token_says_who_changed_it(client: AsyncClient, no_herdr, told, as_principal):
+    await make_room(client)
+    await add()
+    as_principal("builder")
+    paused = await client.patch("/api/rooms/ops/schedules/check-in", json={"paused": True})
+    assert paused.json()["paused_by"] == "builder"
+    forged = await client.patch(
+        "/api/rooms/ops/schedules/check-in", json={"prompt": "x", "updated_by": "julia"}
+    )
+    assert forged.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_pausing_someone_elses_schedule_tells_them(client: AsyncClient, no_herdr, told):
+    await make_room(client)
+    await add()
+    await client.patch(
+        "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "julia"}
+    )
+    assert told == [
+        {
+            "room": "ops",
+            "sender": "julia",
+            "text": "Paused @builder's schedule \"check-in\". It won't run until it is resumed: "
+            "mycelium schedule resume check-in --room ops",
+            "episode": None,
+            "ping": "m1",
+        }
+    ]
+
+    # Said once, when it is paused: not again on an edit, nor on resuming.
+    await client.patch(
+        "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "julia"}
+    )
+    await client.patch(
+        "/api/rooms/ops/schedules/check-in", json={"paused": False, "updated_by": "julia"}
+    )
+    assert len(told) == 1
+
+
+@pytest.mark.asyncio
+async def test_pausing_your_own_schedule_tells_nobody(client: AsyncClient, no_herdr, told):
+    await make_room(client)
+    await add()
+    await client.patch(
+        "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "builder#s1"}
+    )
+    assert told == []
+
+
+@pytest.mark.asyncio
+async def test_the_owner_is_told_in_the_schedules_task(client: AsyncClient, no_herdr, told):
+    await make_room(client)
+    await make_row(client, "ops", "work/harvest")
+    await schedules.create(
+        "ops",
+        name="harvest",
+        owner="trainer",
+        every="1h",
+        cron=None,
+        prompt="",
+        check=None,
+        task="work/harvest",
+        expires_in_days=None,
+        created_by="trainer",
+        now=NOW,
+    )
+    await client.patch(
+        "/api/rooms/ops/schedules/harvest", json={"paused": True, "updated_by": "julia"}
+    )
+    from app.services import tasks
+
+    assert told[0]["episode"] == tasks.episode_of("ops", "work/harvest")
+    assert told[0]["episode"]
+
+
 @pytest.mark.asyncio
 async def test_a_search_check_reads_me_as_the_owner(client: AsyncClient, no_herdr, monkeypatch):
     seen: list[str] = []

@@ -1395,6 +1395,7 @@ class ScheduleUpdate(BaseModel):
     paused: bool | None = None
     renew: bool = Field(False, description="Start its expiry again from now")
     renew_days: float | None = Field(None, description="Renew for this many days")
+    updated_by: str | None = Field(None, description="Who is making the change")
 
 
 class ScheduleRunRequest(BaseModel):
@@ -1423,7 +1424,10 @@ class ScheduleRead(BaseModel):
     paused: bool
     created_by: str
     created_at: datetime
+    updated_by: str = Field("", description="Who made the last change")
     updated_at: datetime
+    paused_by: str | None = Field(None, description="Who paused it, while it is paused")
+    paused_at: datetime | None = None
     expires_at: datetime
     next_run: datetime | None = None
     last_run: datetime | None = None
