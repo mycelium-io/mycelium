@@ -19,7 +19,7 @@ import json
 import re
 import urllib.parse
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -102,14 +102,19 @@ def read_wire(
     The wire replay pages backward from the newest frame, so this walks back
     until it reaches ``after_id`` (the last frame a previous run wrote) or a
     frame older than ``after``, whichever comes first, or the start of the room.
+    ``before`` is strict, so each page asks for one microsecond past the oldest
+    frame it has: frames sharing that stamp across the boundary come back again
+    and are dropped by id rather than skipped. A page that is all one stamp
+    already holds every frame at it the hub will page to, so the next one starts
+    strictly before it.
     """
     frames: list[dict[str, Any]] = []
     seen: set[str] = set()
-    before: str | None = None
+    before: datetime | None = None
     while True:
         params: dict[str, Any] = {"limit": WIRE_PAGE}
         if before:
-            params["before"] = before
+            params["before"] = before.isoformat()
         resp = client.get(f"/api/rooms/{room}/messages/wire", params=params)
         resp.raise_for_status()
         page = resp.json()
@@ -124,9 +129,11 @@ def read_wire(
             seen.add(fid)
             frames.append(frame)
             added += 1
-        if len(page) < WIRE_PAGE or not added or not page[0].get("created_at"):
+        oldest = _stamp(page[0]) if page else None
+        if len(page) < WIRE_PAGE or not added or oldest is None:
             return list(reversed(frames))
-        before = page[0]["created_at"]
+        one_stamp = _stamp(page[-1]) == oldest
+        before = oldest if one_stamp else oldest + timedelta(microseconds=1)
 
 
 def read_board(client: Hub, room: str) -> list[dict[str, Any]]:
@@ -317,7 +324,7 @@ def _read_cursor(out: Path, room: str, *, redacted: bool) -> dict[str, Any] | No
     path = out / CURSOR_FILE
     if not path.exists():
         return None
-    cursor = json.loads(path.read_text())
+    cursor = json.loads(path.read_text(encoding="utf-8"))
     if cursor.get("room") != room:
         msg = f"{out} holds an export of {cursor.get('room')!r}, not {room!r}. Pick another --out."
         raise ExportError(msg)
@@ -362,10 +369,10 @@ def export_room(
     if redacted:
         lines = redact(lines)
         rows = redact(rows)
-    with messages_path.open("w" if from_start else "a") as fh:
+    with messages_path.open("w" if from_start else "a", encoding="utf-8") as fh:
         for line in lines:
             fh.write(json.dumps(line, ensure_ascii=False) + "\n")
-    (out / BOARD_FILE).write_text(json.dumps(rows, ensure_ascii=False, indent=2))
+    (out / BOARD_FILE).write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
 
     total = int(previous.get("total", 0)) + len(lines)
     last = frames[-1] if frames else {}
@@ -377,5 +384,17 @@ def export_room(
         "total": total,
         "since": since.isoformat() if since and from_start else previous.get("since"),
     }
-    (out / CURSOR_FILE).write_text(json.dumps(new_cursor, indent=2))
+    (out / CURSOR_FILE).write_text(json.dumps(new_cursor, indent=2), encoding="utf-8")
     return ExportResult(room, out, len(lines), total, len(rows), from_start)
+
+
+def default_out(room: str) -> Path:
+    """``~/mycelium-exports/<room>``: outside whatever folder the command runs in,
+    since that is usually a repository and a transcript must not land in a commit."""
+    return Path.home() / "mycelium-exports" / room
+
+
+def in_git_work_tree(path: Path) -> bool:
+    """Whether ``path`` (or the folder it would be made in) is inside a git checkout."""
+    path = path.expanduser().resolve()
+    return any((parent / ".git").exists() for parent in (path, *path.parents))

@@ -1097,7 +1097,7 @@ def export(
         None,
         "--out",
         "-o",
-        help="Directory to write into (default: ./mycelium-export/<room>). It keeps its own cursor.",
+        help="Directory to write into (default: ~/mycelium-exports/<room>). It keeps its own cursor.",
     ),
     since: str | None = typer.Option(
         None,
@@ -1123,11 +1123,13 @@ def export(
     - cursor.json: where this export stopped.
 
     Running it again with the same --out reads only what is new and appends it,
-    so a scheduled export stays cheap.
+    so a scheduled export stays cheap. The default folder is outside the one you
+    run it in, and a folder inside a git checkout gets a warning, so a room's
+    transcript doesn't end up in a commit.
 
     Examples:
         mycelium room export
-        mycelium room export design-review --out ./backup/design-review
+        mycelium room export design-review --out ~/backup/design-review
         mycelium room export my-room --since 7d --redact
     """
     from pathlib import Path
@@ -1138,7 +1140,14 @@ def export(
         json_output = ctx.obj.get("json", False) if ctx.obj else False
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, _one_room(room, room_opt))
-        target = Path(out) if out else Path("mycelium-export") / room_name
+        target = Path(out).expanduser() if out else room_export.default_out(room_name)
+        if room_export.in_git_work_tree(target):
+            typer.secho(
+                f"Warning: {target} is inside a git checkout. Keep it out of commits, "
+                "or pick another --out.",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
         with hub_client(config, timeout=120) as client:
             result = room_export.export_room(
                 client,

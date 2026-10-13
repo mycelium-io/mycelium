@@ -113,7 +113,8 @@ ROW = {
 
 
 def _read(out) -> list[dict[str, Any]]:
-    return [json.loads(line) for line in (out / "messages.jsonl").read_text().splitlines()]
+    text = (out / "messages.jsonl").read_text(encoding="utf-8")
+    return [json.loads(line) for line in text.splitlines()]
 
 
 def test_pages_back_through_the_whole_room_in_order(tmp_path, monkeypatch) -> None:
@@ -123,8 +124,38 @@ def test_pages_back_through_the_whole_room_in_order(tmp_path, monkeypatch) -> No
     result = room_export.export_room(hub, ROOM, tmp_path)
 
     assert [r["id"] for r in _read(tmp_path)] == ["m0", "m1", "m2", "m3", "m4"]
-    assert hub.wire_calls == 3
+    assert hub.wire_calls > 1
     assert (result.new, result.total, result.from_start) == (5, 5, True)
+
+
+def test_frames_sharing_a_stamp_across_a_page_boundary_are_all_kept(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(room_export, "WIRE_PAGE", 2)
+    frames = [_frame(n, "coder", text=f"msg {n}") for n in range(4)]
+    frames[1]["created_at"] = frames[2]["created_at"]  # m1 and m2 share a stamp
+    hub = FakeHub(frames)
+
+    room_export.export_room(hub, ROOM, tmp_path)
+
+    assert [r["id"] for r in _read(tmp_path)] == ["m0", "m1", "m2", "m3"]
+
+
+def test_files_are_utf8_whatever_the_platform(tmp_path) -> None:
+    hub = FakeHub([_frame(0, "coder", text="ship it 🚀, Zoë, 東京")], rows=[ROW])
+
+    room_export.export_room(hub, ROOM, tmp_path)
+
+    raw = (tmp_path / "messages.jsonl").read_bytes()
+    assert "ship it 🚀, Zoë, 東京".encode() in raw
+
+
+def test_the_default_folder_is_outside_the_working_folder(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert room_export.default_out(ROOM) == tmp_path / "mycelium-exports" / ROOM
+
+    checkout = tmp_path / "repo"
+    (checkout / ".git").mkdir(parents=True)
+    assert room_export.in_git_work_tree(checkout / "exports" / ROOM)
+    assert not room_export.in_git_work_tree(tmp_path / "elsewhere")
 
 
 def test_a_record_is_flat_and_says_who_where_and_what(tmp_path) -> None:
@@ -267,6 +298,17 @@ def test_the_command_says_what_it_wrote(tmp_path, monkeypatch) -> None:
         "board_rows": 1,
         "from_start": False,
     }
+
+
+def test_the_command_warns_about_a_folder_in_a_git_checkout(tmp_path, monkeypatch) -> None:
+    hub = FakeHub([_frame(0, "coder", text="hi")])
+    _patch_command(monkeypatch, hub)
+    (tmp_path / ".git").mkdir()
+
+    result = CliRunner().invoke(room_cmd.app, ["export", ROOM, "--out", str(tmp_path / "x")])
+
+    assert result.exit_code == 0, result.output
+    assert "inside a git checkout" in result.output
 
 
 def test_the_command_refuses_a_mismatched_directory(tmp_path, monkeypatch) -> None:
