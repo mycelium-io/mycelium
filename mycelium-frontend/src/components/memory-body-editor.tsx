@@ -364,6 +364,8 @@ export function MemoryBodyEditor({
               , <span className="font-mono">![[</span> embeds one
             </>
           )}
+          {/* Tab indents here, so the way out is said where it's needed. */}
+          {formatting && <> · Esc then Tab leaves the editor</>}
         </span>
         <span className="ml-auto flex-shrink-0 tabular" aria-live="polite">
           {stats.words} {stats.words === 1 ? "word" : "words"}

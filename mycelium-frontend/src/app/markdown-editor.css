@@ -103,7 +103,8 @@
 .cm-md-copy:focus-visible { opacity: 1; }
 
 /* ---- Tables: spacing as padding, which CodeMirror measures (margin it doesn't) ---- */
-.cm-md-table-wrap { padding: 0.4em 16px; cursor: text; }
+/* A wide table scrolls inside its wrapper rather than widening the editor. */
+.cm-md-table-wrap { padding: 0.4em 16px; overflow-x: auto; cursor: text; }
 .cm-md-table { border-collapse: collapse; font-size: 0.95em; }
 .cm-md-table th, .cm-md-table td { border: 1px solid var(--border2); padding: 0.25em 0.6em; }
 .cm-md-table th { font-weight: 600; background: color-mix(in srgb, var(--text) 4%, transparent); }

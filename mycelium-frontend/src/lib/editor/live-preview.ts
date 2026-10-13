@@ -321,8 +321,8 @@ function wikilinks(c: Ctx, from: number, to: number) {
   }
 }
 
-function build(view: EditorView): DecorationSet {
-  const c: Ctx = { view, state: view.state, active: activeLines(view), out: [] };
+function build(view: EditorView, active: Set<number> = activeLines(view)): DecorationSet {
+  const c: Ctx = { view, state: view.state, active, out: [] };
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(view.state).iterate({
       from,
@@ -375,14 +375,62 @@ function build(view: EditorView): DecorationSet {
   return Decoration.set(c.out, true);
 }
 
+/**
+ * Whether a mouse button is down in the editor. While it is, nothing new is
+ * revealed: showing a line's syntax under the pointer mid-click moves the
+ * text, so the click or drag lands somewhere other than where it was aimed.
+ * What the cursor reached is revealed on release.
+ */
+const setPressed = StateEffect.define<boolean>();
+const pressedField = StateField.define<boolean>({
+  create: () => false,
+  update: (value, tr) => tr.effects.find((e) => e.is(setPressed))?.value ?? value,
+});
+
+const trackPointer = ViewPlugin.fromClass(
+  class {
+    constructor(readonly view: EditorView) {
+      this.release = this.release.bind(this);
+      window.addEventListener("mouseup", this.release);
+    }
+    release() {
+      if (this.view.state.field(pressedField)) this.view.dispatch({ effects: setPressed.of(false) });
+    }
+    destroy() {
+      window.removeEventListener("mouseup", this.release);
+    }
+  },
+  {
+    eventHandlers: {
+      mousedown(event, view) {
+        if (event.button === 0) view.dispatch({ effects: setPressed.of(true) });
+      },
+    },
+  },
+);
+
+const released = (u: ViewUpdate) =>
+  u.startState.field(pressedField) && !u.state.field(pressedField);
+
 const inlinePreview = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    /** The lines shown as source when the button went down, kept until it's up. */
+    held: Set<number> | null = null;
     constructor(view: EditorView) {
       this.decorations = build(view);
     }
     update(u: ViewUpdate) {
-      if (u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged) this.decorations = build(u.view);
+      const pressed = u.state.field(pressedField);
+      // The press arrives before the click moves the selection, so this is
+      // what was showing before it.
+      if (pressed && !this.held) this.held = activeLines(u.view);
+      if (!pressed) this.held = null;
+      const moved = u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged || released(u);
+      if (!moved) return;
+      // Pressed, only an edit or a scroll redraws, and with the lines it started with.
+      if (pressed && !u.docChanged && !u.viewportChanged) return;
+      this.decorations = build(u.view, pressed ? (this.held ?? undefined) : undefined);
     }
   },
   { decorations: (p) => p.decorations },
@@ -398,6 +446,10 @@ class TableWidget extends WidgetType {
   }
   eq(other: TableWidget) {
     return other.source === this.source;
+  }
+  /** A row's height per line, until it's drawn and measured. */
+  get estimatedHeight() {
+    return (this.source.split("\n").length - 1) * 28 + 12;
   }
   toDOM(view: EditorView) {
     const rows = this.source.split("\n").map(splitRow);
@@ -471,7 +523,12 @@ const tableField = StateField.define<{ focused: boolean; decorations: Decoration
   update(value, tr) {
     const told = tr.effects.find((e) => e.is(setFocused));
     const focused = told ? (told.value as boolean) : value.focused;
-    if (!told && !tr.docChanged && !tr.selection) return value;
+    const pressed = tr.state.field(pressedField);
+    const releasedNow = tr.startState.field(pressedField) && !pressed;
+    // A table doesn't swap between drawn and source under a held button (see `pressedField`).
+    const moved = tr.docChanged || releasedNow || (!pressed && (told || tr.selection));
+    if (!moved) return told ? { ...value, focused } : value;
+    if (!tr.docChanged && pressed) return { ...value, focused };
     return { focused, decorations: tables(tr.state, focused) };
   },
   provide: (f) => EditorView.decorations.from(f, (v) => v.decorations),
@@ -488,5 +545,5 @@ const tellFocus = EditorView.domEventHandlers({
 
 /** Live Preview, for an editor that isn't showing plain source. */
 export function livePreview(): Extension {
-  return [inlinePreview, tableField, tellFocus];
+  return [pressedField, trackPointer, inlinePreview, tableField, tellFocus];
 }

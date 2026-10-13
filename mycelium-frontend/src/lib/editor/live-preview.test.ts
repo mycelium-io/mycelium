@@ -106,6 +106,16 @@ describe("Live Preview", () => {
     expect(q(v, ".cm-md-fence")?.textContent).toContain("js");
   });
 
+  it("doesn't reveal a line while the mouse button is down, so a click doesn't move the text under it", () => {
+    const v = preview("**bold** here\n\n**bold** there");
+    v.focus();
+    v.contentDOM.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    v.dispatch({ selection: { anchor: v.state.doc.length - 2 } });
+    expect(qa(v, ".cm-line")[2].textContent).toBe("bold there");
+    window.dispatchEvent(new MouseEvent("mouseup"));
+    expect(qa(v, ".cm-line")[2].textContent).toBe("**bold** there");
+  });
+
   it("shows the source on the line the cursor is on", () => {
     const v = preview("**bold** here\n\n**bold** there");
     v.focus();
