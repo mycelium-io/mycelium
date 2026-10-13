@@ -78,9 +78,10 @@ agent in its own terminal and wakes it when it's needed:
 mycelium runner --detach
 ```
 
-To bring in a coding agent session you already have open, use **Open session**
-in the same dialog instead. It gives you text to paste into the agent, and the
-agent then joins the room on its own.
+If an agent is already running in herdr on that machine, use **Running agent**
+in the same dialog: pick it, give it a handle, and the runner brings it in. For a
+coding agent session open anywhere else, use **Open session**. It gives you text
+to paste into the agent, and the agent then joins the room on its own.
 
 ## Put work on the board
 

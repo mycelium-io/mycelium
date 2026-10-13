@@ -66,7 +66,8 @@ from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations import agents
-from mycelium.integrations.herdr import HerdrBridge, HerdrError
+from mycelium.integrations.agents import of_kind
+from mycelium.integrations.herdr import HerdrBridge, HerdrError, HerdrPaneMapping
 from mycelium.runner import approvals, frameworks, pairing
 from mycelium.runner.hosts import (
     STEP_AGENT,
@@ -80,8 +81,10 @@ from mycelium.runner.hosts import (
 from mycelium.runner.log import failing, log, ms, open_log, recovered
 from mycelium.utils.process import pid_alive
 
-#: Jobs that start something on this machine, and so wait for a yes here.
-ASK_FIRST = frozenset({"launch", "swarm", "restart"})
+#: Jobs that start something on this machine, or type into a terminal on it
+#: (``adopt`` introduces an agent someone already has running), and so wait
+#: for a yes here.
+ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
 
@@ -102,6 +105,9 @@ KEEP_STOPPED = timedelta(hours=24)
 #: An agent waiting for input this long says how long, so the person knows it
 #: is still waiting; nothing closes it, that is theirs to decide.
 WAITING_LONG = timedelta(minutes=10)
+
+#: herdr's state for an agent being adopted, as a tracked agent's status.
+_ADOPTED_STATUS = {"idle": "idle", "done": "idle", "working": "working", "blocked": "blocked"}
 
 _SLUG = re.compile(r"[^a-z0-9]+")
 #: A UUID-shaped identity: an id, not a handle anyone reads.
@@ -302,6 +308,9 @@ class Tracked:
     #: said would help the person answer it.
     waiting_since: str | None = None
     waiting_note: str | None = None
+    #: Already running in its pane before it joined (an ``adopt``), so stopping
+    #: it from the app takes it out of the room but never closes its pane.
+    adopted: bool = False
 
     @property
     def live(self) -> bool:
@@ -839,13 +848,77 @@ class Runner:
         self.log.print(f"[green]introduced[/green] @{agent.handle} → {agent.pane}")
         agent.intro = None
 
+    def _running_in(self, pane: str) -> dict[str, Any]:
+        """The agent herdr has running in ``pane``, or why there isn't one."""
+        if not self.herdr:
+            raise JobError(f"herdr isn't running on {self.label}. Start it, then try again.")
+        running = self.bridge.get_agent(pane)
+        if running is None:
+            raise JobError(f"No agent is running in pane {pane} on {self.label} any more.")
+        return running
+
+    def adopt(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Make an agent already running in a herdr pane ``@handle`` in ``room``, and introduce it.
+
+        Nothing is started: the pane is mapped to the handle (not ``managed``,
+        so closing it doesn't take the member out of the room), and its
+        introduction is typed in once it's idle. The mapping alone is what the
+        runner's sync pass reads for presence and wakes. Its workspace is not
+        bound to the room: binding one enrolls every agent running in it, and
+        the person chose this one.
+        """
+        room, handle, pane = str(spec["room"]), str(spec["handle"]), str(spec["pane"])
+        key = f"{room}/{handle}"
+        with self._lock:
+            tracked = self.state.agents.get(key)
+            if tracked is not None and tracked.live and tracked.pane == pane:
+                return {"pane": pane, "already": True}
+        running = self._running_in(pane)
+        taken = next((m for m in self.bridge.registry.all() if m.pane == pane), None)
+        if taken is not None and (taken.room, taken.handle) != (room, handle):
+            raise JobError(f"Pane {pane} is already @{taken.handle} in {taken.room}.")
+        kind = str(running.get("agent") or spec.get("framework") or "") or None
+        cwd = running.get("foreground_cwd") or running.get("cwd") or spec.get("cwd")
+        self.bridge.registry.set(
+            HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, cwd=cwd)
+        )
+        workspace = str(running.get("workspace_id") or "") or None
+        agent = Tracked(
+            handle=handle,
+            room=room,
+            framework=kind or "claude",
+            pane=pane,
+            cwd=cwd,
+            started_at=_now(),
+            status=_ADOPTED_STATUS.get(str(running.get("agent_status") or ""), "running"),
+            workspace=workspace,
+            intro=intro_prompt(room, handle, has_notes=self.has_notes(room, handle)),
+            adopted=True,
+        )
+        if agent.status == "blocked":
+            self._mark_waiting(agent)
+        elif agent.status == "idle":
+            self._hand_intro(agent)
+        with self._lock:
+            self.state.agents[key] = agent
+            self.state.save(self._state_path)
+        self.log.print(f"[green]adopted[/green] {pane} as @{handle} in {room}")
+        result: dict[str, Any] = {"pane": pane, "introduced": agent.intro is None}
+        if workspace:
+            result["workspace"] = workspace
+        return result
+
     def stop_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
         key = f"{spec['room']}/{spec['handle']}"
         with self._lock:
             agent = self.state.agents.get(key)
             if agent is None:
                 raise JobError(f"{self.label} isn't running @{spec['handle']} in {spec['room']}.")
-            self.host.stop(agent)
+            if agent.adopted:
+                # It was running before it joined: let go of it, never close its pane.
+                self.host.gone(agent)
+            else:
+                self.host.stop(agent)
             agent.status = "stopped"
             agent.detail = "stopped from the app"
             agent.stopped_at = _now()
@@ -1028,6 +1101,8 @@ class Runner:
         kind, spec = job.get("kind"), job.get("spec") or {}
         if kind == "launch":
             return self.launch(spec, job_id=str(job["id"]) if job.get("id") else None)
+        if kind == "adopt":
+            return self.adopt(spec)
         if kind == "stop":
             return self.stop_agent(spec)
         if kind == "interrupt":
@@ -1063,6 +1138,29 @@ class Runner:
                 "message": (
                     f"Each starts again as itself and catches up from the room:\n{lines}\n\n"
                     f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
+                ),
+                "hub": hub,
+                "asked_by": asked_by,
+            }
+        if kind == "adopt":
+            room, handle, pane = (
+                str(spec.get("room")),
+                str(spec.get("handle")),
+                str(spec.get("pane")),
+            )
+            running = self._running_in(pane)
+            name = of_kind(running.get("agent") or spec.get("framework")).name or "agent"
+            folder = running.get("foreground_cwd") or running.get("cwd")
+            return {
+                "kind": kind,
+                "title": f"Bring the {name} in pane {pane} into {room} as @{handle}?",
+                "message": (
+                    f"It's already running on {self.label}"
+                    + (f", in {_tilde(Path(folder))}" if folder else "")
+                    + f". Mycelium would make that pane @{handle} in {room}, and type a short "
+                    "introduction into it once it's idle.\n\n"
+                    f"Room {room} on {hub}. Asked for by "
+                    f"{'@' + asked_by if asked_by else 'someone on that hub'}."
                 ),
                 "hub": hub,
                 "asked_by": asked_by,

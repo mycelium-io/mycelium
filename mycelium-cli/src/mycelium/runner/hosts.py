@@ -398,7 +398,9 @@ class HerdrHost:
         # opened and any a person bound (`mycelium herdr sync --workspace …`).
         # Binding one is the choice to sync it, and the runner is what does.
         targets = dict(state.owned) | self.bridge.registry.bindings()
-        if not targets:
+        # A pane mapped on its own (an agent brought into a room from the app)
+        # still needs its presence and wakes, even with no workspace bound.
+        if not targets and not self.bridge.registry.all():
             return
         result = sync_pass(
             config,

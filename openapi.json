@@ -2297,6 +2297,59 @@
         }
       }
     },
+    "/api/runners/{runner_id}/adopt": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Adopt Agent",
+        "description": "Bring an agent already running on this runner's machine into a room.\n\nThe agent is one the machine reports as running in herdr and in no room\n(its report's ``unenrolled``). The member is written here first, owned by\nwhoever asked, so it shows in the room at once; the runner then asks the\nperson at the machine, maps the pane to the handle and introduces the\nagent once it's idle.",
+        "operationId": "adopt_agent_api_runners__runner_id__adopt_post",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerAgentAdopt"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runners/{runner_id}/agents/{room_name}/{handle}/stop": {
       "post": {
         "tags": [
@@ -7991,6 +8044,13 @@
             },
             "type": "array",
             "title": "Problems"
+          },
+          "unenrolled": {
+            "items": {
+              "$ref": "#/components/schemas/MachineUnenrolledRead"
+            },
+            "type": "array",
+            "title": "Unenrolled"
           }
         },
         "type": "object",
@@ -8072,6 +8132,13 @@
             },
             "type": "array",
             "title": "Problems"
+          },
+          "unenrolled": {
+            "items": {
+              "$ref": "#/components/schemas/MachineUnenrolledRead"
+            },
+            "type": "array",
+            "title": "Unenrolled"
           }
         },
         "type": "object",
@@ -8110,6 +8177,100 @@
         "type": "object",
         "title": "MachineRestart",
         "description": "Agents to restart on a machine: some by handle, or every stopped one."
+      },
+      "MachineUnenrolledRead": {
+        "properties": {
+          "pane": {
+            "type": "string",
+            "title": "Pane"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind",
+            "description": "The agent CLI, as herdr names its kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "working",
+              "idle",
+              "blocked",
+              "unknown"
+            ],
+            "title": "State",
+            "default": "unknown"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          },
+          "workspace_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Label"
+          },
+          "tab_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tab Label",
+            "description": "The pane's tab name, where a handle comes from"
+          },
+          "suggested_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Handle",
+            "description": "A handle made from the tab name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pane"
+        ],
+        "title": "MachineUnenrolledRead",
+        "description": "An agent CLI running in a herdr pane on a machine that no room has yet,\nwhich Members \u2192 Add can bring into a room (an ``adopt`` job)."
       },
       "MachineWorkspaceRead": {
         "properties": {
@@ -10295,6 +10456,46 @@
         "title": "RoomUpdate",
         "description": "What a caller may change about a room after it exists."
       },
+      "RunnerAgentAdopt": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Room"
+          },
+          "pane": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pane",
+            "description": "The pane, from the machine's unenrolled agents"
+          },
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "pane",
+          "handle"
+        ],
+        "title": "RunnerAgentAdopt",
+        "description": "Bring an agent already running in a herdr pane on a runner's machine into\na room, as ``handle``. The runner asks the person there first, since it\ntypes the agent's introduction into their terminal."
+      },
       "RunnerAgentLaunch": {
         "properties": {
           "room": {
@@ -10614,7 +10815,8 @@
               "swarm",
               "restart",
               "pair",
-              "interrupt"
+              "interrupt",
+              "adopt"
             ],
             "title": "Kind"
           },

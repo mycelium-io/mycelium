@@ -103,6 +103,29 @@ const machine: MachineReport = {
     },
   ],
   problems: [],
+  // Two agents Morgan started in herdr themselves, in no room yet.
+  unenrolled: [
+    {
+      pane: "w6:p1",
+      kind: "claude",
+      state: "idle",
+      folder: "/Users/morgan/code/shop",
+      workspace: "w6",
+      workspace_label: "scratch",
+      tab_label: "Refunds",
+      suggested_handle: "refunds",
+    },
+    {
+      pane: "w6:p2",
+      kind: "codex",
+      state: "working",
+      folder: "/Users/morgan/code/website",
+      workspace: "w6",
+      workspace_label: "scratch",
+      tab_label: "2",
+      suggested_handle: "codex",
+    },
+  ],
 };
 
 function machineAgent(
@@ -321,6 +344,19 @@ function settle(job: StoredJob): void {
       detail: null,
     };
     runner.agents.push(agent);
+  } else if (job.kind === "adopt") {
+    const found = machine.unenrolled?.find((u) => u.pane === spec.pane);
+    machine.unenrolled = machine.unenrolled?.filter((u) => u.pane !== spec.pane);
+    runner.agents.push({
+      handle: spec.handle,
+      room: spec.room,
+      framework: found?.kind ?? "claude",
+      status: "idle",
+      pane: spec.pane,
+      cwd: found?.folder ?? null,
+      started_at: new Date().toISOString(),
+      detail: null,
+    });
   } else if (job.kind === "stop") {
     const agent = runner.agents.find((a) => a.room === spec.room && a.handle === spec.handle);
     if (agent) agent.status = "stopped";

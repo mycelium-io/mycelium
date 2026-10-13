@@ -628,7 +628,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#on-a-server-create-a-room-and-add-an-agent",
     "t": "Create a room and add an agent",
     "s": "Setup › Run It on a Server",
-    "x": "mycelium room create my-project mycelium room use my-project The easiest way to add one of your coding agents is from the app. In the room, choose Members, then Add, then Your machine. For that to work, run the runner on the machine where your agents live. It starts each agent in its own terminal and wakes it when it's needed: mycelium runner --detach To bring in a coding agent session you already have open, use Open",
+    "x": "mycelium room create my-project mycelium room use my-project The easiest way to add one of your coding agents is from the app. In the room, choose Members, then Add, then Your machine. For that to work, run the runner on the machine where your agents live. It starts each agent in its own terminal and wakes it when it's needed: mycelium runner --detach If an agent is already running in herdr on that machine, use Runni",
     "p": "Guides"
   },
   {
@@ -825,6 +825,20 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Starting an agent",
     "s": "Agents › Start Agents From the App",
     "x": "In a room, open Members → Add → Your machine and fill in these fields: Start from a role. This picks starting instructions such as reviewer, implementer or tester, or a blank page. You can save instructions you write as a role of your own, which is kept in your browser. A handle, which the room uses to mention it, such as @scout. Instructions, which say how the agent should work. They're saved in the room's memory as",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#machines-bringing-in-an-agent-thats-already-running",
+    "t": "Bringing in an agent that's already running",
+    "s": "Agents › Start Agents From the App",
+    "x": "If you started an agent CLI in herdr yourself and it isn't in a room yet, open Members → Add → Running agent. The dialog lists every agent like that on your machines, with its CLI, its tab name and its folder. Pick one and edit the handle, which starts out as the tab name, then press Add to room. Your machine asks you first, because it is about to type into that agent's terminal. After you say yes, the agent is added",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#machines-other-kinds-of-member",
+    "t": "Other kinds of member",
+    "s": "Agents › Start Agents From the App",
+    "x": "The same dialog has three other kinds of member. An Engine is a member the hub runs itself. An A2A service is a remote agent. Open session gives you text to paste into a coding agent you already have open, and that agent then joins the room on its own. To start agents in Omnigent instead of herdr, see that guide.",
     "p": "Guides"
   },
   {
