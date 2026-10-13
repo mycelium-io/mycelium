@@ -387,11 +387,13 @@ jobs:
         working-directory: mycelium-frontend
         run: npx next build
 
-  test-frontend:
-    # The component tests on a runner of their own, beside typecheck, lint and
-    # build rather than after them: vitest is the longest step (~80s), and
-    # with it in the same job that job set every run's critical path.
-    name: Frontend tests (vitest)
+  test-frontend-1:
+    # The component tests on runners of their own, beside typecheck, lint and
+    # build rather than after them, and split in two: vitest is the longest
+    # step (~110s on one runner, most of it starting a jsdom per file), and in
+    # one job it set every run's critical path. Two plain jobs rather than a
+    # matrix, so each has a literal name for ci-budgets.json to budget.
+    name: Frontend tests (vitest 1/2)
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
@@ -409,9 +411,33 @@ jobs:
         working-directory: mycelium-frontend
         run: npm ci --no-audit --no-fund
 
-      - name: Component tests (vitest)
+      - name: Component tests (vitest, first half)
         working-directory: mycelium-frontend
-        run: npx vitest run
+        run: npx vitest run --shard=1/2
+
+  test-frontend-2:
+    # The other half of test-frontend-1's files.
+    name: Frontend tests (vitest 2/2)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mycelium-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mycelium-frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Component tests (vitest, second half)
+        working-directory: mycelium-frontend
+        run: npx vitest run --shard=2/2
 
   build-frontend-image:
     name: Frontend docker build
@@ -585,7 +611,8 @@ jobs:
       - build-backend
       - build-collector
       - build-frontend
-      - test-frontend
+      - test-frontend-1
+      - test-frontend-2
       - build-frontend-image
       - integration-slim
     permissions:

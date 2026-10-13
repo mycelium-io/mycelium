@@ -1125,8 +1125,8 @@ is no litellm dependency.
   Remote auth is a bearer token named by `a2a_auth_env` and resolved from the
   backend env — the secret never lands in room memory.
 - **CI is fast on purpose; timing is reported, never enforced.** A PR run's
-  critical path is ~100s, set by the slower of the two frontend jobs (vitest
-  has a runner of its own), and that is a property worth defending — it erodes
+  critical path is ~100s, set by the frontend jobs (vitest runs in two
+  halves on runners of its own, beside typecheck, lint and build), and that is a property worth defending — it erodes
   twenty seconds at a time, invisibly. It had drifted to ~175s by Oct 2026
   before anyone noticed. The `changes` job gates on what a PR touched: a
   docs-only PR skips every code job, and the frontend jobs and the backend
