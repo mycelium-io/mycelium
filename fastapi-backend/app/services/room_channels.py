@@ -335,6 +335,10 @@ class RoomChannelManager:
         self.on_summon: RoomSummonHook | None = None
         self.on_converged: RoomConvergedHook | None = None
         self.on_addressed: RoomAddressedHook | None = None
+        # ``(room, episode, handle)`` when one of a running negotiation's parties
+        # left the room; True when the engine running it took it (it stops and
+        # posts its own closing line). Wired to the aligner in ``main.py``.
+        self.on_party_left: Callable[[str, str, str], bool] | None = None
         # Fired after every notice, so something that acts on the board (the
         # worker engine, the herdr doorbell) hears it move without polling it.
         # A notice still wakes no ``await``; this is an in-process listener.
@@ -782,35 +786,14 @@ class RoomChannelManager:
         in the roster; a generous TTL keeps it present through its own think time
         (and avoids a mid-episode membership flap) while a truly-gone agent lapses.
         The not-present → present edge is a join: it emits a coordination_join
-        notice and, like a SLIM join, is checked against a frozen negotiation's
-        roster (:meth:`_enforce_membership_change`, scheduled off the poll).
+        notice. It never touches a running negotiation, which only a party
+        leaving the room ends (:meth:`_abort_if_party_left`).
         """
         was_present = handle in self._live_leases(room)
         self._leases.setdefault(room, {})[handle] = time.monotonic() + ttl_s
         self._last_seen.setdefault(room, {})[handle] = time.time()
         if not was_present:
             self.announce_join(room, handle)
-            self._enforce_membership_change_in_background(room)
-
-    def _enforce_membership_change_in_background(self, room: str) -> None:
-        """Schedule the frozen-roster check for a lease-side join.
-
-        :meth:`refresh_lease` is sync and runs on every poll, so the check is a
-        fire-and-forget task (the ``invite_in_background`` shape) fired only on
-        the join edge, and only when there is something to check: a live channel
-        whose lifecycle is frozen. Without a running loop (a sync caller outside
-        the server) there is nothing to schedule on, and no negotiation to guard.
-        """
-        managed = self._channels.get(room)
-        if managed is None or not managed.lifecycle.frozen:
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        task = loop.create_task(self._enforce_membership_change(managed))
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
 
     def _announced_in(self, room: str) -> set[str]:
         """The handles already announced in ``room``, read from its folder once."""
@@ -1108,19 +1091,15 @@ class RoomChannelManager:
     async def _register_member(self, managed: ManagedRoomChannel, agent: str) -> None:
         """Post-admit bookkeeping shared by the PSK invite and the custody path.
 
-        Records presence, announces the join, re-serves a reconnecting member's
-        missed tail, and lets a mid-episode membership change abort the episode.
+        Records presence, announces the join, and re-serves a reconnecting
+        member's missed tail. A join never ends a running negotiation.
         """
         managed.members.add(agent)
         self.announce_join(managed.room, agent)
         # Durable inbox: a membership add for a handle the persister has already
-        # seen is a *reconnect* — re-serve its missed tail. Kept separate from the
-        # episode-abort path below: transcript continuity and episode lifecycle
-        # are orthogonal (a reconnect re-serves regardless of episode state, and a
-        # re-serve must not resurrect an aborted episode).
+        # seen is a *reconnect* — re-serve its missed tail.
         if managed.persister is not None and managed.persister.note_join(agent):
             await managed.persister.reserve(agent)
-        await self._enforce_membership_change(managed)
 
     # -- per-actor custodial sessions (#666; identity tiers only) --
 
@@ -1492,29 +1471,33 @@ class RoomChannelManager:
         if agent in announced:
             announced.discard(agent)
             _save_announced(room, announced)
-        await self._enforce_membership_change(managed)
+        await self._abort_if_party_left(managed, agent)
         return True
 
-    def open_episode(self, room: str, episode: str, *, negotiation: bool = True) -> bool:
-        """Open an episode over the room's current membership.
+    def open_episode(
+        self,
+        room: str,
+        episode: str,
+        *,
+        negotiation: bool = True,
+        parties: Iterable[str] = (),
+    ) -> bool:
+        """Open an episode; a negotiation freezes on its ``parties``.
 
-        A negotiation freezes that membership: a subsequent join/leave aborts it.
-        ``negotiation=False`` opens a container — a task's thread — which
-        a join or leave leaves running, because the task outlives what happens
-        inside it.
-
-        Freezes on :meth:`members` — SLIM presence *plus* server-held leases —
-        not the bare ``managed.members`` SLIM set: a lease-only participant (a
-        headless HTTP ``await``/``respond`` caller with no SLIM socket, never
-        added to ``managed.members`` because it never goes through a SLIM
-        invite at all) is exactly who the mediator negotiates with (see
-        ``aligner.mediate``'s own ``participants``). Freezing on the narrower
-        set left every such participant frozen out of its own negotiation.
+        The parties are who the negotiation brokers between (the members a
+        summon named, or a task's members), never everyone present: freezing
+        the room's whole presence is how a busy room's comings and goings
+        aborted runs and pulled in members nobody named. Only one of the
+        parties being removed from the room ends the run
+        (:meth:`_abort_if_party_left`). ``negotiation=False`` opens a container
+        — a task's thread — which nothing ends, because the task outlives what
+        happens inside it.
         """
         managed = self._channels.get(room)
         if managed is None:
             return False
-        managed.lifecycle.open(episode, set(self.members(room)), negotiation=negotiation)
+        frozen = {h for h in (norm_handle(p) for p in parties) if h}
+        managed.lifecycle.open(episode, frozen, negotiation=negotiation)
         return True
 
     # -- the floor --
@@ -1621,36 +1604,44 @@ class RoomChannelManager:
         await self.flush_deferred_invites(room)
         return True
 
-    async def _enforce_membership_change(self, managed: ManagedRoomChannel) -> None:
-        """Abort the active negotiation if membership changed under it.
+    async def _abort_if_party_left(self, managed: ManagedRoomChannel, agent: str) -> None:
+        """End the running negotiation when ``agent``, one of its parties, left the room.
 
-        Compared against the same :meth:`members` union ``open_episode`` froze
-        on — a lease-only participant refreshing/holding its lease is not a
-        membership change; a join or leave on either half of the union is. This
-        runs from the SLIM invite (``_register_member``) and ``remove`` paths and
-        from a lease-side join (``refresh_lease``'s not-present → present edge).
-        A lease that simply expires mid-negotiation, with no join/leave after
-        it, is still not detected here: expiry is derived by the clock, never
-        written, and the mediator's round timeout is what covers a participant
-        that has gone silent.
+        Only the ``remove`` path calls this: presence starting or lapsing is not
+        leaving (see :class:`EpisodeLifecycle`). The engine running the
+        negotiation is told (:attr:`on_party_left`) so it stops and says so in
+        its own closing line; with no engine to tell, the abort is recorded
+        here, as one plain line, never a bare protocol record.
         """
-        current_members = self.members(managed.room)
-        if not managed.lifecycle.on_membership_change(set(current_members)):
+        handle = norm_handle(agent) or agent
+        if not managed.lifecycle.on_member_removed(handle):
             return
         episode = managed.lifecycle.episode
+        if (
+            self.on_party_left is not None
+            and episode
+            and self.on_party_left(managed.room, episode, handle)
+        ):
+            return
         managed.lifecycle.close()
         if not episode:
             return
-        logger.info("Membership change aborted episode %s on room %s", episode, managed.room)
+        logger.info("@%s left %s, ending the negotiation in %s", handle, managed.room, episode)
         try:
             envelope = build_episode_abort_envelope(
-                episode, recipients=current_members, topic=message_format.topic_urn(managed.room)
+                episode,
+                recipients=sorted(managed.lifecycle.members),
+                topic=message_format.topic_urn(managed.room),
+                reason="party_left",
             )
             await managed.channel.send(envelope)
             # Record the abort locally so the transcript/UI see it — SLIM may not
             # loop a broadcast back to its own sender.
             if managed.persister is not None:
-                managed.persister.ingest_local(envelope, serialize_content(envelope))
+                line = f"Negotiation stopped: {handle} left the room."
+                managed.persister.ingest_local(
+                    envelope, serialize_content(envelope, extra={"content": line})
+                )
         except Exception as exc:  # pragma: no cover - best-effort notify
             logger.warning("Failed to publish episode abort for %s: %s", episode, exc)
         # The episode is closed now, so invites deferred while it was active can be

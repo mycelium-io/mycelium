@@ -366,64 +366,85 @@ async def test_open_and_close_episode_lifecycle(
 
 
 @pytest.mark.asyncio
-async def test_open_episode_freezes_the_full_roster_not_just_slim(
+async def test_open_episode_freezes_the_parties_it_was_given(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    """A lease-only participant (headless HTTP await/respond, never SLIM-invited
-    because it never goes through a SLIM join at all) is exactly who a
-    negotiation runs with — ``members()``'s own union, which the mediator reads
-    to build its participant list. The freeze has to protect that same roster,
-    not the narrower SLIM-only set, or a lease-only agent is frozen out of its
-    own negotiation the instant it tries to respond.
-    """
+    """A negotiation freezes who it brokers between, not everyone present: in a
+    busy room that's how members nobody named were pulled in."""
     managed = await manager.provision("room-a")
     assert managed is not None
-    await manager.invite("room-a", "agent-slim")
-    manager.refresh_lease("room-a", "agent-http")
+    await manager.invite("room-a", "reviewer")
+    manager.refresh_lease("room-a", "bystander")
 
-    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
-    assert managed.lifecycle.members == frozenset({"agent-slim", "agent-http"})
-
-
-@pytest.mark.asyncio
-async def test_a_real_slim_join_still_aborts_a_frozen_negotiation(
-    manager: room_channels.RoomChannelManager,
-) -> None:
-    """Freezing on the union must not blunt the abort-on-change rule: a genuine
-    SLIM join mid-negotiation still changes the roster and still aborts it."""
-    managed = await manager.provision("room-a")
-    assert managed is not None
-    manager.refresh_lease("room-a", "agent-http")
-    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
-    assert managed.lifecycle.active
-
-    await manager.invite("room-a", "agent-slim")  # a real join mid-negotiation
-    assert not managed.lifecycle.active
+    episode = "urn:ioc:mycelium:episode:room-a:e1"
+    assert manager.open_episode("room-a", episode, parties=["@Agent-A", "agent-b"]) is True
+    assert managed.lifecycle.members == frozenset({"agent-a", "agent-b"})
 
 
 async def _settle(manager: room_channels.RoomChannelManager) -> None:
-    """Let the fire-and-forget roster check a lease join schedules run to completion."""
+    """Let anything a join schedules run to completion."""
     if manager._tasks:
         await asyncio.gather(*manager._tasks)
 
 
 @pytest.mark.asyncio
-async def test_a_lease_only_join_mid_negotiation_aborts_it(
+async def test_joins_mid_negotiation_never_abort_it(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    """The roster is frozen on the SLIM-plus-lease union, so a change on the lease
-    half is a change too: a brand-new headless ``await`` caller appearing
-    mid-negotiation aborts it, exactly as a SLIM join does (#932)."""
+    """Presence coming and going isn't a reason to stop a run (what #932 meant
+    to fix): a SLIM join, a brand-new headless caller and a party's own lease
+    starting all leave it running."""
     managed = await manager.provision("room-a")
     assert managed is not None
-    manager.refresh_lease("room-a", "agent-http")
-    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
-    assert managed.lifecycle.active
+    episode = "urn:ioc:mycelium:episode:room-a:e1"
+    assert manager.open_episode("room-a", episode, parties=["agent-a", "agent-b"]) is True
 
-    manager.refresh_lease("room-a", "agent-new")  # a lease-only join mid-negotiation
+    await manager.invite("room-a", "agent-slim")
+    manager.refresh_lease("room-a", "agent-new")
+    manager.refresh_lease("room-a", "agent-a")
     await _settle(manager)
 
+    assert managed.lifecycle.active
+
+
+@pytest.mark.asyncio
+async def test_removing_a_party_from_the_room_ends_the_negotiation(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    """Only a party actually leaving ends it; what it posts is checked in
+    ``test_mentions_and_invites``, whose channel records."""
+    managed = await manager.provision("room-a")
+    assert managed is not None
+    await manager.invite("room-a", "agent-a")
+    await manager.invite("room-a", "reviewer")
+    episode = "urn:ioc:mycelium:episode:room-a:e1"
+    assert manager.open_episode("room-a", episode, parties=["agent-a", "agent-b"]) is True
+
+    # Someone who isn't a party leaving changes nothing.
+    await manager.remove("room-a", "reviewer")
+    assert managed.lifecycle.active
+
+    await manager.remove("room-a", "agent-a")
     assert not managed.lifecycle.active
+
+
+@pytest.mark.asyncio
+async def test_removing_a_party_tells_the_engine_running_the_negotiation(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    told: list[tuple[str, str, str]] = []
+    manager.on_party_left = (
+        lambda room, episode, handle: told.append((room, episode, handle)) or True
+    )
+    managed = await manager.provision("room-a")
+    assert managed is not None
+    await manager.invite("room-a", "agent-a")
+    episode = "urn:ioc:mycelium:episode:room-a:e1"
+    manager.open_episode("room-a", episode, parties=["agent-a", "agent-b"])
+
+    await manager.remove("room-a", "agent-a")
+
+    assert told == [("room-a", episode, "agent-a")]
 
 
 @pytest.mark.asyncio

@@ -346,6 +346,59 @@
         }
       }
     },
+    "/api/rooms/{room_name}/engines/stop": {
+      "post": {
+        "tags": [
+          "engines"
+        ],
+        "summary": "Stop Negotiation",
+        "description": "Stop the aligner's negotiation running in the room.\n\nIt ends before its next turn (a turn being waited on is cut short),\ncommits ``rejected`` with reason ``stopped``, and posts one line saying who\nstopped it. 409 when nothing is running there.",
+        "operationId": "stop_negotiation_api_rooms__room_name__engines_stop_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NegotiationStop"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NegotiationStopped"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms": {
       "post": {
         "tags": [
@@ -9280,6 +9333,39 @@
         "type": "object",
         "title": "MessageSearchScope",
         "description": "The interpretation a message search ran under, echoed so a client draws\nits chips from the same parse the server used."
+      },
+      "NegotiationStop": {
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who is stopping it; defaults to the caller."
+          }
+        },
+        "type": "object",
+        "title": "NegotiationStop",
+        "description": "Request body to stop the negotiation running in a room."
+      },
+      "NegotiationStopped": {
+        "properties": {
+          "stopped": {
+            "type": "boolean",
+            "title": "Stopped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stopped"
+        ],
+        "title": "NegotiationStopped",
+        "description": "What stopping did."
       },
       "NotesDraftRead": {
         "properties": {

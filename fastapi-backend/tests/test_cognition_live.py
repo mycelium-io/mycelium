@@ -126,7 +126,7 @@ async def test_negotiation_converges_and_compiles_work(monkeypatch: pytest.Monke
         max_steps=12,
     )
 
-    verdict = await engine.mediate(_ROOM)
+    verdict = await engine.mediate(_ROOM, scoped_participants=list(_SCRIPTS))
 
     assert verdict is not None, "the aligner produced no verdict at all"
     assert verdict["header"]["subkind"] == "converged", (

@@ -154,47 +154,39 @@ def test_causal_buffer_multi_parent_waits_for_all():
 # ── episode lifecycle ────────────────────────────────────────────────────────
 
 
-def test_episode_membership_change_aborts_active_episode():
+def test_a_party_leaving_aborts_the_negotiation():
     lc = message_slim.EpisodeLifecycle()
     lc.open("urn:ioc:mycelium:episode:r:s", {"agent-a", "agent-b"})
     assert lc.active is True
 
-    # A third agent joins mid-episode → abort.
-    aborted = lc.on_membership_change({"agent-a", "agent-b", "agent-c"})
-    assert aborted is True
+    assert lc.on_member_removed("agent-b") is True
     assert lc.active is False
 
 
-def test_episode_no_change_does_not_abort():
+def test_someone_who_isnt_a_party_leaving_doesnt_abort():
+    """A negotiation's parties are who it brokers between, not everyone present:
+    anyone else coming or going is none of its business."""
     lc = message_slim.EpisodeLifecycle()
     lc.open("urn:ioc:mycelium:episode:r:s", {"agent-a", "agent-b"})
-    assert lc.on_membership_change({"agent-a", "agent-b"}) is False
+    assert lc.on_member_removed("reviewer") is False
     assert lc.active is True
 
 
-def test_membership_change_with_no_active_episode_adopts_baseline():
+def test_nothing_aborts_when_no_negotiation_is_open():
     lc = message_slim.EpisodeLifecycle()
-    # No episode open: churn is just adopted, never an abort.
-    assert lc.on_membership_change({"agent-a"}) is False
+    assert lc.on_member_removed("agent-a") is False
     assert lc.active is False
-    # Opening now freezes the current baseline; same set doesn't abort.
-    lc.open("urn:ioc:mycelium:episode:r:s", {"agent-a"})
-    assert lc.on_membership_change({"agent-a"}) is False
 
 
-def test_a_unit_s_thread_outlives_a_membership_change():
-    """A task is an episode too, and freezing membership is not its rule.
-
-    the stable-membership rule exists because an offer/counter exchange scored
-    across a changing set of participants means nothing. A container has no such
-    problem — so someone joining the room must not end the thread a board row's
-    history lives in.
-    """
+def test_a_unit_s_thread_outlives_a_member_leaving():
+    """A task is an episode too, and freezing its members is not its rule: it's
+    a container, so someone leaving the room must not end the thread a board
+    row's history lives in."""
     lc = message_slim.EpisodeLifecycle()
     lc.open("urn:ioc:mycelium:episode:r:task", {"agent-a"}, negotiation=False)
     assert lc.active is True
     assert lc.frozen is False
-    assert lc.on_membership_change({"agent-a", "agent-b"}) is False
+    assert lc.on_member_removed("agent-a") is False
     assert lc.active is True
     assert lc.episode == "urn:ioc:mycelium:episode:r:task"
 
