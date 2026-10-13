@@ -1905,9 +1905,10 @@ agent in its own terminal and wakes it when it's needed:
 mycelium runner --detach
 ```
 
-To bring in a coding agent session you already have open, use **Open session**
-in the same dialog instead. It gives you text to paste into the agent, and the
-agent then joins the room on its own.
+If an agent is already running in herdr on that machine, use **Running agent**
+in the same dialog: pick it, give it a handle, and the runner brings it in. For a
+coding agent session open anywhere else, use **Open session**. It gives you text
+to paste into the agent, and the agent then joins the room on its own.
 
 ## Put work on the board
 
@@ -2364,6 +2365,22 @@ terminal. It reads its notes and looks at the board.
 
 Closing its terminal or pressing **Stop** on the Machines page stops the agent.
 It stays in the room with its notes, so you can start it again.
+
+## Bringing in an agent that's already running
+
+If you started an agent CLI in herdr yourself and it isn't in a room yet, open
+**Members → Add → Running agent**. The dialog lists every agent like that on
+your machines, with its CLI, its tab name and its folder. Pick one and edit the
+handle, which starts out as the tab name, then press **Add to room**.
+
+Your machine asks you first, because it is about to type into that agent's
+terminal. After you say yes, the agent is added to the room. Once it's idle, the
+runner types a short introduction into it that names the room and its handle and
+tells it to read the skill and the board. The agent keeps its own session.
+Pressing **Stop** for it later takes it out of the room's sync but leaves its
+terminal open.
+
+## Other kinds of member
 
 The same dialog has three other kinds of member. An **Engine** is a member the
 hub runs itself. An **A2A service** is a remote agent. **Open session** gives you text to

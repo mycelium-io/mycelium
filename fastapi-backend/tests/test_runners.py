@@ -552,3 +552,115 @@ async def test_the_runner_says_whether_a_job_started_under_a_pairing(client, roo
     # A later report that says nothing of it keeps what was said.
     done = await client.patch(f"/api/runners/{RUNNER}/jobs/{job['id']}", json={"status": "done"})
     assert done.json()["pairing"] == {**refused, "name": None}
+
+
+# ── adopt: an agent already running on the machine joins a room ──────────────
+
+UNENROLLED = {
+    "pane": "w3:p1",
+    "kind": "claude",
+    "state": "idle",
+    "folder": "/Users/julia/code/shop",
+    "workspace": "w3",
+    "workspace_label": "shop",
+    "tab_label": "Shop fixer",
+    "suggested_handle": "shop-fixer",
+}
+
+
+@pytest.fixture
+async def machine_with_one_unenrolled(client) -> str:
+    report = {**MACHINE, "unenrolled": [UNENROLLED]}
+    resp = await client.post("/api/runners", json=hello(machine=report))
+    assert resp.status_code == 200, resp.text
+    return RUNNER
+
+
+@pytest.mark.asyncio
+async def test_the_machine_reports_agents_no_room_has(client, machine_with_one_unenrolled):
+    got = (await client.get(f"/api/runners/{RUNNER}")).json()["machine"]
+    assert got["unenrolled"] == [UNENROLLED]
+
+
+@pytest.mark.asyncio
+async def test_adopt_writes_the_member_then_queues_the_job(
+    client, room, machine_with_one_unenrolled
+):
+    resp = await client.post(
+        f"/api/runners/{RUNNER}/adopt",
+        json={"room": room, "pane": "w3:p1", "handle": "@Shop-Fixer", "created_by": "julia"},
+    )
+    assert resp.status_code == 201, resp.text
+    job = resp.json()
+    assert job["kind"] == "adopt"
+    assert job["spec"] == {
+        "room": room,
+        "handle": "shop-fixer",
+        "pane": "w3:p1",
+        "framework": "claude",
+        "cwd": "/Users/julia/code/shop",
+    }
+    manifest = _manifest(room, "shop-fixer")
+    assert (manifest["owner"], manifest["framework"], manifest["cwd"], manifest["runner"]) == (
+        "julia",
+        "claude",
+        "/Users/julia/code/shop",
+        RUNNER,
+    )
+
+
+@pytest.mark.asyncio
+async def test_adopt_refuses_a_pane_the_machine_doesnt_report(
+    client, room, machine_with_one_unenrolled
+):
+    resp = await client.post(
+        f"/api/runners/{RUNNER}/adopt", json={"room": room, "pane": "w9:p9", "handle": "ghost"}
+    )
+    assert resp.status_code == 422
+    assert "w9:p9" in resp.json()["detail"]
+    assert _manifest(room, "ghost") == {}
+
+
+@pytest.mark.asyncio
+async def test_adopt_refuses_a_handle_already_in_the_room(
+    client, room, machine_with_one_unenrolled
+):
+    first = await client.post(
+        f"/api/runners/{RUNNER}/adopt", json={"room": room, "pane": "w3:p1", "handle": "taken"}
+    )
+    assert first.status_code == 201
+    again = await client.post(
+        f"/api/runners/{RUNNER}/adopt", json={"room": room, "pane": "w3:p1", "handle": "taken"}
+    )
+    assert again.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_a_declined_adopt_leaves_no_member_behind(client, room, machine_with_one_unenrolled):
+    job = (
+        await client.post(
+            f"/api/runners/{RUNNER}/adopt", json={"room": room, "pane": "w3:p1", "handle": "nope"}
+        )
+    ).json()
+    assert _manifest(room, "nope") != {}
+    await client.patch(
+        f"/api/runners/{RUNNER}/jobs/{job['id']}",
+        json={"status": "failed", "error": "Declined on julia-mbp."},
+    )
+    assert _manifest(room, "nope") == {}
+
+
+@pytest.mark.asyncio
+async def test_an_adopted_member_stays_once_the_job_is_done(
+    client, room, machine_with_one_unenrolled
+):
+    job = (
+        await client.post(
+            f"/api/runners/{RUNNER}/adopt", json={"room": room, "pane": "w3:p1", "handle": "kept"}
+        )
+    ).json()
+    await client.patch(
+        f"/api/runners/{RUNNER}/jobs/{job['id']}",
+        json={"status": "done", "result": {"pane": "w3:p1", "introduced": True}},
+    )
+    assert _manifest(room, "kept")["runner"] == RUNNER

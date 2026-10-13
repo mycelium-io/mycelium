@@ -4,7 +4,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { Cpu, Globe, Laptop, SquareTerminal, type LucideIcon } from "lucide-react";
+import { Cpu, Globe, Laptop, Play, SquareTerminal, type LucideIcon } from "lucide-react";
 import { createEngine, createMemories, registerA2aAgent, type EngineKind } from "@/lib/api";
 import { agentHandoffPrompt } from "@/lib/install";
 import { useNetworkStatus, useRoomRevalidate } from "@/lib/room-data";
@@ -20,19 +20,28 @@ import {
   handleValid,
   normHandle,
 } from "@/components/launch-agent-dialog";
+import { RunningAgentMember } from "@/components/running-agent-member";
 import { cn } from "@/lib/utils";
 
 /** The ways a member can join a room, in the order the dialog offers them. */
-export type MemberKind = "machine" | "engine" | "a2a" | "session";
+export type MemberKind = "machine" | "running" | "engine" | "a2a" | "session";
 
 const KINDS: { kind: MemberKind; icon: LucideIcon; label: string; hint: string; about: string }[] = [
   {
     kind: "machine",
     icon: Laptop,
     label: "Your machine",
-    hint: "On your computer",
+    hint: "Start a new one",
     about:
       "A coding agent on your machine that joins this room as a member, working the way you describe here.",
+  },
+  {
+    kind: "running",
+    icon: Play,
+    label: "Running agent",
+    hint: "Already running",
+    about:
+      "An agent already running on your machine that isn't in a room yet. It keeps its session and joins this room as a member.",
   },
   {
     kind: "engine",
@@ -53,7 +62,7 @@ const KINDS: { kind: MemberKind; icon: LucideIcon; label: string; hint: string; 
     kind: "session",
     icon: SquareTerminal,
     label: "Open session",
-    hint: "Already open",
+    hint: "Paste a prompt",
     about: "A coding agent you already have open. Paste this into it and it sets itself up in this room.",
   },
 ];
@@ -120,6 +129,9 @@ export function AddMemberDialog({ open, onOpenChange, roomName, initialKind = "m
         {open && kind === "machine" && (
           <LaunchAgentForm roomName={roomName} onLaunched={added} onClose={close} />
         )}
+        {open && kind === "running" && (
+          <RunningAgentMember roomName={roomName} onAdded={added} onClose={close} />
+        )}
         {open && kind === "engine" && (
           <EngineMember roomName={roomName} onAdded={(h) => (added(h), close())} />
         )}
@@ -134,7 +146,7 @@ export function AddMemberDialog({ open, onOpenChange, roomName, initialKind = "m
 
 function KindPicker({ value, onChange }: { value: MemberKind; onChange: (k: MemberKind) => void }) {
   return (
-    <div role="tablist" aria-label="Kind of member" className="mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+    <div role="tablist" aria-label="Kind of member" className="mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-5">
       {KINDS.map(({ kind, icon: Icon, label, hint }) => {
         const active = kind === value;
         return (
@@ -145,15 +157,17 @@ function KindPicker({ value, onChange }: { value: MemberKind; onChange: (k: Memb
             aria-selected={active}
             onClick={() => onChange(kind)}
             className={cn(
-              "flex items-start gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
+              "flex min-w-0 flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left transition-colors",
               active
                 ? "border-accent bg-accent/10"
                 : "border-border hover:border-border2 hover:bg-hairline",
             )}
           >
-            <Icon className={cn("mt-0.5 size-4 flex-shrink-0", active ? "text-accent" : "text-muted-foreground")} />
-            <span className="min-w-0">
-              <span className={cn("block text-label font-medium", active ? "text-text" : "text-muted-foreground")}>
+            <Icon className={cn("size-4 flex-shrink-0", active ? "text-accent" : "text-muted-foreground")} />
+            <span className="w-full min-w-0">
+              <span
+                className={cn("block truncate text-label font-medium", active ? "text-text" : "text-muted-foreground")}
+              >
                 {label}
               </span>
               <span className="block truncate text-micro text-faint">{hint}</span>

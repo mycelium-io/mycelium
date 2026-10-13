@@ -1246,6 +1246,23 @@ export interface MachineReport {
   missing_integrations: string[];
   workspaces: MachineWorkspace[];
   problems: MachineProblem[];
+  /** Agent CLIs running in herdr panes that no room has yet. Absent from an older runner. */
+  unenrolled?: MachineUnenrolled[];
+}
+
+/** An agent CLI running on a machine that no room has yet, which Members → Add can bring in. */
+export interface MachineUnenrolled {
+  pane: string;
+  /** The agent CLI, as herdr names its kind. */
+  kind: string | null;
+  state: "working" | "idle" | "blocked" | "unknown";
+  folder: string | null;
+  workspace: string | null;
+  workspace_label: string | null;
+  /** The pane's tab name. */
+  tab_label: string | null;
+  /** A handle made from the tab name, for the person to edit. */
+  suggested_handle: string | null;
 }
 
 /** A device paired with a machine, and what the pairing covers (set on that machine). */
@@ -1277,7 +1294,15 @@ export interface PairingOutcome {
   reason?: string | null;
 }
 
-export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm" | "restart" | "pair" | "interrupt";
+export type RunnerJobKind =
+  | "launch"
+  | "stop"
+  | "scan"
+  | "swarm"
+  | "restart"
+  | "pair"
+  | "interrupt"
+  | "adopt";
 /** `waiting`: the machine's runner is asking the person there before it starts anything. */
 export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
 
@@ -1352,6 +1377,19 @@ export interface RunnerAgentLaunch {
 /** Register an agent in a room and start it in a herdr pane on a machine. Throws `ApiError`. */
 export async function launchRunnerAgent(id: string, data: RunnerAgentLaunch): Promise<RunnerJob> {
   return apiFetch<RunnerJob>(`${runnerApiPath(id)}/agents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** Bring an agent already running on a machine into a room as `handle`; the machine asks
+ *  first, then types its introduction once it's idle. Throws `ApiError`. */
+export async function adoptRunnerAgent(
+  id: string,
+  data: { room: string; pane: string; handle: string; created_by?: string },
+): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/adopt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
