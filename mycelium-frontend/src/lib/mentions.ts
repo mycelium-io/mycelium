@@ -36,3 +36,25 @@ export function parseSilentMentions(text: string): string[] {
 export function parseInterruptMentions(text: string): string[] {
   return handles(text, INTERRUPT_RE);
 }
+
+/** What a mention typed with a sigil other than `@` does, as the @ popover says it. */
+export interface MentionMode {
+  label: string;
+  about: string;
+  tone: "warn" | "muted";
+}
+
+/** The mode a mention sigil turns on, or null for a plain `@`. */
+export function mentionMode(sigil: string | undefined): MentionMode | null {
+  if (sigil === INTERRUPT_MENTION_SIGIL) {
+    return { label: "Interrupt", about: "stops a working agent", tone: "warn" };
+  }
+  if (sigil === SILENT_MENTION_SIGIL) {
+    return { label: "Silent", about: "names them without notifying", tone: "muted" };
+  }
+  return null;
+}
+
+/** What an interrupt says about an engine: it only acts when it's mentioned,
+ *  so `@!` reaches it as a plain mention. */
+export const NOT_INTERRUPTIBLE = "can't be interrupted";
