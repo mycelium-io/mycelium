@@ -60,9 +60,10 @@ The app carries everything it runs, so it works with nothing else installed.
 (on Windows, in Git Bash):
 
 - programs, into `src-tauri/binaries/` with the target triple Tauri expects:
-  `mycelium` (PyInstaller), `herdr`, `slimctl` (2.1.x, to match the hub's
-  `slim-bindings`) and `node`;
-- directories, into `src-tauri/resources/`: `hub/` (the hub, PyInstaller),
+  `herdr`, `slimctl` (2.1.x, to match the hub's `slim-bindings`) and `node`;
+- directories, into `src-tauri/resources/`: `cli/` (`mycelium`, a PyInstaller
+  directory build, so it never unpacks itself into a temporary folder at run
+  time), `hub/` (the hub, PyInstaller),
   `ui/` (the UI's standalone build), `models/` (the search model), `pi/`
   (Pi, which engines think with) and, on Windows, `conpty/` (the console
   host herdr runs its panes in).
@@ -71,7 +72,8 @@ Where they end up differs by platform, and the supervisor
 (`mycelium/desktop/supervisor.py`, `Locator`) looks in all three: programs
 beside the app's executable (`Contents/MacOS`, the AppImage's `usr/bin`, the
 install folder), resources in `Contents/Resources`, `usr/lib/Mycelium`, or
-the install folder itself.
+the install folder itself. `mycelium` runs from `cli/` among the resources,
+and finds the programs folder from there (`programs_dir`).
 
 ```bash
 npm run sidecars                  # all of it, several minutes

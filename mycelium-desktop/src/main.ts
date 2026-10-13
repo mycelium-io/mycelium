@@ -234,7 +234,7 @@ const PREVIEW: Snapshot = {
     : null,
   status: PREVIEW_OTHER_HUB,
   lastError: null,
-  mycelium: { name: "mycelium", path: "/Applications/Mycelium.app/Contents/MacOS/mycelium", bundled: true },
+  mycelium: { name: "mycelium", path: "/Applications/Mycelium.app/Contents/Resources/cli/mycelium", bundled: true },
   herdr: { name: "herdr", path: "/Applications/Mycelium.app/Contents/MacOS/herdr", bundled: true },
   home: "/Users/you",
 };

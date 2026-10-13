@@ -1992,8 +1992,9 @@ computer".
 Before you start, **What this sets up** lists every change it makes. Your
 settings and rooms live in `~/.mycelium` (on Windows, `.mycelium` in your user
 folder). On a Mac or Linux, `mycelium` and `herdr` are linked into
-`~/.local/bin` so agents can run them; on Windows, the app adds its own folder
-to your PATH, so agents and the terminals you open next can run them. It needs
+`~/.local/bin` so agents can run them, and the links follow the app when it
+updates; on Windows, the app adds its own folders to your PATH, so agents and
+the terminals you open next can run them. It needs
 no administrator password and writes nothing outside your home folder.
 
 > **A hub on this computer is yours alone.** It runs only while the app is
