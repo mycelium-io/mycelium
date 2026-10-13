@@ -277,7 +277,7 @@ def handle(
     when the pane can't say which one, it is told it is about to act as this
     machine instead.
     """
-    from mycelium.identity import LEGACY_ACTOR_SENTINEL, _hub_whoami, get_current_handle
+    from mycelium.identity import LEGACY_ACTOR_SENTINEL
 
     if flag and flag != LEGACY_ACTOR_SENTINEL:
         return Answer(flag, FLAG)
@@ -290,15 +290,8 @@ def handle(
     member = find_membership()
     if member is not None:
         return Answer(member.handle, MEMBERSHIP)
-    answer = Answer(fallback, DEFAULT)
-    if ask_hub:
-        who = _hub_whoami(config)
-        if who and who.get("handle"):
-            answer = Answer(str(who["handle"]), MACHINE)
-    if answer.source == DEFAULT:
-        local = get_current_handle(config) or config.identity.name
-        if local:
-            answer = Answer(local, MACHINE)
+    found = person(config, ask_hub=ask_hub)
+    answer = Answer(found, MACHINE) if found else Answer(fallback, DEFAULT)
     if agent is not None and answer.source == MACHINE:
         _warn_once(
             f"warning: herdr pane {agent.pane} belongs to more than one agent "
@@ -306,6 +299,23 @@ def handle(
             f"machine's identity. Pass --as <handle> to act as the agent.",
         )
     return answer
+
+
+def person(config: MyceliumConfig, *, ask_hub: bool = True) -> str | None:
+    """The person whose machine this is: the hub's view of its login, else the
+    handle set with ``mycelium iam``.
+
+    The machine source of :func:`handle` on its own, without the flag,
+    environment, herdr pane or folder membership an agent acts through. It is
+    who owns an agent this machine registers, whichever agent is asking.
+    """
+    from mycelium.identity import _hub_whoami, get_current_handle
+
+    if ask_hub:
+        who = _hub_whoami(config)
+        if who and who.get("handle"):
+            return str(who["handle"])
+    return get_current_handle(config) or config.identity.name or None
 
 
 def _pane_handles(pane: str) -> str:

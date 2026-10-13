@@ -334,6 +334,9 @@ async def upsert_memories(
             )
 
         now = datetime.now(UTC)
+        # A write that names no tags keeps the ones the memory has, like the rest
+        # of its frontmatter; an empty list clears them.
+        tags = item.tags if item.tags is not None else existing_meta.get("tags")
         if existing:
             new_version = current_version + 1
             created_by = existing_meta.get("created_by", item.created_by)
@@ -385,7 +388,7 @@ async def upsert_memories(
             created_by=created_by,
             updated_by=item.created_by,
             version=new_version,
-            tags=item.tags,
+            tags=tags,
             created_at=created_at,
             updated_at=now,
             extra_meta=extra_meta or None,
@@ -413,7 +416,7 @@ async def upsert_memories(
                 "created_by": created_by,
                 "updated_by": item.created_by,
                 "version": new_version,
-                "tags": item.tags,
+                "tags": tags,
                 "meta": unmanaged_meta(extra_meta) or None,
                 "episode": extra_meta.get(EPISODE_META),
                 "expandable": links.is_expandable(extra_meta),
@@ -434,7 +437,7 @@ async def upsert_memories(
                 created_by=created_by,
                 updated_by=item.created_by,
                 version=new_version,
-                tags=item.tags,
+                tags=tags,
                 meta=unmanaged_meta(extra_meta) or None,
                 episode=extra_meta.get(EPISODE_META),
                 expandable=links.is_expandable(extra_meta),

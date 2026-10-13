@@ -490,6 +490,7 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
             self.memory_key = f"agents/{handle}"
 
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr("mycelium.caller.person", lambda _config, **_kw: "julia")
     monkeypatch.setattr(
         "mycelium.commands.agent._write_manifest",
         lambda config, room, manifest, created_by, **_kw: written.append(manifest),
@@ -534,6 +535,8 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
     assert [m.handle for m in written] == ["fresh-agent"]
     # It takes part like any resident agent, and says which agent CLI it is.
     assert (written[0].adapter, written[0].framework) == ("claude_code", "codex")
+    # Owned by the machine's person, not by whatever identity the runner has.
+    assert written[0].owner == "julia"
     assert retired == ["old"] and deleted == ["old"]
     # New member is managed, with its folder; the dead managed one is gone;
     # the hand-mapped one stays.
@@ -546,6 +549,88 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
 class _Cfg:
     def get_current_identity(self) -> str:
         return "tester"
+
+
+def _member_pass(
+    monkeypatch: pytest.MonkeyPatch, hub: object, passes: int = 3
+) -> list[AgentManifest]:
+    """Run ``passes`` sync passes over one enrolled member whose pane is live,
+    with ``hub`` as what the hub holds at its ``agents/<handle>`` (a string, None
+    for nothing there, or an exception the read raises). Returns what was written."""
+    import contextlib
+
+    from mycelium.commands import herdr as herdr_cmd
+
+    written: list[AgentManifest] = []
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr("mycelium.caller.person", lambda _config, **_kw: "julia")
+    monkeypatch.setattr(
+        "mycelium.client.typed_client", lambda *_a, **_k: contextlib.nullcontext(None)
+    )
+
+    def read(_client: object, _room: str, _key: str) -> str | None:
+        if isinstance(hub, Exception):
+            raise hub
+        return cast("str | None", hub)
+
+    monkeypatch.setattr("mycelium.commands.agent._remote_memory_text", read)
+    monkeypatch.setattr(
+        "mycelium.commands.agent._write_manifest",
+        lambda config, room, manifest, created_by, **_kw: written.append(manifest),
+    )
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="r", handle="tally", pane="wX:p5", kind="claude"))
+    agents = [{"pane_id": "wX:p5", "workspace_id": "wX", "agent": "claude", "cwd": "/x"}]
+    bridge = HerdrBridge(
+        runner=ScriptedRunner(
+            {
+                "agent list": _proc(_ok({"agents": agents})),
+                "tab list": _proc(_ok({"tabs": []})),
+                "pane list": _proc(_ok({"panes": [{"pane_id": "wX:p5"}]})),
+            }
+        ),
+        registry=reg,
+    )
+    for _ in range(passes):
+        herdr_cmd._reconcile_workspace(
+            cast("MyceliumConfig", _Cfg()), bridge, "wX", "r", name_from="tab", prefix="", kind=None
+        )
+    return written
+
+
+def test_sync_leaves_an_edited_manifest_alone(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """#1315: a person gave an enrolled agent its own description and owner. The
+    sync owns the pane mapping, not the manifest, so it writes nothing, and the
+    version doesn't climb pass after pass."""
+    edited = "adapter: claude_code\ndescription: Combat designer\nowner: julia\n"
+    assert _member_pass(monkeypatch, edited) == []
+
+
+def test_sync_leaves_a_manifest_it_cant_parse_alone(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """The case behind #1315: an edit that isn't valid YAML (an unquoted colon)
+    read as "missing", and every pass rewrote it as "herdr-enrolled", owner
+    unknown. It's still the person's text, so the sync keeps out of it."""
+    unparseable = "description: Combat designer. Owns how fights play: weapons\n"
+    assert _member_pass(monkeypatch, unparseable) == []
+
+
+def test_sync_heals_a_manifest_that_is_gone_once_owned_by_the_person(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    written = _member_pass(monkeypatch, None, passes=1)
+    assert [(m.handle, m.owner) for m in written] == [("tally", "julia")]
+
+
+def test_sync_writes_nothing_when_it_cant_ask_the_hub(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    import httpx
+
+    assert _member_pass(monkeypatch, httpx.ConnectError("hub down")) == []
 
 
 def test_reconcile_keeps_a_member_whose_pane_is_open_but_empty(

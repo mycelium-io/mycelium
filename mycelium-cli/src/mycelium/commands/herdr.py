@@ -21,10 +21,12 @@ would.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import re
 import time
+from collections.abc import Callable
 from typing import NamedTuple
 
 import typer
@@ -148,7 +150,10 @@ def herdr_unmap(
 
 
 @doc_ref(
-    usage="mycelium herdr enroll [handle] [--room <room>] [--pane <id>]",
+    usage=(
+        "mycelium herdr enroll [handle] [--room <room>] [--pane <id>] "
+        "[--description <text>] [--owner <handle>]"
+    ),
     desc="Join a room as the herdr agent in this pane, so mentions of it wake it.",
     group="agent",
 )
@@ -163,24 +168,39 @@ def herdr_enroll(
     pane: str | None = typer.Option(
         None, "--pane", help="herdr pane id (default: this pane, $HERDR_PANE_ID)."
     ),
+    description: str | None = typer.Option(
+        None, "--description", help="What this agent does, shown in the room's member list."
+    ),
+    owner: str | None = typer.Option(
+        None, "--owner", help="Who it belongs to (default: this machine's person)."
+    ),
 ) -> None:
     """Make the agent in this herdr pane a member of a room.
 
     For an agent running in a herdr pane that no workspace binding or runner
     enrolled: it registers the agent in the room and maps the pane, so a mention
     of it rings this pane. The mapping is a plain one, so no sync pass retires
-    it. Running it again in a pane that's already a member says so and changes
-    nothing.
+    it. Its owner is this machine's person (`mycelium iam`), not the agent.
+    Running it again in a pane that's already a member says so and changes
+    nothing, unless --description or --owner is given, which updates just those.
     """
     import os
 
     from mycelium.client import typed_client
-    from mycelium.commands.agent import _load_manifest_remote, _write_manifest
+    from mycelium.commands.agent import (
+        _load_manifest_remote,
+        _remote_memory_text,
+        _write_manifest,
+    )
 
     def member(name: str) -> bool:
-        """Whether the hub already has ``name`` registered in the room."""
+        """Whether the hub has anything at ``agents/<name>``, readable or not.
+
+        A hub that can't be asked raises, so enroll says so rather than taking
+        the handle as free or as taken.
+        """
         with typed_client(config, timeout=HUB_TIMEOUT_S) as client:
-            return _load_manifest_remote(client, room_name, name) is not None
+            return _remote_memory_text(client, room_name, f"agents/{name}") is not None
 
     try:
         room_name = str(room)
@@ -201,13 +221,39 @@ def herdr_enroll(
             raise typer.Exit(1)
 
         config = MyceliumConfig.load()
-        sender = config.get_current_identity()
+        # The person whose machine this is owns the agent and is the one
+        # registering it, whichever agent typed the command.
+        whose = owner.lstrip("@") if owner else _owner(config)
         mappings = [m for m in bridge.registry.all() if m.room == room_name]
         here = next((m for m in mappings if m.pane == pane_id), None)
         if here is not None:
             if not member(here.handle):
-                manifest = _member_manifest(here.handle, room_name, agent, sender)
-                _write_manifest(config, room_name, manifest, created_by=sender)
+                manifest = _member_manifest(here.handle, room_name, agent, whose, description)
+                _write_manifest(config, room_name, manifest, created_by=whose)
+            elif description or owner:
+                with typed_client(config, timeout=HUB_TIMEOUT_S) as client:
+                    current = _load_manifest_remote(client, room_name, here.handle)
+                if current is None:
+                    console.print(
+                        f"[red]agents/{escape(here.handle)} in {escape(room_name)} isn't a "
+                        "manifest enroll can read[/red] (see `mycelium memory get "
+                        f"agents/{escape(here.handle)} --room {escape(room_name)}`), so it's "
+                        "left as it is."
+                    )
+                    raise typer.Exit(1)
+                changes: dict[str, str] = {}
+                if description:
+                    changes["description"] = description
+                if owner:
+                    changes["owner"] = whose
+                _write_manifest(
+                    config, room_name, current.model_copy(update=changes), created_by=whose
+                )
+                console.print(
+                    f"Updated @{escape(here.handle)}'s {' and '.join(changes)} in "
+                    f"{escape(room_name)}."
+                )
+                return
             console.print(
                 f"Already a member: [cyan]@{escape(here.handle)}[/cyan] in "
                 f"{escape(room_name)}, pane {escape(pane_id)}."
@@ -245,8 +291,8 @@ def herdr_enroll(
                     f"agent-{_pane_suffix(pane_id)}"
                 )
 
-        manifest = _member_manifest(wanted, room_name, agent, sender)
-        _write_manifest(config, room_name, manifest, created_by=sender)
+        manifest = _member_manifest(wanted, room_name, agent, whose, description)
+        _write_manifest(config, room_name, manifest, created_by=whose)
         bridge.registry.set(
             HerdrPaneMapping(
                 room=room_name,
@@ -478,27 +524,33 @@ def _enroll_one(
     name_from: str,
     prefix: str,
     tab_labels: dict[str, str],
-    sender: str,
+    owner: Callable[[], str],
 ) -> str | None:
     """Ensure one live herdr agent is a member of ``room``; return its handle if
-    this call newly enrolled it (``None`` if it was already bound).
+    this call newly enrolled it (``None`` if it was already bound). ``owner`` is
+    asked only when a manifest is written, so a quiet pass costs no lookup.
 
     Idempotency is keyed on the **pane**, not the derived handle: if any mapping
     in the room already points at this pane, the agent is already a member (we
     just re-materialize its manifest if it went missing). Only a genuinely new
     pane derives a fresh handle — collision-checked against the room's existing
     handles — and gets a manifest + a ``managed`` mapping.
+
+    A member's manifest is the person's and the agent's to edit (its
+    description, its owner), so a pass writes one only when the hub has none at
+    all. One the hub has but can't parse is still theirs: rewriting it would
+    throw away what they wrote.
     """
-    from mycelium.commands.agent import _load_manifest, _write_manifest
+    from mycelium.commands.agent import _write_manifest
 
     pane = str(agent["pane_id"])
     existing = next((m for m in bridge.registry.all() if m.room == room and m.pane == pane), None)
     if existing is not None:
         # Already bound to this pane — heal a manifest that was deleted out from
         # under us so the member doesn't silently drop off the roster.
-        if _load_manifest(room, existing.handle) is None:
-            manifest = _member_manifest(existing.handle, room, agent, sender)
-            _write_manifest(config, room, manifest, created_by=sender, timeout=HUB_TIMEOUT_S)
+        if _manifest_on_hub(config, room, existing.handle) is False:
+            manifest = _member_manifest(existing.handle, room, agent, owner())
+            _write_manifest(config, room, manifest, created_by=owner(), timeout=HUB_TIMEOUT_S)
         return None
 
     handle = _derive_handle(
@@ -509,8 +561,8 @@ def _enroll_one(
         taken=taken,
     )
     taken.add(handle)
-    manifest = _member_manifest(handle, room, agent, sender)
-    _write_manifest(config, room, manifest, created_by=sender, timeout=HUB_TIMEOUT_S)
+    manifest = _member_manifest(handle, room, agent, owner())
+    _write_manifest(config, room, manifest, created_by=owner(), timeout=HUB_TIMEOUT_S)
     bridge.registry.set(
         HerdrPaneMapping(
             room=room,
@@ -524,7 +576,28 @@ def _enroll_one(
     return handle
 
 
-def _member_manifest(handle: str, room: str, agent: dict, sender: str) -> AgentManifest:
+def _manifest_on_hub(config: MyceliumConfig, room: str, handle: str) -> bool | None:
+    """Whether the hub holds anything at ``agents/<handle>``, readable or not.
+
+    ``None`` when the hub couldn't be asked, which a caller must not read as
+    "missing".
+    """
+    import httpx
+
+    from mycelium.client import typed_client
+    from mycelium.commands.agent import _remote_memory_text
+    from mycelium_backend_client.errors import UnexpectedStatus
+
+    try:
+        with typed_client(config, timeout=HUB_TIMEOUT_S) as client:
+            return _remote_memory_text(client, room, f"agents/{handle}") is not None
+    except (httpx.HTTPError, UnexpectedStatus):
+        return None
+
+
+def _member_manifest(
+    handle: str, room: str, agent: dict, owner: str, description: str | None = None
+) -> AgentManifest:
     """The manifest for a herdr agent enrolled as ``handle``, saying which agent CLI it is."""
     from mycelium.integrations import AddOptions, adapter_for, get_integration
 
@@ -532,11 +605,18 @@ def _member_manifest(handle: str, room: str, agent: dict, sender: str) -> AgentM
     manifest = get_integration(adapter_for(kind), cwd=agent.get("cwd")).build_manifest(
         handle=handle,
         opts=AddOptions(room=room),
-        description=f"herdr-enrolled from {agent['pane_id']} ({kind})",
+        description=description or f"herdr-enrolled from {agent['pane_id']} ({kind})",
         allow_from=[],
-        owner=sender,
+        owner=owner,
     )
     return manifest.model_copy(update={"framework": kind})
+
+
+def _owner(config: MyceliumConfig) -> str:
+    """Who owns an agent this machine registers: its person, never the agent asking."""
+    from mycelium import caller
+
+    return caller.person(config) or config.get_current_identity()
 
 
 def _retire_one(config: MyceliumConfig, bridge: HerdrBridge, mapping: HerdrPaneMapping) -> None:
@@ -577,7 +657,8 @@ def _reconcile_workspace(
     ]
     live_panes = {str(a["pane_id"]) for a in agents}
     tab_labels = bridge.tab_labels(workspace) if name_from == "tab" else {}
-    sender = config.get_current_identity()
+    # Looked up once, and only if this pass writes a manifest.
+    owner = functools.cache(lambda: _owner(config))
     # Seed with the room's existing handles so a new pane never collides with one.
     taken = {m.handle for m in bridge.registry.all() if m.room == room}
 
@@ -594,7 +675,7 @@ def _reconcile_workspace(
                 name_from=name_from,
                 prefix=prefix,
                 tab_labels=tab_labels,
-                sender=sender,
+                owner=owner,
             )
         )
         is not None
