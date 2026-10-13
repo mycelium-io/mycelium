@@ -654,12 +654,15 @@ export async function handleMock(req: Request): Promise<Response | null> {
           ? json(memoryRead(roomName, fx.memories[index]))
           : notFound(`memory ${key} not found (mock)`);
       }
-      // GET /memory?prefix=
+      // GET /memory?prefix=&limit=&offset=
       const prefix = searchParams.get("prefix");
+      const offset = Number(searchParams.get("offset") ?? "0");
+      const limit = Number(searchParams.get("limit") ?? "100");
       return json(
         fx.memories
           .map((m) => memoryRead(roomName, m))
-          .filter((m) => !prefix || String(m.key).startsWith(prefix)),
+          .filter((m) => !prefix || String(m.key).startsWith(prefix))
+          .slice(offset, offset + limit),
       );
     }
 

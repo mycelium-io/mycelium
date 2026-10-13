@@ -164,11 +164,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     let cached = titles.current.get(room);
     if (!cached || (!cached.byEpisode.has(episode) && Date.now() - cached.at > 30_000)) {
       // Every memory has a thread, not only the board's rows: a mention in a
-      // `context/` note's discussion is named too. The rows are read on their
-      // own as well, so a busy room's newest memories can't crowd them out.
-      const [rows, recent] = await Promise.all([fetchMemories(room, "work/"), fetchMemories(room)]);
+      // `context/` note's discussion is named too.
+      const memories = await fetchMemories(room);
       const byEpisode = new Map<string, string>();
-      for (const row of [...recent, ...rows]) {
+      for (const row of memories) {
         if (!row.episode) continue;
         const text = typeof row.value === "string" ? row.value : ((row.value as { text?: string } | null)?.text ?? "");
         const first = text.split("\n").find((l) => l.trim());
