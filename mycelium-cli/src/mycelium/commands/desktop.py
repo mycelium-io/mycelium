@@ -23,6 +23,7 @@ from typing import Any, cast
 import typer
 from rich.console import Console
 
+from mycelium.cli_options import confirms
 from mycelium.doc_ref import doc_ref
 
 app = typer.Typer(help="Run Mycelium on this machine without Docker (what the desktop app runs).")
@@ -240,6 +241,44 @@ def model(
             raise typer.Exit(2) from None
         config.save()
     sys.stdout.write(json.dumps(model_view(config.llm)) + "\n")
+
+
+@doc_ref(
+    usage="mycelium desktop restart-herdr [--yes]",
+    desc="Restart herdr's server when it's from before Mycelium was updated, so its terminals can read protected folders again.",
+    group="agent",
+)
+@app.command("restart-herdr")
+@confirms()
+def restart_herdr(yes: bool = False) -> None:
+    """Restart herdr's server when it's still the one from before an update.
+
+    After Mycelium is updated in place, the herdr server that kept running is
+    from the old version, and macOS can refuse it and its terminals access to
+    folders like ~/Documents. Restarting it stops the agents running in it;
+    this says what happens to them and asks first.
+
+    Examples:
+        mycelium desktop restart-herdr
+        mycelium desktop restart-herdr --yes
+    """
+    from mycelium.desktop import herdr_server
+    from mycelium.desktop.supervisor import STALE_HERDR_WARNING, LocateError, Locator
+
+    server = herdr_server.stale()
+    if server is None:
+        console.print("herdr's server is current; there's nothing to restart.")
+        return
+    console.print(STALE_HERDR_WARNING)
+    console.print(herdr_server.agents_after_restart())
+    if not yes and not typer.confirm("Restart herdr's server now?", default=False):
+        raise typer.Exit(1)
+    try:
+        herdr_server.restart(server, Locator().herdr())
+    except (herdr_server.RestartError, LocateError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from None
+    console.print("[green]✓[/] herdr's server restarted.")
 
 
 @doc_ref(

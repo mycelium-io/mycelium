@@ -2077,6 +2077,16 @@ small window shows the download until the app restarts into the new version.
 An update installs only if it has the release's signature, so the app
 never installs anything the project didn't publish.
 
+herdr keeps running through an update, so your agents aren't interrupted, and
+the herdr still running is the one from before it. On a Mac, macOS can then
+refuse herdr and its terminals access to folders like Documents, and commands
+there fail with "Operation not permitted". When the app sees this, it asks
+whether to restart herdr. Restarting stops the agents running in it. If you've
+let herdr bring your agents back (`mycelium machine integrations`), each one
+reopens in its own conversation; if not, start them again from **Your agents…**.
+You can also restart it later with `mycelium desktop restart-herdr`, and the
+health check says when it's needed.
+
 ## Logs
 
 Two logs say what went wrong. Both open from **Logs** in the menu, in whatever
