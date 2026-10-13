@@ -14,6 +14,7 @@ Commands:
 - send: Broadcast a chat message into a room (an @handle mention summons a
   registered engine, e.g. @aligner)
 - messages: Show a room's recent messages
+- export: Write a room's whole history to local JSON lines
 - delegate: Delegate a task to an agent in a room
 - clone: Clone a room from a remote backend instance
 """
@@ -1069,6 +1070,94 @@ def messages(
             json_output=json_output,
         )
 
+    except (typer.Exit, typer.Abort):
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
+    usage="mycelium room export [<room> | --room <room>] [--out <dir>] [--since <stamp|age>] [--redact]",
+    desc=(
+        "Write a room's whole history to local files: every message, channel and task threads "
+        "alike, as JSON lines, plus the board. Run it again with the same <code>--out</code> "
+        "to add only what is new. <code>--redact</code> replaces emails, tokens and non-GitHub URLs."
+    ),
+    group="room",
+)
+@app.command("export")
+@in_room("room_opt", resolve=False)
+@emits_json()
+def export(
+    ctx: typer.Context,
+    room: str | None = typer.Argument(None, help="Room to export (defaults to active room)"),
+    room_opt: str | None = None,
+    out: str | None = typer.Option(
+        None,
+        "--out",
+        "-o",
+        help="Directory to write into (default: ./mycelium-export/<room>). It keeps its own cursor.",
+    ),
+    since: str | None = typer.Option(
+        None,
+        "--since",
+        help="On a first export, only messages at/after this ISO stamp or age (2h, 30m, 1d)",
+    ),
+    redact: bool = typer.Option(
+        False,
+        "--redact",
+        help="Replace emails, tokens, non-GitHub URLs and home-folder names with placeholders",
+    ),
+) -> None:
+    """
+    Write a room's whole history to local files, for backups, analysis or a bug report.
+
+    The directory gets three files:
+
+    - messages.jsonl: one line per message, channel and task threads alike,
+      notices and pings included. Each line has the sender and whether they are
+      a person, an agent, an engine or the system; the thread and the task it
+      belongs to; the type; the mentions in it; and the text.
+    - board.json: every task row, with its status, who it is for and who holds it.
+    - cursor.json: where this export stopped.
+
+    Running it again with the same --out reads only what is new and appends it,
+    so a scheduled export stays cheap.
+
+    Examples:
+        mycelium room export
+        mycelium room export design-review --out ./backup/design-review
+        mycelium room export my-room --since 7d --redact
+    """
+    from pathlib import Path
+
+    from mycelium import room_export
+
+    try:
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, _one_room(room, room_opt))
+        target = Path(out) if out else Path("mycelium-export") / room_name
+        with hub_client(config, timeout=120) as client:
+            result = room_export.export_room(
+                client,
+                room_name,
+                target,
+                since=chat.parse_stamp(since) if since else None,
+                redacted=redact,
+            )
+        if json_output:
+            typer.echo(json_module.dumps(result.as_dict(), indent=2))
+            return
+        verb = "Exported" if result.from_start else "Added"
+        typer.echo(
+            f"{verb} {result.new} message{'' if result.new == 1 else 's'} from {room_name} "
+            f"({result.total} in the export) and {result.board_rows} board rows to {target}"
+        )
+    except room_export.ExportError as e:
+        typer.secho(str(e), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from e
     except (typer.Exit, typer.Abort):
         raise
     except Exception as e:
