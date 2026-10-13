@@ -131,10 +131,10 @@ class Settings(BaseSettings):
     # so the CLI mirror agrees without config coupling.
     SLIM_IDENTITY: str = "psk"
 
-    # SIEP aligner — the first cognition engine. Dormant by default:
-    # nothing runs until the reserved handle is @-summoned on a room channel.
-    # A reserved handle is how a summon of the engine is told apart from an
-    # @-mention of a normal teammate.
+    # SIEP aligner — the first cognition engine. Dormant: nothing runs until a
+    # room's registered aligner is @-summoned. This handle is the usual one, so
+    # a mention of it in a room with no aligner gets one reply saying how to
+    # add it (and starts nothing).
     ALIGNER_HANDLE: str = "aligner"
     # MPC at/above this converges; below rejects (mirrors the old CFN
     # validation-intervention default of 0.6).
@@ -314,8 +314,7 @@ class Settings(BaseSettings):
     # the engine runtime. "backend" (default):
     # this backend owns the run via its summon seam. "host": the host daemon owns
     # it (the engine runs where `pi` lives), so `handle_summon` must NOT also fire
-    # for a registered engine or the negotiation double-runs. The reserved
-    # ALIGNER_HANDLE fallback always runs backend-side (it has no host manifest).
+    # for a registered engine or the negotiation double-runs.
     # Flip this in tandem with the CLI's `engine.runtime` — they're a pair.
     ENGINE_RUNTIME: EngineRuntime = "backend"
 

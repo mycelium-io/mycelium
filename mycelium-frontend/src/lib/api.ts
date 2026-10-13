@@ -779,6 +779,8 @@ export interface VerifierChecked {
 /** A claim the verifier couldn't confirm, drawn as a line under its message. */
 export interface VerifierFlag {
   flag_id: string;
+  /** Which multi-agent failure it found, e.g. `ungranted_approval` (`FAILURE_NAMES`). */
+  failure?: string;
   /** The message it goes under: its id in the room's history read. */
   message_id: string;
   key: string;
@@ -1178,6 +1180,17 @@ export async function createEngine(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+}
+
+/** Stop the aligner's negotiation running in a room, as `by`. It ends before
+ *  its next turn and posts one line saying who stopped it. Throws `ApiError`
+ *  (409 when nothing is running there). */
+export async function stopNegotiation(roomName: string, by?: string): Promise<{ stopped: boolean }> {
+  return apiFetch<{ stopped: boolean }>(`${roomApiPath(roomName)}/engines/stop`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ by: by || null }),
   });
 }
 

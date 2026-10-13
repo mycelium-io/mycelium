@@ -218,3 +218,49 @@ def engine_invoke(
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
         raise typer.Exit(1) from None
+
+
+@app.command("stop")
+@in_room()
+@acts_as("handle_flag")
+def engine_stop(
+    ctx: typer.Context,
+    room: str | None = None,
+    handle_flag: str | None = None,
+) -> None:
+    """Stop the negotiation the aligner is running in a room.
+
+    It ends before its next turn, records no agreement, and posts one line
+    saying who stopped it.
+
+    Example:
+        mycelium engine stop --room portfolio
+    """
+    try:
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+        who = identity.resolve_actor(config, override=handle_flag)
+
+        from mycelium.client import hub_error_detail
+        from mycelium_backend_client.api.engines import (
+            stop_negotiation_api_rooms_room_name_engines_stop_post as stop_api,
+        )
+        from mycelium_backend_client.errors import UnexpectedStatus
+        from mycelium_backend_client.models import NegotiationStop
+
+        with _typed_client(config) as client:
+            try:
+                stop_api.sync(room_name=room_name, client=client, body=NegotiationStop(by=who))
+            except UnexpectedStatus as exc:
+                if exc.status_code == 409:
+                    console.print(f"[dim]No negotiation is running in {room_name}.[/dim]")
+                    raise typer.Exit(1) from None
+                console.print(f"[red]Couldn't stop it:[/red] {hub_error_detail(exc.content)}")
+                raise typer.Exit(1) from None
+        console.print(f"[green]Stopped[/green] the negotiation in {room_name}.")
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None

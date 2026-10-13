@@ -611,9 +611,25 @@ is no litellm dependency.
   belongs to no row), not auto-run on a join window. Like the conductor, it
   negotiates **in the thread it was summoned in** (`AlignerEngine.mediate`'s
   `episode`): its questions, the replies and the verdict land in the task's thread
-  (or the room), whose roster it freezes for the run. Its record is a nested episode
+  (or the room). Its record is a nested episode
   with `within` set to that thread, and its commit carries the row as `within`, so
-  an agreement reached in a task compiles rows `part-of` it.
+  an agreement reached in a task compiles rows `part-of` it. **Its parties are who
+  was named**: the members the summon mentions, or a task's own members (its
+  assignee and the agents who posted in its thread); a summon in the room that
+  names nobody starts nothing. It freezes only those parties
+  (`open_episode(parties=…)`), so presence coming and going never ends a run;
+  only a party being removed from the room does (`on_party_left`). A room that
+  registered no aligner has none: `@aligner` there starts nothing and says once
+  how to add one. Each turn `@`-mentions the agent it asks
+  (`addressed_turn(mention=True)`), so the wake is an ordinary mention. It
+  settles at once when every party's stated opening position names the same
+  outcome, asks an agent that rejects the very offer it proposed once whether
+  it still wants it (taking the answer as given, never turning a reject into an
+  accept itself), and stops after the same offer is rejected three times. `POST
+  /rooms/{room}/engines/stop` (`mycelium engine stop`, the rail's Stop) ends a
+  run before its next turn. Every ending commits with a `reason` when it ended
+  early (`stopped`, `party_left`, `circles`) and posts one plain line; a commit
+  record never reads as raw JSON in `room messages` (`chat.readable`).
 - **The aligner's LLM session is Pi (only).** The SAO mediator runs on a persistent
   Pi session; there is no litellm fallback. Pi ships in the backend image;
   OpenShell sandboxing (`ALIGNER_PI_OPENSHELL`) is an optional command-prefix seam,

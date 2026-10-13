@@ -117,6 +117,34 @@ def _checks(config: MyceliumConfig, room_name: str, *, since: datetime) -> dict[
     return out
 
 
+def readable(message_type: str, content: str) -> str:
+    """The words a person reads for a message, never a raw protocol record.
+
+    A memory update or the end of a negotiation arrives as its whole envelope
+    (``l9_knowledge``, ``l9_commit``), which printed as a screen of JSON. The
+    line it carries is what's said; one with none is named plainly.
+    """
+    if not message_type.startswith("l9_"):
+        return content
+    try:
+        frame = json_module.loads(content)
+    except ValueError:
+        return content
+    if not isinstance(frame, dict):
+        return content
+    text = frame.get("content")
+    if isinstance(text, str) and text.strip():
+        return text
+    header = (frame.get("l9") or {}).get("header") or {}
+    if message_type == "l9_commit":
+        outcome = header.get("subkind") or "ended"
+        return f"Negotiation {outcome}."
+    if message_type == "l9_knowledge":
+        data = ((frame.get("l9") or {}).get("payload") or {}).get("data") or {}
+        return f"Memory updated: {data.get('key') or 'a memory'}."
+    return f"({message_type.removeprefix('l9_')} record)"
+
+
 def read(
     config: MyceliumConfig,
     room_name: str,
@@ -195,7 +223,7 @@ def read(
         # Show the full message; this is the read-the-transcript command, so
         # never truncate. Keep multi-line content readable by indenting any
         # continuation lines under the first.
-        first, *rest = (m.content or "").split("\n")
+        first, *rest = readable(str(m.message_type), m.content or "").split("\n")
         owner = owners.get(m.sender_handle)
         own = f" owned by @{owner}" if owner else ""
         edited = " (edited)" if getattr(m, "edited_at", None) else ""

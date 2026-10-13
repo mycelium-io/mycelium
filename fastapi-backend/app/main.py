@@ -229,6 +229,8 @@ async def lifespan(app: FastAPI):
                 logger.exception("engine summon handler failed for @%s in %s", handle, room)
 
     room_channel_manager.on_summon = _dispatch_summon
+    # A party leaving the room stops the aligner's run, which says so itself.
+    room_channel_manager.on_party_left = app.state.aligner.party_left
 
     # A turn whose text names nobody, put to one member as its message recipient —
     # the way the aligner and the conductor address one member. The members

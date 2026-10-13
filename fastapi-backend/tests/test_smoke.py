@@ -57,7 +57,8 @@ async def test_core_protocol_room_to_work_over_fakes() -> None:
     )
 
     # ── converge ── a commit:converged verdict carrying the agreed issue=value map.
-    verdict = await engine.mediate(_ROOM)
+    # In the room, a run asks the members its summon named.
+    verdict = await engine.mediate(_ROOM, scoped_participants=["growth", "risk"])
     assert verdict is not None
     assert verdict["header"]["subkind"] == "converged"
     assignments = verdict["payload"]["data"]["assignments"]

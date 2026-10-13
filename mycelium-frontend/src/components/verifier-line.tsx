@@ -18,6 +18,7 @@ import { useCurrentUser } from "@/components/current-user";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { FAILURE_NAMES } from "@/lib/verifier";
 
 const ACTION =
   "underline decoration-border2 underline-offset-2 transition-colors hover:text-text hover:decoration-current disabled:opacity-50";
@@ -104,8 +105,10 @@ function VerifierLine({
 /** What the verifier read to reach its line. */
 function ShowWhy({ flag }: { flag: VerifierFlag }) {
   const checked = flag.checked ?? [];
+  const failure = flag.failure ? FAILURE_NAMES[flag.failure] : undefined;
   return (
     <div className="space-y-2 text-micro">
+      {failure && <p className="font-medium text-text">{failure}</p>}
       <p className="text-muted-foreground">
         @{flag.about} said <span className="text-text">&ldquo;{flag.sentence}&rdquo;</span>
       </p>

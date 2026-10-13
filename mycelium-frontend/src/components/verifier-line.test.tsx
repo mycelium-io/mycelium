@@ -22,6 +22,7 @@ import { MessageBody } from "@/components/message-body";
 
 const FLAG: VerifierFlag = {
   flag_id: "vf1",
+  failure: "ungranted_approval",
   message_id: "h4",
   key: "live",
   about: "builder",
@@ -48,10 +49,11 @@ describe("<VerifierLines />", () => {
     expect(screen.getByText("#502 was already merged, at 20:08.")).toHaveClass("font-medium");
   });
 
-  it("lists what it read under Show why", async () => {
+  it("names the failure and lists what it read under Show why", async () => {
     render(<VerifierLines roomName="checkout" flags={[FLAG]} />);
     await userEvent.click(screen.getByRole("button", { name: "Show why" }));
-    expect(await screen.findByText("Approvals of #502 in this room")).toBeInTheDocument();
+    expect(await screen.findByText("Approval nobody gave")).toBeInTheDocument();
+    expect(screen.getByText("Approvals of #502 in this room")).toBeInTheDocument();
     expect(screen.getByText("Nobody in this room has approved #502.")).toBeInTheDocument();
   });
 

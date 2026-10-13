@@ -62,15 +62,15 @@ async def test_message_exchange_round_trip_over_channel():
 
 
 @pytest.mark.asyncio
-async def test_mid_episode_membership_change_aborts_over_slim():
-    """A member joining mid-episode aborts it: peers receive commit:rejected."""
+async def test_a_party_leaving_mid_negotiation_aborts_it_over_slim():
+    """A party removed mid-negotiation ends it: the other receives commit:rejected."""
     from scripts.message_slim_roundtrip import run_episode_abort
 
     abort = await run_episode_abort(_ENDPOINT)
 
     assert abort.header.kind.value == "commit"
     assert abort.header.subkind == "rejected"
-    assert abort.payload.data.get("reason") == "membership_change"
+    assert abort.payload.data.get("reason") == "party_left"
 
 
 @pytest.mark.asyncio

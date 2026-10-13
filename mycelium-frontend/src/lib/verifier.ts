@@ -7,6 +7,20 @@
 
 import { typeset } from "@/lib/typeset";
 
+/** Each multi-agent failure the verifier knows, in the words the docs page's
+ *  table uses (`docs/engines/verifier.md`). *Show why* names the one it found. */
+export const FAILURE_NAMES: Record<string, string> = {
+  ungranted_approval: "Approval nobody gave",
+  stale_state: "Acting on stale state",
+  unsupported_completion: "Work called done without evidence",
+  dropped_directive: "A request nobody answered",
+  decision_taken: "A decision that wasn't theirs",
+  misread_intent: "Misreading the ask",
+  handoff_loss: "Losing something in a handoff",
+  scope_violation: "Going out of scope",
+  unasked_side_effect: "A side effect nobody asked for",
+};
+
 /** The shortest piece of a quote worth underlining on its own. */
 const MIN_PIECE = 3;
 

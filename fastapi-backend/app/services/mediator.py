@@ -240,8 +240,18 @@ class MediatedNegotiation:
         turn_timeout_s: float,
         llm: Callable[..., str],
         on_reading: Callable[[str, dict[str, Any], bool], None] | None = None,
+        stop_requested: Callable[[], str | None] | None = None,
     ) -> None:
         self._issues = issues
+        # Why the run must end now (a person stopped it, a party left), asked
+        # before every turn; ``None`` to carry on.
+        self._stop_requested = stop_requested
+        # Set when the negotiation itself sees it's going nowhere.
+        self.stop_reason: str | None = None
+        # How many times each offer has been rejected, to catch a loop.
+        self._rejections: dict[tuple[str, ...], int] = {}
+        # (agent, offer) pairs already asked "you proposed this; still want it?".
+        self._confirmed: set[tuple[str, tuple[str, ...]]] = set()
         self._names = [i["name"] for i in issues]
         self._options = {i["name"]: i["options"] for i in issues}
         self._cap = cap
@@ -274,13 +284,20 @@ class MediatedNegotiation:
     def _history_block(self) -> str:
         return "\n".join(self.history[-12:]) if self.history else "(negotiation just started)"
 
+    def said(self, offer: tuple[Any, ...] | None) -> str:
+        """An offer as people read it, ``issue = value`` per issue, not a tuple."""
+        if not offer:
+            return "none yet"
+        return "; ".join(
+            f"{name} = {value}" for name, value in zip(self._names, offer, strict=False)
+        )
+
     def broker(self, offer: tuple[Any, ...] | None, round_n: int) -> str:
         """The mediator's per-turn framing — where everyone stands + a nudge."""
-        order = ", ".join(self._names)
         try:
             return self._llm(
                 f"You are the negotiation mediator (a neutral camp counselor). It is step "
-                f"{round_n} of {self._cap}. Issue order: {order}. Offer on the table: {offer}.\n\n"
+                f"{round_n} of {self._cap}. Offer on the table: {self.said(offer)}.\n\n"
                 f"History so far:\n{self._history_block()}\n\nWrite 2 sentences to the group: "
                 "summarize where each agent stands, name who has hit a genuine hard limit, and "
                 "surface the space that's still open between them. Be concrete and fair, not "
@@ -348,13 +365,12 @@ class MediatedNegotiation:
         self, handle: str, offer: tuple[Any, ...] | None, proposing: bool, note: str, round_n: int
     ) -> str:
         space = "; ".join(f"{n} ∈ {{{', '.join(self._options[n])}}}" for n in self._names)
-        order = ", ".join(self._names)
         role = (
-            f"It is your turn to PROPOSE. Current standing offer: {offer}. State the offer you "
-            "want (a value per issue) with one line of why."
+            f"It is your turn to PROPOSE. Current standing offer: {self.said(offer)}. State the "
+            "offer you want (a value per issue) with one line of why."
             if proposing
-            else f"The offer on the table is {offer} (issue order: {order}). ACCEPT it or REJECT "
-            "it, with one line of why."
+            else f"The offer on the table is {self.said(offer)}. ACCEPT it or REJECT it, with one "
+            "line of why."
         )
         return (
             f"@{handle} — step {round_n}. Issue space: {space}.\n\n"
@@ -370,7 +386,10 @@ class MediatedNegotiation:
         the backend event loop and this call blocks on the agent's real reply.
         """
         note = self.broker(offer, round_n)
-        prompt = self._prompt_for(handle, offer, proposing, note, round_n)
+        return self._ask(handle, self._prompt_for(handle, offer, proposing, note, round_n), round_n)
+
+    def _ask(self, handle: str, prompt: str, round_n: int) -> str:
+        """Put ``prompt`` to ``handle`` over the channel and block on its reply."""
         future = asyncio.run_coroutine_threadsafe(
             self._fetch_prose(handle, prompt, round_n), self._loop
         )
@@ -379,6 +398,27 @@ class MediatedNegotiation:
         except Exception:
             logger.warning("mediator got no reply from @%s (step %d)", handle, round_n)
             return ""
+
+    def confirm_own_offer(self, handle: str, offer: tuple[str, ...], round_n: int) -> bool:
+        """``handle`` turned down the very offer it last proposed: ask it once more
+        whether it still wants it, and take the answer as given.
+
+        It may have misspoken (two agreeing agents trading their own offer back
+        and forth is the loop this catches) or really changed its mind; only
+        asking tells which, and a reply that doesn't say yes is a no. Asked once
+        per offer per agent, so a real change of mind isn't asked about again.
+        """
+        key = (handle, tuple(offer))
+        if key in self._confirmed:
+            return False
+        self._confirmed.add(key)
+        prompt = (
+            f"@{handle} — step {round_n}. You proposed {self.said(offer)} yourself, and just turned it "
+            "down. Do you still want it? ACCEPT it or REJECT it, with one line of why. "
+            "(2 sentences max.)"
+        )
+        reading = self.interpret(handle, self._ask(handle, prompt, round_n), proposing=False)
+        return isinstance(reading, dict) and reading.get("action") == "accept"
 
     def last_offer(self, handle: str) -> tuple[str, ...] | None:
         """The last outcome we actually read from *handle*, if any."""
@@ -408,6 +448,38 @@ class MediatedNegotiation:
     def record(self, line: str) -> None:
         self.history.append(line)
 
+    def stopped(self) -> str | None:
+        """Why the run must end now, or ``None``: asked before every turn."""
+        if self.stop_reason is None and self._stop_requested is not None:
+            self.stop_reason = self._stop_requested()
+        return self.stop_reason
+
+    #: Rejections of one offer that mean the parties are going in circles.
+    CIRCLE_REJECTIONS = 3
+
+    def note_rejection(self, offer: tuple[str, ...] | None) -> None:
+        """Count a rejection of ``offer``; the same offer turned down this many
+        times means asking again won't change anything, so the run stops."""
+        if offer is None:
+            return
+        key = tuple(offer)
+        self._rejections[key] = self._rejections.get(key, 0) + 1
+        if self._rejections[key] >= self.CIRCLE_REJECTIONS:
+            self.stop_reason = self.stop_reason or "circles"
+
+    def opening_agreement(self, positions: dict[str, str]) -> tuple[str, ...] | None:
+        """The outcome every party's opening position already names, if they all
+        name the same one: then there's nothing to mediate."""
+        outcomes: set[tuple[str, ...]] = set()
+        for handle, prose in positions.items():
+            reading = self.interpret(handle, prose, proposing=True)
+            offer = reading.get("offer", {}) if isinstance(reading, dict) else {}
+            outcome = self.to_outcome(offer) if offer else None
+            if outcome is None:
+                return None
+            outcomes.add(outcome)
+        return outcomes.pop() if len(outcomes) == 1 else None
+
     @property
     def names(self) -> list[str]:
         return list(self._names)
@@ -427,6 +499,8 @@ class RemoteAgentNegotiator(SAONegotiator):
         self._neg = negotiation
 
     def propose(self, state: Any, dest: Any = None) -> tuple[str, ...] | None:
+        if self._neg.stopped():
+            return None  # no offer ends the run
         prose = self._neg.agent_move(
             self.handle, state.current_offer, proposing=True, round_n=state.step
         )
@@ -455,12 +529,27 @@ class RemoteAgentNegotiator(SAONegotiator):
         return outcome
 
     def respond(self, state: Any, source: Any = None) -> ResponseType:
+        if self._neg.stopped():
+            return ResponseType.END_NEGOTIATION
         prose = self._neg.agent_move(
             self.handle, state.current_offer, proposing=False, round_n=state.step
         )
         reading = self._neg.interpret(self.handle, prose, proposing=False)
         action = reading.get("action") if isinstance(reading, dict) else None
         resp = ResponseType.ACCEPT_OFFER if action == "accept" else ResponseType.REJECT_OFFER
+        offer = tuple(state.current_offer) if state.current_offer is not None else None
+        if (
+            resp is ResponseType.REJECT_OFFER
+            and offer is not None
+            and self._neg.last_offer(self.handle) == offer
+            and self._neg.confirm_own_offer(self.handle, offer, state.step)
+        ):
+            # It turned down the very offer it last proposed, and asked again it
+            # says it does want it. (Taken as given either way: a reject is never
+            # turned into an accept on our reading alone.)
+            resp = ResponseType.ACCEPT_OFFER
+        if resp is ResponseType.REJECT_OFFER:
+            self._neg.note_rejection(offer)
         self._neg.record(f"step {state.step}: @{self.handle} {resp.name} on {state.current_offer}")
         logger.info(
             "mediator step %d: @%s %s on %s",

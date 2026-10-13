@@ -1307,6 +1307,7 @@ const checkout: RoomFixture = {
   verifierFlags: [
     {
       flag_id: "vf1",
+      failure: "ungranted_approval",
       message_id: "h4",
       key: "live",
       about: "builder",
