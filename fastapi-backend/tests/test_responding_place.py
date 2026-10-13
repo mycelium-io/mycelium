@@ -2,7 +2,8 @@
 # Copyright 2026 Mycelium Contributors
 
 """Where the room says an agent is responding: the thread its wake told it to
-reply in, nowhere named when that's ambiguous, and not overridden by a guess."""
+reply in, the same one the digest's Reply: line names, and not overridden by a
+guess."""
 
 from __future__ import annotations
 
@@ -48,9 +49,18 @@ def test_it_is_the_one_thread_that_asked():
     assert wake_digest.reply_episode(ROOM, WAKE, records) == T1
 
 
-def test_it_names_no_thread_when_asks_came_from_several():
+def test_with_asks_from_several_threads_it_is_the_one_the_digest_names(monkeypatch):
+    # The digest tells the agent to reply where the newest ask was, so the
+    # room's line names that same thread: the two come from one helper.
+    from app.services import tasks
+
+    monkeypatch.setattr(
+        tasks, "row_of_episode", lambda _r, ep: ("work/t2", "Two") if ep == T2 else None
+    )
     records = [_said(1, "hay", "@builder the totals?", T1), _said(2, "scout", "@builder ok?", T2)]
-    assert wake_digest.reply_episode(ROOM, WAKE, records) is None
+    assert wake_digest.reply_episode(ROOM, WAKE, records) == T2
+    digest = wake_digest.build(ROOM, {**WAKE, "from": "scout"}, records, NOW)
+    assert "--task work/t2" in digest
 
 
 def test_the_room_itself_is_no_thread():
@@ -67,8 +77,9 @@ def test_only_asks_since_its_last_turn_count():
     assert wake_digest.reply_episode(ROOM, WAKE, records) == T2
 
 
-def test_with_nothing_asked_it_is_where_the_wake_was_raised():
-    assert wake_digest.reply_episode(ROOM, WAKE, []) == T2
+def test_with_nothing_asked_it_is_the_room_like_the_digests_reply_line():
+    assert wake_digest.reply_episode(ROOM, WAKE, []) is None
+    assert "(lands in the room)" in wake_digest.build(ROOM, WAKE, [], NOW)
 
 
 def test_a_responding_stands_until_done_or_its_ttl(monkeypatch: pytest.MonkeyPatch):
