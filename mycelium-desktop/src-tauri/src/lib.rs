@@ -14,6 +14,7 @@ mod settings;
 mod supervisor;
 mod terminal;
 mod updates;
+mod zoom;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -602,7 +603,9 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         "quit" => quit(app),
         // An experience's item carries the path it opens on.
         id => {
-            if let Some(path) = id.strip_prefix(EXPERIENCE_ITEM) {
+            if let Some(step) = zoom::Step::from_id(id) {
+                zoom::apply(app, step);
+            } else if let Some(path) = id.strip_prefix(EXPERIENCE_ITEM) {
                 show_page(app, path);
             }
         }
@@ -626,6 +629,26 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             app_submenu.insert(&settings, 3)?;
             app_submenu.insert(&switch, 4)?;
             app_submenu.insert(&PredefinedMenuItem::separator(app)?, 5)?;
+        }
+    }
+    // Zoom, at the top of View, where a browser keeps it.
+    let zoom_in = MenuItem::with_id(app, "zoom:in", "Zoom In", true, Some("CmdOrCtrl+="))?;
+    let zoom_out = MenuItem::with_id(app, "zoom:out", "Zoom Out", true, Some("CmdOrCtrl+-"))?;
+    let actual = MenuItem::with_id(app, "zoom:reset", "Actual Size", true, Some("CmdOrCtrl+0"))?;
+    let view = menu
+        .items()?
+        .into_iter()
+        .filter_map(|item| item.as_submenu().cloned())
+        .find(|sub| sub.text().is_ok_and(|t| t == "View"));
+    match view {
+        Some(view) => {
+            view.insert(&actual, 0)?;
+            view.insert(&zoom_in, 1)?;
+            view.insert(&zoom_out, 2)?;
+            view.insert(&PredefinedMenuItem::separator(app)?, 3)?;        }
+        None => {
+            let view = Submenu::with_items(app, "View", true, &[&actual, &zoom_in, &zoom_out])?;
+            menu.append(&view)?;
         }
     }
     Ok(menu)
@@ -1074,7 +1097,11 @@ const WEBVIEW_UA: &str =
 /// agents terminal, through `mycelium://terminal`).
 fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
     let ua = format!("{WEBVIEW_UA} MyceliumDesktop/{}", app.package_info().version);
-    WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()));
+    // A Mac has the View menu's shortcuts; elsewhere a script catches the keys.
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.initialization_script(zoom::keys_script());
+    builder
         .title("Mycelium")
         .inner_size(1320.0, 860.0)
         .min_inner_size(720.0, 520.0)
@@ -1092,10 +1119,26 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
             move |webview, kind| media_permission(&app, &webview, kind)
         })
         // Every page load starts the page over, so it is told again whether
-        // an update is available.
+        // an update is available, and put back at the window's zoom.
         .on_page_load(|window, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Finished {
                 updates::announce(&window);
+                zoom::restore(window.app_handle());
+            }
+        })
+        // The keyboard script's zoom steps arrive as navigations to an address
+        // that never resolves; each is carried out and cancelled.
+        .on_navigation({
+            let app = app.clone();
+            move |url| {
+                if !zoom::is_zoom_address(url) {
+                    return true;
+                }
+                if let Some(step) = zoom::from_navigation(url) {
+                    let app = app.clone();
+                    let _ = app.clone().run_on_main_thread(move || zoom::apply(&app, step));
+                }
+                false
             }
         })
         // A link the UI opens in a new tab (one out of the app, from chat or a
@@ -1132,6 +1175,7 @@ pub fn run() {
         .manage(Shell::default())
         .manage(Supervisor::default())
         .manage(Terminal::default())
+        .manage(zoom::Zoom::default())
         .invoke_handler(tauri::generate_handler![
             get_state,
             scan_agents,
@@ -1162,6 +1206,7 @@ pub fn run() {
             paths::clear_moved_aside();
             *app.state::<Shell>().local_base.lock().unwrap() = app_base(&handle);
             main_window(&handle)?;
+            zoom::restore(&handle);
             build_tray(&handle)?;
 
             // macOS and the Windows installer register mycelium:// links with
