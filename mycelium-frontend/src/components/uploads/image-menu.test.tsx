@@ -50,7 +50,9 @@ beforeEach(() => {
   clipboard.writeText.mockClear();
   vi.stubGlobal("ClipboardItem", FakeClipboardItem);
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(png, { headers: { "Content-Type": "image/png" } })));
+  // Just what copyImage reads of a response. A real Response can't be built
+  // from jsdom's Blob on every Node (undici wants a stream it lacks).
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, blob: async () => png })));
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -62,14 +64,14 @@ describe("copyImage", () => {
     await copyImage("/api/rooms/r/uploads/a.png/raw");
     const [[item]] = written;
     expect(Object.keys(item.items)).toEqual(["image/png"]);
-    expect((await item.items["image/png"]).type).toBe("image/png");
+    expect(await item.items["image/png"]).toBe(png);
   });
 
   it("says why when the browser can't copy images, or the file won't load", async () => {
     vi.stubGlobal("ClipboardItem", undefined);
     await expect(copyImage("/x")).rejects.toThrow("can't copy images");
     vi.stubGlobal("ClipboardItem", FakeClipboardItem);
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("gone", { status: 404 })));
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, blob: async () => png })));
     await expect(copyImage("/x")).rejects.toThrow("couldn't be loaded");
   });
 });
