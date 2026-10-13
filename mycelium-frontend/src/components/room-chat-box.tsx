@@ -166,7 +166,8 @@ interface Trigger {
   kind: TriggerKind;
   /** Index where the sigil begins (`@`, `[[`, `/` or `:`) — the start of the replaced span. */
   start: number;
-  /** Cursor position (the end of the replaced span). */
+  /** The end of the replaced span: the cursor, or past it to the end of the
+   *  word the cursor is in (`wholeToken`). */
   end: number;
   query: string;
   /** The sigil an agent trigger was typed with: `@`, `@~` (named silently) or
@@ -224,7 +225,26 @@ function triggerAt(text: string, cursor: number, conductors: readonly string[]):
     // A new handle is a name being made up, not a member to mention.
     if (arg.names) return null;
   }
-  return detectTrigger(text.slice(0, cursor), cursor);
+  const found = detectTrigger(text.slice(0, cursor), cursor);
+  return found && wholeToken(found, text);
+}
+
+/** What still belongs to a trigger's word after the cursor, by kind. */
+const TOKEN_TAIL: Partial<Record<TriggerKind, RegExp>> = {
+  agent: /^[a-z0-9._-]+/i,
+  skill: /^[a-z0-9._-]+/i,
+  memory: /^[^\]\n]*\]\]/,
+};
+
+/** Widen a trigger to the whole word the cursor is in. Going back into
+ *  `@mycelium-chat-buddy` to type `!` after the `@` puts the cursor before the
+ *  handle: the list filters by all of it and a pick replaces all of it, rather
+ *  than completing from the cursor and leaving the old handle behind it. */
+function wholeToken(trigger: Trigger, text: string): Trigger {
+  const tail = TOKEN_TAIL[trigger.kind]?.exec(text.slice(trigger.end))?.[0];
+  if (!tail) return trigger;
+  const rest = trigger.kind === "memory" ? tail.slice(0, -2) : tail.toLowerCase();
+  return { ...trigger, end: trigger.end + tail.length, query: trigger.query + rest };
 }
 
 /** Which row a new list opens on. An optional argument not yet started opens
@@ -621,9 +641,11 @@ export function RoomChatBox({
       if (trigger.kind === "emoji") usedEmoji(candidate.insert);
       const before = content.slice(0, trigger.start);
       const after = content.slice(trigger.end);
-      const insertion = candidate.open ? candidate.insert : `${candidate.insert} `;
+      // A word picked in the middle of the text keeps the space already after it.
+      const spaced = !candidate.open && /^\s/.test(after);
+      const insertion = candidate.open || spaced ? candidate.insert : `${candidate.insert} `;
       const next = `${before}${insertion}${after}`;
-      const pos = before.length + insertion.length;
+      const pos = before.length + insertion.length + (spaced ? 1 : 0);
       setContent(next);
       setCursor(pos);
       // A command's next argument offers its values straight away.
