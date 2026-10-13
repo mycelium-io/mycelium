@@ -10,7 +10,6 @@
 # externalBin, which lands beside the app's own executable: Contents/MacOS,
 # usr/bin, or the install folder):
 #
-#   mycelium  the CLI and the supervisor (PyInstaller, as the release builds it)
 #   herdr     pinned release; where agents run
 #   slimctl   pinned 2.1.x; the SLIM node. It has to match the slim-bindings
 #             the hub speaks, or the handshake fails
@@ -19,6 +18,8 @@
 # Directories, into src-tauri/resources (Contents/Resources on a Mac,
 # usr/lib/Mycelium in an AppImage, the install folder on Windows):
 #
+#   cli/      mycelium, the CLI and the supervisor, a PyInstaller directory
+#             build; the app links cli/mycelium into ~/.local/bin
 #   hub/      the hub, a PyInstaller directory build
 #   ui/       the UI's standalone build, with its static files
 #   models/   the embedding model, so memory search works offline. The voice
@@ -30,7 +31,7 @@
 #
 # Usage: bash scripts/stage-sidecars.sh [step...]
 #   steps: herdr slimctl node mycelium hub models ui pi (default: all)
-# Overrides: MYCELIUM_BIN (a prebuilt CLI), NODE_BIN (a node to copy)
+# Overrides: MYCELIUM_CLI_DIR (a prebuilt CLI directory build), NODE_BIN (a node to copy)
 
 set -euo pipefail
 
@@ -157,26 +158,36 @@ openapi_client() {
 }
 
 stage_mycelium() {
-  if [ -n "${MYCELIUM_BIN:-}" ]; then
-    place "$MYCELIUM_BIN" mycelium
-    return
+  local built="$work/cli-dist/mycelium"
+  if [ -n "${MYCELIUM_CLI_DIR:-}" ]; then
+    built="$MYCELIUM_CLI_DIR"
+  else
+    openapi_client
+    echo "building mycelium…"
+    (
+      cd "$repo/mycelium-cli"
+      uv venv "$work/cli-venv" --allow-existing
+      uv pip install --python "$(venv_bin "$work/cli-venv" python)" -e . ../mycelium-client/dist/*.whl pyinstaller
+      # A directory build, like the hub's. A one-file build unpacks itself into
+      # a temporary _MEI folder on every run and tells what it starts to reuse
+      # that folder, so an agent's `mycelium`, started from a shell under the
+      # app's long-running supervisor, broke once that folder was cleaned up or
+      # the supervisor restarted (#1269). A directory build unpacks nothing,
+      # and starts faster.
+      # UTF-8 mode: files opened without an encoding read and write UTF-8 on
+      # Windows too, rather than the code page (cp1252).
+      "$(venv_bin "$work/cli-venv" pyinstaller)" --noconfirm --onedir --name mycelium \
+        --python-option "X utf8" \
+        --collect-all mycelium --collect-all pyfiglet \
+        --hidden-import mycelium_backend_client \
+        --distpath "$work/cli-dist" --workpath "$work/cli-build" --specpath "$work" \
+        -p src src/mycelium/cli.py
+    )
   fi
-  openapi_client
-  echo "building mycelium…"
-  (
-    cd "$repo/mycelium-cli"
-    uv venv "$work/cli-venv" --allow-existing
-    uv pip install --python "$(venv_bin "$work/cli-venv" python)" -e . ../mycelium-client/dist/*.whl pyinstaller
-    # UTF-8 mode: files opened without an encoding read and write UTF-8 on
-    # Windows too, rather than the code page (cp1252).
-    "$(venv_bin "$work/cli-venv" pyinstaller)" --noconfirm --onefile --name mycelium \
-      --python-option "X utf8" \
-      --collect-all mycelium --collect-all pyfiglet \
-      --hidden-import mycelium_backend_client \
-      --distpath "$work/cli-dist" --workpath "$work/cli-build" --specpath "$work" \
-      -p src src/mycelium/cli.py
-  )
-  place "$work/cli-dist/mycelium$x" mycelium
+  rm -rf "$res/cli" && cp -R "$built" "$res/cli"
+  # A one-file CLI from before this layout would otherwise still be bundled.
+  rm -f "$bin/mycelium-$triple$x"
+  echo "staged mycelium"
 }
 
 stage_hub() {
