@@ -640,10 +640,13 @@ class RoomChannelManager:
             elif self._unreachable_agent(room, handle):
                 from app.services import wake_log
 
+                # Not lost: the agent reads it on its next `await`. Nothing
+                # could be woken with it now, which is what the log says.
                 wake_log.dropped(
                     room,
                     {"handle": handle, "reason": "mention", "from": who, "episode": episode},
                     "nothing is running it: no herdr pane reports it and it isn't awaiting",
+                    outcome="unreached",
                 )
         return enqueued
 

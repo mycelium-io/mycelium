@@ -4,16 +4,19 @@
 """What each wake delivered to an agent, kept per room.
 
 When an agent misses something, the transcript can't tell "it was told and
-ignored it" from "it was never woken with it". This keeps the second half: one
-line per wake in ``log/wakes.jsonl`` beside the transcript, saying who it was
-for, why it was raised, which messages it covered, and whether it reached the
-agent or was dropped and why.
+ignored it" from "it was never woken with it". This keeps the second half in
+``log/wakes.jsonl`` beside the transcript: who each wake was for, why it was
+raised, which messages it covered, and whether it reached the agent.
 
-**One line per wake.** A wake the hub hands to a runner is kept here, in
-memory, until the runner says whether it reached the agent (``report``), then
-written once with that outcome. A runner from before reports nothing, so a
-handed wake is written as ``handed`` once :data:`REPORT_WAIT_S` passes without
-a report. A wake the hub drops itself (held too long) is written at once.
+**Written as it happens, so a restart loses nothing.** A wake the hub hands to
+a runner is written at once, as ``handed``. When the runner says what became of
+it, a short line carrying only its ``id`` and the outcome is appended, and
+:func:`read` folds the two into one record. The file stays append-only, and a
+wake handed just before the hub restarts is still there afterwards, as
+``handed``, rather than missing (which would read as "never woken").
+
+**Settled once.** The first outcome for a wake is the one kept; a report
+repeated, or one for a wake the log never saw, records nothing.
 
 **Ids only, never text.** The transcript has the text; a record names the
 messages by id, so a reader joins the two.
@@ -26,7 +29,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -37,15 +39,15 @@ FILENAME = "log/wakes.jsonl"
 ROTATED = "log/wakes.1.jsonl"
 #: Past this the file is rotated, keeping one older generation beside it.
 MAX_BYTES = 2_000_000
-#: How long a handed wake waits for its runner to say what happened.
-REPORT_WAIT_S = 120.0
 
-#: What can happen to a wake.
-OUTCOMES = frozenset({"delivered", "dropped", "handed"})
+#: What can become of a wake. ``handed``: given to a runner, which hasn't said
+#: (or is from before runners said). ``delivered``: the runner typed it to the
+#: agent. ``dropped``: thrown away (held too long, no pane, refused).
+#: ``unreached``: a mention of an agent nothing runs, so nothing could be woken;
+#: the message isn't lost, and the agent reads it on its next ``await``.
+OUTCOMES = frozenset({"handed", "delivered", "dropped", "unreached"})
 
 _lock = threading.Lock()
-#: Handed wakes awaiting their runner's report: ``{(room, id): (record, monotonic)}``.
-_pending: dict[tuple[str, str], tuple[dict[str, Any], float]] = {}
 
 
 def _now() -> str:
@@ -70,6 +72,24 @@ def _write(room: str, record: dict[str, Any]) -> None:
             f.write(line)
 
 
+def _lines(room: str) -> list[dict[str, Any]]:
+    """Every line in ``room``'s log, oldest first, across the rotated file."""
+    out: list[dict[str, Any]] = []
+    for name in (ROTATED, FILENAME):
+        try:
+            text = (get_room_dir(room) / name).read_text(encoding="utf-8")
+        except FileNotFoundError:
+            continue
+        for line in text.splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(record, dict):
+                out.append(record)
+    return out
+
+
 def base(room: str, wake: dict[str, Any]) -> dict[str, Any]:
     """The fields every record of ``wake`` carries."""
     record: dict[str, Any] = {
@@ -86,75 +106,55 @@ def base(room: str, wake: dict[str, Any]) -> dict[str, Any]:
 
 def handed(room: str, wake: dict[str, Any], covered: dict[str, Any]) -> None:
     """``wake`` was handed to a runner to deliver, covering ``covered``."""
-    flush(room)
-    record = {**base(room, wake), **covered, "handed_at": _now()}
-    if not record.get("id"):
-        record["outcome"] = "handed"
-        _write(room, record)
-        return
-    with _lock:
-        _pending[(room, str(record["id"]))] = (record, time.monotonic())
+    _write(room, {**base(room, wake), **covered, "at": _now(), "outcome": "handed"})
 
 
-def dropped(room: str, wake: dict[str, Any], why: str) -> None:
-    """The hub dropped ``wake`` without handing it to anyone."""
-    _write(room, {**base(room, wake), "at": _now(), "outcome": "dropped", "why": why})
+def dropped(room: str, wake: dict[str, Any], why: str, *, outcome: str = "dropped") -> None:
+    """The hub couldn't hand ``wake`` to anyone: ``dropped`` it, or found the
+    agent ``unreached``."""
+    _write(room, {**base(room, wake), "at": _now(), "outcome": outcome, "why": why})
 
 
 def report(room: str, wake_id: str, *, delivered: bool, why: str | None = None) -> bool:
-    """A runner's word on a wake it was handed. ``False`` for one not awaited
-    (unknown, or already written), so nothing is recorded twice."""
-    with _lock:
-        entry = _pending.pop((room, wake_id), None)
-    if entry is None:
+    """A runner's word on a wake it was handed, appended as a line naming its id.
+
+    ``False`` (and nothing written) for a wake the log never handed, or one
+    already settled, so a repeated report records nothing twice.
+    """
+    lines = [r for r in _lines(room) if r.get("id") == wake_id]
+    if not lines or any(r.get("settles") for r in lines):
         return False
-    record = {**entry[0], "at": _now(), "outcome": "delivered" if delivered else "dropped"}
+    line: dict[str, Any] = {
+        "id": wake_id,
+        "settles": True,
+        "at": _now(),
+        "outcome": "delivered" if delivered else "dropped",
+    }
     if why:
-        record["why"] = why
-    _write(room, record)
+        line["why"] = why
+    _write(room, line)
     return True
 
 
-def flush(room: str, *, now: float | None = None) -> None:
-    """Write the handed wakes in ``room`` whose runner never reported, as ``handed``."""
-    now = time.monotonic() if now is None else now
-    with _lock:
-        late = [
-            key for key, (_, at) in _pending.items() if key[0] == room and now - at >= REPORT_WAIT_S
-        ]
-        records = [_pending.pop(key)[0] for key in late]
-    for record in records:
-        _write(room, {**record, "at": _now(), "outcome": "handed", "why": "the runner didn't say"})
-
-
 def read(room: str, *, agent: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-    """The newest records in ``room``, newest first, with any still awaiting a
-    report (``outcome: pending``) ahead of them."""
-    flush(room)
-    lines: list[str] = []
-    for name in (ROTATED, FILENAME):
-        try:
-            lines += (get_room_dir(room) / name).read_text(encoding="utf-8").splitlines()
-        except FileNotFoundError:
+    """The newest wakes in ``room``, newest first, each with its outcome folded in."""
+    records: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for n, line in enumerate(_lines(room)):
+        key = str(line.get("id") or f"#{n}")
+        if line.get("settles"):
+            record = records.get(key)
+            # The first outcome settles it; a later one changes nothing.
+            if record is not None and record.get("outcome") == "handed":
+                record.update(
+                    {k: v for k, v in line.items() if k in ("outcome", "why")},
+                    settled_at=line.get("at"),
+                )
             continue
-    records: list[dict[str, Any]] = []
-    for line in reversed(lines):
-        try:
-            record = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(record, dict) and (agent is None or record.get("agent") == agent):
-            records.append(record)
-    with _lock:
-        waiting = [
-            {**r, "outcome": "pending"}
-            for (r_room, _), (r, _) in _pending.items()
-            if r_room == room and (agent is None or r.get("agent") == agent)
-        ]
-    return (list(reversed(waiting)) + records)[:limit]
-
-
-def reset() -> None:
-    """Forget every handed wake awaiting a report. For tests."""
-    with _lock:
-        _pending.clear()
+        if key not in records:
+            order.append(key)
+        records[key] = dict(line)
+    newest = [records[k] for k in reversed(order)]
+    if agent is not None:
+        newest = [r for r in newest if r.get("agent") == agent]
+    return newest[:limit]

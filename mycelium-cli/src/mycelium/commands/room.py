@@ -1080,8 +1080,8 @@ def messages(
 WAKE_OUTCOME = {
     "delivered": ("delivered", "green"),
     "dropped": ("dropped", "red"),
-    "handed": ("handed over", "yellow"),
-    "pending": ("handed over, no word yet", "yellow"),
+    "unreached": ("unreached, reads it on its next await", "yellow"),
+    "handed": ("handed over, no word from its runner", "yellow"),
 }
 
 
@@ -1107,8 +1107,9 @@ def wakes(
     When an agent misses something, this tells "it was woken with it and didn't
     act" from "it was never woken with it". Each wake names the messages that
     asked for the agent by id (read them with `mycelium room messages`), and
-    says whether it was delivered, or dropped and why: no pane bound to the
-    agent, held too long while it worked, or nothing running it at all.
+    says whether it was delivered, or dropped and why (no pane bound to the
+    agent, or held too long while it worked). A mention of an agent nothing
+    runs is unreached: it reads the message on its next await.
 
     Examples:
         mycelium room wakes
@@ -1137,7 +1138,7 @@ def wakes(
             return
         for r in records:
             said, color = WAKE_OUTCOME.get(r.get("outcome", ""), (r.get("outcome"), "dim"))
-            when = (r.get("at") or r.get("handed_at") or "")[:19].replace("T", " ")
+            when = (r.get("at") or "")[:19].replace("T", " ")
             sender = f" from @{r['from']}" if r.get("from") else ""
             line = (
                 f"{when}  @{r.get('agent')}  {r.get('reason')}{sender}  [{color}]{said}[/{color}]"

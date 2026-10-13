@@ -339,8 +339,9 @@ class WakeRecord(BaseModel):
     reason: str = Field(..., description="mention, turn, interrupt, assigned or schedule")
     outcome: str = Field(
         ...,
-        description="delivered; dropped (see why); handed (the runner didn't say); "
-        "pending (handed, the runner hasn't said yet)",
+        description="delivered; dropped (thrown away, see why); unreached (nothing runs "
+        "the agent, which reads the message on its next await); handed (given to a "
+        "runner that hasn't said, or is from before runners said)",
     )
     why: str | None = None
     sender: str | None = Field(None, alias="from")
@@ -352,8 +353,8 @@ class WakeRecord(BaseModel):
     range: list[str] | None = Field(
         None, description="First and last message id the wake's digest summarized"
     )
-    handed_at: str | None = None
-    at: str | None = Field(None, description="When it was settled")
+    at: str | None = Field(None, description="When it was raised or handed over")
+    settled_at: str | None = Field(None, description="When its runner said what became of it")
 
     model_config = {"populate_by_name": True}
 

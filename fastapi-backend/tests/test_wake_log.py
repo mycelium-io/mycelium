@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -33,9 +32,7 @@ def room(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     from app.services.filesystem import ensure_room_structure, get_room_dir
 
     ensure_room_structure(get_room_dir(ROOM))
-    wake_log.reset()
     yield ROOM
-    wake_log.reset()
 
 
 @pytest.fixture
@@ -95,21 +92,32 @@ def test_a_delivered_wake_is_recorded_once_with_its_reason_and_messages(manager)
     assert wake["id"]
 
     wake_log.handed(ROOM, wake, wake_digest.coverage(wake, RECORDS))
-    assert _lines() == []  # waits for the runner's word
-    assert wake_log.read(ROOM)[0]["outcome"] == "pending"
+    # Written at once, before the runner says anything, so a restart can't lose it.
+    (line,) = _lines()
+    assert line["outcome"] == "handed"
 
     assert wake_log.report(ROOM, wake["id"], delivered=True)
-    (line,) = _lines()
-    assert line["agent"] == "builder"
-    assert line["reason"] == "mention"
-    assert line["from"] == "hay"
-    assert line["messages"] == ["m2", "m4"]
-    assert line["outcome"] == "delivered"
-    # A retried report records nothing twice, and no text is kept.
-    assert not wake_log.report(ROOM, wake["id"], delivered=True)
-    assert len(_lines()) == 1
-    assert "content" not in line
-    assert "prompt" not in line
+    (record,) = wake_log.read(ROOM)
+    assert record["agent"] == "builder"
+    assert record["reason"] == "mention"
+    assert record["from"] == "hay"
+    assert record["messages"] == ["m2", "m4"]
+    assert record["outcome"] == "delivered"
+    assert record["settled_at"]
+    # A repeated report records nothing twice, and no text is kept.
+    assert not wake_log.report(ROOM, wake["id"], delivered=False, why="late")
+    assert len(_lines()) == 2
+    assert wake_log.read(ROOM)[0]["outcome"] == "delivered"
+    assert not any("content" in x or "prompt" in x for x in _lines())
+
+
+def test_a_wake_handed_before_a_restart_is_still_there(manager):
+    # The hub's memory is gone after a restart; the line on disk isn't, and the
+    # runner's report still settles it once the hub is back.
+    wake_log.handed(ROOM, {"id": "w1", "handle": "builder", "reason": "mention"}, {})
+    assert wake_log.read(ROOM)[0]["outcome"] == "handed"
+    assert wake_log.report(ROOM, "w1", delivered=True)
+    assert wake_log.read(ROOM)[0]["outcome"] == "delivered"
 
 
 def test_a_held_wake_is_recorded_when_it_is_finally_delivered(manager):
@@ -123,17 +131,17 @@ def test_a_held_wake_is_recorded_when_it_is_finally_delivered(manager):
     (wake,) = manager.drain_herdr_wakes(ROOM)
     wake_log.handed(ROOM, wake, wake_digest.coverage(wake, RECORDS))
     wake_log.report(ROOM, wake["id"], delivered=True)
-    (line,) = _lines()
-    assert (line["reason"], line["outcome"]) == ("turn", "delivered")
+    (record,) = wake_log.read(ROOM)
+    assert (record["reason"], record["outcome"]) == ("turn", "delivered")
 
 
 def test_a_wake_held_too_long_is_dropped_saying_why(manager):
     manager.set_herdr_presence(ROOM, {"builder": "working"})
     manager.enqueue_herdr_wake(ROOM, "builder", sender="hay")
     assert manager.drain_herdr_wakes(ROOM, hold_ttl_s=-1.0) == []
-    (line,) = _lines()
-    assert line["outcome"] == "dropped"
-    assert "while it was working" in line["why"]
+    (record,) = wake_log.read(ROOM)
+    assert record["outcome"] == "dropped"
+    assert "while it was working" in record["why"]
 
 
 def test_a_runner_that_couldnt_deliver_says_why():
@@ -141,31 +149,29 @@ def test_a_runner_that_couldnt_deliver_says_why():
         ROOM, {"id": "w1", "handle": "builder", "reason": "assigned", "key": "work/x"}, {}
     )
     wake_log.report(ROOM, "w1", delivered=False, why="no herdr pane here is bound to it")
-    (line,) = _lines()
-    assert line["outcome"] == "dropped"
-    assert line["why"] == "no herdr pane here is bound to it"
-    assert line["task"] == "work/x"
+    (record,) = wake_log.read(ROOM)
+    assert record["outcome"] == "dropped"
+    assert record["why"] == "no herdr pane here is bound to it"
+    assert record["task"] == "work/x"
 
 
-def test_a_runner_that_never_says_leaves_it_handed():
-    wake_log.handed(ROOM, {"id": "w1", "handle": "builder", "reason": "mention"}, {})
-    wake_log.flush(ROOM, now=time.monotonic() + wake_log.REPORT_WAIT_S + 1)
-    (line,) = _lines()
-    assert line["outcome"] == "handed"
-    assert not wake_log.report(ROOM, "w1", delivered=True)  # too late: recorded once
+def test_a_report_for_a_wake_the_log_never_handed_records_nothing():
+    assert not wake_log.report(ROOM, "nope", delivered=True)
+    assert _lines() == []
 
 
-def test_a_mention_of_an_agent_nothing_runs_is_recorded_as_dropped(manager, monkeypatch):
+def test_a_mention_of_an_agent_nothing_runs_is_unreached(manager, monkeypatch):
     from app.services import principals
 
     monkeypatch.setattr(
         principals, "classify_sender", lambda _r, h: "agent" if h == "builder" else "user"
     )
     manager.enqueue_herdr_wakes_for_mentions(ROOM, "@builder and @julia, look", sender="hay")
-    (line,) = _lines()  # a person is reached some other way, so only the agent's
-    assert line["agent"] == "builder"
-    assert line["outcome"] == "dropped"
-    assert "nothing is running it" in line["why"]
+    (record,) = wake_log.read(ROOM)  # a person is reached some other way
+    assert record["agent"] == "builder"
+    # Not lost: it reads the message on its next await. Nothing could be woken.
+    assert record["outcome"] == "unreached"
+    assert "nothing is running it" in record["why"]
 
 
 def test_the_log_reads_newest_first_and_by_agent():

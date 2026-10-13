@@ -12880,7 +12880,7 @@
           "outcome": {
             "type": "string",
             "title": "Outcome",
-            "description": "delivered; dropped (see why); handed (the runner didn't say); pending (handed, the runner hasn't said yet)"
+            "description": "delivered; dropped (thrown away, see why); unreached (nothing runs the agent, which reads the message on its next await); handed (given to a runner that hasn't said, or is from before runners said)"
           },
           "why": {
             "anyOf": [
@@ -12949,17 +12949,6 @@
             "title": "Range",
             "description": "First and last message id the wake's digest summarized"
           },
-          "handed_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Handed At"
-          },
           "at": {
             "anyOf": [
               {
@@ -12970,7 +12959,19 @@
               }
             ],
             "title": "At",
-            "description": "When it was settled"
+            "description": "When it was raised or handed over"
+          },
+          "settled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled At",
+            "description": "When its runner said what became of it"
           }
         },
         "type": "object",
