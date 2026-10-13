@@ -91,6 +91,7 @@ import {
   withEmoji,
   type EmojiTable,
 } from "@/lib/emoji";
+import { COMPOSER_INSERT_EVENT, appendToDraft, type ComposerInsert } from "@/lib/message-actions";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -114,6 +115,9 @@ interface Props {
    *  foot of a pane: no rule above it and no inset of its own, so its box lines
    *  up with the text above it. */
   inline?: boolean;
+  /** Takes what a channel message's Reply and Quote add (`lib/message-actions.ts`).
+   *  Only the channel's own composer does, so one click writes into one box. */
+  receivesInserts?: boolean;
 }
 
 /** What the composer says once a schedule is saved; it links to the Schedules tab. */
@@ -249,6 +253,7 @@ export function RoomChatBox({
   onOpenMemory,
   onOpenView,
   inline = false,
+  receivesInserts = false,
 }: Props) {
   const [content, setContent] = useState("");
   // What's typed is kept per room (and per thread) until it's sent, so moving
@@ -289,6 +294,25 @@ export function RoomChatBox({
   // Where the cursor is, so a command being typed knows which argument it is on.
   const [cursor, setCursor] = useState(0);
   const parsed = useMemo(() => parseCommand(content, cursor), [content, cursor]);
+  // A message's Reply or Quote adds to the end of the draft, and the cursor
+  // goes to the end, after it, once the box has drawn it.
+  useEffect(() => {
+    if (!receivesInserts) return;
+    const onInsert = (e: Event) => {
+      const { room, text } = (e as CustomEvent<ComposerInsert>).detail;
+      if (room !== roomName) return;
+      setContent((draft) => appendToDraft(draft, text));
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+        setCursor(el.value.length);
+      });
+    };
+    window.addEventListener(COMPOSER_INSERT_EVENT, onInsert);
+    return () => window.removeEventListener(COMPOSER_INSERT_EVENT, onInsert);
+  }, [receivesInserts, roomName]);
   // What a command that ran says afterwards (an engine added), and an agent
   // being started on a machine, followed until it is in the room.
   const [notice, setNotice] = useState<string | null>(null);

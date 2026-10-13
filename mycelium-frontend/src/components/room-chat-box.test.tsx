@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { renderWithSWR } from "@/test/swr";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -131,6 +131,7 @@ vi.mock("@/lib/emoji", async (importOriginal) => {
 
 import { RoomChatBox } from "@/components/room-chat-box";
 import { recordMentions } from "@/lib/recent-mentions";
+import { insertIntoComposer, quoteText, replyText } from "@/lib/message-actions";
 
 // A draft outlives its composer, which is the point, so each case starts
 // with none rather than inheriting the last one's typing.
@@ -897,5 +898,30 @@ describe("<RoomChatBox /> emoji", () => {
     await userEvent.type(box, typed);
     expect(screen.queryByRole("button", { name: /:tada:|:taco:|:thirty/ })).toBeNull();
     expect(box).toHaveValue(typed);
+  });
+});
+
+describe("<RoomChatBox /> reply and quote", () => {
+  it("adds a message's reply and quote to the channel's draft, with the cursor after them", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" receivesInserts />);
+    const box = (await textarea()) as HTMLTextAreaElement;
+    act(() => insertIntoComposer({ room: "demo", text: quoteText("ship it", "sam") }));
+    act(() => insertIntoComposer({ room: "demo", text: replyText("sam") }));
+    await waitFor(() => expect(box).toHaveValue("> @~sam: ship it\n\n@sam "));
+    await waitFor(() => expect(box).toHaveFocus());
+    expect(box.selectionStart).toBe(box.value.length);
+  });
+
+  it("leaves another room's composer, and one that doesn't take them, alone", async () => {
+    renderWithSWR(
+      <>
+        <RoomChatBox roomName="demo" />
+        <RoomChatBox roomName="other" receivesInserts />
+      </>,
+    );
+    act(() => insertIntoComposer({ room: "demo", text: replyText("sam") }));
+    const boxes = await screen.findAllByPlaceholderText(/Message the room/);
+    await new Promise((r) => requestAnimationFrame(r));
+    for (const box of boxes) expect(box).toHaveValue("");
   });
 });
