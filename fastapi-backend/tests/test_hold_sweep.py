@@ -242,6 +242,46 @@ def test_reassigning_says_who_it_was_taken_from(notices):
     assert (notice["for"], notice["from"], notice["by"]) == ("scout", "coder", "lead")
 
 
+@pytest.mark.parametrize("to", ["coder", "scout"])
+def test_giving_a_row_replaces_an_expired_hold(notices, to):
+    # A 30-minute claim from before holds had no timer reads expired, and giving
+    # the row to anyone, the same agent included, must take it over.
+    an_hour_ago = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    _row(assignment="held", owner="@coder", claimed_at=an_hour_ago, ttl_minutes=30)
+    assert assignments.state_of(_meta(), datetime.now(UTC)) == "expired"
+
+    from app.services import fields
+
+    asyncio.run(fields.write(ROOM, KEY, {"assignee": to}, "lead"))
+    meta = _meta()
+    assert assignments.state_of(meta, datetime.now(UTC) + timedelta(days=1)) == "held"
+    assert assignments.holder(meta, datetime.now(UTC)) == to
+    (notice,) = notices
+    assert (notice["subkind"], notice["for"]) == ("claimed", to)
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"assignment": "resolved"},
+        {"status": "resolved"},
+        {"assignment": "released", "assignment_note": "handing over"},
+    ],
+)
+def test_resaving_a_row_with_its_own_assignee_changes_nothing(notices, state):
+    # A form that sends every field, or a script re-saving a row, must not
+    # claim a finished or handed-back task again.
+    from app.services import fields
+
+    _row(**state)
+    before = assignments.state_of(_meta(), datetime.now(UTC))
+    asyncio.run(fields.write(ROOM, KEY, {"assignee": "coder", "priority": "high"}, "lead"))
+    meta = _meta()
+    assert assignments.state_of(meta, datetime.now(UTC)) == before
+    assert meta["priority"] == "high"
+    assert notices == []
+
+
 def test_claiming_a_row_given_to_someone_else_is_refused():
     _row()
     with pytest.raises(assignments.AssignmentError) as refused:
