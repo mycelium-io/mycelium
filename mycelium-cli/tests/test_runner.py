@@ -1513,6 +1513,22 @@ def test_adopt_refuses_a_pane_with_no_agent_left(make_runner, herdr: Herdr, hub:
         make_runner().adopt({"room": "eng", "handle": "shop", "pane": "w5:p7"})
 
 
+def test_an_adopt_that_fails_after_mapping_lets_go_of_the_pane(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    r = make_runner()
+    pane = _already_running(herdr)
+
+    def broken(*_a: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(r.state, "save", broken)
+    with pytest.raises(daemon.JobError, match=f"pane {pane}: disk full"):
+        r.adopt({"room": "eng", "handle": "shop", "pane": pane})
+    assert r.bridge.registry.get("eng", "shop") is None
+    assert "eng/shop" not in r.state.agents
+
+
 def test_stopping_an_adopted_agent_never_closes_its_pane(make_runner, herdr: Herdr, hub: Hub):
     r = make_runner()
     pane = _already_running(herdr)

@@ -883,25 +883,32 @@ class Runner:
             HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, cwd=cwd)
         )
         workspace = str(running.get("workspace_id") or "") or None
-        agent = Tracked(
-            handle=handle,
-            room=room,
-            framework=kind or "claude",
-            pane=pane,
-            cwd=cwd,
-            started_at=_now(),
-            status=_ADOPTED_STATUS.get(str(running.get("agent_status") or ""), "running"),
-            workspace=workspace,
-            intro=intro_prompt(room, handle, has_notes=self.has_notes(room, handle)),
-            adopted=True,
-        )
-        if agent.status == "blocked":
-            self._mark_waiting(agent)
-        elif agent.status == "idle":
-            self._hand_intro(agent)
-        with self._lock:
-            self.state.agents[key] = agent
-            self.state.save(self._state_path)
+        try:
+            agent = Tracked(
+                handle=handle,
+                room=room,
+                framework=kind or "claude",
+                pane=pane,
+                cwd=cwd,
+                started_at=_now(),
+                status=_ADOPTED_STATUS.get(str(running.get("agent_status") or ""), "running"),
+                workspace=workspace,
+                intro=intro_prompt(room, handle, has_notes=self.has_notes(room, handle)),
+                adopted=True,
+            )
+            if agent.status == "blocked":
+                self._mark_waiting(agent)
+            elif agent.status == "idle":
+                self._hand_intro(agent)
+            with self._lock:
+                self.state.agents[key] = agent
+                self.state.save(self._state_path)
+        except Exception as e:
+            # A failed adopt makes the hub take the member back, so let go of the pane too.
+            self.bridge.registry.remove(room, handle)
+            with self._lock:
+                self.state.agents.pop(key, None)
+            raise JobError(f"Couldn't bring in the agent in pane {pane}: {e}") from e
         self.log.print(f"[green]adopted[/green] {pane} as @{handle} in {room}")
         result: dict[str, Any] = {"pane": pane, "introduced": agent.intro is None}
         if workspace:
