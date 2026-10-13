@@ -853,8 +853,12 @@ is no litellm dependency.
   cell a key already reaches names that key (in its tooltip, via `action=`) and
   the way in teaches the way past. `key-badge.tsx` stays separate — that is the
   ⌥-reveal badge drawn *on* a target, not a cap set in copy.
-- **The verifier checks what agents say against the room's records, and never
-  blocks or wakes (#1288).** Engine kind `verifier` (`app/services/verifier.py`),
+- **The verifier classifies multi-agent failures in a room, and never blocks
+  or wakes (#1288).** Each flag names one of the spike's failure kinds
+  (`verifier_records.FAILURES`). The checks so far find two of them, an
+  approval nobody gave and acting on a merged pull request; a new check is a
+  function over records the hub already keeps. Engine kind `verifier`
+  (`app/services/verifier.py`),
   off for the hub until `verifier.enabled`, then on in each room that adds it.
   It is the one engine that acts without a mention: the persister's
   `on_recorded` hook hands it every agent message (not people's, not engines')
