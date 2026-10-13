@@ -1450,6 +1450,25 @@ def test_adopt_asks_on_the_machine_first(make_runner, herdr: Herdr, hub: Hub):
     assert "@julia" in question["message"]
 
 
+def test_a_signed_adopt_still_asks(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, quick: None
+):
+    from mycelium.runner import pairing
+
+    r = make_runner(trust_hub=False)
+    key, x, y = _device()
+    _pair(r, x, y, pairing.Limits.make(swarms=True))
+    spec = {"room": "eng", "handle": "shop", "pane": _already_running(herdr), "framework": "claude"}
+    r.take({"id": "f1f1f1", "kind": "adopt", "spec": spec, "signature": _sign(key, "adopt", spec)})
+
+    waiting = _until(lambda: _report(hub, "f1f1f1", "waiting"))
+    assert waiting["pairing"] == {
+        "accepted": False,
+        "reason": "bringing in a running agent is always asked",
+    }
+    assert len(approvals.pending(base=tmp_path)) == 1
+
+
 def test_adopt_maps_the_pane_and_introduces_an_idle_agent(make_runner, herdr: Herdr, hub: Hub):
     r = make_runner()
     pane = _already_running(herdr)

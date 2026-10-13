@@ -1053,6 +1053,9 @@ class Runner:
     def _within(self, paired: pairing.Pairing, job: dict[str, Any], fields: dict[str, Any]) -> None:
         """Refuse unless ``fields`` are ``job``'s and the pairing covers them."""
         kind, spec = job.get("kind"), job.get("spec") or {}
+        if kind == "adopt":
+            # Nothing here checks its pane or handle: always ask.
+            raise pairing.Refused("bringing in a running agent is always asked")
         different = pairing.Refused("the signed request doesn't match the job")
         if kind == "restart":
             agents = [

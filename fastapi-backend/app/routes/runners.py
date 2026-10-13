@@ -165,9 +165,34 @@ async def next_job(
 async def report_job(runner_id: str, job_id: str, payload: RunnerJobReport) -> RunnerJobRead:
     """The runner saying how a job went."""
     try:
-        return registry.report(runner_id, job_id, payload)
+        job = registry.report(runner_id, job_id, payload)
     except RunnerError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if job.kind == "adopt" and job.status == "failed":
+        await _forget_unadopted(runner_id, job.spec)
+    return job
+
+
+async def _forget_unadopted(runner_id: str, spec: dict) -> None:
+    """Take back the member an ``adopt`` wrote when the machine didn't map its pane.
+
+    The member is written before the machine is asked, as a launch's is, but a
+    declined launch can be started again and a declined adopt leaves a member
+    with no pane. Every way an adopt fails is before the mapping, so the member
+    goes, unless it has since become some other runner's.
+    """
+    from app.routes.memory import delete_memory  # lazy: routes import each other
+
+    room, handle = str(spec.get("room") or ""), str(spec.get("handle") or "")
+    if not room or not handle or not room_exists(room):
+        return
+    exists, owner = existing_runner_of(room, handle)
+    if not exists or owner != runner_id:
+        return
+    try:
+        await delete_memory(room, f"agents/{handle}")
+    except HTTPException:
+        logger.debug("adopt: @%s in %s was already gone", handle, room)
 
 
 # ── the app's side ───────────────────────────────────────────────────────────

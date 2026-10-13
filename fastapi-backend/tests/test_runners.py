@@ -633,3 +633,34 @@ async def test_adopt_refuses_a_handle_already_in_the_room(
         f"/api/runners/{RUNNER}/adopt", json={"room": room, "pane": "w3:p1", "handle": "taken"}
     )
     assert again.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_a_declined_adopt_leaves_no_member_behind(client, room, machine_with_one_unenrolled):
+    job = (
+        await client.post(
+            f"/api/runners/{RUNNER}/adopt", json={"room": room, "pane": "w3:p1", "handle": "nope"}
+        )
+    ).json()
+    assert _manifest(room, "nope") != {}
+    await client.patch(
+        f"/api/runners/{RUNNER}/jobs/{job['id']}",
+        json={"status": "failed", "error": "Declined on julia-mbp."},
+    )
+    assert _manifest(room, "nope") == {}
+
+
+@pytest.mark.asyncio
+async def test_an_adopted_member_stays_once_the_job_is_done(
+    client, room, machine_with_one_unenrolled
+):
+    job = (
+        await client.post(
+            f"/api/runners/{RUNNER}/adopt", json={"room": room, "pane": "w3:p1", "handle": "kept"}
+        )
+    ).json()
+    await client.patch(
+        f"/api/runners/{RUNNER}/jobs/{job['id']}",
+        json={"status": "done", "result": {"pane": "w3:p1", "introduced": True}},
+    )
+    assert _manifest(room, "kept")["runner"] == RUNNER
