@@ -23,6 +23,7 @@ window: ``await`` returning a turn and ``reply`` posting one
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -42,9 +43,34 @@ State = Literal["responding", "done"]
 #: frame so the two sides never disagree about it.
 TTL_S = 90
 
+#: Each handle's standing ``responding``, as ``{(room, handle): monotonic time}``,
+#: until its ``done`` or its TTL. Lets a later seam see that a turn already said
+#: where it is going (:func:`is_responding`).
+_standing: dict[tuple[str, str], float] = {}
+
+
+def _key(room: str, handle: str) -> tuple[str, str]:
+    return room, handle.lstrip("@").lower()
+
+
+def reset() -> None:
+    """Forget every standing ``responding``. For tests."""
+    _standing.clear()
+
+
+def is_responding(room: str, handle: str) -> bool:
+    """Whether ``handle`` has a ``responding`` standing in ``room`` (raised within
+    its TTL, with no ``done`` since)."""
+    raised = _standing.get(_key(room, handle))
+    return raised is not None and time.monotonic() - raised < TTL_S
+
 
 def signal(room: str, handle: str, state: State, *, episode: str | None = None) -> dict[str, Any]:
     """Publish one activity frame on the room's bus channel. Returns the frame."""
+    if state == "responding":
+        _standing[_key(room, handle)] = time.monotonic()
+    else:
+        _standing.pop(_key(room, handle), None)
     frame: dict[str, Any] = {
         "type": ACTIVITY_TYPE,
         "message_type": ACTIVITY_TYPE,

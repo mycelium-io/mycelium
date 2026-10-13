@@ -293,6 +293,37 @@ def _schedule_lines(room: str, name: str) -> tuple[list[str], str | None]:
     return schedules.wake_text(schedule, run, room, change=False).splitlines()[1:], change
 
 
+def _thread_of(room: str, record: Any) -> str | None:
+    """The thread ``record`` was said in; ``None`` for the room itself."""
+    ep = record_episode(record)
+    return None if not ep or message_format.is_live_episode(room, ep) else ep
+
+
+def _reply_thread(room: str, asked: list[Any]) -> str | None:
+    """Where the digest tells its agent to reply: the thread of the newest
+    message that asked for it, or the room (``None``) when none did. The
+    digest's ``Reply:`` line and the room's "is responding in" line both come
+    from here, so they can't disagree."""
+    return _thread_of(room, asked[-1]) if asked else None
+
+
+def reply_episode(room: str, wake: dict[str, Any], records: list[Any]) -> str | None:
+    """The thread ``wake``'s agent is told to reply in, for the room's "is
+    responding in" line; ``None`` for the room itself (:func:`_reply_thread`)."""
+    from app.routes.participate import _addressed_to
+
+    handle = str(wake.get("handle") or "")
+    me = _norm(handle)
+    window = records[-SCAN:]
+    last = max((i for i, r in enumerate(window) if _norm(r.sender) == me), default=-1)
+    asked = [
+        r
+        for r in window[last + 1 :]
+        if _addressed_to(r.content, handle) and _conversational_text(r.content)
+    ]
+    return _reply_thread(room, asked)
+
+
 def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | None = None) -> str:
     """The digest typed into ``wake``'s agent: why, what changed, what asked for it."""
     from app.routes.participate import _addressed_to
@@ -315,10 +346,9 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     where = _where(room, episode)
 
     def place_of(record: Any) -> str | None:
-        ep = record_episode(record)
-        return None if not ep or message_format.is_live_episode(room, ep) else ep
+        return _thread_of(room, record)
 
-    here = place_of(asked[-1]) if asked else None
+    here = _reply_thread(room, asked)
     said = [r for r in since if _conversational_text(r.content)]
     in_here = [r for r in said if place_of(r) == here]
     elsewhere = len(said) - len(in_here)
