@@ -167,6 +167,8 @@ async def change_hub_settings(payload: HubSettingsChange, request: Request) -> H
     access = hub_config.access(request)
     if not access.may_edit:
         raise HTTPException(status_code=403, detail=access.reason or "Can't change this hub here")
+    if foreign := hub_config.foreign_page(request):
+        raise HTTPException(status_code=403, detail=foreign)
     try:
         saved = await asyncio.to_thread(hub_config.write, payload.changes, access.app_owned)
     except hub_config.HubConfigError as err:
@@ -181,6 +183,8 @@ async def restart_hub(request: Request) -> dict[str, str]:
     access = hub_config.access(request)
     if not access.may_edit:
         raise HTTPException(status_code=403, detail=access.reason or "Can't restart this hub here")
+    if foreign := hub_config.foreign_page(request):
+        raise HTTPException(status_code=403, detail=foreign)
     if not access.can_restart:
         raise HTTPException(
             status_code=409,

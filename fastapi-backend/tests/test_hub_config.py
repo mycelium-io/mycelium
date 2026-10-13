@@ -39,6 +39,15 @@ def desktop(monkeypatch):
 
 
 @pytest.fixture
+def from_this_computer(client):
+    """Requests as the app on this computer sends them: to the hub's loopback
+    address, from the app's own page."""
+    client.headers["host"] = "127.0.0.1"
+    client.headers["origin"] = "http://127.0.0.1:3717"
+    return client
+
+
+@pytest.fixture
 def cli_calls(monkeypatch) -> list[tuple[list[str], str]]:
     """What the hub asked the CLI to do, in place of running it."""
     calls: list[tuple[list[str], str]] = []
@@ -84,7 +93,9 @@ async def test_a_desktop_hub_may_be_changed_and_sends_values_but_never_a_key(
 
 
 @pytest.mark.asyncio
-async def test_a_change_goes_through_config_set_with_the_value_on_stdin(client, desktop, cli_calls):
+async def test_a_change_goes_through_config_set_with_the_value_on_stdin(
+    client, desktop, from_this_computer, cli_calls
+):
     resp = await client.patch(
         "/api/hub/settings",
         json={
@@ -132,7 +143,9 @@ async def test_a_change_goes_through_config_set_with_the_value_on_stdin(client, 
         ({"voice.model": "huge"}, "set in the app"),
     ],
 )
-async def test_a_bad_change_saves_nothing(client, desktop, cli_calls, changes, says):
+async def test_a_bad_change_saves_nothing(
+    client, desktop, from_this_computer, cli_calls, changes, says
+):
     resp = await client.patch(
         "/api/hub/settings", json={"changes": {"verifier.enabled": True, **changes}}
     )
@@ -179,7 +192,9 @@ async def test_without_sign_in_a_server_hub_stays_read_only(client, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_a_desktop_hub_restarts_after_it_answers(client, desktop, monkeypatch):
+async def test_a_desktop_hub_restarts_after_it_answers(
+    client, desktop, from_this_computer, monkeypatch
+):
     asked: list[bool] = []
     monkeypatch.setattr(hub_config, "request_restart", lambda: asked.append(True))
     resp = await client.post("/api/hub/restart")
@@ -187,6 +202,56 @@ async def test_a_desktop_hub_restarts_after_it_answers(client, desktop, monkeypa
     assert asked == []  # not before the answer is on its way
     await asyncio.sleep(0.4)
     assert asked == [True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "headers",
+    [
+        # A page that rebound its own domain to 127.0.0.1, reaching the hub directly.
+        {"host": "attacker.example:8000"},
+        # The same page through the app's UI, whose proxy sends the hub's own Host.
+        {"host": "127.0.0.1", "origin": "http://attacker.example:3717"},
+        {"host": "127.0.0.1", "origin": "null"},
+    ],
+)
+async def test_a_desktop_hub_refuses_a_change_from_a_page_that_isnt_this_computers(
+    client, desktop, cli_calls, monkeypatch, headers
+):
+    asked: list[bool] = []
+    monkeypatch.setattr(hub_config, "request_restart", lambda: asked.append(True))
+    saved = await client.patch(
+        "/api/hub/settings",
+        json={"changes": {"llm.base_url": "https://attacker.example/v1"}},
+        headers=headers,
+    )
+    assert saved.status_code == 403
+    assert "this computer" in saved.json()["detail"]
+    restart = await client.post("/api/hub/restart", headers=headers)
+    assert restart.status_code == 403
+    await asyncio.sleep(0.4)
+    assert cli_calls == []
+    assert asked == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"host": "localhost:8000"},
+        {"host": "127.0.0.1", "origin": "http://localhost:3717"},
+        # An origin the hub was set up to allow.
+        {"host": "127.0.0.1", "origin": "http://localhost:3000"},
+    ],
+)
+async def test_a_desktop_hub_takes_a_change_from_this_computer(
+    client, desktop, cli_calls, monkeypatch, headers
+):
+    monkeypatch.setattr(settings, "CORS_ORIGINS", {"http://localhost:3000"})
+    resp = await client.patch(
+        "/api/hub/settings", json={"changes": {"worker.tools": False}}, headers=headers
+    )
+    assert resp.status_code == 200, resp.text
 
 
 @pytest.mark.asyncio

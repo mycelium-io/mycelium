@@ -14,7 +14,10 @@ Who may change them:
 
 - **A desktop hub**, which listens on 127.0.0.1 only, so whoever reaches it is
   on this machine. The supervisor that started it says where the CLI is
-  (``MYCELIUM_CONFIG_CLI``).
+  (``MYCELIUM_CONFIG_CLI``). An agent on the same computer with no token
+  counts as the person here; it could already run ``mycelium config set`` in
+  its own shell, so this gives it nothing new. A web page the person visits
+  is refused (``foreign_page``).
 - **A person**, when sign-in is on. The hub has no admin role (a token is a
   ``user`` or an ``agent``), so a person's token is the line; an agent's is
   refused.
@@ -37,6 +40,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import Request
 
@@ -129,6 +133,37 @@ def access(request: Request | None) -> Access:
             app_owned,
         )
     return Access(True, None, desktop(), app_owned)
+
+
+#: The names this computer goes by, for a desktop hub's own requests.
+LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def foreign_page(request: Request) -> str | None:
+    """Why a change to a desktop hub didn't come from this computer, or None.
+
+    A desktop hub trusts whoever reaches it because it listens on 127.0.0.1
+    alone. A web page the person visits can still reach it by DNS rebinding:
+    its own domain made to resolve to 127.0.0.1, so the browser treats the hub
+    as the page's own origin. Such a request names that domain in ``Host``
+    when it goes to the hub directly, and in ``Origin`` when it goes through
+    the app's UI, whose proxy sends the hub's own address as ``Host``. Saving
+    a setting and restarting are refused unless both say this computer (or an
+    origin the hub was set up to allow).
+    """
+    if not desktop():
+        return None
+    host = urlsplit(f"//{request.headers.get('host', '')}")
+    server = request.scope.get("server")
+    port = server[1] if server else None
+    if host.hostname not in LOOPBACK or (port and host.port and host.port != port):
+        return "This change has to come from Mycelium on this computer."
+    origin = request.headers.get("origin")
+    if origin is not None and origin not in settings.CORS_ORIGINS:
+        parts = urlsplit(origin)
+        if parts.scheme not in ("http", "https") or parts.hostname not in LOOPBACK:
+            return "This change has to come from Mycelium on this computer."
+    return None
 
 
 def _coerce(key: str, value: Any) -> str | None:

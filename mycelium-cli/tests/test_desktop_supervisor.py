@@ -451,11 +451,15 @@ def test_a_hub_that_asks_to_restart_is_started_again_at_once_with_config_read_ag
         "hub_env",
         lambda _config: {"MYCELIUM_DATA_DIR": str(tmp_path), "LLM_MODEL": "new/model"},
     )
-    run_until(
-        sup, lambda: once.exists() and restarting.state == "running" and restarting.proc is not None
-    )
-    details = [s["components"]["hub"]["detail"] or "" for s in events.statuses()]
-    assert any("restarting to apply new settings" in d for d in details)
+
+    def restarted() -> bool:
+        # The first run is up too before it exits, so wait for the restart
+        # itself, then for the second run.
+        details = [s["components"]["hub"]["detail"] or "" for s in events.statuses()]
+        asked = any("restarting to apply new settings" in d for d in details)
+        return asked and restarting.state == "running" and restarting.proc is not None
+
+    run_until(sup, restarted)
     assert restarting.restarts == 0  # not counted as a crash
     assert not marker.exists()
     assert restarting.env["LLM_MODEL"] == "new/model"
