@@ -17,7 +17,7 @@ from httpx import AsyncClient
 from starlette.requests import Request
 
 from app.routes import participate
-from app.services import message_format, schedules
+from app.services import schedules
 from app.services.persister import envelope_sender
 from app.services.room_channels import manager
 from app.services.schedules import ScheduleError
@@ -509,31 +509,58 @@ async def test_the_token_says_who_changed_it(client: AsyncClient, no_herdr, told
 
 
 @pytest.mark.asyncio
-async def test_pausing_someone_elses_schedule_tells_them(client: AsyncClient, no_herdr, told):
+async def test_pausing_someone_elses_schedule_posts_nothing_and_wakes_nobody(
+    client: AsyncClient, no_herdr, told, monkeypatch
+):
+    rung: list = []
+    monkeypatch.setattr(manager, "enqueue_herdr_wake", lambda *a, **_kw: rung.append(a))
+    await make_room(client)
+    await add()
+    paused = await client.patch(
+        "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "julia"}
+    )
+    assert paused.json()["paused_by"] == "julia"
+    assert "pause_told" not in paused.json()
+    assert (told, rung) == ([], [])
+
+
+def _digest(handle: str) -> str:
+    from app.services import wake_digest
+
+    return wake_digest.build("ops", {"handle": handle, "reason": "mention"}, [], now=NOW)
+
+
+@pytest.mark.asyncio
+async def test_the_owners_next_digest_says_someone_else_paused_it_once(
+    client: AsyncClient, no_herdr, told
+):
     await make_room(client)
     await add()
     await client.patch(
         "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "julia"}
     )
-    # Said by the hub, never in julia's name: she didn't write it.
-    assert told == [
-        {
-            "sender": message_format.SYSTEM_ACTOR_ID,
-            "episode": message_format.live_episode_urn("ops"),
-            "text": '@builder, your schedule "check-in" was paused by @~julia. '
-            "It won't run until it's resumed: `mycelium schedule resume check-in --room ops`.",
-            "woke": (message_format.SYSTEM_ACTOR_ID, None),
-        }
-    ]
+    line = 'Schedule: "check-in" was paused by @julia'
+    assert line in _digest("builder")
+    assert line not in _digest("julia")
+    resume = "Resume: mycelium schedule resume check-in --room ops"
+    assert resume in _digest("builder")
 
-    # Said once, when it is paused: not again on an edit, nor on resuming.
-    await client.patch(
-        "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "julia"}
+    # Once said, it isn't said again.
+    await schedules.mark_pauses_told(
+        "ops", [s.name for s in schedules.untold_pauses("ops", "builder")]
     )
+    assert line not in _digest("builder")
+
+    # Resumed, there's nothing to say; paused again, it's said again.
     await client.patch(
         "/api/rooms/ops/schedules/check-in", json={"paused": False, "updated_by": "julia"}
     )
-    assert len(told) == 1
+    assert schedules.untold_pauses("ops", "builder") == []
+    await client.patch(
+        "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "julia"}
+    )
+    assert line in _digest("builder")
+    assert told == []
 
 
 @pytest.mark.asyncio
@@ -544,48 +571,8 @@ async def test_pausing_your_own_schedule_tells_nobody(client: AsyncClient, no_he
         "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "builder#s1"}
     )
     assert told == []
-
-
-@pytest.mark.asyncio
-async def test_the_owner_is_told_in_the_schedules_task(client: AsyncClient, no_herdr, told):
-    await make_room(client)
-    await make_row(client, "ops", "work/harvest")
-    await schedules.create(
-        "ops",
-        name="harvest",
-        owner="trainer",
-        every="1h",
-        cron=None,
-        prompt="",
-        check=None,
-        task="work/harvest",
-        expires_in_days=None,
-        created_by="trainer",
-        now=NOW,
-    )
-    await client.patch(
-        "/api/rooms/ops/schedules/harvest", json={"paused": True, "updated_by": "julia"}
-    )
-    from app.services import tasks
-
-    thread = tasks.episode_of("ops", "work/harvest")
-    assert thread
-    assert told[0]["episode"] == thread
-    # A thread's line surfaces in the room as a ping, and wakes in that thread.
-    assert told[0]["ping"] == (message_format.SYSTEM_ACTOR_ID, thread)
-    assert told[0]["woke"] == (message_format.SYSTEM_ACTOR_ID, thread)
-
-
-@pytest.mark.asyncio
-async def test_with_no_live_channel_nobody_is_told(client: AsyncClient, no_herdr, monkeypatch):
-    await make_room(client)
-    await add()
-    monkeypatch.setattr(manager, "get", lambda room: None)
-    paused = await client.patch(
-        "/api/rooms/ops/schedules/check-in", json={"paused": True, "updated_by": "julia"}
-    )
-    assert paused.json()["paused_by"] == "julia"
-    assert not await schedules.tell_owner_paused("ops", schedules.get("ops", "check-in"))
+    # Its own pause is nothing its digest needs to tell it.
+    assert schedules.untold_pauses("ops", "builder") == []
 
 
 @pytest.mark.asyncio

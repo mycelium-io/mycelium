@@ -414,6 +414,14 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     if elsewhere:
         rest.append(f"{elsewhere} elsewhere in the room")
     lines.append(f"Since:   {first}: " + ", ".join(rest))
+    # Someone else pausing one of its schedules is said here, once, rather than
+    # with a message that woke it (the herdr-wakes route marks it said).
+    from app.services import schedules
+
+    lines += [
+        f"Schedule: {schedules.pause_line(s, room, now)}"
+        for s in schedules.untold_pauses(room, handle)
+    ]
 
     mine, tally = board(room, handle, now)
     if mine:

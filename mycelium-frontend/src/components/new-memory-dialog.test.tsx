@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The live-preview editor is CodeMirror; a textarea stands in for it here.
-vi.mock("@fedoup/markdown-editor", async () => {
+vi.mock("@/components/markdown-editor", async () => {
   const { forwardRef, useImperativeHandle, useRef } = await import("react");
   return {
     MarkdownEditor: forwardRef(function MockMdEditor(

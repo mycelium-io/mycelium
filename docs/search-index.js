@@ -1362,7 +1362,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#schedules-in-the-app",
     "t": "In the app",
     "s": "Work › Schedules",
-    "x": "The room's Schedules tab (Alt+K, or the tab strip's + menu) lists every schedule: its agent, when it runs, its check, its status, the next run and the last one. The ⋯ menu on a row has Run now, Pause/Resume, Renew, Edit and Delete. Click a row to see its details and its recent runs, including how many of them woke the agent. In the Members rail, an agent with a schedule shows a small clock.",
+    "x": "The room's Schedules tab (Alt+K, or the tab strip's + menu) lists every schedule: its agent, when it runs, its check, its status, the next run and the last one. The ⋯ menu on a row has Run now, Pause/Resume, Renew, Edit and Delete. Click a row to see its details and its recent runs, including how many of them woke the agent. In the Members rail, an agent with a schedule shows a small clock. If you pause an agent's sc",
     "p": "Guides"
   },
   {

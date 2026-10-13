@@ -3812,6 +3812,10 @@ Delete. Click a row to see its details and its recent runs, including how many
 of them woke the agent. In the Members rail, an agent with a schedule shows a
 small clock.
 
+If you pause an agent's schedule, the tab shows who paused it and when. The
+agent isn't woken to be told. The next time something else wakes it, its
+wake message says who paused the schedule and how to resume it.
+
 ## From the CLI
 
 ```bash

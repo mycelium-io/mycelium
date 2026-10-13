@@ -34,7 +34,14 @@ import { NewMemoryDialog } from "@/components/new-memory-dialog";
 import { AddMemberDialog, ENGINE_KINDS } from "@/components/add-member-dialog";
 import { expandPath, handleValid, normHandle, tildePath } from "@/components/launch-agent-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { MENTION_SIGIL, parseMentions, parseSilentMentions } from "@/lib/mentions";
+import {
+  INTERRUPT_MENTION_SIGIL,
+  MENTION_SIGIL,
+  NOT_INTERRUPTIBLE,
+  mentionMode,
+  parseMentions,
+  parseSilentMentions,
+} from "@/lib/mentions";
 import { RECENT_MENTIONS_CHANGED, readRecentMentions, recordMentions } from "@/lib/recent-mentions";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
@@ -483,12 +490,14 @@ export function RoomChatBox({
         name: undefined as string | undefined,
         secondary: agentLabel(a),
         tertiary: a.description as string | undefined,
+        engine: a.adapter === "engine",
       })),
       ...people.map((p) => ({
         handle: p.handle,
         name: nameOf(names, p.handle),
         secondary: p.you ? "you" : p.presence?.kind === "slim" ? "person · here" : "person",
         tertiary: undefined as string | undefined,
+        engine: false,
       })),
     ],
     [agents, people, names],
@@ -545,7 +554,8 @@ export function RoomChatBox({
         primary: r.name ?? `@${r.handle}`,
         named: Boolean(r.name),
         secondary: r.name ? `@${r.handle} · ${r.secondary}` : r.secondary,
-        tertiary: r.tertiary,
+        // An engine works only when mentioned, so there's nothing to stop.
+        tertiary: trigger.sigil === INTERRUPT_MENTION_SIGIL && r.engine ? NOT_INTERRUPTIBLE : r.tertiary,
       }));
     }
     if (trigger.kind === "emoji") {
@@ -900,6 +910,8 @@ export function RoomChatBox({
   };
 
   const showCandidates = trigger !== null && candidates.length > 0;
+  // `@!` and `@~` say what they'll do, over the list and to a screen reader.
+  const mode = trigger?.kind === "agent" ? mentionMode(trigger.sigil) : null;
   const status = error ? (
     <StatusLine tone="error" onDismiss={() => setError(null)}>
       {error}
@@ -953,6 +965,11 @@ export function RoomChatBox({
       className={cn("@container flex-shrink-0", inline ? "pt-2" : "border-t border-border px-4 py-3", className)}
     >
       <div className="relative">
+        {/* Always here, so a screen reader announces the mention mode the
+            moment `@!` or `@~` turns it on. */}
+        <span aria-live="polite" data-testid="mention-mode-announce" className="sr-only">
+          {mode ? `${mode.label} mention: ${mode.about}` : ""}
+        </span>
         {/* Over the box, nearest it last: what the word being typed can be,
             the command's signature with that argument lit, then what the
             last command said. None of it moves the box. */}
@@ -965,6 +982,7 @@ export function RoomChatBox({
             onPick={accept}
             onHover={setHighlight}
             dense={trigger?.kind === "emoji"}
+            mode={mode}
           />
         )}
         {parsed && <CommandSignature parsed={parsed} completes={showCandidates} />}

@@ -37,6 +37,7 @@ from app.services import (
     in_memory_store,
     message_format,
     room_channels,
+    schedules,
     tasks,
     wake_digest,
     wake_log,
@@ -286,7 +287,10 @@ async def drain_herdr_wakes(room_name: str):
     records = managed.persister.log.records if managed and managed.persister else []
     for wake in wakes:
         try:
+            told = schedules.untold_pauses(room_name, str(wake.get("handle") or ""))
             wake["prompt"] = wake_digest.build(room_name, wake, records)
+            # The digest has said these pauses now, and says each once.
+            await schedules.mark_pauses_told(room_name, [s.name for s in told])
         except Exception:
             logger.exception("wake digest failed for @%s in %s", wake.get("handle"), room_name)
         # What it covered goes in the wake log, kept until the runner says

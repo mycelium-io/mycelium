@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { MarkdownEditorHandle } from "@fedoup/markdown-editor";
+import type { MarkdownEditorHandle } from "@/components/markdown-editor";
 import { Check, Copy, Loader2, Pencil } from "lucide-react";
 import { ApiError, createMemories, type Memory, type MemoryCreate } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -170,7 +170,9 @@ export function MemoryEditor({
       content_text: body,
       created_by: actor || memory.created_by,
       base_version: memory.version,
-      ...(tags.length > 0 && { tags }),
+      // Always sent, even empty: the store keeps a memory's tags when a write
+      // names none, so leaving them out would make removing the last one a no-op.
+      tags,
       // Always sent, both true and false: the backend carries unmanaged
       // frontmatter forward across writes, so omitting the flag when unchecked
       // would leave a previously-set `expandable: true` on disk.
