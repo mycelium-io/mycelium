@@ -13340,6 +13340,12 @@
             "title": "Message Id",
             "description": "The message the line goes under: its id in the room's history read"
           },
+          "envelope_id": {
+            "type": "string",
+            "title": "Envelope Id",
+            "description": "The same message's envelope id: the id it carries when it arrives live over the room's stream, before a reload reads it from history",
+            "default": ""
+          },
           "key": {
             "type": "string",
             "title": "Key",

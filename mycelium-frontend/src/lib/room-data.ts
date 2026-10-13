@@ -538,20 +538,28 @@ export function useRoomSchedules(room: string, opts: RoomQueryOptions = {}) {
 const NO_FLAGS: VerifierFlag[] = [];
 
 /** The verifier's lines still showing, by the message each goes under. A flag
- *  someone said is fine is left out. */
+ *  someone said is fine is left out.
+ *
+ *  Keyed by both of a message's ids: the one the room's history read gives it,
+ *  and its envelope id, which is what a message that arrived live over the
+ *  stream carries until a reload reads it from history. */
 export function useRoomVerifierFlags(room: string, opts: RoomQueryOptions = {}) {
   const { data, refresh } = useRoomQuery(
     room, "verifier-flags", fetchVerifierFlags, NO_FLAGS, POLL.verifierFlags, opts,
   );
-  const byMessage = useMemo(() => {
-    const out = new Map<string, VerifierFlag[]>();
-    for (const flag of data) {
-      if (flag.state !== "shown") continue;
-      out.set(flag.message_id, [...(out.get(flag.message_id) ?? []), flag]);
-    }
-    return out;
-  }, [data]);
+  const byMessage = useMemo(() => verifierFlagsByMessage(data), [data]);
   return { byMessage, refresh };
+}
+
+export function verifierFlagsByMessage(flags: VerifierFlag[]): Map<string, VerifierFlag[]> {
+  const out = new Map<string, VerifierFlag[]>();
+  for (const flag of flags) {
+    if (flag.state !== "shown") continue;
+    for (const id of new Set([flag.message_id, flag.envelope_id].filter(Boolean) as string[])) {
+      out.set(id, [...(out.get(id) ?? []), flag]);
+    }
+  }
+  return out;
 }
 
 /** Handles that own a live (not expired) schedule, for the Members rail's clock. */

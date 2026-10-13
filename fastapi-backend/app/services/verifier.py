@@ -363,8 +363,10 @@ class VerifierEngine:
         thread = verifier_records.episode_of(record)
         flag = {
             "flag_id": uuid.uuid4().hex[:12],
-            # The history read's id, so the line finds its message in the app and CLI.
+            # The history read's id, so the line finds its message in the app and CLI,
+            # and the envelope's, which is the id a message that arrived live carries.
             "message_id": str(read_id(record)),
+            "envelope_id": record.message_id,
             "key": (thread or "").rsplit(":", 1)[-1] or "live",
             "about": record.sender,
             "by": verifier_handles(room)[0] if verifier_handles(room) else KIND,
@@ -394,6 +396,7 @@ class VerifierEngine:
             key=flag["key"],
             by=flag["by"],
             message_id=flag["message_id"],
+            envelope_id=flag.get("envelope_id", ""),
             flag_id=flag["flag_id"],
             about=flag["about"],
             failure=flag.get("failure", ""),
