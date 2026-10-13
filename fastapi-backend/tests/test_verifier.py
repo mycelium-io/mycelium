@@ -142,6 +142,7 @@ def test_spot_returns_sentences_over_their_kinds_threshold(monkeypatch) -> None:
 def test_an_approval_nobody_gave_cannot_be_found() -> None:
     records = [_said(1, "builder", "Opened #1278 for the tax fix.", 30)]
     (finding,) = _check("#1278 is approved, merging.", records)
+    assert finding.failure == verifier_records.UNGRANTED_APPROVAL
     assert finding.claim == "approval"
     assert finding.ref == "#1278"
     assert finding.sure is False
@@ -187,6 +188,7 @@ def test_plans_and_negations_are_not_approval_claims() -> None:
 def test_treating_a_merged_pr_as_open_is_sure_and_says_when() -> None:
     records = [_upstream(1, "merged", "mycelium-io/mycelium#1266", 22)]
     (finding,) = _check("Next I'll merge #1266.", records, kinds=frozenset({"pr_state"}))
+    assert finding.failure == verifier_records.STALE_STATE
     assert finding.claim == "open"
     assert finding.sure is True
     assert finding.line == "#1266 was already merged, at 20:08."
@@ -322,6 +324,7 @@ async def test_a_kept_flag_is_stored_and_raised_as_a_check_notice(engine, monkey
     assert verifier.load_flags(ROOM) == [flag]
     (notice,) = manager.notices
     assert notice["subkind"] == "check"
+    assert notice["failure"] == flag["failure"] == "ungranted_approval"
     # The line names its message by the id the room's history read gives it.
     read = stored_message_from_record(ROOM, claim)
     assert read is not None

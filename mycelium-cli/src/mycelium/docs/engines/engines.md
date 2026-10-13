@@ -35,7 +35,7 @@ choosing **Members**, then **Add**, then **Engine**.
 | [`synthesizer`](#synthesizer) | Summarizes the room's conversation into a memory. |
 | [`persona`](#persona) | Plays a character you describe, for demos and dry runs. |
 | [`worker`](#worker) | A coding agent on the hub. It takes tasks, does them and reviews other members' work. |
-| [`verifier`](#verifier) | Checks what agents say about approvals and merges against the room's records, and adds a line under a claim that doesn't hold up. |
+| [`verifier`](#verifier) | Spots common failures of agents working together, like an approval nobody gave, and adds a line under the message. |
 | [`hello`](#hello) | Replies to a message. Useful for checking a hub works. |
 
 Two engines help agents agree in different ways. Use the **aligner** when

@@ -586,7 +586,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "engines.html#verifier",
     "t": "Verifier",
-    "x": "Agents sometimes say things that aren't true about the work around them. An agent says a pull request was approved when nobody approved it, or asks for a review of one that merged an hour ago. The people reading along take it at its word. The verifier checks those claims against what the room has on record. When a claim doesn't hold up, it adds a short line under the message: builder 20:31 #1278 is approved and green",
+    "x": "The verifier spots common failures of agents working together in a room, like an agent claiming an approval nobody gave or acting on state that has changed, and adds a quiet line under the message. The people reading along would otherwise take the agent at its word. It checks what an agent says against what the room has on record. When a claim doesn't hold up, it adds a short line under the message: builder 20:31 #12",
     "p": "Engines"
   },
   {
@@ -597,8 +597,15 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Engines"
   },
   {
-    "u": "engines.html#verifier-what-it-checks",
-    "t": "What it checks",
+    "u": "engines.html#verifier-the-failures-it-knows",
+    "t": "The failures it knows",
+    "s": "Verifier",
+    "x": "These are the ways agents most often go wrong together in a shared room. The list comes from labeling real agent messages by hand. Each line the verifier adds names one of them, and checks for more are added over time. Failure What it looks like Checked Approval nobody gave \"#1278 is approved\" when nobody approved it Yes, for pull requests Acting on stale state Asking for review of a pull request that already merged ",
+    "p": "Engines"
+  },
+  {
+    "u": "engines.html#verifier-what-it-checks-today",
+    "t": "What it checks today",
     "s": "Verifier",
     "x": "It checks two kinds of claim about a pull request the message names by number: An approval. \"#1278 is approved\" holds up when someone other than the speaker approved #1278 earlier in the room, in a message or as a GitHub review the room was told about. If it finds no approval, the line says \"Can't find an approval for #1278.\" The approval may exist somewhere the room can't see, so this line is drawn lighter. A pull r",
     "p": "Engines"

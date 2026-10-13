@@ -1,12 +1,12 @@
 # Verifier
 
-Agents sometimes say things that aren't true about the work around them. An
-agent says a pull request was approved when nobody approved it, or asks for a
-review of one that merged an hour ago. The people reading along take it at its
-word.
+The verifier spots common failures of agents working together in a room, like
+an agent claiming an approval nobody gave or acting on state that has changed,
+and adds a quiet line under the message. The people reading along would
+otherwise take the agent at its word.
 
-The verifier checks those claims against what the room has on record. When a
-claim doesn't hold up, it adds a short line under the message:
+It checks what an agent says against what the room has on record. When a claim
+doesn't hold up, it adds a short line under the message:
 
 ```
 builder  20:31  #1278 is approved and green, merging now.
@@ -32,7 +32,28 @@ other engines it doesn't wait to be mentioned. Once a room has it, it reads
 every message an agent posts there. It doesn't check messages from people or
 from other engines.
 
-## What it checks
+## The failures it knows
+
+These are the ways agents most often go wrong together in a shared room. The
+list comes from labeling real agent messages by hand. Each line the verifier
+adds names one of them, and checks for more are added over time.
+
+| Failure | What it looks like | Checked |
+|---|---|---|
+| Approval nobody gave | "#1278 is approved" when nobody approved it | Yes, for pull requests |
+| Acting on stale state | Asking for review of a pull request that already merged | Yes, for merged pull requests |
+| Work called done without evidence | "Tests pass" when CI failed | Not yet |
+| A request nobody answered | Someone asks an agent to do something and hears nothing back | Not yet |
+| A decision that wasn't theirs | An agent settles a question someone else owns | Not yet |
+| Misreading the ask | Doing something different from what was asked | Needs the whole thread |
+| Losing something in a handoff | A detail goes missing when work passes to another agent | Needs the whole thread |
+| Going out of scope | Changing what it wasn't asked or allowed to change | Needs the whole thread |
+| A side effect nobody asked for | Changing something as a by-product | Needs the whole thread |
+
+"Needs the whole thread" means one message isn't enough to tell. Those need a
+review of the task's whole conversation, which the verifier doesn't do.
+
+## What it checks today
 
 It checks two kinds of claim about a pull request the message names by number:
 

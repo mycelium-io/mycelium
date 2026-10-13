@@ -13243,6 +13243,12 @@
             "type": "string",
             "title": "Flag Id"
           },
+          "failure": {
+            "type": "string",
+            "title": "Failure",
+            "description": "Which failure it is: ungranted_approval, unsupported_completion, decision_taken, dropped_directive, misread_intent, stale_state, handoff_loss, scope_violation or unasked_side_effect. The checks so far find ungranted_approval and stale_state.",
+            "default": ""
+          },
           "message_id": {
             "type": "string",
             "title": "Message Id",
@@ -13351,7 +13357,7 @@
           "at"
         ],
         "title": "VerifierFlagRead",
-        "description": "A claim the verifier couldn't confirm, drawn as a line under its message."
+        "description": "A multi-agent failure the verifier found, drawn as a line under its message."
       },
       "VerifierLearningRead": {
         "properties": {

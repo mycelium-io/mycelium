@@ -98,10 +98,37 @@ _MERGE_NOT_YET = re.compile(
 )
 
 
+#: The multi-agent failures the verifier classifies (the #1288 taxonomy, mapped to
+#: outshift-open/observe-and-explain-platform's names). A check says which one it
+#: found; the ones no check finds yet are named so the flags, the API and the
+#: settings speak one vocabulary as checks are added.
+UNGRANTED_APPROVAL = "ungranted_approval"  # claims an approval nobody gave
+UNSUPPORTED_COMPLETION = "unsupported_completion"  # calls work done without evidence
+DECISION_TAKEN = "decision_taken"  # settles a question that wasn't its to settle
+DROPPED_DIRECTIVE = "dropped_directive"  # a request to it went unanswered
+MISREAD_INTENT = "misread_intent"  # acted on a different reading of the ask
+STALE_STATE = "stale_state"  # acts on state that has since changed
+HANDOFF_LOSS = "handoff_loss"  # something was lost passing work on
+SCOPE_VIOLATION = "scope_violation"  # went outside what it was asked or allowed
+UNASKED_SIDE_EFFECT = "unasked_side_effect"  # changed something nobody asked for
+FAILURES = (
+    UNGRANTED_APPROVAL,
+    UNSUPPORTED_COMPLETION,
+    DECISION_TAKEN,
+    DROPPED_DIRECTIVE,
+    MISREAD_INTENT,
+    STALE_STATE,
+    HANDOFF_LOSS,
+    SCOPE_VIOLATION,
+    UNASKED_SIDE_EFFECT,
+)
+
+
 @dataclass
 class Finding:
     """A claim the records don't back up, before the hub's model has read it."""
 
+    failure: str  # one of FAILURES
     claim: str  # "approval" or "open"
     ref: str  # "#1278", or "mycelium-classifier#3" when the repository was named
     sure: bool  # the records say the opposite, rather than nothing was found
@@ -323,6 +350,7 @@ def check(
             when, record_id, source = merged
             findings.append(
                 Finding(
+                    failure=STALE_STATE,
                     claim="open",
                     ref=label(ref),
                     sure=True,
@@ -348,6 +376,7 @@ def check(
                 continue
             findings.append(
                 Finding(
+                    failure=UNGRANTED_APPROVAL,
                     claim="approval",
                     ref=label(ref),
                     sure=False,

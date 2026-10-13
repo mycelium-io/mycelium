@@ -1459,9 +1459,18 @@ class VerifierCheckedRead(BaseModel):
 
 
 class VerifierFlagRead(BaseModel):
-    """A claim the verifier couldn't confirm, drawn as a line under its message."""
+    """A multi-agent failure the verifier found, drawn as a line under its message."""
 
     flag_id: str
+    failure: str = Field(
+        "",
+        description=(
+            "Which failure it is: ungranted_approval, unsupported_completion, "
+            "decision_taken, dropped_directive, misread_intent, stale_state, "
+            "handoff_loss, scope_violation or unasked_side_effect. The checks so far "
+            "find ungranted_approval and stale_state."
+        ),
+    )
     message_id: str = Field(
         ..., description="The message the line goes under: its id in the room's history read"
     )
