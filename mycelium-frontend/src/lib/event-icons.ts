@@ -66,6 +66,7 @@ export const NOTICE_ICONS: Record<string, EventIcon> = {
   blocked: { Icon: Ban, tone: RED, label: "Task blocked" },
   unblocked: { Icon: LockOpen, tone: GREEN, label: "Task unblocked" },
   expired: { Icon: Clock, tone: YELLOW, label: "Claim expired" },
+  quiet: { Icon: Clock, tone: QUIET, label: "Gone quiet" },
   floor: { Icon: Megaphone, tone: ACCENT, label: "Turn to speak" },
 };
 

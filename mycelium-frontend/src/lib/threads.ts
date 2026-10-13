@@ -107,6 +107,7 @@ export const NOTICE_SUBKINDS = [
   "blocked",
   "unblocked",
   "expired",
+  "quiet",
   "floor",
   "upstream",
 ] as const;
@@ -250,6 +251,8 @@ export function noticeLabel(
       return "Unblocked";
     case "expired":
       return "Expired";
+    case "quiet":
+      return "Quiet";
     case "floor":
       return "Floor";
     default:

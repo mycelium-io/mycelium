@@ -932,9 +932,18 @@ is no litellm dependency.
   a notice carrying `why`, and so does deleting an agent's `agents/<handle>`
   manifest (the memory delete route calls `hold_sweep.holder_removed`). A
   handle with no manifest and no user record is unseen, not gone: a person
-  who never set up a user record looks the same. A quiet holder is flagged
-  once to the row's filer in its thread, never released; a holder the hub has
-  no signal for expires after a long fallback, with a notice.
+  who never set up a user record looks the same. A held row with no activity
+  for a few hours gets one `quiet` notice and is never released for it; a
+  holder the hub has no signal for expires after a long fallback, with a
+  notice. A row waiting on someone else (its linked pull request open and
+  awaiting a review, a merge or CI, read from `.upstream-seen.json`, or a
+  blocker named) is neither quiet nor expired.
+- **No process of the hub's own wakes an agent.** A wake comes from a person,
+  another agent (an engine or a worker included) or a schedule the agent
+  owns. What the hub notices by itself, such as a quiet task, a drained
+  claim or a pull request changing, is said as a notice on the timeline,
+  which `_addressed_to` and herdr's doorbell both ignore, never as a message
+  in a thread or a mention.
 - **Server-held membership.** A turn-based agent (Claude, a subagent, a shell) can't
   hold a SLIM socket between turns, so the backend holds membership: `await`
   long-polls off a durable transcript cursor and refreshes a presence lease;
