@@ -214,11 +214,18 @@ def _remote_memory_text(client: Any, room_name: str, key: str) -> str | None:
     from mycelium_backend_client.api.memory import (
         get_memory_api_rooms_room_name_memory_key_get as get_api,
     )
+    from mycelium_backend_client.errors import UnexpectedStatus
     from mycelium_backend_client.models import MemoryRead
 
-    result = get_api.sync(room_name=room_name, key=key, client=client)
-    # The endpoint returns ``HTTPValidationError | MemoryRead | None`` for
-    # 200/404/422; only ``MemoryRead`` carries a usable body.
+    try:
+        result = get_api.sync(room_name=room_name, key=key, client=client)
+    except UnexpectedStatus as exc:
+        # The spec doesn't declare this route's 404, so the generated client
+        # raises on it rather than answering ``None``. A 404 is "not there".
+        if exc.status_code == 404:
+            return None
+        raise
+    # Only ``MemoryRead`` carries a usable body (a 422 is ``HTTPValidationError``).
     if not isinstance(result, MemoryRead):
         return None
     return _memory_body(result)
