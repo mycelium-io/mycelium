@@ -35,6 +35,10 @@ from mycelium.board.model import (
     LiveItem,
 )
 
+#: How long an agent's presence row stands after it was last seen. Presence is
+#: a lease the runtime renews, unlike a hold on a task, which has no timer.
+PRESENCE_TTL_MINUTES = 30
+
 
 def _pretty_topic(topic: str) -> str:
     return topic.split(":")[-1].replace("-", " ").replace("_", " ")
@@ -161,7 +165,7 @@ def _agent_item(agent: dict, presence: dict, now: str) -> LiveItem:
             # Presence is a lease: the row drains unless the runtime renews it.
             assignment.FIELD: "held",
             "claimed_at": last_seen,
-            "ttl_minutes": assignment.DEFAULT_TTL_MINUTES,
+            "ttl_minutes": PRESENCE_TTL_MINUTES,
         },
     )
 

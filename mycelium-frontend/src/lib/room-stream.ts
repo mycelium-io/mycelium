@@ -39,8 +39,12 @@ export interface StreamEvent {
   /** For a pull request change, what changed and which one (`owner/repo#12`). */
   change: string | null;
   ref: string | null;
-  /** For a `filed` notice, who the task is for. */
+  /** For a `filed` notice, who the task is for; on a reassign, who it went to. */
   assignee: string | null;
+  /** On a reassign, who held the task before (#1136). */
+  from?: string | null;
+  /** On a hold that ended, why it ended (#1136). */
+  why?: string | null;
   /** For a `filed` notice, the kind of row (`action`, `decision`…). */
   rowKind?: string | null;
   /** For a review request, who was asked. */
@@ -113,6 +117,8 @@ export function streamEventOf(raw: Record<string, unknown>, room: string): Strea
       change: notice.change,
       ref: notice.ref,
       assignee: notice.assignee,
+      from: notice.from,
+      why: notice.why,
       rowKind: notice.kind,
       asked: notice.who,
     };
@@ -249,7 +255,7 @@ const BOARD_WORDS: Record<string, string> = {
   resolved: "resolved",
   blocked: "marked blocked",
   unblocked: "unblocked",
-  expired: "stopped holding (claim expired)",
+  expired: "stopped holding",
 };
 
 /** What a line says happened, in words, for everything but a message (whose
@@ -270,7 +276,13 @@ export function describe(event: StreamEvent, { withTitle = true }: { withTitle?:
       const what = (event.subkind && BOARD_WORDS[event.subkind]) || event.subkind || "changed";
       const target = withTitle && event.title ? ` ${event.title}` : "";
       const forWhom = event.subkind === "filed" && event.assignee ? ` for ${event.assignee}` : "";
-      return `${what}${target}${forWhom}`;
+      // A reassign says who it moved from and to; a hold the hub ended says why.
+      const moved =
+        event.subkind === "claimed" && event.from
+          ? ` from @${event.from.replace(/^@/, "")}${event.assignee ? ` to @${event.assignee.replace(/^@/, "")}` : ""}`
+          : "";
+      const why = event.why ? ` (${event.why})` : "";
+      return `${what}${target}${forWhom}${moved}${why}`;
     }
     default:
       return firstLine(event.text);

@@ -69,6 +69,19 @@ describe("streamEventOf", () => {
     expect(describeEvent(asked)).toBe("review asked on PR #12 of mycelium-reviewer");
   });
 
+  it("says who a reassigned task moved between, and why a hold ended", () => {
+    const moved = streamEventOf(
+      notice({ subkind: "claimed", key: "work/a", title: "Ship it", by: "lead", for: "coder", from: "tester" }),
+      ROOM,
+    )!;
+    expect(describeEvent(moved)).toBe("claimed Ship it from @tester to @coder");
+    const ended = streamEventOf(
+      notice({ subkind: "released", key: "work/a", title: "Ship it", by: "runtime", why: "@coder's herdr pane closed" }),
+      ROOM,
+    )!;
+    expect(describeEvent(ended)).toBe("let go of Ship it (@coder's herdr pane closed)");
+  });
+
   it("skips pings, floor changes and saves of board rows", () => {
     expect(streamEventOf(frame({ l9: { payload: { type: "ping", data: { episode: T1 } } } }), ROOM)).toBeNull();
     expect(streamEventOf(notice({ subkind: "floor", key: "work/a" }), ROOM)).toBeNull();

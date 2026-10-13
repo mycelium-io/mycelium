@@ -154,14 +154,15 @@ class TestProjection:
             now=NOW,
         )
 
-    def test_a_compiled_task_names_who_it_is_for_without_claiming_it(self):
+    def test_a_compiled_task_is_held_by_who_it_is_for(self):
         rows = self.project()
         assert rows[0].title == "flip reads behind a flag"
         assert rows[0].get("assignee") == "@growth"
-        # An assignment is not a claim: the row stays unclaimed until somebody
-        # takes it, so nothing asserts a holder who never agreed to hold it.
+        # Given the work, @growth holds it with no claim to make (#1136), so the
+        # board doesn't show a staffed run as idle.
         assert rows[0].status == "open"
-        assert assignment.assignment_of(rows[0], NOW) == "unclaimed"
+        assert assignment.assignment_of(rows[0], NOW) == "held"
+        assert assignment.holder_of(rows[0], NOW) == "growth"
 
     def test_a_done_task_resolves(self):
         assert self.project()[1].status == "resolved"

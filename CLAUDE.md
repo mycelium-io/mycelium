@@ -901,6 +901,22 @@ is no litellm dependency.
   claim on a waiting row is `BOARD_DEPENDENCY_GATE`, off by default; `force`
   on the claim overrides it. A target outside the live namespaces or that
   names no memory is a reference, not a prerequisite.
+- **A row given to someone is held by them, with no timer (#1136).** Being
+  assigned is holding: a row with an `assignee` and no claim reads `held`, and
+  its holder is whoever claimed it, else its assignee (`hold_cases` in
+  `contracts/board-vocabulary.json`, asserted by all three copies). A claim
+  has no TTL unless it asks for one, so no hold drains by the clock. Taking a
+  held row is refused; `board assign --reassign` (`fields.write(reassign=True)`)
+  moves it, and its `claimed` notice carries `for` and `from`. A hold ends on
+  real signals (`app/services/hold_sweep.py`, run in the lease sweep loop):
+  the holder's herdr pane reading closed on two sweeps in a row (from the
+  runners' machine reports, so a restart doesn't release it) releases it with
+  a notice carrying `why`, and so does deleting an agent's `agents/<handle>`
+  manifest (the memory delete route calls `hold_sweep.holder_removed`). A
+  handle with no manifest and no user record is unseen, not gone: a person
+  who never set up a user record looks the same. A quiet holder is flagged
+  once to the row's filer in its thread, never released; a holder the hub has
+  no signal for expires after a long fallback, with a notice.
 - **Server-held membership.** A turn-based agent (Claude, a subagent, a shell) can't
   hold a SLIM socket between turns, so the backend holds membership: `await`
   long-polls off a durable transcript cursor and refreshes a presence lease;

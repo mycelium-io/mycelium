@@ -13,8 +13,9 @@ mycelium board new "Pick storage" --parent work/ship-passkey-login --assign @sec
 mycelium board send work/auth-spike "@sec keychain?"   # post in a task's thread
 mycelium board messages work/auth-spike   # read a task's thread
 mycelium board coordinate work/auth-spike aligner "agree on token storage"
-mycelium board claim work/auth-spike      # take it (the claim expires unless renewed)
-mycelium board claim work/auth-spike --to @sec --ttl 60
+mycelium board claim work/auth-spike      # take a task nobody was given
+mycelium board assign work/auth-spike @sec   # give it to someone; they hold it
+mycelium board assign work/auth-spike @sec --reassign   # take it from its holder
 mycelium board release work/auth-spike --note "handing over"
 mycelium board resolve work/auth-spike    # finish a task
 mycelium board block work/auth-spike --on "#502"   # say what it's waiting on
@@ -35,8 +36,8 @@ folder.
 |---|---|
 | `status` | The row's own stage: `open`, `in_review`, `resolved`, `dismissed`. |
 | `kind` | What the row is: `action` (a task), `decision`, `concern`, `blocked`. |
-| `assignee` | Who the task is for. Set with `--assign`. |
-| `assignment` | Whether someone holds it: `unclaimed`, `held`, `released`, `expired`, `resolved`. |
+| `assignee` | Who the task is for. Set with `--assign` or `board assign`; they hold it. |
+| `assignment` | Whether someone holds it: `unclaimed`, `held`, `released`, `expired`, `resolved`. A hold has no timer unless `claim --ttl` set one. |
 | `depends-on` | A task that must be resolved first. |
 | `blocked_by` | What `block` said the task is waiting on. |
 | `upstream` | The live state of a linked pull request, below. |

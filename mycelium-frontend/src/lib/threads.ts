@@ -158,8 +158,13 @@ export interface Notice {
   by: string | null;
   /** The board kind, on a `filed` notice, so the line reads "New decision". */
   kind: string | null;
-  /** Who a `filed` task is for (its assignee), so the line can read "for @x". */
+  /** Who a `filed` task is for (its assignee), so the line can read "for @x";
+   *  on a reassigning `claimed` one, who it went to. */
   assignee: string | null;
+  /** On a reassigning `claimed` notice, who held the task before (#1136). */
+  from: string | null;
+  /** On a `released` or `expired` notice the hub raised, why the hold ended. */
+  why: string | null;
   /** On a `floor` notice: the handles the floor was given to (empty when the
    *  holder alone has it). */
   speakers: string[];
@@ -198,6 +203,8 @@ export function noticeOf(raw: Record<string, unknown> | null | undefined): Notic
     by: str(data.by),
     kind: str(data.kind),
     assignee: str(data.for),
+    from: str(data.from),
+    why: str(data.why),
     speakers: str(data.speakers)?.split(",").filter(Boolean) ?? [],
     released: data.released === "1",
     change: str(data.change),
