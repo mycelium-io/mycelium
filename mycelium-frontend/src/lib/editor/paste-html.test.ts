@@ -39,6 +39,12 @@ describe("htmlToMarkdown", () => {
     ).toBe("**loud** and _soft_");
   });
 
+  it("doesn't bold everything Google Docs wraps in its normal-weight <b>", () => {
+    expect(
+      htmlToMarkdown('<b style="font-weight:normal;" id="docs-internal-guid-1"><p>plain <span style="font-weight:700">loud</span></p></b>'),
+    ).toBe("plain **loud**");
+  });
+
   it("escapes what would read as markdown, but not snake_case", () => {
     expect(htmlToMarkdown("<p>a *star* and my_var and _x_</p>")).toBe("a \\*star\\* and my_var and \\_x\\_");
   });
@@ -75,6 +81,12 @@ describe("pasting", () => {
 
   it("leaves pasting into code to the plain text", () => {
     expect(paste("```\n\n```", 4, "<p><b>hi</b></p>")).toBe("```\n\n```");
+  });
+
+  it("leaves code copied from an editor to its plain text", () => {
+    const vscode =
+      '<div style="color: #d4d4d4;font-family: Menlo, Monaco, monospace;white-space: pre;"><div><span style="color: #569cd6;font-weight: bold;">const</span><span> a_b = 1;</span></div></div>';
+    expect(paste("", 0, vscode)).toBe("");
   });
 
   it("leaves HTML with no formatting to the plain text", () => {

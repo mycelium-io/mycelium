@@ -64,11 +64,13 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
 
   useEffect(() => {
     if (!host.current) return;
+    // Its Enter and Backspace come from `markdownKeys`, set up for Obsidian.
+    const md = markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: false });
     const extensions: Extension[] = [
-      markdownKeys(),
+      markdownKeys(md.language),
       history(),
       keymap.of([...defaultKeymap, ...historyKeymap]),
-      markdown({ base: markdownLanguage, codeLanguages: languages }),
+      md,
       indentUnit.of("  "),
       EditorView.lineWrapping,
       codeHighlighting(),

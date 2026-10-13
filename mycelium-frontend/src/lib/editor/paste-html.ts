@@ -34,6 +34,8 @@ function inline(node: Node): string {
   switch (node.tagName) {
     case "STRONG":
     case "B":
+      // Google Docs wraps the whole clipboard in `<b style="font-weight:normal">`.
+      if (/font-weight:\s*(normal|[1-4]00)/.test(style)) return inner();
       return around(inner(), "**");
     case "EM":
     case "I":
@@ -167,11 +169,19 @@ function hasStructure(html: string): boolean {
     /font-weight:\s*(bold|[6-9]00)|font-style:\s*italic/i.test(html);
 }
 
+/** Code copied from an editor or a terminal (VS Code, iTerm): colored spans in
+ *  a monospace, pre-formatted block. Its plain text is the code; converting
+ *  the colors' bold spans would add `**` and backslashes to it. */
+function isStyledCode(html: string): boolean {
+  return /white-space:\s*pre/i.test(html) && /font-family:[^;"]*(mono|menlo|consolas|courier)/i.test(html) &&
+    !/<(h[1-6]|ul|ol|table|blockquote|p)\b/i.test(html);
+}
+
 /** Paste HTML as markdown, except into code, where text is text. */
 export const pasteAsMarkdown = EditorView.domEventHandlers({
   paste(event, view) {
     const html = event.clipboardData?.getData("text/html");
-    if (!html || !hasStructure(html)) return false;
+    if (!html || !hasStructure(html) || isStyledCode(html)) return false;
     const { from, to } = view.state.selection.main;
     const at = syntaxTree(view.state).resolveInner(from, -1);
     for (let n: typeof at | null = at; n; n = n.parent) if (/Code/.test(n.name)) return false;

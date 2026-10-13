@@ -26,20 +26,14 @@ function editor(doc: string) {
   const text = doc.replace("|", "").replace("«", "").replace("»", "");
   const selection =
     selFrom >= 0 ? EditorSelection.single(selFrom, doc.indexOf("»") - 1) : EditorSelection.cursor(cursor >= 0 ? cursor : text.length);
-  view = new EditorView({
-    state: EditorState.create({
-      doc: text,
-      selection,
-      extensions: [
-        markdownKeys(),
-        history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
-        markdown({ base: markdownLanguage, codeLanguages }),
-        indentUnit.of("  "),
-      ],
-    }),
-    parent: document.body,
+  const md = markdown({ base: markdownLanguage, codeLanguages, addKeymap: false });
+  const state = EditorState.create({
+    doc: text,
+    selection,
+    extensions: [markdownKeys(md.language), history(), keymap.of([...defaultKeymap, ...historyKeymap]), md, indentUnit.of("  ")],
   });
+  ensureSyntaxTree(state, text.length, 5000);
+  view = new EditorView({ state, parent: document.body });
   return view;
 }
 
@@ -163,6 +157,31 @@ describe("Backspace", () => {
     const v = editor("see (|)");
     press(v, "Backspace");
     expect(text(v)).toBe("see |");
+  });
+});
+
+describe("inside code, nothing is markup", () => {
+  it("Tab indents a list-looking line in a code block as text, not as a nested item", () => {
+    // As a list, `2.` would nest three spaces in, past `1.`; as code it's one indent.
+    const v = editor("```\n1. a\n2. b|\n```");
+    press(v, "Tab");
+    expect(v.state.doc.toString()).toBe("```\n1. a\n  2. b\n```");
+  });
+
+  it("Enter on an empty `-` or `>` line in a code block keeps it and starts a new line", () => {
+    let v = editor("```\n- |\n```");
+    press(v, "Enter");
+    expect(v.state.doc.toString()).toBe("```\n- \n\n```");
+    v.destroy();
+    v = editor("```\n> |\n```");
+    press(v, "Enter");
+    expect(v.state.doc.toString()).toBe("```\n> \n\n```");
+  });
+
+  it("Backspace on an empty `-` line in a code block deletes one character", () => {
+    const v = editor("```\n- |\n```");
+    press(v, "Backspace");
+    expect(v.state.doc.toString()).toBe("```\n-\n```");
   });
 });
 
