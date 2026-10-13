@@ -1109,8 +1109,15 @@ is no litellm dependency.
   Remote auth is a bearer token named by `a2a_auth_env` and resolved from the
   backend env — the secret never lands in room memory.
 - **CI is fast on purpose; timing is reported, never enforced.** A PR run's
-  critical path is ~95s, and that is a property worth defending — it erodes
-  twenty seconds at a time, invisibly. The `timing` job reads the run's own job
+  critical path is ~100s, set by the slower of the two frontend jobs (vitest
+  has a runner of its own), and that is a property worth defending — it erodes
+  twenty seconds at a time, invisibly. It had drifted to ~175s by Oct 2026
+  before anyone noticed. The `changes` job gates on what a PR touched: a
+  docs-only PR skips every code job, and the frontend jobs and the backend
+  jobs (unit tests, SLIM slices) each skip a PR that touched only the other
+  side, the CLI, the desktop app or the tooling. Anything else, a contract,
+  `openapi.json`, a workflow or a path nobody listed, runs both, and a push
+  to main runs everything. The CLI job runs on every PR. The `timing` job reads the run's own job
   durations back from the Actions API, writes them into the run summary, and
   warns against the budgets in `.github/ci-budgets.json`. It cannot fail a run:
   a slow PR should merge and say it was slow. Raise a budget deliberately, in
@@ -1123,7 +1130,7 @@ is no litellm dependency.
   smoke builds, and the docs link check. Tier 2 is `nightly.yml`: the full
   install path and the live-LLM cognition slice, too slow and too paid for the
   PR path, where a failure opens one issue rather than blocking a person.
-  Putting a good check in the wrong tier is how the ~95s baseline gets spent.
+  Putting a good check in the wrong tier is how the ~100s baseline gets spent.
 - **The CLI takes its shared flags one way, and two audits hold it there.**
   Agents type a CLI the way they type every other one, so `--room`, `--as`,
   `--json`, `--limit` and `--yes` are decorators in `mycelium/cli_options.py`
