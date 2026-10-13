@@ -43,6 +43,8 @@ def _read(schedule: schedules.Schedule, now: datetime | None = None) -> Schedule
     now = now or datetime.now(UTC)
     data = schedule.model_dump()
     every_s = data.pop("every_s")
+    # The hub's own bookkeeping about the owner's digest, not part of the schedule.
+    data.pop("pause_told", None)
     return ScheduleRead.model_validate(
         {
             **data,
@@ -123,7 +125,7 @@ async def update_schedule(
 ) -> ScheduleRead:
     """Change a schedule: its timing, prompt, check or task; pause, resume or renew it."""
     _require_room(room_name)
-    was_paused = _owned(request, room_name, name).paused
+    _owned(request, room_name, name)
     by = actor.bind_optional_actor(request, payload.updated_by, field="updated_by") or ""
     try:
         schedule = await schedules.update(
@@ -141,8 +143,8 @@ async def update_schedule(
         )
     except schedules.ScheduleError as err:
         raise _refuse(err) from err
-    if schedule.paused and not was_paused:
-        await schedules.tell_owner_paused(room_name, schedule)
+    # Someone else pausing it is told to the owner in its next wake digest,
+    # not now: nothing the hub does by itself wakes an agent.
     return _read(schedule)
 
 

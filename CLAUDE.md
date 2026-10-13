@@ -902,11 +902,11 @@ is no litellm dependency.
   said in the room; `schedule_changed` on the bus redraws the app. Every
   change records who made it (`updated_by`, from the token when there is
   one), and a pause keeps `paused_by`/`paused_at` until it is resumed, which
-  the Schedules tab shows. Pausing a schedule that isn't yours is the one
-  thing said about a schedule: the hub tells its owner in its own name (the
-  system actor, as the hold sweep's flag is), naming who paused it silently,
-  in the schedule's task thread or the room (`schedules.tell_owner_paused`).
-  Guardrails:
+  the Schedules tab shows. When someone pauses a schedule that isn't theirs,
+  nothing is posted and nobody is woken: the owner's next wake digest says it
+  once, on a `Schedule:` line with the command to resume
+  (`schedules.untold_pauses`, marked said with `pause_told` by the
+  herdr-wakes route), and a new pause is said again. Guardrails:
   a minimum interval, a per-agent cap, an expiry renewed by hand, and writing
   one needs the right to act as its owner.
 - **A row waits on its dependencies, derived and never stored.** A `work/`

@@ -25,9 +25,10 @@ found is handed to the agent with the wake.
 
 **Nothing a schedule does is said in the room.** A quiet run posts nothing, and
 a run that wakes reaches only its owner. What changed is published on the
-room's event bus (``schedule_changed``) so the app redraws its list. The one
-exception is anyone pausing a schedule that isn't theirs, which tells the owner
-(:func:`tell_owner_paused`): a run they don't know is stopped is a run missed.
+room's event bus (``schedule_changed``) so the app redraws its list. When
+someone pauses a schedule that isn't theirs, the owner hears it in its next
+wake digest, once (:func:`untold_pauses`), since a run it doesn't know is
+stopped is a run missed. Nothing is posted and nobody is woken for it.
 
 **Every change says who made it.** ``updated_by`` is the last writer, and
 ``paused_by``/``paused_at`` stay with a paused schedule until it is resumed.
@@ -131,6 +132,8 @@ class Schedule(BaseModel):
     #: paused schedule doesn't hide who stopped it.
     paused_by: str | None = None
     paused_at: datetime | None = None
+    #: Whether the owner's wake digest has said that someone else paused it.
+    pause_told: bool = False
     expires_at: datetime
     next_run: datetime | None = None
     last_run: datetime | None = None
@@ -489,6 +492,7 @@ async def update(
             schedule.paused = paused
             schedule.paused_by = (by or "unknown") if paused else None
             schedule.paused_at = now if paused else None
+            schedule.pause_told = False
             # Resuming starts the clock again rather than firing for the pause.
             retimed = retimed or not paused
         if retimed:
@@ -506,51 +510,37 @@ def paused_by_someone_else(schedule: Schedule) -> bool:
     return schedule.paused and by not in {"", "unknown", schedule.owner}
 
 
-async def tell_owner_paused(room: str, schedule: Schedule) -> bool:
-    """Tell a schedule's owner that someone else paused it, before a run is missed.
+def untold_pauses(room: str, handle: str) -> list[Schedule]:
+    """The schedules ``handle`` owns that someone else paused, which its wake
+    digest hasn't said yet."""
+    me = handle.lstrip("@").lower()
+    return [
+        s
+        for s in load(room).values()
+        if s.owner.lower() == me and paused_by_someone_else(s) and not s.pause_told
+    ]
 
-    Said in the schedule's task thread, or the room when it has none, by the
-    hub itself (the system actor, as the hold sweep's flag is), naming who
-    paused it silently and mentioning the owner so its next turn hears it. Never
-    in the pauser's name: they didn't write it, and with sign-in off their name
-    is only what the request claimed. The one thing about a schedule said in
-    the room: a run is not (see the module's docstring), but someone stopping
-    another's is. Returns whether it was said; with no live channel there is
-    nobody to tell.
-    """
-    from app.services import message_format, room_channels
-    from app.services.message_models import Kind
 
-    if not paused_by_someone_else(schedule):
-        return False
-    manager = room_channels.manager
-    managed = manager.get(room)
-    if managed is None:
-        return False
+def pause_line(schedule: Schedule, room: str, now: datetime) -> str:
+    """How the owner's wake digest says someone else paused its schedule."""
     by = (schedule.paused_by or "").partition("#")[0]
-    thread = _thread_of(room, schedule)
-    text = (
-        f'@{schedule.owner}, your schedule "{schedule.name}" was paused by @~{by}. '
-        f"It won't run until it's resumed: `mycelium schedule resume {schedule.name} --room {room}`."
+    when = f" {_ago(schedule.paused_at, now)}" if schedule.paused_at else ""
+    return (
+        f'"{schedule.name}" was paused by @{by}{when}. '
+        f"Resume: mycelium schedule resume {schedule.name} --room {room}"
     )
-    envelope = message_format.build_envelope(
-        kind=Kind.exchange,
-        episode=thread or message_format.live_episode_urn(room),
-        sender=message_format.SYSTEM_ACTOR_ID,
-        sender_role=message_format.SYSTEM_ACTOR_ROLE,
-        topic=message_format.topic_urn(room),
-        payload_type="message",
-    )
-    await managed.post(envelope, text, list_write=True)
-    manager.enqueue_herdr_wakes_for_mentions(
-        room, text, sender=message_format.SYSTEM_ACTOR_ID, episode=thread
-    )
-    if thread:
-        message_id = envelope.header.message.id if envelope.header.message else None
-        await manager.raise_ping(
-            room, episode=thread, sender=message_format.SYSTEM_ACTOR_ID, message_id=message_id
-        )
-    return True
+
+
+async def mark_pauses_told(room: str, names: list[str]) -> None:
+    """Remember that the owner's digest has said these pauses, so it says each once."""
+    if not names:
+        return
+    async with _lock(room):
+        schedules = load(room)
+        for name in names:
+            if name in schedules:
+                schedules[name].pause_told = True
+        _save(room, schedules)
 
 
 async def remove(room: str, name: str) -> None:
