@@ -8,6 +8,7 @@ import { Minus, Plus } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   centerOn,
+  clampPan,
   fitView,
   inView,
   isFit,
@@ -68,10 +69,11 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
   const [frame, setFrame] = useState<Size>(NONE);
   const [natural, setNatural] = useState<Size>(NONE);
   const stage = useMemo(() => stageOf(frame, natural), [frame, natural]);
-  // Null is fit: whatever fit is for the frame as it stands, so a new window
-  // size refits rather than leaving a view measured against the old one.
+  // Null is fit: whatever fit is for the frame as it stands. A zoomed view is
+  // clamped to the frame as it stands too, so a window resized while zoomed in
+  // keeps the zoom without showing empty space past an edge.
   const [zoomed, setZoomed] = useState<View | null>(null);
-  const view = zoomed ?? fitView(stage);
+  const view = zoomed ? clampPan(zoomed, stage) : fitView(stage);
   const [dragging, setDragging] = useState(false);
   const press = useRef<{ id: number; startX: number; startY: number; x: number; y: number; moved: boolean } | null>(null);
   // The press that ended last was a drag, so the click that follows it isn't one.
@@ -81,7 +83,7 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
   const update = useCallback(
     (next: (v: View, st: Stage) => View) =>
       setZoomed((z) => {
-        const v = next(z ?? fitView(stage), stage);
+        const v = next(z ? clampPan(z, stage) : fitView(stage), stage);
         return isFit(v) ? null : v;
       }),
     [stage],
@@ -107,17 +109,15 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
     if (img) setNatural({ width: img.naturalWidth, height: img.naturalHeight });
   };
 
-  // The frame's size is the window's, so it's watched; a change refits. An
-  // image already loaded (from the cache) fired its load before this.
+  // The frame's size is the window's, so it's watched. An image already
+  // loaded (from the cache) fired its load before this.
   useEffect(() => {
     const el = frameRef.current;
     if (!el) return;
-    const measure = () => {
+    const measure = () =>
       setFrame((was) =>
         was.width === el.clientWidth && was.height === el.clientHeight ? was : { width: el.clientWidth, height: el.clientHeight },
       );
-      setZoomed(null);
-    };
     measure();
     if (imgRef.current?.complete) measureImage();
     if (typeof ResizeObserver === "undefined") return;

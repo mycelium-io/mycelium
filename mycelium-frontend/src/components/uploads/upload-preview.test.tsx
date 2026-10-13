@@ -91,6 +91,22 @@ describe("<UploadPreviewDialog /> in a set", () => {
     expect(screen.getByText("2 of 2")).toBeInTheDocument();
   });
 
+  it("keeps one window size while stepping between an image and another kind", () => {
+    const notes: Upload = { ...image(4), kind: "audio", filename: "notes.mp3", key: "uploads/notes.mp3" };
+    render(<Opened set={[SET[0], notes]} first={SET[0]} />);
+    const size = () => screen.getByRole("dialog").className.includes("h-[calc(100dvh-2rem)]");
+    expect(size()).toBe(true);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "ArrowRight" });
+    expect(screen.getByText("2 of 2")).toBeInTheDocument();
+    expect(size()).toBe(true);
+  });
+
+  it("opens a file with no image beside it at its usual size", () => {
+    const notes: Upload = { ...image(4), kind: "audio", filename: "notes.mp3", key: "uploads/notes.mp3" };
+    render(<Opened set={[notes]} first={notes} />);
+    expect(screen.getByRole("dialog").className).toContain("max-h-[90vh]");
+  });
+
   it("shows no arrows or strip for a single file", () => {
     render(<Opened set={[SET[0]]} first={SET[0]} />);
     expect(screen.queryByRole("button", { name: "Next file" })).toBeNull();
