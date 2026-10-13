@@ -44,7 +44,14 @@ import {
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
-import { HUB_SETTINGS, resetRoomSettingMock, roomSettings, setRoomSettingMock } from "./settings";
+import {
+  hubSettingsRead,
+  resetRoomSettingMock,
+  restartHubMock,
+  roomSettings,
+  saveHubSettings,
+  setRoomSettingMock,
+} from "./settings";
 import { handleUploads } from "./uploads";
 import { handleVoice } from "./voice";
 import { VERIFIER, handleVerifierFlags, verifierSettingsRead } from "./verifier";
@@ -488,7 +495,16 @@ export async function handleMock(req: Request): Promise<Response | null> {
     });
 
   // ── /api/hub ────────────────────────────────────────────────────────────────
-  if (rest[0] === "hub" && rest[1] === "settings" && method === "GET") return json(HUB_SETTINGS);
+  if (rest[0] === "hub" && rest[1] === "settings" && method === "GET") return json(hubSettingsRead());
+  if (rest[0] === "hub" && rest[1] === "settings" && method === "PATCH") {
+    const { changes } = (await readJson(req)) as { changes?: Record<string, unknown> };
+    const { status, body } = saveHubSettings(changes ?? {});
+    return json(body, status);
+  }
+  if (rest[0] === "hub" && rest[1] === "restart" && method === "POST") {
+    restartHubMock();
+    return json({ status: "restarting" }, 202);
+  }
 
   // ── /api/verifier ───────────────────────────────────────────────────────────
   // On for the hub and added to checkout, on its starting model. Learn runs in

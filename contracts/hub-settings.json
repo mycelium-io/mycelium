@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "The hub settings the app's Hub page may change, and how. A change is",
+    "written to config.toml by the hub running the CLI's own `mycelium config",
+    "set <key> -` (value on stdin), so validation and the .env rendering stay",
+    "one path. `type` is how the page edits it; a `secret` is replaced or",
+    "cleared and never read back. `app_owned` keys are set by the desktop app's",
+    "own switches, which it passes at every start and which win over",
+    "config.toml, so on a desktop hub the page sends people to the app's",
+    "settings for them instead. A restart is asked for by writing",
+    "`restart_marker` in the hub's data folder and shutting down; the desktop",
+    "supervisor then starts it again with config.toml read afresh. Bound to",
+    "fastapi-backend/app/services/hub_config.py, the CLI's MyceliumConfig and",
+    "desktop supervisor, and mycelium-frontend/src/lib/hub-settings.ts.",
+    "Asserted by fastapi-backend/tests/test_hub_config.py,",
+    "mycelium-cli/tests/test_hub_settings_contract.py and",
+    "mycelium-frontend/src/lib/hub-settings.contract.test.ts."
+  ],
+  "version": 1,
+  "restart_marker": ".hub-restart-requested",
+  "editable": {
+    "llm.model": { "type": "text" },
+    "llm.base_url": { "type": "text" },
+    "llm.api_key": { "type": "secret" },
+    "verifier.enabled": { "type": "bool" },
+    "voice.enabled": { "type": "bool", "app_owned": true },
+    "voice.model": { "type": "choice", "choices": ["fast", "accurate"], "app_owned": true },
+    "telemetry.send_product_analytics": { "type": "bool", "app_owned": true },
+    "worker.tools": { "type": "bool" },
+    "worker.pi_timeout_s": { "type": "number" },
+    "worker.max_turns_per_room": { "type": "int" },
+    "board.dependency_gate": { "type": "bool" }
+  }
+}

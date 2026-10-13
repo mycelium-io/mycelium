@@ -7,6 +7,7 @@
  *  shows a real refusal for a value the hub would refuse. */
 
 import type { HubSettings, RoomSetting } from "@/lib/api";
+import { HUB_EDITABLE } from "@/lib/hub-settings";
 
 export const HUB_SETTINGS: HubSettings = {
   model: { model: "anthropic/claude-sonnet-4-6", provider: "anthropic", has_key: true, custom_endpoint: false },
@@ -27,7 +28,84 @@ export const HUB_SETTINGS: HubSettings = {
   patterns_inline: true,
   sign_in: false,
   voice: { enabled: true, model: "fast" },
+  verifier: true,
+  // A desktop hub: whoever reaches it may change it, and the app sets voice
+  // and usage counts itself.
+  editing: {
+    may_edit: true,
+    reason: null,
+    can_restart: true,
+    app_owned: ["voice.enabled", "voice.model", "telemetry.send_product_analytics"],
+    pending: [],
+    values: {},
+  },
 };
+
+/** What the mock hub's settings are set to, as config.toml would hold them. */
+const HUB_VALUES: Record<string, unknown> = {
+  "llm.model": HUB_SETTINGS.model.model,
+  "llm.base_url": "",
+  "llm.api_key": HUB_SETTINGS.model.has_key,
+  "verifier.enabled": HUB_SETTINGS.verifier,
+  "voice.enabled": HUB_SETTINGS.voice.enabled,
+  "voice.model": HUB_SETTINGS.voice.model,
+  "telemetry.send_product_analytics": HUB_SETTINGS.share_usage,
+  "worker.tools": HUB_SETTINGS.workers.tools,
+  "worker.pi_timeout_s": HUB_SETTINGS.workers.turn_timeout_s,
+  "worker.max_turns_per_room": HUB_SETTINGS.workers.max_turns_per_room,
+  "board.dependency_gate": HUB_SETTINGS.dependency_gate,
+};
+
+/** GET /hub/settings: what it runs with, and what was saved since it started. */
+export function hubSettingsRead(): HubSettings {
+  return { ...HUB_SETTINGS, editing: { ...HUB_SETTINGS.editing, values: { ...HUB_VALUES } } };
+}
+
+/** PATCH /hub/settings, checked the way the hub checks it: every change before
+ *  any is saved. */
+export function saveHubSettings(changes: Record<string, unknown>): { status: number; body: unknown } {
+  for (const [key, value] of Object.entries(changes)) {
+    const spec = HUB_EDITABLE[key];
+    if (!spec) return { status: 422, body: { detail: `Not a setting the app can change: ${key}` } };
+    if (HUB_SETTINGS.editing.app_owned.includes(key)) {
+      return { status: 422, body: { detail: `${key} is set in the app's own settings, which win over config.toml` } };
+    }
+    if (spec.type === "bool" && typeof value !== "boolean") return { status: 422, body: { detail: `${key} is on or off` } };
+    if (spec.type === "int" || spec.type === "number") {
+      if (typeof value !== "number") return { status: 422, body: { detail: `${key} is a number` } };
+      if (spec.type === "int" && !Number.isInteger(value)) return { status: 422, body: { detail: `${key} is a whole number` } };
+      if (value <= 0) return { status: 422, body: { detail: `${key} is more than 0` } };
+    }
+  }
+  for (const [key, value] of Object.entries(changes)) {
+    HUB_VALUES[key] = HUB_EDITABLE[key].type === "secret" ? Boolean(value) : value;
+    if (!HUB_SETTINGS.editing.pending.includes(key)) HUB_SETTINGS.editing.pending.push(key);
+  }
+  HUB_SETTINGS.editing.pending.sort();
+  return { status: 200, body: { saved: Object.keys(changes), pending: HUB_SETTINGS.editing.pending, restart_needed: true } };
+}
+
+/** POST /hub/restart: the hub comes back a moment later running what was saved. */
+export function restartHubMock(): void {
+  // The mock answers on the server, where there is no window.
+  setTimeout(() => {
+    const v = HUB_VALUES;
+    HUB_SETTINGS.model = {
+      ...HUB_SETTINGS.model,
+      model: (v["llm.model"] as string) || null,
+      has_key: Boolean(v["llm.api_key"]),
+      custom_endpoint: Boolean(v["llm.base_url"]),
+    };
+    HUB_SETTINGS.verifier = Boolean(v["verifier.enabled"]);
+    HUB_SETTINGS.workers = {
+      tools: Boolean(v["worker.tools"]),
+      turn_timeout_s: Number(v["worker.pi_timeout_s"]),
+      max_turns_per_room: Number(v["worker.max_turns_per_room"]),
+    };
+    HUB_SETTINGS.dependency_gate = Boolean(v["board.dependency_gate"]);
+    HUB_SETTINGS.editing.pending = [];
+  }, 1_500);
+}
 
 interface Spec {
   id: string;

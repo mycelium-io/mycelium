@@ -1864,6 +1864,11 @@ mycelium config apply
 mycelium engine create verifier --kind verifier --room sprint-plan
 ```
 
+You can also turn it on in the app, under **Settings**, then **Hub**, when the
+hub runs in the desktop app on your computer, or when sign-in is on and you're
+signed in as a person. The change applies when the hub restarts, and on the
+desktop app the page has a button that restarts it.
+
 In the app, add it from **Members**, then **Add**, then **Engine**. Unlike the
 other engines it doesn't wait to be mentioned. Once a room has it, it reads
 every message an agent posts there. It doesn't check messages from people or

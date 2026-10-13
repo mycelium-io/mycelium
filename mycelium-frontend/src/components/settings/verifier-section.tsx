@@ -22,7 +22,15 @@ function usd(amount: number): string {
   return amount < 1.5 ? "About $1" : `About $${Math.round(amount)}`;
 }
 
-export function VerifierSection({ configKey }: { configKey: (name: string) => React.ReactNode }) {
+export function VerifierSection({
+  configKey,
+  editor,
+}: {
+  configKey: (name: string) => React.ReactNode;
+  /** Its on/off switch and what goes under it, when this caller may change
+   *  the hub (`useHubSettingControl`); shown read-only otherwise. */
+  editor?: { control: React.ReactNode; below: React.ReactNode; pending: boolean };
+}) {
   const { data, mutate } = useSWR("verifier-settings", fetchVerifierSettings, {
     revalidateOnFocus: false,
     refreshInterval: (latest?: VerifierSettings) => (latest?.learning.state === "running" ? LEARNING_POLL_MS : 0),
@@ -57,14 +65,16 @@ export function VerifierSection({ configKey }: { configKey: (name: string) => Re
         label="Verifier"
         help={
           <>
-            {data.enabled
+            {data.enabled || editor
               ? "Adds a short note under a message when it can't find what an agent claimed, like an approval."
               : "Off. Turn it on on the hub's machine with mycelium config set verifier.enabled true."}{" "}
             {configKey("verifier.enabled")}
           </>
         }
+        tag={editor?.pending ? "saved, applies after a restart" : undefined}
+        below={editor?.below}
       >
-        <Value>{data.enabled ? "on" : "off"}</Value>
+        {editor ? editor.control : <Value>{data.enabled ? "on" : "off"}</Value>}
       </Row>
       <Row
         id="hub.verifier-rooms"
