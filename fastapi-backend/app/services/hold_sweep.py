@@ -198,6 +198,9 @@ async def sweep(now: datetime | None = None) -> list[tuple[str, str, str]]:
     """End or flag every hold the evidence says to. Returns ``(room, key, what)``."""
     now = now or datetime.now(UTC)
     done: list[tuple[str, str, str]] = []
+    # Each holder is read once per sweep, however many rows it holds, so the
+    # closed-pane count goes up once per sweep.
+    signals: dict[tuple[str, str], str] = {}
     for room in list_room_names():
         room_dir = get_room_dir(room)
         for namespace in assignments.ASSIGNABLE_NAMESPACES:
@@ -208,7 +211,9 @@ async def sweep(now: datetime | None = None) -> list[tuple[str, str, str]]:
                 if not who:
                     continue
                 try:
-                    what = await _one(room, key, meta, content, who, now)
+                    if (room, who) not in signals:
+                        signals[room, who] = _read(room, who)
+                    what = await _one(room, key, meta, content, who, signals[room, who], now)
                 except Exception:  # one row must not stop the others
                     logger.exception("hold sweep failed on %s/%s", room, key)
                     continue
@@ -217,21 +222,29 @@ async def sweep(now: datetime | None = None) -> list[tuple[str, str, str]]:
     return done
 
 
-async def _one(
-    room: str, key: str, meta: dict, content: str, who: str, now: datetime
-) -> str | None:
+def _read(room: str, who: str) -> str:
+    """``who``'s signal for this sweep, counting the sweeps in a row its pane
+    has read closed."""
     seen = signal_of(room, who)
+    if seen == "closed":
+        _closed_sweeps[room, who] = _closed_sweeps.get((room, who), 0) + 1
+    else:
+        _closed_sweeps.pop((room, who), None)
+    return seen
+
+
+async def _one(
+    room: str, key: str, meta: dict, content: str, who: str, seen: str, now: datetime
+) -> str | None:
     runtime = assignments.RUNTIME_AUTHOR
     # While an agent restarts, a runner can report only its old, closed pane
     # until the new one is mapped, so a pane must read closed on two sweeps in
     # a row before the row is released.
     if seen == "closed":
-        _closed_sweeps[(room, who)] = _closed_sweeps.get((room, who), 0) + 1
-        if _closed_sweeps[(room, who)] >= CLOSED_SWEEPS:
+        if _closed_sweeps.get((room, who), 0) >= CLOSED_SWEEPS:
             await _end(room, key, f"@{who}'s herdr pane closed", "released", runtime, now)
             return "released"
         return None
-    _closed_sweeps.pop((room, who), None)
     last = last_activity(room, key, meta) or now
     quiet = now - last
     if seen == "unseen" and quiet >= timedelta(hours=FALLBACK_HOURS):
