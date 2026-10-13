@@ -15,9 +15,12 @@ import {
   useRoomRowNames,
   useRoomSettings,
   useRoomThreads,
+  useRoomVerifierFlags,
   type RowNaming,
   type ThreadOwner,
 } from "@/lib/room-data";
+import { claimNeedles } from "@/lib/verifier";
+import { VerifierLines } from "@/components/verifier-line";
 import { boardMovesInChat } from "@/lib/room-settings";
 import {
   NOTICE_TYPE,
@@ -325,6 +328,11 @@ function isActivity(event: Event): boolean {
  * request is the same: its merge and its CI going red are news, and the rest
  * of what GitHub says (a review asked for, CI green again) is the task's own.
  */
+/** The verifier's notice about a message: drawn under that message, never as a row. */
+function isVerifierCheck(event: Event): boolean {
+  return event.type === NOTICE_TYPE && event.raw.subkind === "check";
+}
+
 function isAlsoInChat(event: Event, boardMoves: ReadonlySet<string>): boolean {
   if (event.type === PING_TYPE) return true;
   if (event.type !== NOTICE_TYPE) return false;
@@ -639,6 +647,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // six characters of URN. Off the room's shared memory read, so it costs
   // nothing; a thread no row is bound to simply has no name to give.
   const threads = useRoomThreads(roomName);
+  // The verifier's lines, by the message each goes under.
+  const { byMessage: flagsByMessage, refresh: refreshFlags } = useRoomVerifierFlags(roomName);
   // And what each row is called, so a notice, a ping and a memory push about one
   // task all print its name rather than three shapes of its key.
   const rowNames = useRoomRowNames(roomName);
@@ -775,6 +785,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     // A schedule ran or changed: the Schedules tab's business, never a line here.
     if (msg.type === "schedule_changed") return;
     const event = parseEvent(msg);
+    // The verifier raised a line or someone dismissed one: re-read the flags.
+    if (isVerifierCheck(event)) {
+      refreshFlags();
+      return;
+    }
     setResponding((prev) => settleActivity(prev, event.sender));
     setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));
     if (event.type === "memory_changed") onMemoryChanged?.();
@@ -792,9 +807,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // The room's own timeline, split by what it is: a thread's prose is dropped
   // (it is not lost, it is placed, and the pane the ping opens is where it
   // reads), everything the room raised about a task goes up to that task's rail
-  // row, and what is left in the feed is what people actually said.
+  // row, and what is left in the feed is what people actually said. The
+  // verifier's `check` notice is drawn under the message it is about, so it
+  // is neither a row nor rail activity of its own.
   const inChannel = useMemo(
-    () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type) && !inAThread(e, roomName)),
+    () =>
+      events.filter(
+        (e) => CHANNEL_VIEW_TYPES.has(e.type) && !inAThread(e, roomName) && !isVerifierCheck(e),
+      ),
     [events, roomName],
   );
 
@@ -1546,6 +1566,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
               // The row's own share of the open find: whether to mark its prose
               // at all, and whether it is the hit being stood on.
               const hit = matchSet.has(ev.id) ? { query: needles, active: ev.id === activeId } : undefined;
+              const flags = ev.messageId ? flagsByMessage.get(ev.messageId) : undefined;
               return (
                 <MessageMenu key={ev.id} roomName={roomName} messageId={ev.messageId} content={ev.content} sender={ev.sender} wire={ev.wire}>
                 <div
@@ -1580,12 +1601,19 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                         <Ago at={ev.at} className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint" />
                       </div>
                     )}
-                    <MessageBody content={ev.content} hit={hit} onOpenMemory={onOpenMemory} roomName={roomName} />
+                    <MessageBody
+                      content={ev.content}
+                      hit={hit}
+                      claims={flags ? claimNeedles(ev.content, flags.flatMap((f) => f.quotes)) : undefined}
+                      onOpenMemory={onOpenMemory}
+                      roomName={roomName}
+                    />
                     {ev.edited && (
                       <span className="text-micro text-faint" title="revised by a later message">
                         (edited)
                       </span>
                     )}
+                    {flags && <VerifierLines roomName={roomName} flags={flags} onChanged={refreshFlags} />}
                   </div>
                   <MessageActions
                     roomName={roomName}

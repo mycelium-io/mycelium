@@ -39,6 +39,7 @@ import {
   fetchSchedules,
   fetchSkills,
   fetchUploads,
+  fetchVerifierFlags,
   logFetchError,
   saveRoomFolders,
   searchMessages,
@@ -57,6 +58,7 @@ import {
   type ScheduleList,
   type Skill,
   type UploadList,
+  type VerifierFlag,
 } from "@/lib/api";
 import { floorsByHandle } from "@/lib/floors";
 import { latestPreview } from "@/lib/room-preview";
@@ -81,6 +83,9 @@ const POLL = {
   settings: 60_000,
   // A run is pushed (`schedule_changed`); this only catches a missed push.
   schedules: 30_000,
+  // A flag and its dismissal arrive as `check` notices, which re-read this;
+  // the poll only catches a missed one.
+  verifierFlags: 60_000,
   uploads: 30_000,
   // Read only while a conductor summon is being written; a room's own flows
   // change about as often as its skills.
@@ -157,7 +162,8 @@ type RoomResource =
   | "protocols"
   | "episodes"
   | "status"
-  | "a2a";
+  | "a2a"
+  | "verifier-flags";
 
 /** A null key parks the hook: a room-less render fetches nothing. */
 function roomKey(room: string, resource: RoomResource, ...rest: (string | number)[]) {
@@ -527,6 +533,25 @@ export function useRoomSchedules(room: string, opts: RoomQueryOptions = {}) {
     room, "schedules", fetchSchedules, NO_SCHEDULES, POLL.schedules, opts,
   );
   return { schedules: data.schedules, checks: data.checks ?? {}, loading, refresh };
+}
+
+const NO_FLAGS: VerifierFlag[] = [];
+
+/** The verifier's lines still showing, by the message each goes under. A flag
+ *  someone said is fine is left out. */
+export function useRoomVerifierFlags(room: string, opts: RoomQueryOptions = {}) {
+  const { data, refresh } = useRoomQuery(
+    room, "verifier-flags", fetchVerifierFlags, NO_FLAGS, POLL.verifierFlags, opts,
+  );
+  const byMessage = useMemo(() => {
+    const out = new Map<string, VerifierFlag[]>();
+    for (const flag of data) {
+      if (flag.state !== "shown") continue;
+      out.set(flag.message_id, [...(out.get(flag.message_id) ?? []), flag]);
+    }
+    return out;
+  }, [data]);
+  return { byMessage, refresh };
 }
 
 /** Handles that own a live (not expired) schedule, for the Members rail's clock. */

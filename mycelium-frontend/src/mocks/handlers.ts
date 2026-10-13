@@ -47,6 +47,7 @@ import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./pattern
 import { HUB_SETTINGS, resetRoomSettingMock, roomSettings, setRoomSettingMock } from "./settings";
 import { handleUploads } from "./uploads";
 import { handleVoice } from "./voice";
+import { VERIFIER, handleVerifierFlags, verifierSettingsRead } from "./verifier";
 import type {
   A2aBridgeState,
   MemoryGraph,
@@ -488,6 +489,19 @@ export async function handleMock(req: Request): Promise<Response | null> {
 
   // ── /api/hub ────────────────────────────────────────────────────────────────
   if (rest[0] === "hub" && rest[1] === "settings" && method === "GET") return json(HUB_SETTINGS);
+
+  // ── /api/verifier ───────────────────────────────────────────────────────────
+  // On for the hub and added to checkout, on its starting model. Learn runs in
+  // steps, one per read, so the settings page shows it moving.
+  if (rest[0] === "verifier") {
+    if (rest[1] === "settings" && method === "GET") return json(verifierSettingsRead());
+    if (rest[1] === "learn" && method === "POST") {
+      if (VERIFIER.learning.state === "running") return json({ detail: "Learning is already running" }, 409);
+      VERIFIER.learning = { state: "running", done: 0, total: VERIFIER.estimate.messages, error: null };
+      return json(verifierSettingsRead(), 202);
+    }
+    return null;
+  }
 
   // ── /api/voice ──────────────────────────────────────────────────────────────
   if (rest[0] === "voice") return handleVoice(req, rest);
@@ -962,6 +976,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
 
     case "uploads":
       return handleUploads(req, roomName, fx, sub);
+
+    case "verifier":
+      return handleVerifierFlags(req, roomName, fx, sub);
 
     case "schedules": {
       // The room's schedules, from the fixture; writes are session-local.

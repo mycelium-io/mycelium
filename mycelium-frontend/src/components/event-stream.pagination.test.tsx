@@ -25,6 +25,7 @@ vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn(),
   fetchUsers: vi.fn().mockResolvedValue([]),
   fetchWireHistory: vi.fn().mockResolvedValue([]),
+  fetchVerifierFlags: vi.fn().mockResolvedValue([]),
   fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchRoomSettings: vi.fn().mockResolvedValue([]),

@@ -39,6 +39,9 @@ export const MessageBody = memo(MessageBodyImpl, sameBody);
 interface MessageBodyProps {
   content: string;
   hit?: Highlight;
+  /** Words the verifier couldn't confirm, underlined. A find hit draws instead
+   *  while one is open. */
+  claims?: string[];
   onOpenMemory?: (key: string) => void;
   /** The room the message is in. With it, the files the message links are
    *  drawn under it and a link to one opens its preview. */
@@ -55,11 +58,17 @@ function sameBody(a: MessageBodyProps, b: MessageBodyProps): boolean {
     a.onOpenMemory === b.onOpenMemory &&
     a.roomName === b.roomName &&
     a.hit?.query === b.hit?.query &&
-    a.hit?.active === b.hit?.active
+    a.hit?.active === b.hit?.active &&
+    (a.claims ?? []).join("\n") === (b.claims ?? []).join("\n")
   );
 }
 
-function MessageBodyImpl({ content, hit, onOpenMemory, roomName }: MessageBodyProps) {
+function MessageBodyImpl({ content, hit, claims, onOpenMemory, roomName }: MessageBodyProps) {
+  const claimKey = (claims ?? []).join("\n");
+  const marks = useMemo<Highlight | undefined>(
+    () => hit ?? (claimKey ? { query: claimKey.split("\n"), variant: "claim" } : undefined),
+    [hit, claimKey],
+  );
   const ref = useRef<HTMLDivElement>(null);
   const [overflows, setOverflows] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -120,7 +129,7 @@ function MessageBodyImpl({ content, hit, onOpenMemory, roomName }: MessageBodyPr
         <MarkdownContent
           className="contrast text-body leading-relaxed"
           onLinkClick={onOpenMemory || attached.length ? openLink : undefined}
-          highlight={hit}
+          highlight={marks}
         >
           {prose}
         </MarkdownContent>

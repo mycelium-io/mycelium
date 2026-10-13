@@ -763,6 +763,80 @@ export async function deleteSchedule(roomName: string, name: string): Promise<vo
   await apiFetch<void>(schedulePath(roomName, name), { method: "DELETE" });
 }
 
+// ── Verifier ─────────────────────────────────────────────────────────────────
+// The engine that checks what agents say about approvals and merges against the
+// room's records, and the lines it adds under messages (`routes/verifier.py`).
+
+/** One record the verifier looked at, listed by *Show why*. */
+export interface VerifierChecked {
+  what: string;
+  found: string;
+  /** The message or notice it found, when there is one. */
+  id?: string | null;
+  at?: string | null;
+}
+
+/** A claim the verifier couldn't confirm, drawn as a line under its message. */
+export interface VerifierFlag {
+  flag_id: string;
+  /** The message it goes under: its id in the room's history read. */
+  message_id: string;
+  key: string;
+  about: string;
+  by: string;
+  claim: "approval" | "open";
+  ref: string;
+  /** The line to show, written by the verifier. */
+  line: string;
+  /** True when the records say the opposite; false when nothing was found. */
+  sure: boolean;
+  /** The exact words to underline. */
+  quotes: string[];
+  sentence: string;
+  why?: string;
+  checked?: VerifierChecked[];
+  state: "shown" | "fine";
+  fine_by?: string | null;
+  at: string;
+}
+
+export interface VerifierSettings {
+  enabled: boolean;
+  /** The rooms that added the verifier. */
+  rooms: string[];
+  model: string;
+  using: "starting" | "learned" | "none";
+  /** Messages it learned from, or null on the starting model. */
+  learned: number | null;
+  answers_since_learned: number;
+  estimate: { messages: number; approx_tokens: number; approx_usd: number };
+  learning: { state: "idle" | "running" | "done" | "failed"; done: number; total: number; error?: string | null };
+}
+
+export async function fetchVerifierFlags(roomName: string): Promise<VerifierFlag[]> {
+  return apiFetch<VerifierFlag[]>(`${roomApiPath(roomName)}/verifier/flags`, { cache: "no-store", fallback: [] });
+}
+
+/** Someone says a flagged claim is fine: the line goes for everyone, and the
+ *  answer is kept for the verifier to learn from. */
+export async function markVerifierFlagFine(roomName: string, flagId: string, by?: string): Promise<VerifierFlag> {
+  return apiFetch<VerifierFlag>(`${roomApiPath(roomName)}/verifier/flags/${encodeURIComponent(flagId)}/fine`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ by }),
+  });
+}
+
+export async function fetchVerifierSettings(): Promise<VerifierSettings> {
+  return apiFetch<VerifierSettings>("/api/verifier/settings", { cache: "no-store" });
+}
+
+/** Start learning from the rooms it checks. Refused (409) when no room has
+ *  added it, or a run is already going. */
+export async function startVerifierLearn(): Promise<VerifierSettings> {
+  return apiFetch<VerifierSettings>("/api/verifier/learn", { method: "POST" });
+}
+
 // ── Uploads ──────────────────────────────────────────────────────────────────
 // A file the room keeps: an `uploads/<name>` memory plus the bytes it names.
 // Linked from chat as `[[uploads/<name>]]`; the bytes are at `url`, sandboxed.
@@ -1090,7 +1164,8 @@ export type EngineKind =
   | "hello"
   | "conductor"
   | "persona"
-  | "worker";
+  | "worker"
+  | "verifier";
 
 /** Invite a first-party cognition engine (aligner / synthesizer / hello) into a room.
  *  Engines are backend-owned — registration is just a manifest write with no
