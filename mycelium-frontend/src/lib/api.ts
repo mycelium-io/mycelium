@@ -471,19 +471,21 @@ export const MEMORIES_MAX = 5000;
 
 /** Every memory in a room (or under `prefix`), newest first, up to `MEMORIES_MAX`. */
 export async function fetchMemories(roomName: string, prefix?: string): Promise<Memory[]> {
-  const all: Memory[] = [];
-  while (all.length < MEMORIES_MAX) {
-    const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT), offset: String(all.length) });
+  // Pages are offsets into a newest-first list, so a write between two calls
+  // shifts the next page by one: keyed, a memory read twice is kept once.
+  const byKey = new Map<string, Memory>();
+  for (let offset = 0; offset < MEMORIES_MAX; offset += MEMORIES_PAGE_LIMIT) {
+    const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT), offset: String(offset) });
     if (prefix) params.set("prefix", prefix);
     const page = await apiFetch<Memory[]>(`${roomApiPath(roomName)}/memory?${params}`, {
       cache: "no-store",
       fallback: [],
       guard: isArray as (d: unknown) => d is Memory[],
     });
-    all.push(...page);
+    for (const memory of page) if (!byKey.has(memory.key)) byKey.set(memory.key, memory);
     if (page.length < MEMORIES_PAGE_LIMIT) break;
   }
-  return all;
+  return [...byKey.values()].slice(0, MEMORIES_MAX);
 }
 
 /** One memory by key. Returns null when it isn't there (or the read failed). */
