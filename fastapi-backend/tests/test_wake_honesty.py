@@ -125,6 +125,18 @@ async def test_a_task_given_to_the_agent_needs_no_message(handing, client: Async
     assert "gave you a task" in wake["prompt"]
 
 
+@pytest.mark.asyncio
+async def test_a_mention_of_a_handle_the_hub_has_never_seen_is_rung(handing, client: AsyncClient):
+    # No read position for it: counted from its last post (it has none), the
+    # mention is new, so the wake goes rather than being skipped.
+    handing.queued.append({"handle": "newcomer", "reason": "mention", "from": "hay", "id": "w4"})
+    newcomer = _said(4, "hay", "@newcomer welcome, can you look at the parser?", 30)
+    handing.log._records.append(newcomer)
+    assert not handing.log.knows("newcomer")
+    (wake,) = await _handed(client)
+    assert "@newcomer welcome" in wake["prompt"]
+
+
 def test_a_held_wake_keeps_the_sender_of_what_caused_it(monkeypatch):
     manager = room_channels.manager
     monkeypatch.setattr(manager, "_herdr_wakes", {})
