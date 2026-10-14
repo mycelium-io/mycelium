@@ -616,6 +616,43 @@ class RoomChannelManager:
         entry["id"] = secrets.token_hex(6)
         queue.append(entry)
 
+    def note_unrecorded_asks(
+        self, room: str, *, sender: str, text: str, episode: str | None = None
+    ) -> list[str]:
+        """Log, for each agent ``text`` asks, that no wake went for it.
+
+        A person's message posted while the room's channel isn't live is kept
+        and shown, but never reaches the transcript, which is where every
+        doorbell rings from (:meth:`ring_asked`) and what ``await`` and the
+        digest read. Nothing rings, so this says why in the wake log, read the
+        same way the persister would read the message. Returns the handles.
+        """
+        from app.services import wake_log
+        from app.services.asks import asked
+        from app.services.principals import classify_sender
+
+        envelope = message_format.build_envelope(
+            kind=Kind.exchange,
+            episode=episode or message_format.live_episode_urn(room),
+            sender=sender,
+            sender_role="human",
+            recipients=parse_mentions(text),
+            topic=message_format.topic_urn(room),
+            payload_type="message",
+        )
+        noted: list[str] = []
+        for handle, why in asked(serialize_content(envelope, extra={"content": text})).items():
+            if classify_sender(room, handle) != "agent":
+                continue
+            wake_log.dropped(
+                room,
+                {"handle": handle, "reason": why, "from": sender, "episode": episode},
+                "the room's channel isn't live, so the message isn't in the transcript yet",
+                outcome="unreached",
+            )
+            noted.append(handle)
+        return noted
+
     def ring_asked(
         self,
         room: str,

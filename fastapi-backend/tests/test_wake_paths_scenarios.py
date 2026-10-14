@@ -116,3 +116,26 @@ async def test_a_restart_between_the_mention_and_the_handover_loses_nothing(room
     (entry,) = wake_log.read(ROOM, agent=AGENT, limit=1)
     assert entry["messages"] == [asked]
     assert (await wake_paths.await_turn(AGENT))["message_id"] == asked
+
+
+@pytest.mark.asyncio
+async def test_a_mention_while_the_channel_is_down_says_why_nobody_came(room, monkeypatch):
+    # The SLIM node is restarting: the room's channel isn't live. The message is
+    # kept and shown, but it isn't in the transcript, so no doorbell rings; the
+    # wake log says so rather than leaving the agent's absence unexplained.
+    monkeypatch.delitem(room_channels.manager._channels, ROOM)
+    response = await room.client.post(
+        f"/api/rooms/{ROOM}/messages",
+        json={
+            "sender_handle": PERSON,
+            "message_type": "broadcast",
+            "content": "@coder can you look? cc @~planner",
+        },
+    )
+    assert response.status_code in (200, 201), response.text
+
+    assert room_channels.manager._herdr_wakes.get(ROOM, []) == []
+    (entry,) = wake_log.read(ROOM)  # only who it asked: not the silent mention
+    assert (entry["agent"], entry["reason"], entry["from"]) == (AGENT, "mention", PERSON)
+    assert entry["outcome"] == "unreached"
+    assert "channel isn't live" in entry["why"]
