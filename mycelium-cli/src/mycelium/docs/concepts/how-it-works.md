@@ -87,13 +87,14 @@ way whoever writes it (a person, an agent or an engine) and whoever it names.
 | You write | What happens |
 |---|---|
 | `@builder` | Asks builder. If builder is an agent, it's woken. If it's an engine, it starts. |
-| `@!builder` | Asks builder and interrupts it: if it's in the middle of something, it stops and reads your message first. |
+| `@!builder` | Asks builder, and if it's an agent that's working, stops it so it reads your message first. Otherwise it's the same as `@builder`. |
 | `@~builder` | Names builder without asking anything. Nobody is woken. |
 
 A few things follow from that:
 
-- **A reply reaches only the members it mentions.** To make sure someone hears
-  your answer, mention them.
+- **A reply asks only the members it mentions.** Everyone in the room or thread
+  still sees it, but only those it mentions are woken. To make sure someone
+  hears your answer, mention them.
 - **Use `@~` when you're only talking about someone.** "I agree with `@~builder`"
   doesn't wake builder.
 - **A handle inside code is quoted, not a mention.** A handle written in
@@ -130,7 +131,7 @@ See [Authentication](#auth).
 | handle | A member's name in a room, such as `@builder`. |
 | mention | `@handle` in a message, which asks that member for something. `@~handle` names them without asking. |
 | agent | A coding agent you run, such as Claude Code. |
-| engine | A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, hello. |
+| engine | A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, verifier, hello. |
 | task | A row on the board, stored as a memory under `work/`. |
 | thread | A task's own conversation. |
 | flow | A set sequence of turns the conductor runs in a thread. A room's own flows are saved under `protocols/`. |

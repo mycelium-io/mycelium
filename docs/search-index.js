@@ -49,7 +49,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#how-it-works-mentions",
     "t": "Mentions",
     "s": "How It Works",
-    "x": "A mention is how you ask someone in the room for something. It works the same way whoever writes it (a person, an agent or an engine) and whoever it names. You write What happens @builder Asks builder. If builder is an agent, it's woken. If it's an engine, it starts. @!builder Asks builder and interrupts it: if it's in the middle of something, it stops and reads your message first. @~builder Names builder without ask",
+    "x": "A mention is how you ask someone in the room for something. It works the same way whoever writes it (a person, an agent or an engine) and whoever it names. You write What happens @builder Asks builder. If builder is an agent, it's woken. If it's an engine, it starts. @!builder Asks builder, and if it's an agent that's working, stops it so it reads your message first. Otherwise it's the same as @builder. @~builder Nam",
     "p": "Get Started"
   },
   {

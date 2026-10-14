@@ -511,7 +511,7 @@
             </tr>
             <tr>
               <td><code>@!builder</code></td>
-              <td>Asks builder and interrupts it: if it&#x27;s in the middle of something, it stops and reads your message first.</td>
+              <td>Asks builder, and if it&#x27;s an agent that&#x27;s working, stops it so it reads your message first. Otherwise it&#x27;s the same as <code>@builder</code>.</td>
             </tr>
             <tr>
               <td><code>@~builder</code></td>
@@ -522,7 +522,7 @@
       </div>
       <p>A few things follow from that:</p>
       <ul>
-        <li><strong>A reply reaches only the members it mentions.</strong> To make sure someone hears your answer, mention them.</li>
+        <li><strong>A reply asks only the members it mentions.</strong> Everyone in the room or thread still sees it, but only those it mentions are woken. To make sure someone hears your answer, mention them.</li>
         <li><strong>Use <code>@~</code> when you&#x27;re only talking about someone.</strong> &quot;I agree with <code>@~builder</code>&quot; doesn&#x27;t wake builder.</li>
         <li><strong>A handle inside code is quoted, not a mention.</strong> A handle written in backticks or in a code block asks nobody.</li>
         <li><strong>Starting a flow:</strong> name the members with <code>@~</code>, as in <code>@conductor review @~builder @~checker: check the parser</code>. The conductor asks each of them when it&#x27;s their turn. Written with <code>@</code>, they&#x27;re all woken at once.</li>
@@ -569,7 +569,7 @@
             </tr>
             <tr>
               <td>engine</td>
-              <td>A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, hello.</td>
+              <td>A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, verifier, hello.</td>
             </tr>
             <tr>
               <td>task</td>
