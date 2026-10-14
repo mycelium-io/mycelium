@@ -181,6 +181,24 @@ describe("useFollowLatest", () => {
     expect(result.current.unread).toBe(0);
   });
 
+  it("doesn't read a jump's own smooth scroll as the reader leaving, so a reply landing meanwhile is followed", () => {
+    const { el, box } = region(0);
+    const { result, rerender } = follow(el, { rows: ids(3) });
+    scrollTo(el, 100);
+    // A smooth scroll: it starts, and doesn't arrive at once.
+    el.scrollTo = vi.fn() as unknown as typeof el.scrollTo;
+    act(() => result.current.jump());
+    scrollTo(el, 300); // on its way down
+    expect(result.current.atBottom).toBe(true);
+    box.height = 1600;
+    el.scrollTo = vi.fn(({ top: to }: ScrollToOptions) => {
+      el.scrollTop = Number(to);
+    }) as unknown as typeof el.scrollTo;
+    rerender({ rows: ids(4) });
+    expect(el.scrollTop).toBe(1200);
+    expect(result.current.atBottom).toBe(true);
+  });
+
   it("doesn't pull the reader off something they were taken to", () => {
     const { el, box } = region(0);
     const { rerender } = follow(el, { rows: ids(3), holding: true });

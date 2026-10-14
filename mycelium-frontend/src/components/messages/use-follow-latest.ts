@@ -12,6 +12,9 @@ export const AT_BOTTOM_PX = 64;
 /** How close to the top counts as asking for the page before. */
 export const NEAR_TOP_PX = 240;
 
+/** Longer than a smooth jump to the latest takes; past it, a scroll is the reader's. */
+const JUMP_SETTLE_MS = 1000;
+
 /** To the newest row, at once: animated, the scroll lands short of a tail that
  *  grows while it runs, and the list then reads the reader as having left it. */
 function toBottom(node: HTMLElement) {
@@ -33,7 +36,9 @@ export interface FollowOptions {
   holding?: boolean;
   /** Asked for when the reader nears the top, or when what has loaded doesn't
    *  fill the view: read back a page. A page that lands above keeps the reader
-   *  where they were. */
+   *  where they were. Asked on every scroll event near the top, so it must
+   *  ignore a call while a page is already on its way (the channel and a
+   *  thread both do). */
   onNearTop?: () => void;
   /** Changes when the reader sends: what they sent is where they are looking,
    *  so the view goes back to the newest row and follows from there. */
@@ -134,13 +139,27 @@ export function useFollowLatest(
   // is what a page landing above changes, so it is what puts them back.
   const fromBottom = useRef(0);
   const firstRow = useRef<string | null>(null);
+  // Set while a jump to the latest scrolls down, until it gets there (or gives
+  // up: a reader who scrolls during it has stopped the animation).
+  const arriving = useRef(false);
+  const arrivingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (arrivingTimer.current) clearTimeout(arrivingTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!el) return;
     const measure = () => {
       fromBottom.current = el.scrollHeight - el.scrollTop;
       if (el.scrollTop <= NEAR_TOP_PX) onNearTopRef.current?.();
-      setBottom(el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_PX);
+      const pinned = el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_PX;
+      // Jumping to the latest is still on its way down: its own scroll events
+      // aren't the reader leaving the bottom.
+      if (arriving.current) {
+        if (!pinned) return;
+        arriving.current = false;
+      }
+      setBottom(pinned);
     };
     el.addEventListener("scroll", measure, { passive: true });
     // On the tail, stay on it through anything that changes the list's size
@@ -230,6 +249,11 @@ export function useFollowLatest(
     atBottomRef.current = true;
     setAtBottom(true);
     setDetached(null);
+    arriving.current = true;
+    if (arrivingTimer.current) clearTimeout(arrivingTimer.current);
+    arrivingTimer.current = setTimeout(() => {
+      arriving.current = false;
+    }, JUMP_SETTLE_MS);
     node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
   }, []);
 
