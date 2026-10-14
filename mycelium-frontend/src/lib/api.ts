@@ -1685,6 +1685,52 @@ export async function fetchRoomMembers(roomName: string): Promise<RoomPresence> 
   };
 }
 
+/** How a person joined a room: made it, was added, posted in it, or was there
+ *  before rooms kept a list. */
+export type JoinedVia = "created" | "added" | "message" | "seeded";
+
+/** One of a room's people, as the hub recorded them joining. */
+export interface RoomPerson {
+  handle: string;
+  joined_at: string;
+  via: JoinedVia;
+}
+
+/** A handle that holds a task or is present, but is neither a person nor an agent here. */
+export interface RoomOther {
+  handle: string;
+  holds_task: boolean;
+  present: boolean;
+}
+
+/** Everyone in a room from the hub's records, not from who has posted. */
+export interface RoomPeople {
+  people: RoomPerson[];
+  agents: { handle: string; owner: string | null }[];
+  engines: { handle: string; owner: string | null }[];
+  others: RoomOther[];
+}
+
+export async function fetchRoomPeople(roomName: string): Promise<RoomPeople> {
+  const data = await apiFetch<Partial<RoomPeople>>(`${roomApiPath(roomName)}/members`, {
+    cache: "no-store",
+    fallback: {},
+  });
+  return {
+    people: Array.isArray(data.people) ? data.people : [],
+    agents: Array.isArray(data.agents) ? data.agents : [],
+    engines: Array.isArray(data.engines) ? data.engines : [],
+    others: Array.isArray(data.others) ? data.others : [],
+  };
+}
+
+/** Take a person out of a room. Throws `ApiError` on failure. */
+export async function removeRoomPerson(roomName: string, handle: string): Promise<void> {
+  await apiFetch<void>(`${roomApiPath(roomName)}/members/${encodeURIComponent(handle)}`, {
+    method: "DELETE",
+  });
+}
+
 // ── Principals (self-asserted user store) ─────────────────────────────────────
 
 export interface OwnedAgent {

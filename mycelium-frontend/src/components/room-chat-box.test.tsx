@@ -74,6 +74,12 @@ vi.mock("@/lib/api", async (importOriginal) => ({
     ],
     floors: [],
   }),
+  fetchRoomPeople: vi.fn().mockResolvedValue({
+    people: [{ handle: "sam", joined_at: "2026-10-01T00:00:00Z", via: "message" }],
+    agents: [],
+    engines: [],
+    others: [{ handle: "watcher", holds_task: false, present: true }],
+  }),
   fetchMessages: vi.fn().mockResolvedValue({
     messages: [
       { message_type: "broadcast", sender_handle: "sam" },
@@ -395,7 +401,7 @@ describe("<RoomChatBox /> composer triggers", () => {
     expect(option).toHaveTextContent("mentioned as usual, not interrupted");
   });
 
-  it("also autocompletes a person (present member), not just agents", async () => {
+  it("also autocompletes someone present who is neither a person nor an agent here", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
@@ -431,7 +437,7 @@ describe("<RoomChatBox /> composer triggers", () => {
     expect(options[0]?.textContent).toMatch(/@conductor/);
   });
 
-  it("autocompletes a poster who isn't currently present (Members-panel parity)", async () => {
+  it("autocompletes one of the room's people who isn't present (Members-panel parity)", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);

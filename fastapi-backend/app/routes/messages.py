@@ -39,6 +39,7 @@ from app.services import (
     persister,
     principals,
     room_channels,
+    room_people,
     tasks,
 )
 from app.services.filesystem import room_exists
@@ -204,6 +205,9 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
         room_channels.manager.enqueue_herdr_wakes_for_mentions(
             base_room, msg.content or "", sender=msg.sender_handle, episode=msg.episode
         )
+        # A person who posts in a room has joined it; an agent or an unknown
+        # handle hasn't (``room_people``).
+        room_people.joined_by_message(base_room, msg.sender_handle)
     return MessageRead.model_validate(msg)
 
 

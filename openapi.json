@@ -1251,6 +1251,145 @@
         }
       }
     },
+    "/api/rooms/{room_name}/members": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "List Members",
+        "description": "Everyone in the room, from records rather than from who has posted.",
+        "operationId": "list_members_api_rooms__room_name__members_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMembers"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Add Person",
+        "description": "Add a person to the room. They need a user record and can't be an agent here.\n\nOn a gated hub the caller must be one of the room's people (or its owner).\nAdding someone already in the room returns their entry unchanged.",
+        "operationId": "add_person_api_rooms__room_name__members_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomPersonAdd"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomPerson"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/members/{handle}": {
+      "delete": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Remove Person",
+        "description": "Take a person out of the room. On a gated hub, yourself or, as its owner, anyone.",
+        "operationId": "remove_person_api_rooms__room_name__members__handle__delete",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/assignments/claim": {
       "post": {
         "tags": [
@@ -10479,6 +10618,31 @@
         ],
         "title": "ResolveBody"
       },
+      "RoomAgentEntry": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "RoomAgentEntry",
+        "description": "An agent or engine, from its manifest."
+      },
       "RoomCreate": {
         "properties": {
           "name": {
@@ -10617,6 +10781,119 @@
         "type": "object",
         "title": "RoomFolders",
         "description": "How one person organizes their rooms list: theirs alone, not the room's.\n\nA room sits in at most one folder; rooms in none are listed as before.\nA name that no longer names a room is kept, and simply not drawn."
+      },
+      "RoomMembers": {
+        "properties": {
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/RoomPerson"
+            },
+            "type": "array",
+            "title": "People"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/RoomAgentEntry"
+            },
+            "type": "array",
+            "title": "Agents"
+          },
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/RoomAgentEntry"
+            },
+            "type": "array",
+            "title": "Engines"
+          },
+          "others": {
+            "items": {
+              "$ref": "#/components/schemas/RoomOther"
+            },
+            "type": "array",
+            "title": "Others"
+          }
+        },
+        "type": "object",
+        "required": [
+          "people",
+          "agents",
+          "engines",
+          "others"
+        ],
+        "title": "RoomMembers",
+        "description": "Everyone in a room, from records rather than from who has posted."
+      },
+      "RoomOther": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "holds_task": {
+            "type": "boolean",
+            "title": "Holds Task",
+            "default": false
+          },
+          "present": {
+            "type": "boolean",
+            "title": "Present",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "RoomOther",
+        "description": "A handle that holds a task or is present, but is neither a person nor an agent here."
+      },
+      "RoomPerson": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          },
+          "via": {
+            "type": "string",
+            "enum": [
+              "created",
+              "added",
+              "message",
+              "seeded"
+            ],
+            "title": "Via",
+            "description": "How they joined: made the room, were added, posted in it, or were there before rooms kept a list"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "joined_at",
+          "via"
+        ],
+        "title": "RoomPerson",
+        "description": "One of a room's people, as recorded when they joined."
+      },
+      "RoomPersonAdd": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "RoomPersonAdd",
+        "description": "Add a person (someone with a user record) to a room."
       },
       "RoomRead": {
         "properties": {
