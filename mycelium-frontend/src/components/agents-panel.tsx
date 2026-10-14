@@ -23,7 +23,7 @@ import {
   type RoomOther,
 } from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
-import { useRoomRoster, useScheduledHandles } from "@/lib/room-data";
+import { useRoom, useRoomRoster, useScheduledHandles } from "@/lib/room-data";
 import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
@@ -61,6 +61,7 @@ function MemberMenu({
   onOpenMemory,
   onUnregister,
   onRemove,
+  removeLabel = "Remove from room",
   children,
 }: {
   handle: string;
@@ -70,6 +71,8 @@ function MemberMenu({
   onUnregister?: () => void;
   /** People only: takes them out of the room until they join again. */
   onRemove?: () => void;
+  /** What the remove item says: in a shared room, posting rejoins them. */
+  removeLabel?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -98,7 +101,7 @@ function MemberMenu({
           <>
             <ContextMenuSeparator />
             <ContextMenuItem icon={UserMinus} destructive onClick={onRemove}>
-              Remove from room
+              {removeLabel}
             </ContextMenuItem>
           </>
         )}
@@ -256,6 +259,7 @@ export function AgentsPanel({
   // task or are present, and a presence entry for whoever holds a SLIM socket
   // or an `await` lease.
   const { agents, people, others, presence, floors, loading, refresh } = useRoomRoster(roomName);
+  const { room } = useRoom(roomName);
   const removePerson = (handle: string) => {
     removeRoomPerson(roomName, handle)
       .catch(logFetchError(`removeRoomPerson(${roomName}, ${handle})`))
@@ -399,6 +403,9 @@ export function AgentsPanel({
                   handle={p.handle}
                   agent={false}
                   onRemove={() => removePerson(p.handle)}
+                  removeLabel={
+                    room?.is_public === false ? "Remove from room" : "Remove (they rejoin if they post)"
+                  }
                 >
                   <PersonRow
                     person={p}

@@ -62,6 +62,15 @@ async def add_person(room_name: str, body: RoomPersonAdd, request: Request) -> R
         )
     _refuse_unless(request, room_name, room_people.handles(room_name), "add people to this room")
     room_people.add(room_name, handle, "added")
+    # A private room is listed for its owner and ``members`` (``room_access``),
+    # so someone added to one is named there too.
+    meta = read_room_meta(room_name)
+    if meta and not meta.get("is_public", True) and handle != meta.get("owner"):
+        members = meta.get("members") or []
+        if handle not in members:
+            stored = {k: v for k, v in meta.items() if k != "id"}
+            stored["members"] = sorted([*members, handle])
+            write_room_meta(room_name, stored)
     entry = next(p for p in room_people.people(room_name) if p["handle"] == handle)
     return RoomPerson.model_validate(entry)
 

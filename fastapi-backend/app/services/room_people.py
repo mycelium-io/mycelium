@@ -14,11 +14,16 @@ How someone joins (``via``):
 - ``created``: they made the room (its ``owner``).
 - ``added``: someone put them in it (``POST /rooms/{room}/members``, or a
   private room's ``members`` list).
-- ``message``: they posted in it, as a person, from the app or the CLI.
+- ``message``: they posted in it, as a person, from the app or the CLI. Only
+  in a shared room: anyone who knows a private room's name can post in it.
 - ``seeded``: they were there before rooms kept a list. The first read of a
   room with no ``.people.json`` writes one from what the app used to infer
   (the owner, a private room's members, agent owners, posters and whoever is
-  present), keeping only handles with a user record.
+  present; for a private room, only its owner and members), keeping only
+  handles with a user record.
+
+Who a private room is *listed* for stays its owner and ``members``
+(``room_access``); adding someone to a private room here names them there too.
 
 A removed person stays out until they join again. The roster read
 (:func:`roster`) adds the room's agents and engines from their manifests, and
@@ -122,6 +127,10 @@ def _seed_candidates(room: str) -> list[tuple[str, str | None]]:
     see(meta.get("owner"), meta.get("created_at"))
     for member in meta.get("members") or []:
         see(member)
+    if not meta.get("is_public", True):
+        # A private room's people are the ones it was shared with, not
+        # whoever found it by name and posted.
+        return list(found.items())
     for agent in room_agents(room):
         see(agent.owner)
     for record in load_transcript(room):
@@ -207,9 +216,15 @@ def remove(room: str, raw: object) -> bool:
 
 
 def joined_by_message(room: str, sender: object) -> bool:
-    """A person who posts in a room has joined it. Agents and unknown handles haven't."""
+    """A person who posts in a shared room has joined it. Agents and unknown handles haven't.
+
+    A private room is joined only by being added: anyone who knows its name can
+    post in it, and posting must not make it listed for them.
+    """
     handle = norm_handle(sender)
     if not handle or handle in handles(room):
+        return False
+    if not (read_room_meta(room) or {}).get("is_public", True):
         return False
     return add(room, handle, "message")
 

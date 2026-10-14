@@ -195,12 +195,50 @@ async def test_a_private_room_is_listed_for_its_people(client):
     assert not await listed_for("sam")
     await client.post("/api/rooms/diary/members", json={"handle": "sam"})
     assert await listed_for("sam")
+    assert (await client.get("/api/rooms/diary")).json()["members"] == ["sam"]
 
-    # Named in the private list too, then taken out: neither lists it any more.
-    await client.patch("/api/rooms/diary", json={"members": ["sam"]})
+    # Taken out: no longer one of its people, and no longer listed for them.
     await client.delete("/api/rooms/diary/members/sam")
     assert not await listed_for("sam")
     assert (await client.get("/api/rooms/diary")).json()["members"] == []
+
+
+@pytest.mark.asyncio
+async def test_posting_in_a_private_room_doesnt_join_it_or_list_it(client):
+    """Anyone who knows a private room's name can post in it; that isn't joining."""
+    _user("julia")
+    _user("stranger")
+    await client.post("/api/rooms", json={"name": "diary", "is_public": False, "owner": "julia"})
+
+    await _post(client, "diary", "stranger", "found you")
+
+    assert _people(await _members(client, "diary")) == {"julia": "created"}
+    rooms = (await client.get("/api/rooms", params={"viewer": "stranger"})).json()
+    assert "diary" not in {r["name"] for r in rooms}
+
+
+@pytest.mark.asyncio
+async def test_a_private_room_is_seeded_with_only_its_owner_and_members(client):
+    for handle in ("julia", "sam", "stranger", "avery"):
+        _user(handle)
+    await client.post(
+        "/api/rooms",
+        json={"name": "diary", "is_public": False, "owner": "julia", "members": ["sam"]},
+    )
+    (get_room_dir("diary") / room_people.FILENAME).unlink()  # a room from before the list
+    _agent("diary", "coder", owner="avery")
+    env = message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=message_format.episode_urn("diary", "live"),
+        sender="stranger",
+        sender_role="human",
+        recipients=[],
+        topic=message_format.topic_urn("diary"),
+        payload_type="message",
+    )
+    persister.append_transcript("diary", persister.record_from(env, {"content": "hi"}))
+
+    assert _people(await _members(client, "diary")) == {"julia": "seeded", "sam": "seeded"}
 
 
 def test_a_new_room_lists_its_owner_and_members_who_are_people():

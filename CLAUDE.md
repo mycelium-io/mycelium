@@ -1096,17 +1096,20 @@ is no litellm dependency.
   its own file because the routes that write `.room.json` rewrite it whole)
   holds each person with when they joined and how: `created` (the owner),
   `added` (`POST /rooms/{room}/members`, or named in a private room's
-  `members`), `message` (posted as a person, from `/messages` or `/reply`) or
-  `seeded`. Only a handle with a user record that is not an agent or engine in
+  `members`), `message` (posted as a person, from `/messages` or `/reply`,
+  in a shared room only: anyone who knows a private room's name can post in
+  it) or `seeded`. Only a handle with a user record that is not an agent or engine in
   the room is ever written, so an agent whose manifest is missing for a moment
   never lands among them. A room with no file is seeded once, on its first
   read, from what the app used to infer (owner, private members, agent owners,
-  posters, presence), keeping only people. `DELETE /rooms/{room}/members/{handle}`
+  posters, presence; a private room only its owner and members), keeping only
+  people. `DELETE /rooms/{room}/members/{handle}`
   takes someone out until they join again (yourself, or anyone as the room's
   owner, on a gated hub). `GET /rooms/{room}/members` returns people, agents
   and engines from records, plus `others`: handles that hold a task or are
   present but are neither, which the members pane lists quietly and the
-  composer still offers. A private room is listed for its people too.
+  composer still offers. Who a private room is listed for is unchanged (its
+  owner and `members`); adding someone to one names them in `members` too.
   Presence (who is here now) stays `/sessions/members`.
 - **Room folders are a person's, not a room's.** How someone files their
   rooms list is kept on the hub under their handle

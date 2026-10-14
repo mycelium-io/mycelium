@@ -5,7 +5,7 @@
 
 A room is shared (``is_public``, the default) or private. A private room has an
 ``owner`` and may name ``members``; it is listed, streamed and searched only
-for them and for the room's people (``room_people``). Everyone else's room list, notification feed and search leave it out.
+for them. Everyone else's room list, notification feed and search leave it out.
 
 The viewer is the verified principal when the hub's sign-in is on, and
 otherwise the handle the caller says it is (the browser's chosen name, the
@@ -47,12 +47,7 @@ def visible_to(meta: dict[str, Any] | None, viewer: str | None) -> bool:
     if not viewer:
         return False
     allowed = {norm_handle(meta.get("owner"))} | {norm_handle(m) for m in meta.get("members") or []}
-    if viewer in allowed - {None}:
-        return True
-    # Anyone who joined the room has it listed too (``room_people``).
-    from app.services import room_people
-
-    return bool(meta.get("name")) and viewer in room_people.handles(str(meta["name"]))
+    return viewer in allowed - {None}
 
 
 def visible_rooms(viewer: str | None) -> list[str]:
