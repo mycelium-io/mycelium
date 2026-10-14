@@ -39,7 +39,7 @@ vi.mock("@/components/memory-editor", () => ({
 // The discussion, stubbed: this file is about the view, and the conversation's
 // own reads belong to its own tests. It draws the rows a test gives it and
 // reports them the way the real one does, for the page's scroll.
-const thread = vi.hoisted(() => ({ rows: [] as string[], set: (_rows: string[]) => {} }));
+const thread = vi.hoisted(() => ({ rows: [] as string[], set: (() => {}) as (rows: string[]) => void }));
 vi.mock("@/components/task/task-conversation", async () => {
   const { useEffect, useState } = await import("react");
   return {

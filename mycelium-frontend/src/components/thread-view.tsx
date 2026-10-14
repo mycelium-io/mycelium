@@ -69,7 +69,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
   // so the pane opens with the task itself (its body and fields) above the
   // conversation about it, the way an issue shows its description over its
   // comments. Absent for a negotiation thread bound to no row.
-  const { memories } = useRoomMemories(roomName);
+  const { memories, loading: memoriesLoading } = useRoomMemories(roomName);
   const task = memories.find(m => m.episode === target.episode) ?? null;
   // A run the conductor walked in this thread left a record carrying its
   // flow: the latest one is drawn at the top of the pane, the earlier ones are
@@ -97,10 +97,11 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
 
   // The pane's one scroll scrolls the conversation the way every message list
   // scrolls. It opens on the task, with its thread below; a thread that is no
-  // task's is all conversation, so it opens on the newest reply.
+  // task's is all conversation, so it opens on the newest reply. Until the
+  // room's memories have said which, it is taken to be a task's.
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const latest = useConversationFollow(scroller, {
-    startAt: task ? "start" : "end",
+    startAt: task || memoriesLoading ? "start" : "end",
     resetKey: target.episode,
   });
 

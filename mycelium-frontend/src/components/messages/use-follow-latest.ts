@@ -112,6 +112,14 @@ export function useFollowLatest(
     [detach],
   );
 
+  // Where the list opens can still change until it has: the page may learn
+  // what it is showing (a task, or a bare thread) after it first draws.
+  useLayoutEffect(() => {
+    if (landed.current || atBottomRef.current === startsAtEnd) return;
+    atBottomRef.current = startsAtEnd;
+    setAtBottom(startsAtEnd);
+  }, [startsAtEnd]);
+
   // What the rows belong to: a change starts the list over.
   useLayoutEffect(() => {
     if (keyRef.current === resetKey) return;
@@ -176,12 +184,14 @@ export function useFollowLatest(
       if (startsAtEnd) {
         if (!holdingRef.current) toBottom(node);
       } else {
-        // Opened at the top: at the bottom only if everything already fits.
-        const pinned = node.scrollHeight - node.scrollTop - node.clientHeight <= AT_BOTTOM_PX;
-        atBottomRef.current = pinned;
-        setAtBottom(pinned);
-        // Not at the bottom from the start: count what arrives from here.
-        if (!pinned) detach();
+        // Opened at the top, it stays there until the reader goes down, even
+        // when it all fits: what's above (a task's body) can still be drawing,
+        // and following its growth would scroll the top out of view. What
+        // arrives meanwhile is counted.
+        atBottomRef.current = false;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- once, when the list first opens
+        setAtBottom(false);
+        detach();
       }
       fromBottom.current = node.scrollHeight - node.scrollTop;
       return;
