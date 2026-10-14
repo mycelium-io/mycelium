@@ -110,8 +110,8 @@ jobs:
       - name: File sizes, and PNGs compressed
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        # Only the PNGs this change adds or touches: all of them take ~25s,
-        # and every one was compressed when this check went in. Comparing two
+        # Only the PNGs this change adds or touches: all of them take ~50s on
+        # a runner, and every one was compressed when this check went in. Comparing two
         # trees needs only the base commit itself, not the history between.
         run: |
           check="uv run --no-project --with pyoxipng==9.1.1 python scripts/check_file_sizes.py"

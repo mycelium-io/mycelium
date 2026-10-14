@@ -25,8 +25,10 @@ The size check is stdlib. The PNG check needs oxipng's Python bindings:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import subprocess
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -51,7 +53,9 @@ MAX_SAVING = 0.10
 
 
 def git(*args: str) -> str:
-    return subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=True).stdout
+    return subprocess.run(
+        ["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=True
+    ).stdout
 
 
 def tracked_sizes() -> dict[str, int]:
@@ -96,7 +100,9 @@ def size_problems(sizes: dict[str, int]) -> list[str]:
     ]
     for path in sorted(ALLOWED):
         if path not in sizes:
-            found.append(f"scripts/check_file_sizes.py: ALLOWED names {path}, which isn't tracked; remove it")
+            found.append(
+                f"scripts/check_file_sizes.py: ALLOWED names {path}, which isn't tracked; remove it"
+            )
         elif sizes[path] <= LIMIT_BYTES:
             found.append(
                 f"scripts/check_file_sizes.py: ALLOWED names {path}, which is under the limit now "
@@ -105,22 +111,33 @@ def size_problems(sizes: dict[str, int]) -> list[str]:
     return found
 
 
+def optimized(path: str) -> tuple[str, int, int]:
+    """A PNG's path, its size, and its size after a lossless oxipng pass."""
+    # Installed only for this check (`--with pyoxipng`), so not where ty looks.
+    import oxipng  # noqa: PLC0415  # ty: ignore[unresolved-import]
+
+    data = (REPO_ROOT / path).read_bytes()
+    out = oxipng.optimize_from_memory(data, level=2, strip=oxipng.StripChunks.safe())
+    return path, len(data), len(out)
+
+
 def png_problems(paths: list[str]) -> list[str]:
     if not paths:
         return []
-    try:
-        import oxipng  # noqa: PLC0415 - only the PNG check needs it
-    except ImportError:
-        return ["the PNG check needs oxipng: run it under `uv run --no-project --with pyoxipng==9.1.1 python ...`"]
+    if importlib.util.find_spec("oxipng") is None:
+        return [
+            "the PNG check needs oxipng: run it under `uv run --no-project --with pyoxipng==9.1.1 python ...`"
+        ]
+    # The bindings hold the GIL, so a process per core rather than threads.
+    with ProcessPoolExecutor() as pool:
+        results = list(pool.map(optimized, paths))
     found = []
-    for path in paths:
-        data = (REPO_ROOT / path).read_bytes()
-        out = oxipng.optimize_from_memory(data, level=2, strip=oxipng.StripChunks.safe())
-        saving = 1 - len(out) / len(data)
+    for path, before, after in results:
+        saving = 1 - after / before
         if saving > MAX_SAVING:
             found.append(
                 f"{path}: oxipng shrinks it {saving:.0%} with no change to the pixels "
-                f"({len(data) // 1024} -> {len(out) // 1024} KiB). Run `npm run optimize-png -- ../{path}` "
+                f"({before // 1024} -> {after // 1024} KiB). Run `npm run optimize-png -- ../{path}` "
                 f"in mycelium-frontend/ and commit the result",
             )
     return found
@@ -128,14 +145,18 @@ def png_problems(paths: list[str]) -> list[str]:
 
 def changed_pngs(since: str) -> list[str]:
     """PNGs added or changed since a commit, present in the working tree."""
-    names = git("diff", "--name-only", "--diff-filter=AMR", "-z", since, "--", "*.png", "*.PNG").split("\0")
+    names = git(
+        "diff", "--name-only", "--diff-filter=AMR", "-z", since, "--", "*.png", "*.PNG"
+    ).split("\0")
     return sorted(name for name in names if name and (REPO_ROOT / name).is_file())
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     pngs = parser.add_mutually_exclusive_group()
-    pngs.add_argument("--pngs-since", metavar="REF", help="also check PNGs added or changed since REF")
+    pngs.add_argument(
+        "--pngs-since", metavar="REF", help="also check PNGs added or changed since REF"
+    )
     pngs.add_argument("--all-pngs", action="store_true", help="also check every tracked PNG")
     args = parser.parse_args()
 
