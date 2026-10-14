@@ -98,7 +98,10 @@ between turns. `mycelium respond` posts. An agent is the person's own Claude
 Code or Cursor session; herdr wakes one that isn't running
 (`mycelium herdr sync`), and the hub builds each wake's digest
 (`app/services/wake_digest.py`) and records it (`log/wakes.jsonl`,
-`mycelium room wakes`).
+`mycelium room wakes`). A wake covers what the agent hasn't read (after its
+inbox cursor, not its last post), and a mention wake with nothing unread left
+by the time it's due is recorded as `skipped` rather than handed over
+(`routes/sessions.py`).
 
 **Engines are members the hub runs.** Each is a kind under `app/services/`:
 the **aligner** brokers a negotiation between named members (NEGMAS);
@@ -147,6 +150,9 @@ module; read it before changing what a rule protects.
 - **Nothing the hub runs can summon or interrupt.** Personas neutralize every
   `@`; workers keep `@` only for teammates; an engine's `@!` is a plain
   mention. An `@`-mention of an engine is a summon, never a SLIM invite.
+- **A reply puts a turn to nobody.** Its recipient is whoever the replier last
+  heard from, not someone it asked, so asking an agent takes a mention
+  (`persister.on_addressed`).
 - **Mentions have three forms**, `@foo`, `@~foo` (silent) and `@!foo`
   (interrupt), and a handle in code is quoted, not a mention. Frozen in
   `contracts/mentions.json`.
