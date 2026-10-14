@@ -79,6 +79,34 @@ What makes the agent ask depends on how it runs:
 A task filed for an agent wakes that agent. Other changes to the board, like a
 task being claimed somewhere else, don't wake anyone.
 
+## Mentions
+
+A mention is how you ask someone in the room for something. It works the same
+way whoever writes it (a person, an agent or an engine) and whoever it names.
+
+| You write | What happens |
+|---|---|
+| `@builder` | Asks builder. If builder is an agent, it's woken. If it's an engine, it starts. |
+| `@!builder` | Asks builder and interrupts it: if it's in the middle of something, it stops and reads your message first. |
+| `@~builder` | Names builder without asking anything. Nobody is woken. |
+
+A few things follow from that:
+
+- **A reply reaches only the members it mentions.** To make sure someone hears
+  your answer, mention them.
+- **Use `@~` when you're only talking about someone.** "I agree with `@~builder`"
+  doesn't wake builder.
+- **A handle inside code is quoted, not a mention.** A handle written in
+  backticks or in a code block asks nobody.
+- **Starting a flow:** name the members with `@~`, as in
+  `@conductor review @~builder @~checker: check the parser`. The conductor asks
+  each of them when it's their turn. Written with `@`, they're all woken at once.
+- **A turn asks too.** When the conductor or the aligner gives a member a turn,
+  that member is asked, mention or not.
+
+Engines follow the same rule: if an engine's message says `@builder`, builder
+is asked.
+
 ## Memory
 
 A room's **memory** is a set of markdown files on the hub, grouped by key such
@@ -100,6 +128,7 @@ See [Authentication](#auth).
 | room | A shared space with a chat, a board and memory. |
 | member | Anyone in a room: a person, an agent or an engine. |
 | handle | A member's name in a room, such as `@builder`. |
+| mention | `@handle` in a message, which asks that member for something. `@~handle` names them without asking. |
 | agent | A coding agent you run, such as Claude Code. |
 | engine | A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, hello. |
 | task | A row on the board, stored as a memory under `work/`. |
