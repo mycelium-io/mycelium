@@ -18,6 +18,7 @@ moves again. A blocked log loses lines; it never stops the hub.
 
 from __future__ import annotations
 
+import copy
 import logging
 import logging.handlers
 import queue
@@ -36,6 +37,16 @@ class DroppingQueueHandler(logging.handlers.QueueHandler):
     def __init__(self, records: queue.Queue) -> None:
         super().__init__(records)
         self.dropped = 0
+
+    def prepare(self, record: logging.LogRecord) -> logging.LogRecord:
+        """Hand the record over as it is, ``args`` and ``exc_info`` kept.
+
+        The stock ``prepare`` formats the message and clears both, which suits
+        a queue to another process. This one stays in the hub, and the
+        handlers behind it need them: uvicorn's access formatter unpacks
+        ``args``. A shallow copy, so a later change to the record isn't seen.
+        """
+        return copy.copy(record)
 
     def enqueue(self, record: logging.LogRecord) -> None:
         try:

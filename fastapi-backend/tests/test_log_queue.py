@@ -11,6 +11,7 @@ said once the output moves again.
 
 from __future__ import annotations
 
+import io
 import logging
 import threading
 import time
@@ -82,3 +83,41 @@ def test_install_twice_leaves_one_queue_and_uninstall_puts_handlers_back(blocked
     assert isinstance(root.handlers[0], log_queue.DroppingQueueHandler)
     log_queue.uninstall()
     assert root.handlers == before
+
+
+def _drained(stream: io.StringIO, text: str) -> bool:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and text not in stream.getvalue():
+        time.sleep(0.01)
+    return text in stream.getvalue()
+
+
+def test_uvicorns_access_lines_and_tracebacks_come_through_the_queue(capsys):
+    # uvicorn's access formatter unpacks the record's args, and a traceback
+    # needs exc_info: both must survive the queue, or every request's line
+    # fails and the failure goes to stderr, the pipe this is protecting.
+    from uvicorn.logging import AccessFormatter
+
+    access = logging.getLogger("uvicorn.access")
+    root = logging.getLogger()
+    saved = (list(access.handlers), access.propagate, list(root.handlers))
+    access_out, root_out = io.StringIO(), io.StringIO()
+    access_handler = logging.StreamHandler(access_out)
+    access_handler.setFormatter(
+        AccessFormatter('%(client_addr)s - "%(request_line)s" %(status_code)s', use_colors=False)
+    )
+    access.handlers, access.propagate = [access_handler], False
+    root.handlers = [logging.StreamHandler(root_out)]
+    try:
+        log_queue.install()
+        access.info('%s - "%s %s HTTP/%s" %d', "127.0.0.1:5000", "GET", "/health", "1.1", 200)
+        try:
+            raise RuntimeError("boom")
+        except RuntimeError:
+            logging.getLogger("app.test").exception("it failed")
+        assert _drained(access_out, '"GET /health HTTP/1.1" 200')
+        assert _drained(root_out, "RuntimeError: boom")
+    finally:
+        log_queue.uninstall()
+        access.handlers, access.propagate, root.handlers = saved
+    assert "Logging error" not in capsys.readouterr().err
