@@ -36,11 +36,36 @@ function load(): Promise<unknown> {
   return ready;
 }
 
+// The ancillary chunks that change how an image renders. Everything else
+// ancillary (text, EXIF, timestamps) is dropped, the way the check's
+// `StripChunks.safe()` drops it, so a PNG this wrote can't fail the check on
+// a chunk the wasm build has no option to strip. Critical chunks (an
+// uppercase first letter: IHDR, PLTE, IDAT, IEND) always stay.
+const RENDERING = new Set(["tRNS", "cICP", "iCCP", "sRGB", "gAMA", "cHRM", "sBIT", "pHYs", "acTL", "fcTL", "fdAT"]);
+const SIGNATURE = 8;
+
+/** The PNG without the chunks that don't affect rendering. Chunks are copied whole, so their CRCs stay valid. */
+export function stripChunks(png: Buffer): Buffer {
+  const kept = [png.subarray(0, SIGNATURE)];
+  let at = SIGNATURE;
+  while (at + 12 <= png.byteLength) {
+    const length = png.readUInt32BE(at);
+    const type = png.toString("latin1", at + 4, at + 8);
+    const end = at + 12 + length;
+    if (end > png.byteLength) return png; // truncated: leave it to oxipng as it is
+    const critical = type.charCodeAt(0) < 0x61;
+    if (critical || RENDERING.has(type)) kept.push(png.subarray(at, end));
+    at = end;
+  }
+  return Buffer.concat(kept);
+}
+
 /** The same image, losslessly smaller (or the input, if oxipng can't beat it). */
 export async function optimizePng(png: Buffer): Promise<Buffer> {
   await load();
-  const bytes = new Uint8Array(png.byteLength);
-  bytes.set(png);
+  const stripped = stripChunks(png);
+  const bytes = new Uint8Array(stripped.byteLength);
+  bytes.set(stripped);
   const out = Buffer.from(await optimise(bytes.buffer, { level: LEVEL, optimiseAlpha: false }));
   return out.byteLength < png.byteLength ? out : png;
 }
