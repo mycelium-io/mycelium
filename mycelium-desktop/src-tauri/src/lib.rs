@@ -9,8 +9,10 @@
 //! links, and a window with the agents' terminals. The hub's UI, once loaded,
 //! gets no IPC: every command here refuses a page that isn't the app's own.
 
+mod download;
 mod paths;
 mod settings;
+mod signature;
 mod supervisor;
 mod terminal;
 mod updates;
@@ -1057,6 +1059,15 @@ fn update_progress(app: AppHandle, webview: Webview) -> Result<Option<updates::P
     Ok(updates::progress())
 }
 
+/// The update window's Try again, after a download failed: the person already
+/// said yes, so it carries on from the partial download without asking.
+#[tauri::command]
+fn update_retry(app: AppHandle, webview: Webview) -> Result<(), String> {
+    local_only(&app, &webview)?;
+    updates::check(app, updates::Check::Retry);
+    Ok(())
+}
+
 #[tauri::command]
 fn terminal_open(
     app: AppHandle,
@@ -1206,6 +1217,7 @@ pub fn run() {
             open_log,
             start,
             update_progress,
+            update_retry,
             terminal_open,
             terminal_write,
             terminal_resize,

@@ -1009,6 +1009,11 @@ select.field {
   background: var(--red);
 }
 
+/* Waiting to try again: the bar holds where it got to. */
+.update[data-phase="retrying"] .update-fill {
+  background: var(--yellow, #e5b567);
+}
+
 /* Installing and restarting have no numbers: a full bar that pulses. */
 .update[data-phase="installing"] .update-fill,
 .update[data-phase="restarting"] .update-fill {
@@ -1054,6 +1059,10 @@ select.field {
   line-height: 1.5;
   color: var(--faint);
   max-width: 280px;
+}
+
+.update-retry {
+  margin-top: 8px;
 }
 
 @media (prefers-reduced-motion: reduce) {

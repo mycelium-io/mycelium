@@ -2299,8 +2299,11 @@ it runs, and whenever you choose **Check for Updates…**. If one is out, it ask
 before installing it. While you haven't installed it yet, the app's header
 shows **Update available**, which asks the same question. Once you say yes, a
 small window shows the download until the app restarts into the new version.
-An update installs only if it has the release's signature, so the app
-never installs anything the project didn't publish.
+If your connection drops partway, the window says so and the download carries
+on from where it stopped once the connection is back, for up to ten minutes
+without progress. If you quit in the middle, the next **Check for Updates…**
+picks up the same download. An update installs only if it has the release's
+signature, so the app never installs anything the project didn't publish.
 
 herdr keeps running through an update, so your agents aren't interrupted, and
 the herdr still running is the one from before it. On a Mac, macOS can then
