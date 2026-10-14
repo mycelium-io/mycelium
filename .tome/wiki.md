@@ -1,74 +1,82 @@
 # mycelium
 
-A self-hosted coordination layer for multi-agent systems: a **board** of **tasks**, each bound to its own **thread**, over a secure SLIM messaging fabric. Agents claim tasks and coordinate inside their threads; negotiation (via the **aligner**) is one optional activity that can happen inside a thread, not the container work is born from.
+An environment built for agents working together. People and the coding agents they already use (Claude Code and others) share a **room**: a **board** of **tasks**, each with its own **thread**, a shared markdown **memory**, and a channel, over a secure SLIM messaging fabric. Agents run on their owners' machines, stay running, and wake when someone asks them. When they need to agree, they can run structured coordination processes (the **conductor**'s flows, or the **aligner**) inside a task.
 
-This file is the maintainer's hint to a [tiny-teams-with-tokens](https://github.com/juliarvalenti/tiny-teams-with-tokens) ingest agent generating Mycelium's status wiki. It's not the README and not a substitute for reading the actual code — it's a pointer to *where to look first* and *what's easy to misdescribe*.
+This file is the maintainer's hint to a [tiny-teams-with-tokens](https://github.com/juliarvalenti/tiny-teams-with-tokens) ingest agent generating Mycelium's status wiki. It's not the README and not a substitute for reading the code. It points to where to look first and to what's easy to misdescribe.
 
 ## Read these first
 
-- [CLAUDE.md](CLAUDE.md) — authoritative design rules + architecture overview. Read this before anything else.
-- [README.md](README.md) — user-facing pitch and quick start.
-- [docs/index.html](docs/index.html) — overview and quick start.
-- [docs/concepts.html](docs/concepts.html) — the core concepts (rooms, tasks & threads, memory, messages, engines) in depth.
-- [docs/guides.html](docs/guides.html) — guides, including the [A2A bridge](https://mycelium-io.github.io/mycelium/guides.html#a2a-bridge).
-- [docs/demo-script.md](docs/demo-script.md) — narrative walkthrough of a coordination flow.
+- [CLAUDE.md](CLAUDE.md): the design rules and architecture overview. Read it before anything else.
+- [README.md](README.md): the user-facing pitch and quick start.
+- [docs/index.html](docs/index.html): overview and quick start.
+- [docs/concepts.html](docs/concepts.html): rooms, tasks and threads, memory, messages, engines.
+- [docs/walkthrough.html](docs/walkthrough.html): a room worked end to end.
+- [docs/guides.html](docs/guides.html): guides, including the [A2A bridge](https://mycelium-io.github.io/mycelium/guides.html#a2a-bridge).
+- [docs/l9-integration.html](docs/l9-integration.html): how the conductor's Accord and Concord flows and the aligner work.
+- [mycelium-cli/src/mycelium/skills/mycelium/SKILL.md](mycelium-cli/src/mycelium/skills/mycelium/SKILL.md): what every agent reads on joining (`mycelium skill print`), including how agents are expected to work with each other.
 
 ## Repo layout
 
-Mycelium is a multi-component monorepo. When you describe "the architecture" you should mention all of these by their actual roles:
+Mycelium is a monorepo with several parts. When you describe "the architecture", name each by its role:
 
-- [`fastapi-backend/`](fastapi-backend/) — the coordination engine (Python 3.12, FastAPI). No database: state is local markdown files + a JSONL search index. Runs the SLIM messaging node's counterpart services: room moderation, the board/task projection, the aligner/synthesizer engines, the A2A bridge, L9 envelope construction, the persister.
-- [`mycelium-cli/`](mycelium-cli/) — the user-facing CLI (typer + Rich). The primary surface most users touch, and the whole agent-side participation surface (`await`/`respond`, `board`). Claude Code is the proven agent CLI; Cursor is untested.
-- [`mycelium-client/`](mycelium-client/) — auto-generated OpenAPI client. Treat as build output; don't document its internals.
-- [`mycelium-frontend/`](mycelium-frontend/) — Next.js + Tailwind UI, part of the stack `mycelium up` brings up. The board is the primary screen; there is no separate Negotiate pane or Episodes rail.
-- [`mycelium-promo/`](mycelium-promo/) — the product demo: a shotkit recording of the real app over the frontend's demo scenario. Out of scope for the wiki.
-- [`docs/`](docs/) — presentation site + demo script + agent-facing setup runbook (`docs/agents.md`).
+- [`fastapi-backend/`](fastapi-backend/): the hub (Python 3.12, FastAPI). No database: state is local markdown files plus a JSONL search index. It moderates each room's SLIM channel, owns the board and tasks, delivers wakes, runs the engines (conductor, aligner, synthesizer, persona, worker, verifier), and serves the A2A bridge.
+- [`mycelium-cli/`](mycelium-cli/): the CLI (typer and Rich). The whole agent-side surface (`await`, `respond`, `board`, `memory`), plus the **runner** that starts and wakes agents on a person's machine, and `mycelium desktop serve`, the supervisor inside the desktop app.
+- [`mycelium-desktop/`](mycelium-desktop/): Mycelium for Mac (also built for Linux and Windows). A Tauri shell over `mycelium desktop serve`, which runs herdr, a SLIM node, the hub, the UI and the runner with no Docker.
+- [`mycelium-frontend/`](mycelium-frontend/): the app (Next.js and Tailwind). The board, the channel, task threads, memory, Stream, Files, schedules and settings.
+- [`mycelium-client/`](mycelium-client/): the generated OpenAPI client. Build output; don't document its internals.
+- [`docs/`](docs/): the docs site, generated from `mycelium-cli/src/mycelium/docs/`, plus the agent setup runbook (`docs/agents.md`).
+- [`mycelium-deck/`](mycelium-deck/), [`mycelium-promo/`](mycelium-promo/), [`shotkit/`](shotkit/): the talk template, the product demo recording, and the repo's screenshot tool. Out of scope for the wiki.
 
-## Where the actual logic lives
+## Where the logic lives
 
-If you're documenting how Mycelium works, ground every claim against one of these:
+Ground every claim in one of these:
 
-- [`fastapi-backend/app/main.py`](fastapi-backend/app/main.py) — backend entrypoint.
-- [`fastapi-backend/app/services/tasks.py`](fastapi-backend/app/services/tasks.py), [`routes/tasks.py`](fastapi-backend/app/routes/tasks.py) — a **task**: a board row bound one-to-one to its own **thread** (an episode URN), minted the moment the row is created. The primary unit of work; supersedes the old `plan/` store, which is retired. The board itself is a projection over tasks, not a separate module: rows fold in their episode context; cockpit/kanban/table/timeline views are the same filter/sort/group pipeline over any namespace with `status`/`assignee`/`priority`-shaped frontmatter.
-- [`fastapi-backend/app/services/aligner.py`](fastapi-backend/app/services/aligner.py), [`mediator.py`](fastapi-backend/app/services/mediator.py), [`pi_session.py`](fastapi-backend/app/services/pi_session.py) — the aligner: a NEGMAS SAO mediator, summoned *inside a task's thread*, whose brain is a persistent Pi coding-agent session. NEGMAS owns termination. Not the container tasks are born from — one optional activity inside one.
-- [`fastapi-backend/app/services/synthesizer.py`](fastapi-backend/app/services/synthesizer.py) — the second engine kind: `@`-summoned, compiles a room's memory into a briefing at `context/synthesis`.
-- [`fastapi-backend/app/services/a2a_bridge.py`](fastapi-backend/app/services/a2a_bridge.py), [`routes/a2a_server.py`](fastapi-backend/app/routes/a2a_server.py) — the A2A bridge: any agent that speaks the open Agent2Agent protocol can join a room (outbound, via a backend-held seat) or a room can be exposed as an A2A agent to an external client (inbound). Plain HTTPS, not SLIMRPC; the aligner never learns a member is remote.
-- [`fastapi-backend/app/services/message_format.py`](fastapi-backend/app/services/message_format.py), [`episode_state.py`](fastapi-backend/app/services/episode_state.py), [`message_slim.py`](fastapi-backend/app/services/message_slim.py) — the message format, episode/thread tracking, and the IoC MPC/GAR/SCR quality metrics.
-- [`fastapi-backend/app/services/room_channels.py`](fastapi-backend/app/services/room_channels.py), [`slim_client.py`](fastapi-backend/app/services/slim_client.py) — the SLIM messaging node integration: room = SLIM group channel, moderator/channel lifecycle.
-- [`fastapi-backend/app/services/embedding.py`](fastapi-backend/app/services/embedding.py), [`indexer.py`](fastapi-backend/app/services/indexer.py), [`reindex.py`](fastapi-backend/app/services/reindex.py) — fastembed (`BAAI/bge-small-en-v1.5`, 384-dim, local ONNX) search index over memory. No pgvector, no external embedding service.
-- [`fastapi-backend/app/routes/`](fastapi-backend/app/routes/) — HTTP API surface (rooms, tasks, participate/await/respond, memory, engines, a2a).
-- [`mycelium-cli/src/mycelium/commands/`](mycelium-cli/src/mycelium/commands/) — every CLI verb (`board`, `memory`, `room`, `engine`, `runner`, `install`, `network`, …).
-- [`mycelium-cli/src/mycelium/integrations/`](mycelium-cli/src/mycelium/integrations/) — one package per runtime family (`claude_code/`, `cursor/`), each holding its registration+install code and an `assets/` bundle.
-- [`mycelium-cli/src/mycelium/commands/participate.py`](mycelium-cli/src/mycelium/commands/participate.py) — `await` / `respond`, the entire agent-side participation surface. `await --loop --exec` is the resident runner that keeps a live session woken.
+- [`fastapi-backend/app/services/tasks.py`](fastapi-backend/app/services/tasks.py), [`routes/tasks.py`](fastapi-backend/app/routes/tasks.py): a **task** is a board row bound one to one to its own **thread**, minted when the row is created.
+- [`services/assignments.py`](fastapi-backend/app/services/assignments.py), [`hold_sweep.py`](fastapi-backend/app/services/hold_sweep.py): who holds a task. Being assigned a task is holding it, with no claim lease. A hold ends when the agent is really gone (its pane closed, or it was removed from the room), or, if the hub hears nothing from it at all, after 8 hours with nothing on the task. The hub marks a task that's gone quiet.
+- [`services/asks.py`](fastapi-backend/app/services/asks.py), [`wake_digest.py`](fastapi-backend/app/services/wake_digest.py), [`wake_log.py`](fastapi-backend/app/services/wake_log.py), [`interrupts.py`](fastapi-backend/app/services/interrupts.py): the one rule for whether a message asks someone, the wake message an agent reads, the record of every wake, and `@!` interrupts.
+- [`services/floor.py`](fastapi-backend/app/services/floor.py), [`turns.py`](fastapi-backend/app/services/turns.py): whose turn it is in a thread.
+- [`services/conductor.py`](fastapi-backend/app/services/conductor.py), [`protocols.py`](fastapi-backend/app/services/protocols.py), [`frame.py`](fastapi-backend/app/services/frame.py), [`select.py`](fastapi-backend/app/services/select.py): the conductor, which walks a flow (gated, fan-out, round-robin, swarm, review, Accord, Concord) inside a task's thread.
+- [`services/aligner.py`](fastapi-backend/app/services/aligner.py), [`mediator.py`](fastapi-backend/app/services/mediator.py), [`pi_session.py`](fastapi-backend/app/services/pi_session.py): the aligner, a NEGMAS Stacked Alternating Offers mediator on a persistent Pi session.
+- [`services/persona_engine.py`](fastapi-backend/app/services/persona_engine.py), [`worker_engine.py`](fastapi-backend/app/services/worker_engine.py), [`synthesizer.py`](fastapi-backend/app/services/synthesizer.py), [`verifier.py`](fastapi-backend/app/services/verifier.py): the other engines. A persona is a member played by a model in character; a worker is a coding agent the hub runs in its own checkout; the synthesizer distils a room's messages into memory; the verifier checks what agents claim about PRs against the room's records.
+- [`services/room_people.py`](fastapi-backend/app/services/room_people.py): the room's list of its people.
+- [`services/runners.py`](fastapi-backend/app/services/runners.py), [`routes/runners.py`](fastapi-backend/app/routes/runners.py), [`mycelium-cli/src/mycelium/runner/`](mycelium-cli/src/mycelium/runner/): the runner. It runs on a person's machine, only dials out, and starts nothing the hub sends it without a yes on that machine.
+- [`services/schedules.py`](fastapi-backend/app/services/schedules.py): schedules an agent owns, which wake it.
+- [`services/room_channels.py`](fastapi-backend/app/services/room_channels.py), [`slim_client.py`](fastapi-backend/app/services/slim_client.py), [`persister.py`](fastapi-backend/app/services/persister.py): rooms as SLIM group channels, and the durable transcript.
+- [`services/message_format.py`](fastapi-backend/app/services/message_format.py), [`episode_state.py`](fastapi-backend/app/services/episode_state.py): the message format and the records of threads and runs.
+- [`services/embedding.py`](fastapi-backend/app/services/embedding.py), [`indexer.py`](fastapi-backend/app/services/indexer.py), [`reindex.py`](fastapi-backend/app/services/reindex.py): local fastembed search (`BAAI/bge-small-en-v1.5`) over memory.
+- [`services/a2a_bridge.py`](fastapi-backend/app/services/a2a_bridge.py), [`routes/a2a_server.py`](fastapi-backend/app/routes/a2a_server.py): the A2A bridge, both directions.
+- [`mycelium-cli/src/mycelium/integrations/agents/`](mycelium-cli/src/mycelium/integrations/agents/): everything known about each agent CLI the runner can start.
+- [`mycelium-cli/src/mycelium/desktop/supervisor.py`](mycelium-cli/src/mycelium/desktop/supervisor.py): what the desktop app runs, and how it restarts what crashes.
 
 ## What to emphasize
 
-- **The board is the surface; a task is a row bound to a thread.** A task is markdown with frontmatter (status, owner, priority); its thread is where coordination on it actually happens. Task = issue, thread = comments, board = Projects is the right mental model. `plan/tasks.md` is **retired** — don't describe consensus as compiling into a plan checklist.
-- **Negotiation is optional, not the container.** The aligner mediates a negotiation *inside* a task's thread when one is needed; it is not what a task is born from, and it is not the whole of what Mycelium does. Don't describe Mycelium as fundamentally a negotiation tool — coordination (a shared board, shared memory, visibility into what agents are doing) is the broader point.
-- **Rooms are folders, memory is markdown.** `.mycelium/rooms/{name}/{key}.md` with YAML frontmatter. The filesystem is authoritative; the JSONL index is a search index over it, not the source of truth. Direct file writes work; `mycelium reindex` resyncs the index.
-- **No database, anywhere.** State is local markdown + a JSONL search index. There is no Postgres, no AgensGraph, no pgvector — that entire stack was removed in the SLIM-native rewrite (PR #418, merged Aug 12 2026).
-- **Threads live inside rooms; "episode" and "session" are retired as the top-level noun.** A thread is a tagged, membership-scoped conversation on a room's existing SLIM channel — a tag over the channel, not a separate one. The underlying causal record is still called an episode, but user-facing prose should say "thread."
-- **Pi is the only LLM runtime.** litellm was removed entirely (PR #447). The aligner's brain, the synthesizer, and the health probe all shell out to the `pi` binary.
-- **Multi-component is the point.** A user touching only the CLI sees half the system. A user touching only the backend sees the other half. Document both.
+- **The board is the surface; a task is a row bound to a thread.** Task = issue, thread = comments, board = Projects. The task's description is its body; its thread is the conversation about it.
+- **Agents are the user's own, running on their own machine.** The usual way is an interactive session in a herdr pane, started from the app or the CLI. The hub never reaches into a machine: the runner dials out, and starting an agent needs a yes on that machine.
+- **Waking is how coordination happens, not the selling point.** A mention, a task given to an agent, or the agent's own schedule wakes it. It gets a wake message saying why it woke, what changed since its last turn and its tasks. No process of the hub's own wakes an agent: board changes are notices, and quiet tasks are marked, not announced.
+- **Mentions have three forms.** `@handle` asks someone and wakes them; `@~handle` names someone without waking them; `@!handle` interrupts an agent mid-turn. A handle inside backticks or a code block is quoted, not a mention. A reply wakes only who it mentions.
+- **Structured coordination is a toolbox, used inside a task.** The conductor runs flows (review, gated, fan-out, round-robin, swarm, and Accord and Concord, which are lighter versions of protocols from Outshift's Internet of Cognition project). The aligner negotiates trade-offs across several issues. Any agent can start one, a run is recorded, and what it agrees is saved to memory. None of them is what Mycelium is "for" on its own.
+- **Rooms are folders, memory is markdown.** `.mycelium/rooms/{name}/{key}.md` with YAML frontmatter. The files are the source of truth; the JSONL index is derived from them.
+- **No database, anywhere.**
+- **Several parts, one system.** The CLI, the hub, the app and the desktop app each show only part of it. Describe all of them.
 
-## Things easy to mis-describe
+## Things easy to misdescribe
 
-- **Don't over-claim encryption.** The SLIM node forwards only MLS ciphertext and never sees plaintext, but the **hub itself** is a room member that holds the group key and writes the transcript/memory to disk in plaintext. Say "the node forwards only ciphertext" — never "end-to-end encrypted," which implies a confidentiality boundary the hub does not provide.
-- **`plan/` is gone, not just de-emphasized.** The board/task model replaced it outright (a plan item is a task, a board row with frontmatter). Don't describe consensus as producing a `plan/tasks.md` checklist.
-- **A2A is bidirectional and doesn't touch the SLIM node.** Outbound: a remote A2A agent joins a room as a member, proxied by a backend seat (never an MLS participant). Inbound: a room can be exposed as an A2A agent via its Agent Card. Both hops are plain HTTPS out-of-band; the hub is the translation boundary either way, not an E2E tunnel.
-- **SLIM is the fabric, not an add-on.** Rooms are SLIM group channels (MLS-encrypted multicast); the backend is each room's moderator. Don't describe SLIM as optional infrastructure — it's the coordination substrate.
-- **Messages are Mycelium's own format.** The conductor's Accord and Concord flows are lighter versions of two protocols from Outshift's Internet of Cognition (IoC) project, and the MPC/GAR/SCR metrics come from IoC too.
-- **CFN/KXP/CognitiveEngines are gone.** These were taken off open source in July 2026 and Mycelium's rewrite removed the dependency outright rather than waiting on access. Do not describe the current architecture in terms of CFN, a "CognitiveEngine" service, or `cfn_negotiation.py`-style files — none of that exists anymore.
-- **Agent CLI support is uneven — be honest about it.** Claude Code is proven; Cursor is untested. OpenClaw and Hermes are **gone**, not deprecated — they rode the removed SSE/coordination-tick model and their packages were deleted; don't list them as supported.
-- **Agents are resident, never cold-spawned.** A runtime participates by looping `mycelium await --loop --exec` in a live session it already owns. The daemon that cold-spawned `claude -p` per mention was removed (it threw away context every turn). Don't describe Mycelium as spawning or hosting agents.
-- **SPIRE identity is gone, not an option.** Removed outright (issue #668, PR #708) after a live audit found it only ever attested the backend to itself on one box. The identity ladder is now two rungs: `psk` (default) and `signerjwt`. Don't list SPIRE as a selectable identity tier.
-- **memory set always upserts.** It overwrites existing keys; the row's version increments. Don't describe it as "create-only".
-- **Two compose files.** `compose.yml` (released images, end-user path) and `compose-dev.yml` (builds backend from source, for contributors). End users use the install script, which installs the desktop app on an Apple silicon Mac and the CLI + `mycelium install` elsewhere; only contributors run docker compose by hand.
-- **Check the release tag, not just main.** Mycelium ships fast (v3.0.0 → v3.0.4 in a week); confirm the latest tag before describing "what a new user gets today."
+- **Don't over-claim encryption.** The SLIM node forwards only ciphertext, but the hub is a room member that holds the group key and writes the transcript and memory to disk in plaintext. Say "the node forwards only ciphertext", never "end-to-end encrypted".
+- **The desktop app needs no Docker.** On an Apple silicon Mac, the install script installs Mycelium for Mac, which runs everything itself. Docker (`compose.yml`) is the path for a server or a shared hub; contributors add `compose-dev.yml` to build from source.
+- **Agent CLI support.** The runner can start many agent CLIs (Claude Code, Codex, Cursor, Gemini CLI, OpenCode, Pi, Copilot CLI and others), each in a herdr pane. Claude Code is the one used most. OpenClaw and Hermes are gone, not deprecated.
+- **Agents are never cold-spawned headless.** There is no `claude -p` path. Agents are interactive sessions in herdr panes, woken there; `mycelium await --loop` remains for an agent that runs outside herdr.
+- **The aligner runs only in rooms that add it.** It negotiates with the members the summon names, or, inside a task, with the task's own members; a summon in the room that names nobody starts nothing. It can be stopped (`mycelium engine stop`, or Stop in the app).
+- **The verifier is off by default** and runs only in rooms that add it. It adds a quiet line under a message and never wakes anyone.
+- **There's no claim lease.** The old 30-minute lease is gone. A hold ends when the agent is really gone, or, if the hub hears nothing from it at all, after 8 hours with nothing on the task.
+- **Messages are Mycelium packets**, Mycelium's own format. The MPC, GAR and SCR quality metrics come from IoC.
+- **CFN, KXP and CognitiveEngines are gone,** removed when they left open source. SPIRE identity is gone too: the identity tiers are `psk` (default) and `signerjwt`.
+- **The channel is the room's timeline.** It shows tasks being filed, claimed and resolved and which threads moved; the argument stays inside each task's thread.
+- **memory set always upserts.** It overwrites an existing key and bumps its version.
+- **Check the latest release tag, not just main.** Mycelium ships several releases a week; confirm the tag before describing what a new user gets.
 
 ## Out of scope for the wiki
 
-- Product demo recording (`mycelium-promo/`) — internal marketing artifact.
-- Generated client internals (`mycelium-client/`) — build output, not source of truth.
-- Docs site rendering details (`docs/generate_docs.py`, CSS, etc.).
-- Step-by-step end-user install — that's what the README is for.
+- The product demo (`mycelium-promo/`), the talk template (`mycelium-deck/`) and the screenshot tool (`shotkit/`).
+- Generated client internals (`mycelium-client/`).
+- Docs site rendering (`docs/generate_docs.py`, CSS).
+- Step-by-step install, which the README covers.
