@@ -13,7 +13,8 @@ import { MessageBody } from "@/components/message-body";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { Chip } from "@/components/ui/chip";
 import { EventIconMark } from "@/components/event-icon";
-import { JumpToLatest, useJumpToLatest } from "@/components/jump-to-latest";
+import { JumpToLatest } from "@/components/jump-to-latest";
+import { useFollowLatest } from "@/components/messages/use-follow-latest";
 import { MEMORY_ICON, noticeIcon, type EventIcon } from "@/lib/event-icons";
 
 /** The icon for a board, pull request or saved-memory line: the chat's table. */
@@ -194,26 +195,19 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
   const gutter = LANE_X0 + columns * LANE_STEP + 6;
   const newAt = seenAt ? lines.findIndex((l) => l.event.at > seenAt) : -1;
 
-  // Open at the newest line, and stay there as lines arrive unless you've
-  // scrolled up to read.
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // The scroll behavior every message list shares: open at the newest line,
+  // stay there as lines arrive unless you've scrolled up to read, and then the
+  // same "Jump to latest", counting the messages that arrived meanwhile (by
+  // which ones, so it holds once the oldest lines start dropping off). A
+  // change of filter starts over, since the lines are different ones.
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
-  const attachScroller = useCallback((el: HTMLDivElement | null) => {
-    scrollRef.current = el;
-    setScroller(el);
-  }, []);
-  const pinned = useRef(true);
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [lines]);
-
-  // Scrolled up, the same "Jump to latest" the channel has, counting the
-  // messages that arrived meanwhile. A change of filter starts the count over,
-  // since the lines it would measure against are different ones.
-  const messageCount = useMemo(() => lines.filter((l) => l.event.kind === "message").length, [lines]);
+  const lineIds = useMemo(() => lines.map((l) => l.event.id), [lines]);
+  const messageIds = useMemo(
+    () => lines.filter((l) => l.event.kind === "message").map((l) => l.event.id),
+    [lines],
+  );
   const filterKey = `${roomName}|${[...kinds].sort().join(",")}|${mineOnly}|${who ?? ""}`;
-  const jumpTo = useJumpToLatest(scroller, lines.length ? messageCount : null, filterKey);
+  const jumpTo = useFollowLatest(scroller, { rows: lineIds, counted: messageIds, resetKey: filterKey });
 
   const titleOf = useCallback((episode: string) => threads.get(episode)?.title ?? null, [threads]);
   const toggleKind = (kind: StreamKind) =>
@@ -250,11 +244,7 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
       </div>
 
       <div
-        ref={attachScroller}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-        }}
+        ref={setScroller}
         className="min-h-0 flex-1 overflow-y-auto py-1.5"
         role="log"
         aria-label="Everything in the room, newest last"

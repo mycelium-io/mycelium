@@ -44,6 +44,7 @@ import { RoomStarters } from "@/components/room-starters";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { JumpToLatest } from "@/components/jump-to-latest";
+import { useFollowLatest } from "@/components/messages/use-follow-latest";
 import {
   FeedRow,
   RAISE_UP_TYPES,
@@ -333,10 +334,6 @@ function activityLine(ev: Event): { label: string; detail: string } {
   return { label: ev.type, detail: ev.sender };
 }
 
-/** A reader a couple of lines off the bottom still counts as reading the tail,
- *  so a stray wheel tick doesn't detach them. */
-const PIN_TOLERANCE_PX = 64;
-
 /** One page of the channel, on both of its reads.
  *
  *  The two used to disagree: the prose took the backend's default (50) while the
@@ -345,9 +342,6 @@ const PIN_TOLERANCE_PX = 64;
  *  is how a room with hundreds of messages in it read as having none. Same page
  *  size on both reads, and every older page is fetched the same way. */
 const CHANNEL_PAGE = 200;
-
-/** How close to the top of the viewport counts as asking for the page before. */
-const LOAD_OLDER_MARGIN_PX = 240;
 
 /** The two reads the channel is assembled from, as one page of it.
  *
@@ -428,7 +422,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   useEffect(() => {
     onConnectionChange?.(connected);
   }, [connected, onConnectionChange]);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // The scrolling viewport: a ref for find and its minimap, and state for the
+  // scroll behavior, which attaches once the element exists.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const attachScroller = useCallback((el: HTMLDivElement | null) => {
+    scrollRef.current = el;
+    setScroller(el);
+  }, []);
 
   // What every row needs about the room: who is an agent (to badge their
   // replies) and whose, what each thread and row is called (so a ping or a
@@ -448,10 +449,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   const older = useRef({ cursor: null as string | null, exhausted: false, loading: false });
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [reachedStart, setReachedStart] = useState(false);
-  // Distance from the bottom, captured before a prepend and restored after it.
-  // The distance from the *top* is what the new page changes, which is why the
-  // view would otherwise jump the moment older messages landed above it.
-  const anchor = useRef<number | null>(null);
 
   // Two reads, one feed.
   //
@@ -510,17 +507,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   //
   // Keyed off the oldest message loaded rather than an offset: the live stream
   // never stops, and every offset in the room shifts under a message arriving
-  // while you read back. A page lands prepended, with the scroll position
-  // anchored to what was already there, so reaching the top reveals history
+  // while you read back. A page lands prepended, and the scroll behavior keeps
+  // the reader on what was already there, so reaching the top reveals history
   // instead of moving it.
   const loadOlder = useCallback(() => {
     const state = older.current;
     if (state.loading || state.exhausted || !state.cursor) return;
-    const el = scrollRef.current;
-    if (!el) return;
     state.loading = true;
     setLoadingOlder(true);
-    const from = el.scrollHeight - el.scrollTop;
     readPage(state.cursor)
       .then(({ page, more }) => {
         const cursor = oldestAt(page);
@@ -529,7 +523,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         state.exhausted = !more || cursor === null;
         if (cursor) state.cursor = cursor;
         if (state.exhausted) setReachedStart(true);
-        anchor.current = from;
         setEvents((prev) => mergePage(prev, page));
       })
       .catch(logFetchError("fetchMessages"))
@@ -885,139 +878,31 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     return () => observer.disconnect();
   }, [findOpen, matches, visible]);
 
-  // The feed follows new messages only while the reader is on the tail; scroll
-  // up and it holds still. A jump-back button carries the count of what landed
-  // meanwhile, so leaving the tail doesn't read as a quiet room.
-  const [atBottom, setAtBottom] = useState(true);
-  const atBottomRef = useRef(true);
-  // The last row the reader had reached when they left the tail — the row
-  // itself, not how many there were. A count is wrong the moment a page of
-  // older messages is prepended: every one of them lands *above* the mark, and
-  // none of it is news.
-  const [detachedAt, setDetachedAt] = useState<string | null>(null);
-  const lastVisible = useRef<string | null>(null);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const measure = () => {
-      if (el.scrollTop <= LOAD_OLDER_MARGIN_PX) loadOlder();
-      const pinned = el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_TOLERANCE_PX;
-      if (pinned === atBottomRef.current) return;
-      atBottomRef.current = pinned;
-      if (!pinned) setDetachedAt(lastVisible.current);
-      setAtBottom(pinned);
-    };
-    el.addEventListener("scroll", measure, { passive: true });
-    return () => el.removeEventListener("scroll", measure);
-  }, [loadOlder]);
-
-  // Put the reader back where they were reading. Before paint, and before the
-  // follow-the-tail effect below runs — which it won't, since anyone reading
-  // back is by definition off the tail.
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    const from = anchor.current;
-    if (!el || from === null) return;
-    anchor.current = null;
-    el.scrollTop = el.scrollHeight - from;
-  }, [visible]);
-
-  // A page of the room is not a page of the channel: the thread prose in it is
-  // placed rather than shown, and the churn goes up to the rail, so two hundred
-  // messages can leave a handful of rows and nothing to scroll. Keep pulling
-  // until the viewport actually overflows — otherwise the one gesture that
-  // reaches the older pages is a gesture the reader has no way to make.
-  // A viewport with no height is not laid out (hidden, or not yet sized), not
-  // empty: filling it would page through the whole room.
-  useEffect(() => {
-    if (!historyLoaded) return;
-    const el = scrollRef.current;
-    if (!el || el.clientHeight === 0) return;
-    if (el.scrollHeight <= el.clientHeight + LOAD_OLDER_MARGIN_PX) loadOlder();
-  }, [historyLoaded, visible, loadOlder]);
+  // The scroll behavior every message list shares: open at the newest message,
+  // follow it while the reader is there, hold still when they've scrolled up
+  // and say how much landed meanwhile, read back a page near the top (and
+  // until the view is full: a page of the room can leave a handful of rows
+  // here once its thread prose and churn are placed elsewhere). A live message
+  // must not pull the view off a hit the reader stepped to, or off a message
+  // they arrived at from search; what they just sent takes them back down.
+  const newestPending = pending[pending.length - 1]?.id ?? null;
+  const rowIds = useMemo(() => (historyLoaded ? visible.map((e) => e.id) : null), [historyLoaded, visible]);
+  const follow = useFollowLatest(scroller, {
+    rows: rowIds,
+    holding: Boolean(highlight || activeId),
+    onNearTop: loadOlder,
+    sent: newestPending,
+    resetKey: roomName,
+  });
 
   useEffect(() => {
     onCountChange?.(visible.length);
   }, [visible.length, onCountChange]);
 
-  const jumpToLatest = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    atBottomRef.current = true;
-    setAtBottom(true);
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  };
-
-  const unread = useMemo(() => {
-    if (atBottom || detachedAt === null) return 0;
-    const mark = visible.findIndex((e) => e.id === detachedAt);
-    return mark === -1 ? 0 : visible.length - 1 - mark;
-  }, [atBottom, detachedAt, visible]);
-
-  // Auto-scroll when new events arrive — but not over a message the user was
-  // just sent to, which is the one place in the feed they're looking, and not
-  // over history they scrolled up to read.
-  // The first page lands at the newest message at once, before paint. Animated,
-  // the scroll is still under way when the scroll handler measures it, which
-  // reads as the reader having left the tail, and the feed then stops following.
-  const landed = useRef(false);
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (landed.current || !historyLoaded || !el || visible.length === 0) return;
-    landed.current = true;
-    if (!highlight && atBottomRef.current) el.scrollTop = el.scrollHeight;
-  }, [historyLoaded, visible, highlight]);
-
-  useEffect(() => {
-    lastVisible.current = visible[visible.length - 1]?.id ?? null;
-    // A live message must not pull the view off the hit the reader stepped to,
-    // any more than it may off a message they arrived at from search.
-    if (highlight || activeId || !atBottomRef.current) return;
-    // At once, like a send: an animated scroll can land short of a tail that
-    // grows while it runs, and then the feed stops following.
-    const el = scrollRef.current;
-    el?.scrollTo({ top: el.scrollHeight, behavior: "instant" });
-  }, [visible, highlight, activeId]);
-
   useEffect(() => {
     if (!highlight) return;
     highlightRow.current?.scrollIntoView({ block: "center" });
   }, [highlight, historyLoaded, visible]);
-
-  // What you just sent is where you are looking, so the feed goes back to its
-  // tail and follows it from there. At once, before paint: animated, the scroll
-  // aims at the height it measured, the feed grows under it (the sent row
-  // swapping for the stored one, the composer shrinking back), it lands short,
-  // and the scroll handler reads that as the reader leaving the tail.
-  const newestPending = pending[pending.length - 1]?.id ?? null;
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!newestPending || !el) return;
-    atBottomRef.current = true;
-    setAtBottom(true);
-    el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
-  }, [newestPending]);
-
-  // On the tail, stay on it through anything that changes the feed's size
-  // rather than its rows: "responding" appearing over the composer shortens
-  // the viewport, an image loading lengthens a message. Neither scrolls, so
-  // without this the newest line slides out of view under the reader.
-  const holdingRef = useRef(false);
-  useEffect(() => {
-    holdingRef.current = Boolean(highlight || activeId);
-  }, [highlight, activeId]);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const stick = () => {
-      if (atBottomRef.current && !holdingRef.current) el.scrollTop = el.scrollHeight;
-    };
-    const observer = new ResizeObserver(stick);
-    observer.observe(el);
-    if (el.firstElementChild) observer.observe(el.firstElementChild);
-    return () => observer.disconnect();
-  }, [historyLoaded]);
 
   return (
     <div className="flex flex-col h-full">
@@ -1067,7 +952,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         <ActivityRail items={activity} onOpenThread={onOpenThread} onOpenMemory={onOpenMemory} />
       )}
       <div className="relative flex-1 min-h-0">
-      <ScrollArea className="h-full" viewportRef={scrollRef}>
+      <ScrollArea className="h-full" viewportRef={attachScroller}>
         {!historyLoaded ? (
           <ChannelSkeleton />
         ) : visible.length === 0 && pending.length === 0 ? (
@@ -1130,7 +1015,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         <ChatMinimap viewportRef={scrollRef} ticks={ticks} activeId={activeId} onJump={setStanding} />
       )}
       </div>
-      {!atBottom && visible.length > 0 && <JumpToLatest unread={unread} onClick={jumpToLatest} />}
+      {!follow.atBottom && visible.length > 0 && <JumpToLatest unread={follow.unread} onClick={follow.jump} />}
       </div>
       {/* Outside the scroll, so it stays over the composer wherever the
           channel is scrolled to, and sending a message can't push it away. */}
