@@ -46,6 +46,8 @@ ENGINES = {
 }
 #: An A2A agent, answering for a remote endpoint.
 REMOTE = "remote"
+#: The members with a herdr pane, whose doorbells ring.
+HERDR = (AGENT, PEER)
 
 _REQUEST = Request({"type": "http", "method": "GET", "path": "/await", "headers": []})
 
@@ -67,7 +69,8 @@ class Room:
     client: AsyncClient
     managed: room_channels.ManagedRoomChannel
     thread: str = ""
-    sent: list[str] = field(default_factory=list)
+    #: Who was handed a turn to answer: a persona or a worker (``on_turn``).
+    turns: list[str] = field(default_factory=list)
 
     @property
     def log(self) -> Any:
@@ -123,8 +126,9 @@ async def open_room(client: AsyncClient, monkeypatch: Any) -> Room:
         feed_bus=False,
     )
     monkeypatch.setitem(manager._channels, ROOM, managed)
-    manager.set_herdr_presence(ROOM, {AGENT: "idle", PEER: "idle"})
+    manager.set_herdr_presence(ROOM, dict.fromkeys(HERDR, "idle"))
     room = Room(client=client, managed=managed)
+    monkeypatch.setattr(manager, "on_turn", lambda _r, handle, *_a: room.turns.append(handle))
     task = await client.post(
         f"/api/rooms/{ROOM}/tasks", json={"title": "Parser work", "handle": PERSON}
     )
@@ -261,10 +265,13 @@ class Decided:
         return {self.doorbell is not None, self.awaited, self.digest}
 
 
-def mark_read(room: Room, agent: str) -> None:
-    """``agent`` has read everything so far, so a row reads only its message."""
+def mark_read(room: Room, agent: str) -> int:
+    """``agent`` has read everything so far, so a row reads only its message.
+    Returns where the transcript stood, so the row's records can be found."""
     room.log.advance(agent, len(room.log.records))
     participate._last_tick.pop((ROOM, agent), None)
+    room.turns.clear()
+    return len(room.log.records)
 
 
 async def decided(room: Room, agent: str) -> Decided:

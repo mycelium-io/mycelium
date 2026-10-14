@@ -150,9 +150,15 @@ module; read it before changing what a rule protects.
 - **Nothing the hub runs can summon or interrupt.** Personas neutralize every
   `@`; workers keep `@` only for teammates; an engine's `@!` is a plain
   mention. An `@`-mention of an engine is a summon, never a SLIM invite.
-- **A reply puts a turn to nobody.** Its recipient is whoever the replier last
-  heard from, not someone it asked, so asking an agent takes a mention
-  (`persister.on_addressed`).
+- **Who a message asks is decided once**, in `app/services/asks.py`, and the
+  herdr doorbell, `await`, the wake digest and a schedule's mention check all
+  call it; the doorbell rings from the persister's ingest, so every write path
+  rings the same way. Only chat asks. A mention asks, except an engine's
+  (that's a summon) and the members a conductor summon names (role bindings).
+  A `message` asks its recipients (a turn). A reply asks only whoever it
+  mentions: its recipient is just whoever the replier last heard from. Cases
+  in `contracts/asks.json`, held through every path by
+  `tests/test_wake_paths_table.py`.
 - **Mentions have three forms**, `@foo`, `@~foo` (silent) and `@!foo`
   (interrupt), and a handle in code is quoted, not a mention. Frozen in
   `contracts/mentions.json`.

@@ -1,157 +1,64 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""What the doorbell, ``await`` and the wake digest each decide, row by row.
+"""Every case in ``contracts/asks.json``, through every path that acts on it.
 
-Each row is one message, written the way its sender writes it, and one agent.
-Its expected column is what each path decides about that agent: the reason a
-wake was queued with (or none), whether ``await`` handed the message over as a
-turn, and whether the digest listed it as asking for the agent. A row marked
-``wrong`` is one where the paths disagree with each other today.
+Each case is one message, written the way its sender writes it (``wake_paths``
+sends it through the real route or engine call), and one agent. The doorbell,
+``await`` and the wake digest must each give the contract's answer, and so
+must ``asks()`` on the message as the transcript recorded it. A herdr agent
+asked is rung with the reason, and a turn also goes to the members the hub
+plays, which have no doorbell.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from pathlib import Path
+from typing import Any
 
 import pytest
 
+from app.services.asks import asks
 from tests import wake_paths
-from tests.wake_paths import AGENT, PEER, PERSON, REMOTE, Decided
+from tests.wake_paths import AGENT, HERDR, ROOM, Decided
+
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent.parent / "contracts" / "asks.json"
+CASES: list[dict[str, Any]] = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))["cases"]
 
 
-@dataclass(frozen=True)
-class Row:
-    id: str
-    sender: str
-    text: str
-    expected: Decided
-    to: tuple[str, ...] = ()
-    where: str = "room"
-    shape: str | None = None
-    agent: str = AGENT
-    #: Why the paths disagree on this row, when they do.
-    wrong: str = ""
-
-
-ASKED = Decided(doorbell="mention", awaited=True, digest=True)
-TURN = Decided(doorbell="turn", awaited=True, digest=True)
-NOT_ASKED = Decided(doorbell=None, awaited=False, digest=False)
-
-ROWS = [
-    Row("a person mentions the agent", PERSON, "@coder can you look at the parser?", ASKED),
-    Row("a silent mention", PERSON, "thanks @~coder, that was the parser", NOT_ASKED),
-    Row(
-        "an interrupt",
-        PERSON,
-        "@!coder stop, that's main",
-        Decided(doorbell="interrupt", awaited=True, digest=True),
-    ),
-    Row("a handle in a code span", PERSON, "run `@coder status` to see it", NOT_ASKED),
-    Row("a handle in a code block", PERSON, "like this:\n\n```\n@coder go\n```", NOT_ASKED),
-    Row("a mention in another letter case", PERSON, "@Coder can you look?", ASKED),
-    Row("an email address", PERSON, "write to coder@example.com", NOT_ASKED),
-    Row("a mention of someone else", PERSON, "@planner can you look?", NOT_ASKED),
-    Row("an agent mentions itself", AGENT, "@coder note to self: parser next", NOT_ASKED),
-    Row(
-        "a reply to the agent's turn, not mentioning it",
-        PEER,
-        "Yes, that command works.",
-        NOT_ASKED,
-        to=(AGENT,),
-    ),
-    Row(
-        "a reply that mentions the agent",
-        PEER,
-        "@coder can you take the parser?",
-        ASKED,
-        to=(AGENT,),
-    ),
-    Row("a reply to someone else", PEER, "Yes, that works.", NOT_ASKED, to=(PERSON,)),
-    Row(
-        "the aligner puts a turn to the agent",
-        "aligner",
-        "What's your position on the release date?",
-        TURN,
-        to=(AGENT,),
-        shape="turn",
-    ),
-    Row(
-        "the conductor puts a step to the agent in a thread",
-        "conductor",
-        "Approve or block this change.",
-        TURN,
-        to=(AGENT,),
-        where="thread",
-        shape="turn",
-    ),
-    Row(
-        "an engine turn to someone else",
-        "conductor",
-        "Approve or block this change.",
-        NOT_ASKED,
-        to=(PEER,),
-        shape="turn",
-    ),
-    Row(
-        "an engine turn that mentions the agent",
-        "aligner",
-        "@coder your position?",
-        ASKED,
-        to=(AGENT,),
-        shape="turn",
-    ),
-    Row("a persona's post, its @ taken off", "sage", "@coder you should look", NOT_ASKED),
-    Row("a worker names a teammate", "builder", "@coder can you review this?", ASKED),
-    Row(
-        "a mention of an engine",
-        PERSON,
-        "@aligner what's the plan?",
-        NOT_ASKED,
-        agent="aligner",
-    ),
-    Row(
-        "a summon of the conductor naming the agent",
-        PERSON,
-        "@conductor gated @coder @planner: ship the parser",
-        NOT_ASKED,
-    ),
-    Row("a ping", PEER, "", NOT_ASKED, shape="ping"),
-    Row("a notice", PEER, "", NOT_ASKED, shape="notice"),
-    Row("presence", PEER, "", NOT_ASKED, to=(AGENT,), shape="presence"),
-    Row("a commit", "aligner", "agreed: ship friday", NOT_ASKED, to=(AGENT,), shape="commit"),
-    Row(
-        "a person mentions the agent in a thread",
-        PERSON,
-        "@coder can you look?",
-        ASKED,
-        where="thread",
-    ),
-    Row(
-        "a reply in a thread, not mentioning the agent",
-        PEER,
-        "Yes, that command works.",
-        NOT_ASKED,
-        to=(AGENT,),
-        where="thread",
-    ),
-    Row(
-        "an A2A agent answers the agent that summoned it",
-        REMOTE,
-        "Rain on Friday.",
-        NOT_ASKED,
-        to=(AGENT,),
-    ),
-]
+def test_the_contract_names_each_case_once():
+    names = [c["case"] for c in CASES]
+    assert len(names) == len(set(names))
+    assert {c["asks"] for c in CASES} == {None, "mention", "turn", "interrupt"}
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("row", ROWS, ids=[r.id for r in ROWS])
-async def test_each_path_decides(row: Row, client, monkeypatch) -> None:
+@pytest.mark.parametrize("case", CASES, ids=[c["case"] for c in CASES])
+async def test_every_path_gives_the_contract_s_answer(case: dict, client, monkeypatch) -> None:
+    agent = case.get("agent", AGENT)
+    reason = case["asks"]
     room = await wake_paths.open_room(client, monkeypatch)
-    wake_paths.mark_read(room, row.agent)
-    await wake_paths.say(room, row.sender, row.text, where=row.where, to=row.to, shape=row.shape)
-    got = await wake_paths.decided(room, row.agent)
-    assert got == row.expected
-    # A row the paths agree on says so; one they disagree on says why.
-    assert (len(got.asked) == 1) == (not row.wrong)
+    start = wake_paths.mark_read(room, agent)
+    await wake_paths.say(
+        room,
+        case["sender"],
+        case.get("text", ""),
+        where=case.get("where", "room"),
+        to=tuple(case.get("to", ())),
+        shape=case.get("shape"),
+    )
+
+    # The rule itself, on what the transcript recorded.
+    recorded = room.log.records[start:]
+    assert recorded, "the case wrote nothing"
+    found = {why for r in recorded if (why := asks(r.content, agent, room=ROOM))}
+    assert found == ({reason} if reason else set())
+
+    turned = agent in room.turns
+    got = await wake_paths.decided(room, agent)
+    rung = reason if agent in HERDR else None
+    assert got == Decided(doorbell=rung, awaited=bool(reason), digest=bool(reason))
+    # The members the hub plays hear every turn (each answers its own); nothing
+    # else is one.
+    assert turned == (reason == "turn")
