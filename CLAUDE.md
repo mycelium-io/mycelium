@@ -596,7 +596,14 @@ is no litellm dependency.
   approval dialog. herdr restarts only on a yes, since that stops its agents,
   and restarts the same program it was running; `mycelium desktop
   restart-herdr` and the health check say the same. It writes everything to
-  `~/.mycelium/logs/desktop.log`. Programs are found in the app bundle, then
+  `~/.mycelium/logs/desktop.log`, rotated by size, from a thread of its own
+  (`desktop/events.py`): a program whose output pipe isn't drained blocks on
+  its next write, so the per-program readers never wait on the log or the
+  app, survive a failed line and are replaced if they die. The hub logs
+  through a bounded queue (`app/services/log_queue.py`), so a stuck stdout
+  drops lines instead of freezing the event loop, and the supervisor watches
+  it while it runs: unanswered `/health` for a minute is `hung` in the status,
+  and the app asks before restarting it. Programs are found in the app bundle, then
   a checkout, then PATH. `mycelium-desktop/` (Tauri 2) adds first run, the
   menu bar, `mycelium://join|terminal|settings` links and an agents terminal that can
   start only herdr; the hub's pages get no IPC and reach the app only by

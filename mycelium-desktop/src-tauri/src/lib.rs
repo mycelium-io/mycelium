@@ -379,7 +379,11 @@ fn status_line(status: &Value) -> String {
     let other_hub = status.get("existing_hub").is_some_and(|h| !h.is_null());
     // herdr from before the app was updated: its terminals can lose folders.
     let stale_herdr = status.get("stale_herdr").is_some_and(|h| !h.is_null());
-    if parts.iter().any(|s| s == "failed" || s == "stopped") {
+    // A program the supervisor started that stopped answering (the hub).
+    let hung = status.get("hung").and_then(Value::as_str);
+    if let Some(name) = hung {
+        format!("○ The {name} stopped responding")
+    } else if parts.iter().any(|s| s == "failed" || s == "stopped") {
         "○ Something stopped: open Health check".into()
     } else if parts.iter().all(|s| s == "running" || s == "disabled") {
         if stale_herdr {

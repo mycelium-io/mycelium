@@ -84,6 +84,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Uvicorn has set up its loggers by now: put every handler behind a queue,
+    # so a stdout nobody drains drops lines instead of freezing the hub.
+    from app.services import log_queue
+
+    log_queue.install()
     logger.info("Mycelium backend starting up")
     # Say plainly whether the HTTP surface is gated — "is this hub open?" should
     # never require reading config to answer.
@@ -345,6 +350,7 @@ async def lifespan(app: FastAPI):
         logger.warning("SLIM channel teardown failed (non-fatal): %s", exc)
 
     logger.info("Mycelium backend shutting down")
+    log_queue.uninstall()
 
 
 def _read_pkg_version() -> str:

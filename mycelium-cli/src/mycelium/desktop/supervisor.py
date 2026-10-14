@@ -27,6 +27,15 @@ keeps failing is left failed with the reason. A port something else already
 answers on counts as running, so the app sits beside a Docker stack rather
 than fighting it for its ports.
 
+Each program's output is a pipe, drained by a thread per program. A program
+whose pipe nobody drains blocks on its next write, so a reader survives
+anything that happens to a line, one that dies anyway is replaced, and the
+events it hands on are written from a thread of their own
+(:mod:`mycelium.desktop.events`), never in its way. The hub is also watched
+while it runs: when it hasn't answered ``/health`` for :data:`HUNG_S`, the
+status says so (``hung``) and the person is asked, once per process, whether
+to restart it, with its last lines.
+
 A hub the app didn't start is never used without saying so. Before starting
 anything in hub mode the supervisor looks for every hub on this machine
 (``mycelium.hubs``), warns when there is more than one, and reports the one
@@ -93,6 +102,22 @@ STALE_HERDR_WARNING = (
     "updated. Until it restarts, macOS can refuse it and its terminals access to "
     'folders like Documents, so commands there fail with "Operation not permitted".'
 )
+#: How often a running program that is watched (the hub) is checked.
+WATCH_S = 15.0
+#: How long it may go without answering before it counts as stopped.
+HUNG_S = 60.0
+#: How many of its last lines the question about restarting it shows.
+HUNG_LINES = 8
+
+
+def hung_warning(name: str) -> str:
+    """What the app, the log and the status say about a program that stopped answering."""
+    return (
+        f"The {name} stopped responding: it hasn't answered for over a minute, so "
+        "agents can't read or post. Restarting it usually fixes this."
+    )
+
+
 WINDOWS = sys.platform == "win32"
 #: Pi's JavaScript entry point inside the app's resources, which the hub runs
 #: on node on Windows (see ``Locator.pi``).
@@ -326,6 +351,19 @@ class Component:
     retry_at: float = 0.0
     #: Its last lines of output, so a crash can say why.
     tail: deque[str] = field(default_factory=lambda: deque(maxlen=TAIL_LINES))
+    #: The thread draining its output. A program whose output nobody reads
+    #: blocks on its next write once the pipe fills, so a dead one is replaced.
+    reader: threading.Thread | None = None
+    #: Checked while it runs, not only until it first answers: a program that
+    #: stops answering for :data:`HUNG_S` is reported, and restarted on a yes.
+    watch: bool = False
+    checked_at: float = 0.0
+    #: When it last stopped answering, or 0 while it answers.
+    unanswered_since: float = 0.0
+    #: The process the person was asked about, so each hang is asked once.
+    hang_asked: int | None = None
+    #: Set by a yes to restarting it; the supervisor's loop does the restart.
+    restart_now: bool = False
 
     def last_words(self) -> str:
         """The line most likely to say why it stopped: its last error-looking line, else its last."""
@@ -405,6 +443,8 @@ class Supervisor:
         self.requests_base = requests_base or REQUESTS_BASE
         #: The herdr server whose program was replaced after it started, as wire.
         self.stale_herdr: dict[str, Any] | None = None
+        #: The program that stopped answering, by name, until it answers again.
+        self.hung: str | None = None
         self._herdr_checked_at = 0.0
         #: The servers already asked about, so each is asked once.
         self._herdr_asked: set[int] = set()
@@ -496,6 +536,7 @@ class Supervisor:
                 ready=lambda: http_ok(f"http://{HOST}:{HUB_PORT}/health"),
                 env=hub_env_vars,
                 external=lambda: http_ok(f"http://{HOST}:{HUB_PORT}/health"),
+                watch=True,
             ),
             Component(
                 name="ui",
@@ -522,7 +563,11 @@ class Supervisor:
             "runner_id": self.runner_id,
             "components": components,
             # More than one hub here, a hub on someone else's store, an old one.
-            "warnings": self.warnings + ([STALE_HERDR_WARNING] if self.stale_herdr else []),
+            "warnings": self.warnings
+            + ([STALE_HERDR_WARNING] if self.stale_herdr else [])
+            + ([hung_warning(self.hung)] if self.hung else []),
+            # A program the supervisor started that stopped answering.
+            "hung": self.hung,
             "hubs": self.hubs,
             # The hub on the app's port that the app is using but didn't start.
             "existing_hub": self.adopted_hub,
@@ -546,11 +591,30 @@ class Supervisor:
     # ── processes ────────────────────────────────────────────────────────────
 
     def _pipe(self, c: Component, stream: Any) -> None:
-        for raw in iter(stream.readline, ""):
-            line = raw.rstrip()
-            if line:
+        """Drain ``c``'s output for as long as it has any. Nothing that happens to
+        a line stops the reading: a program whose pipe isn't drained blocks on
+        its next write, and a hub blocked there answers nothing."""
+        try:
+            for raw in iter(stream.readline, ""):
+                line = raw.rstrip()
+                if not line:
+                    continue
                 c.tail.append(line)
-                self.emit({"type": "log", "component": c.name, "line": line})
+                try:
+                    self.emit({"type": "log", "component": c.name, "line": line})
+                except Exception:  # noqa: BLE001, S112 - a lost line, never a stopped reader
+                    continue
+        except (OSError, ValueError):
+            return  # the pipe closed with the program
+
+    def _read(self, c: Component) -> None:
+        """Start a thread draining ``c``'s output."""
+        if c.proc is None or c.proc.stdout is None:
+            return
+        c.reader = threading.Thread(
+            target=self._pipe, args=(c, c.proc.stdout), name=f"read-{c.name}", daemon=True
+        )
+        c.reader.start()
 
     def _spawn(self, c: Component) -> None:
         if c.external is not None and c.restarts == 0 and c.external():
@@ -580,7 +644,8 @@ class Supervisor:
             self._set(c, "failed", f"could not start {c.name}: {e}")
             return
         c.started_at = time.monotonic()
-        threading.Thread(target=self._pipe, args=(c, c.proc.stdout), daemon=True).start()
+        c.unanswered_since = 0.0
+        self._read(c)
         self._set(c, "starting")
 
     def _tick(self, c: Component) -> bool:
@@ -629,6 +694,17 @@ class Supervisor:
                 + f"; starting again in {wait:.0f}s",
             )
             return False
+        # Still running: its output must keep being read.
+        if c.reader is not None and not c.reader.is_alive():
+            self._read(c)
+        if c.restart_now:
+            c.restart_now = False
+            c.hang_asked = None
+            self._terminate(c)
+            c.restarts = 0
+            self.hung = None
+            self._set(c, "starting", "restarting: it stopped responding")
+            return False
         if c.state == "starting":
             if c.ready():
                 c.restarts = 0
@@ -637,7 +713,67 @@ class Supervisor:
                 self._set(c, "failed", f"{c.name} did not answer within {READY_TIMEOUT_S:.0f}s")
                 self._terminate(c)
                 return False
+        elif c.state == "running" and c.watch:
+            self._watch(c)
         return c.state == "running"
+
+    def _watch(self, c: Component, now: float | None = None) -> None:
+        """Every :data:`WATCH_S`, see that a running program still answers. One
+        that hasn't for :data:`HUNG_S` is said in the status, and the person is
+        asked, once per process, whether to restart it."""
+        now = time.monotonic() if now is None else now
+        if c.checked_at and now - c.checked_at < WATCH_S:
+            return
+        c.checked_at = now
+        if c.ready():
+            c.unanswered_since = 0.0
+            if self.hung == c.name:
+                self.hung = None
+                self._publish()
+            return
+        if not c.unanswered_since:
+            c.unanswered_since = now
+            return
+        pid = c.proc.pid if c.proc is not None else None
+        if now - c.unanswered_since < HUNG_S or pid is None or c.hang_asked == pid:
+            return
+        c.hang_asked = pid
+        self.hung = c.name
+        self.emit({"type": "warning", "message": hung_warning(c.name)})
+        self._publish()
+        self._ask_to_restart(c)
+
+    def _ask_to_restart(self, c: Component) -> None:
+        """Ask the person, through the app, whether to restart ``c``, showing its
+        last lines of output; a yes restarts it on the next tick."""
+        import secrets
+
+        from mycelium.runner import approvals
+
+        lines = "\n".join(list(c.tail)[-HUNG_LINES:]) or "(it said nothing)"
+        job = secrets.token_hex(8)
+        request = approvals.ask(
+            job,
+            {
+                "title": f"The {c.name} stopped responding",
+                "message": f"{hung_warning(c.name)}\n\nIts last lines:\n{lines}",
+                "yes": f"Restart the {c.name}",
+                "no": "Wait",
+            },
+            base=self.requests_base,
+        )
+        folder = approvals.requests_dir(self.requests_base)
+        self.emit({"type": "request", "request": request, "folder": str(folder)})
+
+        def wait() -> None:
+            try:
+                yes = approvals.wait(job, self._stop, timeout=HERDR_ASK_S, base=self.requests_base)
+            finally:
+                approvals.forget(job, base=self.requests_base)
+            if yes:
+                c.restart_now = True
+
+        threading.Thread(target=wait, name=f"{c.name}-restart", daemon=True).start()
 
     @staticmethod
     def _terminate(c: Component, grace_s: float = 5.0) -> None:
