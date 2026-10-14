@@ -169,7 +169,8 @@ def clarification_prompt(handle: str, mismatches: list[dict[str, Any]]) -> str:
     """
     terms = "\n".join(
         f'- "{m["term"]}" — '
-        + "; ".join(f"@{h} seems to mean {reading}" for h, reading in m["readings"].items())
+        # The others are named, not asked: only ``handle`` is put this turn.
+        + "; ".join(f"@~{h} seems to mean {reading}" for h, reading in m["readings"].items())
         for m in mismatches
     )
     return (
@@ -528,7 +529,9 @@ class RemoteAgentNegotiator(SAONegotiator):
                 self.handle,
                 outcome,
             )
-        self._neg.record(f"step {state.step}: @{self.handle} proposed {outcome}")
+        # ``@~``: the history feeds the broker's note, which every step prompt
+        # carries, so it names members without showing the model a bare @.
+        self._neg.record(f"step {state.step}: @~{self.handle} proposed {outcome}")
         logger.info("mediator step %d: @%s PROPOSE %s", state.step, self.handle, outcome)
         return outcome
 
@@ -554,7 +557,7 @@ class RemoteAgentNegotiator(SAONegotiator):
             resp = ResponseType.ACCEPT_OFFER
         if resp is ResponseType.REJECT_OFFER:
             self._neg.note_rejection(offer)
-        self._neg.record(f"step {state.step}: @{self.handle} {resp.name} on {state.current_offer}")
+        self._neg.record(f"step {state.step}: @~{self.handle} {resp.name} on {state.current_offer}")
         logger.info(
             "mediator step %d: @%s %s on %s",
             state.step,

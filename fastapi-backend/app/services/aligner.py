@@ -735,7 +735,7 @@ class AlignerEngine:
                 if isinstance(text, str) and text.strip():
                     latest[wanted[key]] = text.strip()
         for handle in participants:
-            latest.setdefault(handle, f"{_NO_POSITION} @{handle})")
+            latest.setdefault(handle, f"{_NO_POSITION} @~{handle})")
         return latest
 
     async def _clarify_terms(
@@ -804,7 +804,7 @@ class AlignerEngine:
             if not text:
                 continue  # silence leaves that agent's opening prose as stated
             clarifications[handle] = text
-            clarified[handle] = f"{positions[handle]}\n\n(clarified by @{handle}: {text})"
+            clarified[handle] = f"{positions[handle]}\n\n(clarified by @~{handle}: {text})"
         episode_state.record_term_check(ep, mismatches=mismatches, clarifications=clarifications)
         return clarified
 
