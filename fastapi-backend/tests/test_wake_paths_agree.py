@@ -52,7 +52,7 @@ def _case(draw: st.DrawFn) -> tuple[str, dict[str, Any]]:
         handle.map(lambda h: f"@{h}"),
         handle.map(lambda h: f"@~{h}"),
         handle.map(lambda h: f"@!{h}"),
-        handle.map(lambda h: f"`@{h}`"),
+        handle.map(lambda h: f"`ask @{h}`"),
         handle.map(lambda h: f"@{h.capitalize()}"),
         handle.map(lambda h: f"(@{h})"),
         handle.map(lambda h: f"{h}@example.com"),
