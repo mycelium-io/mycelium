@@ -67,6 +67,12 @@ export const TARGETS: Record<string, Target[]> = {
   "walk-add-agent": [{ dir: DOCS_DIR, name: "walk-add-agent", retina: true }],
   "walk-task": [{ dir: DOCS_DIR, name: "walk-task", retina: true }],
   "walk-thread": [{ dir: DOCS_DIR, name: "walk-thread", retina: true }],
+  // The home page's steps, each cropped to the part it's about.
+  "home-add-agent": [{ dir: SPLASH_DIR, name: "step-agent", retina: true }],
+  "home-room": [{ dir: SPLASH_DIR, name: "step-room", retina: true }],
+  "home-thread": [{ dir: SPLASH_DIR, name: "step-task", retina: true }],
+  "home-mention": [{ dir: SPLASH_DIR, name: "step-wake", retina: true }],
+  "home-memory": [{ dir: SPLASH_DIR, name: "step-memory", retina: true }],
   "walk-aligner": [{ dir: DOCS_DIR, name: "walk-aligner", retina: true }],
   // The verifier: docs/verifier.html and its engine page, each in both themes.
   ...Object.fromEntries(

@@ -44,6 +44,13 @@ async function publish(shot: Shot, raw: Buffer): Promise<string[]> {
   const targets = TARGETS[shot.id] ?? [];
   const scale = VIEWPORTS[shot.viewport].scale;
   const written: string[] = [];
+  // A cropped shot keeps only its region, cut from the full-density capture.
+  if (shot.crop) {
+    const { x, y, width: w, height: h } = shot.crop;
+    raw = await sharp(raw)
+      .extract({ left: x * scale, top: y * scale, width: w * scale, height: h * scale })
+      .toBuffer();
+  }
 
   // The raw capture is at deviceScaleFactor pixel density: that IS the @2x asset.
   // The 1x is it scaled down by that factor; a clipped shot is narrower than
