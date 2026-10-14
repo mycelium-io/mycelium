@@ -199,6 +199,23 @@ describe("useFollowLatest", () => {
     expect(result.current.atBottom).toBe(true);
   });
 
+  it("sees where the reader stopped when they scrolled during a jump", () => {
+    vi.useFakeTimers();
+    try {
+      const { el } = region(0);
+      const { result } = follow(el, { rows: ids(3) });
+      scrollTo(el, 100);
+      el.scrollTo = vi.fn() as unknown as typeof el.scrollTo;
+      act(() => result.current.jump());
+      scrollTo(el, 50); // the reader scrolls back up mid-jump, and stops
+      expect(result.current.atBottom).toBe(true);
+      act(() => vi.advanceTimersByTime(1000));
+      expect(result.current.atBottom).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("doesn't pull the reader off something they were taken to", () => {
     const { el, box } = region(0);
     const { rerender } = follow(el, { rows: ids(3), holding: true });

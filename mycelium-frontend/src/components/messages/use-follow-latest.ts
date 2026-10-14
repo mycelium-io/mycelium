@@ -252,10 +252,15 @@ export function useFollowLatest(
     arriving.current = true;
     if (arrivingTimer.current) clearTimeout(arrivingTimer.current);
     arrivingTimer.current = setTimeout(() => {
+      if (!arriving.current) return;
       arriving.current = false;
+      // The jump didn't get there: the reader scrolled during it. Where they
+      // stopped is where they are, since their last scroll was set aside.
+      const at = elRef.current;
+      if (at) setBottom(at.scrollHeight - at.scrollTop - at.clientHeight <= AT_BOTTOM_PX);
     }, JUMP_SETTLE_MS);
     node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
-  }, []);
+  }, [setBottom]);
 
   let unread = 0;
   if (!atBottom && detached && detached.key === resetKey && counted) {
