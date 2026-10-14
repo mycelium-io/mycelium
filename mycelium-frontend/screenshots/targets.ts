@@ -43,19 +43,9 @@ export interface Target {
  * but not published (useful while iterating on a new fixture).
  */
 export const TARGETS: Record<string, Target[]> = {
-  home: [{ dir: SPLASH_DIR, name: "app-home", retina: true }],
-  "room-channel": [
-    { dir: SPLASH_DIR, name: "app-channel", retina: true },
-    { dir: DOCS_DIR, name: "app-room-channel", retina: true },
-  ],
-  "room-board": [
-    { dir: DOCS_DIR, name: "app-room-board", retina: true },
-    { dir: SPLASH_DIR, name: "app-hero", retina: true },
-  ],
-  "room-start": [{ dir: SPLASH_DIR, name: "app-start", retina: true }],
+  "room-channel": [{ dir: DOCS_DIR, name: "app-room-channel", retina: true }],
+  "room-board": [{ dir: DOCS_DIR, name: "app-room-board", retina: true }],
   "room-empty": [{ dir: DOCS_DIR, name: "app-room-empty", retina: true }],
-  "room-memory": [{ dir: SPLASH_DIR, name: "app-memory", retina: true }],
-  "room-stream": [{ dir: SPLASH_DIR, name: "app-stream", retina: true }],
   // The docs' concept and guide pages.
   "board-columns": [{ dir: DOCS_DIR, name: "app-board-columns", retina: true }],
   "thread-flow": [{ dir: DOCS_DIR, name: "app-thread-flow", retina: true }],
