@@ -51,6 +51,9 @@ export interface StreamEvent {
   asked: string[];
   /** Handles the message asks for with `@handle` (not silent `@~` ones). */
   mentions: string[];
+  /** A message's frame as the hub sent it, so opening the line draws the same
+   *  message row every list draws. */
+  frame?: Record<string, unknown>;
 }
 
 /** Board namespaces: saving one of their rows is the board change itself, which
@@ -126,7 +129,7 @@ export function streamEventOf(raw: Record<string, unknown>, room: string): Strea
 
   const text = str(content.content) ?? str(content.text) ?? "";
   if (!text) return null;
-  return { ...base, kind: "message", text, mentions: parseMentions(text).map((h) => h.toLowerCase()) };
+  return { ...base, kind: "message", text, mentions: parseMentions(text).map((h) => h.toLowerCase()), frame: raw };
 }
 
 /** A stream line: one event, or several the same that were folded into it. */

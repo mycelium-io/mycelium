@@ -7,6 +7,7 @@ import { useCallback, useRef } from "react";
 import { MessagesSquare } from "lucide-react";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { TaskConversation } from "@/components/task/task-conversation";
+import type { ConversationRows } from "@/components/messages/use-follow-latest";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -17,8 +18,8 @@ interface Props {
   /** The host's inset (`px-…`), so the heading, the replies and the composer
    *  line up with the task's body above them. */
   className?: string;
-  /** Told how many messages the discussion shows (see `TaskConversation`). */
-  onCountChange?: (count: number) => void;
+  /** Told what the discussion draws, for the page's scroll (see `TaskConversation`). */
+  onRows?: (rows: ConversationRows) => void;
 }
 
 /** A task with no replies yet: where its conversation starts, and where it goes. */
@@ -49,7 +50,7 @@ function NoReplies() {
  * own box is the only box. The conversation's rows carry their own inset, which
  * the negative margin cancels so they line up with the host's.
  */
-export function TaskDiscussion({ roomName, episode, onOpenMemory, className, onCountChange }: Props) {
+export function TaskDiscussion({ roomName, episode, onOpenMemory, className, onRows }: Props) {
   const refresh = useRef<(() => void) | null>(null);
   const onReady = useCallback((r: () => void) => {
     refresh.current = r;
@@ -66,7 +67,7 @@ export function TaskDiscussion({ roomName, episode, onOpenMemory, className, onC
           onReady={onReady}
           empty={<NoReplies />}
           surface="paper"
-          onCountChange={onCountChange}
+          onRows={onRows}
         />
       </div>
       <RoomChatBox roomName={roomName} episode={episode} inline onSent={() => refresh.current?.()} />

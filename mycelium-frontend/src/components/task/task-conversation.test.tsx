@@ -27,12 +27,14 @@ const messages: RoomMessage[] = [
   {
     id: "m2",
     sender_handle: "builder",
+    message_type: "broadcast",
     content: "#9998 is approved, so I'm merging it now.",
     created_at: "2026-10-13T22:50:00Z",
   } as RoomMessage,
   {
     id: "m1",
     sender_handle: "builder",
+    message_type: "broadcast",
     content: "Opened #9998.",
     created_at: "2026-10-13T22:49:00Z",
   } as RoomMessage,
@@ -49,7 +51,10 @@ vi.mock("@/lib/room-data", () => ({
   }),
   useRoomAgents: () => ({ agents: [{ handle: "builder", adapter: "claude_code" }] }),
   useRoomVerifierFlags: () => ({ byMessage: new Map([["m2", [flag]]]), refresh: vi.fn() }),
+  useRoomThreads: () => new Map(),
+  useRoomRowNames: () => new Map(),
 }));
+vi.mock("@/components/message-actions", () => ({ MessageActions: () => null }));
 vi.mock("@/lib/stream-hub", () => ({ useRoomStream: vi.fn() }));
 vi.mock("@/lib/pending-messages", () => ({ usePendingMessages: () => [], resetPending: vi.fn() }));
 vi.mock("@/components/pending-message-rows", () => ({ PendingMessageRows: () => null }));

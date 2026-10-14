@@ -9,18 +9,7 @@ import {
   fetchMessages,
   logFetchError,
 } from "@/lib/api";
-import {
-  useMessageSearch,
-  useRoomAgents,
-  useRoomRowNames,
-  useRoomSettings,
-  useRoomThreads,
-  useRoomVerifierFlags,
-  type RowNaming,
-  type ThreadOwner,
-} from "@/lib/room-data";
-import { claimNeedles } from "@/lib/verifier";
-import { VerifierLines } from "@/components/verifier-line";
+import { useMessageSearch, useRoomSettings, type ThreadOwner } from "@/lib/room-data";
 import { boardMovesInChat } from "@/lib/room-settings";
 import {
   NOTICE_TYPE,
@@ -42,50 +31,30 @@ import {
 } from "@/lib/activity";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { usePendingMessages, type Landed } from "@/lib/pending-messages";
-import { MessageBody } from "@/components/message-body";
 import { PendingMessageRows } from "@/components/pending-message-rows";
-import { ConductorRow } from "@/components/task/conductor-row";
 import { ChatFindBar } from "@/components/chat-find-bar";
 import { ChatSearchResults } from "@/components/chat-search-results";
 import { freeText, hasScope, type MessageSearchHit } from "@/lib/message-search";
 import { ChatMinimap, type MinimapTick } from "@/components/chat-minimap";
-import { SenderName } from "@/components/sender-name";
 import { hasMatch, stepIndex } from "@/lib/chat-search";
 import { ActivityRail, type ActivityItem } from "@/components/activity-rail";
-import { Ago, NowProvider } from "@/lib/relative-time";
-import { EpisodeTag } from "@/components/episode-tag";
+import { NowProvider } from "@/lib/relative-time";
 import { EmptyState } from "@/components/empty-state";
 import { RoomStarters } from "@/components/room-starters";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Monogram } from "@/components/ui/monogram";
-import { Tooltip } from "@/components/ui/tooltip";
 import { JumpToLatest } from "@/components/jump-to-latest";
-import { AtSign, Braces, Copy, Link2, Loader2, MessageSquare, MessagesSquare, Reply, TextQuote } from "lucide-react";
-import { MessageActions } from "@/components/message-actions";
-import { insertIntoComposer, messagePath, quoteText, replyText } from "@/lib/message-actions";
-import { RawMessageDialog } from "@/components/raw-message-dialog";
+import { useFollowLatest } from "@/components/messages/use-follow-latest";
+import {
+  FeedRow,
+  RAISE_UP_TYPES,
+  SYSTEM_TYPES,
+  lastChatSender,
+  nameActivity,
+  useFeedContext,
+} from "@/components/messages/feed-row";
+import { Loader2, MessageSquare, MessagesSquare } from "lucide-react";
 import { Shimmer, SporeMark } from "@/components/responding-mark";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { absoluteUrl, copyText } from "@/lib/clipboard";
-import { agentTag } from "@/lib/agent-label";
-import { EventIconMark } from "@/components/event-icon";
-import {
-  AGREED_ICON,
-  DONE_ICON,
-  JOIN_ICON,
-  MEMORY_ICON,
-  noticeIcon,
-  THREAD_ICON,
-  TIMEOUT_ICON,
-  type EventIcon,
-} from "@/lib/event-icons";
 
 /** Stable empties: find writes these back on every close, and a fresh array
  *  each time would re-run the effects that read them. */
@@ -111,17 +80,9 @@ function rowNode(root: HTMLElement | null, id: string): HTMLElement | null {
   return null;
 }
 
-// The "raise-up" whitelist: message types promoted from the message inspector
-// into the primary channel/chat surface. This must mirror
-// contracts/channel-surface.json's `raise_up_types` byte-for-byte — the CLI
-// (mycelium-cli/src/mycelium/commands/room.py) carries an independent copy,
-// and event-stream.contract.test.ts asserts both stay in sync with the
-// contract so the two surfaces can't silently drift apart.
-export const RAISE_UP_TYPES = [
-  "coordination_join",
-  "coordination_consensus",
-  "l9_knowledge",
-];
+// The raise-up list lives with the rows that draw it; the contract test reads
+// it from here.
+export { RAISE_UP_TYPES };
 
 // Event types that appear in the chat-channel view alongside real chat.
 // Joins + consensus belong here so the room's chat surface narrates the
@@ -129,16 +90,6 @@ export const RAISE_UP_TYPES = [
 // → 4 work rows", "TIMEOUT in session X, no agreement") instead of
 // burying it all under the EVENTS tab.
 const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
-
-// Lifecycle events that render as slim system notices (not chat rows). Used to
-// decide message grouping: a chat message only groups under the sender above it
-// when no system notice interrupts the run.
-/**
- * A ping is a system notice too, but is not on the shared raise-up list: it
- * is an `l9_exchange` already on the chat path, renamed here — the same
- * branch the CLI takes inside `chat_line`.
- */
-const SYSTEM_TYPES = new Set([...RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
 
 /** One line of "who is responding": the system-notice scale the channel already
  *  speaks in, with a spore growing for a turn in flight. `offset` staggers the
@@ -222,63 +173,6 @@ function ChannelSkeleton() {
   );
 }
 
-/** A quiet, centered lifecycle line woven into the conversation. */
-function SystemNotice({
-  time,
-  at,
-  prevAt,
-  icon,
-  label,
-  labelColor,
-  strong,
-  children,
-  trailing,
-}: {
-  time: string;
-  /** When it landed, as an ISO stamp: shown as "2m ago", the exact time on hover. */
-  at?: string;
-  /** When the notice above it landed, so a run doesn't repeat one age down the column. */
-  prevAt?: string;
-  /** What kind of line it is, as an icon in its color (`lib/event-icons.ts`). */
-  icon: EventIcon;
-  label?: string;
-  labelColor?: string;
-  strong?: boolean;
-  children: React.ReactNode;
-  /** Held out of the truncating run, so a control here survives a long title. */
-  trailing?: React.ReactNode;
-}) {
-  // A run of notices reads as one block: space above the first, none between
-  // them, so six tasks filed in a row take six lines rather than a screen.
-  return (
-    <div
-      data-system-notice=""
-      className="group mt-3 flex items-center gap-2 px-5 py-0.5 text-micro text-muted-foreground first:mt-0 [[data-system-notice]+&]:mt-0"
-    >
-      <EventIconMark icon={icon} />
-      {label && (
-        <span
-          className={`flex-shrink-0 whitespace-nowrap ${strong ? "font-semibold" : "font-medium"}`}
-          style={{ color: labelColor ?? "var(--muted-foreground)" }}
-        >
-          {label}
-        </span>
-      )}
-      <span className="flex min-w-0 items-center gap-1.5 truncate">{children}</span>
-      {trailing}
-      {at ? (
-        <Ago
-          at={at}
-          unlessSameAs={prevAt}
-          className="ml-auto flex-shrink-0 whitespace-nowrap pl-2 tabular text-faint"
-        />
-      ) : (
-        <span className="ml-auto flex-shrink-0 tabular text-faint">{time.slice(0, 5)}</span>
-      )}
-    </div>
-  );
-}
-
 /**
  * Whether this event's prose belongs to a thread rather than to the room.
  *
@@ -289,12 +183,6 @@ function SystemNotice({
  */
 function inAThread(event: Event, room: string): boolean {
   return CHAT_TYPES.has(event.type) && !isLiveEpisode(room, event.episode);
-}
-
-/** Who wrote the last row, when it is a message a row under it would group with. */
-function lastChatSender(rows: readonly Event[]): string | null {
-  const last = rows[rows.length - 1];
-  return last && !SYSTEM_TYPES.has(last.type) && !last.conductor ? last.sender : null;
 }
 
 /**
@@ -364,35 +252,6 @@ function subjectOf(event: Event, threads: Map<string, ThreadOwner>): string | nu
     return key && !key.startsWith("agents/") ? key : null;
   }
   return null;
-}
-
-/**
- * What to call a subject, and the thread that opens it.
- *
- * Read off the room's own rows, so a task reads in the feed as the name it
- * carries on the board rather than as its `work/…` slug. A notice carries its
- * own copy of both, which is what answers for a subject the room's memories do
- * not have — one filed a moment ago, or one since removed.
- */
-function nameActivity(
-  subject: string,
-  members: Event[],
-  threads: Map<string, ThreadOwner>,
-  rows: Map<string, RowNaming>,
-): { title: string; episode: string | null } {
-  const noticed = members.find((m) => m.type === NOTICE_TYPE)?.content;
-  if (subject.startsWith("urn:")) {
-    const owner = threads.get(subject);
-    return {
-      title: owner?.title ?? noticed ?? threadShortId(subject) ?? "thread",
-      episode: subject,
-    };
-  }
-  const row = rows.get(subject);
-  return {
-    title: row?.title ?? noticed ?? subject,
-    episode: row?.episode ?? members.find((m) => m.thread)?.thread ?? null,
-  };
 }
 
 /** Who made one event: a notice's mover, a ping's last writer, a memory's
@@ -475,10 +334,6 @@ function activityLine(ev: Event): { label: string; detail: string } {
   return { label: ev.type, detail: ev.sender };
 }
 
-/** A reader a couple of lines off the bottom still counts as reading the tail,
- *  so a stray wheel tick doesn't detach them. */
-const PIN_TOLERANCE_PX = 64;
-
 /** One page of the channel, on both of its reads.
  *
  *  The two used to disagree: the prose took the backend's default (50) while the
@@ -487,9 +342,6 @@ const PIN_TOLERANCE_PX = 64;
  *  is how a room with hundreds of messages in it read as having none. Same page
  *  size on both reads, and every older page is fetched the same way. */
 const CHANNEL_PAGE = 200;
-
-/** How close to the top of the viewport counts as asking for the page before. */
-const LOAD_OLDER_MARGIN_PX = 240;
 
 /** The two reads the channel is assembled from, as one page of it.
  *
@@ -561,72 +413,6 @@ interface Props {
   onCountChange?: (count: number) => void;
 }
 
-/**
- * A message's right-click menu: copy what it says, or a link that opens the
- * room scrolled to it (the same `focus` link search results use), or see the
- * message exactly as the hub sent it. Selected text inside it keeps the
- * browser's own menu.
- */
-function MessageMenu({
-  roomName,
-  messageId,
-  content,
-  sender,
-  wire,
-  children,
-}: {
-  roomName: string;
-  messageId?: string | null;
-  content: string;
-  sender: string;
-  wire?: Record<string, unknown>;
-  children: React.ReactElement;
-}) {
-  const [rawOpen, setRawOpen] = useState(false);
-  return (
-    <>
-    {/* Mounted only while open, so a long channel doesn't carry one per message. */}
-    {rawOpen && wire && <RawMessageDialog open onClose={() => setRawOpen(false)} message={wire} />}
-    <ContextMenu>
-      <ContextMenuTrigger>{children}</ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem
-          icon={Reply}
-          action="message.reply"
-          onClick={() => insertIntoComposer({ room: roomName, text: replyText(sender) })}
-        >
-          Reply
-        </ContextMenuItem>
-        <ContextMenuItem
-          icon={TextQuote}
-          action="message.quote"
-          onClick={() => insertIntoComposer({ room: roomName, text: quoteText(content, sender) })}
-        >
-          Quote
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem icon={Copy} action="message.copy" onClick={() => void copyText(content)}>
-          Copy text
-        </ContextMenuItem>
-        {messageId && (
-          <ContextMenuItem icon={Link2} onClick={() => void copyText(absoluteUrl(messagePath(roomName, messageId)))}>
-            Copy link to message
-          </ContextMenuItem>
-        )}
-        <ContextMenuItem icon={AtSign} onClick={() => void copyText(`@${sender}`)}>
-          Copy @{sender}
-        </ContextMenuItem>
-        {wire && (
-          <ContextMenuItem icon={Braces} onClick={() => setRawOpen(true)}>
-            View raw message
-          </ContextMenuItem>
-        )}
-      </ContextMenuContent>
-    </ContextMenu>
-    </>
-  );
-}
-
 export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, focusMessageId = null, onFocusConsumed, openFind = 0, onCountChange }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -636,35 +422,25 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   useEffect(() => {
     onConnectionChange?.(connected);
   }, [connected, onConnectionChange]);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // The scrolling viewport: a ref for find and its minimap, and state for the
+  // scroll behavior, which attaches once the element exists.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const attachScroller = useCallback((el: HTMLDivElement | null) => {
+    scrollRef.current = el;
+    setScroller(el);
+  }, []);
 
-  // Know which senders are registered agents (to badge their replies) and whom
-  // each belongs to (to attribute them inline). Off the room's shared agent
-  // read, so this costs no request of its own; owner is resolved at render time
-  // so it always reflects the current manifest, never a stale stamp.
-  const { agents } = useRoomAgents(roomName);
-  // Which task each thread belongs to, so a ping can name the row rather than
-  // six characters of URN. Off the room's shared memory read, so it costs
-  // nothing; a thread no row is bound to simply has no name to give.
-  const threads = useRoomThreads(roomName);
-  // The verifier's lines, by the message each goes under.
-  const { byMessage: flagsByMessage, refresh: refreshFlags } = useRoomVerifierFlags(roomName);
-  // And what each row is called, so a notice, a ping and a memory push about one
-  // task all print its name rather than three shapes of its key.
-  const rowNames = useRoomRowNames(roomName);
+  // What every row needs about the room: who is an agent (to badge their
+  // replies) and whose, what each thread and row is called (so a ping or a
+  // notice names the task rather than its URN), and the verifier's lines. All
+  // off the room's shared reads, so none of it costs a request of its own.
+  const feed = useFeedContext(roomName, { onOpenThread, onOpenMemory });
+  const { threads, rowNames, refreshFlags } = feed;
   // Which board moves the room shows in its chat (a room setting).
   const { settings: roomSettings } = useRoomSettings(roomName);
   const boardMoves = useMemo(() => boardMovesInChat(roomSettings), [roomSettings]);
-  // What each agent is, said beside its name (`agentTag`): its CLI, an engine's
-  // kind, or a bridged service as a2a.
-  const agentTags = useMemo(() => new Map(agents.map((a) => [a.handle, agentTag(a)])), [agents]);
-  const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
-  const engineHandles = useMemo(() => new Set(agents.filter((a) => a.adapter === "engine").map((a) => a.handle)), [agents]);
-  const searchHandles = useMemo(() => [...agentHandles], [agentHandles]);
-  const agentOwners = useMemo(
-    () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
-    [agents],
-  );
+  const searchHandles = useMemo(() => [...feed.agentHandles], [feed.agentHandles]);
 
   // Where reading back has got to: the cursor the next older page is asked for,
   // whether both reads have run out, and whether one is in flight. Refs rather
@@ -673,10 +449,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   const older = useRef({ cursor: null as string | null, exhausted: false, loading: false });
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [reachedStart, setReachedStart] = useState(false);
-  // Distance from the bottom, captured before a prepend and restored after it.
-  // The distance from the *top* is what the new page changes, which is why the
-  // view would otherwise jump the moment older messages landed above it.
-  const anchor = useRef<number | null>(null);
 
   // Two reads, one feed.
   //
@@ -735,17 +507,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   //
   // Keyed off the oldest message loaded rather than an offset: the live stream
   // never stops, and every offset in the room shifts under a message arriving
-  // while you read back. A page lands prepended, with the scroll position
-  // anchored to what was already there, so reaching the top reveals history
+  // while you read back. A page lands prepended, and the scroll behavior keeps
+  // the reader on what was already there, so reaching the top reveals history
   // instead of moving it.
   const loadOlder = useCallback(() => {
     const state = older.current;
     if (state.loading || state.exhausted || !state.cursor) return;
-    const el = scrollRef.current;
-    if (!el) return;
     state.loading = true;
     setLoadingOlder(true);
-    const from = el.scrollHeight - el.scrollTop;
     readPage(state.cursor)
       .then(({ page, more }) => {
         const cursor = oldestAt(page);
@@ -754,7 +523,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         state.exhausted = !more || cursor === null;
         if (cursor) state.cursor = cursor;
         if (state.exhausted) setReachedStart(true);
-        anchor.current = from;
         setEvents((prev) => mergePage(prev, page));
       })
       .catch(logFetchError("fetchMessages"))
@@ -1110,139 +878,31 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     return () => observer.disconnect();
   }, [findOpen, matches, visible]);
 
-  // The feed follows new messages only while the reader is on the tail; scroll
-  // up and it holds still. A jump-back button carries the count of what landed
-  // meanwhile, so leaving the tail doesn't read as a quiet room.
-  const [atBottom, setAtBottom] = useState(true);
-  const atBottomRef = useRef(true);
-  // The last row the reader had reached when they left the tail — the row
-  // itself, not how many there were. A count is wrong the moment a page of
-  // older messages is prepended: every one of them lands *above* the mark, and
-  // none of it is news.
-  const [detachedAt, setDetachedAt] = useState<string | null>(null);
-  const lastVisible = useRef<string | null>(null);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const measure = () => {
-      if (el.scrollTop <= LOAD_OLDER_MARGIN_PX) loadOlder();
-      const pinned = el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_TOLERANCE_PX;
-      if (pinned === atBottomRef.current) return;
-      atBottomRef.current = pinned;
-      if (!pinned) setDetachedAt(lastVisible.current);
-      setAtBottom(pinned);
-    };
-    el.addEventListener("scroll", measure, { passive: true });
-    return () => el.removeEventListener("scroll", measure);
-  }, [loadOlder]);
-
-  // Put the reader back where they were reading. Before paint, and before the
-  // follow-the-tail effect below runs — which it won't, since anyone reading
-  // back is by definition off the tail.
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    const from = anchor.current;
-    if (!el || from === null) return;
-    anchor.current = null;
-    el.scrollTop = el.scrollHeight - from;
-  }, [visible]);
-
-  // A page of the room is not a page of the channel: the thread prose in it is
-  // placed rather than shown, and the churn goes up to the rail, so two hundred
-  // messages can leave a handful of rows and nothing to scroll. Keep pulling
-  // until the viewport actually overflows — otherwise the one gesture that
-  // reaches the older pages is a gesture the reader has no way to make.
-  // A viewport with no height is not laid out (hidden, or not yet sized), not
-  // empty: filling it would page through the whole room.
-  useEffect(() => {
-    if (!historyLoaded) return;
-    const el = scrollRef.current;
-    if (!el || el.clientHeight === 0) return;
-    if (el.scrollHeight <= el.clientHeight + LOAD_OLDER_MARGIN_PX) loadOlder();
-  }, [historyLoaded, visible, loadOlder]);
+  // The scroll behavior every message list shares: open at the newest message,
+  // follow it while the reader is there, hold still when they've scrolled up
+  // and say how much landed meanwhile, read back a page near the top (and
+  // until the view is full: a page of the room can leave a handful of rows
+  // here once its thread prose and churn are placed elsewhere). A live message
+  // must not pull the view off a hit the reader stepped to, or off a message
+  // they arrived at from search; what they just sent takes them back down.
+  const newestPending = pending[pending.length - 1]?.id ?? null;
+  const rowIds = useMemo(() => (historyLoaded ? visible.map((e) => e.id) : null), [historyLoaded, visible]);
+  const follow = useFollowLatest(scroller, {
+    rows: rowIds,
+    holding: Boolean(highlight || activeId),
+    onNearTop: loadOlder,
+    sent: newestPending,
+    resetKey: roomName,
+  });
 
   useEffect(() => {
     onCountChange?.(visible.length);
   }, [visible.length, onCountChange]);
 
-  const jumpToLatest = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    atBottomRef.current = true;
-    setAtBottom(true);
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  };
-
-  const unread = useMemo(() => {
-    if (atBottom || detachedAt === null) return 0;
-    const mark = visible.findIndex((e) => e.id === detachedAt);
-    return mark === -1 ? 0 : visible.length - 1 - mark;
-  }, [atBottom, detachedAt, visible]);
-
-  // Auto-scroll when new events arrive — but not over a message the user was
-  // just sent to, which is the one place in the feed they're looking, and not
-  // over history they scrolled up to read.
-  // The first page lands at the newest message at once, before paint. Animated,
-  // the scroll is still under way when the scroll handler measures it, which
-  // reads as the reader having left the tail, and the feed then stops following.
-  const landed = useRef(false);
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (landed.current || !historyLoaded || !el || visible.length === 0) return;
-    landed.current = true;
-    if (!highlight && atBottomRef.current) el.scrollTop = el.scrollHeight;
-  }, [historyLoaded, visible, highlight]);
-
-  useEffect(() => {
-    lastVisible.current = visible[visible.length - 1]?.id ?? null;
-    // A live message must not pull the view off the hit the reader stepped to,
-    // any more than it may off a message they arrived at from search.
-    if (highlight || activeId || !atBottomRef.current) return;
-    // At once, like a send: an animated scroll can land short of a tail that
-    // grows while it runs, and then the feed stops following.
-    const el = scrollRef.current;
-    el?.scrollTo({ top: el.scrollHeight, behavior: "instant" });
-  }, [visible, highlight, activeId]);
-
   useEffect(() => {
     if (!highlight) return;
     highlightRow.current?.scrollIntoView({ block: "center" });
   }, [highlight, historyLoaded, visible]);
-
-  // What you just sent is where you are looking, so the feed goes back to its
-  // tail and follows it from there. At once, before paint: animated, the scroll
-  // aims at the height it measured, the feed grows under it (the sent row
-  // swapping for the stored one, the composer shrinking back), it lands short,
-  // and the scroll handler reads that as the reader leaving the tail.
-  const newestPending = pending[pending.length - 1]?.id ?? null;
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!newestPending || !el) return;
-    atBottomRef.current = true;
-    setAtBottom(true);
-    el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
-  }, [newestPending]);
-
-  // On the tail, stay on it through anything that changes the feed's size
-  // rather than its rows: "responding" appearing over the composer shortens
-  // the viewport, an image loading lengthens a message. Neither scrolls, so
-  // without this the newest line slides out of view under the reader.
-  const holdingRef = useRef(false);
-  useEffect(() => {
-    holdingRef.current = Boolean(highlight || activeId);
-  }, [highlight, activeId]);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const stick = () => {
-      if (atBottomRef.current && !holdingRef.current) el.scrollTop = el.scrollHeight;
-    };
-    const observer = new ResizeObserver(stick);
-    observer.observe(el);
-    if (el.firstElementChild) observer.observe(el.firstElementChild);
-    return () => observer.disconnect();
-  }, [historyLoaded]);
 
   return (
     <div className="flex flex-col h-full">
@@ -1292,7 +952,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         <ActivityRail items={activity} onOpenThread={onOpenThread} onOpenMemory={onOpenMemory} />
       )}
       <div className="relative flex-1 min-h-0">
-      <ScrollArea className="h-full" viewportRef={scrollRef}>
+      <ScrollArea className="h-full" viewportRef={attachScroller}>
         {!historyLoaded ? (
           <ChannelSkeleton />
         ) : visible.length === 0 && pending.length === 0 ? (
@@ -1325,309 +985,20 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         ) : null}
         <NowProvider>
         {visible.map((ev, idx) => {
-              // A notice under another says its age only when it differs.
-              const prevAt = idx > 0 && SYSTEM_TYPES.has(visible[idx - 1].type) ? visible[idx - 1].at : undefined;
-              // Coordination + plan lifecycle events render as slim, centered
-              // system notices — quiet dividers woven into the conversation,
-              // not loud rows. Chat messages group under one sender header.
-              if (ev.type === PING_TYPE && ev.thread) {
-                // Only a run's last ping with something to quote is in `visible`.
-                const line = pingLines.get(ev.id);
-                if (!line) return null;
-                const { said, quote, count: n } = line;
-                const thread = ev.thread;
-                const shortId = threadShortId(thread) ?? "thread";
-                const owner = threads.get(thread);
-                // One line from the thread: who, where, and the first line of
-                // what they said. The argument stays in the thread.
-                return (
-                  <SystemNotice
-                    key={ev.id}
-                    time={ev.time}
-                    at={ev.at}
-                    prevAt={prevAt}
-                    icon={THREAD_ICON}
-                    label={`@${said.sender || ev.pingSenders[0] || "someone"}`}
-                    labelColor="var(--text)"
-                  >
-                    <span>in</span>
-                    <button
-                      type="button"
-                      onClick={() => onOpenThread?.(thread)}
-                      disabled={!onOpenThread}
-                      title={thread}
-                      aria-label={`Open thread ${shortId}`}
-                      className="inline-flex max-w-[16rem] flex-shrink-0 items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default"
-                    >
-                      <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
-                      <span className="truncate">{owner?.title ?? shortId}</span>
-                    </button>
-                    <span className="truncate text-text">{quote}</span>
-                    {n > 1 && <span className="flex-shrink-0 text-faint">· {n} messages</span>}
-                  </SystemNotice>
-                );
-              }
-              if (ev.type === NOTICE_TYPE) {
-                const episode = ev.thread;
-                const by = ev.raw.by as string | undefined;
-                const subkind = (ev.raw.subkind as string) || "filed";
-                const change = ev.raw.change as string | undefined;
-                // The icon says what happened and its color how it went; the
-                // table is shared with the Stream tab (`lib/event-icons.ts`).
-                const icon = noticeIcon(subkind, change, ev.raw.kind as string | undefined);
-                const ref = ev.raw.ref as string | undefined;
-                const prUrl = ev.raw.url as string | undefined;
-                return (
-                  <SystemNotice
-                    key={ev.id}
-                    time={ev.time} at={ev.at} prevAt={prevAt}
-                    icon={icon}
-                    label={noticeLabel(subkind, ev.raw.kind as string | undefined, change)}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => episode && onOpenThread?.(episode)}
-                      disabled={!episode || !onOpenThread}
-                      className="inline-flex max-w-[20rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
-                    >
-                      <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
-                      <span className="truncate">{ev.content}</span>
-                    </button>
-                    {/* A filed task reads by who it is for; a lease event by who
-                        moved it; an expired one by who let it drain. Fall back to
-                        the filer when a task is for no one. */}
-                    {subkind === "upstream" ? (
-                      ref && prUrl ? (
-                        <span>
-                          ·{" "}
-                          <a href={prUrl} target="_blank" rel="noreferrer" className="hover:text-text hover:underline">
-                            {ref}
-                          </a>
-                        </span>
-                      ) : ref ? (
-                        <span>· {ref}</span>
-                      ) : null
-                    ) : subkind === "filed" && ev.raw.for ? (
-                      <span>· for @{String(ev.raw.for).replace(/^@/, "")}</span>
-                    ) : by ? (
-                      <span>
-                        · {subkind === "filed" ? "by " : subkind === "expired" ? "held by " : ""}@{by}
-                      </span>
-                    ) : null}
-                  </SystemNotice>
-                );
-              }
-              if (ev.type === "l9_knowledge") {
-                const key = ev.raw.key as string | undefined;
-                const updatedBy = ev.raw.updated_by as string | undefined;
-                const version = ev.raw.version;
-                // The key printed once, as the name the room calls it — the
-                // content line already said it, in slug form, and said it again
-                // in the mono span beside it.
-                const named = key ? nameActivity(key, [ev], threads, rowNames) : null;
-                return (
-                  <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} icon={MEMORY_ICON} label="Knowledge">
-                    <span>updated</span>
-                    {named ? (
-                      <button
-                        type="button"
-                        onClick={() => named.episode && onOpenThread?.(named.episode)}
-                        disabled={!named.episode || !onOpenThread}
-                        title={key}
-                        className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
-                      >
-                        <span className="truncate">{named.title}</span>
-                      </button>
-                    ) : (
-                      <span className="truncate">{ev.content}</span>
-                    )}
-                    {typeof version === "number" && <span>· v{version}</span>}
-                    {updatedBy ? <span>· by @{updatedBy}</span> : null}
-                  </SystemNotice>
-                );
-              }
-              if (ev.type === "coordination_consensus") {
-                const broken = ev.raw.broken === true;
-                const episodeUrn = (ev.raw.episode as string | undefined) ?? (ev.raw.session as string | undefined);
-                const shortId = episodeUrn ? episodeUrn.split(":").pop() : undefined;
-                const planFile = ev.raw.plan_file as string | undefined;
-                const assignments = ev.raw.assignments as Record<string, string> | undefined;
-                const issueCount = assignments ? Object.keys(assignments).length : 0;
-                const metrics = ev.raw.metrics && typeof ev.raw.metrics === "object"
-                  ? (ev.raw.metrics as Record<string, unknown>)
-                  : undefined;
-                const garRaw = metrics ? metrics.gar : undefined;
-                const gar = typeof garRaw === "number" && Number.isFinite(garRaw) ? garRaw : undefined;
-                const tone = broken ? "var(--yellow)" : "var(--green)";
-                // A conductor run ends `resolved`, or `converged` when a pick
-                // certified an agreement: a flow walked to its end, so it says
-                // which flow and how far (and what it agreed on).
-                const flowDone = ev.raw.outcome === "resolved" || ev.raw.outcome === "converged";
-                const flow = flowDone ? (ev.raw.protocol as string | undefined) : undefined;
-                if (flow) {
-                  const steps = typeof ev.raw.steps === "number" ? ev.raw.steps : undefined;
-                  const agreed = ev.raw.outcome === "converged"
-                    ? ((ev.raw.select as { pick?: string } | undefined)?.pick ?? null)
-                    : null;
-                  return (
-                    <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} icon={agreed ? AGREED_ICON : DONE_ICON} label={agreed ? "Agreed" : "Done"} labelColor={tone} strong>
-                      <span>in</span>
-                      {shortId ? (
-                        <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
-                      ) : (
-                        <span className="font-mono">episode</span>
-                      )}
-                      <span>
-                        · {flow} flow
-                        {steps !== undefined ? `, ${steps} step${steps === 1 ? "" : "s"}` : ""}
-                        {agreed ? `, going with ${agreed}` : ""}
-                      </span>
-                    </SystemNotice>
-                  );
-                }
-                return (
-                  <SystemNotice
-                    key={ev.id}
-                    time={ev.time} at={ev.at} prevAt={prevAt}
-                    icon={broken ? TIMEOUT_ICON : AGREED_ICON}
-                    label={broken ? "Timeout" : "Consensus"}
-                    labelColor={tone}
-                    strong
-                  >
-                    <span>in</span>
-                    {shortId ? (
-                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
-                    ) : (
-                      <span className="font-mono">episode</span>
-                    )}
-                    {broken ? (
-                      <span>· no agreement</span>
-                    ) : (
-                      <>
-                        <span>· {issueCount} issue{issueCount === 1 ? "" : "s"} agreed</span>
-                        {gar !== undefined ? (
-                          <Tooltip content="Genuine agreement ratio: how many agents actually moved toward the outcome">
-                            <span
-                              className="font-mono"
-                              aria-description="Genuine agreement ratio: how many agents actually moved toward the outcome"
-                            >
-                              · GAR {gar.toFixed(2)}
-                            </span>
-                          </Tooltip>
-                        ) : null}
-                        {planFile ? (
-                          <span>→ <span className="font-mono text-accent">{planFile}</span></span>
-                        ) : null}
-                      </>
-                    )}
-                  </SystemNotice>
-                );
-              }
-              if (ev.type === "coordination_join") {
-                const handle = (ev.raw.handle as string | undefined) ?? ev.sender;
-                const intent = (ev.raw.intent as string | undefined) ?? "";
-                const episodeUrn = (ev.raw.episode as string | undefined) ?? (ev.raw.session as string | undefined);
-                const shortId = episodeUrn ? episodeUrn.split(":").pop() : undefined;
-                return (
-                  <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} icon={JOIN_ICON}>
-                    <span className="font-medium text-muted-foreground">@{handle}</span>
-                    <span>joined</span>
-                    {shortId ? (
-                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
-                    ) : null}
-                    {intent ? <span>· &ldquo;{intent}&rdquo;</span> : null}
-                  </SystemNotice>
-                );
-              }
-              // A conductor post is drawn from its structured line: one row
-              // naming the step and who it went to, the prompt behind a toggle.
-              if (ev.conductor) {
-                return (
-                  <div key={ev.id} data-event-id={ev.id}>
-                    <ConductorRow line={ev.conductor} text={ev.content} onOpenMemory={onOpenMemory} />
-                  </div>
-                );
-              }
-              // A chat message groups with the one above it when the same
-              // sender speaks consecutively (no intervening system notice).
-              const prev = visible[idx - 1];
-              const grouped =
-                prev &&
-                !SYSTEM_TYPES.has(prev.type) &&
-                !prev.conductor &&
-                prev.sender === ev.sender;
-              const isAgent = agentHandles.has(ev.sender);
-              // Match the members panel so one sender isn't two colors in two
-              // places: an agent wears its own stable tint (Monogram's default),
-              // a human the neutral seat.
-              const color = isAgent ? undefined : "var(--avatar-neutral)";
               const marked = highlight !== null && ev.messageId === highlight;
-              const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
-              // The row's own share of the open find: whether to mark its prose
-              // at all, and whether it is the hit being stood on.
-              const hit = matchSet.has(ev.id) ? { query: needles, active: ev.id === activeId } : undefined;
-              const flags = ev.messageId ? flagsByMessage.get(ev.messageId) : undefined;
               return (
-                <MessageMenu key={ev.id} roomName={roomName} messageId={ev.messageId} content={ev.content} sender={ev.sender} wire={ev.wire}>
-                <div
-                  data-event-id={ev.id}
-                  ref={marked ? highlightRow : undefined}
-                  className={`group relative flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"} ${
-                    marked ? "bg-accent/15" : ""
-                  } ${hit?.active ? "bg-yellow/10 ring-1 ring-inset ring-yellow/40" : ""}`}
-                >
-                  <div className="w-6 flex-shrink-0">
-                    {!grouped && (
-                      <Tooltip content={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
-                        <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
-                          <Monogram handle={ev.sender} color={color} className="size-6 text-[10px]" kind={engineHandles.has(ev.sender) ? "engine" : isAgent ? "agent" : "person"} />
-                        </span>
-                      </Tooltip>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    {!grouped && (
-                      <div className="flex items-center gap-1.5 pr-12">
-                        <SenderName
-                          handle={ev.sender}
-                          highlight={hit}
-                          tag={isAgent ? (agentTags.get(ev.sender) ?? "agent") : undefined}
-                        />
-                        {ev.recipient && (
-                          <span className="flex-shrink-0 rounded bg-hairline px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
-                            → {ev.recipient}
-                          </span>
-                        )}
-                        <Ago at={ev.at} className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint" />
-                      </div>
-                    )}
-                    <MessageBody
-                      content={ev.content}
-                      hit={hit}
-                      claims={flags ? claimNeedles(ev.content, flags.flatMap((f) => f.quotes)) : undefined}
-                      onOpenMemory={onOpenMemory}
-                      roomName={roomName}
-                    />
-                    {ev.edited && (
-                      <span className="text-micro text-faint" title="revised by a later message">
-                        (edited)
-                      </span>
-                    )}
-                    {flags && <VerifierLines roomName={roomName} flags={flags} onChanged={refreshFlags} />}
-                  </div>
-                  <MessageActions
-                    roomName={roomName}
-                    messageId={ev.messageId}
-                    content={ev.content}
-                    sender={ev.sender}
-                    wire={ev.wire}
-                    onOpenThread={onOpenThread}
-                    // A follow-up line shows its clock time on hover, in the
-                    // bar; the group's header already says how long ago.
-                    time={grouped ? ev.time.slice(0, 5) : undefined}
-                  />
-                </div>
-                </MessageMenu>
+                <FeedRow
+                  key={ev.id}
+                  ev={ev}
+                  prev={visible[idx - 1]}
+                  ctx={feed}
+                  pingLine={pingLines.get(ev.id)}
+                  marked={marked}
+                  rowRef={marked ? highlightRow : undefined}
+                  // The row's own share of the open find: whether to mark its
+                  // prose at all, and whether it is the hit being stood on.
+                  hit={matchSet.has(ev.id) ? { query: needles, active: ev.id === activeId } : undefined}
+                />
               );
             })}
         </NowProvider>
@@ -1644,7 +1015,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         <ChatMinimap viewportRef={scrollRef} ticks={ticks} activeId={activeId} onJump={setStanding} />
       )}
       </div>
-      {!atBottom && visible.length > 0 && <JumpToLatest unread={unread} onClick={jumpToLatest} />}
+      {!follow.atBottom && visible.length > 0 && <JumpToLatest unread={follow.unread} onClick={follow.jump} />}
       </div>
       {/* Outside the scroll, so it stays over the composer wherever the
           channel is scrolled to, and sending a message can't push it away. */}
