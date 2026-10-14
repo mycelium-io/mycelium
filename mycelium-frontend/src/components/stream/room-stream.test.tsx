@@ -5,6 +5,7 @@ import { act } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { layOut } from "@/test/scroll";
 
 const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
 const at = (m: number) => `2026-10-11T20:${String(m).padStart(2, "0")}:00Z`;
@@ -35,6 +36,7 @@ const history = [
 
 vi.mock("@/lib/api", () => ({
   fetchWireHistory: vi.fn(async () => history),
+  fetchUsers: vi.fn(async () => []),
   logFetchError: () => () => {},
 }));
 // The live feed: a test pushes a frame through what the Stream subscribed with.
@@ -46,7 +48,11 @@ vi.mock("@/lib/stream-hub", () => ({
 }));
 vi.mock("@/lib/room-data", () => ({
   useRoomThreads: () => new Map([[THREAD, { keys: ["work/zoom"], title: "Zoom and pan" }]]),
+  useRoomAgents: () => ({ agents: [] }),
+  useRoomRowNames: () => new Map(),
+  useRoomVerifierFlags: () => ({ byMessage: new Map(), refresh: () => {} }),
 }));
+vi.mock("@/components/message-actions", () => ({ MessageActions: () => null }));
 vi.mock("@/components/current-user", () => ({ useCurrentUser: () => ({ principal: "bob" }) }));
 vi.mock("@/components/room-chat-box", () => ({
   RoomChatBox: ({ episode }: { episode: string | null }) => <div data-testid="composer">{episode ?? "channel"}</div>,
@@ -84,6 +90,15 @@ describe("<RoomStream /> jump to latest", () => {
     await renderStream();
     scrollLog(600);
     expect(screen.queryByRole("button", { name: /Jump to latest/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps the reader on the newest line when a tall one lands", async () => {
+    await renderStream();
+    const box = layOut(screen.getByRole("log"), "[data-line]");
+    act(() => {
+      live.push({ id: "m9", sender_handle: "alice", message_type: "broadcast", created_at: at(9), content: "a long reply" });
+    });
+    expect(box.atBottom()).toBe(true);
   });
 
   it("counts the messages that arrive while you're scrolled up, and jumps back down", async () => {

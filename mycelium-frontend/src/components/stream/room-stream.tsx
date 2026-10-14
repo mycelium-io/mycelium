@@ -15,6 +15,8 @@ import { Chip } from "@/components/ui/chip";
 import { EventIconMark } from "@/components/event-icon";
 import { JumpToLatest } from "@/components/jump-to-latest";
 import { useFollowLatest } from "@/components/messages/use-follow-latest";
+import { MessageRow, useFeedContext } from "@/components/messages/feed-row";
+import { parseEvent } from "@/lib/room-events";
 import { MEMORY_ICON, noticeIcon, type EventIcon } from "@/lib/event-icons";
 
 /** The icon for a board, pull request or saved-memory line: the chat's table. */
@@ -122,6 +124,7 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const seenIds = useRef<Set<string>>(new Set());
   const threads = useRoomThreads(roomName);
+  const feed = useFeedContext(roomName, { onOpenThread, onOpenMemory });
   const { principal } = useCurrentUser();
   const me = principal.trim().replace(/^@/, "").toLowerCase();
 
@@ -282,6 +285,7 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
                   </div>
                 )}
                 <div
+                  data-line={ev.id}
                   className={cn(
                     "relative grid min-h-[22px] cursor-default items-baseline gap-x-2.5 px-3 hover:bg-hairline",
                     mentionsMe && "bg-accent-soft/40 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent",
@@ -368,9 +372,17 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
                     ))}
                   </span>
                 </div>
+                {/* Opened, a message is the same row every list draws: its
+                    actions, its menu and the verifier's lines with it. */}
                 {open && (
-                  <div className="mx-3 mb-1 mt-0.5 rounded-r-md border-l-2 border-border2 bg-surface px-3 py-2 text-label">
-                    <MessageBody content={ev.text} roomName={roomName} onOpenMemory={onOpenMemory} />
+                  <div className="mx-3 mb-1 mt-0.5 rounded-r-md border-l-2 border-border2 bg-surface py-2">
+                    {ev.frame ? (
+                      <MessageRow ev={parseEvent(ev.frame)} grouped={false} ctx={feed} />
+                    ) : (
+                      <div className="px-3 text-label">
+                        <MessageBody content={ev.text} roomName={roomName} onOpenMemory={onOpenMemory} />
+                      </div>
+                    )}
                   </div>
                 )}
               </Fragment>

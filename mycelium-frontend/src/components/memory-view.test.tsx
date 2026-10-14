@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithSWR } from "@/test/swr";
+import { layOut } from "@/test/scroll";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/link", () => ({
@@ -36,10 +37,30 @@ vi.mock("@/components/memory-editor", () => ({
 }));
 
 // The discussion, stubbed: this file is about the view, and the conversation's
-// own reads belong to its own tests.
-vi.mock("@/components/task/task-conversation", () => ({
-  TaskConversation: () => <div data-testid="task-conversation" />,
-}));
+// own reads belong to its own tests. It draws the rows a test gives it and
+// reports them the way the real one does, for the page's scroll.
+const thread = vi.hoisted(() => ({ rows: [] as string[], set: (_rows: string[]) => {} }));
+vi.mock("@/components/task/task-conversation", async () => {
+  const { useEffect, useState } = await import("react");
+  return {
+    TaskConversation: ({ onRows }: { onRows?: (r: { rows: string[]; sent: null }) => void }) => {
+      const [rows, setRows] = useState(thread.rows);
+      useEffect(() => {
+        thread.set = setRows;
+      }, []);
+      useEffect(() => onRows?.({ rows, sent: null }), [rows, onRows]);
+      return (
+        <div data-testid="task-conversation">
+          {rows.map((id) => (
+            <div key={id} data-event-id={id}>
+              {id}
+            </div>
+          ))}
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock("@/components/room-chat-box", () => ({
   RoomChatBox: () => <div data-testid="room-chat-box" />,
@@ -98,6 +119,25 @@ describe("<MemoryView />", () => {
       expect(screen.getByTestId("memory-detail")).toHaveAttribute("data-collapse-body-at", "480"),
     );
     expect(screen.getByTestId("task-conversation")).toBeInTheDocument();
+  });
+
+  it("opens on the memory, and keeps the reader at the bottom of its discussion when a tall reply lands", async () => {
+    vi.mocked(fetchMemory).mockResolvedValue(TASK);
+    const { container } = renderWithSWR(<MemoryView roomName="demo" memoryKey={MEMORY.key} onOpenMemory={vi.fn()} />);
+    await screen.findByTestId("task-conversation");
+    const box = layOut(container.querySelector<HTMLElement>(".overflow-y-auto")!, "[data-event-id]");
+    // The discussion loads under the memory: the page stays on the memory.
+    act(() => thread.set(["m1", "m2"]));
+    expect(box.top()).toBe(0);
+
+    box.scrollTo(10_000);
+    act(() => thread.set(["m1", "m2", "m3"]));
+    expect(box.atBottom()).toBe(true);
+
+    box.scrollTo(0);
+    act(() => thread.set(["m1", "m2", "m3", "m4"]));
+    expect(box.top()).toBe(0);
+    expect(screen.getByRole("button", { name: "Jump to latest, 1 new" })).toBeInTheDocument();
   });
 
   it("gives the body more room full page, where someone came to read it", async () => {

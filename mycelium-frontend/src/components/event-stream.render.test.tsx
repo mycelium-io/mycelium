@@ -8,6 +8,7 @@ import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
+import { layOut } from "@/test/scroll";
 
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
@@ -137,6 +138,35 @@ describe("<EventStream /> live message rendering", () => {
     const scrolledEl = scrollTo.mock.contexts[scrollTo.mock.contexts.length - 1] as Element;
     expect(scrolledEl.getAttribute("data-slot")).toBe("scroll-area-viewport");
     scrollTo.mockRestore();
+  });
+
+  it("keeps the reader at the bottom when a tall reply lands, and holds still when they've scrolled up", async () => {
+    renderWithSWR(<EventStream roomName="sprint" />);
+    const viewport = document.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+    const box = layOut(viewport, "[data-event-id]");
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(exchangeMessage("first", { id: "m1" }));
+      es.emit(exchangeMessage("second", { id: "m2" }));
+    });
+    await screen.findByText("second");
+    expect(box.atBottom()).toBe(true);
+
+    await act(async () => {
+      es.emit(exchangeMessage("a long reply", { id: "m3" }));
+    });
+    await screen.findByText("a long reply");
+    expect(box.atBottom()).toBe(true);
+
+    box.scrollTo(0);
+    await act(async () => {
+      es.emit(exchangeMessage("while you read back", { id: "m4" }));
+    });
+    await screen.findByText("while you read back");
+    expect(box.top()).toBe(0);
+    expect(screen.getByRole("button", { name: "Jump to latest, 1 new" })).toBeInTheDocument();
   });
 
   it("stays on the tail when the feed's size changes without a new row", async () => {

@@ -180,6 +180,8 @@ export function useFollowLatest(
         const pinned = node.scrollHeight - node.scrollTop - node.clientHeight <= AT_BOTTOM_PX;
         atBottomRef.current = pinned;
         setAtBottom(pinned);
+        // Not at the bottom from the start: count what arrives from here.
+        if (!pinned) detach();
       }
       fromBottom.current = node.scrollHeight - node.scrollTop;
       return;
@@ -191,7 +193,7 @@ export function useFollowLatest(
       toBottom(node);
     }
     fromBottom.current = node.scrollHeight - node.scrollTop;
-  }, [el, rows, startsAtEnd]);
+  }, [el, rows, startsAtEnd, detach]);
 
   // What has loaded doesn't fill the view: there is no scrolling up to ask for
   // more, so ask now. A view with no height isn't laid out (hidden, or not yet
@@ -230,4 +232,31 @@ export function useFollowLatest(
         : counted.filter((id) => !detached.seen.has(id)).length;
   }
   return { atBottom, unread, jump };
+}
+
+/** What a conversation drawn inside a page tells the page, for the scroll they
+ *  share: its rows, what was just sent, and how to read back. */
+export interface ConversationRows {
+  /** The rows drawn, oldest first; `null` until the thread has loaded. */
+  rows: string[] | null;
+  /** The newest message sent from here that hasn't landed yet. */
+  sent: string | null;
+  /** Read back a page, when there is one. */
+  onNearTop?: () => void;
+}
+
+const NOT_LOADED: ConversationRows = { rows: null, sent: null };
+
+/**
+ * The same scroll behavior, for a page whose scroll holds more than the
+ * conversation (a task's body above its thread): the page owns the scrolling
+ * element, the conversation inside it reports what it draws through `onRows`.
+ */
+export function useConversationFollow(
+  el: HTMLElement | null,
+  { startAt, resetKey }: Pick<FollowOptions, "startAt" | "resetKey">,
+): Follow & { onRows: (rows: ConversationRows) => void; hasRows: boolean } {
+  const [report, setReport] = useState<ConversationRows>(NOT_LOADED);
+  const follow = useFollowLatest(el, { ...report, startAt, resetKey });
+  return { ...follow, onRows: setReport, hasRows: (report.rows?.length ?? 0) > 0 };
 }

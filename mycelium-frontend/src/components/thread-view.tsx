@@ -14,6 +14,8 @@ import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { TaskConversation } from "@/components/task/task-conversation";
+import { JumpToLatest } from "@/components/jump-to-latest";
+import { useConversationFollow } from "@/components/messages/use-follow-latest";
 import { useCurrentUser } from "@/components/current-user";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -92,6 +94,15 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
     refreshRef.current = refresh;
   }, []);
   const refresh = useCallback(() => refreshRef.current?.(), []);
+
+  // The pane's one scroll scrolls the conversation the way every message list
+  // scrolls. It opens on the task, with its thread below; a thread that is no
+  // task's is all conversation, so it opens on the newest reply.
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const latest = useConversationFollow(scroller, {
+    startAt: task ? "start" : "end",
+    resetKey: target.episode,
+  });
 
   // Esc closes: the pane is transient, so leaving it must be as cheap as
   // opening it was.
@@ -205,30 +216,34 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
         // instead of taking a scrollbar of its own, so the wheel does one thing
         // everywhere in the pane. A negotiation thread bound to no row is all
         // conversation.
-        <ScrollArea className="min-h-0 flex-1">
-          {run && (
-            <div className="border-b border-border">
-              <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />
-            </div>
-          )}
-          {task && (
-            <div className="border-b border-border">
-              <MemoryDetail
-                memory={task}
-                roomName={roomName}
-                variant="rail"
-                onNavigate={onOpenMemory}
-                collapseBodyAt={BODY_CLAMP_PX}
-              />
-            </div>
-          )}
-          <TaskConversation
-            roomName={roomName}
-            episode={target.episode}
-            onOpenMemory={onOpenMemory}
-            onReady={onReady}
-          />
-        </ScrollArea>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <ScrollArea className="min-h-0 flex-1" viewportRef={setScroller}>
+            {run && (
+              <div className="border-b border-border">
+                <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />
+              </div>
+            )}
+            {task && (
+              <div className="border-b border-border">
+                <MemoryDetail
+                  memory={task}
+                  roomName={roomName}
+                  variant="rail"
+                  onNavigate={onOpenMemory}
+                  collapseBodyAt={BODY_CLAMP_PX}
+                />
+              </div>
+            )}
+            <TaskConversation
+              roomName={roomName}
+              episode={target.episode}
+              onOpenMemory={onOpenMemory}
+              onReady={onReady}
+              onRows={latest.onRows}
+            />
+          </ScrollArea>
+          {!latest.atBottom && latest.hasRows && <JumpToLatest unread={latest.unread} onClick={latest.jump} />}
+        </div>
       )}
 
       <RoomChatBox
