@@ -13,15 +13,25 @@
 #
 #   docker run -e MYCELIUM_INTERNAL_API_URL=http://host.docker.internal:8000 ...
 
+# Every stage takes Node from this one image, pinned by digest, so the
+# binary the runner copies is the one the build stages ran. Bump the two
+# together: ALPINE_IMAGE is the Alpine release this node image is built on
+# (`cat /etc/alpine-release` in it), so its libraries match the binary.
+ARG NODE_IMAGE=node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
+ARG ALPINE_IMAGE=alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+
+# ─── node ─────────────────────────────────────────────────────────────────────
+FROM ${NODE_IMAGE} AS node
+
 # ─── deps ─────────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # ─── build ────────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -30,21 +40,17 @@ COPY . .
 RUN npm run build
 
 # ─── runtime ──────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS runner
+# The runner ships no npm, yarn or corepack: it only runs `node server.js`.
+# It starts from plain Alpine and copies in the node binary alone, because
+# the node image's own layers carry the npm it bundles, and deleting that
+# in a later layer only hides it (#1331). node needs libstdc++ and libgcc
+# on Alpine.
+FROM ${ALPINE_IMAGE} AS runner
 WORKDIR /app
 
-# The npm this image ships is pinned. It is unpacked from the registry's
-# tarball rather than installed with `npm install -g npm`: that runs npm
-# itself, which under the arm64 emulator a release builds with can stall
-# for an hour. Only this stage changes, so the build stages above keep
-# their cache.
-ARG NPM_VERSION=11.21.0
-RUN wget -qO /tmp/npm.tgz "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz" \
- && rm -rf /usr/local/lib/node_modules/npm \
- && mkdir -p /usr/local/lib/node_modules/npm \
- && tar -xzf /tmp/npm.tgz -C /usr/local/lib/node_modules/npm --strip-components=1 \
- && rm /tmp/npm.tgz \
- && npm --version | grep -qx "${NPM_VERSION}"
+RUN apk add --no-cache libstdc++ libgcc
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+RUN node --version
 
 ENV NODE_ENV=production
 ENV PORT=3000
