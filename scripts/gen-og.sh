@@ -63,6 +63,9 @@ gen() {
     -annotate +0+108 "$TAGLINE" \
     "$OUT"
 
+  # Lossless: CI fails a PNG that oxipng could still shrink by more than 10%.
+  (cd "$SCRIPT_DIR/../mycelium-frontend" && npm run -s optimize-png -- "$OUT")
+
   echo "Written: $OUT"
 }
 

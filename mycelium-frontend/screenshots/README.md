@@ -27,13 +27,17 @@ the splash repo builds standalone. Re-run and commit when the UI changes.
   `@2x` retina variants. The splash path defaults to a sibling checkout; override
   with `MYCELIUM_SPLASH_DIR`.
 - **`capture.ts`** — maps each manifest entry to a `shotkit` spec, then optimizes
-  with `sharp` and fans out to targets. The browser work — booting the mock
+  with `sharp` and `optimize.ts` and fans out to targets. The browser work — booting the mock
   server, finding a usable Chromium, waiting for a *populated* frame (shell
   mounted, skeletons cleared, SSE "Live", fonts loaded), driving the page —
   belongs to `shotkit/`, the repo's screenshot utility, because it is the same
   problem whether the caller is this pipeline or an agent at a terminal. What
   stays here is publication's business: which shots exist, how they're
   optimized, and where they land.
+
+- **`optimize.ts`** — lossless oxipng (WebAssembly, no system install) over
+  every PNG written. CI fails a committed PNG oxipng could still shrink by more
+  than 10%; for an image made some other way, `npm run optimize-png -- <file>`.
 
 ## Adding a shot
 

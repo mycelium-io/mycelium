@@ -90,8 +90,9 @@ jobs:
 
   hygiene:
     # Repo-level contracts that have no other home: actions pinned to SHAs,
-    # workflows declaring their permissions, budgets that still name real jobs.
-    # No toolchain install — it's stdlib Python over the workflow files, so it
+    # workflows declaring their permissions, budgets that still name real jobs,
+    # no big file outside LFS and no uncompressed PNG. Python over the repo's
+    # own files, with one wheel (oxipng's bindings) for the PNG check, so it
     # finishes long before the jobs that build something.
     name: Repo hygiene
     runs-on: ubuntu-latest
@@ -100,6 +101,26 @@ jobs:
 
       - name: Workflow contracts
         run: python3 scripts/check_workflows.py
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: false
+
+      - name: File sizes, and PNGs compressed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        # Only the PNGs this change adds or touches: all of them take ~50s on
+        # a runner, and every one was compressed when this check went in. Comparing two
+        # trees needs only the base commit itself, not the history between.
+        run: |
+          check="uv run --no-project --with pyoxipng==9.1.1 python scripts/check_file_sizes.py"
+          if [ -n "$BASE" ] && [ "$BASE" != "0000000000000000000000000000000000000000" ] \
+            && git fetch -q --depth=1 origin "$BASE"; then
+            $check --pngs-since "$BASE"
+          else
+            $check --all-pngs
+          fi
 
   test-backend:
     name: Backend tests
