@@ -264,8 +264,10 @@ module; read it before changing what a rule protects.
 - **The docs site is the latest stable release's, not main's.** It publishes
   at a release's tag (`pages.yml`); a docs change on main goes live with the
   next release.
-- **Videos under `docs/` are Git LFS objects** (`.gitattributes`).
-  Screenshots are taken and committed by hand (`pnpm screenshots`); no
+- **Videos under `docs/` are Git LFS objects** (`.gitattributes`). Images
+  stay in git, compressed losslessly with oxipng (`npm run optimize-png`),
+  and `scripts/check_file_sizes.py` fails a file over 400 KiB outside LFS or
+  a PNG oxipng would still shrink by more than 10%. Screenshots are taken and committed by hand (`pnpm screenshots`); no
   workflow opens pull requests on its own.
 - **No Ensue references in code.** The API design was inspired by theirs; the
   implementation is independent.

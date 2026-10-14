@@ -20,7 +20,7 @@
  * driving the page are the same problems whether the caller is this pipeline or
  * an agent at a terminal, and they were solved twice before. What stays here is
  * what is genuinely publication's business — which shots exist, how they are
- * optimized, and where the files land.
+ * optimized (`optimize.ts`), and where the files land.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -31,6 +31,7 @@ import sharp from "sharp";
 // pipeline at runtime.
 import { capture, shutdown } from "../../shotkit/src/api.mjs";
 import { ensureMockServer, stopMockServer } from "../../shotkit/src/app.mjs";
+import { optimizePng } from "./optimize.ts";
 import { SHOTS, VIEWPORTS, type Shot } from "./shots.ts";
 import { TARGETS } from "./targets.ts";
 
@@ -47,12 +48,16 @@ async function publish(shot: Shot, raw: Buffer): Promise<string[]> {
   // The raw capture is at deviceScaleFactor pixel density: that IS the @2x asset.
   // The 1x is it scaled down by that factor; a clipped shot is narrower than
   // the viewport, so the width comes from the capture, not the viewport.
+  // sharp quantizes to a palette; oxipng then shrinks the encoding losslessly,
+  // which is what CI's hygiene check expects of every committed PNG.
   const { width = VIEWPORTS[shot.viewport].width * scale } = await sharp(raw).metadata();
-  const oneX = await sharp(raw)
-    .resize({ width: Math.round(width / scale) })
-    .png({ compressionLevel: 9, palette: true })
-    .toBuffer();
-  const twoX = await sharp(raw).png({ compressionLevel: 9, palette: true }).toBuffer();
+  const oneX = await optimizePng(
+    await sharp(raw)
+      .resize({ width: Math.round(width / scale) })
+      .png({ compressionLevel: 9, palette: true })
+      .toBuffer(),
+  );
+  const twoX = await optimizePng(await sharp(raw).png({ compressionLevel: 9, palette: true }).toBuffer());
 
   for (const t of targets) {
     await mkdir(t.dir, { recursive: true });
