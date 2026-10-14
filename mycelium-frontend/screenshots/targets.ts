@@ -68,4 +68,13 @@ export const TARGETS: Record<string, Target[]> = {
   "walk-task": [{ dir: DOCS_DIR, name: "walk-task", retina: true }],
   "walk-thread": [{ dir: DOCS_DIR, name: "walk-thread", retina: true }],
   "walk-aligner": [{ dir: DOCS_DIR, name: "walk-aligner", retina: true }],
+  // The verifier: docs/verifier.html and its engine page, each in both themes.
+  ...Object.fromEntries(
+    ["line", "line-sure", "show-why", "fine", "settings", "channel"].flatMap((shot) =>
+      ["", "-light"].map((t) => [
+        `verifier-${shot}${t}`,
+        [{ dir: DOCS_DIR, name: `app-verifier-${shot}${t}`, retina: true }],
+      ]),
+    ),
+  ),
 };

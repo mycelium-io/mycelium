@@ -249,4 +249,87 @@ export const SHOTS: Shot[] = [
     actions: ["sleep:1200"],
     caption: "The aligner asking each side in turn until they agree.",
   },
+
+  // ── The verifier (docs/verifier.html and its engine page), in both themes ──
+  // Scrolled to rather than opened with ?focus=, which selects the message and
+  // tints it. "It's fine" changes the mock's state, so each theme's run of these
+  // needs a fresh mock server: `pnpm screenshots verifier-…` (dark), then again
+  // for the `-light` ids.
+  ...(["dark", "light"] as const).flatMap((theme): Shot[] => {
+    const at = (id: string) => `css=[data-event-id]:has([data-verifier-flag="${id}"])`;
+    const t = theme === "dark" ? "" : "-light";
+    // Bring the flagged message into view, then move the pointer off it so its
+    // hover toolbar isn't in the shot.
+    const show = (id: string) => [`scroll:css=[data-verifier-flag="${id}"]`, "hover:text=Recently updated", "sleep:300"];
+    return [
+      {
+        id: `verifier-line${t}`,
+        route: "/room/checkout",
+        theme,
+        viewport: "desktop",
+        waitFor: '[data-verifier-flag="vf1"]',
+        actions: show("vf1"),
+        clip: at("vf1"),
+        caption: "A claim the records can't back: the line under the message, its words underlined.",
+      },
+      {
+        id: `verifier-line-sure${t}`,
+        route: "/room/checkout",
+        theme,
+        viewport: "desktop",
+        waitFor: '[data-verifier-flag="vf3"]',
+        actions: show("vf3"),
+        clip: at("vf3"),
+        caption: "A claim the records contradict: the darker line, which says when.",
+      },
+      {
+        id: `verifier-show-why${t}`,
+        route: "/room/checkout",
+        theme,
+        viewport: "desktop",
+        waitFor: '[data-verifier-flag="vf3"]',
+        actions: [...show("vf3"), 'click:[data-verifier-flag="vf3"] >> text=Show why', "sleep:400"],
+        clip: 'css=[data-slot="popover-content"]',
+        caption: "Show why: the failure, what the agent said, and what the verifier looked at.",
+      },
+      {
+        id: `verifier-fine${t}`,
+        route: "/room/checkout",
+        theme,
+        viewport: "desktop",
+        waitFor: '[data-verifier-flag="vf1"]',
+        actions: [
+          ...show("vf1"),
+          'click:[data-verifier-flag="vf1"] >> text=It\'s fine',
+          'wait-hidden:[data-verifier-flag="vf1"]',
+          // The click leaves the row's hover state on, so its toolbar stays up
+          // after the pointer leaves; it isn't what this shot is about.
+          "hover:text=Recently updated",
+          `eval:document.querySelectorAll('[aria-label="Message actions"]').forEach((e) => e.remove())`,
+          "sleep:300",
+        ],
+        clip: 'css=[data-event-id]:has-text("#502 is approved and green")',
+        caption: "After It's fine: the line and the underline are gone, for everyone in the room.",
+      },
+      {
+        id: `verifier-settings${t}`,
+        route: "/settings/hub",
+        theme,
+        viewport: "desktop",
+        waitFor: "text=Learn from your team",
+        actions: ['scroll:css=section:has-text("Checks what agents say")', "sleep:300"],
+        clip: 'css=section:has-text("Checks what agents say")',
+        caption: "The Verifier section in Hub settings: on or off, the rooms it checks, and Learn.",
+      },
+      {
+        id: `verifier-channel${t}`,
+        route: "/room/checkout",
+        theme,
+        viewport: "desktop",
+        waitFor: '[data-verifier-flag="vf3"]',
+        actions: show("vf3"),
+        caption: "The verifier's lines in the room's chat, among everything else.",
+      },
+    ];
+  }),
 ];

@@ -121,6 +121,7 @@
         <a href="#persona" class="nav-link sub">Persona</a>
         <a href="#worker" class="nav-link sub">Worker</a>
         <a href="#verifier" class="nav-link sub">Verifier</a>
+        <a href="verifier.html" class="nav-link sub">Verifier, in depth</a>
         <a href="#hello" class="nav-link sub">Hello</a>
       </div>
     </div>
@@ -727,9 +728,10 @@
       <h1>Verifier</h1>
       <p>The verifier spots common failures of agents working together in a room, like an agent claiming an approval nobody gave or acting on state that has changed, and adds a quiet line under the message. The people reading along would otherwise take the agent at its word.</p>
       <p>It checks what an agent says against what the room has on record. When a claim doesn&#x27;t hold up, it adds a short line under the message:</p>
-      <pre><code>builder  20:31  #1278 is approved and green, merging now.
-         ⚠ verifier: Can&#x27;t find an approval for #1278.</code></pre>
+      <figure class="doc-figure"><img class="doc-img" src="app-verifier-line.png" alt="A message saying &quot;#502 is approved and green&quot;, with those words underlined and the line &quot;verifier · Can&#x27;t find an approval for #502. Show why · It&#x27;s fine&quot; under it" loading="lazy">
+      </figure>
       <p>It never blocks a message, never posts in the chat and never wakes anyone.</p>
+      <p>For a walk through one check, how the checks were chosen and what the numbers behind them are, see <a href="verifier.html">The verifier, in depth</a>.</p>
       <h2 id="verifier-turning-it-on">Turning it on</h2>
       <p>The verifier is off on a new hub. Turn it on in the hub&#x27;s config, then add it to each room you want checked:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> verifier.enabled true
@@ -810,8 +812,14 @@
       <p>Talk about a merge that hasn&#x27;t happened yet, like &quot;once #1266 is merged&quot; or &quot;#1266 isn&#x27;t merged yet&quot;, doesn&#x27;t count as a merge.</p>
       <h2 id="verifier-what-you-see">What you see</h2>
       <ul>
-        <li><strong>The line</strong> under the message, with the words that made the claim underlined.</li>
-        <li><strong>Show why</strong> names the failure, such as &quot;Approval nobody gave&quot;, and lists what the verifier looked at and what it found, such as &quot;approvals of #1278 in this room: none&quot;.</li>
+        <li><strong>The line</strong> under the message, with the words that made the claim underlined. When the records say the opposite of the claim, the line is darker and says when:
+      <figure class="doc-figure"><img class="doc-img" src="app-verifier-line-sure.png" alt="A message saying #499 still needs a review, with the darker line &quot;verifier · #499 was already merged, at 18:10.&quot;" loading="lazy">
+      </figure>
+        </li>
+        <li><strong>Show why</strong> names the failure, such as &quot;Approval nobody gave&quot;, and lists what the verifier looked at and what it found, such as &quot;approvals of #1278 in this room: none&quot;.
+      <figure class="doc-figure"><img class="doc-img" src="app-verifier-show-why.png" alt="The Show why panel: &quot;Acting on stale state&quot;, the agent&#x27;s sentence, the reason, and &quot;Merges of #499 in this room: merged at 18:10 (@builder)&quot;" loading="lazy">
+      </figure>
+        </li>
         <li><strong>It&#x27;s fine</strong> hides the line for everyone in the room. Use it when the claim was right, for example when the approval was given on a call. The answer is kept on the hub with the room it came from.</li>
       </ul>
       <h2 id="verifier-what-the-agent-sees">What the agent sees</h2>
@@ -837,6 +845,8 @@
         <li>If the hub&#x27;s search model changes, the classifier is fitted again from the saved labels, with no model calls.</li>
       </ul>
       <p>Start it from the verifier&#x27;s section in <strong>Settings</strong>, or over the API with <code>POST /api/verifier/learn</code>.</p>
+      <figure class="doc-figure"><img class="doc-img" src="app-verifier-settings.png" alt="The Verifier section in Hub settings: on, the rooms it checks, and Learn from your team with its cost" loading="lazy">
+      </figure>
       <h2 id="verifier-settings">Settings</h2>
       <div class="table-wrap">
         <table>

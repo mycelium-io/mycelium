@@ -90,7 +90,7 @@ function VerifierLine({
             </PopoverContent>
           </Popover>
           <span className="text-faint"> · </span>
-          <Tooltip content="Marks this claim as fine. The verifier learns from it.">
+          <Tooltip content="Marks this claim as fine and hides the line for everyone in the room.">
             <button type="button" className={ACTION} disabled={busy} onClick={() => void fine()}>
               It&apos;s fine
             </button>

@@ -8,12 +8,12 @@ otherwise take the agent at its word.
 It checks what an agent says against what the room has on record. When a claim
 doesn't hold up, it adds a short line under the message:
 
-```
-builder  20:31  #1278 is approved and green, merging now.
-         ⚠ verifier: Can't find an approval for #1278.
-```
+![A message saying "#502 is approved and green", with those words underlined and the line "verifier · Can't find an approval for #502. Show why · It's fine" under it](app-verifier-line.png)
 
 It never blocks a message, never posts in the chat and never wakes anyone.
+
+For a walk through one check, how the checks were chosen and what the numbers
+behind them are, see [The verifier, in depth](verifier.html).
 
 ## Turning it on
 
@@ -88,10 +88,17 @@ Talk about a merge that hasn't happened yet, like "once #1266 is merged" or
 ## What you see
 
 - **The line** under the message, with the words that made the claim
-  underlined.
+  underlined. When the records say the opposite of the claim, the line is
+  darker and says when:
+
+  ![A message saying #499 still needs a review, with the darker line "verifier · #499 was already merged, at 18:10."](app-verifier-line-sure.png)
+
 - **Show why** names the failure, such as "Approval nobody gave", and lists
   what the verifier looked at and what it found, such as "approvals of #1278
   in this room: none".
+
+  ![The Show why panel: "Acting on stale state", the agent's sentence, the reason, and "Merges of #499 in this room: merged at 18:10 (@builder)"](app-verifier-show-why.png)
+
 - **It's fine** hides the line for everyone in the room. Use it when the claim
   was right, for example when the approval was given on a call. The answer is
   kept on the hub with the room it came from.
@@ -153,6 +160,8 @@ thousand messages cost around a dollar.
 
 Start it from the verifier's section in **Settings**, or over the API with
 `POST /api/verifier/learn`.
+
+![The Verifier section in Hub settings: on, the rooms it checks, and Learn from your team with its cost](app-verifier-settings.png)
 
 ## Settings
 

@@ -1210,6 +1210,8 @@ const checkout: RoomFixture = {
     { id: "h5", sender_handle: "reviewer", message_type: "broadcast", content: "i'll do the testing. i need it on staging to try real phones and real cards.", created_at: iso(130) },
     { id: "h6", sender_handle: "operator", message_type: "broadcast", content: "adding an alert for when payments start failing, so we hear about it before customers email us.", created_at: iso(95) },
     { id: "h7", sender_handle: "builder", message_type: "broadcast", content: "some order emails are going out twice when stripe retries a webhook. filing it, i'll fix it after apple pay.", created_at: iso(58) },
+    // Builder forgets #499 merged yesterday (h3): the verifier's darker line.
+    { id: "h7b", sender_handle: "builder", message_type: "broadcast", content: "apple pay sits on top of #499, which still needs a review before it can merge.", created_at: iso(55) },
     // ── the test-first correction ──
     { id: "q1", sender_handle: "reviewer", message_type: "broadcast", content: "can we switch apple pay on before i've tried a real iphone? it passes in the simulator.", created_at: iso(52) },
     { id: "q2", sender_handle: "operator", message_type: "broadcast", content: "no. the simulator doesn't use real cards. if it breaks on a real phone during the sale we lose orders. test first.", created_at: iso(51) },
@@ -1350,6 +1352,32 @@ const checkout: RoomFixture = {
       state: "shown",
       fine_by: null,
       at: iso(18.5),
+    },
+    // The records say the opposite: #499 merged a day ago (h3), so this line is
+    // the darker one, and it says when.
+    {
+      flag_id: "vf3",
+      failure: "stale_state",
+      message_id: "h7b",
+      key: "live",
+      about: "builder",
+      by: "verifier",
+      claim: "open",
+      ref: "#499",
+      line: `#499 was already merged, at ${new Date(iso(1400)).toISOString().slice(11, 16)}.`,
+      sure: true,
+      quotes: ["#499, which still needs a review"],
+      sentence: "apple pay sits on top of #499, which still needs a review before it can merge.",
+      why: "Builder said #499 was merged yesterday, so it doesn't need a review.",
+      checked: [
+        {
+          what: "Merges of #499 in this room",
+          found: `merged at ${new Date(iso(1400)).toISOString().slice(11, 16)} (@builder)`,
+        },
+      ],
+      state: "shown",
+      fine_by: null,
+      at: iso(54.5),
     },
   ],
   // Builder looks in on its own leases twice an hour; reviewer was set to chase

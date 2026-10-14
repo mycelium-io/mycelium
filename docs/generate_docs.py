@@ -133,6 +133,28 @@ GENERATED_SECTION_LABELS: dict[str, tuple[str, str]] = {
 # (page_id, file_name, top_nav_label, [(group_label, [(anchor, label), ...]), ...])
 NavPage = tuple[str, str, str, list[tuple[str, list[tuple[str, str]]]]]
 
+# Hand-written pages the nav lists inside a generated group, right after the
+# section they go deeper on. The generator never writes these files; it only
+# links them. (page_id, group_label, after_anchor, file_name, label)
+HANDWRITTEN_NAV: list[tuple[str, str, str, str, str]] = [
+    ("engines", "Engines", "verifier", "verifier.html", "Verifier, in depth"),
+]
+
+
+def _with_handwritten(
+    page_id: str, groups: list[tuple[str, list[tuple[str, str]]]]
+) -> list[tuple[str, list[tuple[str, str]]]]:
+    """``groups`` with this page's hand-written links slotted in (nav only)."""
+    out = []
+    for group_label, items in groups:
+        items = list(items)
+        for pid, glabel, after, file_name, label in HANDWRITTEN_NAV:
+            if pid == page_id and glabel == group_label:
+                at = next((i + 1 for i, (a, _) in enumerate(items) if a == after), len(items))
+                items.insert(at, (file_name, label))
+        out.append((group_label, items))
+    return out
+
 # IDs that should be looked up in kept HTML (have <!-- keep --> markers, or rescued by id).
 _KEPT_IDS: set[str] = {"overview"}
 
@@ -1200,6 +1222,13 @@ def _topnav() -> str:
 """
 
 
+def _nav_href(anchor: str, file_name: str, *, current: bool) -> str:
+    """A nav item's link: a section anchor, or a hand-written page as is."""
+    if anchor.endswith(".html"):
+        return anchor
+    return f"#{anchor}" if current else f"{file_name}#{anchor}"
+
+
 def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
     """Render the persistent nav: every page's groups, on every page.
 
@@ -1221,7 +1250,7 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
         if len(groups) == 1 and groups[0][0] == label:
             out.append('      <div class="nav-page-items">')
             for anchor, item_label in groups[0][1]:
-                href = f"#{anchor}" if current else f"{file_name}#{anchor}"
+                href = _nav_href(anchor, file_name, current=current)
                 out.append(
                     f'        <a href="{href}" class="nav-link sub">'
                     f"{html.escape(item_label)}</a>"
@@ -1242,7 +1271,7 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
             )
             out.append('        <div class="nav-group-items">')
             for anchor, item_label in items:
-                href = f"#{anchor}" if current else f"{file_name}#{anchor}"
+                href = _nav_href(anchor, file_name, current=current)
                 out.append(
                     f'          <a href="{href}" class="nav-link sub">'
                     f"{html.escape(item_label)}</a>"
@@ -1783,7 +1812,7 @@ def main() -> None:
             page_id, kept, cli_block, config_block, deps_block
         )
         built.append((page, content, sidebar_groups))
-        nav.append((page_id, file_name, label, sidebar_groups))
+        nav.append((page_id, file_name, label, _with_handwritten(page_id, sidebar_groups)))
         n = sum(len(items) for _, items in sidebar_groups)
         print(f"  {file_name}: {n} subsections in {len(sidebar_groups)} groups")
 

@@ -45,8 +45,11 @@ async function publish(shot: Shot, raw: Buffer): Promise<string[]> {
   const written: string[] = [];
 
   // The raw capture is at deviceScaleFactor pixel density: that IS the @2x asset.
+  // The 1x is it scaled down by that factor; a clipped shot is narrower than
+  // the viewport, so the width comes from the capture, not the viewport.
+  const { width = VIEWPORTS[shot.viewport].width * scale } = await sharp(raw).metadata();
   const oneX = await sharp(raw)
-    .resize({ width: Math.round(VIEWPORTS[shot.viewport].width) })
+    .resize({ width: Math.round(width / scale) })
     .png({ compressionLevel: 9, palette: true })
     .toBuffer();
   const twoX = await sharp(raw).png({ compressionLevel: 9, palette: true }).toBuffer();
