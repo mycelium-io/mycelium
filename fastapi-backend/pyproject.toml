@@ -46,6 +46,7 @@ dev = [
     "pytest>=9.0.1,<10",
     "pytest-asyncio>=1.3.0,<2",
     "respx>=0.22.0",
+    "hypothesis>=6.169.1",
 ]
 
 [tool.uv]

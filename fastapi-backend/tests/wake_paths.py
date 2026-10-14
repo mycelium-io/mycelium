@@ -179,7 +179,7 @@ async def _respond(room: Room, sender: str, text: str, episode: str, heard_from:
     assert response.status_code == 200, response.text
 
 
-async def _post(
+async def post(
     room: Room,
     sender: str,
     text: str,
@@ -228,24 +228,24 @@ async def say(
             ROOM, subkind="claimed", key="work/parser-work", title="Parser work", by=sender
         )
     elif shape == "presence":
-        await _post(room, sender, "", episode, payload="presence", to=to)
+        await post(room, sender, "", episode, payload="presence", to=to)
     elif shape == "commit":
-        await _post(room, sender, text, episode, payload="outcome", to=to, kind=Kind.commit)
+        await post(room, sender, text, episode, payload="outcome", to=to, kind=Kind.commit)
     elif shape == "turn":
-        await _post(room, sender, text, episode, payload="message", to=to)
+        await post(room, sender, text, episode, payload="message", to=to)
     elif sender == PERSON:
         await _person(room, text, episode)
     elif sender in (AGENT, PEER):
         await _respond(room, sender, text, episode, to[0] if to else None)
     elif ENGINES.get(sender) == "persona":
-        await _post(room, sender, turns.neutralize_mentions(text), episode, payload="reply")
+        await post(room, sender, turns.neutralize_mentions(text), episode, payload="reply")
     elif ENGINES.get(sender) == "worker":
-        await _post(room, sender, text, episode, payload="reply")
+        await post(room, sender, text, episode, payload="reply")
     elif sender == REMOTE:
         # The A2A bridge answers whoever summoned it (``a2a_bridge``).
-        await _post(room, sender, text, episode, payload="reply", to=to)
+        await post(room, sender, text, episode, payload="reply", to=to)
     else:
-        await _post(room, sender, text, episode, to=to)
+        await post(room, sender, text, episode, to=to)
 
 
 # ── Reading ──────────────────────────────────────────────────────────────────
@@ -268,7 +268,8 @@ class Decided:
 def mark_read(room: Room, agent: str) -> int:
     """``agent`` has read everything so far, so a row reads only its message.
     Returns where the transcript stood, so the row's records can be found."""
-    room.log.advance(agent, len(room.log.records))
+    assert room.managed.persister is not None
+    room.managed.persister.advance_cursor(agent, len(room.log.records))
     participate._last_tick.pop((ROOM, agent), None)
     room.turns.clear()
     return len(room.log.records)
@@ -294,3 +295,31 @@ async def decided(room: Room, agent: str) -> Decided:
 
     result = await participate.await_message(ROOM, _REQUEST, handle=agent, timeout=0)
     return Decided(doorbell=doorbell, awaited=bool(result.get("message_id")), digest=digest)
+
+
+async def handed(room: Room) -> list[dict[str, Any]]:
+    """The wakes the hub hands a runner now, as its sync pass drains them."""
+    response = await room.client.get(f"/api/rooms/{ROOM}/sessions/herdr-wakes")
+    assert response.status_code == 200, response.text
+    return response.json()["wakes"]
+
+
+async def await_turn(agent: str) -> dict[str, Any]:
+    """What ``mycelium await`` hands ``agent`` now."""
+    return await participate.await_message(ROOM, _REQUEST, handle=agent, timeout=0)
+
+
+def restart(room: Room) -> None:
+    """The hub restarts: its memory goes (the queued wakes, the last turn each
+    agent was handed) and the room's persister comes back from disk."""
+    manager = room_channels.manager
+    manager._herdr_wakes.clear()
+    participate._last_tick.clear()
+    room.managed.persister = RoomPersister(
+        ROOM,
+        channel=room.managed.channel,
+        members_provider=lambda: set(),
+        on_summon=manager._summon_adapter(ROOM),
+        on_asked=manager._asked_adapter(ROOM),
+        feed_bus=False,
+    )
