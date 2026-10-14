@@ -78,6 +78,22 @@ def test_signals_and_commits_address_nobody():
     assert addressed == []
 
 
+def test_a_reply_puts_a_turn_to_nobody():
+    # An agent answering a person names, as its recipient, whoever it last
+    # heard from, here another agent. That agent wasn't asked anything: no
+    # doorbell, and no persona or worker answering. Asking takes a mention.
+    addressed: list = []
+    summoned: list = []
+    p = _persister(addressed, summoned)
+
+    _ingest(p, payload_type="reply", recipients=["coder"], text="Yes, that command works.")
+    assert addressed == []
+
+    _ingest(p, payload_type="reply", recipients=["coder"], text="@coder can you take it?")
+    assert summoned == ["coder"]
+    assert addressed == []
+
+
 def test_no_hook_is_silent():
     p = persister.RoomPersister(
         ROOM,
