@@ -28,18 +28,54 @@ See ``tests/README.md`` for the "test a command without a live stack" recipe.
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, Mock
 
-import httpx
-import pytest
+# ── never the real home ──────────────────────────────────────────────────────
+# Set before anything from mycelium is imported. ``MyceliumConfig.save()`` with
+# no path writes ``~/.mycelium/config.toml``, so a test that saves without
+# ``isolated_home`` would replace the developer's own config (their LLM key,
+# server and SLIM secret) with a test's defaults. Every test runs with HOME in
+# a temp folder; ``isolated_home`` still gives a test one of its own.
+_REAL_HOME = Path.home()
+_REAL_CONFIG = _REAL_HOME / ".mycelium" / "config.toml"
+_TEST_HOME = tempfile.mkdtemp(prefix="mycelium-cli-tests-home-")
+os.environ["HOME"] = _TEST_HOME
+os.environ["USERPROFILE"] = _TEST_HOME  # what Path.home() reads on Windows
 
-from mycelium.slim.client import SlimReceiveTimeout
+import httpx  # noqa: E402
+import pytest  # noqa: E402
+
+from mycelium.slim.client import SlimReceiveTimeout  # noqa: E402
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
+
+
+def _stamp(path: Path) -> tuple[int, int] | None:
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return None
+    return st.st_mtime_ns, st.st_size
+
+
+_REAL_CONFIG_STAMP = _stamp(_REAL_CONFIG)
+
+
+@pytest.fixture(autouse=True)
+def _never_the_real_home(request: pytest.FixtureRequest):
+    """Fail the test, by name, that reached the real ``~/.mycelium``."""
+    assert Path.home() != _REAL_HOME, "a test is running with the real HOME"
+    yield
+    assert _stamp(_REAL_CONFIG) == _REAL_CONFIG_STAMP, (
+        f"{request.node.nodeid} changed the real {_REAL_CONFIG}. "
+        "Tests must save config under a temp HOME (see isolated_home)."
+    )
 
 
 # ── SLIM transport ────────────────────────────────────────────────────────────
