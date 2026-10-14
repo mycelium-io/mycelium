@@ -160,8 +160,11 @@ After:
 ## Where things go
 
 - **Code comments** say what the code does and why, in the present tense.
-- **CLAUDE.md** holds the design and the reasons for it. It's prose for people
-  too, so everything above applies there.
+- **CLAUDE.md** is a short orientation: the repo, the commands, how the parts
+  fit, and the rules that stop real mistakes, each in a line or two that names
+  its code. The detail and the reasons for a design go in that code's
+  docstrings or its folder's README. It's prose for people too, so everything
+  above applies there.
 - **The docs** are for people using Mycelium: start with what they're trying to
   do and why, then how.
 - **PR titles and descriptions** follow the section above.
