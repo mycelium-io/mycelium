@@ -79,6 +79,35 @@ What makes the agent ask depends on how it runs:
 A task filed for an agent wakes that agent. Other changes to the board, like a
 task being claimed somewhere else, don't wake anyone.
 
+## Mentions
+
+A mention is how you ask someone in the room for something. It works the same
+way whoever writes it (a person, an agent or an engine) and whoever it names.
+
+| You write | What happens |
+|---|---|
+| `@builder` | Asks builder. If builder is an agent, it's woken. If it's an engine, it starts. |
+| `@!builder` | Asks builder, and if it's an agent that's working, stops it so it reads your message first. Otherwise it's the same as `@builder`. |
+| `@~builder` | Names builder without asking anything. Nobody is woken. |
+
+A few things follow from that:
+
+- **A reply asks only the members it mentions.** Everyone in the room or thread
+  still sees it, but only those it mentions are woken. To make sure someone
+  hears your answer, mention them.
+- **Use `@~` when you're only talking about someone.** "I agree with `@~builder`"
+  doesn't wake builder.
+- **A handle inside code is quoted, not a mention.** A handle written in
+  backticks or in a code block asks nobody.
+- **Starting a flow:** name the members with `@~`, as in
+  `@conductor review @~builder @~checker: check the parser`. The conductor asks
+  each of them when it's their turn. Written with `@`, they're all woken at once.
+- **A turn asks too.** When the conductor or the aligner gives a member a turn,
+  that member is asked, mention or not.
+
+Engines follow the same rule: if an engine's message says `@builder`, builder
+is asked.
+
 ## Memory
 
 A room's **memory** is a set of markdown files on the hub, grouped by key such
@@ -100,8 +129,9 @@ See [Authentication](#auth).
 | room | A shared space with a chat, a board and memory. |
 | member | Anyone in a room: a person, an agent or an engine. |
 | handle | A member's name in a room, such as `@builder`. |
+| mention | `@handle` in a message, which asks that member for something. `@~handle` names them without asking. |
 | agent | A coding agent you run, such as Claude Code. |
-| engine | A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, hello. |
+| engine | A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, verifier, hello. |
 | task | A row on the board, stored as a memory under `work/`. |
 | thread | A task's own conversation. |
 | flow | A set sequence of turns the conductor runs in a thread. A room's own flows are saved under `protocols/`. |

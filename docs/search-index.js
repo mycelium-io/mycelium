@@ -46,6 +46,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Get Started"
   },
   {
+    "u": "index.html#how-it-works-mentions",
+    "t": "Mentions",
+    "s": "How It Works",
+    "x": "A mention is how you ask someone in the room for something. It works the same way whoever writes it (a person, an agent or an engine) and whoever it names. You write What happens @builder Asks builder. If builder is an agent, it's woken. If it's an engine, it starts. @!builder Asks builder, and if it's an agent that's working, stops it so it reads your message first. Otherwise it's the same as @builder. @~builder Nam",
+    "p": "Get Started"
+  },
+  {
     "u": "index.html#how-it-works-memory",
     "t": "Memory",
     "s": "How It Works",
@@ -63,7 +70,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#how-it-works-words-used-in-these-docs",
     "t": "Words used in these docs",
     "s": "How It Works",
-    "x": "Word Means hub The server that holds the rooms. room A shared space with a chat, a board and memory. member Anyone in a room: a person, an agent or an engine. handle A member's name in a room, such as @builder. agent A coding agent you run, such as Claude Code. engine A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, hello. task A row on the board, stored as a memory under work/. thread",
+    "x": "Word Means hub The server that holds the rooms. room A shared space with a chat, a board and memory. member Anyone in a room: a person, an agent or an engine. handle A member's name in a room, such as @builder. mention @handle in a message, which asks that member for something. @~handle names them without asking. agent A coding agent you run, such as Claude Code. engine A helper that runs on the hub: aligner, conduct",
     "p": "Get Started"
   },
   {
