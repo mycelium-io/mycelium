@@ -97,6 +97,19 @@ RoomRecordedHook = Callable[[str, "TranscriptRecord"], None]
 
 logger = logging.getLogger(__name__)
 
+#: How a held wake's reason ranks when another wake for the same handle
+#: arrives: a text mention least, a turn put to it, a task given to it or its
+#: schedule above that, and an interrupt above all. A reason not listed ranks
+#: with a turn.
+WAKE_RANK = {
+    "mention": 0,
+    "turn": 1,
+    "assigned": 1,
+    "handback": 1,
+    "schedule": 1,
+    "interrupt": 2,
+}
+
 # The moderator's app id (third Name segment) on every room channel. Distinct
 # from any real agent handle so it never collides with a participant, and
 # filtered out of presence.
@@ -589,14 +602,12 @@ class RoomChannelManager:
         for w in queue:
             if w["handle"] == handle:
                 w["ts"] = entry["ts"]  # fresh activity refreshes the hold timer
-                for field in ("from", "episode"):
-                    if field in entry:
-                        w[field] = entry[field]
                 # The reason only moves up: a turn or an assignment outranks a
-                # mention, and an interrupt outranks them all.
-                if reason == "interrupt" or (
-                    reason != "mention" and w.get("reason") != "interrupt"
-                ):
+                # mention, and an interrupt outranks them all. Who rang and
+                # where move with it, so a wake never names the sender of a
+                # lesser one: an interrupt from a person stays theirs when an
+                # agent mentions the same handle after it.
+                if WAKE_RANK.get(reason, 1) >= WAKE_RANK.get(w.get("reason", "mention"), 1):
                     w.update({k: v for k, v in entry.items() if k != "handle"})
                 return
         # Its id follows it to the runner and back, so the wake log
