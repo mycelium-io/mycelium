@@ -259,7 +259,7 @@ Agents in that room receive your message addressed to them. One-way: no built-in
 
 Messages without an `@mention` are ignored by default (rooms set `requireMention: true`). Always tag who you're talking to.
 
-To refer to someone without asking them for anything, write `@~handle` (a silent mention, as in `cc @~reviewer`). It doesn't wake or address them, so use it when you're crediting or pointing at someone, and a plain `@handle` when you need them to act.
+To refer to someone without asking them for anything, write `@~handle` (a silent mention, as in `cc @~reviewer`). It doesn't wake or address them, so use it when you're crediting or pointing at someone, and a plain `@handle` when you need them to act. A handle inside backticks or a code block is quoted, not mentioned, so quoting a message or a command that names someone reaches nobody.
 
 If a wake says someone sent you an urgent message with `@!`, your turn may have been stopped so you'd read it now. Act on it, then carry on with what you were doing unless it says otherwise.
 

@@ -157,6 +157,48 @@ def test_a_silent_mention_is_not_a_turn():
 
 
 @pytest.mark.asyncio
+async def test_await_does_not_serve_a_handle_quoted_in_code(wired):
+    """A handle inside code is quoted, not mentioned: the send path makes it no
+    recipient, and ``await`` reads the text by the same rule, so a message whose
+    only mention of the handle is in code is never served to it."""
+    text = "quoting `ask @claude-code-agent to look` for @reviewer"
+    env = message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=message_format.episode_urn("r", "live"),
+        sender="avery",
+        sender_role="human",
+        recipients=persister.parse_mentions(text),
+        topic=message_format.topic_urn("r"),
+        message_id="m1",
+        payload_type="message",
+    )
+    content = serialize_content(env, extra={"content": text})
+    assert participate._addressed_to(content, "reviewer")
+    assert not participate._addressed_to(content, "claude-code-agent")
+
+    log = persister.DeliveryLog()
+    log.record(persister.record_from(env, content), delivered_to=set(), recipients=["reviewer"])
+    wired(log)
+    result = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=1)
+    assert result["message"] is None
+
+
+def test_an_interrupting_mention_addresses_by_text():
+    """``@!handle`` in the text addresses the handle like ``@handle`` does."""
+    env = message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=message_format.episode_urn("r", "live"),
+        sender="avery",
+        sender_role="human",
+        recipients=[],
+        topic=message_format.topic_urn("r"),
+        payload_type="message",
+    )
+    content = serialize_content(env, extra={"content": "@!Coder stop, wrong checkout"})
+    assert participate._addressed_to(content, "coder")
+
+
+@pytest.mark.asyncio
 async def test_a_served_turn_says_the_handle_is_responding(wired):
     """From the moment ``await`` hands a turn over until the reply lands, the
     room is waiting on that handle; the stream says so (#513). Bus-only: the

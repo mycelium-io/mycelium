@@ -767,8 +767,11 @@ class WorkerEngine:
         """
         if any(a.kind == "done" for a in actions):
             return
+        from app.services.persister import blank_code
+
         members = {_norm(h) for h in team} - {_norm(handle)}
-        if any(_norm(m) in members for m in _MENTION.findall(prose)):
+        # A teammate quoted in code isn't asked anything; the hub won't wake them.
+        if any(_norm(m) in members for m in _MENTION.findall(blank_code(prose))):
             return
         holder = _holder(room, key)
         if holder is None:
