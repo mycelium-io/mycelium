@@ -318,7 +318,8 @@ def _reply_thread(room: str, asked: list[Any]) -> str | None:
 def reply_episode(room: str, wake: dict[str, Any], records: list[Any]) -> str | None:
     """The thread ``wake``'s agent is told to reply in, for the room's "is
     responding in" line; ``None`` for the room itself (:func:`_reply_thread`)."""
-    _, _, _, asked = _since(str(wake.get("handle") or ""), records, wake.get(READ_FROM))
+    handle = str(wake.get("handle") or "")
+    _, _, _, asked = _since(handle, records, wake.get(READ_FROM), room=room)
     return _reply_thread(room, asked)
 
 
@@ -329,18 +330,19 @@ READ_FROM = "read_from"
 
 
 def _since(
-    handle: str, records: list[Any], read_from: int | None = None
+    handle: str, records: list[Any], read_from: int | None = None, *, room: str | None = None
 ) -> tuple[list[Any], int, list[Any], list[Any]]:
     """What ``handle`` hasn't seen: the window read, the index of its last
     message in it (-1 for none), the records it hasn't read, and the ones among
-    them that asked for it.
+    them that asked for it (:func:`app.services.asks.asks`, which ``await`` and
+    the doorbell decide by too).
 
     With ``read_from`` (its read position in ``records``), that is everything
     after it, except what it said itself: an agent can post a reply without
     having read a message that arrived just before it. Without one it's what
     came after its last message, the best guess the transcript alone allows.
     """
-    from app.routes.participate import _addressed_to
+    from app.services.asks import asks
 
     me = _norm(handle)
     window = records[-SCAN:]
@@ -350,17 +352,16 @@ def _since(
     else:
         start = max(0, read_from - (len(records) - len(window)))
         since = [r for r in window[start:] if _norm(r.sender) != me]
-    asked = [
-        r for r in since if _addressed_to(r.content, handle) and _conversational_text(r.content)
-    ]
+    asked = [r for r in since if asks(r.content, handle, room=room)]
     return window, last, since, asked
 
 
-def coverage(wake: dict[str, Any], records: list[Any]) -> dict[str, Any]:
+def coverage(wake: dict[str, Any], records: list[Any], room: str | None = None) -> dict[str, Any]:
     """Which messages a wake covers, as ids: the ones that asked for its agent,
     and the range its digest summarized (what its agent hadn't read, oldest to
     newest). Text stays in the transcript; the wake log keeps these."""
-    _, _, since, asked = _since(str(wake.get("handle") or ""), records, wake.get(READ_FROM))
+    handle = str(wake.get("handle") or "")
+    _, _, since, asked = _since(handle, records, wake.get(READ_FROM), room=room)
     covered: dict[str, Any] = {"messages": [r.message_id for r in asked]}
     if since:
         covered["range"] = [since[0].message_id, since[-1].message_id]
@@ -373,7 +374,7 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     handle = str(wake.get("handle") or "")
     me = _norm(handle)
     reason = wake.get("reason") or "mention"
-    window, last, since, asked = _since(handle, records, wake.get(READ_FROM))
+    window, last, since, asked = _since(handle, records, wake.get(READ_FROM), room=room)
     last_at = parse_recorded_at(window[last].recorded_at) if last >= 0 else None
     episode = record_episode(asked[-1]) if asked else wake.get("episode")
     where = _where(room, episode)

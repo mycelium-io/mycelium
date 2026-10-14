@@ -238,27 +238,18 @@ async def lifespan(app: FastAPI):
     # A party leaving the room stops the aligner's run, which says so itself.
     room_channel_manager.on_party_left = app.state.aligner.party_left
 
-    # A turn whose text names nobody, put to one member as its message recipient —
-    # the way the aligner and the conductor address one member. The members
-    # the hub plays (persona, worker) answer it; a member living in herdr gets
-    # its doorbell rung, since it would otherwise only wake on a text mention.
-    # Each self-selects by the handle, like the summon handlers.
-    def _dispatch_addressed(room: str, handle: str, envelope: Any, message_text: str) -> None:
+    # A turn put to one member (its message recipient), the way the aligner and
+    # the conductor ask one member. The members the hub plays (persona, worker)
+    # answer it; the manager rings a herdr member's doorbell itself. Each
+    # self-selects by the handle, like the summon handlers.
+    def _dispatch_turn(room: str, handle: str, envelope: Any, message_text: str) -> None:
         for fire in (app.state.persona.handle_addressed, app.state.worker.handle_addressed):
             try:
                 fire(room, handle, envelope, message_text)
             except Exception:
-                logger.exception("addressed handler failed for @%s in %s", handle, room)
-        from app.services.persister import envelope_sender
+                logger.exception("turn handler failed for @%s in %s", handle, room)
 
-        room_channel_manager.herdr_wake_addressed(
-            room,
-            handle,
-            sender=envelope_sender(envelope),
-            episode=envelope.header.message.episode if envelope.header.message else None,
-        )
-
-    room_channel_manager.on_addressed = _dispatch_addressed
+    room_channel_manager.on_turn = _dispatch_turn
 
     # The board moving: a row filed for a worker gets worked, a finished split
     # gets wrapped up, and a row filed for a herdr member rings its doorbell.

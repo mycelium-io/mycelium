@@ -17,8 +17,8 @@ raised as an ``upstream`` notice on the row.
 
 Three properties keep it honest.
 
-**It informs and wakes nobody.** A notice is excluded from
-``participate._addressed_to``, and every notice consumer acts on its own
+**It informs and wakes nobody.** A notice asks nobody anything
+(``asks.asks``), and every notice consumer acts on its own
 subkinds only (``filed``, ``resolved``), so a review requested or a merge never
 rings anyone's doorbell. An agent reads it in the digest of a wake something
 else caused.

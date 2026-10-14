@@ -28,7 +28,7 @@ from app.routes import participate
 from app.services import message_format, room_channels, turns, wake_log
 from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.message_models import Kind
-from app.services.persister import RoomPersister, envelope_sender
+from app.services.persister import RoomPersister
 
 ROOM = "asks-room"
 #: The agent a row asks about, unless it names another.
@@ -107,7 +107,6 @@ async def open_room(client: AsyncClient, monkeypatch: Any) -> Room:
         _manifest(handle, {"adapter": "engine", "kind": kind})
     _manifest(REMOTE, {"adapter": "a2a", "url": "https://remote.example/a2a"})
 
-    _ring_turns(manager, monkeypatch)
     managed = room_channels.ManagedRoomChannel(
         room=ROOM,
         workspace="asks",
@@ -120,7 +119,7 @@ async def open_room(client: AsyncClient, monkeypatch: Any) -> Room:
         channel=managed.channel,
         members_provider=lambda: set(),
         on_summon=manager._summon_adapter(ROOM),
-        on_addressed=manager._addressed_adapter(ROOM),
+        on_asked=manager._asked_adapter(ROOM),
         feed_bus=False,
     )
     monkeypatch.setitem(manager._channels, ROOM, managed)
@@ -132,21 +131,6 @@ async def open_room(client: AsyncClient, monkeypatch: Any) -> Room:
     assert task.status_code == 201, task.text
     room.thread = task.json()["episode"]
     return room
-
-
-def _ring_turns(manager: Any, monkeypatch: Any) -> None:
-    """The doorbell half of ``main.py``'s addressed dispatch, which the app's
-    startup wires and a test client never runs."""
-
-    def ring(room: str, handle: str, envelope: Any, _text: str) -> None:
-        manager.herdr_wake_addressed(
-            room,
-            handle,
-            sender=envelope_sender(envelope),
-            episode=envelope.header.message.episode if envelope.header.message else None,
-        )
-
-    monkeypatch.setattr(manager, "on_addressed", ring)
 
 
 # ── Writing ──────────────────────────────────────────────────────────────────
@@ -253,8 +237,6 @@ async def say(
         await _post(room, sender, turns.neutralize_mentions(text), episode, payload="reply")
     elif ENGINES.get(sender) == "worker":
         await _post(room, sender, text, episode, payload="reply")
-        # The worker rings the teammates it named itself (``worker_engine``).
-        manager.enqueue_herdr_wakes_for_mentions(ROOM, text, exclude=sender, episode=episode)
     elif sender == REMOTE:
         # The A2A bridge answers whoever summoned it (``a2a_bridge``).
         await _post(room, sender, text, episode, payload="reply", to=to)

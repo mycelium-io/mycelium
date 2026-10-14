@@ -15,7 +15,17 @@ import pytest
 
 from app.config import settings
 from app.schemas import RunnerAgentRead, RunnerHello
-from app.services import interrupts, principals, room_channels, turns, wake_digest
+from app.services import (
+    asks,
+    interrupts,
+    message_format,
+    principals,
+    room_channels,
+    turns,
+    wake_digest,
+)
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 from app.services.runners import RunnerRegistry
 from app.services.worker_engine import keep_team_mentions
 from tests.fakes import FakeSlimClient
@@ -65,11 +75,26 @@ def _jobs(registry: RunnerRegistry) -> list[tuple[str, dict]]:
     return [(j.kind, j.spec) for j in registry.jobs("mac") or []]
 
 
+def _say(manager: room_channels.RoomChannelManager, text: str, sender: str) -> list[str]:
+    """``sender`` posts ``text`` in the room: each handle it asks goes through
+    the hook every recorded message does. Returns the handles rung."""
+    env = message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=message_format.live_episode_urn(ROOM),
+        sender=sender,
+        topic=message_format.topic_urn(ROOM),
+        payload_type="message",
+    )
+    hook = manager._asked_adapter(ROOM)
+    asked = asks.asked(serialize_content(env, extra={"content": text}), ROOM)
+    for handle, why in asked.items():
+        hook(handle, why, env, text)
+    return [h for h in asked if manager.herdr_status(ROOM, h) is not None]
+
+
 def test_a_person_interrupts_a_working_agent(manager, runners):
     manager.set_herdr_presence(ROOM, {"coder": "working"})
-    woke = manager.enqueue_herdr_wakes_for_mentions(
-        ROOM, "@!coder stop, you're in the wrong checkout", sender="julia"
-    )
+    woke = _say(manager, "@!coder stop, you're in the wrong checkout", "julia")
     assert woke == ["coder"]
     assert _jobs(runners) == [("interrupt", {"room": ROOM, "handle": "coder", "pane": "w1:p2"})]
     # The wake is held while it works, and says it was an interrupt once it's idle.
@@ -83,7 +108,7 @@ def test_a_person_interrupts_a_working_agent(manager, runners):
 def test_an_idle_agent_gets_an_ordinary_mention(manager, runners):
     # The key on an idle session could clear what a person was typing there.
     manager.set_herdr_presence(ROOM, {"coder": "idle"})
-    manager.enqueue_herdr_wakes_for_mentions(ROOM, "@!coder when you can", sender="julia")
+    _say(manager, "@!coder when you can", "julia")
     assert _jobs(runners) == []
     (wake,) = manager.drain_herdr_wakes(ROOM)
     assert wake["reason"] == "mention"
@@ -91,7 +116,7 @@ def test_an_idle_agent_gets_an_ordinary_mention(manager, runners):
 
 def test_any_agent_in_the_room_may_interrupt_another(manager, runners):
     manager.set_herdr_presence(ROOM, {"coder": "working"})
-    manager.enqueue_herdr_wakes_for_mentions(ROOM, "@!coder hold on, that's main", sender="scout")
+    _say(manager, "@!coder hold on, that's main", "scout")
     assert [k for k, _ in _jobs(runners)] == ["interrupt"]
     assert manager._herdr_wakes[ROOM][0]["reason"] == "interrupt"
     assert interrupts.refusal(ROOM, "coder", "scout") is None
@@ -99,7 +124,7 @@ def test_any_agent_in_the_room_may_interrupt_another(manager, runners):
 
 def test_an_engine_never_interrupts(manager, runners):
     manager.set_herdr_presence(ROOM, {"coder": "working"})
-    manager.enqueue_herdr_wakes_for_mentions(ROOM, "@!coder your turn", sender="aligner")
+    _say(manager, "@!coder your turn", "aligner")
     assert _jobs(runners) == []
     assert manager._herdr_wakes[ROOM][0]["reason"] == "mention"
     assert "engine" in (interrupts.refusal(ROOM, "coder", "aligner") or "")
@@ -107,15 +132,15 @@ def test_an_engine_never_interrupts(manager, runners):
 
 def test_an_agent_no_runner_reports_gets_an_ordinary_mention(manager, runners):
     manager.set_herdr_presence(ROOM, {"stranger": "working"})
-    manager.enqueue_herdr_wakes_for_mentions(ROOM, "@!stranger stop", sender="julia")
+    _say(manager, "@!stranger stop", "julia")
     assert _jobs(runners) == []
     assert manager._herdr_wakes[ROOM][0]["reason"] == "mention"
 
 
 def test_a_later_mention_or_turn_does_not_downgrade_an_interrupt(manager, runners):
     manager.set_herdr_presence(ROOM, {"coder": "working"})
-    manager.enqueue_herdr_wakes_for_mentions(ROOM, "@!coder stop", sender="julia")
-    manager.enqueue_herdr_wakes_for_mentions(ROOM, "@coder also this", sender="scout")
+    _say(manager, "@!coder stop", "julia")
+    _say(manager, "@coder also this", "scout")
     manager.enqueue_herdr_wake(ROOM, "coder", reason="turn")
     assert manager._herdr_wakes[ROOM][0]["reason"] == "interrupt"
 

@@ -24,6 +24,7 @@ import pytest
 import yaml
 
 from app.services import assignments, conductor, room_channels, tasks, worker_engine
+from app.services.asks import asked
 from app.services.filesystem import (
     get_room_dir,
     list_memory_files,
@@ -31,12 +32,7 @@ from app.services.filesystem import (
     write_memory_file,
 )
 from app.services.message_slim import serialize_content
-from app.services.persister import (
-    envelope_recipients,
-    find_summons,
-    is_addressed_turn,
-    record_from,
-)
+from app.services.persister import find_summons, record_from
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 ROOM = "swarm-flow"
@@ -56,16 +52,12 @@ class Loopback(FakeManaged):
         summons = find_summons(content)
         for handle in summons:
             self.worker.handle_summon(ROOM, handle, envelope, summons, text)
-        if is_addressed_turn(envelope):
-            for handle in envelope_recipients(envelope):
-                if handle not in summons:
-                    self.worker.handle_addressed(ROOM, handle, envelope, text)
+        for handle, why in asked(content, ROOM).items():
+            if why == "turn":
+                self.worker.handle_addressed(ROOM, handle, envelope, text)
 
 
 class Manager(FakeManager):
-    def enqueue_herdr_wakes_for_mentions(self, *_a: Any, **_k: Any) -> list[str]:
-        return []
-
     async def raise_ping(self, *_a: Any, **_k: Any) -> None:
         return None
 

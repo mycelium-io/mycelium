@@ -37,8 +37,6 @@ class Row:
 ASKED = Decided(doorbell="mention", awaited=True, digest=True)
 TURN = Decided(doorbell="turn", awaited=True, digest=True)
 NOT_ASKED = Decided(doorbell=None, awaited=False, digest=False)
-#: Read as asked by ``await`` and the digest, with no wake rung for it.
-UNRUNG = Decided(doorbell=None, awaited=True, digest=True)
 
 ROWS = [
     Row("a person mentions the agent", PERSON, "@coder can you look at the parser?", ASKED),
@@ -59,9 +57,8 @@ ROWS = [
         "a reply to the agent's turn, not mentioning it",
         PEER,
         "Yes, that command works.",
-        UNRUNG,
+        NOT_ASKED,
         to=(AGENT,),
-        wrong="respond names whoever it last heard from as recipient, and await counts it",
     ),
     Row(
         "a reply that mentions the agent",
@@ -100,10 +97,9 @@ ROWS = [
         "an engine turn that mentions the agent",
         "aligner",
         "@coder your position?",
-        UNRUNG,
+        ASKED,
         to=(AGENT,),
         shape="turn",
-        wrong="an engine's text mention rings nothing; only the write routes ring mentions",
     ),
     Row("a persona's post, its @ taken off", "sage", "@coder you should look", NOT_ASKED),
     Row("a worker names a teammate", "builder", "@coder can you review this?", ASKED),
@@ -111,17 +107,14 @@ ROWS = [
         "a mention of an engine",
         PERSON,
         "@aligner what's the plan?",
-        UNRUNG,
+        NOT_ASKED,
         agent="aligner",
-        wrong="an engine is summoned, but await and the digest read it as asked",
     ),
     Row(
         "a summon of the conductor naming the agent",
         PERSON,
         "@conductor gated @coder @planner: ship the parser",
-        UNRUNG,
-        wrong="the agent is bound to a role, which the conductor asks later; "
-        "await and the digest read the summon as asking it now",
+        NOT_ASKED,
     ),
     Row("a ping", PEER, "", NOT_ASKED, shape="ping"),
     Row("a notice", PEER, "", NOT_ASKED, shape="notice"),
@@ -138,18 +131,16 @@ ROWS = [
         "a reply in a thread, not mentioning the agent",
         PEER,
         "Yes, that command works.",
-        UNRUNG,
+        NOT_ASKED,
         to=(AGENT,),
         where="thread",
-        wrong="respond names whoever it last heard from as recipient, and await counts it",
     ),
     Row(
         "an A2A agent answers the agent that summoned it",
         REMOTE,
         "Rain on Friday.",
-        UNRUNG,
+        NOT_ASKED,
         to=(AGENT,),
-        wrong="a reply's recipient: await and the digest count it, the doorbell doesn't",
     ),
 ]
 

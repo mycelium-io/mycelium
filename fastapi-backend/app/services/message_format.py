@@ -79,7 +79,7 @@ LIVE_SESSION = "live"
 #: a thread moved, carrying no echo of what was said. It sits beside
 #: ``presence``/``keepalive`` as a control payload — deliberately not chat, and
 #: deliberately not an addressed turn, so it surfaces activity without waking
-#: anyone (:func:`app.routes.participate._addressed_to`).
+#: anyone (:func:`app.services.asks.asks`).
 PING_PAYLOAD_TYPE = "ping"
 
 #: The payload type of a **notice**: the room's timeline of what happened to its

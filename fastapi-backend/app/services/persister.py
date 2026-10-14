@@ -185,28 +185,6 @@ def envelope_message_id(envelope: MyceliumMessage) -> str | None:
     return message.id if message is not None else None
 
 
-#: Payloads an exchange carries that are signals rather than turns: nothing
-#: to answer, so the addressed hook never fires for them.
-_SIGNAL_PAYLOADS = frozenset(
-    {"presence", "keepalive", message_format.PING_PAYLOAD_TYPE, message_format.NOTICE_PAYLOAD_TYPE}
-)
-#: A reply answers something; it puts a turn to nobody. Its recipient is who
-#: the replier last heard from (``respond`` names the sender of the turn it
-#: was handed), which need not be who it's answering, so ringing that
-#: recipient as if asked woke agents nobody had asked. To ask an agent
-#: something, a reply mentions it.
-_ANSWER_PAYLOADS = frozenset({"reply"})
-
-
-def is_addressed_turn(envelope: MyceliumMessage) -> bool:
-    """True for an ``exchange`` that puts something to its recipients: the
-    aligner's and the conductor's questions to one member, not a reply."""
-    header = envelope.header
-    if header.kind.value != "exchange":
-        return False
-    return envelope.payload.type not in _SIGNAL_PAYLOADS | _ANSWER_PAYLOADS
-
-
 def is_converged(envelope: MyceliumMessage) -> bool:
     """True for a ``commit:converged`` envelope (the plan-compile trigger)."""
     header = envelope.header
@@ -930,11 +908,10 @@ def write_episode_cursors(room: str, cursors: dict[str, dict[str, int]]) -> None
 # ── The receive loop ─────────────────────────────────────────────────────────
 
 SummonHook = Callable[[str, "MyceliumMessage", list[str], str], None]
-# Called once per message recipient of an exchange that named nobody in its text —
-# an addressed turn, the way the aligner and the conductor put a question to
-# one member. A mention in the text is a summon and fires the summon hook
-# instead, so a handle is never told twice about one message.
-AddressedHook = Callable[[str, "MyceliumMessage", str], None]
+# Called once per handle a message asks for something, with why (``mention``,
+# ``turn`` or ``interrupt``; :mod:`app.services.asks` is the rule): what rings
+# the herdr doorbell, and how a persona or a worker hears a turn put to it.
+AskedHook = Callable[[str, str, "MyceliumMessage", str], None]
 ConvergedHook = Callable[["MyceliumMessage"], None]
 # Called with the handle of a member that dropped off the channel, so the
 # moderator can update its membership — presence, not a fatal error.
@@ -1031,7 +1008,7 @@ class RoomPersister:
         on_summon: SummonHook | None = None,
         on_converged: ConvergedHook | None = None,
         on_member_left: MemberLeftHook | None = None,
-        on_addressed: AddressedHook | None = None,
+        on_asked: AskedHook | None = None,
         on_recorded: RecordedHook | None = None,
         feed_bus: bool = True,
     ) -> None:
@@ -1039,7 +1016,7 @@ class RoomPersister:
         self._channel = channel
         self._members_provider = members_provider
         self.on_summon = on_summon or _default_summon_hook
-        self.on_addressed = on_addressed
+        self.on_asked = on_asked
         self.on_recorded = on_recorded
         self.on_converged = on_converged or _default_converged_hook
         self.on_member_left = on_member_left
@@ -1330,14 +1307,14 @@ class RoomPersister:
                 self.on_summon(handle, envelope, summons, message_text)
             except Exception:
                 logger.exception("summon hook failed for @%s", handle)
-        if self.on_addressed is not None and is_addressed_turn(envelope):
-            for handle in envelope_recipients(envelope):
-                if handle in summons:
-                    continue
+        if self.on_asked is not None:
+            from app.services.asks import asked
+
+            for handle, why in asked(content, self.room).items():
                 try:
-                    self.on_addressed(handle, envelope, message_text)
+                    self.on_asked(handle, why, envelope, message_text)
                 except Exception:
-                    logger.exception("addressed hook failed for @%s", handle)
+                    logger.exception("asked hook failed for @%s", handle)
         if is_converged(envelope):
             try:
                 self.on_converged(envelope)

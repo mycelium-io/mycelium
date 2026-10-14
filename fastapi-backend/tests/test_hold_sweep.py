@@ -197,9 +197,7 @@ def test_a_quiet_row_gets_one_notice_and_wakes_nobody(monkeypatch, notices):
             posted.append(text)
 
     monkeypatch.setattr(manager, "get", lambda _r: Managed())
-    monkeypatch.setattr(
-        manager, "enqueue_herdr_wakes_for_mentions", lambda *a, **_kw: woken.append(a)
-    )
+    monkeypatch.setattr(manager, "ring_asked", lambda *a, **_kw: woken.append(a))
     monkeypatch.setattr(manager, "enqueue_herdr_wake", lambda *a, **_kw: woken.append(a))
     monkeypatch.setattr(hold_sweep, "signal_of", lambda _r, _h: "present")
     monkeypatch.setattr(hold_sweep, "last_activity", lambda *_a: datetime.now(UTC))

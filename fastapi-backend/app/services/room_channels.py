@@ -50,13 +50,13 @@ from app.services.message_slim import (
     serialize_content,
 )
 from app.services.persister import (
-    AddressedHook,
+    AskedHook,
     ConvergedHook,
     RoomPersister,
     SummonHook,
     TranscriptRecord,
     bus_frame,
-    parse_interrupt_mentions,
+    envelope_sender,
     parse_mentions,
     record_from,
 )
@@ -84,9 +84,10 @@ RoomSummonHook = Callable[[str, str, "MyceliumMessage", list[str], str], None]
 # it (the plan-sync consumer) needs the room to compile that room's plan + sync its
 # memory. ``_converged_adapter`` binds the room down to the persister signature.
 RoomConvergedHook = Callable[[str, "MyceliumMessage"], None]
-# The room-aware addressed hook: ``(room, handle, envelope, message_text)`` for
-# each message recipient of a turn that named nobody in its text.
-RoomAddressedHook = Callable[[str, str, "MyceliumMessage", str], None]
+# The room-aware turn hook: ``(room, handle, envelope, message_text)`` for each
+# handle a message put a turn to (:mod:`app.services.asks`), the way the aligner
+# and the conductor ask one member. The members the hub plays answer it.
+RoomTurnHook = Callable[[str, str, "MyceliumMessage", str], None]
 # The board-event hook: ``(room, data)`` for every notice raised, where ``data``
 # is the notice's payload (``subkind``, ``key``, ``title``, ``episode``, ``by``,
 # and ``for`` on a ``filed`` row given to someone).
@@ -351,7 +352,7 @@ class RoomChannelManager:
         # ``handle_converged``. Unset → the persister's log-only defaults.
         self.on_summon: RoomSummonHook | None = None
         self.on_converged: RoomConvergedHook | None = None
-        self.on_addressed: RoomAddressedHook | None = None
+        self.on_turn: RoomTurnHook | None = None
         # ``(room, episode, handle)`` when one of a running negotiation's parties
         # left the room; True when the engine running it took it (it stops and
         # posts its own closing line). Wired to the aligner in ``main.py``.
@@ -615,62 +616,50 @@ class RoomChannelManager:
         entry["id"] = secrets.token_hex(6)
         queue.append(entry)
 
-    def enqueue_herdr_wakes_for_mentions(
+    def ring_asked(
         self,
         room: str,
-        content: str,
+        handle: str,
+        reason: str,
         *,
-        exclude: str | None = None,
         sender: str | None = None,
         episode: str | None = None,
-    ) -> list[str]:
-        """Enqueue a herdr wake for each ``@``-mentioned handle that is herdr-present.
+    ) -> bool:
+        """Ring the herdr doorbell of a handle a message just asked for something.
 
-        The **one** mention→wake hook every write path shares — a human ``POST
-        /messages`` and an agent ``/reply`` alike — so a tag from *any* source
-        reaches a resident-but-idle herdr agent. A handle with no herdr presence
-        isn't ours; the normal SLIM/consent path covers it. Pass ``exclude`` (the
-        sender's own handle) so a reply that mentions itself doesn't enqueue a
-        self-wake. Returns the handles enqueued.
+        Who was asked, and why, is :mod:`app.services.asks`'s to say; every
+        message recorded in a room is held to it on the way in
+        (``persister`` → :meth:`_asked_adapter`), whichever path wrote it, so a
+        mention from the app, from ``respond``, from a worker or from an engine
+        rings the same way. A handle with no herdr pane isn't rung; a
+        registered agent that nothing is running is logged as unreached.
+        ``True`` when a wake was queued.
 
-        A text that summons a conductor wakes nobody: the handles named beside
-        one are bound to its roles, and the conductor addresses each in its
-        turn, which rings the doorbell then (:meth:`herdr_wake_addressed`).
+        An ``interrupt`` also stops a working agent's turn, when the sender may
+        (:mod:`app.services.interrupts`); otherwise it rings as a ``mention``.
         """
-        mentions = [raw.lstrip("@").lower() for raw in parse_mentions(content or "")]
-        if any(_registered_kind(room, h) == "conductor" for h in mentions):
-            return []
-        # An ``@!`` also stops a working agent's turn, when the sender may
-        # (:mod:`app.services.interrupts`); otherwise it is an ordinary mention.
-        interrupting = {h.lower() for h in parse_interrupt_mentions(content or "")}
-        exclude_norm = exclude.lstrip("@").lower() if exclude else None
-        who = sender or exclude
-        enqueued: list[str] = []
-        for handle in mentions:
-            if handle == exclude_norm:
-                continue
-            status = self.herdr_status(room, handle)
-            if status is not None:
-                reason = "mention"
-                if handle in interrupting:
-                    from app.services import interrupts
-
-                    if interrupts.request(room, handle, who, status):
-                        reason = "interrupt"
-                self.enqueue_herdr_wake(room, handle, reason=reason, sender=who, episode=episode)
-                enqueued.append(handle)
-            elif self._unreachable_agent(room, handle):
+        name = handle.lstrip("@").lower()
+        status = self.herdr_status(room, name)
+        if status is None:
+            if self._unreachable_agent(room, name):
                 from app.services import wake_log
 
                 # Not lost: the agent reads it on its next `await`. Nothing
                 # could be woken with it now, which is what the log says.
                 wake_log.dropped(
                     room,
-                    {"handle": handle, "reason": "mention", "from": who, "episode": episode},
+                    {"handle": name, "reason": reason, "from": sender, "episode": episode},
                     "nothing is running it: no herdr pane reports it and it isn't awaiting",
                     outcome="unreached",
                 )
-        return enqueued
+            return False
+        if reason == "interrupt":
+            from app.services import interrupts
+
+            if not interrupts.request(room, name, sender, status):
+                reason = "mention"
+        self.enqueue_herdr_wake(room, name, reason=reason, sender=sender, episode=episode)
+        return True
 
     def _unreachable_agent(self, room: str, handle: str) -> bool:
         """Whether ``handle`` is a registered agent that a mention can't reach
@@ -681,27 +670,6 @@ class RoomChannelManager:
         if classify_sender(room, handle) != "agent":
             return False
         return handle not in self.members(room)
-
-    def herdr_wake_addressed(
-        self,
-        room: str,
-        handle: str,
-        *,
-        sender: str | None = None,
-        episode: str | None = None,
-    ) -> bool:
-        """Ring a herdr-present handle that was just put a turn (a message recipient).
-
-        How the aligner and the conductor reach a member: an exchange naming it,
-        with nobody mentioned in the text. Without this a herdr agent only woke
-        on a text mention, so a conductor step addressed to one waited out its
-        timeout. ``True`` when a wake was queued.
-        """
-        name = handle.lstrip("@").lower()
-        if self.herdr_status(room, name) is None:
-            return False
-        self.enqueue_herdr_wake(room, name, reason="turn", sender=sender, episode=episode)
-        return True
 
     def herdr_wake_assigned(self, room: str, notice: dict[str, str]) -> bool:
         """Ring the herdr-present handle a newly filed row was given to.
@@ -951,7 +919,7 @@ class RoomChannelManager:
             members_provider=lambda: set(managed.members),
             on_summon=self._summon_adapter(room),
             on_converged=self._converged_adapter(room),
-            on_addressed=self._addressed_adapter(room),
+            on_asked=self._asked_adapter(room),
             on_recorded=self._recorded_adapter(room),
             on_member_left=lambda handle, _room=room: self._drop_member(_room, handle),
         )
@@ -1050,17 +1018,29 @@ class RoomChannelManager:
 
         return adapter
 
-    def _addressed_adapter(self, room: str) -> AddressedHook | None:
-        """Bind ``room`` onto the room-aware ``on_addressed`` hook, like
-        :meth:`_summon_adapter`; ``None`` keeps the persister silent."""
-        hook = self.on_addressed
-        if hook is None:
-            return None
+    def _asked_adapter(self, room: str) -> AskedHook:
+        """What the persister calls for each handle a message asks: ring its
+        doorbell (:meth:`ring_asked`), and hand a turn to :attr:`on_turn`, read
+        at call time so a hook wired after the room started still hears it."""
 
         def adapter(
-            handle: str, envelope: MyceliumMessage, message_text: str = "", _room: str = room
+            handle: str,
+            reason: str,
+            envelope: MyceliumMessage,
+            message_text: str = "",
+            _room: str = room,
         ) -> None:
-            hook(_room, handle, envelope, message_text)
+            message = envelope.header.message
+            self.ring_asked(
+                _room,
+                handle,
+                reason,
+                sender=envelope_sender(envelope),
+                episode=message.episode if message else None,
+            )
+            hook = self.on_turn
+            if reason == "turn" and hook is not None:
+                hook(_room, handle, envelope, message_text)
 
         return adapter
 
@@ -1373,8 +1353,8 @@ class RoomChannelManager:
         later caller has to remember:
 
         *It wakes nobody.* The ping is addressed to no one and rides a ``ping``
-        payload, which :func:`app.routes.participate._addressed_to` excludes the
-        same way it excludes presence — so a resident agent's ``await`` consumes
+        payload, which asks nobody (:func:`app.services.asks.asks`) the same
+        way presence doesn't — so a resident agent's ``await`` consumes
         it silently instead of spending a turn on it.
 
         *It does not go out on the wire.* This is the aligner's
@@ -1429,8 +1409,8 @@ class RoomChannelManager:
         """Raise a **notice** into ``live``: the room's timeline of board events.
 
         The sibling of :meth:`raise_ping`, and it holds the same two structural
-        properties — it wakes nobody (a ``notice`` payload, which
-        :func:`app.routes.participate._addressed_to` excludes) and it does not go
+        properties — it wakes nobody (a ``notice`` payload, which asks nobody:
+        :func:`app.services.asks.asks`) and it does not go
         out on the wire (``ingest_local`` alone) — so a task filed, claimed,
         handed back or resolved reads in the channel in sequence with the chat
         without spending an agent's turn or being filtered out on arrival.

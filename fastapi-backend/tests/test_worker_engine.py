@@ -20,6 +20,7 @@ import pytest
 import yaml
 
 from app.services import assignments, message_format, tasks, worker_engine
+from app.services.asks import asks
 from app.services.filesystem import (
     get_room_dir,
     list_memory_files,
@@ -27,24 +28,19 @@ from app.services.filesystem import (
     write_memory_file,
 )
 from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
+from app.services.persister import find_summons
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "worker-room"
 
 
 class _Manager(FakeManager):
-    """The fake manager plus the two calls a worker makes after it speaks."""
+    """The fake manager plus the calls a worker makes after it speaks."""
 
     def __init__(self, managed: FakeManaged) -> None:
         super().__init__(managed, [])
-        self.rung: list[str] = []
         self.pings: list[str] = []
-
-    def enqueue_herdr_wakes_for_mentions(
-        self, room: str, content: str, *, exclude: str | None = None, **_: Any
-    ) -> list[str]:
-        self.rung.append(content)
-        return []
 
     def herdr_status(self, room: str, handle: str) -> str | None:
         return None
@@ -224,16 +220,22 @@ async def test_done_resolves_the_row_the_thread_belongs_to(monkeypatch: pytest.M
 
 
 @pytest.mark.asyncio
-async def test_a_mention_of_a_teammate_rings_their_doorbell(monkeypatch: pytest.MonkeyPatch):
+async def test_a_mention_of_a_teammate_reaches_it(monkeypatch: pytest.MonkeyPatch):
+    # The worker keeps the mention, and the room acts on it as it records the
+    # post, the same as any message: a worker teammate is summoned, and a
+    # teammate in herdr would be asked (``asks``) and rung.
     _register("agent-1")
     _register("agent-2")
     _key, episode = await _task("Draft it")
     _patch_pi(monkeypatch, "Draft is up. @agent-2 can you check the edge cases?")
-    engine, _managed, manager = _engine()
+    engine, managed, manager = _engine()
 
     await engine.turn(_ROOM, "agent-1", episode=episode, ask="Do it.")
 
-    assert manager.rung == ["Draft is up. @agent-2 can you check the edge cases?"]
+    ((env, text),) = _posted(managed)
+    content = serialize_content(env, extra={"content": text})
+    assert find_summons(content) == ["agent-2"]
+    assert asks({**content, "content": text.replace("agent-2", "dev")}, "dev") == "mention"
     assert manager.pings == ["agent-1"]
 
 

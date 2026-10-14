@@ -32,7 +32,7 @@ It hears four things:
 
 - a text **mention** (the summon seam) — a teammate asking it something, most
   often to review;
-- an **addressed turn** (``persister.on_addressed``) — how the conductor puts a
+- an **addressed turn** (``room_channels.on_turn``) — how the conductor puts a
   step to one member;
 - a row **filed for it** (a ``filed`` notice naming it) — it claims the row and
   works it in the row's thread;
@@ -737,9 +737,6 @@ class WorkerEngine:
             return None
         if prose.strip():
             await self._say(managed, episode, handle, prose, payload=payload)
-            self._manager.enqueue_herdr_wakes_for_mentions(
-                room, prose, exclude=handle, episode=episode
-            )
         await self._act(room, handle, row[0] if row else None, actions, prose)
         if row is not None and prose.strip():
             self._hand_back(room, handle, row[0], episode, prose, actions, team)

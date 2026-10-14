@@ -229,54 +229,24 @@ def test_pending_herdr_wakes_peeks_without_draining(
     assert manager.pending_herdr_wakes("room-a", hold_ttl_s=-1.0) == set()
 
 
-def test_enqueue_wakes_for_mentions_is_the_shared_hook(
+# Who a message asks is ``asks``'s rule, held end to end in
+# ``test_wake_paths_table``; these hold what ringing one does.
+
+
+def test_a_busy_member_asked_is_held_until_it_is_free(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    # The one hook every write path shares: an agent reply that tags @docs
-    # enqueues a wake exactly as a human message would. A working target is
-    # held (surfaces as pending).
-    manager.set_herdr_presence("room-a", {"docs": "working", "reviewer": "idle"})
-    enq = manager.enqueue_herdr_wakes_for_mentions(
-        "room-a", "hey @docs take a look", exclude="reviewer"
-    )
-    assert enq == ["docs"]
+    manager.set_herdr_presence("room-a", {"docs": "working"})
+    assert manager.ring_asked("room-a", "docs", "mention", sender="reviewer") is True
+    assert manager.drain_herdr_wakes("room-a") == []
     assert manager.pending_herdr_wakes("room-a") == {"docs"}
 
 
-def test_enqueue_wakes_for_mentions_skips_self_and_non_herdr(
+def test_a_handle_with_no_herdr_pane_is_not_rung(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    # A reply naming its own handle doesn't self-wake; a mention with no herdr
-    # presence isn't ours (normal SLIM/consent path covers it).
-    manager.set_herdr_presence("room-a", {"docs": "idle"})
-    enq = manager.enqueue_herdr_wakes_for_mentions("room-a", "@docs @ghost done", exclude="docs")
-    assert enq == []
-    assert manager.pending_herdr_wakes("room-a") == set()
-
-
-def test_a_silent_mention_rings_no_doorbell(
-    manager: room_channels.RoomChannelManager,
-) -> None:
-    # `@~docs` names docs without asking anything of it; only `@reviewer` asks.
-    manager.set_herdr_presence("room-a", {"docs": "idle", "reviewer": "idle"})
-    enq = manager.enqueue_herdr_wakes_for_mentions("room-a", "@reviewer please check, cc @~docs")
-    assert enq == ["reviewer"]
-    assert manager.pending_herdr_wakes("room-a") == {"reviewer"}
-
-
-def test_members_named_beside_a_conductor_are_roles_not_doorbells(
-    manager: room_channels.RoomChannelManager, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The conductor addresses each role in its turn; waking them all at the
-    # summon would have every member reach for a turn nobody has put yet.
-    monkeypatch.setattr(
-        room_channels, "_registered_kind", lambda _r, h: "conductor" if h == "conductor" else None
-    )
-    manager.set_herdr_presence("room-a", {"agent-1": "idle", "agent-2": "idle"})
-    enq = manager.enqueue_herdr_wakes_for_mentions(
-        "room-a", "@conductor swarm @agent-1 @agent-2: fix the tests"
-    )
-    assert enq == []
+    # Not ours: it reads the message on its next ``await``.
+    assert manager.ring_asked("room-a", "ghost", "mention", sender="reviewer") is False
     assert manager.pending_herdr_wakes("room-a") == set()
 
 
@@ -284,8 +254,8 @@ def test_an_addressed_turn_rings_a_herdr_member_as_a_turn(
     manager: room_channels.RoomChannelManager,
 ) -> None:
     manager.set_herdr_presence("room-a", {"agent-1": "idle"})
-    assert manager.herdr_wake_addressed("room-a", "agent-1") is True
-    assert manager.herdr_wake_addressed("room-a", "ghost") is False
+    assert manager.ring_asked("room-a", "agent-1", "turn") is True
+    assert manager.ring_asked("room-a", "ghost", "turn") is False
     [wake] = manager.drain_herdr_wakes("room-a")
     assert wake["handle"] == "agent-1"
     assert wake["reason"] == "turn"

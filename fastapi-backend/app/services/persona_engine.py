@@ -13,9 +13,9 @@ each one's notes, and the room has members that answer without a resident
 session behind any of them.
 
 It answers on two seams. A text ``@``-mention is a summon, like any engine's.
-An **addressed turn** — an exchange naming it as a message recipient with nobody
-mentioned in the text, which is how the aligner and the conductor put a
-question to one member — reaches it through the persister's addressed hook,
+An **addressed turn**, a ``message`` naming it as recipient without mentioning
+it (``asks.py``), which is how the aligner and the conductor put a question to
+one member, reaches it through the manager's turn hook (``on_turn``),
 so a persona can fill a protocol role or a negotiation seat. Either way it
 answers where it was asked, in the thread the turn rode.
 

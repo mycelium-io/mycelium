@@ -9,8 +9,8 @@ paper over. So membership is **server-held**: the backend keeps the agent presen
 in the room (a lease, refreshed on every call) and the durable transcript is the
 delivery queue. The agent participates with two plain, stateless HTTP calls:
 
-* ``GET  /rooms/{room}/await``  — long-poll: block until the next message addressed
-  to the handle (a mediator tick or an ``@``-mention) appears past a **persistent
+* ``GET  /rooms/{room}/await``  — long-poll: block until the next message that asks
+  the handle for something (:mod:`app.services.asks`) appears past a **persistent
   per-handle cursor**, then return it. Because the cursor rides the durable
   transcript, a tick is *never missed* in the gap between one await and the next —
   which is exactly what the client-held one-shot ``await`` could not guarantee.
@@ -50,10 +50,11 @@ from app.services import (
     tasks,
 )
 from app.services.agent_registry import norm_handle
+from app.services.asks import asks
 from app.services.filesystem import room_exists
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content, serialize_envelope
-from app.services.persister import _conversational_text, parse_mentions, record_episode
+from app.services.persister import _conversational_text, record_episode
 
 router = APIRouter(prefix="/rooms/{room_name}", tags=["participate"])
 
@@ -69,15 +70,6 @@ _last_tick: dict[tuple[str, str], dict[str, Any]] = {}
 _POLL_INTERVAL_S = 0.4
 _MAX_WAIT_S = 3600.0
 
-# Payloads that are never an addressed turn however they are actor-labeled:
-# presence/keepalive are liveness, a ``ping`` is the signal that a *thread* moved,
-# and a ``notice`` is the signal that the *board* moved (a task filed, claimed,
-# resolved) — all nudges to look, not turns to take. Excluded structurally here so
-# a resident loop consumes one silently rather than reasoning about it.
-_UNADDRESSED_PAYLOADS = frozenset(
-    {"presence", "keepalive", message_format.PING_PAYLOAD_TYPE, message_format.NOTICE_PAYLOAD_TYPE}
-)
-
 
 def _norm(handle: str) -> str:
     return norm_handle(handle) or ""
@@ -87,31 +79,6 @@ def _norm(handle: str) -> str:
 # ``[[mycelium: confidence=0.85 stance=accept]]``; those fields are lifted onto the
 # message payload so the aligner can score convergence, and stripped from the prose.
 _parse_marker = markers.parse_marker
-
-
-def _addressed_to(content: dict[str, Any], handle: str) -> bool:
-    """True when a transcript record is an exchange addressed to ``handle``.
-
-    Addressed = the handle is a message recipient, or the human text mentions it
-    by the hub's one rule (``persister.parse_mentions``: not inside code, not
-    silent) — and the sender is not the handle itself (loop guard).
-    Presence/keepalive are never addressed turns.
-    """
-    env = content.get("l9") or {}
-    header = env.get("header") or {}
-    if header.get("kind") != "exchange":
-        return False
-    if ((env.get("payload") or {}).get("type")) in _UNADDRESSED_PAYLOADS:
-        return False
-    actors = (header.get("participants") or {}).get("actors") or []
-    sender = actors[0].get("id") if actors and isinstance(actors[0], dict) else None
-    if sender and _norm(sender) == _norm(handle):
-        return False
-    recipients = [a.get("id") for a in actors[1:] if isinstance(a, dict)]
-    if any(_norm(r) == _norm(handle) for r in recipients if r):
-        return True
-    text = content.get("content") or ""
-    return any(_norm(m) == _norm(handle) for m in parse_mentions(str(text)))
 
 
 def _refuse_thread_write(refusal: tasks.ThreadRefusal | None) -> None:
@@ -155,7 +122,7 @@ def _said_earlier(room: str, handle: str, records: list[Any], at: int) -> list[d
             continue
         if record.sender and _norm(record.sender) == _norm(handle):
             break
-        if _addressed_to(record.content, handle):
+        if asks(record.content, handle, room=room):
             break
         text = _conversational_text(record.content)
         if text is None:
@@ -316,7 +283,7 @@ async def await_message(
                 # past this record with no extra write.
                 if persister.episode_position(handle, ep) >= i:
                     continue
-            if _addressed_to(record.content, handle):
+            if asks(record.content, handle, room=room_name):
                 _commit(i)
                 _last_tick[key] = record.content
                 room_channels.manager.refresh_lease(room_name, handle)
@@ -454,13 +421,6 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     )
     # The reply is the turn ending; say so, in case the reader missed the message.
     activity.signal(room_name, handle, "done", episode=episode)
-    # herdr wake-on-mention, agent→agent leg: a reply that tags another handle
-    # should wake it the same as a human's tag does. Shares the one hook the
-    # human POST /messages path uses; ``exclude`` skips a self-mention so a reply
-    # naming its own handle doesn't enqueue a self-wake.
-    room_channels.manager.enqueue_herdr_wakes_for_mentions(
-        room_name, clean, exclude=handle, episode=episode
-    )
     # A person replying from the CLI has joined the room, as one posting does.
     room_people.joined_by_message(room_name, handle)
     return {
