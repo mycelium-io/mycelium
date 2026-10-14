@@ -190,14 +190,21 @@ def envelope_message_id(envelope: MyceliumMessage) -> str | None:
 _SIGNAL_PAYLOADS = frozenset(
     {"presence", "keepalive", message_format.PING_PAYLOAD_TYPE, message_format.NOTICE_PAYLOAD_TYPE}
 )
+#: A reply answers something; it puts a turn to nobody. Its recipient is who
+#: the replier last heard from (``respond`` names the sender of the turn it
+#: was handed), which need not be who it's answering, so ringing that
+#: recipient as if asked woke agents nobody had asked. To ask an agent
+#: something, a reply mentions it.
+_ANSWER_PAYLOADS = frozenset({"reply"})
 
 
 def is_addressed_turn(envelope: MyceliumMessage) -> bool:
-    """True for an ``exchange`` that puts something to its recipients."""
+    """True for an ``exchange`` that puts something to its recipients: the
+    aligner's and the conductor's questions to one member, not a reply."""
     header = envelope.header
     if header.kind.value != "exchange":
         return False
-    return envelope.payload.type not in _SIGNAL_PAYLOADS
+    return envelope.payload.type not in _SIGNAL_PAYLOADS | _ANSWER_PAYLOADS
 
 
 def is_converged(envelope: MyceliumMessage) -> bool:

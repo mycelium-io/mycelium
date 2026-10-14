@@ -308,7 +308,10 @@ is no litellm dependency.
   remembers, and it answers on two seams — a text mention (the summon hook)
   and an **addressed turn** (`persister.on_addressed`, fired once per message
   recipient of an exchange that mentioned nobody in its text, which is how the
-  aligner and the conductor address one member). The persona and the worker
+  aligner and the conductor address one member). A `reply` is never one: its
+  recipient is whoever the replier last heard from (`respond` names the sender
+  of the turn it was handed), not someone it asked, so asking an agent takes a
+  mention. The persona and the worker
   answer on the addressed seam (and it rings a herdr member's doorbell); the
   other engines act on mentions alone. A stance marker
   in its answer is lifted onto the payload like `/reply` does, and every `@` in
