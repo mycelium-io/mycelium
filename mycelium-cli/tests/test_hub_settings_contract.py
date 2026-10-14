@@ -62,6 +62,33 @@ def test_a_bool_and_a_number_on_stdin_keep_their_types(isolated_home: Path):
     assert saved["worker"]["max_turns_per_room"] == 30
 
 
+def test_a_save_keeps_every_key_it_was_not_asked_to_change(isolated_home: Path):
+    # What the Hub page does: change one setting. The rest of config.toml, the
+    # LLM key above all, must read back exactly as it was.
+    path = isolated_home / ".mycelium" / "config.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "[server]\n"
+        'api_url = "http://192.168.1.20:8000"\n'
+        "[llm]\n"
+        'model = "anthropic/claude-sonnet-4-6"\n'
+        'api_key = "sk-ant-kept"\n'
+        'base_url = "http://10.0.0.5:8080/v1"\n'
+        "[slim]\n"
+        f'master_secret = "{"k" * 64}"\n'
+        "[worker]\n"
+        "max_turns_per_room = 12\n"
+    )
+    before = _saved(isolated_home)
+    result = runner.invoke(config_app, ["set", "verifier.enabled", "-"], input="true")
+    assert result.exit_code == 0, result.output
+    after = _saved(isolated_home)
+    assert after["verifier"]["enabled"] is True
+    for section, keys in before.items():
+        for key, value in keys.items():
+            assert after[section][key] == value, f"{section}.{key} changed"
+
+
 def test_an_empty_value_on_stdin_clears_the_setting(isolated_home: Path):
     runner.invoke(config_app, ["set", "llm.base_url", "-"], input="http://10.0.0.5:8080/v1")
     assert _saved(isolated_home)["llm"]["base_url"] == "http://10.0.0.5:8080/v1"
