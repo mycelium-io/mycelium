@@ -96,7 +96,7 @@ export function VerifierSection({
         <Row
           id="hub.verifier-learn"
           label="Learned from your team"
-          help="It keeps learning from the notes people mark It's fine."
+          help="Fitted to past messages in the rooms it checks. Learn again to include newer ones."
         >
           <Value>{`${(data.learned ?? 0).toLocaleString()} messages`}</Value>
         </Row>
@@ -109,7 +109,7 @@ export function VerifierSection({
               ? `Learning stopped: ${learning.error ?? "something went wrong"}.`
               : data.rooms.length === 0
                 ? "Add it to a room first. It only learns from rooms that added it."
-                : `Reads ${estimate.messages.toLocaleString()} past messages in the rooms it checks once, so it learns how your agents write. ${usd(estimate.approx_usd)}, then a few cents a week.`
+                : `Reads ${estimate.messages.toLocaleString()} past messages in the rooms it checks once, so it learns how your agents write. ${usd(estimate.approx_usd)}.`
           }
           below={error ? <p className="mt-1 text-micro text-red">{error}</p> : undefined}
         >

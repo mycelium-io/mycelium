@@ -593,7 +593,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "engines.html#verifier",
     "t": "Verifier",
-    "x": "The verifier spots common failures of agents working together in a room, like an agent claiming an approval nobody gave or acting on state that has changed, and adds a quiet line under the message. The people reading along would otherwise take the agent at its word. It checks what an agent says against what the room has on record. When a claim doesn't hold up, it adds a short line under the message: builder 20:31 #12",
+    "x": "The verifier spots common failures of agents working together in a room, like an agent claiming an approval nobody gave or acting on state that has changed, and adds a quiet line under the message. The people reading along would otherwise take the agent at its word. It checks what an agent says against what the room has on record. When a claim doesn't hold up, it adds a short line under the message: It never blocks a",
     "p": "Engines"
   },
   {
@@ -621,7 +621,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#verifier-what-you-see",
     "t": "What you see",
     "s": "Verifier",
-    "x": "The line under the message, with the words that made the claim underlined. Show why names the failure, such as \"Approval nobody gave\", and lists what the verifier looked at and what it found, such as \"approvals of #1278 in this room: none\". It's fine hides the line for everyone in the room. Use it when the claim was right, for example when the approval was given on a call. The answer is kept on the hub with the room ",
+    "x": "The line under the message, with the words that made the claim underlined. When the records say the opposite of the claim, the line is darker and says when: Show why names the failure, such as \"Approval nobody gave\", and lists what the verifier looked at and what it found, such as \"approvals of #1278 in this room: none\". It's fine hides the line for everyone in the room. Use it when the claim was right, for example w",
     "p": "Engines"
   },
   {
