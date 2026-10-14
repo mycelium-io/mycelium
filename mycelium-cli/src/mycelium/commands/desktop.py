@@ -122,20 +122,16 @@ def serve(
         console.print("[red]--voice-model is fast or accurate.[/]")
         raise typer.Exit(2)
 
+    from mycelium.desktop.events import EventWriter
     from mycelium.desktop.supervisor import LOG_PATH
 
-    lock = threading.Lock()
-    # One log per run: what every part said, and each change of state.
-    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    log_file = LOG_PATH.open("w", encoding="utf-8")
+    # One log per run: what every part said, and each change of state. It's
+    # written from a thread of its own, so a slow disk or an app that stops
+    # reading never holds up the threads draining each program's output.
+    writer = EventWriter(LOG_PATH, line=_log_line, stdout=sys.stdout if json_out else None)
 
     def emit(event: dict[str, Any]) -> None:
-        with lock:
-            log_file.write(_log_line(event) + "\n")
-            log_file.flush()
-            if json_out:
-                sys.stdout.write(json.dumps(event) + "\n")
-                sys.stdout.flush()
+        writer.emit(event)
         if not json_out and event.get("type") != "log":
             _human(event)
 
@@ -168,7 +164,10 @@ def serve(
             sup.stop()
 
         threading.Thread(target=watch_parent, daemon=True).start()
-    sup.run()
+    try:
+        sup.run()
+    finally:
+        writer.close()
 
 
 def model_view(llm: Any) -> dict[str, Any]:
