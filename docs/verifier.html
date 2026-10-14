@@ -149,19 +149,27 @@
         time.
       </p>
       <table class="vf">
-        <thead><tr><th>Failure</th><th>What it looks like</th><th>Checked</th></tr></thead>
+        <thead><tr><th>Failure</th><th>What it looks like</th><th>Checked</th><th>Rough OXP alignment</th></tr></thead>
         <tbody>
-          <tr><td>An approval nobody gave</td><td>"#1278 is approved" when nobody approved it</td><td><span class="pill yes">Yes, for pull requests</span></td></tr>
-          <tr><td>Acting on stale state</td><td>Asking for a review of a pull request that already merged</td><td><span class="pill yes">Yes, for merged pull requests</span></td></tr>
-          <tr><td>Work called done without evidence</td><td>"Tests pass" when CI failed</td><td><span class="pill next">Not yet</span></td></tr>
-          <tr><td>A request nobody answered</td><td>Someone asks an agent to do something and hears nothing back</td><td><span class="pill next">Not yet</span></td></tr>
-          <tr><td>A decision that wasn't theirs</td><td>An agent settles a question someone else owns</td><td><span class="pill next">Not yet</span></td></tr>
-          <tr><td>Misreading the ask</td><td>Doing something different from what was asked</td><td><span class="pill">Needs the whole thread</span></td></tr>
-          <tr><td>Losing something in a handoff</td><td>A detail goes missing when work passes to another agent</td><td><span class="pill">Needs the whole thread</span></td></tr>
-          <tr><td>Going out of scope</td><td>Changing what it wasn't asked or allowed to change</td><td><span class="pill">Needs the whole thread</span></td></tr>
-          <tr><td>A side effect nobody asked for</td><td>Changing something as a by-product</td><td><span class="pill">Needs the whole thread</span></td></tr>
+          <tr><td>An approval nobody gave</td><td>"#1278 is approved" when nobody approved it</td><td><span class="pill yes">Yes, for pull requests</span></td><td>Unformalized Coordination Commitments</td></tr>
+          <tr><td>Acting on stale state</td><td>Asking for a review of a pull request that already merged</td><td><span class="pill yes">Yes, for merged pull requests</span></td><td>Shared State Degradation; Situational State Synchronisation Failure</td></tr>
+          <tr><td>Work called done without evidence</td><td>"Tests pass" when CI failed</td><td><span class="pill next">Not yet</span></td><td>Verification and Epistemic Control Failure; Individual Metacognitive Blindness</td></tr>
+          <tr><td>A request nobody answered</td><td>Someone asks an agent to do something and hears nothing back</td><td><span class="pill next">Not yet</span></td><td>Shared Task Model Failure; Instruction Following (a metric)</td></tr>
+          <tr><td>A decision that wasn't theirs</td><td>An agent settles a question someone else owns</td><td><span class="pill next">Not yet</span></td><td>None that fits cleanly</td></tr>
+          <tr><td>Misreading the ask</td><td>Doing something different from what was asked</td><td><span class="pill">Needs the whole thread</span></td><td>Illocutionary Misidentification; Semantic and Ontological Misalignment</td></tr>
+          <tr><td>Losing something in a handoff</td><td>A detail goes missing when work passes to another agent</td><td><span class="pill">Needs the whole thread</span></td><td>Representational Fidelity Loss at Interface</td></tr>
+          <tr><td>Going out of scope</td><td>Changing what it wasn't asked or allowed to change</td><td><span class="pill">Needs the whole thread</span></td><td>None that fits cleanly</td></tr>
+          <tr><td>A side effect nobody asked for</td><td>Changing something as a by-product</td><td><span class="pill">Needs the whole thread</span></td><td>Policy Safety (a metric)</td></tr>
         </tbody>
       </table>
+      <p>
+        The last column gives the nearest names in the cognitive-failure taxonomy of Outshift's
+        <a href="https://github.com/outshift-open/observe-and-explain-platform">Observe and Explain Platform</a>
+        (OXP). The match is rough. OXP names a failure for a whole session, while the verifier names
+        one for a single message, and several of ours sit across two of theirs. OXP also has names a
+        room's chat can't show, such as plan revision and intention stability, which need an agent's
+        plan or tool traces.
+      </p>
       <p>
         "Not yet" means the room already keeps the records a check would need: the CI results and
         reviews GitHub reports for a task's pull request, the board, and the room's saved decisions.
