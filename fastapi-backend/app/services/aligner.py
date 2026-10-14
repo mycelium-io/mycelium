@@ -75,12 +75,6 @@ _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, message_format.SYSTEM_ACTOR_ID})
 #: never are.
 TEAMMATE_ENGINES = frozenset({"persona", "worker"})
 
-# The mediator addresses exactly ONE agent per turn; the sigil-stripping that
-# keeps the other names in its prose from waking anyone lives with the turn
-# primitive (:mod:`app.services.turns`). Kept under this name for the engines
-# that strip a summon's ``@`` the same way.
-_AT_MENTION = turns.MENTION_SIGIL
-
 #: How the opening position of a party that hasn't spoken starts.
 _NO_POSITION = "(no opening position stated by"
 
@@ -905,9 +899,8 @@ class AlignerEngine:
         episode: str | None = None,
     ) -> None:
         """Post a plain message from the aligner (not a verdict envelope) where it
-        was summoned, the room by default. Any ``@`` tokens are stripped so the
-        notice can't spuriously summon anyone."""
-        safe = _AT_MENTION.sub("", text)
+        was summoned, the room by default. A mention in it asks whoever it names,
+        as anyone's does (``asks.py``)."""
         env = message_format.build_envelope(
             kind=message_format.Kind.exchange,
             episode=episode or message_format.live_episode_urn(room),
@@ -915,7 +908,7 @@ class AlignerEngine:
             topic=message_format.topic_urn(room),
             payload_type="message",
         )
-        await managed.post(env, safe)
+        await managed.post(env, text)
 
     def _fold_reading(
         self, ep: NegotiationState, handle: str, reading: dict[str, Any], proposing: bool

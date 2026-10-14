@@ -85,6 +85,7 @@ TRANSCRIPT_FILENAME = "log/transcript.jsonl"
 _SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@!?([A-Za-z0-9][\w-]*)")
 _SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~([A-Za-z0-9][\w-]*)")
 _INTERRUPT_RE = re.compile(r"(?:^|(?<=[\s(<]))@!([A-Za-z0-9][\w-]*)")
+_NAMED_RE = re.compile(r"(?:^|(?<=[\s(<]))@[~!]?([A-Za-z0-9][\w-]*)")
 
 # Code is quoted, never addressed: a handle inside a code span or a fenced block
 # is no mention of any kind (``contracts/mentions.json``). A fence opens on a
@@ -191,18 +192,6 @@ def is_converged(envelope: MyceliumMessage) -> bool:
     return header.kind.value == "commit" and header.subkind == "converged"
 
 
-def _iter_text(value: Any) -> Iterable[str]:
-    """Yield every string leaf in a nested content value."""
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for v in value.values():
-            yield from _iter_text(v)
-    elif isinstance(value, list):
-        for v in value:
-            yield from _iter_text(v)
-
-
 def parse_mentions(text: str) -> list[str]:
     """Handles ``@``-mentioned in one plain-text string.
 
@@ -232,6 +221,17 @@ def parse_silent_mentions(text: str) -> list[str]:
     return list(seen)
 
 
+def parse_named(text: str) -> list[str]:
+    """Every handle named in one plain-text string, in the order named, however
+    it was written: ``@handle``, ``@~handle`` or ``@!handle``. For reading who a
+    command names (a conductor binding its roles), not who it asks: only the
+    loud forms ask (:func:`parse_mentions`)."""
+    seen: dict[str, None] = {}
+    for match in _NAMED_RE.findall(blank_code(text)):
+        seen.setdefault(match, None)
+    return list(seen)
+
+
 def parse_interrupt_mentions(text: str) -> list[str]:
     """Handles named with an interrupting ``@!handle`` in one plain-text string.
 
@@ -242,22 +242,6 @@ def parse_interrupt_mentions(text: str) -> list[str]:
     seen: dict[str, None] = {}
     for match in _INTERRUPT_RE.findall(blank_code(text)):
         seen.setdefault(match, None)
-    return list(seen)
-
-
-def find_summons(content: dict[str, Any]) -> list[str]:
-    """Handles ``@``-summoned in a message's human-facing content.
-
-    Scans every string in ``content`` except the additive ``l9`` envelope (which
-    agents never read), de-duplicated preserving first-seen order.
-    """
-    seen: dict[str, None] = {}
-    for key, value in content.items():
-        if key == "l9":
-            continue
-        for text in _iter_text(value):
-            for match in parse_mentions(text):
-                seen.setdefault(match, None)
     return list(seen)
 
 
@@ -1297,20 +1281,23 @@ class RoomPersister:
                 self.on_recorded(record)
             except Exception:
                 logger.exception("recorded hook failed for %s", record.message_id)
-        # Triggers: @-summon and commit:converged (skeleton hooks). The full
-        # summon list is passed to every hook call so an engine summoned alongside
-        # other handles (``@aligner @a @b``) can scope the run to those co-mentions.
-        summons = find_summons(content)
+        # Triggers: who the message asks (``asks.py``, one rule for everyone)
+        # and commit:converged. A handle it mentions is summoned: an engine
+        # self-selects by its manifest, so for anyone else that's a no-op. The
+        # full list goes to every summon so an engine summoned alongside other
+        # handles (``@aligner @a @b``) can scope the run to those co-mentions.
+        from app.services.asks import asked
+
         message_text = content.get("content", "") if isinstance(content, dict) else ""
+        asking = asked(content)
+        summons = [h for h, why in asking.items() if why != "turn"]
         for handle in summons:
             try:
                 self.on_summon(handle, envelope, summons, message_text)
             except Exception:
                 logger.exception("summon hook failed for @%s", handle)
         if self.on_asked is not None:
-            from app.services.asks import asked
-
-            for handle, why in asked(content, self.room).items():
+            for handle, why in asking.items():
                 try:
                     self.on_asked(handle, why, envelope, message_text)
                 except Exception:

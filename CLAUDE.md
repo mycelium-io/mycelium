@@ -147,17 +147,21 @@ module; read it before changing what a rule protects.
 - **Who may write in a thread is decided in code**, at
   `tasks.thread_write_refusal`: a frozen negotiation's roster and a floor's
   holder. A refused write never reaches the transcript.
-- **Nothing the hub runs can summon or interrupt.** Personas neutralize every
-  `@`; workers keep `@` only for teammates; an engine's `@!` is a plain
-  mention. An `@`-mention of an engine is a summon, never a SLIM invite.
-- **Who a message asks is decided once**, in `app/services/asks.py`, and the
-  herdr doorbell, `await`, the wake digest and a schedule's mention check all
-  call it; the doorbell rings from the persister's ingest, so every write path
-  rings the same way. Only chat asks. A mention asks, except an engine's
-  (that's a summon) and the members a conductor summon names (role bindings).
-  A `message` asks its recipients (a turn). A reply asks only whoever it
-  mentions: its recipient is just whoever the replier last heard from. Cases
-  in `contracts/asks.json`, held through every path by
+- **Who a message asks is one rule, the same for everyone**, in
+  `app/services/asks.py`: people, agents and engines, as sender or as the one
+  asked. Everything that reacts reads it: the herdr doorbell, `await`, the wake
+  digest, a schedule's mention check, an engine's summon and a persona's or
+  worker's answer. The doorbell rings from the persister's ingest, so every
+  write path rings the same way. An exchange with text asks (signals and
+  commits don't); nobody asks themselves; a mention asks (`@!` interrupts); a
+  non-reply asks its recipients (a turn); a reply asks only whoever it
+  mentions, since its recipient is just whoever the replier last heard from.
+  Don't add sender- or kind-specific cases, and don't strip `@` from what
+  anyone posts: a member that names someone without asking writes `@~name`,
+  and hub-run members are told so in their prompts (`MENTION_ETIQUETTE`). A
+  conductor summon written `@~a @~b` binds roles without waking anyone. An
+  `@`-mention of an engine is a summon, never a SLIM invite. Cases in
+  `contracts/asks.json`, held through every path by
   `tests/test_wake_paths_table.py`.
 - **Mentions have three forms**, `@foo`, `@~foo` (silent) and `@!foo`
   (interrupt), and a handle in code is quoted, not a mention. Frozen in

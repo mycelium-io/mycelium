@@ -39,9 +39,8 @@ It hears four things:
 - the last child of a task it split **settling** (a ``resolved`` notice) — it
   writes the combined result into the parent's thread and resolves it.
 
-Unlike a persona, a worker may ``@``-mention a teammate, because asking for a
-review is the collaboration; a mention of anything else is neutralized, so a
-worker never summons an engine. Turns are serial per worker and capped per
+What it says is posted as it said it: a mention asks whoever it names, by the
+same rule as anyone's (``asks.py``). Turns are serial per worker and capped per
 room (:attr:`~app.config.Settings.WORKER_MAX_TURNS_PER_ROOM`, which a room
 can lower with its ``worker-turns`` setting), so workers mentioning each other
 cannot run forever.
@@ -116,9 +115,11 @@ own line:
 When the task leaves something open, do not wait for someone to settle it:
 say in one line what you will assume, and go on. Nobody may be there to answer.
 
-Writing @name asks that teammate to act: review something, answer a question.
-Only do that when you need them to act, never to thank or acknowledge. Talk
-like a teammate: short, specific, no filler, no preamble, no code fences."""
+Writing @name asks that member to act, and wakes them: review something,
+answer a question. Write a bare @ only when you need them to act, never to
+thank or acknowledge; to name someone without asking them, write @~name or just
+their name. Talk like a teammate: short, specific, no filler, no preamble, no
+code fences."""
 
 #: How a worker with no tools does its work.
 WRITES_ONLY = """\
@@ -212,23 +213,6 @@ def team_of(room: str) -> list[str]:
         if agent.adapter != "engine" or agent.kind == ENGINE_KIND:
             team.append(agent.handle)
     return sorted(team)
-
-
-def keep_team_mentions(text: str, team: list[str], me: str) -> str:
-    """``text`` with every ``@`` that does not name a teammate neutralized.
-
-    A worker asks a teammate to act by naming them, so those mentions stay; a
-    mention of anything else (an engine, an unknown handle, itself) loses its
-    sigil, so a worker can never summon the aligner or the conductor. A kept
-    mention is a plain ``@``: a worker asks, it never interrupts (``@!``).
-    """
-    members = {_norm(h) for h in team} - {_norm(me)}
-
-    def keep(match: re.Match[str]) -> str:
-        name = match.group(1)
-        return f"@{name}" if _norm(name) in members else name
-
-    return _MENTION.sub(keep, text)
 
 
 def _character(room: str, handle: str) -> str:
@@ -729,7 +713,6 @@ class WorkerEngine:
         reply = _strip_fences(raw or "")
         payload, prose = markers.parse_marker(reply)
         actions, prose = parse_actions(prose)
-        prose = keep_team_mentions(prose, team, handle)
         if not prose.strip() and not actions:
             await self._say(
                 managed, episode, handle, "Pi returned an empty response; ask me again."

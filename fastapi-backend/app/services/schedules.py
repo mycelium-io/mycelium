@@ -600,7 +600,7 @@ def _check_mentions(room: str, schedule: Schedule, since: datetime | None) -> li
 
     found = []
     for record in _since_records(room, since):
-        if not asks(record.content, schedule.owner, room=room):
+        if not asks(record.content, schedule.owner):
             continue
         text = (_conversational_text(record.content) or "").strip().splitlines()
         found.append(f"@{record.sender}: {text[0][:120] if text else '(no text)'}")

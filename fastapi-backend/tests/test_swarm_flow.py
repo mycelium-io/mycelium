@@ -32,7 +32,7 @@ from app.services.filesystem import (
     write_memory_file,
 )
 from app.services.message_slim import serialize_content
-from app.services.persister import find_summons, record_from
+from app.services.persister import record_from
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 ROOM = "swarm-flow"
@@ -49,10 +49,12 @@ class Loopback(FakeManaged):
         content = serialize_content(envelope, extra={"content": text})
         self.persister.log.record(record_from(envelope, content), delivered_to=set())
         assert self.worker is not None
-        summons = find_summons(content)
+        # As the persister does: a mention summons, a turn is put.
+        asking = asked(content)
+        summons = [h for h, why in asking.items() if why != "turn"]
         for handle in summons:
             self.worker.handle_summon(ROOM, handle, envelope, summons, text)
-        for handle, why in asked(content, ROOM).items():
+        for handle, why in asking.items():
             if why == "turn":
                 self.worker.handle_addressed(ROOM, handle, envelope, text)
 

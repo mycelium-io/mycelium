@@ -21,13 +21,11 @@ from app.services import (
     message_format,
     principals,
     room_channels,
-    turns,
     wake_digest,
 )
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content
 from app.services.runners import RunnerRegistry
-from app.services.worker_engine import keep_team_mentions
 from tests.fakes import FakeSlimClient
 
 ROOM = "room-a"
@@ -86,7 +84,7 @@ def _say(manager: room_channels.RoomChannelManager, text: str, sender: str) -> l
         payload_type="message",
     )
     hook = manager._asked_adapter(ROOM)
-    asked = asks.asked(serialize_content(env, extra={"content": text}), ROOM)
+    asked = asks.asked(serialize_content(env, extra={"content": text}))
     for handle, why in asked.items():
         hook(handle, why, env, text)
     return [h for h in asked if manager.herdr_status(ROOM, h) is not None]
@@ -122,12 +120,13 @@ def test_any_agent_in_the_room_may_interrupt_another(manager, runners):
     assert interrupts.refusal(ROOM, "coder", "scout") is None
 
 
-def test_an_engine_never_interrupts(manager, runners):
+def test_an_engine_interrupts_like_anyone(manager, runners):
+    # One rule for every member: an engine's @! is an interrupt too.
     manager.set_herdr_presence(ROOM, {"coder": "working"})
     _say(manager, "@!coder your turn", "aligner")
-    assert _jobs(runners) == []
-    assert manager._herdr_wakes[ROOM][0]["reason"] == "mention"
-    assert "engine" in (interrupts.refusal(ROOM, "coder", "aligner") or "")
+    assert [k for k, _ in _jobs(runners)] == ["interrupt"]
+    assert manager._herdr_wakes[ROOM][0]["reason"] == "interrupt"
+    assert interrupts.refusal(ROOM, "coder", "aligner") is None
 
 
 def test_an_agent_no_runner_reports_gets_an_ordinary_mention(manager, runners):
@@ -154,10 +153,3 @@ def test_the_digest_says_it_was_interrupted_and_to_carry_on():
         "your turn if you were working. Read it and act on it, then carry on with what you "
         "were doing unless it says otherwise."
     )
-
-
-def test_hub_run_members_can_never_interrupt():
-    # A persona's text loses every sigil; a worker keeps a teammate's mention
-    # as a plain @, never an @!.
-    assert turns.neutralize_mentions("@!coder stop and ask @lead") == "coder stop and ask lead"
-    assert keep_team_mentions("@!coder stop, @!aligner", ["coder"], "me") == "@coder stop, aligner"

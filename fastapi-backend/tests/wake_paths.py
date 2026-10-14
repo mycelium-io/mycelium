@@ -43,6 +43,7 @@ ENGINES = {
     "conductor": "conductor",
     "sage": "persona",
     "builder": "worker",
+    "scribe": "synthesizer",
 }
 #: An A2A agent, answering for a remote endpoint.
 REMOTE = "remote"
@@ -215,7 +216,7 @@ async def say(
     """Write one message as ``sender`` would send it.
 
     ``shape`` picks the sender's path when its handle alone doesn't: ``turn``
-    (the aligner or the conductor putting a step to ``to``), ``ping``,
+    (the conductor putting a step to ``to``), ``tick`` (the aligner's), ``ping``,
     ``notice``, ``presence`` or ``commit``. An agent replies through
     ``respond`` after a turn from ``to[0]``, if any.
     """
@@ -233,13 +234,29 @@ async def say(
         await post(room, sender, text, episode, payload="outcome", to=to, kind=Kind.commit)
     elif shape == "turn":
         await post(room, sender, text, episode, payload="message", to=to)
+    elif shape == "tick":
+        # The aligner's turn, through the turn primitive it really calls: a
+        # ``tick`` with a real ``@`` for the member at the front.
+        assert room.managed.persister is not None
+        await turns.addressed_turn(
+            room.managed,
+            room.managed.persister,
+            sender=sender,
+            handle=to[0],
+            episode=episode,
+            topic=message_format.topic_urn(ROOM),
+            prompt=text,
+            payload_data={"round": 1, "action": "position"},
+            is_reply=lambda _r: False,
+            timeout_s=0.01,
+            poll_interval_s=0.005,
+            mention=True,
+        )
     elif sender == PERSON:
         await _person(room, text, episode)
     elif sender in (AGENT, PEER):
         await _respond(room, sender, text, episode, to[0] if to else None)
-    elif ENGINES.get(sender) == "persona":
-        await post(room, sender, turns.neutralize_mentions(text), episode, payload="reply")
-    elif ENGINES.get(sender) == "worker":
+    elif ENGINES.get(sender) in ("persona", "worker"):
         await post(room, sender, text, episode, payload="reply")
     elif sender == REMOTE:
         # The A2A bridge answers whoever summoned it (``a2a_bridge``).

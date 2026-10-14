@@ -122,7 +122,7 @@ def _said_earlier(room: str, handle: str, records: list[Any], at: int) -> list[d
             continue
         if record.sender and _norm(record.sender) == _norm(handle):
             break
-        if asks(record.content, handle, room=room):
+        if asks(record.content, handle):
             break
         text = _conversational_text(record.content)
         if text is None:
@@ -283,7 +283,7 @@ async def await_message(
                 # past this record with no extra write.
                 if persister.episode_position(handle, ep) >= i:
                     continue
-            if asks(record.content, handle, room=room_name):
+            if asks(record.content, handle):
                 _commit(i)
                 _last_tick[key] = record.content
                 room_channels.manager.refresh_lease(room_name, handle)

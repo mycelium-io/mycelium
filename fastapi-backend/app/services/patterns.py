@@ -402,7 +402,8 @@ def build_plan(loaded: Loaded, me: str) -> Plan:
                 }
             )
         cast = [seat[h] for h in scenario.summon.members]
-        names = " ".join(f"@{h}" for h in cast)
+        # Silent: bound to roles, asked by the conductor in turn, woken by nobody.
+        names = " ".join(f"@~{h}" for h in cast)
         summon = f"@{CONDUCTOR} {scenario.summon.flow} {names}: {scenario.summon.ask}"
     if len(memories) > MAX_MEMORIES:
         raise PatternInvalid([f"{len(memories)} memories to write; the limit is {MAX_MEMORIES}"])

@@ -7,9 +7,10 @@ The primitive the aligner brokers a negotiation with, lifted out so anything
 that puts a question to one member and needs that member's reply — a mediator
 round, a step of a protocol, a review gate — asks it the same way.
 
-Two properties are the whole contract. **One wake:** the prompt names exactly
-one message recipient, and every ``@`` in the prose is neutralized, so the room reads
-who was asked while only that handle's ``await`` returns. **Silence yields
+Two properties are the whole contract. **One recipient:** the prompt names
+exactly one message recipient, which asks that member (``asks.py``); the prose
+is posted as written, so a mention in it asks whoever it names, the same as
+anyone's, and a caller writes a bare ``@`` only for who it is asking. **Silence yields
 nothing:** the wait is bounded, an empty string comes back on timeout, and the
 caller decides what silence means (the mediator reads it as a reject and never
 invents a position for a handle that did not speak).
@@ -34,11 +35,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: The ``@`` sigil in front of a handle. The prompt a turn carries names the
-#: other members in its prose (a broker's summary, a step's context); left as
-#: is, every one of them would wake on the mention-in-text match. Stripping the
-#: sigil keeps the names readable and the wake single. An interrupting ``@!``
-#: loses its ``!`` with it.
+#: The ``@`` sigil in front of a handle, with an interrupting ``@!``'s ``!``.
+#: For reading a mention out of text the hub was handed (a summon's directive,
+#: a summary it stores), never for changing what a member says.
 MENTION_SIGIL = re.compile(r"@!?(?=\w)")
 
 
@@ -75,9 +74,8 @@ async def addressed_turn(
     envelope once it is posted and ``on_reply`` the record that answered it,
     for a caller keeping its own episode record.
 
-    ``mention`` keeps a real ``@handle`` at the front, so the member wakes the
-    way any mention wakes it rather than only because the turn names it as
-    recipient. Every other ``@`` in the prose is still neutralized: one wake.
+    ``mention`` puts a real ``@handle`` at the front, so the member is asked
+    by the mention as well as by being the recipient.
     """
     before = len(persister.log.records)
     env = message_format.build_envelope(
@@ -89,10 +87,11 @@ async def addressed_turn(
         payload_type=payload_type,
         payload_data=payload_data,
     )
-    text = neutralize_mentions(prompt)
+    text = prompt
     if mention:
         bare = norm_handle(handle) or handle
-        text = f"@{text}" if text.startswith(bare) else f"@{bare} {text}"
+        if not text.startswith(f"@{bare}"):
+            text = f"@{text}" if text.startswith(bare) else f"@{bare} {text}"
     try:
         await managed.post(env, text, raise_on_send_failure=True)
     except Exception:

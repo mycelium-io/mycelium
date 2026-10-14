@@ -261,7 +261,9 @@ def record_result(
 
 def kick_off(client: httpx.Client, room: str, episode: str, team: list[str], task: str, me: str):
     """Summon the conductor in the task's thread to run the kickoff flow over the team."""
-    names = " ".join(f"@{h}" for h in team)
+    # Silent mentions bind the roles and wake nobody; the conductor asks each
+    # member in its turn.
+    names = " ".join(f"@~{h}" for h in team)
     body = {
         "sender_handle": me,
         "message_type": "broadcast",

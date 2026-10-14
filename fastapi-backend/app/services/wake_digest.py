@@ -315,11 +315,22 @@ def _reply_thread(room: str, asked: list[Any]) -> str | None:
     return _thread_of(room, asked[-1]) if asked else None
 
 
+def _floor_line(room: str, thread: str | None, me: str) -> str | None:
+    """Whose turn it is in ``thread``, when its floor doesn't admit ``me``."""
+    if thread is None:
+        return None
+    from app.services.room_channels import manager
+
+    floor = manager.floor(room, thread)
+    if floor is None or floor.admits(me):
+        return None
+    return f"{floor.describe()}. Wait for your turn; a write before it is refused."
+
+
 def reply_episode(room: str, wake: dict[str, Any], records: list[Any]) -> str | None:
     """The thread ``wake``'s agent is told to reply in, for the room's "is
     responding in" line; ``None`` for the room itself (:func:`_reply_thread`)."""
-    handle = str(wake.get("handle") or "")
-    _, _, _, asked = _since(handle, records, wake.get(READ_FROM), room=room)
+    _, _, _, asked = _since(str(wake.get("handle") or ""), records, wake.get(READ_FROM))
     return _reply_thread(room, asked)
 
 
@@ -330,7 +341,7 @@ READ_FROM = "read_from"
 
 
 def _since(
-    handle: str, records: list[Any], read_from: int | None = None, *, room: str | None = None
+    handle: str, records: list[Any], read_from: int | None = None
 ) -> tuple[list[Any], int, list[Any], list[Any]]:
     """What ``handle`` hasn't seen: the window read, the index of its last
     message in it (-1 for none), the records it hasn't read, and the ones among
@@ -352,16 +363,15 @@ def _since(
     else:
         start = max(0, read_from - (len(records) - len(window)))
         since = [r for r in window[start:] if _norm(r.sender) != me]
-    asked = [r for r in since if asks(r.content, handle, room=room)]
+    asked = [r for r in since if asks(r.content, handle)]
     return window, last, since, asked
 
 
-def coverage(wake: dict[str, Any], records: list[Any], room: str | None = None) -> dict[str, Any]:
+def coverage(wake: dict[str, Any], records: list[Any]) -> dict[str, Any]:
     """Which messages a wake covers, as ids: the ones that asked for its agent,
     and the range its digest summarized (what its agent hadn't read, oldest to
     newest). Text stays in the transcript; the wake log keeps these."""
-    handle = str(wake.get("handle") or "")
-    _, _, since, asked = _since(handle, records, wake.get(READ_FROM), room=room)
+    _, _, since, asked = _since(str(wake.get("handle") or ""), records, wake.get(READ_FROM))
     covered: dict[str, Any] = {"messages": [r.message_id for r in asked]}
     if since:
         covered["range"] = [since[0].message_id, since[-1].message_id]
@@ -374,7 +384,7 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     handle = str(wake.get("handle") or "")
     me = _norm(handle)
     reason = wake.get("reason") or "mention"
-    window, last, since, asked = _since(handle, records, wake.get(READ_FROM), room=room)
+    window, last, since, asked = _since(handle, records, wake.get(READ_FROM))
     last_at = parse_recorded_at(window[last].recorded_at) if last >= 0 else None
     episode = record_episode(asked[-1]) if asked else wake.get("episode")
     where = _where(room, episode)
@@ -383,7 +393,7 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         return _thread_of(room, record)
 
     here = _reply_thread(room, asked)
-    said = [r for r in since if _conversational_text(r.content)]
+    said = [r for r in since if _conversational_text(r.content) or r in asked]
     in_here = [r for r in said if place_of(r) == here]
     elsewhere = len(said) - len(in_here)
     by = Counter(r.sender for r in in_here if r.sender)
@@ -419,6 +429,10 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         count = f"{n} messages mention" if n > 1 else f"{sender} mentioned"
         why = f"{count} you in {_place(room, where)}{latest}"
     lines.append(f"Why:     {why}")
+    # A thread whose floor is held for someone else: it was named, but the
+    # conductor (or whoever holds it) asks in turn, so its writes wait till then.
+    if (turn := _floor_line(room, here, me)) is not None:
+        lines.append(f"Floor:   {turn}")
 
     # What the verifier couldn't confirm in what it said since its last turn. It
     # rides along on whatever wake comes next; a flag never wakes anyone itself.
@@ -487,7 +501,8 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         lines += ["", f"({len(asked) - len(shown)} earlier ones asking for you aren't shown)"]
     for i, record in enumerate(shown):
         latest = i == len(shown) - 1
-        text = (_conversational_text(record.content) or "").strip()
+        # What asked (``asks.py``) always has text, an aligner's tick included.
+        text = str(record.content.get("content") or "").strip()
         at = age(parse_recorded_at(record.recorded_at), now)
         tag = ", latest" if latest else ""
         lines += ["", f"--- @{record.sender}, {at}, {len(text):,} chars{tag} ---"]

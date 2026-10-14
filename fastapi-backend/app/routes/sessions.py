@@ -299,7 +299,7 @@ async def drain_herdr_wakes(room_name: str):
         # rather than at its last message, which it may have posted unread.
         if log is not None and log.knows(handle):
             wake[wake_digest.READ_FROM] = log.position(handle)
-        covered = wake_digest.coverage(wake, records, room_name)
+        covered = wake_digest.coverage(wake, records)
         # Never ring for nothing: a wake that needs a message to answer, with
         # none unread when it's due, is recorded and not handed over. With no
         # transcript to look in there's no telling, and it goes as it is.

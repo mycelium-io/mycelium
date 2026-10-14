@@ -61,6 +61,7 @@ from app.config import settings
 # Reuse the aligner's manifest-kind gate and handle-fold implementations.
 from app.services import message_format
 from app.services.aligner import _norm, _registered_engine_kind
+from app.services.asks import MENTION_ETIQUETTE
 
 if TYPE_CHECKING:
     from app.services.in_memory_store import StoredMessage
@@ -219,7 +220,7 @@ def _build_message_prompt(
             "Distill this conversation into the room's standing briefing: what was "
             "decided, what changed, what is now in flight, and what is still open. "
             "Group related points; do not transcribe the messages back. Preserve "
-            "@handle owners where they matter."
+            "owners as @~handle where they matter."
         )
     carried = (
         "The briefing below is what earlier conversation already distilled to. "
@@ -235,6 +236,7 @@ def _build_message_prompt(
         "with its sender.\n\n"
         f"{task}\n\n"
         "Be faithful — never invent facts not present in what you were given. "
+        f"{MENTION_ETIQUETTE} "
         "Output ONLY the briefing as markdown — no preamble, no code fences.\n\n"
         f"{carried}"
         f"--- NEW MESSAGES ---\n{_transcript_block(messages)}\n--- END NEW MESSAGES ---"
@@ -260,11 +262,13 @@ def _build_prompt(
             "Produce a single concise, well-structured markdown briefing that captures the "
             "room's current state: key decisions, current status, open work, and any notable "
             "context. Group related points; do not just list the memories back. Preserve "
-            "@handle owners where they matter. Be faithful — never invent facts not present below."
+            "owners as @~handle where they matter. Be faithful — never invent facts not "
+            "present below."
         )
     return (
         f"You are the synthesizer for the Mycelium coordination room '{room}'.\n"
         f"Below are the room's memories, each under its namespace key.\n\n{task}\n\n"
+        f"{MENTION_ETIQUETTE} "
         "Output ONLY your response as markdown — no preamble, no code fences.\n\n"
         f"--- ROOM MEMORY ---\n{corpus}\n--- END ROOM MEMORY ---"
     )

@@ -21,7 +21,7 @@ import pytest
 
 from app.services.asks import asks
 from tests import wake_paths
-from tests.wake_paths import AGENT, HERDR, ROOM, Decided
+from tests.wake_paths import AGENT, HERDR, Decided
 
 _CONTRACT_PATH = Path(__file__).resolve().parent.parent.parent / "contracts" / "asks.json"
 CASES: list[dict[str, Any]] = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))["cases"]
@@ -52,7 +52,7 @@ async def test_every_path_gives_the_contract_s_answer(case: dict, client, monkey
     # The rule itself, on what the transcript recorded.
     recorded = room.log.records[start:]
     assert recorded, "the case wrote nothing"
-    found = {why for r in recorded if (why := asks(r.content, agent, room=ROOM))}
+    found = {why for r in recorded if (why := asks(r.content, agent))}
     assert found == ({reason} if reason else set())
 
     turned = agent in room.turns

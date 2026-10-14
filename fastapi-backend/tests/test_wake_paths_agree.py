@@ -28,7 +28,7 @@ from hypothesis import strategies as st
 from app.services.asks import asks
 from app.services.message_models import Kind
 from tests import wake_paths
-from tests.wake_paths import AGENT, ENGINES, HERDR, PEER, PERSON, REMOTE, ROOM, Decided
+from tests.wake_paths import AGENT, ENGINES, HERDR, PEER, PERSON, REMOTE, Decided
 
 CAST = [AGENT, PEER, PERSON, *ENGINES, REMOTE]
 _EXAMPLES = int(os.environ.get("MYCELIUM_ASKS_EXAMPLES", "300"))
@@ -36,7 +36,7 @@ _EXAMPLES = int(os.environ.get("MYCELIUM_ASKS_EXAMPLES", "300"))
 _where = st.sampled_from(["room", "thread"])
 #: Chat twice as likely as each signal, so most messages could ask someone.
 _payload = st.sampled_from(
-    ["message", "message", "reply", "reply", "ping", "notice", "presence", "utterance", "outcome"]
+    ["message", "message", "reply", "reply", "tick", "ping", "notice", "presence", "outcome"]
 )
 _words = st.sampled_from(["can you look?", "the parser", "ship it", "thanks", "yes"])
 
@@ -67,7 +67,7 @@ def _case(draw: st.DrawFn) -> tuple[str, dict[str, Any]]:
             "sender": draw(st.sampled_from(["aligner", "conductor"])),
             "text": draw(st.one_of(_words, text)),
             "where": draw(_where),
-            "payload": "message",
+            "payload": draw(st.sampled_from(["message", "tick"])),
             "to": draw(st.lists(handle, min_size=1, max_size=3, unique=True)),
             "commit": False,
         }
@@ -133,7 +133,7 @@ async def test_the_paths_agree(room: wake_paths.Room, case: tuple[str, dict]) ->
     start = wake_paths.mark_read(room, agent)
     await _write(room, message)
 
-    found = {why for r in room.log.records[start:] if (why := asks(r.content, agent, room=ROOM))}
+    found = {why for r in room.log.records[start:] if (why := asks(r.content, agent))}
     assert len(found) <= 1
     reason = next(iter(found), None)
     event(f"asks: {reason}")

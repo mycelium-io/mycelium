@@ -183,7 +183,8 @@ def test_the_kickoff_summons_the_conductor_in_the_tasks_thread():
     _m, path, body = seen[-1]
     assert path == "/api/rooms/fix-tests/messages"
     assert body["episode"] == episode
-    assert body["content"] == "@conductor swarm @agent-1 @agent-2: Fix the tests"
+    # Silent mentions: they bind the roles, and the conductor asks each in turn.
+    assert body["content"] == "@conductor swarm @~agent-1 @~agent-2: Fix the tests"
 
 
 def test_a_refusal_from_the_hub_is_a_swarm_error():

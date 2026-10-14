@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Any
 from negmas import SAOMechanism, make_issue
 from negmas.sao import ResponseType, SAONegotiator
 
+from app.services.asks import MENTION_ETIQUETTE
 from app.services.offer_snap import snap_offer
 
 if TYPE_CHECKING:
@@ -302,7 +303,10 @@ class MediatedNegotiation:
                 "summarize where each agent stands, name who has hit a genuine hard limit, and "
                 "surface the space that's still open between them. Be concrete and fair, not "
                 "preachy — do not pressure anyone to abandon a real limit.",
-                system="You are a fair mediator who wants a durable agreement, not to favor anyone.",
+                system=(
+                    "You are a fair mediator who wants a durable agreement, not to favor "
+                    f"anyone. {MENTION_ETIQUETTE}"
+                ),
             )
         except Exception as exc:
             logger.warning(
