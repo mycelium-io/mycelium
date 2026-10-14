@@ -186,7 +186,14 @@ why it woke, what changed since its last turn, its tasks, the board (each
 notice since then as who did what to which task, then what's open, naming the
 expired and blocked rows), the messages that asked for it (cut, with the rest
 counted), then `await` first and a reply line that names the task's thread.
-Delivering a wake raises
+What counts as new is what the agent hasn't read: everything after its durable
+inbox cursor (`persister.log.position`, the one `await` advances), not after its
+last post, since an agent can post without having read a message that came just
+before. A `mention`, `turn` or `interrupt` wake with nothing unread asking for
+it when it's due is not handed over but recorded as `skipped`; `assigned`,
+`handback` and `schedule` need no message. A wake's reason and sender are what
+caused it: a later, lesser wake for the same handle refreshes its timer but
+doesn't take over its label (`WAKE_RANK`). Delivering a wake raises
 `responding`, so the room sees the agent on it whatever host typed the prompt.
 Every wake is recorded in the room's `log/wakes.jsonl`
 (`app/services/wake_log.py`, read with `mycelium room wakes`): who it was for,

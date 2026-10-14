@@ -270,6 +270,12 @@ async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
     )
 
 
+#: The wakes that exist to answer a message: one with nothing unread behind
+#: it when it's due is skipped. A task given to the agent, or its schedule,
+#: needs no message.
+NEEDS_A_MESSAGE = frozenset({"mention", "turn", "interrupt"})
+
+
 @router.get("/herdr-wakes")
 async def drain_herdr_wakes(room_name: str):
     """Drain pending herdr wake requests for a room (the sync bridge polls this).
@@ -284,21 +290,41 @@ async def drain_herdr_wakes(room_name: str):
     # Each carries the digest its agent is told (``prompt``), built now rather
     # than when it was queued, so what it says is current when it's typed.
     managed = room_channels.manager.get(room_name)
-    records = managed.persister.log.records if managed and managed.persister else []
+    log = managed.persister.log if managed and managed.persister else None
+    records = log.records if log is not None else []
+    handed: list[dict] = []
     for wake in wakes:
+        handle = str(wake.get("handle") or "")
+        # What its agent has read, so the digest and its cover start there
+        # rather than at its last message, which it may have posted unread.
+        if log is not None and log.knows(handle):
+            wake[wake_digest.READ_FROM] = log.position(handle)
+        covered = wake_digest.coverage(wake, records)
+        # Never ring for nothing: a wake that needs a message to answer, with
+        # none unread when it's due, is recorded and not handed over. With no
+        # transcript to look in there's no telling, and it goes as it is.
+        nothing = log is not None and not covered["messages"]
+        if wake.get("reason", "mention") in NEEDS_A_MESSAGE and nothing:
+            wake_log.dropped(
+                room_name,
+                wake,
+                "nothing unread asks for it: it was read or answered before this wake was due",
+                outcome="skipped",
+            )
+            continue
         try:
-            told = schedules.untold_pauses(room_name, str(wake.get("handle") or ""))
+            told = schedules.untold_pauses(room_name, handle)
             wake["prompt"] = wake_digest.build(room_name, wake, records)
             # The digest has said these pauses now, and says each once.
             await schedules.mark_pauses_told(room_name, [s.name for s in told])
         except Exception:
-            logger.exception("wake digest failed for @%s in %s", wake.get("handle"), room_name)
+            logger.exception("wake digest failed for @%s in %s", handle, room_name)
         # What it covered goes in the wake log, kept until the runner says
         # whether it reached the agent (``POST herdr-wakes/outcomes``).
         try:
-            wake_log.handed(room_name, wake, wake_digest.coverage(wake, records))
+            wake_log.handed(room_name, wake, covered)
         except Exception:
-            logger.exception("wake log failed for @%s in %s", wake.get("handle"), room_name)
+            logger.exception("wake log failed for @%s in %s", handle, room_name)
         # Handed to its host to type now, so the room hears it's being worked
         # on whether or not the agent reads through ``await``. Its reply, or
         # the TTL, settles it. The thread named is the one its digest tells it
@@ -308,7 +334,9 @@ async def drain_herdr_wakes(room_name: str):
         except Exception:
             where = None
         activity.signal(room_name, wake["handle"], "responding", episode=where)
-    return {"wakes": wakes}
+        wake.pop(wake_digest.READ_FROM, None)
+        handed.append(wake)
+    return {"wakes": handed}
 
 
 class WakeOutcome(BaseModel):

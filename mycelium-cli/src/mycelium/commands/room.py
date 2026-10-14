@@ -1083,6 +1083,7 @@ WAKE_OUTCOME = {
     "dropped": ("dropped", "red"),
     "unreached": ("unreached, reads it on its next await", "yellow"),
     "handed": ("handed over, no word from its runner", "yellow"),
+    "skipped": ("skipped, nothing unread asked for it by then", "dim"),
 }
 
 
@@ -1110,7 +1111,9 @@ def wakes(
     asked for the agent by id (read them with `mycelium room messages`), and
     says whether it was delivered, or dropped and why (no pane bound to the
     agent, or held too long while it worked). A mention of an agent nothing
-    runs is unreached: it reads the message on its next await.
+    runs is unreached: it reads the message on its next await. A wake that,
+    by the time it was due, had nothing unread behind it (the agent had read
+    or answered it already) is skipped rather than rung for nothing.
 
     Examples:
         mycelium room wakes

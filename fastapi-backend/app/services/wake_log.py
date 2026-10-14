@@ -45,7 +45,9 @@ MAX_BYTES = 2_000_000
 #: agent. ``dropped``: thrown away (held too long, no pane, refused).
 #: ``unreached``: a mention of an agent nothing runs, so nothing could be woken;
 #: the message isn't lost, and the agent reads it on its next ``await``.
-OUTCOMES = frozenset({"handed", "delivered", "dropped", "unreached"})
+#: ``skipped``: by the time it was due, nothing unread asked for the agent (it
+#: had read or answered it already), so it wasn't rung for nothing.
+OUTCOMES = frozenset({"handed", "delivered", "dropped", "unreached", "skipped"})
 
 _lock = threading.Lock()
 

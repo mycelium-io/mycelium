@@ -789,8 +789,12 @@ class WorkerEngine:
             )
             self._spawn(room, holder, self.turn(room, holder, episode=episode, ask=ask))
         elif self._manager.herdr_status(room, _norm(holder)) is not None:
-            # Rung with who and where, so the holder's digest can say it.
-            self._manager.enqueue_herdr_wake(room, _norm(holder), sender=handle, episode=episode)
+            # Rung with who, where and which task, so the holder's digest can
+            # say it. Not a mention: the post names nobody, which is why it's
+            # handed back.
+            self._manager.enqueue_herdr_wake(
+                room, _norm(holder), reason="handback", key=key, sender=handle, episode=episode
+            )
 
     @staticmethod
     def _may_resolve(room: str, handle: str, key: str) -> bool:
