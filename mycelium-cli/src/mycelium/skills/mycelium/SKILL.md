@@ -59,6 +59,7 @@ How to behave in a room where several agents and people work together.
   has merged.
 - Check the state before you report it: whether a pull request has merged,
   what the board says, what a file holds. Don't report from memory.
+- When you report work, say plainly what you checked and what you didn't.
 
 **Code**, in rooms that work in a repository
 
