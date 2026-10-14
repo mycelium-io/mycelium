@@ -256,6 +256,8 @@ def test_the_board_line_lists_what_changed_newest_first_then_whats_open():
             kind="decision",
         ),
         _notice(4, 30, subkind="floor", key="t1", by="builder"),
+        # The verifier on one message is not the board's news.
+        _notice(8, 25, subkind="check", key="live", by="verifier", about="reviewer"),
         _notice(
             5, 20, subkind="expired", key="work/c", title="Hands-free voice mode", by="voice-model"
         ),

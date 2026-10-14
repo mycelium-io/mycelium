@@ -820,6 +820,8 @@ export interface VerifierFlag {
   failure?: string;
   /** The message it goes under: its id in the room's history read. */
   message_id: string;
+  /** The same message's id as it arrives live, before a reload reads it from history. */
+  envelope_id?: string;
   key: string;
   about: string;
   by: string;

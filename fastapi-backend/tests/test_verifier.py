@@ -21,6 +21,7 @@ import yaml
 from app.config import settings
 from app.services import (
     message_format,
+    persister,
     verifier,
     verifier_claims,
     verifier_learn,
@@ -329,6 +330,9 @@ async def test_a_kept_flag_is_stored_and_raised_as_a_check_notice(engine, monkey
     read = stored_message_from_record(ROOM, claim)
     assert read is not None
     assert notice["message_id"] == flag["message_id"] == str(read.id)
+    # And by the envelope id, which is what the message carries when it arrives live.
+    assert notice["envelope_id"] == flag["envelope_id"] == claim.message_id == "m2"
+    assert persister.bus_frame(ROOM, claim)["id"] == flag["envelope_id"]
     assert notice["about"] == "builder"
     assert notice["sure"] == "false"
     assert notice["state"] == "shown"

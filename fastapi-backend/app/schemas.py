@@ -1474,6 +1474,13 @@ class VerifierFlagRead(BaseModel):
     message_id: str = Field(
         ..., description="The message the line goes under: its id in the room's history read"
     )
+    envelope_id: str = Field(
+        "",
+        description=(
+            "The same message's envelope id: the id it carries when it arrives live "
+            "over the room's stream, before a reload reads it from history"
+        ),
+    )
     key: str = Field(..., description="The thread's short id, or 'live'")
     about: str = Field(..., description="The agent that made the claim")
     by: str = Field(..., description="The verifier engine's handle")

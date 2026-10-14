@@ -4,6 +4,36 @@
 import { describe, expect, it } from "vitest";
 import { handleMock } from "@/mocks/handlers";
 import { claimNeedles } from "./verifier";
+import { verifierFlagsByMessage } from "./room-data";
+import type { VerifierFlag } from "./api";
+
+describe("verifierFlagsByMessage", () => {
+  const flag = (over: Partial<VerifierFlag>): VerifierFlag =>
+    ({
+      flag_id: "f1",
+      message_id: "read-id",
+      envelope_id: "envelope-id",
+      state: "shown",
+      line: "Can't find an approval for #9997.",
+      quotes: [],
+      ...over,
+    }) as VerifierFlag;
+
+  it("finds a flag by the history id and by the id a live message carries", () => {
+    const byMessage = verifierFlagsByMessage([flag({})]);
+    expect(byMessage.get("read-id")?.map((f) => f.flag_id)).toEqual(["f1"]);
+    expect(byMessage.get("envelope-id")?.map((f) => f.flag_id)).toEqual(["f1"]);
+  });
+
+  it("leaves out a flag someone said is fine, and copes with a flag with no envelope id", () => {
+    const byMessage = verifierFlagsByMessage([
+      flag({ state: "fine" }),
+      flag({ flag_id: "f2", message_id: "other", envelope_id: undefined }),
+    ]);
+    expect(byMessage.has("read-id")).toBe(false);
+    expect([...byMessage.keys()]).toEqual(["other"]);
+  });
+});
 
 describe("claimNeedles", () => {
   it("keeps a quote that sits in plain prose as it is", () => {
