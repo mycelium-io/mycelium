@@ -23,6 +23,12 @@
 <style>
   /* A hand-written page, like l9-integration.html: the docs generator links it
      from the Engines nav but never writes it. */
+  /* A table wider than a phone scrolls sideways in its own box rather than
+     running off the page; the failures table keeps a width its four columns
+     can be read at. */
+  .table-scroll { overflow-x: auto; margin: 18px 0; }
+  .table-scroll table.vf { margin: 0; }
+  table.vf.wide { min-width: 720px; }
   table.vf { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: var(--text-body); }
   table.vf th, table.vf td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; }
   table.vf th { background: var(--surface); font-weight: 600; }
@@ -148,7 +154,8 @@
         the verifier adds names one of them. Two are checked today, and more checks are added over
         time.
       </p>
-      <table class="vf">
+      <div class="table-scroll">
+      <table class="vf wide">
         <thead><tr><th>Failure</th><th>What it looks like</th><th>Checked</th><th>Rough OXP alignment</th></tr></thead>
         <tbody>
           <tr><td>An approval nobody gave</td><td>"#1278 is approved" when nobody approved it</td><td><span class="pill yes">Yes, for pull requests</span></td><td>Unformalized Coordination Commitments</td></tr>
@@ -162,6 +169,13 @@
           <tr><td>A side effect nobody asked for</td><td>Changing something as a by-product</td><td><span class="pill">Needs the whole thread</span></td><td>Policy Safety (a metric)</td></tr>
         </tbody>
       </table>
+      </div>
+      <p>
+        "Not yet" means the room already keeps the records a check would need: the CI results and
+        reviews GitHub reports for a task's pull request, the board, and the room's saved decisions.
+        "Needs the whole thread" means one message isn't enough to tell. Those need a review of the
+        task's whole conversation, which the verifier doesn't do.
+      </p>
       <p>
         The last column gives the nearest names in the cognitive-failure taxonomy of Outshift's
         <a href="https://github.com/outshift-open/observe-and-explain-platform">Observe and Explain Platform</a>
@@ -169,12 +183,6 @@
         one for a single message, and several of ours sit across two of theirs. OXP also has names a
         room's chat can't show, such as plan revision and intention stability, which need an agent's
         plan or tool traces.
-      </p>
-      <p>
-        "Not yet" means the room already keeps the records a check would need: the CI results and
-        reviews GitHub reports for a task's pull request, the board, and the room's saved decisions.
-        "Needs the whole thread" means one message isn't enough to tell. Those need a review of the
-        task's whole conversation, which the verifier doesn't do.
       </p>
       <p>
         The two checked today are about pull requests because that is where agents in our rooms
@@ -297,6 +305,7 @@ flowchart LR
         <li><strong>Only labels both passes agreed on were kept.</strong> They agreed on the failure kind for 97% of messages (Cohen's kappa 0.72). The disagreements were relabeled by two new passes after the rubric was tightened, which settled 499 of the 500.</li>
       </ul>
       <p>What the agreed labels say:</p>
+      <div class="table-scroll">
       <table class="vf">
         <thead><tr><th>Label</th><th>Messages</th></tr></thead>
         <tbody>
@@ -309,6 +318,7 @@ flowchart LR
           <tr><td>A decision that wasn't theirs</td><td class="num">1</td></tr>
         </tbody>
       </table>
+      </div>
       <ul>
         <li><strong>Failures are rare.</strong> About 1 message in 20, even in a sample weighted toward them.</li>
         <li><strong>Stale state is the most common failure:</strong> an agent acting on something that had already changed.</li>
@@ -333,6 +343,7 @@ flowchart LR
         <li>A logistic regression per claim kind was fitted to those labels, over the embeddings the hub's search already computes (<code>bge-small-en-v1.5</code>). It holds weights only, no text.</li>
       </ul>
       <p>On messages that weren't picked for looking suspicious, scored against the hand-checked labels (F1, higher is better):</p>
+      <div class="table-scroll">
       <table class="vf">
         <thead><tr><th>Claim</th><th>The classifier</th><th>Asking a model each time</th><th>Keywords</th></tr></thead>
         <tbody>
@@ -341,6 +352,7 @@ flowchart LR
           <tr><td>A decision</td><td class="num">0.33</td><td class="num">0.44</td><td class="num">0.00</td></tr>
         </tbody>
       </table>
+      </div>
       <p>
         End to end, with the records check after it, the classifier catches the same failures as
         asking a model about every message (1 of the 2 approvals nobody gave, 3 of the 8 stale-state
