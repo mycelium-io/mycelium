@@ -124,7 +124,7 @@ the whole stack without Docker through `mycelium desktop serve`
 SWR hooks in `lib/room-data.ts`, so components hold no polling or fetched
 state of their own, and keeps a store only for client state. A room is laid
 out as tabs (`components/room-dock.tsx`); a new view is a new kind of tab, not
-a new pane.
+a new pane. Every key shown in the UI goes through `ui/kbd.tsx`.
 
 ## Rules
 
@@ -155,7 +155,11 @@ module; read it before changing what a rule protects.
   never stored (`assignments.waiting_on`).
 - **`assignee` is who a task is for, the `assignment` field is who holds it.**
   Never write `owner`. Rows compiled from an agreement go through
-  `task_compiler.py` and `task_sync.py`.
+  `task_compiler.py` and `task_sync.py`, and only a commit that carries
+  `assignments` (the aligner's) is compiled into rows; a conductor's agreement
+  is saved to memory instead.
+- **The CLI skill is a protocol**: take a task, work it in its thread, resolve
+  it. Don't turn it into an augmentation layer.
 - **A room's people are recorded, never guessed from who posted**
   (`app/services/room_people.py`). A person's room folders are theirs, not the
   room's (`room_folders.py`).
@@ -213,6 +217,9 @@ module; read it before changing what a rule protects.
 - **SLIM identity has two tiers**: `psk` (default, a shared secret) and
   `signerjwt` (each member signs). SPIRE was removed (#668); don't bring it
   back.
+- **The SLIM node and `slim-bindings` must be the same minor version** (2.1
+  today: `slim-bindings>=2.1,<2.2`, the compose image `slim:2.1.0`, and
+  `slimctl` 2.1.x in the desktop app). A mismatch has broken the stack before.
 - **The hub sees plaintext.** Custodial sessions (`custody.py`) and the A2A
   bridge (`a2a_bridge.py`) harden the wire and attribution, but are never
   end-to-end from the hub. Say so honestly in code and docs. The A2A hop stays
@@ -254,8 +261,6 @@ module; read it before changing what a rule protects.
 - **Videos under `docs/` are Git LFS objects** (`.gitattributes`).
   Screenshots are taken and committed by hand (`pnpm screenshots`); no
   workflow opens pull requests on its own.
-- **The CLI skill is a protocol**: take a task, work it in its thread, resolve
-  it. Don't turn it into an augmentation layer.
 - **No Ensue references in code.** The API design was inspired by theirs; the
   implementation is independent.
 
