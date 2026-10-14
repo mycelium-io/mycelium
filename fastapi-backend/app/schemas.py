@@ -1129,6 +1129,53 @@ class MembershipRead(BaseModel):
     token_expires_at: datetime | None = None
 
 
+# ── A room's members ─────────────────────────────────────────────────────────
+
+
+class RoomPerson(BaseModel):
+    """One of a room's people, as recorded when they joined."""
+
+    handle: str
+    joined_at: datetime
+    via: Literal["created", "added", "message", "seeded"] = Field(
+        ...,
+        description=(
+            "How they joined: made the room, were added, posted in it, or were there "
+            "before rooms kept a list"
+        ),
+    )
+
+
+class RoomAgentEntry(BaseModel):
+    """An agent or engine, from its manifest."""
+
+    handle: str
+    owner: str | None = None
+
+
+class RoomOther(BaseModel):
+    """A handle that holds a task or is present, but is neither a person nor an agent here."""
+
+    handle: str
+    holds_task: bool = False
+    present: bool = False
+
+
+class RoomMembers(BaseModel):
+    """Everyone in a room, from records rather than from who has posted."""
+
+    people: list[RoomPerson]
+    agents: list[RoomAgentEntry]
+    engines: list[RoomAgentEntry]
+    others: list[RoomOther]
+
+
+class RoomPersonAdd(BaseModel):
+    """Add a person (someone with a user record) to a room."""
+
+    handle: str = Field(..., min_length=1, max_length=64)
+
+
 # ── A2A bridge state (the Network views) ─────────────────────────────────────
 #
 # What the GUI's Network pane and `mycelium network` need to render the bridge

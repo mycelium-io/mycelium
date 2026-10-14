@@ -341,6 +341,9 @@ const MOCK_USERS = new Map<string, { handle: string; display_name: string; teams
   ].map(([handle, display_name]) => [handle, { handle, display_name, teams: [], notify: null, owns: [] }]),
 );
 
+/** People taken out of a room in this session, by room. */
+const REMOVED_PEOPLE = new Map<string, Set<string>>();
+
 async function handleUsers(req: Request, method: string, rest: string[]): Promise<Response | null> {
   if (rest.length === 0 && method === "GET") {
     return json({ users: [...MOCK_USERS.values()], total: MOCK_USERS.size });
@@ -1170,6 +1173,60 @@ export async function handleMock(req: Request): Promise<Response | null> {
         .filter((e) => e.target === key && e.resolved)
         .map((e) => ({ target: key, source: e.source, kind: e.kind, relation: e.relation, resolved: true, raw: synthesizeRaw(e) }));
       return json({ outbound, backlinks });
+    }
+
+    case "members": {
+      // The room's people, as the hub seeds a room that predates its list: the
+      // owner, agent owners, posters and whoever is present, kept only when
+      // they have a user record and aren't an agent here. Removals last for
+      // the session.
+      const removed = REMOVED_PEOPLE.get(roomName) ?? new Set<string>();
+      if (sub[1] && method === "DELETE") {
+        const handle = decodeURIComponent(sub[1]).toLowerCase();
+        removed.add(handle);
+        REMOVED_PEOPLE.set(roomName, removed);
+        return new Response(null, { status: 204 });
+      }
+      if (sub[1] || method !== "GET") return null;
+      const manifests = fx.memories.filter((m) => m.key.startsWith("agents/") && !m.key.slice(7).includes("/"));
+      const agentList = manifests.map((m) => {
+        const manifest = manifestText(m);
+        return {
+          handle: m.key.slice(7),
+          owner: /owner:\s*@?(\S+)/.exec(manifest)?.[1] ?? null,
+          engine: /adapter:\s*engine/.test(manifest),
+        };
+      });
+      const agentHandles = new Set(agentList.map((a) => a.handle.toLowerCase()));
+      const candidates = [
+        fx.room.owner,
+        ...agentList.map((a) => a.owner),
+        ...fx.messages.map((m) => m.sender_handle),
+        ...(fx.presence ?? []).map((p) => p.handle),
+      ];
+      const people = [
+        ...new Set(candidates.filter((h): h is string => !!h).map((h) => h.toLowerCase())),
+      ]
+        .filter((h) => MOCK_USERS.has(h) && !agentHandles.has(h) && !removed.has(h))
+        .map((handle) => ({ handle, joined_at: fx.room.created_at, via: "seeded" as const }));
+      const known = new Set([...agentHandles, ...people.map((p) => p.handle)]);
+      const present = new Set((fx.presence ?? []).map((p) => p.handle.toLowerCase()));
+      const holding = new Set(
+        fx.memories
+          .map((m) => (typeof m.meta?.assignee === "string" ? m.meta.assignee.replace(/^@/, "").toLowerCase() : ""))
+          .filter(Boolean),
+      );
+      const others = [...new Set([...present, ...holding])]
+        .filter((h) => !known.has(h))
+        .sort()
+        .map((handle) => ({ handle, holds_task: holding.has(handle), present: present.has(handle) }));
+      const entry = ({ handle, owner }: { handle: string; owner: string | null }) => ({ handle, owner });
+      return json({
+        people,
+        agents: agentList.filter((a) => !a.engine).map(entry),
+        engines: agentList.filter((a) => a.engine).map(entry),
+        others,
+      });
     }
 
     case "sessions": {

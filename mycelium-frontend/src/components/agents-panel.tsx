@@ -14,9 +14,16 @@ import {
 } from "@/components/ui/context-menu";
 import { copyText } from "@/lib/clipboard";
 import { inviteLink } from "@/lib/desktop";
-import { type PresenceMember, type RoomFloor } from "@/lib/api";
+import {
+  logFetchError,
+  removeRoomPerson,
+  type JoinedVia,
+  type PresenceMember,
+  type RoomFloor,
+  type RoomOther,
+} from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
-import { useRoomRoster, useScheduledHandles } from "@/lib/room-data";
+import { useRoom, useRoomRoster, useScheduledHandles } from "@/lib/room-data";
 import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
@@ -53,6 +60,8 @@ function MemberMenu({
   agent,
   onOpenMemory,
   onUnregister,
+  onRemove,
+  removeLabel = "Remove from room",
   children,
 }: {
   handle: string;
@@ -60,6 +69,10 @@ function MemberMenu({
   onOpenMemory?: (key: string) => void;
   /** Agents only: opens the confirmation for `agent rm`. */
   onUnregister?: () => void;
+  /** People only: takes them out of the room until they join again. */
+  onRemove?: () => void;
+  /** What the remove item says: in a shared room, posting rejoins them. */
+  removeLabel?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -81,6 +94,14 @@ function MemberMenu({
             <ContextMenuSeparator />
             <ContextMenuItem icon={UserMinus} destructive onClick={onUnregister}>
               Unregister…
+            </ContextMenuItem>
+          </>
+        )}
+        {!agent && onRemove && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem icon={UserMinus} destructive onClick={onRemove}>
+              {removeLabel}
             </ContextMenuItem>
           </>
         )}
@@ -207,9 +228,10 @@ function MemberTooltipCard({
 }
 
 /**
- * Roster of who's in a room: the **people** (agent owners + anyone who's posted,
- * plus the handle you're acting as) and the **agents** (`agents/<handle>`
- * manifests). Pairs with the chat box (@-mention to invoke) and the event stream
+ * Roster of who's in a room: the **people** (recorded by the hub when they
+ * joined: made the room, were added, or posted as a person), the **agents**
+ * (`agents/<handle>` manifests) and, quietly, **others**: handles that hold a
+ * task or are present but are neither. Pairs with the chat box (@-mention to invoke) and the event stream
  * (replies are badged) to make the whole register → list → invoke → reply loop
  * visible. Humans and agents share the monogram avatar, told apart by tint
  * (muted for people, accent for agents).
@@ -233,9 +255,16 @@ export function AgentsPanel({
   const [unregistering, setUnregistering] = useState<UnregisterTarget | null>(null);
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
-  // manifests, people from agent owners ∪ posters ∪ live presence ∪ you, and a
-  // presence entry for whoever holds a SLIM socket or an `await` lease.
-  const { agents, people, presence, floors, loading, refresh } = useRoomRoster(roomName);
+  // manifests, people from the hub's record of who joined, others who hold a
+  // task or are present, and a presence entry for whoever holds a SLIM socket
+  // or an `await` lease.
+  const { agents, people, others, presence, floors, loading, refresh } = useRoomRoster(roomName);
+  const { room } = useRoom(roomName);
+  const removePerson = (handle: string) => {
+    removeRoomPerson(roomName, handle)
+      .catch(logFetchError(`removeRoomPerson(${roomName}, ${handle})`))
+      .finally(refresh);
+  };
   const scheduled = useScheduledHandles(roomName);
   const { runners } = useRunners();
   const runnersById = useMemo(() => new Map(runners.map((r) => [r.id, r])), [runners]);
@@ -347,12 +376,12 @@ export function AgentsPanel({
               </div>
             </div>
           ))}
-        {!loading && agents.length === 0 && people.length === 0 && (
+        {!loading && agents.length === 0 && people.length === 0 && others.length === 0 && (
           <EmptyState
             size="sm"
             icon={Users}
             title="No members yet"
-            description="Start an agent on your machine from Invite, or register one from the CLI. People appear once they own an agent or post."
+            description="Start an agent on your machine from Add, or register one from the CLI. People are listed once they make the room, post in it or are added."
             action={
               <code className="font-mono text-micro bg-surface px-1.5 py-0.5 text-accent border border-border rounded whitespace-nowrap">
                 mycelium agent create
@@ -369,7 +398,15 @@ export function AgentsPanel({
             {people.map((p) => {
               const marked = highlight === p.handle;
               return (
-                <MemberMenu key={`person-${p.handle}`} handle={p.handle} agent={false}>
+                <MemberMenu
+                  key={`person-${p.handle}`}
+                  handle={p.handle}
+                  agent={false}
+                  onRemove={() => removePerson(p.handle)}
+                  removeLabel={
+                    room?.is_public === false ? "Remove from room" : "Remove (they rejoin if they post)"
+                  }
+                >
                   <PersonRow
                     person={p}
                     memberPresence={presence.get(p.handle)}
@@ -431,6 +468,25 @@ export function AgentsPanel({
             </div>
           );
         })}
+
+        {/* Neither a person nor an agent here, but holding a task or present:
+            an agent with no manifest in this room, say. Listed quietly so it
+            isn't lost, never as a person. */}
+        {others.length > 0 && (
+          <div className="opacity-60">
+            <SectionLabel count={others.length}>Others</SectionLabel>
+            {others.map((o) => (
+              <MemberMenu key={`other-${o.handle}`} handle={o.handle} agent={false}>
+                <OtherRow
+                  other={o}
+                  memberPresence={presence.get(o.handle.toLowerCase())}
+                  marked={highlight === o.handle}
+                  rowRef={highlight === o.handle ? highlightRow : undefined}
+                />
+              </MemberMenu>
+            ))}
+          </div>
+        )}
       </FadeScroll>
     </div>
   );
@@ -487,8 +543,55 @@ function SectionLabel({
 type AgentSummary = ReturnType<typeof useRoomRoster>["agents"][number];
 type RosterPerson = ReturnType<typeof useRoomRoster>["people"][number];
 
-/** One person, one line, at the agent rows' density. Owns/posted/teams live in
- *  the hover tooltip. */
+/** How someone joined, said in the person's card. */
+const JOINED_VIA: Record<JoinedVia, string> = {
+  created: "made the room",
+  added: "added",
+  message: "posted here",
+  seeded: "before rooms kept a list",
+};
+
+/** One handle in Others: present or holding a task, but neither a person nor an
+ *  agent in this room. Quieter than a member row, and nothing to manage. */
+function OtherRow({
+  other: o,
+  memberPresence,
+  marked,
+  rowRef,
+}: {
+  other: RoomOther;
+  memberPresence?: PresenceMember;
+  marked: boolean;
+  rowRef?: React.Ref<HTMLDivElement>;
+}) {
+  const why = [o.present && "here now", o.holds_task && "holds a task"].filter(Boolean).join(" · ");
+  return (
+    <Tooltip
+      side="left"
+      className="w-72 max-w-72 p-3"
+      content={
+        <MemberTooltipCard handle={o.handle} color="var(--avatar-neutral)" presence={memberPresence}>
+          <DetailRow label="why listed" value={why} />
+          <DetailRow label="not" value="a person or an agent registered in this room" />
+        </MemberTooltipCard>
+      }
+    >
+      <div
+        ref={rowRef}
+        className={`flex h-7 items-center gap-2 px-3 transition-colors hover:bg-hairline ${
+          marked ? "bg-accent/15" : ""
+        }`}
+      >
+        <Monogram handle={o.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} mutePresence />
+        <span className="shrink-0 font-mono text-label text-text">@{o.handle}</span>
+        <span className="ml-auto min-w-0 truncate text-micro text-faint">{why}</span>
+      </div>
+    </Tooltip>
+  );
+}
+
+/** One person, one line, at the agent rows' density. How they joined, what
+ *  they own and their teams live in the hover tooltip. */
 function PersonRow({
   person: p,
   memberPresence,
@@ -521,7 +624,8 @@ function PersonRow({
       content={
         <MemberTooltipCard handle={p.handle} color="var(--avatar-neutral)" presence={memberPresence}>
           <DetailRow label="floor" value={floor ? floorLabel(p.handle, floor) : undefined} color="var(--accent)" />
-          <DetailRow label="role" value={p.owns ? "owner" : "posted here"} />
+          <DetailRow label="joined" value={JOINED_VIA[p.via]} />
+          <DetailRow label="owns" value={p.owns ? "agents here" : undefined} />
           <DetailRow label="teams" value={p.teams.length > 0 ? p.teams.join(", ") : undefined} />
           {p.you && <DetailRow label="you" value="acting as this handle" color="var(--accent)" />}
         </MemberTooltipCard>

@@ -31,6 +31,7 @@ import {
   fetchRoom,
   fetchRoomAgents,
   fetchRoomMembers,
+  fetchRoomPeople,
   fetchRoomStatus,
   fetchRoomFolders,
   fetchProtocols,
@@ -51,7 +52,10 @@ import {
   type PresenceMember,
   type Protocol,
   type Room,
+  type JoinedVia,
   type RoomFloor,
+  type RoomOther,
+  type RoomPeople,
   type RoomPresence,
   type RoomMessage,
   type RoomSetting,
@@ -76,6 +80,8 @@ const POLL = {
   room: 30_000,
   agents: 30_000,
   members: 30_000,
+  // Changes when someone joins or is taken out; the panel revalidates on its own changes.
+  people: 30_000,
   messages: 30_000,
   memories: 30_000,
   skills: 30_000,
@@ -98,9 +104,6 @@ const POLL = {
   status: 20_000,
   a2a: 15_000,
 } as const;
-
-/** Messages are read here only to find who has posted; one page is plenty. */
-const POSTER_LIMIT = 200;
 
 /** The command center wants only the last thing said, and `latestPreview`
  *  scans a short window past any protocol ticks on top of it. */
@@ -140,7 +143,7 @@ const NO_ROOMS: Room[] = [];
 const NO_AGENTS: AgentSummary[] = [];
 const NO_PRESENCE: RoomPresence = { members: [], floors: [] };
 const NO_MESSAGES: RoomMessage[] = [];
-const NO_POSTERS: string[] = [];
+const NO_PEOPLE: RoomPeople = { people: [], agents: [], engines: [], others: [] };
 const NO_MEMORIES: Memory[] = [];
 const NO_SKILLS: Skill[] = [];
 const NO_SETTINGS: RoomSetting[] = [];
@@ -153,6 +156,7 @@ type RoomResource =
   | "room"
   | "agents"
   | "members"
+  | "people"
   | "messages"
   | "memories"
   | "skills"
@@ -298,24 +302,14 @@ export function useRoomMembers(room: string, opts: RoomQueryOptions = {}) {
   return { members: data.members, floors: data.floors, loading, refresh };
 }
 
-/** Handles that have broadcast — reachable by `@` even when not present. */
-export function useRoomPosters(room: string, opts: RoomQueryOptions = {}) {
-  const { data, isLoading, mutate } = useSWR(
-    room ? (["room", room, "messages", POSTER_LIMIT] as const) : null,
-    () => fetchMessages(room, POSTER_LIMIT),
-    { refreshInterval: opts.refreshInterval ?? POLL.messages },
+/** Everyone in a room from the hub's records: its people (recorded when they
+ *  joined), and the handles that hold a task or are present but are neither a
+ *  person nor an agent. */
+export function useRoomPeople(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(
+    room, "people", fetchRoomPeople, NO_PEOPLE, POLL.people, opts,
   );
-  const posters = useMemo(() => {
-    if (!data) return NO_POSTERS;
-    return data.messages
-      .filter((m) => m.message_type === "broadcast")
-      .map((m) => m.sender_handle ?? "")
-      .filter(Boolean);
-  }, [data]);
-  const refresh = useCallback(() => {
-    void mutate();
-  }, [mutate]);
-  return { posters, loading: isLoading, refresh };
+  return { people: data.people, others: data.others, loading, refresh };
 }
 
 /** Recent chat, for surfaces that read the room's history rather than tail it.
@@ -479,7 +473,7 @@ export function useRoomRowNames(room: string): Map<string, RowNaming> {
 }
 
 /** The last readable line in a room, for an inbox-style row. Its own SWR key,
- *  so it never collides with the 200-message page `useRoomPosters` holds. */
+ *  so it never collides with a longer page of the same messages. */
 export function useRoomLatest(room: string, opts: RoomQueryOptions = {}) {
   const { data, isLoading, mutate } = useSWR(
     room ? (["room", room, "messages", LATEST_LIMIT] as const) : null,
@@ -630,15 +624,19 @@ export function useRoomRevalidate(room: string): () => void {
 
 // ── Roster ───────────────────────────────────────────────────────────────────
 
-/** A person in the room: an agent's owner, someone who has posted, someone
- *  present, or you. Never an agent — those are listed as agents. */
+/** One of the room's people, as the hub recorded them joining. Never an agent,
+ *  and never someone only guessed from having posted. */
 export interface RosterPerson {
   handle: string;
+  /** How they joined: made the room, were added, posted, or were there before
+   *  rooms kept a list. */
+  via: JoinedVia;
+  joinedAt: string;
   /** Team slugs, unioned from the agents this person owns. */
   teams: string[];
   /** True when this is the handle the browser is acting as. */
   you: boolean;
-  /** True when they own ≥1 agent here (vs. only having posted). */
+  /** True when they own ≥1 agent here. */
   owns: boolean;
   presence?: PresenceMember;
 }
@@ -646,6 +644,9 @@ export interface RosterPerson {
 export interface RoomRoster {
   agents: AgentSummary[];
   people: RosterPerson[];
+  /** Handles that hold a task or are present but are neither a person nor an
+   *  agent here, such as an agent with no manifest in this room. */
+  others: RoomOther[];
   /** handle (lowercased) → presence, for badging a row live or awaiting. */
   presence: Map<string, PresenceMember>;
   /** handle (lowercased) → the floor it holds or was given, for badging whose turn it is. */
@@ -655,14 +656,15 @@ export interface RoomRoster {
 }
 
 /**
- * Everyone in a room, computed once: agents from the manifests, people from
- * agent owners ∪ posters ∪ present members ∪ you. The Members rail and the
- * composer's `@` popover are two views of this one answer.
+ * Everyone in a room, computed once: agents from the manifests, people from the
+ * hub's record of who joined (`GET /rooms/{room}/members`), never from who has
+ * posted. The Members rail and the composer's `@` popover are two views of this
+ * one answer.
  */
 export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRoster {
   const { agents, loading, refresh: refreshAgents } = useRoomAgents(room, opts);
   const { members, floors: floorList, refresh: refreshMembers } = useRoomMembers(room, opts);
-  const { posters, refresh: refreshPosters } = useRoomPosters(room, opts);
+  const { people: joined, others, refresh: refreshPeople } = useRoomPeople(room, opts);
   const { principal } = useCurrentUser();
   const me = principal.trim().toLowerCase();
 
@@ -672,47 +674,40 @@ export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRo
   );
   const floors = useMemo(() => floorsByHandle(floorList), [floorList]);
 
-  const people = useMemo(() => {
-    const agentHandles = new Set(agents.map((a) => a.handle.toLowerCase()));
-    const byHandle = new Map<string, RosterPerson>();
-    const add = (raw: string, owns: boolean) => {
-      const handle = raw.trim().replace(/^@/, "").toLowerCase();
-      if (!handle || agentHandles.has(handle)) return;
-      const existing = byHandle.get(handle);
-      if (existing) {
-        existing.owns = existing.owns || owns;
-        return;
-      }
-      byHandle.set(handle, {
-        handle,
-        teams: [],
-        you: handle === me,
-        owns,
-        presence: presence.get(handle),
-      });
-    };
-    for (const a of agents) if (a.owner) add(a.owner, true);
-    for (const p of posters) add(p, false);
-    for (const m of members) add(m.handle, false);
-    if (me) add(me, false);
+  const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle.toLowerCase())), [agents]);
 
-    for (const person of byHandle.values()) {
-      person.teams = [
-        ...new Set(
-          agents
-            .filter((a) => (a.owner ?? "").toLowerCase() === person.handle && a.team)
-            .map((a) => a.team as string),
-        ),
-      ];
-    }
-    return [...byHandle.values()].sort((x, y) => x.handle.localeCompare(y.handle));
-  }, [agents, members, posters, presence, me]);
+  const people = useMemo(() => {
+    const owned = (handle: string) => agents.filter((a) => (a.owner ?? "").toLowerCase() === handle);
+    return joined
+      // The hub never records an agent as a person; this keeps a manifest
+      // written since the last read from being drawn twice.
+      .filter((p) => !agentHandles.has(p.handle.toLowerCase()))
+      .map((p): RosterPerson => {
+        const handle = p.handle.toLowerCase();
+        const mine = owned(handle);
+        return {
+          handle,
+          via: p.via,
+          joinedAt: p.joined_at,
+          teams: [...new Set(mine.flatMap((a) => (a.team ? [a.team] : [])))],
+          you: handle === me,
+          owns: mine.length > 0,
+          presence: presence.get(handle),
+        };
+      })
+      .sort((x, y) => x.handle.localeCompare(y.handle));
+  }, [agents, agentHandles, joined, presence, me]);
+
+  const otherHandles = useMemo(
+    () => others.filter((o) => !agentHandles.has(o.handle.toLowerCase())),
+    [others, agentHandles],
+  );
 
   const refresh = useCallback(() => {
     refreshAgents();
     refreshMembers();
-    refreshPosters();
-  }, [refreshAgents, refreshMembers, refreshPosters]);
+    refreshPeople();
+  }, [refreshAgents, refreshMembers, refreshPeople]);
 
-  return { agents, people, presence, floors, loading, refresh };
+  return { agents, people, others: otherHandles, presence, floors, loading, refresh };
 }

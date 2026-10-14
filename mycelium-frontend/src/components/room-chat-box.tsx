@@ -379,7 +379,7 @@ export function RoomChatBox({
   // renders; `[[` reads the room's memory keys and `/` its skills. All three
   // are shared reads — opening a room fetches each of them once, however many
   // panels are looking.
-  const { agents, people } = useRoomRoster(roomName);
+  const { agents, people, others } = useRoomRoster(roomName);
   const { memories } = useRoomMemories(roomName);
   const memoryKeys = useMemo(() => memories.map(memoryKey), [memories]);
   const { skills } = useRoomSkills(roomName);
@@ -532,8 +532,17 @@ export function RoomChatBox({
         tertiary: undefined as string | undefined,
         engine: false,
       })),
+      // Present or holding a task, but neither a person nor an agent here:
+      // still someone a message can reach.
+      ...others.map((o) => ({
+        handle: o.handle,
+        name: undefined as string | undefined,
+        secondary: o.present ? "here" : "holds a task",
+        tertiary: undefined as string | undefined,
+        engine: false,
+      })),
     ],
-    [agents, people, names],
+    [agents, people, others, names],
   );
 
   const candidates = useMemo<Candidate[]>(() => {

@@ -41,6 +41,7 @@ from app.routes.fields import router as fields_router
 from app.routes.hub import router as hub_router
 from app.routes.joins import router as joins_router
 from app.routes.links import router as links_router
+from app.routes.members import router as members_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.participate import router as participate_router
@@ -414,6 +415,7 @@ app.include_router(a2a_state_router, prefix="/api")
 app.include_router(engines_router, prefix="/api")
 app.include_router(rooms_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
+app.include_router(members_router, prefix="/api")
 app.include_router(assignments_router, prefix="/api")
 app.include_router(fields_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")

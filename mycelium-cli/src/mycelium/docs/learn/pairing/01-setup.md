@@ -8,7 +8,7 @@ its own person's code and context. The four of you meet in one task's thread.
   Guides.
 - **One room with both of you in it.** In the Members panel, **Invite** copies a
   link to the room. It opens the room in your teammate's desktop app or in
-  their browser.
+  their browser. They're listed under **People** once they post in it.
 - **Each person brings an agent.** Yours runs on your machine and theirs runs
   on theirs. Each is added with **Add**, **Your machine**. The members list
   shows whose agent is whose.

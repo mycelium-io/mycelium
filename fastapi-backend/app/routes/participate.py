@@ -45,6 +45,7 @@ from app.services import (
     message_format,
     principals,
     room_channels,
+    room_people,
     schedules,
     tasks,
 )
@@ -460,6 +461,8 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     room_channels.manager.enqueue_herdr_wakes_for_mentions(
         room_name, clean, exclude=handle, episode=episode
     )
+    # A person replying from the CLI has joined the room, as one posting does.
+    room_people.joined_by_message(room_name, handle)
     return {
         "room": room_name,
         "handle": handle,
