@@ -49,6 +49,25 @@ the splash repo builds standalone. Re-run and commit when the UI changes.
    with `steps`, which become shotkit actions, not with a fixture.
 4. `pnpm screenshots <id>` and eyeball the result.
 
+## The home page's wake note
+
+One picture on the home page isn't the app: `step-wake-agent`, the note an
+agent reads when it wakes. It is a terminal card of `wake-note.txt`, a sample
+wake for `builder` in the mock's `checkout` room, written in the format
+`fastapi-backend/app/services/wake_digest.py` builds. When that format changes,
+update the text to match and remake the card from the repo root:
+
+```
+node shotkit/bin/shot.mjs term --cols 96 --backdrop none --padding 0 \
+  --title "builder · claude" --command "the wake @builder reads" \
+  -o ../mycelium-io.github.io/step-wake-agent@2x.png \
+  -- cat mycelium-frontend/screenshots/wake-note.txt
+```
+
+Then make `step-wake-agent.png` at half that width (on a Mac,
+`sips -Z <half> step-wake-agent@2x.png --out step-wake-agent.png`) and run
+`npm run optimize-png -- <file>` on both, in `mycelium-frontend`.
+
 ## Notes
 
 - Needs a Chromium; `node ../shotkit/bin/shot.mjs doctor` says whether one is

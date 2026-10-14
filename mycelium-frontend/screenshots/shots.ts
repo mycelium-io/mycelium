@@ -45,6 +45,12 @@ export interface Shot {
    */
   clip?: string;
   /**
+   * A region of the frame to keep, in CSS pixels, cut from the full-density
+   * capture: for a page that shows one part of the app at a size it can be
+   * read, where no single element holds that part.
+   */
+  crop?: { x: number; y: number; width: number; height: number };
+  /**
    * Buttons to click (by accessible name) after the page settles and before the
    * shot — how we reach a view/rail that's behind a tab (Negotiate, Network) or
    * inspector rail (Memory) rather than a distinct route.
@@ -65,7 +71,7 @@ export interface Shot {
   caption: string;
 }
 
-export const SHOTS: Shot[] = [
+const BASE: Shot[] = [
   {
     id: "home",
     route: "/",
@@ -156,6 +162,8 @@ export const SHOTS: Shot[] = [
     viewport: "desktop",
     steps: ["Board"],
     actions: [
+      // A claimed task is under In flight, not the board's first view.
+      "click:text=In flight",
       'click:[data-board-row="memory:work/turn-on-apple-pay"]',
       "sleep:1200",
       'click:css=button[aria-expanded]:has-text("Flow")',
@@ -238,8 +246,25 @@ export const SHOTS: Shot[] = [
     viewport: "desktop",
     steps: ["Board"],
     // By the row's key: its title also appears in another row's "blocks" note.
-    actions: ['click:[data-board-row="memory:work/turn-on-apple-pay"]', "sleep:1200"],
+    actions: [
+      // A claimed task is under In flight, not the board's first view.
+      "click:text=In flight",
+      'click:[data-board-row="memory:work/turn-on-apple-pay"]',
+      "sleep:1200",
+    ],
     caption: "A task's own thread: the agents talk it through here, not in the room.",
+  },
+  {
+    id: "mention",
+    route: "/room/checkout",
+    theme: "dark",
+    viewport: "desktop",
+    actions: [
+      'click:role=textbox[name=/Message/]',
+      "typekeys:Can you take the refund flow? @",
+      "sleep:600",
+    ],
+    caption: "Asking an agent: @ lists the room's members, and the hints name @~ and @!.",
   },
   {
     id: "walk-aligner",
@@ -332,4 +357,37 @@ export const SHOTS: Shot[] = [
       },
     ];
   }),
+];
+
+export const SHOTS: Shot[] = [
+  ...BASE,
+  // ── The home page's steps, mycelium-io.github.io ─────────────────────────
+  // Each shows the part of the app its step is about, cropped so it reads at
+  // the size the page shows it. Four are crops of shots above.
+  ...(
+    [
+      // From the role picker down: the role, the handle, its notes, and the
+      // machine, agent CLI and folder it starts with.
+      ["home-add-agent", "walk-add-agent", { x: 383, y: 284, width: 674, height: 489 }],
+      ["home-room", "room-channel", { x: 237, y: 425, width: 863, height: 445 }],
+      // Ends before the thread's last message, which carries a verifier line.
+      ["home-thread", "walk-thread", { x: 668, y: 66, width: 432, height: 540 }],
+      // The @ list and the message under it, short of the channel behind.
+      ["home-mention", "mention", { x: 245, y: 647, width: 458, height: 183 }],
+    ] as const
+  ).map(([id, from, crop]) => {
+    const base = BASE.find((s) => s.id === from);
+    if (!base) throw new Error(`home shot ${id} crops ${from}, which isn't a shot`);
+    return { ...base, id, crop };
+  }),
+  {
+    id: "home-memory",
+    route: "/room/checkout",
+    theme: "dark",
+    viewport: "desktop",
+    actions: ["click:text=context >> nth=0", "sleep:500", "click:text=briefing", "sleep:1200"],
+    // The memory as it reads, with what it links to: header, text and links.
+    crop: { x: 229, y: 68, width: 582, height: 320 },
+    caption: "One of the room's memories, rendered, with the memories it links to.",
+  },
 ];
