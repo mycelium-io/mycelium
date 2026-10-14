@@ -127,7 +127,7 @@ async def _write(room: wake_paths.Room, message: dict[str, Any]) -> None:
     deadline=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
 )
-@given(case=_case())
+@given(case=_case())  # ty: ignore[missing-argument]  # st.composite fills `draw`
 async def test_the_paths_agree(room: wake_paths.Room, case: tuple[str, dict]) -> None:
     agent, message = case
     start = wake_paths.mark_read(room, agent)

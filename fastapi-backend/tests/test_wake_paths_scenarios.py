@@ -28,7 +28,8 @@ async def room(client, monkeypatch) -> wake_paths.Room:
 
 
 def _busy(*handles: str) -> None:
-    states = dict.fromkeys(wake_paths.HERDR, "idle") | dict.fromkeys(handles, "working")
+    states: dict[str, str | dict] = {h: "idle" for h in wake_paths.HERDR}
+    states |= dict.fromkeys(handles, "working")
     room_channels.manager.set_herdr_presence(ROOM, states)
 
 
