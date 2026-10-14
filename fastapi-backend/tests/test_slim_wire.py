@@ -159,10 +159,7 @@ def test_valid_subkinds_match_contract():
 def test_ping_payload_matches_contract():
     """The ping the backend raises is the one the CLI's tail knows how to draw.
 
-    Rename it on this side alone and two things go quiet: the CLI stops
-    surfacing that a task moved, and every resident agent starts waking on every
-    thread write, because the exclusion in ``participate._addressed_to`` keys off
-    this same literal.
+    Rename it on this side alone and the CLI stops surfacing that a task moved.
     """
     import asyncio
     import json as json_module
@@ -202,9 +199,8 @@ def test_ping_payload_matches_contract():
 def test_notice_payload_matches_contract():
     """The notice the backend raises is the one the GUI draws in the timeline.
 
-    Same stakes as the ping: rename the type on this side and either the channel
-    stops showing that the board moved, or every resident agent starts waking on
-    every board write (``participate._addressed_to`` keys off this same literal).
+    Same stakes as the ping: rename the type on this side and the channel stops
+    showing that the board moved.
     """
     import asyncio
     import json as json_module

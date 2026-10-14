@@ -772,7 +772,7 @@ def test_a_swarm_job_starts_the_team_briefs_it_and_kicks_it_off(
         "agents/agent-2/notes",
     ]
     kickoff = hub.of("POST", "/api/rooms/eng/messages")[0]
-    assert kickoff["content"] == "@conductor swarm @agent-1 @agent-2: Fix the flaky tests"
+    assert kickoff["content"] == "@conductor swarm @~agent-1 @~agent-2: Fix the flaky tests"
     assert kickoff["episode"] == "urn:ep:eng:t1"
     report = next(b for m, p, b in hub.seen if m == "PATCH")
     assert report["status"] == "done"

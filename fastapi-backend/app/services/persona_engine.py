@@ -13,17 +13,17 @@ each one's notes, and the room has members that answer without a resident
 session behind any of them.
 
 It answers on two seams. A text ``@``-mention is a summon, like any engine's.
-An **addressed turn** — an exchange naming it as a message recipient with nobody
-mentioned in the text, which is how the aligner and the conductor put a
-question to one member — reaches it through the persister's addressed hook,
+An **addressed turn**, a ``message`` naming it as recipient without mentioning
+it (``asks.py``), which is how the aligner and the conductor put a question to
+one member, reaches it through the manager's turn hook (``on_turn``),
 so a persona can fill a protocol role or a negotiation seat. Either way it
 answers where it was asked, in the thread the turn rode.
 
 A reply ending in a position marker is lifted the way the reply route lifts
 one: the stance lands on the message payload and the prose is posted clean, so a
 guardian played by a persona blocks a gated step the same as a resident agent
-would. Every ``@`` in what it says is neutralized before posting, so a persona
-can never summon anything, and two personas cannot ping-pong.
+would. What it says is posted as it said it: a mention in it asks whoever it
+names, by the same rule as anyone's (``asks.py``).
 
 Dormant by default and fail-loud like the other engines: a Pi error or an
 empty answer is posted as a readable reason rather than silence.
@@ -263,7 +263,9 @@ class PersonaEngine:
         managed = self._manager.get(room)
         where = episode or message_format.live_episode_urn(room)
         in_thread = not message_format.is_live_episode(room, where)
-        system = _persona_text(room, me)
+        from app.services.asks import MENTION_ETIQUETTE
+
+        system = f"{_persona_text(room, me)}\n\n{MENTION_ETIQUETTE}"
         said = await asyncio.to_thread(_agreed_in, room, where)
         prompt = _build_prompt(room, me, sender, text, in_thread=in_thread, agreed=said)
         activity.signal(room, me, "responding", episode=where)
@@ -285,7 +287,6 @@ class PersonaEngine:
             await self._say(managed, where, me, "Pi returned an empty response; ask me again.")
             return None
         payload, clean = markers.parse_marker(reply)
-        clean = turns.neutralize_mentions(clean)
         await self._say(managed, where, me, clean, payload=payload)
         return clean
 

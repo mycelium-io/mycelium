@@ -88,7 +88,8 @@ _NOT_A_REPLY = frozenset(
     }
 )
 
-_MENTION = re.compile(r"@[\w.@-]+")
+#: A handle named in a summon, loud, silent (``@~``) or interrupting (``@!``).
+_MENTION = re.compile(r"@[~!]?[\w.@-]+")
 _LEADING_PUNCT = re.compile(r"^[\s:,;\u2014\u2013-]+")
 
 
@@ -435,7 +436,7 @@ class ConductorEngine:
         if settings.ENGINE_RUNTIME == "host":
             logger.info("engine @%s summoned in %s but ENGINE_RUNTIME=host", handle, room)
             return
-        from app.services.persister import envelope_sender
+        from app.services.persister import envelope_sender, parse_named
 
         sender = envelope_sender(envelope)
         if sender is not None and _norm(sender) in {_norm(self._handle), _norm(handle)}:
@@ -447,9 +448,13 @@ class ConductorEngine:
             logger.debug("conductor already running in %s; ignoring re-summon", thread)
             return
         drop = {_norm(handle), _norm(self._handle), *(_norm(h) for h in _NON_PARTICIPANTS)}
-        named = [h for h in (co_summons or []) if _norm(h) not in drop]
+        # The members bound to roles are every handle the summon names, however
+        # it names them: ``@~a`` binds a role without waking anyone, ``@a``
+        # binds it and wakes them now, by the ordinary rule (``asks.py``).
+        named = [h for h in parse_named(message_text) if _norm(h) not in drop]
         directive = _MENTION.sub(
-            lambda m: "" if _norm(m.group(0)) == _norm(handle) else m.group(0), message_text
+            lambda m: "" if _norm(m.group(0).lstrip("@~!")) == _norm(handle) else m.group(0),
+            message_text,
         )
         # The thread's floor is the run's from this instant, before anything
         # else on the loop runs: a member the summon woke cannot slip a reply
@@ -1346,7 +1351,7 @@ class ConductorEngine:
         )
         ep.messages.append(message_format.envelope_to_dict(env))
         try:
-            await managed.post(env, turns.neutralize_mentions(prompt))
+            await managed.post(env, prompt)
         except Exception:
             logger.warning("conductor failed to post step %s to @%s", data.get("step"), handle)
 
@@ -1404,9 +1409,8 @@ class ConductorEngine:
         ep.messages.append(message_format.envelope_to_dict(commit))
         text = f"{self._result_line(run, outcome, why)} Record: {EPISODES_PREFIX}{ep.short_id}."
         try:
-            # A mention in a post would summon whoever it names; the close
-            # speaks about the members, never to them.
-            await managed.post(commit, turns.neutralize_mentions(text), list_write=True)
+            # A commit asks nobody (``asks.py``): the close is said, not put.
+            await managed.post(commit, text, list_write=True)
         except Exception:
             logger.warning("conductor failed to post the outcome for %s", run.episode)
         episode_state.write_episode_record(ep, outcome=outcome, metrics=metrics, tasks=None)
@@ -1480,9 +1484,8 @@ class ConductorEngine:
             payload_data={LINE_KEY: line} if line else None,
         )
         try:
-            # The conductor talks about members, not to them: a mention here
-            # would summon them mid-run, and their answer could be read as the
-            # reply to the next turn.
-            await managed.post(env, turns.neutralize_mentions(text), list_write=True)
+            # Posted as written: a mention asks whoever it names, as anyone's
+            # does (``asks.py``). The conductor's own lines name no one bare.
+            await managed.post(env, text, list_write=True)
         except Exception:
             logger.warning("conductor failed to post on room %s", managed.room)

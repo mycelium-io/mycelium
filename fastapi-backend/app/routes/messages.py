@@ -196,15 +196,14 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     await room_channels.manager.raise_ping(
         base_room, episode=msg.episode, sender=msg.sender_handle, message_id=msg.message_id
     )
-    # herdr wake-on-mention: the backend is herdr-blind, but it sees every tag. If
-    # a mention targets a handle that's alive in herdr but NOT a joined member
-    # (would otherwise ignore the tag), enqueue a wake for the host-side sync
-    # bridge to run `herdr agent prompt`. This is the "commands down" leg that
-    # makes tagging-from-the-UI actually reach a resident-but-idle herdr agent.
+    # A mention rings its herdr doorbell where every message's does: as the room
+    # records it (``room_channels.ring_asked``), not here. Unpublished, it isn't
+    # recorded, so nothing rings; the wake log says why.
     if coord is None and msg.message_type == MessageType.BROADCAST:
-        room_channels.manager.enqueue_herdr_wakes_for_mentions(
-            base_room, msg.content or "", sender=msg.sender_handle, episode=msg.episode
-        )
+        if not published:
+            room_channels.manager.note_unrecorded_asks(
+                base_room, sender=msg.sender_handle, text=msg.content or "", episode=msg.episode
+            )
         # A person who posts in a room has joined it; an agent or an unknown
         # handle hasn't (``room_people``).
         room_people.joined_by_message(base_room, msg.sender_handle)

@@ -595,12 +595,12 @@ def _present(room: str) -> set[str]:
 
 
 def _check_mentions(room: str, schedule: Schedule, since: datetime | None) -> list[str]:
-    from app.routes.participate import _addressed_to
+    from app.services.asks import asks
     from app.services.persister import _conversational_text
 
     found = []
     for record in _since_records(room, since):
-        if not _addressed_to(record.content, schedule.owner):
+        if not asks(record.content, schedule.owner):
             continue
         text = (_conversational_text(record.content) or "").strip().splitlines()
         found.append(f"@{record.sender}: {text[0][:120] if text else '(no text)'}")

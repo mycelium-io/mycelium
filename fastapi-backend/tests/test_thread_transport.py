@@ -23,6 +23,7 @@ from starlette.requests import Request
 
 from app.routes import participate
 from app.services import message_format, persister, room_channels, tasks
+from app.services.asks import asks
 from app.services.filesystem import get_room_dir
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content
@@ -443,8 +444,8 @@ class TestPing:
         await self._post(client, episode=thread, text="@sec thoughts?")
 
         _ping, content = live.persister.pings[0]
-        assert not participate._addressed_to(content, "sec")
-        assert not participate._addressed_to(content, "api")
+        assert not asks(content, "sec")
+        assert not asks(content, "api")
 
     @pytest.mark.asyncio
     async def test_a_message_to_the_room_pings_nothing(self, client, room, live):

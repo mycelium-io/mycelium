@@ -253,20 +253,11 @@ def test_transcript_does_not_clobber_episode_records():
 # ── trigger-watcher ──────────────────────────────────────────────────────────
 
 
-def test_summon_token_is_recognized_in_content():
-    content = {"text": "hey @aligner can you check this?", "l9": {"ignored": "@notme"}}
-    assert persister.find_summons(content) == ["aligner"]
-
-
-def test_plain_message_has_no_summons():
-    assert persister.find_summons({"text": "just chatting, no mentions"}) == []
-    # An @ inside the l9 envelope key is never treated as a summon.
-    assert persister.find_summons({"l9": {"note": "@ghost"}}) == []
-
-
-def test_multiple_summons_deduped_in_order():
-    content = {"text": "@a and @b and @a again", "extra": ["also @c"]}
-    assert persister.find_summons(content) == ["a", "b", "c"]
+def test_who_is_named_in_order_however_named():
+    # What a conductor binds its roles from: loud, silent and interrupting
+    # mentions alike, once each, in the order written; code is quoted.
+    text = "@conductor gated @~coder @Planner, then @!coder and `@ghost`"
+    assert persister.parse_named(text) == ["conductor", "coder", "Planner"]
 
 
 # ── plan-compile hook ────────────────────────────────────────────────────────
@@ -315,12 +306,12 @@ def test_ingest_fires_summon_hook_but_not_on_plain_message():
     from app.services.message_slim import serialize_content
 
     env = _exchange("m1", text="ping @aligner")
-    p._ingest(env, serialize_content(env, extra={"text": "ping @aligner"}))
+    p._ingest(env, serialize_content(env, extra={"content": "ping @aligner"}))
     assert summoned == ["aligner"]
     assert converged == []
 
     plain = _exchange("m2", text="no mention here")
-    p._ingest(plain, serialize_content(plain, extra={"text": "no mention here"}))
+    p._ingest(plain, serialize_content(plain, extra={"content": "no mention here"}))
     assert summoned == ["aligner"]  # unchanged
 
 

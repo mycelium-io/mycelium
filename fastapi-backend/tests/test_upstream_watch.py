@@ -372,7 +372,7 @@ def _upstream(
 
 
 def test_an_upstream_notice_wakes_nobody():
-    from app.routes.participate import _addressed_to
+    from app.services.asks import asks
 
     record = _upstream("work/apple-pay", "Turn on Apple Pay", "review_requested", 1, who="builder")
-    assert not _addressed_to(record.content, "builder")
+    assert not asks(record.content, "builder")

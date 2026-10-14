@@ -286,16 +286,16 @@ def test_registered_engine_kind_reads_manifest() -> None:
     assert _registered_engine_kind(room, "ghost") is None  # no manifest
 
 
-def test_at_mention_neutralized_in_mediator_prompt() -> None:
-    """The mediator strips ``@`` before a word so its broker summary (which names
-    the other agents) can't spuriously wake them — only the message recipient wakes."""
-    from app.services.aligner import _AT_MENTION
+def test_the_mediator_is_told_a_bare_mention_asks() -> None:
+    """What the aligner posts is posted as written, so its model is told what a
+    bare ``@`` does, the same as every member the hub plays."""
+    import inspect
 
-    text = "@growth holds tech at 40%; @risk wants a hard cap. Email @ home is fine."
-    out = _AT_MENTION.sub("", text)
-    assert "@growth" not in out and "@risk" not in out
-    assert "growth holds tech" in out and "risk wants" in out
-    assert "@ home" in out  # a lone @ (not before a word char) is untouched
+    from app.services import mediator
+    from app.services.asks import MENTION_ETIQUETTE
+
+    assert "MENTION_ETIQUETTE" in inspect.getsource(mediator)
+    assert "@~name" in MENTION_ETIQUETTE
 
 
 # ── move type reaches the wire ─────────────────────────────────────────────

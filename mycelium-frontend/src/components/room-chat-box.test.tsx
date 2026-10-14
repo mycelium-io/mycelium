@@ -832,13 +832,14 @@ describe("<RoomChatBox /> conductor summons", () => {
     await userEvent.keyboard("{Tab}");
     expect(box).toHaveValue("@conductor gated ");
 
-    expect(usage).toHaveTextContent("@conductorgated@proposer@guardian<what…>");
-    expect(usage.querySelector("[aria-current]")).toHaveTextContent("@proposer");
-    expect(usage).toHaveTextContent("Who plays proposer");
+    // Members are named silently: bound to the roles, asked by the conductor in turn.
+    expect(usage).toHaveTextContent("@conductorgated@~proposer@~guardian<what…>");
+    expect(usage.querySelector("[aria-current]")).toHaveTextContent("@~proposer");
+    expect(usage).toHaveTextContent("Who plays proposer. Type @~ to pick them");
 
-    await userEvent.type(box, "@sam ");
-    expect(usage.querySelector("[aria-current]")).toHaveTextContent("@guardian");
-    await userEvent.type(box, "@watcher ");
+    await userEvent.type(box, "@~sam ");
+    expect(usage.querySelector("[aria-current]")).toHaveTextContent("@~guardian");
+    await userEvent.type(box, "@~watcher ");
     expect(usage.querySelector("[aria-current]")).toHaveTextContent("<what…>");
     expect(usage).not.toHaveTextContent("inside a task");
 
@@ -846,7 +847,7 @@ describe("<RoomChatBox /> conductor summons", () => {
     await userEvent.type(box, "ship the fix{Enter}");
     await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
     expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({
-      content: "@conductor gated @sam @watcher ship the fix",
+      content: "@conductor gated @~sam @~watcher ship the fix",
       episode: thread,
     });
   });

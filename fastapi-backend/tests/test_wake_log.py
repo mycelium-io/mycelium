@@ -166,7 +166,8 @@ def test_a_mention_of_an_agent_nothing_runs_is_unreached(manager, monkeypatch):
     monkeypatch.setattr(
         principals, "classify_sender", lambda _r, h: "agent" if h == "builder" else "user"
     )
-    manager.enqueue_herdr_wakes_for_mentions(ROOM, "@builder and @julia, look", sender="hay")
+    for handle in ("builder", "julia"):
+        manager.ring_asked(ROOM, handle, "mention", sender="hay")
     (record,) = wake_log.read(ROOM)  # a person is reached some other way
     assert record["agent"] == "builder"
     # Not lost: it reads the message on its next await. Nothing could be woken.

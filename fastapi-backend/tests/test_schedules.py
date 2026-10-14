@@ -430,15 +430,10 @@ def told(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
                 }
             )
 
-    def wakes(room, content, *, sender=None, episode=None, **_):
-        said[-1]["woke"] = (sender, episode)
-        return []
-
     async def raise_ping(room, *, episode, sender, message_id):
         said[-1]["ping"] = (sender, episode)
 
     monkeypatch.setattr(manager, "get", lambda room: Channel())
-    monkeypatch.setattr(manager, "enqueue_herdr_wakes_for_mentions", wakes)
     monkeypatch.setattr(manager, "raise_ping", raise_ping)
     return said
 

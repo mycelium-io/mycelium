@@ -12,12 +12,10 @@ and carries on rather than taking the interrupt as "the person stopped me".
 
 Three properties keep it safe.
 
-**Not the hub's own members.** Anyone in the room, person or agent, may
-interrupt any agent, so an agent can stop a teammate that is about to do
-something wrong. Engines (the aligner, the conductor) never interrupt, and
-personas and workers lose the ``!`` before their text is posted, so nothing the
-hub runs itself can stop an agent. From an engine, ``@!`` is an ordinary
-mention.
+**Anyone named.** Any member of the room, a person, an agent or an engine, may
+interrupt any agent, by the same rule as every other ask (``asks.py``), so an
+agent can stop a teammate that is about to do something wrong. A message with
+no sender named interrupts nobody.
 
 **Only a working agent.** An idle one is woken as for ``@handle`` and is sent
 no key, since on an idle session the key could clear what a person was typing
@@ -34,7 +32,6 @@ from __future__ import annotations
 
 import logging
 
-from app.services import principals
 from app.services.agent_registry import norm_handle
 from app.services.runners import RunnerError, registry
 
@@ -49,8 +46,6 @@ def refusal(room: str, target: str, by: str | None) -> str | None:
     actor = norm_handle(by or "") or ""
     if not actor:
         return "nobody named sent it"
-    if principals.classify_sender(room, actor) == "engine":
-        return f"@{actor} is an engine, and engines don't interrupt agents (@{target})"
     return None
 
 

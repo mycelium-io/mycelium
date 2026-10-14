@@ -1283,8 +1283,8 @@ function SummonSignature({
   const { protocol, members, active, slot } = summon;
   const roles = protocol?.roles ?? [];
   const memberSlots: Slot[] = roles.length
-    ? roles.map((r, i) => ({ label: `@${r}`, filled: i < members.length }))
-    : [{ label: protocol ? "[@member…]" : "@member…", filled: members.length > 0 }];
+    ? roles.map((r, i) => ({ label: `@~${r}`, filled: i < members.length }))
+    : [{ label: protocol ? "[@~member…]" : "@~member…", filled: members.length > 0 }];
   const slots: Slot[] = [
     { label: summon.flow?.value.replace(/[:,;]+$/, "") || "<flow>", filled: Boolean(protocol) },
     ...memberSlots,
@@ -1299,7 +1299,7 @@ function SummonSignature({
   } else if (active === "member") {
     const role = roles[slot];
     about = role
-      ? `Who plays ${role}. Type @ to pick them${roles.length > 1 ? `; members take the roles in order` : ""}.`
+      ? `Who plays ${role}. Type @~ to pick them, so they're asked in their turn rather than woken now${roles.length > 1 ? `; members take the roles in order` : ""}.`
       : roles.length
         ? "Every role has someone. Say what it's about next."
         : "Who takes part. Name nobody and everyone in the room does.";

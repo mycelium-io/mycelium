@@ -85,6 +85,7 @@ TRANSCRIPT_FILENAME = "log/transcript.jsonl"
 _SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@!?([A-Za-z0-9][\w-]*)")
 _SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~([A-Za-z0-9][\w-]*)")
 _INTERRUPT_RE = re.compile(r"(?:^|(?<=[\s(<]))@!([A-Za-z0-9][\w-]*)")
+_NAMED_RE = re.compile(r"(?:^|(?<=[\s(<]))@[~!]?([A-Za-z0-9][\w-]*)")
 
 # Code is quoted, never addressed: a handle inside a code span or a fenced block
 # is no mention of any kind (``contracts/mentions.json``). A fence opens on a
@@ -185,44 +186,10 @@ def envelope_message_id(envelope: MyceliumMessage) -> str | None:
     return message.id if message is not None else None
 
 
-#: Payloads an exchange carries that are signals rather than turns: nothing
-#: to answer, so the addressed hook never fires for them.
-_SIGNAL_PAYLOADS = frozenset(
-    {"presence", "keepalive", message_format.PING_PAYLOAD_TYPE, message_format.NOTICE_PAYLOAD_TYPE}
-)
-#: A reply answers something; it puts a turn to nobody. Its recipient is who
-#: the replier last heard from (``respond`` names the sender of the turn it
-#: was handed), which need not be who it's answering, so ringing that
-#: recipient as if asked woke agents nobody had asked. To ask an agent
-#: something, a reply mentions it.
-_ANSWER_PAYLOADS = frozenset({"reply"})
-
-
-def is_addressed_turn(envelope: MyceliumMessage) -> bool:
-    """True for an ``exchange`` that puts something to its recipients: the
-    aligner's and the conductor's questions to one member, not a reply."""
-    header = envelope.header
-    if header.kind.value != "exchange":
-        return False
-    return envelope.payload.type not in _SIGNAL_PAYLOADS | _ANSWER_PAYLOADS
-
-
 def is_converged(envelope: MyceliumMessage) -> bool:
     """True for a ``commit:converged`` envelope (the plan-compile trigger)."""
     header = envelope.header
     return header.kind.value == "commit" and header.subkind == "converged"
-
-
-def _iter_text(value: Any) -> Iterable[str]:
-    """Yield every string leaf in a nested content value."""
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for v in value.values():
-            yield from _iter_text(v)
-    elif isinstance(value, list):
-        for v in value:
-            yield from _iter_text(v)
 
 
 def parse_mentions(text: str) -> list[str]:
@@ -254,6 +221,17 @@ def parse_silent_mentions(text: str) -> list[str]:
     return list(seen)
 
 
+def parse_named(text: str) -> list[str]:
+    """Every handle named in one plain-text string, in the order named, however
+    it was written: ``@handle``, ``@~handle`` or ``@!handle``. For reading who a
+    command names (a conductor binding its roles), not who it asks: only the
+    loud forms ask (:func:`parse_mentions`)."""
+    seen: dict[str, None] = {}
+    for match in _NAMED_RE.findall(blank_code(text)):
+        seen.setdefault(match, None)
+    return list(seen)
+
+
 def parse_interrupt_mentions(text: str) -> list[str]:
     """Handles named with an interrupting ``@!handle`` in one plain-text string.
 
@@ -264,22 +242,6 @@ def parse_interrupt_mentions(text: str) -> list[str]:
     seen: dict[str, None] = {}
     for match in _INTERRUPT_RE.findall(blank_code(text)):
         seen.setdefault(match, None)
-    return list(seen)
-
-
-def find_summons(content: dict[str, Any]) -> list[str]:
-    """Handles ``@``-summoned in a message's human-facing content.
-
-    Scans every string in ``content`` except the additive ``l9`` envelope (which
-    agents never read), de-duplicated preserving first-seen order.
-    """
-    seen: dict[str, None] = {}
-    for key, value in content.items():
-        if key == "l9":
-            continue
-        for text in _iter_text(value):
-            for match in parse_mentions(text):
-                seen.setdefault(match, None)
     return list(seen)
 
 
@@ -930,11 +892,10 @@ def write_episode_cursors(room: str, cursors: dict[str, dict[str, int]]) -> None
 # ── The receive loop ─────────────────────────────────────────────────────────
 
 SummonHook = Callable[[str, "MyceliumMessage", list[str], str], None]
-# Called once per message recipient of an exchange that named nobody in its text —
-# an addressed turn, the way the aligner and the conductor put a question to
-# one member. A mention in the text is a summon and fires the summon hook
-# instead, so a handle is never told twice about one message.
-AddressedHook = Callable[[str, "MyceliumMessage", str], None]
+# Called once per handle a message asks for something, with why (``mention``,
+# ``turn`` or ``interrupt``; :mod:`app.services.asks` is the rule): what rings
+# the herdr doorbell, and how a persona or a worker hears a turn put to it.
+AskedHook = Callable[[str, str, "MyceliumMessage", str], None]
 ConvergedHook = Callable[["MyceliumMessage"], None]
 # Called with the handle of a member that dropped off the channel, so the
 # moderator can update its membership — presence, not a fatal error.
@@ -1031,7 +992,7 @@ class RoomPersister:
         on_summon: SummonHook | None = None,
         on_converged: ConvergedHook | None = None,
         on_member_left: MemberLeftHook | None = None,
-        on_addressed: AddressedHook | None = None,
+        on_asked: AskedHook | None = None,
         on_recorded: RecordedHook | None = None,
         feed_bus: bool = True,
     ) -> None:
@@ -1039,7 +1000,7 @@ class RoomPersister:
         self._channel = channel
         self._members_provider = members_provider
         self.on_summon = on_summon or _default_summon_hook
-        self.on_addressed = on_addressed
+        self.on_asked = on_asked
         self.on_recorded = on_recorded
         self.on_converged = on_converged or _default_converged_hook
         self.on_member_left = on_member_left
@@ -1320,24 +1281,27 @@ class RoomPersister:
                 self.on_recorded(record)
             except Exception:
                 logger.exception("recorded hook failed for %s", record.message_id)
-        # Triggers: @-summon and commit:converged (skeleton hooks). The full
-        # summon list is passed to every hook call so an engine summoned alongside
-        # other handles (``@aligner @a @b``) can scope the run to those co-mentions.
-        summons = find_summons(content)
+        # Triggers: who the message asks (``asks.py``, one rule for everyone)
+        # and commit:converged. A handle it mentions is summoned: an engine
+        # self-selects by its manifest, so for anyone else that's a no-op. The
+        # full list goes to every summon so an engine summoned alongside other
+        # handles (``@aligner @a @b``) can scope the run to those co-mentions.
+        from app.services.asks import asked
+
         message_text = content.get("content", "") if isinstance(content, dict) else ""
+        asking = asked(content)
+        summons = [h for h, why in asking.items() if why != "turn"]
         for handle in summons:
             try:
                 self.on_summon(handle, envelope, summons, message_text)
             except Exception:
                 logger.exception("summon hook failed for @%s", handle)
-        if self.on_addressed is not None and is_addressed_turn(envelope):
-            for handle in envelope_recipients(envelope):
-                if handle in summons:
-                    continue
+        if self.on_asked is not None:
+            for handle, why in asking.items():
                 try:
-                    self.on_addressed(handle, envelope, message_text)
+                    self.on_asked(handle, why, envelope, message_text)
                 except Exception:
-                    logger.exception("addressed hook failed for @%s", handle)
+                    logger.exception("asked hook failed for @%s", handle)
         if is_converged(envelope):
             try:
                 self.on_converged(envelope)

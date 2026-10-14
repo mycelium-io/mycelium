@@ -559,7 +559,9 @@ async def test_a_rooms_own_protocol_runs_under_its_name():
 
 
 def _summon(text: str, *, episode: str, sender: str = "julia") -> Any:
-    from app.services.persister import find_summons
+    """A summon as the persister hands it on: who the text asks by mention."""
+    from app.services.asks import asked
+    from app.services.message_slim import serialize_content
 
     env = message_format.build_envelope(
         kind=Kind.exchange,
@@ -569,7 +571,8 @@ def _summon(text: str, *, episode: str, sender: str = "julia") -> Any:
         topic=message_format.topic_urn(ROOM),
         payload_type="message",
     )
-    return env, find_summons({"content": text}), text
+    asking = asked(serialize_content(env, extra={"content": text}))
+    return env, [h for h, why in asking.items() if why != "turn"], text
 
 
 @pytest.mark.asyncio
@@ -614,6 +617,30 @@ async def test_a_summon_from_a_task_walks_in_the_tasks_own_thread():
     ]
     assert said[0].startswith("✓ gated: resolved after 2 step(s)")
     assert said[0].endswith(f"Record: {key}.")
+
+
+@pytest.mark.asyncio
+async def test_members_named_silently_are_bound_to_roles_and_asked_in_turn():
+    # ``@~api @~sec`` asks nobody (``asks.py``), so the summon wakes no member;
+    # the conductor still reads them as its roles and asks each in its turn.
+    _register("conductor", "conductor")
+    engine, _manager, channel = _engine(
+        {"api": [("do the thing", None)], "sec": [("approved", "accept")]}
+    )
+    env, summons, text = _summon("@conductor gated @~api @~sec: rotate the key", episode=THREAD)
+    assert summons == ["conductor"]
+
+    engine.handle_summon(ROOM, "conductor", env, summons, text)
+    await asyncio.sleep(0.1)
+
+    commit = channel.commit()
+    assert commit.payload.data["roles"] == {"proposer": "api", "guardian": "sec"}
+    turns_put = [
+        e.header.participants.actors[1].id
+        for e, _x in channel.sent
+        if e.payload.type == "message" and len(e.header.participants.actors) > 1
+    ]
+    assert turns_put == ["api", "sec"]
 
 
 @pytest.mark.asyncio

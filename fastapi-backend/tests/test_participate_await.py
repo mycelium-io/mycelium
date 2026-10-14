@@ -16,6 +16,7 @@ from starlette.requests import Request
 
 from app.routes import participate
 from app.services import message_format, persister
+from app.services.asks import asks
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content
 
@@ -152,8 +153,8 @@ def test_a_silent_mention_is_not_a_turn():
         payload_type="message",
     )
     content = serialize_content(env, extra={"content": "@reviewer look, cc @~claude-code-agent"})
-    assert participate._addressed_to(content, "reviewer")
-    assert not participate._addressed_to(content, "claude-code-agent")
+    assert asks(content, "reviewer")
+    assert not asks(content, "claude-code-agent")
 
 
 @pytest.mark.asyncio
@@ -173,8 +174,8 @@ async def test_await_does_not_serve_a_handle_quoted_in_code(wired):
         payload_type="message",
     )
     content = serialize_content(env, extra={"content": text})
-    assert participate._addressed_to(content, "reviewer")
-    assert not participate._addressed_to(content, "claude-code-agent")
+    assert asks(content, "reviewer")
+    assert not asks(content, "claude-code-agent")
 
     log = persister.DeliveryLog()
     log.record(persister.record_from(env, content), delivered_to=set(), recipients=["reviewer"])
@@ -195,7 +196,7 @@ def test_an_interrupting_mention_addresses_by_text():
         payload_type="message",
     )
     content = serialize_content(env, extra={"content": "@!Coder stop, wrong checkout"})
-    assert participate._addressed_to(content, "coder")
+    assert asks(content, "coder")
 
 
 @pytest.mark.asyncio
