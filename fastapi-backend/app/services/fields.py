@@ -141,9 +141,10 @@ async def write(room: str, key: str, patch: dict, handle: str, *, reassign: bool
 
 def _new_assignee(key: str, meta: dict, patch: dict) -> str | None:
     """The handle ``patch`` gives an assignable row to, when it changes who the
-    row is for. Naming the person it's already for counts only when their claim
-    expired, so the write replaces it. A re-save of a finished or released row
-    with its own assignee changes nothing."""
+    row is for. Naming the person it's already for counts only when their hold
+    ended without them choosing it (it expired, or the hub released it), so the
+    write takes it back. A re-save of a finished row, or of one someone handed
+    back, with its own assignee changes nothing."""
     from datetime import UTC, datetime
 
     from app.services import assignments
@@ -156,8 +157,14 @@ def _new_assignee(key: str, meta: dict, patch: dict) -> str | None:
     if to != str(meta.get("assignee") or "").lstrip("@"):
         return to
     now = datetime.now(UTC)
-    expired = assignments.state_of(meta, now) == "expired"
-    return to if expired and not assignments.settled(meta, now) else None
+    if assignments.settled(meta, now):
+        return None
+    state = assignments.state_of(meta, now)
+    # The hub signs the hold it ends; a hand-back is signed by whoever chose it.
+    released_by_hub = (
+        state == "released" and meta.get("assignment_note_by") == assignments.RUNTIME_AUTHOR
+    )
+    return to if state == "expired" or released_by_hub else None
 
 
 async def _give(room: str, key: str, meta: dict, to: str, by: str, *, reassign: bool) -> None:

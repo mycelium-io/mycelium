@@ -134,7 +134,10 @@ happening on it for a few hours is not taken away; the room's timeline says
 once that it has gone quiet, and nobody is messaged or woken. A holder the hub
 can't see at all (no herdr pane and no connection to the room) loses the hold
 after eight hours with nothing happening on the task, and the room is told. A
-task waiting on someone else, because its pull request is waiting on a review
+hub that has just started hasn't heard from anyone yet, so it waits ten
+minutes, or until that agent's machine reports in, before deciding it can't see
+a holder. When the hub has ended a hold, giving the task to the same agent again
+(`mycelium board assign`) makes it theirs again. A task waiting on someone else, because its pull request is waiting on a review
 or a merge or because it's blocked, is never called quiet and never expires.
 
 `claim --ttl` still takes a claim for a set number of minutes, for a holder

@@ -62,7 +62,7 @@ def _sweep(hours: float) -> list[tuple[str, str, str]]:
 
 @pytest.fixture(autouse=True)
 def _fresh_sweep_counts(monkeypatch: pytest.MonkeyPatch) -> None:
-    hold_sweep._closed_sweeps.clear()
+    hold_sweep.reset()
     # No linked pull requests unless a test says so.
     monkeypatch.setattr(hold_sweep, "open_pull_requests", lambda _room: {})
 
@@ -152,6 +152,37 @@ def test_a_holder_with_no_sign_expires_after_the_fallback_with_a_notice(monkeypa
     assert _sweep(hold_sweep.FALLBACK_HOURS + 1) == [(ROOM, KEY, "expired")]
     (notice,) = notices
     assert (notice["subkind"], notice["by"]) == ("expired", "coder")
+
+
+def test_a_hub_that_just_started_expires_nobody_for_lack_of_a_sign(monkeypatch, notices):
+    # Right after a start nothing has reported in, so every holder is unseen.
+    # The row's quiet hours still count; only "no sign of the holder" waits.
+    _row(hold_flagged_at=(datetime.now(UTC) + timedelta(days=1)).isoformat())
+    monkeypatch.setattr(hold_sweep, "signal_of", lambda _r, _h: "unseen")
+    start = hold_sweep.FALLBACK_HOURS + 1
+    assert _sweep(start) == []
+    assert _sweep(start + 5 / 60) == []
+    assert assignments.state_of(_meta(), datetime.now(UTC)) == "held"
+    # Still nothing from it once the hub has been listening a while: it expires.
+    later = start + (hold_sweep.STARTUP_GRACE + timedelta(minutes=1)).total_seconds() / 3600
+    assert _sweep(later) == [(ROOM, KEY, "expired")]
+
+
+def test_the_holders_runner_reporting_ends_the_wait_early(monkeypatch, notices):
+    from app.services import runners
+
+    _row(hold_flagged_at=(datetime.now(UTC) + timedelta(days=1)).isoformat())
+    write_memory_file(
+        get_room_dir(ROOM), "agents/coder", "adapter: claude_code\nrunner: mac\n", created_by="lead"
+    )
+    monkeypatch.setattr(hold_sweep, "signal_of", lambda _r, _h: "unseen")
+    registry = RunnerRegistry()
+    monkeypatch.setattr(runners, "registry", registry)
+    start = hold_sweep.FALLBACK_HOURS + 1
+    assert _sweep(start) == []
+    # Its machine reports and doesn't list the agent: that's a real "no sign".
+    registry.hello(_machine_hello([]))
+    assert _sweep(start + 1 / 60) == [(ROOM, KEY, "expired")]
 
 
 def test_a_quiet_row_gets_one_notice_and_wakes_nobody(monkeypatch, notices):
@@ -255,25 +286,7 @@ def test_the_signal_is_read_off_the_runners_machine_reports(monkeypatch):
 
     def report(state: Literal["working", "gone"]) -> None:
         registry.hello(
-            RunnerHello(
-                id="mac",
-                label="Mac",
-                machine=MachineReportRead(
-                    machine="mac",
-                    workspaces=[
-                        MachineWorkspaceRead(
-                            id="w1",
-                            label="w1",
-                            room=ROOM,
-                            agents=[
-                                MachineAgentRead(
-                                    handle="coder", room=ROOM, pane="w1:p1", state=state
-                                )
-                            ],
-                        )
-                    ],
-                ),
-            )
+            _machine_hello([MachineAgentRead(handle="coder", room=ROOM, pane="w1:p1", state=state)])
         )
 
     assert hold_sweep.signal_of(ROOM, "coder") == "unseen"
@@ -281,6 +294,36 @@ def test_the_signal_is_read_off_the_runners_machine_reports(monkeypatch):
     assert hold_sweep.signal_of(ROOM, "coder") == "present"
     report("gone")
     assert hold_sweep.signal_of(ROOM, "coder") == "closed"
+
+
+def test_a_pane_reads_closed_only_on_a_heartbeat(monkeypatch):
+    # A runner's first report after the hub (or herdr) came back can show panes
+    # herdr hasn't restored yet; the closed-pane count starts on its heartbeat.
+    from app.services import principals, runners
+    from app.services.room_channels import manager
+
+    registry = RunnerRegistry()
+    monkeypatch.setattr(runners, "registry", registry)
+    monkeypatch.setattr(principals, "classify_sender", lambda _r, _h: "agent")
+    monkeypatch.setattr(manager, "herdr_status", lambda _r, _h: None)
+    monkeypatch.setattr(manager, "members", lambda _r: [])
+    gone = _machine_hello([MachineAgentRead(handle="coder", room=ROOM, pane="w1:p1", state="gone")])
+    registry.hello(gone)
+    assert hold_sweep.signal_of(ROOM, "coder") == "present"
+    registry.hello(gone)
+    assert hold_sweep.signal_of(ROOM, "coder") == "closed"
+
+
+def _machine_hello(agents: list[MachineAgentRead]) -> RunnerHello:
+    """A hello from the runner ``mac``, whose machine reports ``agents``."""
+    return RunnerHello(
+        id="mac",
+        label="Mac",
+        machine=MachineReportRead(
+            machine="mac",
+            workspaces=[MachineWorkspaceRead(id="w1", label="w1", room=ROOM, agents=agents)],
+        ),
+    )
 
 
 def test_reassigning_says_who_it_was_taken_from(notices):
@@ -315,6 +358,22 @@ def test_giving_a_row_replaces_an_expired_hold(notices, to):
     assert assignments.holder(meta, datetime.now(UTC)) == to
     (notice,) = notices
     assert (notice["subkind"], notice["for"]) == ("claimed", to)
+
+
+def test_giving_a_row_the_hub_released_back_to_its_assignee_holds_it(notices):
+    # The hub ended the hold (no sign of the agent after it restarted, say), so
+    # nobody chose to hand it back: assigning it to the same agent takes it back.
+    _row(
+        assignment="released",
+        assignment_note="expired: no sign of @coder and nothing on this row for 8h",
+        assignment_note_by=assignments.RUNTIME_AUTHOR,
+    )
+    from app.services import fields
+
+    asyncio.run(fields.write(ROOM, KEY, {"assignee": "coder"}, "lead"))
+    meta = _meta()
+    assert assignments.state_of(meta, datetime.now(UTC)) == "held"
+    assert assignments.holder(meta, datetime.now(UTC)) == "coder"
 
 
 @pytest.mark.parametrize(

@@ -16,7 +16,11 @@ these ends it. Each is said on the room's timeline:
 - **No sign of the holder at all, for a long time.** A holder the hub has no
   signal for (no pane on any runner, no herdr presence, no ``await``) keeps
   the row for :data:`FALLBACK_HOURS` of no activity on it, then it expires
-  with a notice. A holder the hub can see is never expired for being slow.
+  with a notice. A holder the hub can see is never expired for being slow. A
+  hub that has just started has heard from nobody yet, so this waits
+  :data:`STARTUP_GRACE` after its first sweep, or until the holder's runner has
+  reported, whichever comes first. A pane reads closed only on a runner's
+  heartbeat, not on its first report after the hub or herdr came back.
 
 A row that has had no activity (nothing in its thread, no edit, no notice such
 as a pull request changing) for :data:`QUIET_HOURS` gets a ``quiet`` notice on
@@ -57,9 +61,22 @@ QUIET_NOTICE = "quiet"
 WAITING_PR_STATES = ("ok", "pending")
 #: Sweeps in a row a holder's pane must read closed before its rows are released.
 CLOSED_SWEEPS = 2
+#: How long after the hub starts before "no sign of the holder" can end a hold.
+#: A hub that has just started has heard from no runner, herdr pane or ``await``
+#: yet, so everyone looks gone until they report in.
+STARTUP_GRACE = timedelta(minutes=10)
 
 #: How many sweeps in a row each ``(room, handle)`` has read closed.
 _closed_sweeps: dict[tuple[str, str], int] = {}
+#: When this hub's first sweep ran, which is when it started looking.
+_first_sweep: datetime | None = None
+
+
+def reset() -> None:
+    """Forget the closed-pane counts and when sweeping began. For tests."""
+    global _first_sweep
+    _closed_sweeps.clear()
+    _first_sweep = None
 
 
 def _stamp(raw: Any) -> datetime | None:
@@ -72,13 +89,19 @@ def _stamp(raw: Any) -> datetime | None:
     return stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp
 
 
-def pane_states(room: str, handle: str) -> list[str]:
-    """What every connected runner's machine says about ``handle``'s herdr panes."""
+def pane_states(room: str, handle: str, *, heartbeat: bool = False) -> list[str]:
+    """What every connected runner's machine says about ``handle``'s herdr panes.
+
+    ``heartbeat`` counts only runners that have sent one since their hello, so
+    a runner's first look (herdr may still be bringing panes back) isn't taken
+    as a pane closing."""
     from app.services.runners import registry
 
     found: list[str] = []
     for runner in registry.all():
         if not runner.connected or runner.machine is None:
+            continue
+        if heartbeat and registry.heartbeats(runner.id) < 1:
             continue
         for workspace in runner.machine.workspaces:
             found += [a.state for a in workspace.agents if a.room == room and a.handle == handle]
@@ -101,10 +124,11 @@ def signal_of(room: str, handle: str) -> str:
     if kind == "engine":
         return "engine"
     panes = pane_states(room, handle)
-    if panes and all(state == "gone" for state in panes):
-        return "closed"
     if any(state != "gone" for state in panes):
         return "present"
+    if panes:
+        # Closed only on a runner's heartbeat; until then it can't be told.
+        return "closed" if pane_states(room, handle, heartbeat=True) else "present"
     if manager.herdr_status(room, handle) is not None or handle in manager.members(room):
         return "present"
     return "unseen"
@@ -223,9 +247,26 @@ async def holder_removed(room: str, handle: str, now: datetime | None = None) ->
     return released
 
 
+def heard_enough(room: str, handle: str, now: datetime) -> bool:
+    """Whether the hub has been listening long enough to call ``handle`` gone:
+    :data:`STARTUP_GRACE` since its first sweep, or sooner if the runner that
+    started the agent (its manifest's ``runner``) has reported since."""
+    from app.services.agent_registry import room_agents
+    from app.services.runners import registry
+
+    if _first_sweep is None or now - _first_sweep >= STARTUP_GRACE:
+        return True
+    runner_id = next((a.runner for a in room_agents(room) if a.handle == handle), None)
+    runner = registry.get(runner_id) if runner_id else None
+    return runner is not None and runner.connected and runner.machine is not None
+
+
 async def sweep(now: datetime | None = None) -> list[tuple[str, str, str]]:
     """End or flag every hold the evidence says to. Returns ``(room, key, what)``."""
+    global _first_sweep
     now = now or datetime.now(UTC)
+    if _first_sweep is None:
+        _first_sweep = now
     done: list[tuple[str, str, str]] = []
     # Each holder is read once per sweep, however many rows it holds, so the
     # closed-pane count goes up once per sweep.
@@ -306,7 +347,13 @@ async def _one(
     # Waiting on a review, a merge or a blocker is not going quiet.
     if waiting_on_someone(meta, (prs or _PullRequests(room)).of(key)):
         return None
-    if seen == "unseen" and quiet >= timedelta(hours=FALLBACK_HOURS):
+    # The row's quiet hours count from before the hub started; only the "no
+    # sign of the holder" half waits for the hub to have been listening.
+    if (
+        seen == "unseen"
+        and quiet >= timedelta(hours=FALLBACK_HOURS)
+        and heard_enough(room, who, now)
+    ):
         why = f"expired: no sign of @{who} and nothing on this row for {FALLBACK_HOURS}h"
         await _end(room, key, why, "expired", who, now)
         return "expired"
