@@ -97,7 +97,7 @@
     el.appendChild(wrap);
     el.classList.add('live');
     const bar = el.querySelector('.bar');
-    if (bar) bar.insertAdjacentHTML('beforeend', '<em class="live-dot">live</em>');
+    if (bar) bar.insertAdjacentHTML('beforeend', '<em class="live-dot">Live</em>');
     term.open(host);
     fit.fit();
 

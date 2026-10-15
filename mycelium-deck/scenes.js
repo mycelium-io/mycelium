@@ -74,9 +74,8 @@
       label(text, x, y, a = 1, color = C.muted, size = 20, align = 'center') {
         if (a < 0.01) return;
         ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle';
-        ctx.font = `500 ${size}px "IBM Plex Sans", system-ui, sans-serif`;
-        ctx.letterSpacing = '0.08em';
-        ctx.fillText(text.toUpperCase(), x, y); ctx.restore();
+        ctx.font = `500 ${Math.round(size * 1.15)}px "IBM Plex Sans", system-ui, sans-serif`;
+        ctx.fillText(text, x, y); ctx.restore();
       },
     };
   }
