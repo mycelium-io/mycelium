@@ -674,7 +674,10 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     else:
         asking = {id(r) for r in asked}
         more = sum(id(r) not in asking for r in said)
-        extra = f"; shows {more} more since your last turn" if more > 0 else ""
+        # Said, not "shows": ``await`` prints only some of them (``earlier`` is
+        # capped and stops at the previous ask).
+        noun = "was" if more == 1 else "were"
+        extra = f"; {more} more {noun} said since your last turn" if more > 0 else ""
         # ``await`` comes first: it is what marks these read and says the agent
         # is on it. Then a reply where each unanswered ask was made, the one
         # that woke it first: an older ask can be a flow's turn in another
