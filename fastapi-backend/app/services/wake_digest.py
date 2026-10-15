@@ -693,10 +693,21 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
             f"Next:    1. mycelium await --room {room} --handle {me} --json --timeout 5",
             f"            (marks these read and says you're on it{extra})",
         ]
-        if len(replies) == 1:
+        # An agent asked in a task's thread tends to answer in the main
+        # channel, with a bare ``respond`` or ``room send``. Say where the
+        # answer goes, and that ``--task`` is what puts it there.
+        in_thread = any(" --task " in r for r in replies)
+        if len(replies) == 1 and in_thread:
+            lines += [
+                "         2. reply in the task's thread, not the main channel (--task puts it there):",
+                f"            {replies[0]}",
+            ]
+        elif len(replies) == 1:
             lines.append(f"         2. {replies[0]}")
         else:
-            lines.append("         2. reply where each was asked:")
+            lines.append(
+                "         2. reply where each was asked (--task puts it in that task's thread):"
+            )
             lines += [f"            {r}" for r in replies]
 
     # The others asking for it: whole while they fit, newest first, then named.

@@ -113,14 +113,18 @@ def test_a_mention_digest_says_why_what_changed_and_what_asked():
         body.append(line[2:] if line.startswith("│ ") else "")
     assert "\n".join(body) == LONG.strip()
     # Then what to do: await first, then the reply, which names the task so it
-    # lands in its thread.
+    # lands in its thread, and says so, since agents asked in a thread tend to
+    # answer in the main channel.
     assert lines[scout + len(body) + 3] == (
         "Next:    1. mycelium await --room digest-room --handle builder --json --timeout 5"
     )
-    assert (
-        '         2. mycelium respond --room digest-room --handle builder --task work/fix-the-receipt-tax --body "..."'
+    step = lines.index(
+        "         2. reply in the task's thread, not the main channel (--task puts it there):"
+    )
+    assert lines[step + 1] == (
+        '            mycelium respond --room digest-room --handle builder --task work/fix-the-receipt-tax --body "..."'
         '   (lands in "Fix the receipt tax")'
-    ) in digest
+    )
     # Then the other one asking, also whole.
     assert "Also asking you (1):" in digest
     assert '┌ @reviewer · 40m ago · in "Fix the receipt tax" · ' in digest
@@ -551,7 +555,9 @@ def test_asks_in_two_places_get_a_reply_line_each():
     ]
     digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
     lines = digest.splitlines()
-    at = lines.index("         2. reply where each was asked:")
+    at = lines.index(
+        "         2. reply where each was asked (--task puts it in that task's thread):"
+    )
     assert lines[at + 1] == (
         '            mycelium respond --room digest-room --handle builder --body "..."'
         "   (lands in the room)"
