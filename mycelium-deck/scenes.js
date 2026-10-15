@@ -411,6 +411,53 @@
     };
   };
 
+  // ── Agents ask each other ──
+  // A task's thread runs across the slide. Stage 0: @builder mentions
+  // @reviewer, and the message travels down the thread to it while it waits,
+  // dim. Stage 1: @reviewer wakes (it lights up), answers in the same thread,
+  // and goes back to waiting. Both stages loop so the slide can stay up.
+  defs.asking = () => {
+    const builder = Object.assign(node(560, 560, 40, 1), { name: '@builder' });
+    const reviewer = Object.assign(node(1360, 560, 40, 1), { name: '@reviewer' });
+    const LANE = 720;
+    let t = 0, last = -1;
+    return {
+      stage(s) { t = 0; last = s; },
+      frame(d, dt, s) {
+        if (s !== last) this.stage(s);
+        t += dt;
+        const ctx = d.ctx;
+        // The thread: one lane, with each message as a mark on it.
+        ctx.save(); ctx.globalAlpha = 0.5; ctx.strokeStyle = C.accent; ctx.lineWidth = 2; ctx.setLineDash([8, 14]);
+        ctx.beginPath(); ctx.moveTo(380, LANE); ctx.lineTo(1540, LANE); ctx.stroke(); ctx.restore();
+        d.label("the task's thread", 380, LANE + 40, 0.9, C.accent, 18, 'left');
+        const down = (n) => ({ x: n.x, y: LANE });
+        // A cycle: mention travels (0–1.4s), the reviewer wakes and answers (1.4–3.2s), then rests.
+        const cycle = s === 0 ? t % 3.2 : t % 4.6;
+        const mention = Math.min(1, cycle / 1.4);
+        let awake = 0;
+        if (s === 0) {
+          d.edge(builder, down(builder), 0.5, C.muted, 0, 2);
+          d.edge(down(reviewer), reviewer, 0.25, C.muted, 0, 2);
+          if (cycle < 1.4) d.pulse(builder, reviewer, mention, C.violet, -0.18, 9);
+          d.label('@reviewer, can you look at the fix?', 960, 420, Math.min(1, cycle * 2) * (cycle < 2.6 ? 1 : 0.4), C.violet, 22);
+        } else {
+          // Woken: answers in the thread, then dims again.
+          awake = cycle < 3.2 ? Math.min(1, cycle * 2) : Math.max(0, 1 - (cycle - 3.2) * 1.2);
+          d.edge(reviewer, down(reviewer), 0.3 + awake * 0.4, C.accent, 0, 2);
+          if (cycle > 0.6 && cycle < 2.2) d.pulse(down(reviewer), down(builder), (cycle - 0.6) / 1.6, C.accent, 0.12, 9);
+          d.label('it wakes, answers in the thread, and goes back to waiting', 960, 420, 1, C.accent, 22);
+        }
+        if (awake > 0.05) d.ring(reviewer.x, reviewer.y, reviewer.r + 18, C.accent, awake * 0.9, 3);
+        d.bead(builder.x, builder.y, builder.r, C.violet, 1);
+        d.bead(reviewer.x, reviewer.y, reviewer.r, C.accent, s === 0 ? 0.35 : 0.35 + awake * 0.65);
+        d.label(builder.name, builder.x, builder.y - 72, 1, C.text, 24);
+        d.label(reviewer.name, reviewer.x, reviewer.y - 72, 1, C.text, 24);
+        d.label(s === 0 ? 'waiting' : awake > 0.5 ? 'awake' : 'waiting', reviewer.x, reviewer.y + 74, 0.9, s === 1 && awake > 0.5 ? C.accent : C.muted, 18);
+      },
+    };
+  };
+
   // ── From one prompt to a swarm ──
   // You, then: one agent; three in parallel; three repeatable chains; a swarm.
   defs.scale = () => {

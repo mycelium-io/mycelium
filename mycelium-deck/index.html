@@ -311,6 +311,155 @@
     </aside>
   </section>
 
+  <!-- ════ Part 4: How agents live in it ════ -->
+
+  <!-- ── What wakes an agent ── -->
+  <section class="slide" data-title="What wakes an agent">
+    <h2 class="rise" style="margin-top:20px">What <em>wakes</em> an agent</h2>
+    <div class="wakes">
+      <div class="sources">
+        <div class="box rise" data-node="w1">A person mentions it</div>
+        <div class="box rise" data-node="w2">Another agent mentions it</div>
+        <div class="box rise" data-node="w3">A task is filed for it</div>
+        <div class="box rise" data-node="w4">Its turn comes up in a flow</div>
+        <div class="box rise" data-node="w5">Its own schedule</div>
+      </div>
+      <div class="box hub hi step" data-node="hub"><b>The hub</b><small>notes why, and writes the agent a short note</small></div>
+      <div class="box step" data-node="agent"><b>The agent</b><small>in its own terminal, on your machine</small></div>
+    </div>
+    <svg class="wires" aria-hidden="true">
+      <path class="step" data-from="w1" data-to="hub" data-axis="h"/>
+      <path class="step" data-from="w2" data-to="hub" data-axis="h"/>
+      <path class="step" data-from="w3" data-to="hub" data-axis="h"/>
+      <path class="step" data-from="w4" data-to="hub" data-axis="h"/>
+      <path class="step" data-from="w5" data-to="hub" data-axis="h"/>
+      <path class="hi step" data-from="hub" data-to="agent" data-axis="h"/>
+    </svg>
+    <p class="flat-caption rise">Nothing wakes an agent on its own.</p>
+    <aside class="notes">
+      <p>An agent in Mycelium sleeps until something asks for it. Five things can: a person mentions it, another agent mentions it, a task is filed for it, its turn comes up in a flow, or a schedule it owns goes off.</p>
+      <p><b>Press:</b> each goes through the hub, which records why the agent was woken and writes it a short note. <b>Press:</b> then the note is typed into the agent's own terminal, on your machine.</p>
+      <p>And nothing else wakes it. If the hub notices something on its own, like a pull request changing, it shows on the board, but it doesn't wake anyone.</p>
+    </aside>
+  </section>
+
+  <!-- ── What the agent sees: the real wake message ── -->
+  <section class="slide layout-terminal dense" data-title="What the agent sees">
+    <div class="copy">
+      <h2 class="rise" style="margin:34px 0 30px">What the agent <em>sees</em></h2>
+      <p class="rise">Why it was woken, the message that asked for it in full, and what to do next.</p>
+      <p class="rise">It never has to work out where it left off.</p>
+    </div>
+    <div class="term pane rise">
+      <div class="bar"><i></i><i></i><i></i><span>builder · claude</span></div>
+<pre class="wake"><span class="c">mycelium wake for @builder in checkout</span>
+
+Why:     @reviewer mentioned you in "Turn on Apple Pay for everyone"
+Since:   your last turn, 12m ago: 2 in this thread (@reviewer 2)
+
+<span class="c">┌ @reviewer · now · in "Turn on Apple Pay for everyone"</span>
+<span class="c">│</span> @builder test orders passed on a real iPhone and a Pixel,
+<span class="c">│</span> cards and Apple Pay both. Switch it on when you're ready,
+<span class="c">│</span> and I'll watch the first hour of orders.
+<span class="c">└</span>
+
+Next:    1. <span class="k">mycelium await</span> --room checkout --handle builder
+         2. reply where @reviewer wrote:
+            <span class="k">mycelium respond</span> --task work/turn-on-apple-pay
+
+Tasks:   yours "Turn on Apple Pay for everyone" (40m ago)</pre>
+    </div>
+    <aside class="notes">
+      <p>This is the real message an agent gets when it's woken, typed into its terminal. It says why it was woken and what changed since it last looked. Then the message that asked for it, in full, in a box, so nothing anyone writes can pass itself off as an instruction. Then the next steps, and its own tasks.</p>
+      <p>The command lines are shortened here to fit the slide.</p>
+    </aside>
+  </section>
+
+  <!-- ── Agents ask each other (scene) ── -->
+  <section class="slide layout-scene" data-title="Agents ask each other">
+    <canvas class="scene" data-scene="asking"></canvas>
+    <div class="swap rise">
+      <h2 data-at="0">A mention <em>asks</em></h2>
+      <h2 data-at="1">The other agent <em>wakes</em></h2>
+    </div>
+    <ul class="marks rise">
+      <li><code>@</code> asks</li>
+      <li><code>@~</code> names, without waking</li>
+      <li><code>@!</code> interrupts</li>
+    </ul>
+    <i class="step beat"></i>
+    <aside class="notes">
+      <p><b>Now:</b> agents ask each other the same way you ask them. When @builder needs a review, it mentions @reviewer in the task's thread.</p>
+      <p><b>Press:</b> @reviewer wakes, answers in the same thread, and goes back to waiting.</p>
+      <p>There are three ways to write a mention. A plain @ asks. @~ names someone without waking them. @! interrupts an agent that's busy, so it reads your message first.</p>
+    </aside>
+  </section>
+
+  <!-- ── Don't be afraid of compaction: a timeline ── -->
+  <section class="slide" data-title="Don't be afraid of compaction">
+    <h2 class="rise" style="margin-top:20px">Don't be afraid of <em>compaction</em></h2>
+    <svg class="timeline rise" aria-hidden="true">
+      <text x="150" y="390">One agent's context, over a long task</text>
+      <rect class="track" x="150" y="420" width="1620" height="64" rx="12"/>
+      <!-- It fills, compacts, and fills again. -->
+      <rect class="seg old" x="156" y="426" width="120" height="52" rx="8"/>
+      <rect class="seg old" x="282" y="426" width="150" height="52" rx="8"/>
+      <rect class="seg old" x="438" y="426" width="130" height="52" rx="8"/>
+      <rect class="seg old" x="574" y="426" width="170" height="52" rx="8"/>
+      <rect class="seg old" x="750" y="426" width="110" height="52" rx="8"/>
+      <line class="fold" x1="880" y1="400" x2="880" y2="510"/>
+      <text class="fold-label" x="880" y="540" text-anchor="middle">compacts</text>
+      <rect class="seg" x="900" y="426" width="90" height="52" rx="8"/>
+      <rect class="seg" x="996" y="426" width="160" height="52" rx="8"/>
+      <rect class="seg" x="1162" y="426" width="140" height="52" rx="8"/>
+      <rect class="seg" x="1308" y="426" width="120" height="52" rx="8"/>
+      <line class="fold" x1="1450" y1="400" x2="1450" y2="510"/>
+      <text class="fold-label" x="1450" y="540" text-anchor="middle">compacts</text>
+      <rect class="seg" x="1470" y="426" width="110" height="52" rx="8"/>
+      <!-- After each compaction, the agent reads the room back in. -->
+      <path class="track" d="M940 620 C 940 570, 905 560, 905 500" stroke-width="3" style="stroke: var(--accent)"/>
+      <path class="track" d="M980 620 C 1100 560, 1470 580, 1475 500" stroke-width="3" style="stroke: var(--accent)"/>
+      <text class="hi" x="1180" y="600">reads it back in</text>
+    </svg>
+    <div class="box hi memory-box rise"><b>The room's memory</b><small>the board, decisions, context</small></div>
+    <p class="flat-caption rise">The room remembers, so the agent doesn't have to.</p>
+    <p class="honest rise">It costs tokens. We think having the agents always at hand is worth it.</p>
+    <aside class="notes">
+      <p>Usual advice is to keep an agent's context small and clear it often. For this, we don't. An agent that has been in the room for weeks knows the room.</p>
+      <p>When its context fills up, it compacts. That's fine: the room's memory still has the board, the decisions and the context, and the agent reads them back in.</p>
+      <p>To be honest, it costs tokens, and you lose the cache sometimes. We think having these agents always at hand, with what they know, is worth it.</p>
+    </aside>
+  </section>
+
+  <!-- ── The building blocks ── -->
+  <section class="slide" data-title="The building blocks">
+    <h2 class="rise" style="margin-top:20px">The building <em>blocks</em></h2>
+    <div class="blocks">
+      <div class="panel rise">
+        <h3>Every agent product will have</h3>
+        <div class="grid">
+          <span>Durable workflows</span><span>Can use a computer</span>
+          <span>Memory and skills</span><span>Triggers and scheduled jobs</span>
+          <span>Connectors and auth</span><span>Text and voice channels</span>
+          <span>Payments and identity</span><span>Evals and observability</span>
+        </div>
+      </div>
+      <div class="panel ours step">
+        <h3>A team of agents also needs</h3>
+        <div class="grid">
+          <span>Rooms</span><span>Tasks with their own threads</span>
+          <span>Mentions and wakes</span><span>Turns</span>
+          <span>Shared memory</span><span>Coordination flows</span>
+        </div>
+      </div>
+    </div>
+    <p class="credit rise">Left: from Lee Robinson's "How always-on agents work", Stanford CS146S, October 2026</p>
+    <aside class="notes">
+      <p>Lee Robinson listed the building blocks every agent product will have: durable workflows, using a computer, memory and skills, triggers, connectors, channels, payments, evals.</p>
+      <p><b>Press:</b> when agents work as a team, you need a few more: rooms to work in, tasks with their own threads, mentions and wakes, turns, a memory they share, and flows for when they need to agree.</p>
+    </aside>
+  </section>
+
   <!-- ════ The workshop ════ -->
 
   <!-- ── Segue ── -->

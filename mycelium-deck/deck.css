@@ -294,6 +294,40 @@ figure.media figcaption { margin-top: 14px; font: 400 22px var(--sans); color: v
 .logos figure.doc img { width: 100%; height: 250px; object-fit: cover; object-position: left top; background: #fff; }
 .logos figure.doc figcaption { text-align: center; }
 
+/* ── Layout: what wakes an agent (sources → the hub → the agent) ── */
+.wakes { display: grid; grid-template-columns: 520px 1fr 420px; align-items: center; column-gap: 140px; margin-top: 50px; }
+.wakes .sources { display: grid; gap: 16px; }
+.wakes .sources .box { padding: 18px 26px; font-size: 27px; }
+.wakes .hub { text-align: center; padding: 34px; }
+.wakes .hub small { font-size: 22px; }
+
+/* The three ways to write a mention, under the "asking" scene. */
+.marks { position: absolute; left: 150px; right: 150px; bottom: 150px; margin: 0; padding: 0; list-style: none; display: flex; justify-content: center; gap: 70px; }
+.marks li { font-size: 30px; color: var(--muted); }
+.marks code { font-size: 30px; color: var(--accent); padding: 4px 12px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 10%, transparent); margin-right: 8px; }
+
+/* ── Layout: compaction (one agent's context over time, and the room's memory) ── */
+svg.timeline { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; }
+svg.timeline .seg { fill: color-mix(in srgb, var(--accent) 55%, transparent); }
+svg.timeline .seg.old { fill: color-mix(in srgb, var(--text) 22%, transparent); }
+svg.timeline .track { fill: none; stroke: var(--border-hi); stroke-width: 2; }
+svg.timeline .fold { stroke: var(--yellow); stroke-width: 3; stroke-dasharray: 8 8; }
+svg.timeline text { font: 500 24px var(--sans); fill: var(--muted); }
+svg.timeline text.fold-label { fill: var(--yellow); }
+svg.timeline text.hi { fill: var(--accent); }
+.box.memory-box { position: absolute; left: 760px; top: 620px; width: 400px; text-align: center; }
+.honest { margin-top: 10px; font-size: 30px; color: var(--muted); }
+
+/* ── Layout: building blocks (someone else's list, then what a team adds) ── */
+.blocks { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; }
+.blocks .panel { padding: 30px 34px; border-radius: 22px; border: 2px solid var(--border); }
+.blocks .panel.ours { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.blocks .panel h3 { font: 600 30px/1.2 var(--sans); color: var(--muted); margin-bottom: 20px; }
+.blocks .panel.ours h3 { color: var(--accent); }
+.blocks .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.blocks .grid span { padding: 16px 20px; border-radius: 12px; border: 1px solid var(--border-hi); font-size: 26px; text-align: center; color: var(--muted); }
+.blocks .ours .grid span { color: var(--text); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+
 /* ── Layout: memory (a folder tree beside one memory, rendered) ── */
 .memory { display: grid; grid-template-columns: 640px 1fr; gap: 50px; margin-top: 60px; align-items: start; }
 .memory .tree { margin: 0; padding: 34px 38px; font: 400 26px/1.9 var(--mono); white-space: pre; }
