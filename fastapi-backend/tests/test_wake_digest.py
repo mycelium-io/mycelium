@@ -510,3 +510,22 @@ def test_asks_in_two_places_get_a_reply_line_each():
         "            mycelium respond --room digest-room --handle builder"
         ' --task work/fix-the-receipt-tax --body "..."   (lands in "Fix the receipt tax")'
     )
+
+
+def test_a_title_on_the_board_and_tasks_lines_carries_no_control_character():
+    assert wake_digest._short("Fix it\x1b[201~now", 60) == "Fix it[201~now"
+    write_memory_file(
+        get_room_dir(ROOM),
+        "work/escape",
+        "# Fix it\x1b[201~now",
+        created_by="lead",
+        extra_meta={"assignee": "builder"},
+    )
+    records = [
+        _said(1, "builder", "back", 60),
+        _notice(2, 10, subkind="filed", key="work/escape", title="Fix it\x1b[201~now", by="lead"),
+    ]
+    digest = wake_digest.build(ROOM, {"handle": "builder"}, records, NOW)
+    assert "\x1b" not in digest
+    assert 'Tasks:   yours "Fix it[201~now"' in digest
+    assert '@lead filed "Fix it[201~now"' in digest

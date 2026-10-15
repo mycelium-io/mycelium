@@ -163,12 +163,14 @@ def _rows(room: str) -> list[tuple[str, dict, str]]:
 
 def _title(key: str, content: str) -> str:
     first = next((ln.strip() for ln in (content or "").splitlines() if ln.strip()), key)
-    return first.lstrip("# ").strip()
+    # A member's text on the digest's own line: no control character reaches it.
+    return plain(first.lstrip("# "))
 
 
 def _short(title: str, limit: int) -> str:
-    """A title cut to ``limit`` characters on a word, ending in an ellipsis."""
-    title = " ".join(title.split())
+    """A title cut to ``limit`` characters on a word, ending in an ellipsis,
+    on one line and with no control characters (:func:`plain`)."""
+    title = plain(title)
     if len(title) <= limit:
         return title
     head = title[: limit - 1]
