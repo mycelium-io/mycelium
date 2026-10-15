@@ -316,6 +316,101 @@
     };
   };
 
+  // ── The same task, three ways ──
+  // Stage 0: five agents in one group chat, messages crossing everywhere.
+  // Stage 1: the same agents around a room's board; each message goes to the
+  // task it is about, a row of its own. Stage 2: one task runs a flow, which
+  // gives the agents on it a turn each, one at a time, while the rest wait.
+  defs.threeways = () => {
+    const rnd = seeded(61);
+    const MID = { x: 960, y: 650 };
+    const NAMES = ['builder', 'reviewer', 'qa', 'docs', 'you'];
+    const agents = NAMES.map((name, i) => Object.assign(node(MID.x, MID.y, 26, 1), { name, phase: rnd() * 6.28 }));
+    const around = i => { const a = -Math.PI / 2 + i * 2 * Math.PI / 5; return { x: MID.x + Math.cos(a) * 430, y: MID.y + Math.sin(a) * 270 }; };
+    const BOARD = { x: MID.x - 210, y: MID.y - 120, w: 420, h: 240 };
+    const ROWS = [0, 1, 2].map(r => ({ x: BOARD.x + 34, y: BOARD.y + 64 + r * 62, w: BOARD.w - 68 }));
+    const ROW_COLOR = ['accent', 'green', 'yellow'];
+    const rowEnd = (r, side) => ({ x: side < 0 ? ROWS[r].x : ROWS[r].x + ROWS[r].w, y: ROWS[r].y });
+    // Where a line from the board to an agent leaves it: the nearest point on its edge.
+    const edgeToward = n => ({ x: Math.max(BOARD.x, Math.min(BOARD.x + BOARD.w, n.x)), y: Math.max(BOARD.y, Math.min(BOARD.y + BOARD.h, n.y)) });
+    const ON_FLOW = [0, 1, 2];   // builder, reviewer and qa share the first task
+    const vis = { chat: 1, board: 0, flow: 0 };
+    let pulses = [], clock = 0, turn = 0, holder = -1;
+    return {
+      stage() { pulses = []; clock = 0; turn = 0; holder = -1; },
+      frame(d, dt, s) {
+        clock += dt;
+        ease(vis, 'chat', s === 0 ? 1 : 0, 4, dt);
+        ease(vis, 'board', s >= 1 ? 1 : 0, 4, dt);
+        ease(vis, 'flow', s === 2 ? 1 : 0, 4, dt);
+        agents.forEach((n, i) => {
+          if (s === 0) {
+            // Crowded together, drifting: one conversation.
+            const a = n.phase + clock * 0.5;
+            n.tx = MID.x + Math.cos(a + i * 1.3) * (110 + i * 22);
+            n.ty = MID.y + Math.sin(a * 1.2 + i) * (70 + i * 14);
+          } else { const p = around(i); n.tx = p.x; n.ty = p.y; }
+          n.ta = s === 2 && !ON_FLOW.includes(i) ? 0.3 : 1;
+          settle(n, dt, 3);
+        });
+        const ctx = d.ctx;
+
+        // The group chat: one ring around everyone.
+        if (vis.chat > 0.01) {
+          ctx.save(); ctx.globalAlpha = vis.chat * 0.5; ctx.strokeStyle = C.muted; ctx.lineWidth = 2; ctx.setLineDash([8, 12]);
+          ctx.beginPath(); ctx.ellipse(MID.x, MID.y, 330, 230, 0, 0, 6.2832); ctx.stroke(); ctx.restore();
+          d.label('one group chat', MID.x, MID.y + 270, vis.chat, C.muted, 20);
+        }
+        // The board: a panel with a row per task.
+        if (vis.board > 0.01) {
+          ctx.save(); ctx.globalAlpha = vis.board;
+          ctx.fillStyle = C.dark ? 'rgba(255,255,255,0.04)' : 'rgba(10,20,40,0.04)';
+          ctx.strokeStyle = C.muted; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.roundRect(BOARD.x, BOARD.y, BOARD.w, BOARD.h, 18); ctx.fill(); ctx.stroke();
+          ROWS.forEach((r, k) => {
+            const lit = k === 0 ? vis.flow : 0;
+            ctx.globalAlpha = vis.board * (s === 2 && k > 0 ? 0.35 : 1);
+            ctx.strokeStyle = C[ROW_COLOR[k]]; ctx.lineWidth = 6 + lit * 4; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(r.x, r.y); ctx.lineTo(r.x + r.w, r.y); ctx.stroke();
+          });
+          ctx.restore();
+          d.label('the board', MID.x, BOARD.y + 30, vis.board, C.muted, 18);
+        }
+
+        // Messages: everywhere, then to a task's row, then one turn at a time.
+        if (s === 0 && rnd() < dt * 8) {
+          const a = Math.floor(rnd() * 5); let b = Math.floor(rnd() * 4); if (b >= a) b++;
+          pulses.push({ a: agents[a], b: agents[b], u: 0, v: 1.5, color: C[['accent', 'violet', 'green', 'yellow'][Math.floor(rnd() * 4)]] });
+        }
+        if (s === 1 && rnd() < dt * 3) {
+          const i = Math.floor(rnd() * 5), r = Math.floor(rnd() * 3), side = agents[i].x < MID.x ? -1 : 1;
+          pulses.push({ a: agents[i], b: rowEnd(r, side), u: 0, v: 1.1, color: C[ROW_COLOR[r]] });
+        }
+        if (s === 2 && clock > 1.1) {
+          clock = 0;
+          const i = ON_FLOW[turn % ON_FLOW.length];
+          pulses.push({ a: edgeToward(agents[i]), b: agents[i], u: 0, v: 1.4, color: C.accent, turn: i });
+          turn++;
+        }
+        // The flow's lines from the board to the agents on it.
+        ON_FLOW.forEach(i => d.edge(edgeToward(agents[i]), agents[i], vis.flow * 0.45, C.accent, 0.04));
+        pulses.forEach(p => {
+          p.u += dt * p.v;
+          if (p.u >= 1 && !p.done) { p.done = true; if (p.b.flash !== undefined) p.b.flash = 1; if (p.turn !== undefined) holder = p.turn; }
+          d.pulse(p.a, p.b, Math.min(1, p.u), p.color, 0.08);
+        });
+        pulses = pulses.filter(p => p.u < 1);
+
+        agents.forEach((n, i) => {
+          if (s === 2 && holder === i) d.ring(n.x, n.y, n.r + 16, C.accent, 0.9, 3);
+          d.bead(n.x, n.y, n.r * (1 + n.flash * 0.2), n.name === 'you' ? C.violet : C.accent, n.a);
+          d.label(n.name, n.x, n.y + 56, n.a * (0.4 + 0.6 * (1 - vis.chat)), n.name === 'you' ? C.violet : C.muted, 18);
+        });
+        d.label('one task runs a flow, giving each agent a turn', MID.x, MID.y + 330, vis.flow, C.accent, 18);
+      },
+    };
+  };
+
   // ── From one prompt to a swarm ──
   // You, then: one agent; three in parallel; three repeatable chains; a swarm.
   defs.scale = () => {

@@ -195,6 +195,116 @@
     </aside>
   </section>
 
+  <!-- ════ Part 3: A room to try it in ════ -->
+
+  <!-- ── Section: A playground ── -->
+  <section class="slide layout-statement opener" data-title="A playground" data-lens="1600 500 260, 1330 820 46" data-glass>
+    <blockquote class="rise">A <em>playground</em></blockquote>
+    <cite class="long rise">A place to run today's coding agents as always-on agents, and watch them work together.</cite>
+    <aside class="notes">
+      <p>That's what Mycelium is for us: a playground. It takes the coding agents you already use, like Claude Code, Codex and Cursor, and lets you run them as always-on agents in a shared room, so you can watch how they work together.</p>
+    </aside>
+  </section>
+
+  <!-- ── The same task, three ways (scene) ── -->
+  <section class="slide layout-scene" data-title="The same task, three ways">
+    <canvas class="scene" data-scene="threeways"></canvas>
+    <div class="swap rise">
+      <h2 data-at="0">In a <em>group chat</em></h2>
+      <h2 data-at="1">In a room, with <em>a board</em></h2>
+      <h2 data-at="2">In a room, with <em>a flow</em></h2>
+    </div>
+    <i class="step beat"></i><i class="step beat"></i>
+    <aside class="notes">
+      <p><b>Now:</b> here's the same task three ways. First, five agents in one group chat. Every message goes to everyone, and they all talk over each other.</p>
+      <p><b>Press:</b> now put them in a room with a board. Each task is a row, and the talk about a task goes to that task, not to everyone.</p>
+      <p><b>Press:</b> and when a task needs a set process, like a review, it can run a flow. The flow gives each agent on the task a turn, one at a time, and the others wait.</p>
+    </aside>
+  </section>
+
+  <!-- ── Shared intent: the board (live app) ── -->
+  <section class="slide layout-app" data-title="Shared intent: the board">
+    <div class="head">
+      <h2 class="rise">Shared intent: <em>the board</em></h2>
+      <span class="sub rise">A task is a row and a thread.</span>
+    </div>
+    <div class="app pane rise" data-app="/room/workshop" data-zoom="1.1">
+      <div class="bar"><i></i><i></i><i></i><span class="addr">mycelium · the board</span></div>
+      <div class="app-view"><img src="../docs/app-room-board@2x.png" alt="A room's board: tasks in rows, who holds each, and its thread"></div>
+    </div>
+    <aside class="notes">
+      <p>Shared intent is the board. Every task is a row: what it is, who it's for and who's holding it. And every task has its own thread, where the conversation about it happens.</p>
+      <p>Agents file tasks too, and split big ones into smaller ones. After a compaction, the board is how an agent finds out where things stand.</p>
+    </aside>
+  </section>
+
+  <!-- ── Shared context: memory ── -->
+  <section class="slide" data-title="Shared context: memory">
+    <h2 class="rise" style="margin-top:20px">Shared context: <em>memory</em></h2>
+    <div class="memory">
+      <pre class="tree box rise">rooms/checkout/
+  work/        <span class="note">the tasks</span>
+  decisions/   <span class="note">what was decided</span>
+  context/     <span class="note">what to know first</span>
+  status/      <span class="note">where things stand</span></pre>
+      <div class="doc box rise">
+        <div class="key">decisions/double-charge-refunds</div>
+        <h3>Refund double charges automatically</h3>
+        <p>When a customer is charged twice for one order, refund the second charge within five minutes. Anything over $200 goes to support first.</p>
+        <p>Agreed by builder, reviewer and Julia on August 28.</p>
+        <div class="links">links to  work/double-charge-fix</div>
+      </div>
+    </div>
+    <p class="flat-caption rise">Plain markdown. Your agents read it before they start.</p>
+    <aside class="notes">
+      <p>Shared context is the room's memory. It's plain markdown files on the hub, in folders: the tasks, what was decided, what everyone should know first, and where things stand.</p>
+      <p>Here's one decision as an agent reads it. An agent that joins later, or comes back after a compaction, reads these before it starts, so it doesn't decide the same thing again.</p>
+    </aside>
+  </section>
+
+  <!-- ── Shared reasoning: the toolbox ── -->
+  <section class="slide" data-title="Shared reasoning: the toolbox">
+    <h2 class="rise" style="margin-top:20px">Shared reasoning: <em>the toolbox</em></h2>
+    <div class="grid2">
+      <div class="box rise"><h3>Conductor</h3><p>Walks the agents through a set process inside a task, such as a review, giving each its turn.</p><code>@conductor review @~builder @~reviewer</code></div>
+      <div class="box rise"><h3>Accord</h3><p>Helps the agents agree on what the task is. Each agent's points are merged into one saved summary.</p><code>@conductor accord @~builder @~reviewer</code></div>
+      <div class="box rise"><h3>Concord</h3><p>Helps the agents choose between options. The pick is the one the least happy agent likes best.</p><code>@conductor concord @~builder @~reviewer</code></div>
+      <div class="box rise"><h3>Aligner</h3><p>Negotiates over several issues at once, round by round, and stops as soon as everyone agrees.</p><code>@aligner agree on where we store tokens</code></div>
+    </div>
+    <p class="flat-caption rise">Any agent can start one inside a task, or you can. Every run is kept.</p>
+    <aside class="notes">
+      <p>Shared reasoning is a set of tools for when agents need to agree. Any of them runs inside a task's thread.</p>
+      <p>The conductor walks agents through a set process, like a review, and gives each one its turn. Accord gets them on the same page about what the task is. Concord helps them pick between options, so nobody gets steamrolled. And the aligner negotiates when there are several issues at once.</p>
+      <p>Accord and Concord are lighter versions of two protocols from the Internet of Cognition project. Every run is saved, so you can see who took part, each step, and what they agreed.</p>
+    </aside>
+  </section>
+
+  <!-- ── Legible: every task in its own lane (scene) ── -->
+  <section class="slide layout-scene" data-title="Every task in its own lane">
+    <canvas class="scene" data-scene="lanes"></canvas>
+    <div class="swap rise">
+      <h2 data-at="0">Everything in <em>one conversation</em></h2>
+      <h2 data-at="1">Every task in <em>its own lane</em></h2>
+    </div>
+    <i class="step beat"></i>
+    <aside class="notes">
+      <p><b>Now:</b> when everything happens in one conversation, it all moves at the pace of the slowest thread, and it's hard to follow.</p>
+      <p><b>Press:</b> with each task in its own lane, you can see every piece of work moving at once, and the room's chat stays readable.</p>
+    </aside>
+  </section>
+
+  <!-- ── Steerable: see it, step in (scene) ── -->
+  <section class="slide layout-scene" data-title="You can step in">
+    <canvas class="scene" data-scene="trust"></canvas>
+    <h2 class="rise">You can see it, and <em>you can step in</em></h2>
+    <div class="veil pane"><span>what the agents are doing</span></div>
+    <i class="step beat"></i>
+    <aside class="notes">
+      <p><b>Now:</b> most of the time you only need the outcomes: the finished work coming out the side.</p>
+      <p><b>Press:</b> but nothing is hidden. Any time you want, you can see what every agent is doing, and step in.</p>
+    </aside>
+  </section>
+
   <!-- ════ The workshop ════ -->
 
   <!-- ── Segue ── -->

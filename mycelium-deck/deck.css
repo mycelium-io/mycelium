@@ -259,6 +259,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .numbers.four .n { font-size: 128px; }
 /* A section opener: one line, big, on the glass. */
 .layout-statement.opener blockquote { font-size: 132px; line-height: 1; letter-spacing: -0.04em; max-width: 1100px; }
+.layout-statement.opener cite.long { max-width: 900px; }
 .numbers.four .label { font-size: 28px; }
 
 /* ── Layout: three tall columns (a frame used twice) ── */
@@ -268,6 +269,24 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .triad .box p { margin: 0; font-size: 30px; line-height: 1.4; color: var(--muted); }
 .triad .box.warn h3 { color: var(--red); }
 .credit { margin-top: 26px; font: 400 24px var(--sans); color: var(--muted); }
+
+/* ── Layout: memory (a folder tree beside one memory, rendered) ── */
+.memory { display: grid; grid-template-columns: 640px 1fr; gap: 50px; margin-top: 60px; align-items: start; }
+.memory .tree { margin: 0; padding: 34px 38px; font: 400 26px/1.9 var(--mono); white-space: pre; }
+.memory .tree .note { color: var(--muted); font-family: var(--sans); }
+.memory .doc { padding: 40px 46px; }
+.memory .doc .key { font: 400 22px var(--mono); color: var(--accent); }
+.memory .doc h3 { margin: 14px 0 18px; font: 600 40px/1.15 var(--sans); letter-spacing: -0.02em; }
+.memory .doc p { margin: 0 0 16px; font-size: 27px; line-height: 1.45; color: var(--muted); }
+.memory .doc .links { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); font: 400 22px var(--mono); color: var(--muted); }
+
+/* ── Layout: a 2×2 grid of boxes ── */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin: 50px 0 40px; }
+.grid2 .box { padding: 32px 38px; display: flex; flex-direction: column; gap: 14px; }
+.grid2 .box h3 { font: 600 40px/1.05 var(--sans); letter-spacing: -0.02em; }
+.grid2 .box p { margin: 0; font-size: 27px; line-height: 1.4; color: var(--muted); }
+.grid2 .box code { align-self: flex-start; font-size: 21px; color: var(--accent); padding: 6px 12px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.layout-app .head .sub { font-size: 30px; color: var(--muted); }
 
 /* ── Layout: exercise ── */
 .layout-exercise .steps { list-style: none; counter-reset: s; padding: 0; margin: 56px 0 0; max-width: 1020px; }
