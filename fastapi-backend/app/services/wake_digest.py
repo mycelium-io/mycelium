@@ -488,27 +488,36 @@ def _replied(room: str, window: list[Any], asked: list[Any], me: str) -> set[int
     return replied
 
 
-def _reply_lines(room: str, me: str, window: list[Any], asked: list[Any]) -> list[str]:
-    """One ``respond`` for each place an ask the agent hasn't replied to was
-    made, the newest ask's place first. ``respond`` lands in a task's thread
-    only with ``--task``, so the target is named outright; a thread no row
-    carries can't be named, so its reply goes to the room, and the line says so."""
+def _reply_lines(room: str, me: str, window: list[Any], asked: list[Any]) -> list[tuple[str, str]]:
+    """Where to reply, and the ``respond`` that puts it there, for each place
+    an ask the agent hasn't replied to was made, the newest ask's place first.
+
+    The place is who wrote and where (``@julia wrote, in "Fix the tax"``),
+    since the rule is to answer where the message was written. ``respond``
+    lands in a task's thread only with ``--task``, so the target is named
+    outright; a thread no row carries can't be named, so its reply goes to the
+    room, and the place says so."""
     replied = _replied(room, window, asked[:-1], me)
-    lines: list[str] = []
+    lines: list[tuple[str, str]] = []
     seen: set[str | None] = set()
     for record in reversed(asked):
         if id(record) in replied:
             continue
-        where = _where(room, _thread_of(room, record))
+        thread = _thread_of(room, record)
+        where = _where(room, thread)
         target = where[0] if where else None
         if target in seen:
             continue
         seen.add(target)
         task = f" --task {where[0]}" if where else ""
-        lands = _named(where) if where else "the room"
-        lines.append(
-            f'mycelium respond --room {room} --handle {me}{task} --body "..."   (lands in {lands})'
-        )
+        wrote = f"@{plain(record.sender)} wrote"
+        if where:
+            place = f"{wrote}, in {_named(where)}"
+        elif thread:
+            place = f"{wrote} in a thread no task carries, so this lands in the room"
+        else:
+            place = f"{wrote}, in the room"
+        lines.append((place, f'mycelium respond --room {room} --handle {me}{task} --body "..."'))
     return lines
 
 
@@ -683,32 +692,27 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         # that woke it first: an older ask can be a flow's turn in another
         # thread, with a floor and a deadline there.
         replies = _reply_lines(room, me, window, asked)
-        if not replies:
-            task = f" --task {where[0]}" if here and where else ""
-            lands = _named(where) if here and where else "the room"
-            replies = [
-                f'mycelium respond --room {room} --handle {me}{task} --body "..."   (lands in {lands})'
-            ]
         lines += [
             f"Next:    1. mycelium await --room {room} --handle {me} --json --timeout 5",
             f"            (marks these read and says you're on it{extra})",
         ]
         # An agent asked in a task's thread tends to answer in the main
-        # channel, with a bare ``respond`` or ``room send``. Say where the
-        # answer goes, and that ``--task`` is what puts it there.
-        in_thread = any(" --task " in r for r in replies)
-        if len(replies) == 1 and in_thread:
-            lines += [
-                "         2. reply in the task's thread, not the main channel (--task puts it there):",
-                f"            {replies[0]}",
-            ]
-        elif len(replies) == 1:
-            lines.append(f"         2. {replies[0]}")
-        else:
+        # channel, weighing a hint against its own sense of where a topic
+        # belongs. The wake is the one place it learns where the person
+        # wrote, so step 2 says it as the rule the skill gives: reply there.
+        if not replies:
+            task = f" --task {where[0]}" if here and where else ""
+            lands = _named(where) if here and where else "the room"
             lines.append(
-                "         2. reply where each was asked (--task puts it in that task's thread):"
+                f'         2. mycelium respond --room {room} --handle {me}{task} --body "..."'
+                f"   (lands in {lands})"
             )
-            lines += [f"            {r}" for r in replies]
+        elif len(replies) == 1:
+            place, command = replies[0]
+            lines += [f"         2. reply where {place}:", f"            {command}"]
+        else:
+            lines.append("         2. reply where each was written:")
+            lines += [f"            {command}   ({place})" for place, command in replies]
 
     # The others asking for it: whole while they fit, newest first, then named.
     lines += _other_asks(room, window, asked, me, now)

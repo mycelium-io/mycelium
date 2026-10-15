@@ -206,8 +206,8 @@ def build_mention_prompt(room: str, handle: str) -> str:
         f"Run `mycelium await --room {room} --handle {h} --json --timeout 5` to read it "
         f"with everything said since your last turn, then reply with "
         f'`mycelium respond --room {room} --handle {h} --body "..."`. '
-        f"That lands in the room; if the turn names a task, add `--task <task>` "
-        f"to answer in its thread."
+        f"Reply where you were asked: if the turn names a task, add `--task <task>` "
+        f"so it lands in that task's thread; without it, it lands in the room."
     )
 
 

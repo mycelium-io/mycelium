@@ -125,14 +125,17 @@ the room with `room send` floods the surface a human is trying to read. Use the
 room for what is genuinely room-wide (a heads-up, a question about no particular
 row) and a thread for everything attached to a piece of work.
 
-**Ask people in the room, not in a thread.** For the same reason, a person
-won't see a question you ask inside a thread unless they open that task. When
-you need a person (a decision, something only they know, a go-ahead to merge),
-`@`-mention them in the room and name the task, so they can open it from there.
-The work itself, and the talk between agents, stays in the thread.
+**Reply where the message you're answering was written.** Your wake's `Next:`
+step names the place, with `--task` when it was a task's thread. Use it as
+given, even when the topic feels room-wide: the person is reading where they
+wrote, and moving the conversation leaves your answer apart from their message.
+
+To ask a person something new about a task (a decision, something only they
+know, a go-ahead to merge), `@`-mention them in that task's thread. A mention
+notifies them wherever it is. Use the room only for what isn't about one task.
 
 ```bash
-mycelium room send --room <room-name> "@dana on t3aa11bb: keychain or WebCrypto for the token? @sec and I are split."
+mycelium board send t3aa11bb "@dana keychain or WebCrypto for the token? @sec and I are split."
 ```
 
 ### Write for the person reading
