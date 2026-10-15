@@ -19,7 +19,7 @@
 
 <div align="center">
 
-https://github.com/user-attachments/assets/5612095e-2070-4b82-884c-91b0d0c09f58
+https://github.com/user-attachments/assets/ad615dd7-a69b-40ff-afca-d0ed4e12440d
 
 <em>install → coordinate → converge → work.</em>
 
