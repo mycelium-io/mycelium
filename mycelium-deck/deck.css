@@ -106,8 +106,13 @@ body.flat #lens-bg { opacity: 0; }
 
 /* ── Type ── */
 h1, h2, h3 { margin: 0; font-weight: 600; }
-.display { font: italic 600 172px/0.92 var(--display); letter-spacing: -0.02em; }
-h2, .h2 { font: italic 600 104px/1 var(--display); letter-spacing: -0.015em; }
+/* Headings are plain and tight in the sans; the display serif, in italic, is
+ * only an accent: one phrase per slide, marked with <em>, as on the site. */
+.display { font: 600 150px/0.98 var(--sans); letter-spacing: -0.04em; }
+h2, .h2 { font: 600 84px/1.04 var(--sans); letter-spacing: -0.03em; }
+h2 em, .h2 em, .display em, blockquote em, .big em, .flat-caption em, .verdict em {
+  font: italic 500 1.14em/1 var(--display); letter-spacing: -0.01em; color: var(--accent);
+}
 h3 { font: 500 40px/1.2 var(--sans); letter-spacing: -0.01em; }
 p, li { font-size: 34px; line-height: 1.45; font-weight: 400; }
 .lede { font-size: 40px; line-height: 1.4; font-weight: 400; color: var(--muted); max-width: 1000px; }
@@ -167,7 +172,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 
 /* ── Layout: statement ── */
 .layout-statement { justify-content: center; }
-.layout-statement blockquote { margin: 40px 0 0; font: italic 500 96px/1.08 var(--display); letter-spacing: -0.015em; max-width: 1350px; }
+.layout-statement blockquote { margin: 40px 0 0; font: 600 76px/1.1 var(--sans); letter-spacing: -0.03em; max-width: 1400px; }
 .layout-statement blockquote .accent { font-style: italic; }
 .layout-statement cite { display: block; margin-top: 56px; font: 400 26px/1.4 var(--sans); font-style: normal; color: var(--muted); letter-spacing: 0.04em; }
 .layout-statement cite.long { font-size: 36px; line-height: 1.45; letter-spacing: 0; max-width: 1300px; }
@@ -190,7 +195,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .card .glyph { width: 74px; height: 74px; border-radius: 50%; position: relative; background: radial-gradient(circle at 34% 30%, #fff 0 5%, color-mix(in srgb, var(--accent) 70%, #fff) 16%, var(--accent) 42%, color-mix(in srgb, var(--accent2) 70%, #000) 100%); box-shadow: 0 14px 30px color-mix(in srgb, var(--accent) 30%, transparent), inset -6px -10px 16px rgba(0,0,0,.25); }
 .card:nth-child(2) .glyph { filter: hue-rotate(55deg); }
 .card:nth-child(3) .glyph { filter: hue-rotate(-60deg); }
-.card h3 { font: italic 600 64px/1 var(--display); }
+.card h3 { font: 600 48px/1.05 var(--sans); letter-spacing: -0.025em; }
 .card p { font-size: 29px; color: var(--muted); margin: 0; }
 .card .foot { margin-top: auto; font: 500 21px/1.3 var(--sans); color: var(--accent); }
 .cards.people { grid-template-columns: repeat(2, 1fr); max-width: 1500px; }
@@ -239,7 +244,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .flow::before { content: ""; position: absolute; left: 40px; right: 40px; top: 40px; height: 2px; background: linear-gradient(90deg, var(--accent), var(--accent2)); opacity: 0.45; }
 .flow li { position: relative; }
 .flow .marker { width: 82px; height: 82px; border-radius: 50%; display: grid; place-items: center; font: 600 28px var(--sans); background: var(--pane-solid); border: 2px solid var(--border-hi); transition: all 0.4s; position: relative; z-index: 1; }
-.flow h3 { margin: 40px 0 16px; font: italic 600 58px/1 var(--display); }
+.flow h3 { margin: 40px 0 16px; font: 600 46px/1.05 var(--sans); letter-spacing: -0.025em; }
 .flow p { font-size: 28px; color: var(--muted); margin: 0; }
 .flow .notice { display: inline-block; margin-top: 24px; font: 500 20px var(--sans); color: var(--accent); padding: 10px 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--pane); }
 
@@ -323,7 +328,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 /* ── Layout: what it isn't (two "not" panes and the line under them) ── */
 .layout-isnt .compare { flex: none; }
 .compare .side p { font-size: 34px; color: var(--muted); margin: 0; }
-.verdict { margin: 70px 0 0; font: italic 500 70px/1.15 var(--display); max-width: 1500px; }
+.verdict { margin: 70px 0 0; font: 600 60px/1.15 var(--sans); letter-spacing: -0.025em; max-width: 1500px; }
 
 /* ── Layout: lanes (the room's chat over the tasks' threads) ── */
 .layout-lanes .lane-label { font: 500 20px var(--sans); fill: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; }
@@ -337,7 +342,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 /* ── Layout: points (a row of three under a statement) ── */
 .points { display: grid; grid-template-columns: repeat(3, 1fr); gap: 50px; margin-top: 90px; max-width: 1300px; }
 .points div { font-size: 28px; color: var(--muted); padding-top: 22px; border-top: 1px solid var(--border-hi); }
-.points b { display: block; margin-bottom: 8px; font: italic 600 46px/1 var(--display); color: var(--text); }
+.points b { display: block; margin-bottom: 8px; font: 600 38px/1.05 var(--sans); letter-spacing: -0.02em; color: var(--text); }
 
 /* ── Layout: trio (three big lines, one per press) ── */
 .layout-trio .trio { margin-top: 60px; display: flex; flex-direction: column; gap: 46px; }
@@ -349,7 +354,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 /* ── Layout: scene (a living diagram, words kept to a heading) ── */
 .layout-scene { isolation: isolate; }   /* the canvas sits behind the slide's words, over the lens */
 .layout-scene canvas.scene { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; z-index: -1; }
-.layout-scene h2 { margin-top: 30px; font-size: 96px; }
+.layout-scene h2 { margin-top: 30px; font-size: 80px; }
 .swap { position: relative; height: 130px; }
 .swap [data-at] { position: absolute; left: 0; top: 0; white-space: nowrap; opacity: 0; transform: translateY(14px); filter: blur(6px); transition: opacity 0.5s, transform 0.5s, filter 0.5s; }
 .slide:not([data-stage]) .swap [data-at="0"],
@@ -390,13 +395,13 @@ svg.wires path.hi { stroke: var(--accent); marker-end: url(#wire-head-hi); }
 svg.wires path.plain { marker-end: none; }
 #wire-defs .head { fill: color-mix(in srgb, var(--text) 45%, transparent); }
 #wire-defs .head-hi { fill: var(--accent); }
-.flat-caption { margin-top: auto; margin-bottom: 30px; font: italic 500 54px/1.15 var(--display); max-width: 1500px; }
+.flat-caption { margin-top: auto; margin-bottom: 30px; font: 600 46px/1.15 var(--sans); letter-spacing: -0.02em; max-width: 1500px; }
 .flat-source { position: absolute; right: 150px; bottom: 110px; font: 400 20px var(--sans); color: var(--muted); letter-spacing: 0.04em; }
 
 /* ── Layout: levelset (a few words, very large) ── */
 .layout-levelset { justify-content: center; }
-.layout-levelset .big { font: italic 600 150px/1 var(--display); letter-spacing: -0.02em; max-width: 1500px; }
-.layout-levelset p { margin-top: 56px; max-width: 1180px; font-size: 38px; color: var(--muted); }
+.layout-levelset .big { font: 600 128px/1.02 var(--sans); letter-spacing: -0.04em; max-width: 1500px; }
+.layout-levelset p { margin-top: 56px; max-width: 1180px; font-size: 40px; color: color-mix(in srgb, var(--text) 82%, transparent); }
 
 /* ── Layout: staircase (steps rising left to right) ── */
 .stair { position: relative; flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 26px; align-items: end; margin: 30px 0 70px 90px; }
