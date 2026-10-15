@@ -58,13 +58,15 @@ wake for `builder` in the mock's `checkout` room, written in the format
 update the text to match and remake the card from the repo root:
 
 ```
-node shotkit/bin/shot.mjs term --cols 96 --backdrop none --padding 0 \
+node shotkit/bin/shot.mjs term --cols 100 --backdrop none --padding 0 \
   --title "builder · claude" --command "the wake @builder reads" \
   -o ../mycelium-io.github.io/step-wake-agent@2x.png \
-  -- cat mycelium-frontend/screenshots/wake-note.txt
+  -- fold -s -w 100 mycelium-frontend/screenshots/wake-note.txt
 ```
 
-Then make `step-wake-agent.png` at half that width (on a Mac,
+`fold` wraps the long lines the way a terminal would; without it the card
+widens to the longest line and its text shrinks on the page. Then make
+`step-wake-agent.png` at half that width (on a Mac,
 `sips -Z <half> step-wake-agent@2x.png --out step-wake-agent.png`) and run
 `npm run optimize-png -- <file>` on both, in `mycelium-frontend`.
 
