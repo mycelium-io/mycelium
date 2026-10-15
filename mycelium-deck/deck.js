@@ -3,8 +3,9 @@
 
 // ── The deck ──
 // Slides are <section class="slide"> on a 1920x1080 stage scaled to the
-// window. Each slide names where its lens sits with data-lens="x y r" in stage
-// pixels (comma-separate up to three; "none" for none). Keys are listed in
+// window. A slide marked data-glass shows the glass background, with its lens
+// where data-lens="x y r" says in stage pixels (comma-separate up to three);
+// every other slide is flat. Keys are listed in
 // the help panel (?). The speaker view (S) is a popup the deck writes itself,
 // so it works from file:// with no server.
 (function () {
@@ -56,9 +57,12 @@
     const s = slides[index];
     const shown = steps(s).filter(e => e.classList.contains('shown') && e.dataset.lens);
     const spec = shown.length ? shown[shown.length - 1].dataset.lens : s.dataset.lens;
-    // Only a slide that holds the logo shows a lens; elsewhere it shrinks away.
-    const list = overview || !s.hasAttribute('data-logo') ? [] : parseLens(spec).map(l => ({ x: ox + l.x * scale, y: oy + l.y * scale, r: l.r * scale }));
-    window.Lens.set(list, index, !overview && s.hasAttribute('data-logo'));
+    // The glass (the network and its lens) shows only on a slide marked
+    // data-glass; every other slide is flat, and the lens shrinks away.
+    const glass = !overview && s.hasAttribute('data-glass');
+    document.body.classList.toggle('flat', !glass);
+    const list = glass ? parseLens(spec).map(l => ({ x: ox + l.x * scale, y: oy + l.y * scale, r: l.r * scale })) : [];
+    window.Lens.set(list, index, glass && s.hasAttribute('data-logo'));
   }
 
   // ── Steps ──

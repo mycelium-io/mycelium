@@ -238,6 +238,85 @@
     };
   };
 
+  // ── One agent that keeps everything, then workers that leave notes ──
+  // Stage 0: one agent takes in every piece of work and keeps it, and swells.
+  // Stage 1: workers arrive, work and finish, each dropping what it learned
+  // into the room's memory, the tray below. Stage 2: the tray's three folders
+  // are named, and each new worker reads from it before it starts.
+  defs.lifecycle = () => {
+    const rnd = seeded(5);
+    const big = node(960, 520, 0, 0);
+    const KINDS = ['accent', 'violet', 'green'];
+    const TRAY = { x: 520, y: 900, w: 880 };
+    let tray = [], workers = [], drops = [], bits = [], inside = [], swell = 0;
+    // The tray has a section per kind; beads fill each from the left, then stack.
+    const SEC = TRAY.w / 3;
+    const slot = (kind, i) => ({ x: TRAY.x + KINDS.indexOf(kind) * SEC + 34 + (i % 9) * 28, y: TRAY.y - 6 - Math.floor(i / 9) * 26 });
+    const count = kind => tray.filter(k => k === kind).length;
+    return {
+      stage(s) { if (s === 0) { tray = []; workers = []; drops = []; inside = []; swell = 0; } },
+      frame(d, dt, s) {
+        if (s === 0) {
+          big.tr = 70 + swell; big.ta = 1;
+          // Work flies in, and stays: the agent just gets bigger.
+          if (rnd() < dt * 2.2) { const ang = rnd() * 6.28; bits.push({ x: 960 + Math.cos(ang) * 520, y: 520 + Math.sin(ang) * 330, u: 0 }); }
+        } else { big.tr = 0; big.ta = 0; }
+        bits.forEach(b => { b.u += dt * 0.9; if (b.u >= 1) { swell = Math.min(110, swell + 2.2); big.flash = 1; if (inside.length < 60) inside.push({ ang: rnd() * 6.28, rad: rnd(), spin: 0.2 + rnd() * 0.5, kind: KINDS[Math.floor(rnd() * 3)] }); } });
+        bits = bits.filter(b => b.u < 1 && s === 0);
+
+        if (s >= 1 && rnd() < dt * 1.3 && workers.length < 7) {
+          let p; for (let k = 0; k < 20; k++) { p = { x: 380 + rnd() * 1160, y: 320 + rnd() * 420 }; if (workers.every(w => dist(w, p) > 150)) break; }
+          const w = node(p.x, p.y, 0, 0);
+          w.tr = 26; w.ta = 1; w.kind = KINDS[Math.floor(rnd() * 3)]; w.age = 0;
+          const have = KINDS.filter(count);
+          const k = have[Math.floor(rnd() * have.length)];
+          w.read = s >= 2 && have.length ? { from: slot(k, Math.floor(rnd() * count(k))), u: 0, kind: k } : null;
+          w.life = w.read ? 1.6 + rnd() : 2.6 + rnd() * 1.2;
+          workers.push(w);
+        }
+        workers.forEach(w => {
+          w.age += dt;
+          if (w.read && w.read.u < 1) { w.read.u += dt * 1.8; w.age = Math.min(w.age, 0.2); }
+          if (w.age > w.life && w.ta > 0) {
+            w.ta = 0; w.tr = 0;
+            const queued = count(w.kind) + drops.filter(p => p.kind === w.kind).length;
+            if (queued < 27) drops.push({ x: w.x, y: w.y, vy: -80, kind: w.kind, to: slot(w.kind, queued) });
+          }
+          settle(w, dt, 5);
+        });
+        workers = workers.filter(w => w.ta > 0 || w.a > 0.02);
+        drops.forEach(p => { p.vy += 1400 * dt; p.y += p.vy * dt; p.x += (p.to.x - p.x) * Math.min(1, dt * 4); if (p.y >= p.to.y) { p.done = true; tray.push(p.kind); } });
+        drops = drops.filter(p => !p.done);
+        settle(big, dt, 3);
+
+        const showTray = s >= 1 ? 1 : 0;
+        d.ctx.save(); d.ctx.globalAlpha = 0.55 * showTray;
+        d.ctx.strokeStyle = C.muted; d.ctx.lineWidth = 2;
+        d.ctx.beginPath(); d.ctx.moveTo(TRAY.x, TRAY.y + 18); d.ctx.lineTo(TRAY.x + TRAY.w, TRAY.y + 18); d.ctx.stroke();
+        d.ctx.restore();
+        bits.forEach(b => d.pulse({ x: b.x, y: b.y }, big, b.u, C.yellow, 0.1, 6));
+        d.bead(big.x, big.y, big.r * (1 + big.flash * 0.04), C.violet, big.a);
+        // What it was given stays inside it, turning slowly.
+        inside.forEach(m => { m.ang += m.spin * dt; const rr = big.r * 0.72 * Math.sqrt(m.rad); d.bead(big.x + Math.cos(m.ang) * rr, big.y + Math.sin(m.ang) * rr, 6, C[m.kind], big.a * 0.9); });
+        workers.forEach(w => {
+          if (w.read && w.read.u < 1.05) d.edge(w.read.from, w, Math.min(1, w.read.u * 2) * w.a * 0.8, C[w.read.kind], 0.12, 2);
+          if (w.read && w.read.u < 1) d.pulse(w.read.from, w, w.read.u, C[w.read.kind], 0.12, 6);
+          d.bead(w.x, w.y, w.r, C[w.kind], w.a);
+          // Working: two motes circling it.
+          if (w.a > 0.5 && (!w.read || w.read.u >= 1)) for (let k = 0; k < 2; k++) {
+            const t = w.age * 4 + k * 3.14; d.ctx.save(); d.ctx.globalAlpha = w.a * 0.8; d.ctx.fillStyle = C[w.kind];
+            d.ctx.beginPath(); d.ctx.arc(w.x + Math.cos(t) * 42, w.y + Math.sin(t) * 42, 4, 0, 6.28); d.ctx.fill(); d.ctx.restore();
+          }
+        });
+        drops.forEach(p => d.bead(p.x, p.y, 9, C[p.kind], 1));
+        KINDS.forEach(k => { for (let i = 0; i < count(k); i++) { const p = slot(k, i); d.bead(p.x, p.y, 10, C[k], showTray); } });
+        const named = s >= 2 ? 1 : 0;
+        ['decisions', 'context', 'procedures'].forEach((t, i) => d.label(t, TRAY.x + SEC * i + SEC / 2, TRAY.y + 56, named, C[KINDS[i]], 19));
+        d.label("the room's memory", TRAY.x + TRAY.w / 2, TRAY.y + 100, showTray * 0.8, C.muted, 17);
+      },
+    };
+  };
+
   // ── From one prompt to a swarm ──
   // You, then: one agent; three in parallel; three repeatable chains; a swarm.
   defs.scale = () => {

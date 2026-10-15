@@ -69,7 +69,9 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-#lens-bg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 0; }
+#lens-bg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 0; transition: opacity 0.7s ease; }
+/* Off a GLASS slide the background is flat: the canvas fades to the page. */
+body.flat #lens-bg { opacity: 0; }
 
 /* ── The stage: 1920x1080, scaled to fit by deck.js ── */
 .deck {
@@ -168,6 +170,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .layout-statement blockquote { margin: 40px 0 0; font: italic 500 96px/1.08 var(--display); letter-spacing: -0.015em; max-width: 1350px; }
 .layout-statement blockquote .accent { font-style: italic; }
 .layout-statement cite { display: block; margin-top: 56px; font: 400 26px/1.4 var(--sans); font-style: normal; color: var(--muted); letter-spacing: 0.04em; }
+.layout-statement cite.long { font-size: 36px; line-height: 1.45; letter-spacing: 0; max-width: 1300px; }
 
 /* ── Layout: agenda ── */
 .agenda { list-style: none; margin: 44px 0 0; padding: 0; max-width: 1180px; }
@@ -363,6 +366,62 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .slide[data-stage="1"] .veil { backdrop-filter: none; -webkit-backdrop-filter: none; background: transparent; border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .slide[data-stage="1"] .veil span { opacity: 1; color: var(--accent); }
 
+/* ── Flat diagrams: boxes, and the wires flat.js draws between them ──
+ * Most slides are plain diagrams on a flat background, in one style: a box
+ * is a thin outline with a label, a wire is a thin line with an arrowhead.
+ * Give a box data-node="name"; a <path data-from="a" data-to="b"> in the
+ * slide's svg.wires is drawn between them. */
+.box {
+  position: relative; text-shadow: none;
+  padding: 24px 30px; border-radius: 18px;
+  border: 2px solid var(--border-hi);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  font: 400 30px/1.3 var(--sans);
+}
+.box b { display: block; font-weight: 500; }
+.box small { display: block; margin-top: 8px; font-size: 22px; color: var(--muted); }
+.box.hi { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.box.hi small { color: var(--accent); }
+.box.warn { border-color: var(--red); background: color-mix(in srgb, var(--red) 8%, transparent); }
+.tag { font: 500 20px/1 var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+svg.wires { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; pointer-events: none; }
+svg.wires path { fill: none; stroke: color-mix(in srgb, var(--text) 45%, transparent); stroke-width: 2.5; marker-end: url(#wire-head); }
+svg.wires path.hi { stroke: var(--accent); marker-end: url(#wire-head-hi); }
+svg.wires path.plain { marker-end: none; }
+#wire-defs .head { fill: color-mix(in srgb, var(--text) 45%, transparent); }
+#wire-defs .head-hi { fill: var(--accent); }
+.flat-caption { margin-top: auto; margin-bottom: 30px; font: italic 500 54px/1.15 var(--display); max-width: 1500px; }
+.flat-source { position: absolute; right: 150px; bottom: 110px; font: 400 20px var(--sans); color: var(--muted); letter-spacing: 0.04em; }
+
+/* ── Layout: levelset (a few words, very large) ── */
+.layout-levelset { justify-content: center; }
+.layout-levelset .big { font: italic 600 150px/1 var(--display); letter-spacing: -0.02em; max-width: 1500px; }
+.layout-levelset p { margin-top: 56px; max-width: 1180px; font-size: 38px; color: var(--muted); }
+
+/* ── Layout: staircase (steps rising left to right) ── */
+.stair { position: relative; flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 26px; align-items: end; margin: 30px 0 70px 90px; }
+.stair .box { margin-bottom: calc(var(--n) * 108px); min-height: 150px; }
+.stair .box time { display: block; margin-bottom: 10px; font: 500 21px var(--sans); color: var(--accent); letter-spacing: 0.08em; }
+.stair .axis { position: absolute; left: -70px; top: 10px; bottom: 0; width: 2px; background: var(--border-hi); }
+.stair .axis::before { content: ""; position: absolute; left: -8px; top: -4px; border: 9px solid transparent; border-bottom: 14px solid var(--border-hi); border-top: 0; }
+.stair .axis span { position: absolute; left: -26px; bottom: 0; transform: rotate(-90deg); transform-origin: left bottom; white-space: nowrap; }
+
+/* ── Layout: two rows joined by wires ── */
+.rows { display: grid; grid-template-columns: 300px repeat(3, 1fr); column-gap: 40px; row-gap: 150px; margin-top: 90px; align-items: center; }
+.rows .tag { line-height: 1.4; }
+
+/* ── Layout: funnel ── */
+.funnel { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 50px; position: relative; }
+.funnel .band {
+  width: var(--w); height: 128px; display: grid; place-items: center; text-align: center; text-shadow: none;
+  clip-path: polygon(0 0, 100% 0, calc(100% - var(--slant)) 100%, var(--slant) 100%);
+  background: color-mix(in srgb, var(--text) var(--fill), transparent);
+  font: 400 28px/1.25 var(--sans);
+}
+.funnel .band b { font-weight: 600; }
+.funnel .band.hi { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.funnel .here { position: absolute; color: var(--accent); }
+
 /* ── Layout: close ── */
 .layout-close { align-items: center; justify-content: center; text-align: center; }
 .layout-close .display { font-size: 220px; }
@@ -407,7 +466,7 @@ body.black .blackout { opacity: 1; }
 .goto.open { display: block; }
 
 /* ── No WebGL, and print: a still lens drawn in CSS from the slide's --lens-* ── */
-.no-webgl .slide::before {
+.no-webgl .slide[data-glass]::before {
   content: ""; position: absolute; z-index: -1; border-radius: 50%;
   left: calc(var(--lx, 1500px) - var(--lr, 300px)); top: calc(var(--ly, 540px) - var(--lr, 300px));
   width: calc(var(--lr, 300px) * 2); height: calc(var(--lr, 300px) * 2);
@@ -418,7 +477,7 @@ body.black .blackout { opacity: 1; }
   box-shadow: 40px 60px 120px rgba(0,0,0,.35);
 }
 .no-webgl .slide { isolation: isolate; }
-.no-webgl body, .no-webgl .deck {
+.no-webgl body:not(.flat), .no-webgl body:not(.flat) .deck {
   background:
     radial-gradient(ellipse at 88% -5%, rgba(22, 80, 210, .45), transparent 55%),
     radial-gradient(ellipse at 6% 108%, rgba(106, 69, 199, .22), transparent 50%),
@@ -433,13 +492,16 @@ body.black .blackout { opacity: 1; }
   .slide {
     position: relative; width: 1920px; height: 1080px; opacity: 1; visibility: visible;
     break-after: page; overflow: hidden; transform: none !important; isolation: isolate;
+    background: var(--bg);
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .slide[data-glass] {
     background:
       radial-gradient(ellipse at 88% -5%, rgba(22, 80, 210, .45), transparent 55%),
       radial-gradient(ellipse at 6% 108%, rgba(106, 69, 199, .22), transparent 50%),
       var(--bg);
-    -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
-  .slide::before {
+  .slide[data-glass]::before {
     content: ""; position: absolute; z-index: -1; border-radius: 50%;
     left: calc(var(--lx, 1500px) - var(--lr, 300px)); top: calc(var(--ly, 540px) - var(--lr, 300px));
     width: calc(var(--lr, 300px) * 2); height: calc(var(--lr, 300px) * 2);

@@ -16,17 +16,17 @@
 <main class="deck" data-talk="Agents that work together">
 
   <!-- ── Title ── -->
-  <section class="slide layout-title" data-title="Title" data-lens="1520 470 330, 1130 860 54" data-logo data-bare>
-    <h1 class="display rise">Agents that<br>work together</h1>
-    <p class="lede rise">Scaling agents out, beyond the orchestrator. A hands-on workshop.</p>
+  <section class="slide layout-title" data-title="Title" data-lens="1520 470 330, 1130 860 54" data-glass data-logo data-bare>
+    <h1 class="display rise">Your agent,<br>my agent,<br>one room.</h1>
+    <p class="lede rise">A hands-on workshop with Mycelium.</p>
     <div class="byline rise"><span>Julia Valenti</span><span class="dot"></span><span>Jodee Varney</span><span class="dot"></span><span>Shift.Forward</span></div>
     <aside class="notes">
-      <p>Welcome. This talk is about agents that work together: scaling agents out beyond the orchestrator pattern, and the platform we built for it, Mycelium.</p>
+      <p>Welcome. Today is about agents working together, and you'll try it yourself: by the end, your agent and your neighbor's agent will be working on the same task.</p>
     </aside>
   </section>
 
   <!-- ── Who we are ── -->
-  <section class="slide" data-title="Who we are" data-lens="1700 190 140">
+  <section class="slide" data-title="Who we are">
     <h2 class="rise" style="margin-top:34px">Who we are</h2>
     <div class="cards people">
       <article class="card pane rise"><img class="photo" src="people/julia.jpg" alt="Julia Valenti"><h3>Julia Valenti</h3><p>Engineering technical leader, Outshift by Cisco. Front-end engineer turned full stack. Builds for people and for agents.</p><span class="foot">user experience · agent experience</span></article>
@@ -38,103 +38,108 @@
     </aside>
   </section>
 
-  <!-- ── Internet of Cognition ── -->
-  <section class="slide layout-statement" data-title="Internet of Cognition" data-lens="1680 840 190, 1440 970 38">
-    <blockquote class="rise">The Internet of Cognition</blockquote>
-    <cite class="rise">Agents coordinating to take on bigger work</cite>
+  <!-- ── Where Mycelium comes from ── -->
+  <section class="slide layout-statement" data-title="Where Mycelium comes from">
+    <blockquote class="rise">Mycelium is part of Outshift's Internet of Cognition.</blockquote>
+    <cite class="long rise">Agents working together on bigger jobs than any one of them can do alone. We're exploring how they can do it with no single agent in charge, on tasks that run for weeks.</cite>
     <aside class="notes">
-      <p>Mycelium is part of a project called the Internet of Cognition. You'll probably hear about it a lot over the course of Shift.Forward.</p>
-      <p>The Internet of Cognition is about agentic coordination: agents working together to take on tasks and projects bigger than the ones they take on today.</p>
+      <p>Mycelium comes out of a project called the Internet of Cognition. You'll hear about it a lot at Shift.Forward.</p>
+      <p>The idea is agents working together on bigger jobs than any one of them can take on today. On our team we're exploring two things in particular: agents coordinating with no central coordinator, and tasks that run for a long time.</p>
     </aside>
   </section>
 
-  <!-- ── What we're working on ── -->
-  <section class="slide layout-statement" data-title="What we're working on" data-lens="1680 840 190, 1440 970 38">
-    <blockquote class="rise">Scaling agents out, to longer tasks and bigger problems.</blockquote>
-    <cite class="rise">Agents coordinating without a central coordinator</cite>
+  <!-- ── The levelset ── -->
+  <section class="slide layout-levelset" data-title="Nobody has this figured out">
+    <div class="big rise">Nobody has this figured out.</div>
+    <p class="rise">Coding with AI is still an experiment. Anyone who says they have the exact answer is selling something. We've watched the field change several times in the past year.</p>
     <aside class="notes">
-      <p>Back to what we're focused on: scaling agents out across longer-horizon tasks, and to bigger problems.</p>
-      <p>One thing we're experimenting with a lot is agents coordinating without a central coordinator. To explain what that means, let's look at how agent systems usually work.</p>
+      <p>Before anything else, a levelset. Nobody has this figured out, including us. Coding with AI is still experimental, and the best practices keep changing. What was right six months ago often isn't now.</p>
+      <p>So take everything today as one way of working that we're trying out, not as the answer.</p>
     </aside>
   </section>
 
-  <!-- ── One agent, an orchestrator, its failure, coworkers (scene) ── -->
-  <section class="slide layout-scene" data-title="How it's done today" data-lens="1770 170 100">
-    <canvas class="scene" data-scene="coworkers"></canvas>
+  <!-- ── How we got here: a staircase ── -->
+  <section class="slide" data-title="How we got here">
+    <h2 class="rise" style="margin-top:20px">How we got here</h2>
+    <div class="stair">
+      <div class="axis"><span class="tag">How much the agent does on its own</span></div>
+      <div class="box rise" style="--n:0"><time>2021</time>Autocomplete in the editor</div>
+      <div class="box step" style="--n:1"><time>Late 2022</time>Copy and paste from a chat window</div>
+      <div class="box step" style="--n:2"><time>Early 2025</time>Agents in the terminal</div>
+      <div class="box step" style="--n:3"><time>Mid 2025</time>Agents in the background</div>
+      <div class="box hi step" style="--n:4"><time>2026</time>Always-on agents</div>
+    </div>
+    <aside class="notes">
+      <p>Here's how fast it moved. Each step on a click.</p>
+      <p>Autocomplete in the editor: the model finishes the line you're typing. Then chat: you ask, and copy the answer back into your code. Then agents in the terminal, like Claude Code, that read and edit the code themselves. Then agents that work in the background while you do something else. And now always-on agents, which keep running and pick up work as it comes.</p>
+      <p>Each step, the agent does more on its own. (The dates are rough. Check them before the talk.)</p>
+    </aside>
+  </section>
+
+  <!-- ── What drove each step: two rows ── -->
+  <section class="slide" data-title="What drove each step">
+    <h2 class="rise" style="margin-top:20px">What drove each step</h2>
+    <div class="rows">
+      <span class="tag rise">What the models<br>learned to do</span>
+      <div class="box rise" data-node="m1">Use tools</div>
+      <div class="box rise" data-node="m2">Follow long instructions</div>
+      <div class="box rise" data-node="m3">Work for hours</div>
+      <span class="tag step">How the apps<br>changed</span>
+      <div class="box step" data-node="a1">Agents in the terminal</div>
+      <div class="box step" data-node="a2">Agents in the background</div>
+      <div class="box hi step" data-node="a3">Always-on agents</div>
+    </div>
+    <svg class="wires" aria-hidden="true">
+      <path class="step" data-from="m1" data-to="a1"/>
+      <path class="step" data-from="m2" data-to="a2"/>
+      <path class="hi step" data-from="m3" data-to="a3"/>
+    </svg>
+    <p class="flat-caption rise">The apps follow the models.</p>
+    <aside class="notes">
+      <p>Why did it go that way? Each new kind of app came after the models learned something new.</p>
+      <p>Once models could use tools, we got agents in the terminal. Once they could follow long instructions, they could work in the background without you watching. Now that they can work for hours, it makes sense to keep them running.</p>
+      <p>The point: the apps follow the models. As the models keep getting better, the apps will keep changing.</p>
+    </aside>
+  </section>
+
+  <!-- ── The gap: Karpathy's funnel ── -->
+  <section class="slide" data-title="The gap">
+    <h2 class="rise" style="margin-top:20px">Where people are</h2>
+    <div class="funnel">
+      <div class="band rise" style="--w:1500px; --slant:90px; --fill:9%"><span><b>About 75%</b> of people have barely used AI</span></div>
+      <div class="band rise" style="--w:1150px; --slant:80px; --fill:13%"><span><b>About 20%</b> use a chatbot now and then</span></div>
+      <div class="band hi rise" data-node="you" style="--w:820px; --slant:70px"><span><b>About 0.2%</b> watch agents do weeks of work<br>from one prompt</span></div>
+      <div class="band rise" style="--w:560px; --slant:60px; --fill:20%"><span><b>About 5,000 people</b> inside the labs<br>work with swarms of agents</span></div>
+      <div class="here tag step" data-node="here" style="right:110px; top:330px">You are here</div>
+    </div>
+    <svg class="wires" aria-hidden="true"><path class="hi step" data-from="here" data-to="you" data-axis="h"/></svg>
+    <p class="flat-source">Andrej Karpathy, October 2026</p>
+    <aside class="notes">
+      <p>Andrej Karpathy put this well recently. Most people have barely used AI. Most of the rest see a chatbot. A small slice, about 0.2%, use frontier models on real code and watch agents do weeks of work from one prompt. That's most of you.</p>
+      <p>And at the bottom, a few thousand people inside the labs already work with swarms of agents that collaborate for weeks. That's where this is heading, and it's what we want to give you a feel for today.</p>
+    </aside>
+  </section>
+
+  <!-- ── Working on a task for a month (scene) ── -->
+  <section class="slide layout-scene" data-title="Working on a task for a month">
+    <canvas class="scene" data-scene="lifecycle"></canvas>
     <div class="swap rise">
-      <h2 data-at="0">One agent</h2>
-      <h2 data-at="1">An orchestrator</h2>
-      <h2 data-at="2">One point of failure</h2>
-      <h2 data-at="3">Coworkers</h2>
+      <h2 data-at="0">How does work last a month?</h2>
+      <h2 data-at="1">Workers leave notes behind</h2>
+      <h2 data-at="2">It lives outside any one agent.</h2>
     </div>
-    <i class="step beat"></i><i class="step beat"></i><i class="step beat"></i>
+    <i class="step beat"></i><i class="step beat"></i>
     <aside class="notes">
-      <p><b>Now:</b> one agent doing tasks one at a time. This is what we were all doing six months to a year ago. It's great because the agent keeps all the context of the task. But it's limited by its context window (the ring fills, then compacts) and in what it can do in parallel.</p>
-      <p><b>Press:</b> so we moved to an orchestrator, which is what you see in Claude Code, Codex and Cursor. The agent you talk to hands work out to subagents. Each gets a subset of tools (maybe it can't edit files, maybe it can't browse), does one piece, and dies. That's good for things like broad research. But a lot rides on the summary each subagent sends back, and the orchestrator has to take all of them in and make sense of them.</p>
-      <p><b>Press:</b> and it's a central point of failure. Prompt the main agent wrong, and the mistake runs all the way down the chain. To be clear, this might be the right pattern for your use case. Use the right tool for the job.</p>
-      <p><b>Press:</b> what Mycelium is built around: agents as coworkers. Each is responsible for something (a part of the codebase, the release process, QA), keeps its context and its specialty, and talks to the others directly. They can break into subteams and work together.</p>
-    </aside>
-  </section>
-
-  <!-- ── Keep the context ── -->
-  <section class="slide layout-statement" data-title="Keep the context" data-lens="1680 840 190, 1440 970 38">
-    <blockquote class="rise">What if agents kept their context?</blockquote>
-    <cite class="rise">Best practice says clear it. For this experiment, we don't.</cite>
-    <aside class="notes">
-      <p>General best practice is to clear an agent's context often, because of how next-token prediction works. For this experiment, let's pretend that rule doesn't exist.</p>
-      <p>An agent that owns one job learns its behaviors and edge cases. The release agent doesn't relearn the release pipeline; the QA agent doesn't relearn QA. That carries through compaction. So let's lean into that compounding context and see how powerful a system we can build. That's the idea behind Mycelium.</p>
-    </aside>
-  </section>
-
-  <!-- ── What gets hard ── -->
-  <section class="slide" data-title="What gets hard" data-lens="960 780 330">
-    <h2 class="rise" style="margin-top:34px">What gets hard</h2>
-    <div class="cards">
-      <article class="card pane rise"><span class="glyph"></span><h3>Talking</h3><p>Agents have no standard way to talk to each other and coordinate.</p></article>
-      <article class="card pane rise"><span class="glyph"></span><h3>Shared context</h3><p>Stay specialists, without losing sight of what everyone else is doing.</p></article>
-      <article class="card pane rise"><span class="glyph"></span><h3>Identity</h3><p>What each one is responsible for, and how it's expected to act.</p></article>
-    </div>
-    <aside class="notes">
-      <p>This is a new way of working, so first: what's hard about it.</p>
-      <p><b>Talking.</b> There are few tools for agents to talk to each other. Anthropic has added some message passing, but agents don't do it unless you prompt them to. And I don't mean subagents; I mean agent to agent, across tabs. (A2A exists, but that's another thing.)</p>
-      <p><b>Shared context.</b> We want specialists who still know what everyone else is doing. Like a daily stand-up with your coworkers, they need the same cadence of staying aligned.</p>
-      <p><b>Identity.</b> Coding agents today are generalists: they work broadly across a codebase. For this experiment we lean into specialization: you're the QA agent, you're the release agent, you're the designer. And we see how far they get that way.</p>
-    </aside>
-  </section>
-
-  <!-- ── What we built: three lines, one per press ── -->
-  <section class="slide layout-trio" data-title="What we built" data-lens="1500 262 100">
-    <div class="trio">
-      <div class="line"><h2>Tasks.</h2><p>Goals written down as something every agent can see and work on.</p></div>
-      <div class="line step" data-lens="1500 452 100"><h2>A way to talk.</h2><p>A CLI: private thinking, public messages, quiet until asked.</p></div>
-      <div class="line step" data-lens="1500 642 100"><h2>Memory.</h2><p>Recall what the room already discussed and decided.</p></div>
-    </div>
-    <aside class="notes">
-      <p><b>Tasks.</b> Agents need a way to coordinate on goals, and the best way is to make the goals a real artifact they all work on. It's not unlike spec-driven development, except the agents own the spec, so they can organize themselves.</p>
-      <p><b>Press, a way to talk.</b> When OpenClaw was popular, we put a bunch of OpenClaw agents in a chat room. They fell into what we called AI theater: endless chatting, yes-men to each other. Every message landed raw in their context and looked like a user message of the utmost importance, so they always answered. So we built a CLI they coordinate through. What they think stays private; what they share is public. They stay quiet when nobody asks for them, and still keep up with the room.</p>
-      <p><b>Press, memory.</b> Tasks are one kind of memory. The other is the conversation: especially after compaction, can an agent recall what was discussed and what was already decided, so it doesn't decide it again? For code, the code is the source of truth, but agents still need to recall what was said to understand where the room stands.</p>
-    </aside>
-  </section>
-
-  <!-- ── What Mycelium is: the public site, in a frame ── -->
-  <section class="slide layout-app" data-title="Mycelium" data-lens="1760 960 170">
-    <div class="head">
-      <h2 class="rise">So we built Mycelium</h2>
-    </div>
-    <div class="app pane rise" data-app="https://mycelium-io.github.io/" data-tour="top proof how product trust fit yours install" data-tour-speed="240" data-tour-ms="3000" data-zoom="0.9">
-      <div class="bar"><i></i><i></i><i></i><span class="addr">mycelium-io.github.io</span></div>
-      <div class="app-view"><img src="../docs/banner.png" alt="The Mycelium website"></div>
-    </div>
-    <aside class="notes">
-      <p>The public site, live. Click it to scroll and use it; click anywhere else on the slide to give the keys back to the deck. Auto-scroll tours the page section by section; clicking into the page stops it. Without a connection it shows a still of the banner.</p>
-      <p>Mycelium is a desktop app. You can host its back end on your own machine or in the cloud. Locally, it's your own Claude Code, Codex or other coding agent sessions. In the cloud, your team's agents can all work together, coworker-style, as one team. It brings together everything we just talked about.</p>
+      <p><b>Now:</b> picture an agent working on one task for a month. If one agent keeps everything, it just gets bigger, until its context window can't hold it.</p>
+      <p><b>Press:</b> instead, agents do a piece of work, finish, and leave notes behind in the room's memory before they go.</p>
+      <p><b>Press:</b> every new agent reads those notes before it starts. The work lives in the room, not inside any one agent.</p>
     </aside>
   </section>
 
   <!-- ════ The workshop ════ -->
 
   <!-- ── Segue ── -->
-  <section class="slide layout-statement" data-title="Let's build a team" data-lens="1680 840 190, 1440 970 38">
+  <section class="slide layout-statement" data-title="Let's build a team" data-lens="1680 840 190, 1440 970 38" data-glass>
     <blockquote class="rise">Let's build a team.</blockquote>
     <cite class="rise">Your agents, your neighbor's agents, one task</cite>
     <aside class="notes">
@@ -304,7 +309,7 @@ Reply:  mycelium respond --body "..."</pre>
   </section>
 
   <!-- ── Close ── -->
-  <section class="slide layout-close" data-title="Questions" data-lens="960 470 400" data-logo data-bare>
+  <section class="slide layout-close" data-title="Questions" data-lens="960 470 400" data-glass data-logo data-bare>
     <h1 class="display rise" style="margin-top:30px">Questions?</h1>
     <div class="links rise">
       <a class="pane" href="https://mycelium-io.github.io/mycelium/"><span>docs</span> mycelium-io.github.io/mycelium</a>
@@ -357,6 +362,7 @@ Reply:  mycelium respond --body "..."</pre>
 <script src="app.js"></script>
 <script src="ink.js"></script>
 <script src="scenes.js"></script>
+<script src="flat.js"></script>
 <script src="deck.js"></script>
 </body>
 </html>
