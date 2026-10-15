@@ -279,18 +279,19 @@ figure.media figcaption { margin-top: 14px; font: 400 22px var(--sans); color: v
 .media-missing span { font-size: 22px; }
 
 /* A diagram beside a picture, and pictures overlapping like a pile of clippings. */
-.split { display: grid; grid-template-columns: 1fr 560px; gap: 50px; align-items: center; margin-top: 40px; }
-.split figure.media img { width: 560px; }
+.split { display: grid; grid-template-columns: 1fr 720px; gap: 50px; align-items: center; margin-top: 40px; }
+.split figure.media img { width: 720px; }
 .split .funnel { margin-top: 0; }
 /* Two organisations side by side: a logo, then the document each published. */
-.logos { display: grid; grid-template-columns: 1fr 1fr; gap: 90px; margin-top: 50px; }
+.logos { display: grid; grid-template-columns: 1fr 1fr; gap: 90px; margin-top: 10px; }
+.logos + .flat-caption { margin-top: 30px; text-align: center; max-width: none; }
 .logos .org { display: flex; flex-direction: column; align-items: center; gap: 22px; }
 .logos .org > * { flex: none; }
 .logos figure.logo { height: 150px; display: flex; align-items: center; }
 .logos figure.logo img { height: 130px; border: 0; border-radius: 0; box-shadow: none; }
 .logos figure.logo.wordmark img { height: 74px; }
 .logos .name { font: 600 54px/1 var(--sans); letter-spacing: -0.02em; min-height: 54px; }.logos figure.doc { width: 520px; margin-top: 6px; }
-.logos figure.doc img { width: 100%; height: 300px; object-fit: cover; object-position: top; }
+.logos figure.doc img { width: 100%; height: 250px; object-fit: cover; object-position: left top; background: #fff; }
 .logos figure.doc figcaption { text-align: center; }
 
 /* ── Layout: memory (a folder tree beside one memory, rendered) ── */
@@ -305,7 +306,8 @@ figure.media figcaption { margin-top: 14px; font: 400 22px var(--sans); color: v
 
 /* ── Layout: a 2×2 grid of boxes ── */
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin: 50px 0 40px; }
-.grid2 .box { padding: 32px 38px; display: flex; flex-direction: column; gap: 14px; }
+.grid2 .box { padding: 40px 44px; display: flex; flex-direction: column; gap: 18px; min-height: 380px; }
+.grid2 .box code { margin-top: auto; }
 .grid2 .box h3 { font: 600 40px/1.05 var(--sans); letter-spacing: -0.02em; }
 .grid2 .box p { margin: 0; font-size: 27px; line-height: 1.4; color: var(--muted); }
 .grid2 .box code { align-self: flex-start; font-size: 21px; color: var(--accent); padding: 6px 12px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
@@ -463,9 +465,12 @@ svg.wires path.plain { marker-end: none; }
 
 /* ── Layout: staircase (steps rising left to right) ── */
 .stair { position: relative; flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 26px; align-items: end; margin: 30px 0 70px 90px; }
-.stair .box { margin-bottom: calc(var(--n) * 76px); min-height: 150px; padding: 14px 18px 22px; }
+.stair .box { margin-bottom: calc(var(--n) * 100px); min-height: 150px; padding: 20px 22px 24px; }
 .stair .box figure.media { margin: 0 0 14px; }
 .stair .box figure.media img { width: 100%; border-radius: 10px; box-shadow: none; }
+/* Product marks are single-colour SVGs, black as published: light on the dark theme. */
+.stair .box figure.mark img { width: 64px; height: 64px; border: 0; border-radius: 0; }
+:root:not([data-theme="light"]) figure.mark img { filter: invert(0.92); }
 .stair .box .media-missing { min-height: 128px; padding: 10px; border-radius: 10px; gap: 4px; }
 .stair .box .media-missing b, .stair .box .media-missing span { font-size: 15px; }
 .stair .box time { display: block; margin-bottom: 10px; font: 500 21px var(--sans); color: var(--accent); letter-spacing: 0.08em; }

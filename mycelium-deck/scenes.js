@@ -538,7 +538,8 @@
     }
     const edges = [];
     for (let i = 0; i < agents.length; i++) for (let j = i + 1; j < agents.length; j++) if (dist(agents[i], agents[j]) < 190) edges.push([i, j]);
-    const TASKS = ['rate limits on the api', 'empty state for the board', 'docs for swarm', 'retry on a failed claim', 'cache the room list', 'flaky test in ci', 'dark mode on metrics', 'shorter wake digest'];
+    // The demo's checkout room, so the deck and the demo tell one story.
+    const TASKS = ['refund double charges', 'Apple Pay behind a switch', 'test orders on a real iPhone', 'alert when payments fail', 'move card payments to Stripe', 'review the double-charge fix', 'remove the old card form', 'Apple Pay for everyone'];
     let pulses = [], next = 3, since = 0;
     let outcomes = TASKS.slice(0, 3).reverse().map(text => ({ text, a: 1 }));
     return {
