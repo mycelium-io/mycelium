@@ -95,6 +95,44 @@ function postedIn(fx: RoomFixture, uploaders: Map<string, string>): Map<string, 
   return new Map([...first, ...own]);
 }
 
+/**
+ * Store a file as `who`'s upload, as the hub's POST does, and write its memory
+ * into the room. A scripted scenario calls this directly when one of its agents
+ * uploads something; the caller has already checked the kind.
+ */
+export function addUpload(room: string, fx: RoomFixture, filename: string, bytes: ArrayBuffer, who: string): Upload {
+  const store = roomStore(room);
+  const kind = KINDS[extensionOf(filename)];
+  let candidate = safeName(filename);
+  for (let n = 2; store.has(keyFor(candidate)); n++) {
+    const base = safeName(filename);
+    const dot = base.lastIndexOf(".");
+    candidate = dot > 0 ? `${base.slice(0, dot)}-${n}${base.slice(dot)}` : `${base}-${n}`;
+  }
+  const key = keyFor(candidate);
+  const uploadName = key.slice("uploads/".length);
+  const now = new Date().toISOString();
+  const record: Upload = {
+    name: uploadName,
+    key,
+    filename,
+    kind: kind[0],
+    content_type: kind[1],
+    size: bytes.byteLength,
+    sha256: `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.padEnd(64, "0").slice(0, 64),
+    created_by: who,
+    created_at: now,
+    episode: null,
+    url: `/api/rooms/${encodeURIComponent(room)}/uploads/${encodeURIComponent(uploadName)}/raw`,
+    thumb_url:
+      kind[0] === "image" ? `/api/rooms/${encodeURIComponent(room)}/uploads/${encodeURIComponent(uploadName)}/thumb` : null,
+  };
+  store.set(key, { record, bytes });
+  const text = kind[0] === "text" ? new TextDecoder().decode(bytes) : `${kind[0]} file \`${filename}\`.`;
+  fx.memories.unshift({ key, value: text, content_text: text, created_by: who, version: 1, updated_at: now });
+  return record;
+}
+
 /** `/api/rooms/:room/uploads/...`, or null for a route this doesn't serve. */
 export async function handleUploads(
   req: Request,
@@ -117,38 +155,10 @@ export async function handleUploads(
     const file = form.get("file");
     const who = String(form.get("created_by") ?? "user");
     if (!(file instanceof File)) return json({ detail: "file is required" }, 422);
-    const kind = KINDS[extensionOf(file.name)];
-    if (!kind) return json({ detail: `${file.name}: .${extensionOf(file.name)} files can't be previewed, so they can't be uploaded` }, 415);
+    if (!KINDS[extensionOf(file.name)])
+      return json({ detail: `${file.name}: .${extensionOf(file.name)} files can't be previewed, so they can't be uploaded` }, 415);
     if (file.size > MAX_BYTES) return json({ detail: `${file.name} is larger than 25.0 MB` }, 413);
-    let candidate = safeName(file.name);
-    for (let n = 2; store.has(keyFor(candidate)); n++) {
-      const dot = safeName(file.name).lastIndexOf(".");
-      const base = safeName(file.name);
-      candidate = dot > 0 ? `${base.slice(0, dot)}-${n}${base.slice(dot)}` : `${base}-${n}`;
-    }
-    const key = keyFor(candidate);
-    const uploadName = key.slice("uploads/".length);
-    const now = new Date().toISOString();
-    const bytes = await file.arrayBuffer();
-    const record: Upload = {
-      name: uploadName,
-      key,
-      filename: file.name,
-      kind: kind[0],
-      content_type: kind[1],
-      size: bytes.byteLength,
-      sha256: `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.padEnd(64, "0").slice(0, 64),
-      created_by: who,
-      created_at: now,
-      episode: null,
-      url: `/api/rooms/${encodeURIComponent(room)}/uploads/${encodeURIComponent(uploadName)}/raw`,
-      thumb_url:
-        kind[0] === "image" ? `/api/rooms/${encodeURIComponent(room)}/uploads/${encodeURIComponent(uploadName)}/thumb` : null,
-    };
-    store.set(key, { record, bytes });
-    const text = kind[0] === "text" ? new TextDecoder().decode(bytes) : `${kind[0]} file \`${file.name}\`.`;
-    fx.memories.unshift({ key, value: text, content_text: text, created_by: who, version: 1, updated_at: now });
-    return json(record, 201);
+    return json(addUpload(room, fx, file.name, await file.arrayBuffer(), who), 201);
   }
 
   const stored = name ? store.get(keyFor(name)) ?? store.get(`uploads/${name}`) : undefined;
