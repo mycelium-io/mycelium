@@ -27,6 +27,7 @@ while its agent is busy and the room moves on meanwhile.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
@@ -94,15 +95,33 @@ def cut(text: str, limit: int) -> str:
     return f"{head}… [+{len(text) - len(head):,} chars]"
 
 
+#: Control characters, C0 and C1, except the tab: a wake is typed into the
+#: agent's terminal, where an escape can stop its turn or end a bracketed
+#: paste, so what a member wrote never carries one there.
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def plain(text: str) -> str:
+    """``text`` on one line: its control characters gone and its whitespace,
+    line breaks of every kind included, run together. For anything a member
+    wrote that lands in the digest's own lines (a task's title, a name)."""
+    return " ".join(_CONTROL.sub("", text).split())
+
+
 def box(header: str, text: str, footer: str = "") -> list[str]:
     """``text`` as a box: the header, each line behind a ``│``, then the close.
 
     The gutter is on every line, so nothing in the text can reach the first
-    column, where the digest's own lines start.
+    column, where the digest's own lines start. Every kind of line break
+    starts a new gutter line (``splitlines``: U+2028 and the rest, not only
+    ``\\n``), control characters are dropped, and the header and footer are
+    kept to one line, so no character in a message can step outside its box.
     """
-    lines = [f"┌ {header}"]
-    lines += [f"│ {line}" if line.strip() else "│" for line in text.replace("\r", "").split("\n")]
-    lines.append(f"└ {footer}" if footer else "└")
+    lines = [f"┌ {plain(header)}"]
+    for line in text.splitlines() or [""]:
+        line = _CONTROL.sub("", line.replace("\t", "    ")).rstrip()
+        lines.append(f"│ {line}" if line.strip() else "│")
+    lines.append(f"└ {plain(footer)}" if footer else "└")
     return lines
 
 
@@ -119,9 +138,11 @@ def _where(room: str, episode: str | None) -> tuple[str, str] | None:
     from app.services.tasks import row_of_episode
 
     try:
-        return row_of_episode(room, episode)
+        row = row_of_episode(room, episode)
     except Exception:  # a digest without a place is still a digest
         return None
+    # A title is a member's text on one of the digest's own lines.
+    return (row[0], plain(row[1])) if row else None
 
 
 def _place(room: str, where: tuple[str, str] | None) -> str:
@@ -452,6 +473,30 @@ def _replied(room: str, window: list[Any], asked: list[Any], me: str) -> set[int
     return replied
 
 
+def _reply_lines(room: str, me: str, window: list[Any], asked: list[Any]) -> list[str]:
+    """One ``respond`` for each place an ask the agent hasn't replied to was
+    made, the newest ask's place first. ``respond`` lands in a task's thread
+    only with ``--task``, so the target is named outright; a thread no row
+    carries can't be named, so its reply goes to the room, and the line says so."""
+    replied = _replied(room, window, asked[:-1], me)
+    lines: list[str] = []
+    seen: set[str | None] = set()
+    for record in reversed(asked):
+        if id(record) in replied:
+            continue
+        where = _where(room, _thread_of(room, record))
+        target = where[0] if where else None
+        if target in seen:
+            continue
+        seen.add(target)
+        task = f" --task {where[0]}" if where else ""
+        lands = f'"{where[1]}"' if where else "the room"
+        lines.append(
+            f'mycelium respond --room {room} --handle {me}{task} --body "..."   (lands in {lands})'
+        )
+    return lines
+
+
 def _other_asks(
     room: str, window: list[Any], asked: list[Any], me: str, now: datetime
 ) -> list[str]:
@@ -520,14 +565,14 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
 
     # Why it woke.
     sender = f"@{wake['from']}" if wake.get("from") else "someone"
+    # A task's title is a member's text, on the digest's own line.
+    title = plain(str(wake.get("title") or wake.get("key") or ""))
     if reason == "assigned":
-        task = f'"{wake.get("title") or wake.get("key")}" ({wake.get("key")})'
-        why = f"{sender} gave you a task: {task}"
+        why = f'{sender} gave you a task: "{title}" ({wake.get("key")})'
     elif reason == "handback":
-        task = f'"{wake.get("title") or wake.get("key")}" ({wake.get("key")})'
-        why = f"{sender} handed your task back to you in its thread: {task}"
+        why = f'{sender} handed your task back to you in its thread: "{title}" ({wake.get("key")})'
     elif reason == "schedule":
-        why = f'your schedule "{wake.get("title")}" fired'
+        why = f'your schedule "{title}" fired'
     elif reason == "turn":
         who = f"@{asked[-1].sender}" if asked and asked[-1].sender else sender
         why = f"it's your turn in {_place(room, where)}; {who} is asking"
@@ -605,20 +650,27 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         more = len(said) - len(asked)
         noun = "message" if more == 1 else "messages"
         extra = f", plus {more} other {noun} since your last turn" if more > 0 else ""
-        # The target is named outright: ``respond`` lands in a task's thread only
-        # with ``--task``, and in the room without it, whatever ``await`` handed
-        # over last. A thread no row carries can't be named, so its reply goes
-        # to the room, and the line says so. ``await`` comes first: it is what
-        # marks these read and says the agent is on it.
-        task = f" --task {where[0]}" if here and where else ""
-        lands = f'"{where[1]}"' if here and where else "the room"
+        # ``await`` comes first: it is what marks these read and says the agent
+        # is on it. Then a reply where each unanswered ask was made, the one
+        # that woke it first: an older ask can be a flow's turn in another
+        # thread, with a floor and a deadline there.
+        replies = _reply_lines(room, me, window, asked)
+        if not replies:
+            task = f" --task {where[0]}" if here and where else ""
+            lands = f'"{where[1]}"' if here and where else "the room"
+            replies = [
+                f'mycelium respond --room {room} --handle {me}{task} --body "..."   (lands in {lands})'
+            ]
         lines += [
             f"Next:    1. mycelium await --room {room} --handle {me} --json --timeout 5",
             f"            (every ask in this wake, in full{extra}; it marks them read and"
             " tells the room you're on it)",
-            f'         2. mycelium respond --room {room} --handle {me}{task} --body "..."'
-            f"   (lands in {lands})",
         ]
+        if len(replies) == 1:
+            lines.append(f"         2. {replies[0]}")
+        else:
+            lines.append("         2. reply where each was asked:")
+            lines += [f"            {r}" for r in replies]
 
     # The others asking for it: whole while they fit, newest first, then named.
     lines += _other_asks(room, window, asked, me, now)

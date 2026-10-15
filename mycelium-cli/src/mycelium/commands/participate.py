@@ -183,12 +183,24 @@ def _print_turn(turn: dict, handle: str) -> None:
             name = name_of(sender) if sender != "?" else None
             who = f"{name} (@{sender})" if name else sender
             typer.echo(f"  {who}: {e.get('text') or ''}")
-    asks = [a for a in turn.get("asks") or [] if isinstance(a, dict)] or [turn]
+    asks = _asks_of(turn)
     if len(asks) > 1:
         typer.secho(
             f"  ⟫  {len(asks)} messages asking for @{handle}, oldest first; the last is the turn:",
             fg=typer.colors.BRIGHT_BLACK,
         )
+    typer.echo("\n".join(f"  {line}" for line in _ask_boxes(asks, handle)))
+
+
+def _asks_of(turn: dict) -> list[dict]:
+    """Every message an ``await`` handed over, oldest first, the turn last; a
+    hub from before ``asks`` hands over the turn alone."""
+    return [a for a in turn.get("asks") or [] if isinstance(a, dict)] or [turn]
+
+
+def _ask_boxes(asks: list[dict], handle: str) -> list[str]:
+    """``asks``, each as a box (``chat.box``): who, where to reply, its id."""
+    lines: list[str] = []
     for ask in asks:
         header = f"{_sender_label(ask)} → @{handle}"
         task = ask.get("task")
@@ -196,8 +208,8 @@ def _print_turn(turn: dict, handle: str) -> None:
             header += f" · in task {task} (reply with --task {task})"
         if ask.get("id"):
             header += f" · {str(ask['id'])[:8]}"
-        lines = chat.box(header, str(ask.get("prompt") or ""))
-        typer.echo("\n".join(f"  {line}" for line in lines))
+        lines += chat.box(header, str(ask.get("prompt") or ""))
+    return lines
 
 
 def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
@@ -208,14 +220,24 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
     JSON is piped to stdin and the salient fields are exported as env vars for
     convenience. Run through the shell so the user can compose freely; this is a
     resident runner the user starts, not an allowlisted-subagent surface.
+
+    One ``await`` hands over every unread message asking for the handle. With
+    one, ``MYCELIUM_PROMPT`` is its text; with several it is all of them, each
+    in a box, oldest first, so a script that reads only the prompt still reads
+    every ask (``MYCELIUM_ASKS`` says how many; stdin has them under ``asks``).
     """
+    asks = _asks_of(turn)
+    prompt = (
+        str(turn.get("prompt") or "") if len(asks) == 1 else "\n".join(_ask_boxes(asks, handle))
+    )
     env = {
         **os.environ,
         "MYCELIUM_ROOM": room_name,
         "MYCELIUM_HANDLE": handle,
         "MYCELIUM_SENDER": str(turn.get("sender") or ""),
         "MYCELIUM_SENDER_NAME": str(turn.get("sender_name") or ""),
-        "MYCELIUM_PROMPT": str(turn.get("prompt") or ""),
+        "MYCELIUM_PROMPT": prompt,
+        "MYCELIUM_ASKS": str(len(asks)),
         # The row the turn was asked in, empty for the room: ``respond --task``.
         "MYCELIUM_TASK": str(turn.get("task") or ""),
     }
@@ -262,7 +284,11 @@ def await_room(
     exec_cmd: str | None = typer.Option(
         None,
         "--exec",
-        help="With --loop: run this command per turn (turn JSON on stdin); it should call `respond`.",
+        help=(
+            "With --loop: run this command per turn (turn JSON on stdin); it should call "
+            "`respond`. A turn carries every unread ask: $MYCELIUM_PROMPT holds them all, boxed, "
+            "when there are several."
+        ),
     ),
     json_output: bool = False,
 ) -> None:

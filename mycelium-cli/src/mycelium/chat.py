@@ -149,16 +149,30 @@ def readable(message_type: str, content: str) -> str:
 SAID_TYPES = frozenset({"broadcast", "direct", "announce", "delegate"})
 
 
+#: Control characters, C0 and C1, except the tab: an escape in a message
+#: would move the cursor back over the gutter in a terminal.
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def plain(text: str) -> str:
+    """``text`` on one line: no control characters, its whitespace (every
+    kind of line break included) run together."""
+    return " ".join(_CONTROL.sub("", text).split())
+
+
 def box(header: str, text: str, footer: str = "") -> list[str]:
     """``text`` as a box: the header, each line behind a ``│``, then the close.
 
     The same box the hub's wake draws (``wake_digest.box``): the gutter is on
-    every line, so nothing a message says can pass for the frame around it,
-    another message's header or a line of the CLI's own.
+    every line, every kind of line break starts a new one (U+2028 too), and
+    control characters are dropped, so nothing a message says can pass for
+    the frame around it, another message's header or a line of the CLI's own.
     """
-    lines = [f"┌ {header}"]
-    lines += [f"│ {line}" if line.strip() else "│" for line in text.replace("\r", "").split("\n")]
-    lines.append(f"└ {footer}" if footer else "└")
+    lines = [f"┌ {plain(header)}"]
+    for line in text.splitlines() or [""]:
+        line = _CONTROL.sub("", line.replace("\t", "    ")).rstrip()
+        lines.append(f"│ {line}" if line.strip() else "│")
+    lines.append(f"└ {plain(footer)}" if footer else "└")
     return lines
 
 
