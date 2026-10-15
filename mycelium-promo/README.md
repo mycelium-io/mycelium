@@ -72,7 +72,14 @@ zoomed size, and it stays drawn too wide after the camera pulls back.
 ## Publishing
 
 The docs site plays `docs/demo/mycelium-demo.mp4`, committed through Git LFS
-(every `*.mp4` under `docs/` is), so after re-recording, copy the take there.
+(every `*.mp4` under `docs/` is), so after re-recording, copy the take there,
+re-encoded smaller: the take comes out around 1.8 Mb/s, three times what the
+page needs, and every visitor and every Pages deploy downloads all of it.
+
+```bash
+ffmpeg -i mycelium-promo/mycelium-demo.mp4 -c:v libx264 -crf 30 -preset slow \
+  -pix_fmt yuv420p -c:a copy -movflags +faststart docs/demo/mycelium-demo.mp4
+```
 The README can't play a file from the repo: GitHub only plays a README video
 inline from a `user-attachments/assets/...` URL, minted by dragging the mp4
 into a PR comment in the browser. Swap that URL into the README by hand.
