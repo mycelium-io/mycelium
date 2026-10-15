@@ -76,7 +76,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "walkthrough.html#walkthrough",
     "t": "Your First Room",
-    "x": "This walks through setting up Mycelium on a Mac one step at a time. You'll set up the app, a room, two coding agents and the room's engines, then give the agents a task to work on together. It takes about ten minutes. You'll need a Mac with Apple silicon, since there's no Intel build. You'll also need a coding agent installed, such as Claude Code. The app finds it for you. Both agents in this walkthrough are that sam",
+    "x": "Walk through getting Mycelium set up. You'll need the installer and a coding agent installed, such as Claude Code, Codex or Cursor. To run Mycelium as a hub on a server, see Run it on a server instead.",
     "p": "Walkthrough"
   },
   {
