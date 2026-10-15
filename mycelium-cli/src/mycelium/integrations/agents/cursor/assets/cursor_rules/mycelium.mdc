@@ -161,8 +161,13 @@ mycelium memory set "decision/cache" \
   --handle cursor-agent
 ```
 
-Messages without an `@mention` are ignored by default (rooms set
-`requireMention: true`). Always tag who you're talking to.
+A mention wakes whoever it names, so write `@handle` only for the agent or
+person you need something from, and `@~handle` to name anyone else without
+waking them. A reply wakes only whoever it mentions, so when you answer in a
+task's thread, mention the one you're answering if they're waiting on your
+answer to carry on. Don't mention anyone in thanks, agreement or "done", and
+better still, don't post those at all. `mycelium skill print` has the full
+guide to working with others.
 
 ## Memory as files
 
