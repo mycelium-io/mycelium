@@ -112,18 +112,15 @@ def test_a_mention_digest_says_why_what_changed_and_what_asked():
             break
         body.append(line[2:] if line.startswith("│ ") else "")
     assert "\n".join(body) == LONG.strip()
-    # Then what to do: await first, then the reply, which names the task so it
-    # lands in its thread, and says so, since agents asked in a thread tend to
-    # answer in the main channel.
+    # Then what to do: await first, then the reply, as a rule: where the
+    # person wrote, which names the task so it lands in its thread, since
+    # agents asked in a thread tend to answer in the main channel.
     assert lines[scout + len(body) + 3] == (
         "Next:    1. mycelium await --room digest-room --handle builder --json --timeout 5"
     )
-    step = lines.index(
-        "         2. reply in the task's thread, not the main channel (--task puts it there):"
-    )
+    step = lines.index('         2. reply where @scout wrote, in "Fix the receipt tax":')
     assert lines[step + 1] == (
         '            mycelium respond --room digest-room --handle builder --task work/fix-the-receipt-tax --body "..."'
-        '   (lands in "Fix the receipt tax")'
     )
     # Then the other one asking, also whole.
     assert "Also asking you (1):" in digest
@@ -204,7 +201,7 @@ def test_a_long_task_title_is_given_whole_once_then_shortened():
     assert f'Why:     @hay mentioned you in "{long}" (work/demo)' in digest
     short = wake_digest._short(long, wake_digest.TITLE_CHARS)
     assert f'· in "{short}" ·' in digest
-    assert f'(lands in "{short}")' in digest
+    assert f'reply where @hay wrote, in "{short}":' in digest
 
 
 def test_the_await_step_says_what_it_does_in_a_line():
@@ -259,9 +256,10 @@ def test_a_room_mention_replies_into_the_room():
     records = [_said(1, "hay", "@builder quick one: are you around?", 1)]
     digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
     assert "Why:     @hay mentioned you in the room (digest-room)" in digest
-    assert (
-        '         2. mycelium respond --room digest-room --handle builder --body "..."   (lands in the room)'
-        in digest
+    lines = digest.splitlines()
+    at = lines.index("         2. reply where @hay wrote, in the room:")
+    assert lines[at + 1] == (
+        '            mycelium respond --room digest-room --handle builder --body "..."'
     )
 
 
@@ -555,16 +553,23 @@ def test_asks_in_two_places_get_a_reply_line_each():
     ]
     digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
     lines = digest.splitlines()
-    at = lines.index(
-        "         2. reply where each was asked (--task puts it in that task's thread):"
-    )
+    at = lines.index("         2. reply where each was written:")
     assert lines[at + 1] == (
         '            mycelium respond --room digest-room --handle builder --body "..."'
-        "   (lands in the room)"
+        "   (@hay wrote, in the room)"
     )
     assert lines[at + 2] == (
         "            mycelium respond --room digest-room --handle builder"
-        ' --task work/fix-the-receipt-tax --body "..."   (lands in "Fix the receipt tax")'
+        ' --task work/fix-the-receipt-tax --body "..."   (@aligner wrote, in "Fix the receipt tax")'
+    )
+
+
+def test_an_ask_in_a_thread_no_task_carries_says_the_reply_lands_in_the_room():
+    records = [_said(1, "hay", "@builder look", 1, THREAD)]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    assert (
+        "2. reply where @hay wrote in a thread no task carries, so this lands in the room:"
+        in digest
     )
 
 

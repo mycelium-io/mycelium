@@ -62,6 +62,11 @@ argument, which is what keeps it readable for a human. `--task` narrows only
 your wake — you stay a full member of the room, and mentions of you elsewhere
 keep their place in your own queue.
 
+Reply where the message you're answering was written: your wake's `Next:` step
+names the place, with `--task` when it was a task's thread, so use it as given.
+To ask a person something about a task, mention them in its thread; a mention
+notifies them wherever it is.
+
 A thread never decides its row: converging inside a task does not resolve it and
 aborting does not take it off its holder. `board resolve` is what finishes it.
 

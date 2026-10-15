@@ -10,8 +10,9 @@ Since:   your last turn, 12m ago: 2 in this thread (@reviewer 2)
 └
 
 Next:    1. mycelium await --room checkout --handle builder --json --timeout 5
-            (every ask in this wake, in full; it marks them read and tells the room you're on it)
-         2. mycelium respond --room checkout --handle builder --task work/turn-on-apple-pay --body "..."   (lands in "Turn on Apple Pay for everyone")
+            (marks these read and says you're on it; 1 more was said since your last turn)
+         2. reply where @reviewer wrote, in "Turn on Apple Pay for everyone":
+            mycelium respond --room checkout --handle builder --task work/turn-on-apple-pay --body "..."
 
 Tasks:   yours "Turn on Apple Pay for everyone" (40m ago)
 Board:   @operator filed "Alert us when payments start failing" for @builder
