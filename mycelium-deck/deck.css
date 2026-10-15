@@ -112,6 +112,9 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 h2, .h2 { font: 600 84px/1.04 var(--sans); letter-spacing: -0.03em; }
 h2 em, .h2 em, .display em, blockquote em, .big em, .flat-caption em, .verdict em {
   font: italic 500 1.14em/1 var(--display); letter-spacing: -0.01em; color: var(--accent);
+  /* Cormorant's small x-height and long descenders make it read low beside the
+   * sans on a shared baseline, so it sits a hair higher than the baseline. */
+  position: relative; top: -0.045em;
 }
 h3 { font: 500 40px/1.2 var(--sans); letter-spacing: -0.01em; }
 p, li { font-size: 34px; line-height: 1.45; font-weight: 400; }
