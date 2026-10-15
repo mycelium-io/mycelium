@@ -56,9 +56,10 @@ from the `mycelium-demo.mp4.sounds.json` the take writes beside the video.
 re-recording it. See [`audio/README.md`](audio/README.md).
 
 `record.mjs` starts its own `next dev` (the scenario's acts play once per
-server), so stop any dev server in `mycelium-frontend/` first. The staged take
-needs a full ffmpeg on `PATH` for mp4 (`node shotkit/bin/shot.mjs doctor`
-says), and the fonts load from Google Fonts. Behind an egress proxy, set
+server), so stop any dev server in `mycelium-frontend/` first. Every run,
+`--quick` too, records the checkout clip as an mp4 first, so it needs a full
+ffmpeg on `PATH` (`node shotkit/bin/shot.mjs doctor` says); Playwright's own
+ffmpeg writes only webm. The fonts load from Google Fonts. Behind an egress proxy, set
 `SHOTKIT_PROXY`. Staging is a pass after the take; on a laptop with a GPU it is
 quick, and in a software-GL container it is a few minutes per minute of video.
 
