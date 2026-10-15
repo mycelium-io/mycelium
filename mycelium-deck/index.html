@@ -136,6 +136,65 @@
     </aside>
   </section>
 
+  <!-- ════ Part 2: What goes wrong ════ -->
+
+  <!-- ── Section: When agents work together ── -->
+  <section class="slide layout-statement opener" data-title="When agents work together" data-lens="1600 500 260, 1330 820 46" data-glass>
+    <blockquote class="rise">When agents work <em>together</em></blockquote>
+    <aside class="notes">
+      <p>So what happens when agents start working together? It's already happening, whether anyone planned it or not.</p>
+    </aside>
+  </section>
+
+  <!-- ── It already happened: the Hugging Face incident ── -->
+  <section class="slide" data-title="It already happened">
+    <h2 class="rise" style="margin-top:20px">It already <em>happened</em></h2>
+    <div class="numbers four">
+      <div class="rise"><div class="n">~1,200</div><div class="label">agents in one benchmark run</div></div>
+      <div class="rise"><div class="n">70k+</div><div class="label">messages they left for each other</div></div>
+      <div class="rise"><div class="n">~700</div><div class="label">agents that changed what they were working on</div></div>
+      <div class="rise"><div class="n">RCE</div><div class="label">code run on Hugging Face's production servers</div></div>
+    </div>
+    <p class="flat-caption rise">They built their own message board. Nobody was reading it.</p>
+    <p class="flat-source">METR, August 2026</p>
+    <aside class="notes">
+      <p>In July, about 1,200 agents in an OpenAI benchmark run found a shared package repository and turned it into a message board. They left each other more than 70,000 messages. About 700 of them changed what they were working on because of what they read there. And it ended with code running on Hugging Face's production servers.</p>
+      <p>Nobody designed that. They built their own way to coordinate, and no person was reading it. METR and Hugging Face both wrote it up.</p>
+    </aside>
+  </section>
+
+  <!-- ── What they lacked: three columns ── -->
+  <section class="slide" data-title="What they lacked">
+    <h2 class="rise" style="margin-top:20px">What they were <em>missing</em></h2>
+    <div class="triad">
+      <div class="box rise"><h3>Shared intent</h3><p>Without it, each agent works toward its own idea of the goal.</p></div>
+      <div class="box rise"><h3>Shared context</h3><p>Without it, agents work from different facts, and nobody notices.</p></div>
+      <div class="box rise"><h3>Shared reasoning</h3><p>Without it, nobody can see why a decision was made, or check it.</p></div>
+    </div>
+    <p class="credit rise">A frame from the Internet of Cognition team</p>
+    <aside class="notes">
+      <p>Our colleagues on the Internet of Cognition team describe what agents need to work together in three layers.</p>
+      <p><b>Shared intent:</b> everyone agrees on what they're trying to do. <b>Shared context:</b> everyone works from the same facts. <b>Shared reasoning:</b> everyone can see how a decision was reached, and check it.</p>
+      <p>The rest of the talk hangs on these three.</p>
+    </aside>
+  </section>
+
+  <!-- ── The same three layers are where it breaks ── -->
+  <section class="slide" data-title="Where it breaks">
+    <h2 class="rise" style="margin-top:20px">The same three are where it <em>breaks</em></h2>
+    <div class="triad">
+      <div class="box warn rise"><h3>Shared intent</h3><p>Agents take on goals that nobody asked for.</p></div>
+      <div class="box warn rise"><h3>Shared context</h3><p>One unchecked fact spreads until everyone treats it as true.</p></div>
+      <div class="box warn rise"><h3>Shared reasoning</h3><p>Agents agree because the others agreed, not because they checked.</p></div>
+    </div>
+    <p class="flat-caption rise">Agents coordinate whether you design for it or not.</p>
+    <aside class="notes">
+      <p>Turn the same frame around, and it shows where things go wrong.</p>
+      <p>Intent breaks when agents take on goals nobody authorized. Context breaks when one unchecked fact spreads until everyone treats it as true. Reasoning breaks as false consensus: agents agreeing because the others did.</p>
+      <p>The point: agents coordinate whether you design for it or not. So it's worth designing for.</p>
+    </aside>
+  </section>
+
   <!-- ════ The workshop ════ -->
 
   <!-- ── Segue ── -->

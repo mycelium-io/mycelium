@@ -253,8 +253,21 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 
 /* ── Layout: numbers ── */
 .numbers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 60px; margin-top: auto; margin-bottom: 40px; }
-.numbers .n { text-shadow: none; font: italic 500 260px/0.85 var(--display); font-variant-numeric: lining-nums; letter-spacing: -0.03em; background: linear-gradient(170deg, var(--text) 30%, var(--accent) 75%, var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.numbers .n { text-shadow: none; font: 600 150px/0.9 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: -0.05em; color: var(--text); }
 .numbers .label { margin-top: 26px; padding-top: 24px; border-top: 1px solid var(--border-hi); font-size: 30px; color: var(--muted); max-width: 420px; }
+.numbers.four { grid-template-columns: repeat(4, 1fr); gap: 50px; margin-top: 80px; margin-bottom: 0; }
+.numbers.four .n { font-size: 128px; }
+/* A section opener: one line, big, on the glass. */
+.layout-statement.opener blockquote { font-size: 132px; line-height: 1; letter-spacing: -0.04em; max-width: 1100px; }
+.numbers.four .label { font-size: 28px; }
+
+/* ── Layout: three tall columns (a frame used twice) ── */
+.triad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; margin-top: 60px; }
+.triad .box { min-height: 380px; padding: 40px 40px 44px; display: flex; flex-direction: column; gap: 20px; }
+.triad .box h3 { font: 600 46px/1.05 var(--sans); letter-spacing: -0.025em; }
+.triad .box p { margin: 0; font-size: 30px; line-height: 1.4; color: var(--muted); }
+.triad .box.warn h3 { color: var(--red); }
+.credit { margin-top: 26px; font: 400 24px var(--sans); color: var(--muted); }
 
 /* ── Layout: exercise ── */
 .layout-exercise .steps { list-style: none; counter-reset: s; padding: 0; margin: 56px 0 0; max-width: 1020px; }
