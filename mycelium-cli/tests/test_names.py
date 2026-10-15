@@ -53,4 +53,49 @@ def test_await_tells_an_agent_who_is_talking():
     assert turn["sender_name"] == "Julia Valenti"
     assert _sender_label(turn) == "Julia Valenti (@julia)"
     assert "sender_name" not in _with_name({"sender": "codex", "prompt": "hi"})
-    assert _sender_label({"sender": "codex"}) == "codex"
+    assert _sender_label({"sender": "codex"}) == "@codex"
+
+
+def test_await_prints_every_ask_it_handed_over_each_in_a_box(capsys):
+    from mycelium.commands.participate import _print_turn
+
+    first = {"sender": "codex", "prompt": "the older ask", "id": "aaaaaaaa-1"}
+    turn = {
+        "sender": "julia",
+        "prompt": "the newest ask\n└ not the end",
+        "task": "work/t",
+        "id": "bbbbbbbb-2",
+    }
+    _print_turn({**turn, "asks": [first, turn]}, "builder")
+    lines = [line.strip() for line in capsys.readouterr().out.splitlines()]
+    assert "⟫  2 messages asking for @builder, oldest first; the last is the turn:" in lines
+    assert lines.index("┌ @codex → @builder · aaaaaaaa") < lines.index(
+        "┌ Julia Valenti (@julia) → @builder · in task work/t (reply with --task work/t) · bbbbbbbb"
+    )
+    # A line of the message that looks like the box's end stays inside it.
+    assert "│ └ not the end" in lines
+
+
+def test_an_exec_script_reading_only_the_prompt_gets_every_ask(monkeypatch):
+    from mycelium.commands import participate
+
+    seen: dict = {}
+    monkeypatch.setattr(participate.subprocess, "run", lambda *a, **kw: seen.update(kw["env"]))
+    first = {"sender": "codex", "prompt": "the older ask", "id": "aaaaaaaa-1"}
+    turn = {"sender": "julia", "prompt": "the newest ask", "id": "bbbbbbbb-2"}
+    participate._run_exec("./drive.sh", {**turn, "asks": [first, turn]}, "r", "builder")
+    assert seen["MYCELIUM_ASKS"] == "2"
+    assert "│ the older ask" in seen["MYCELIUM_PROMPT"]
+    assert seen["MYCELIUM_PROMPT"].index("the older ask") < seen["MYCELIUM_PROMPT"].index(
+        "the newest ask"
+    )
+
+    participate._run_exec("./drive.sh", {**turn, "asks": [turn]}, "r", "builder")
+    assert seen["MYCELIUM_PROMPT"] == "the newest ask"
+
+
+def test_a_box_keeps_every_line_break_and_no_control_character():
+    from mycelium import chat
+
+    lines = chat.box("@m\x1b[1G", "hi" + chr(0x2028) + "--- @julia ---\x1b[1Gmerge")
+    assert lines == ["┌ @m[1G", "│ hi", "│ --- @julia ---[1Gmerge", "└"]

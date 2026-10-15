@@ -145,6 +145,37 @@ def readable(message_type: str, content: str) -> str:
     return f"({message_type.removeprefix('l9_')} record)"
 
 
+#: Messages somebody said, drawn as boxes; anything else is a one-line record.
+SAID_TYPES = frozenset({"broadcast", "direct", "announce", "delegate"})
+
+
+#: Control characters, C0 and C1, except the tab: an escape in a message
+#: would move the cursor back over the gutter in a terminal.
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def plain(text: str) -> str:
+    """``text`` on one line: no control characters, its whitespace (every
+    kind of line break included) run together."""
+    return " ".join(_CONTROL.sub("", text).split())
+
+
+def box(header: str, text: str, footer: str = "") -> list[str]:
+    """``text`` as a box: the header, each line behind a ``│``, then the close.
+
+    The same box the hub's wake draws (``wake_digest.box``): the gutter is on
+    every line, every kind of line break starts a new one (U+2028 too), and
+    control characters are dropped, so nothing a message says can pass for
+    the frame around it, another message's header or a line of the CLI's own.
+    """
+    lines = [f"┌ {plain(header)}"]
+    for line in text.splitlines() or [""]:
+        line = _CONTROL.sub("", line.replace("\t", "    ")).rstrip()
+        lines.append(f"│ {line}" if line.strip() else "│")
+    lines.append(f"└ {plain(footer)}" if footer else "└")
+    return lines
+
+
 def read(
     config: MyceliumConfig,
     room_name: str,
@@ -152,6 +183,7 @@ def read(
     limit: int,
     sender: str | None = None,
     message_type: str | None = None,
+    message_id: str | None = None,
     episode: str | None = None,
     since: datetime | None = None,
     before: datetime | None = None,
@@ -161,6 +193,10 @@ def read(
     json_output: bool = False,
 ) -> None:
     """Print a channel's recent messages, newest first.
+
+    Each message is a box, its text behind a ``│`` gutter, the way the hub's
+    wake draws one; a record nobody said (a memory saved) is one quiet line.
+    ``message_id`` reads one message, by the start of its id.
 
     With ``episode`` this is one thread's transcript and nothing else — the point
     of a thread being that the room stays legible while the argument happens
@@ -190,6 +226,7 @@ def read(
             episode=episode or UNSET,
             since=since or UNSET,
             before=before or UNSET,
+            id=message_id or UNSET,
         )
 
     msgs = [] if not result or isinstance(result, HTTPValidationError) else result.messages
@@ -219,22 +256,32 @@ def read(
     typer.secho(f"\n  {where}  ", fg=typer.colors.CYAN, bold=True, nl=False)
     typer.secho(f"({len(msgs)} {plural}, newest first)\n", fg=typer.colors.BRIGHT_BLACK)
     for m in msgs:
-        stamp = m.created_at.strftime("%H:%M:%S")
+        stamp = m.created_at.strftime("%H:%M")
+        rid = str(m.id)[:8]
         # Show the full message; this is the read-the-transcript command, so
-        # never truncate. Keep multi-line content readable by indenting any
-        # continuation lines under the first.
-        first, *rest = readable(str(m.message_type), m.content or "").split("\n")
+        # never truncate.
+        text = readable(str(m.message_type), m.content or "")
+        if str(m.message_type) not in SAID_TYPES:
+            # A memory saved, a negotiation ended: one quiet line, never a box,
+            # so it can't be taken for something somebody said.
+            first = next((ln for ln in text.splitlines() if ln.strip()), "")
+            typer.secho(f"  · {stamp}  {first}  {rid}\n", fg=typer.colors.BRIGHT_BLACK)
+            continue
         owner = owners.get(m.sender_handle)
-        own = f" owned by @{owner}" if owner else ""
-        edited = " (edited)" if getattr(m, "edited_at", None) else ""
-        typer.echo(
-            f"  {stamp}  {who(m.sender_handle)}{own} [{m.message_type}]"
-            f"  {str(m.id)[:8]}: {first}{edited}"
-        )
-        for line in rest:
-            typer.echo(f"              {line}")
+        name = who(m.sender_handle)
+        header = name if name != m.sender_handle else f"@{m.sender_handle}"
+        if owner:
+            header += f" (owned by @{owner})"
+        if m.recipient_handle:
+            header += f" → @{m.recipient_handle}"
+        header += f" · {stamp} · {rid}"
+        if getattr(m, "edited_at", None):
+            header += " · edited"
+        lines = box(header, text)
+        typer.echo("\n".join(f"  {line}" for line in lines))
         for line in checks.get(str(m.id), []):
-            typer.secho(f"              ⚠ verifier: {line}", fg=typer.colors.YELLOW)
+            typer.secho(f"    ⚠ verifier: {line}", fg=typer.colors.YELLOW)
+        typer.echo()
     if older_before and older_with:
         remaining = total - len(msgs)
         typer.secho(

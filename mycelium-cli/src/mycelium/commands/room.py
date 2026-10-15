@@ -999,8 +999,8 @@ def amend(
 
 
 @doc_ref(
-    usage="mycelium room messages [<room> | --room <room>] [--limit N] [--sender <handle>] [--type <type>] [--before <stamp|age>] [--since <stamp|age>]",
-    desc="Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>; walk back through history with <code>--before</code>.",
+    usage="mycelium room messages [<room> | --room <room>] [--limit N] [--sender <handle>] [--type <type>] [--id <id>] [--before <stamp|age>] [--since <stamp|age>]",
+    desc="Read recent messages in a room (point-in-time, newest first), each whole in its own box. Filter with <code>--sender</code> / <code>--type</code>, read one message with <code>--id</code>, and walk back through history with <code>--before</code>.",
     group="room",
 )
 @app.command("messages")
@@ -1017,6 +1017,11 @@ def messages(
     ),
     message_type: str | None = typer.Option(
         None, "--type", "-t", help="Only this message type (e.g. direct, broadcast, announce)"
+    ),
+    message_id: str | None = typer.Option(
+        None,
+        "--id",
+        help="Only the message whose id starts with this (the eight characters a wake names it by)",
     ),
     before: str | None = typer.Option(
         None,
@@ -1035,6 +1040,10 @@ def messages(
     with the most recent messages and exits. Handy for scripts and for checking
     whether an agent's reply has landed.
 
+    Each message is printed whole, in a box with its text behind a `│`, so
+    where one ends is never in doubt. A wake names a message by the first
+    eight characters of its id; `--id` reads that one message.
+
     History is paged by content, not position: when older messages exist the
     footer names the `--before` cursor that reads the next page back, so a
     walk through a busy room does not shift under messages arriving live.
@@ -1044,6 +1053,7 @@ def messages(
         mycelium room messages design-review --limit 5
         mycelium room messages cc-e2e --sender cc-x
         mycelium room messages my-room --type broadcast
+        mycelium room messages my-room --id 930ecf2c
         mycelium room messages my-room --before 2h
         mycelium room messages my-room --since 2026-09-03T09:00:00Z --before 2026-09-03T12:00:00Z
     """
@@ -1064,9 +1074,11 @@ def messages(
             limit=limit,
             sender=sender,
             message_type=message_type,
+            message_id=message_id,
             since=chat.parse_stamp(since) if since else None,
             before=chat.parse_stamp(before) if before else None,
             older_with=stem,
+            empty_note=f"no message with an id starting {message_id}" if message_id else None,
             json_output=json_output,
         )
 
