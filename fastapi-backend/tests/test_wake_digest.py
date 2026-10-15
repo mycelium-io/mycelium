@@ -113,14 +113,18 @@ def test_a_mention_digest_says_why_what_changed_and_what_asked():
         body.append(line[2:] if line.startswith("│ ") else "")
     assert "\n".join(body) == LONG.strip()
     # Then what to do: await first, then the reply, which names the task so it
-    # lands in its thread.
+    # lands in its thread, and says so, since agents asked in a thread tend to
+    # answer in the main channel.
     assert lines[scout + len(body) + 3] == (
         "Next:    1. mycelium await --room digest-room --handle builder --json --timeout 5"
     )
-    assert (
-        '         2. mycelium respond --room digest-room --handle builder --task work/fix-the-receipt-tax --body "..."'
+    step = lines.index(
+        "         2. reply in the task's thread, not the main channel (--task puts it there):"
+    )
+    assert lines[step + 1] == (
+        '            mycelium respond --room digest-room --handle builder --task work/fix-the-receipt-tax --body "..."'
         '   (lands in "Fix the receipt tax")'
-    ) in digest
+    )
     # Then the other one asking, also whole.
     assert "Also asking you (1):" in digest
     assert '┌ @reviewer · 40m ago · in "Fix the receipt tax" · ' in digest
@@ -161,9 +165,59 @@ def test_asks_replied_to_since_are_counted_not_shown():
     # Read up to its "back": everything after that is unread, its reply included.
     wake = {"handle": "builder", "from": "hay", wake_digest.READ_FROM: 1}
     digest = wake_digest.build(ROOM, wake, records, NOW)
-    assert "Also asking you (1; 1 more you've replied to since aren't shown):" in digest
+    assert "Also asking you (1; 1 earlier you've replied to aren't shown):" in digest
     assert "second question, still open" in digest
     assert "first question" not in digest
+
+
+def test_the_board_lists_only_what_moved_after_the_last_turn():
+    """Its read position can lag behind its last turn (an ``await`` it never
+    ran); what moved before it last spoke is no news, unread or not."""
+    records = [
+        _said(1, "builder", "back", 60),
+        _notice(2, 50, subkind="claimed", key="work/old", title="Seen already", by="hay"),
+        _said(3, "builder", "my last turn", 30),
+        _notice(4, 10, subkind="claimed", key="work/new", title="New since", by="hay"),
+        _said(5, "hay", "@builder look", 1),
+    ]
+    wake = {"handle": "builder", "from": "hay", wake_digest.READ_FROM: 1}
+    digest = wake_digest.build(ROOM, wake, records, NOW)
+    lines = _board_lines(digest)
+    assert lines[0] == '@hay claimed "New since"'
+    assert not any("Seen already" in line for line in lines)
+    # The same for what was said: one message since its last turn, not three.
+    assert "Since:   your last turn, 30m ago: 1 in the room (@hay 1)" in digest
+
+
+def test_a_long_task_title_is_given_whole_once_then_shortened():
+    long = "Re-record the product demo on today's app, with the Stream and agents asking each other"
+    write_memory_file(
+        get_room_dir(ROOM),
+        "work/demo",
+        f"# {long}\n",
+        created_by="hay",
+        extra_meta={"episode": THREAD},
+    )
+    records = [_said(1, "hay", "@builder one line", 1, THREAD)]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    assert digest.count(long) == 1
+    assert f'Why:     @hay mentioned you in "{long}" (work/demo)' in digest
+    short = wake_digest._short(long, wake_digest.TITLE_CHARS)
+    assert f'· in "{short}" ·' in digest
+    assert f'(lands in "{short}")' in digest
+
+
+def test_the_await_step_says_what_it_does_in_a_line():
+    records = [
+        _said(1, "builder", "back", 60),
+        _said(2, "hay", "chatter", 30),
+        _said(3, "hay", "@builder look", 1),
+    ]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    assert (
+        "            (marks these read and says you're on it; 1 more was said since your last turn)"
+        in digest
+    )
 
 
 def test_other_asks_share_a_budget_and_the_rest_are_named():
@@ -501,7 +555,9 @@ def test_asks_in_two_places_get_a_reply_line_each():
     ]
     digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
     lines = digest.splitlines()
-    at = lines.index("         2. reply where each was asked:")
+    at = lines.index(
+        "         2. reply where each was asked (--task puts it in that task's thread):"
+    )
     assert lines[at + 1] == (
         '            mycelium respond --room digest-room --handle builder --body "..."'
         "   (lands in the room)"
