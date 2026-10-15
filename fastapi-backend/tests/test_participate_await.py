@@ -125,6 +125,30 @@ async def test_await_consumes_the_message_it_serves(wired):
 
 
 @pytest.mark.asyncio
+async def test_await_hands_over_every_unread_ask_led_by_the_newest(wired):
+    """The wake shows every ask and leads with the newest, so one ``await``
+    hands over the same: all of them, oldest first, with the newest as the turn.
+    Serving the oldest first gave the agent a message the wake had moved past."""
+    log = persister.DeliveryLog()
+    for mid in ("m1", "m2", "m3"):
+        log.record(
+            _addressed_record(mid, to="claude-code-agent"),
+            delivered_to=set(),
+            recipients=["claude-code-agent"],
+        )
+
+    wired(log)
+    turn = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=0)
+    assert turn["message_id"] == "m3"
+    assert [a["message_id"] for a in turn["asks"]] == ["m1", "m2", "m3"]
+    assert turn["asks"][-1]["prompt"] == turn["prompt"]
+    assert turn["asks"][0]["id"] == str(persister.read_id(log.records[0]))
+
+    again = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=1)
+    assert again["message"] is None  # all three were handed over
+
+
+@pytest.mark.asyncio
 async def test_await_ignores_turns_addressed_to_others(wired):
     """A handle only wakes on turns addressed to it — an observer broadcast to a
     peer is consumed silently, never returned."""

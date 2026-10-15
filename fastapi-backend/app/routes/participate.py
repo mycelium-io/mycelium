@@ -54,7 +54,7 @@ from app.services.asks import asks
 from app.services.filesystem import room_exists
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content, serialize_envelope
-from app.services.persister import _conversational_text, record_episode
+from app.services.persister import _conversational_text, read_id, record_episode
 
 router = APIRouter(prefix="/rooms/{room_name}", tags=["participate"])
 
@@ -174,6 +174,21 @@ def _describe(
     }
 
 
+def _ask_of(room: str, record: Any) -> dict[str, Any]:
+    """One message asking for the handle, as ``await`` lists them all: who,
+    what, where and when, and the id the room's history gives it."""
+    episode = record_episode(record)
+    return {
+        "sender": record.sender,
+        "prompt": record.content.get("content") or "",
+        "episode": episode,
+        "task": _task_of(room, episode),
+        "message_id": record.message_id,
+        "id": str(read_id(record)),
+        "at": record.recorded_at,
+    }
+
+
 @router.get("/await")
 async def await_message(
     room_name: str,
@@ -264,10 +279,15 @@ async def await_message(
                 "schedule": scheduled["schedule"],
             }
         records = persister.log.records
-        i = _position()
-        while i < len(records):
+        # Every unread message that asks for the handle, in one hand-over: the
+        # wake shows them all, so the read takes them all, and the newest (the
+        # one the wake leads with) is the turn. Handing them over one call at a
+        # time served the oldest first, so the agent read something the wake
+        # had already moved past while what woke it waited.
+        end = len(records)
+        unread: list[tuple[int, Any]] = []
+        for i in range(_position(), end):
             record = records[i]
-            i += 1
             ep = record_episode(record)
             if scoped and ep != scoped:
                 continue
@@ -278,31 +298,36 @@ async def await_message(
                 # No fork needed on *this* side: EpisodeCursors.position() already
                 # defaults an un-forked thread's position to the room-wide one
                 # (its own docstring — "the fork happens where it is standing"),
-                # and _commit(i) below is about to move that room-wide position to
-                # exactly here, so the next scoped reader's default lands right
-                # past this record with no extra write.
-                if persister.episode_position(handle, ep) >= i:
+                # and _commit(end) below moves that room-wide position past it,
+                # so the next scoped reader's default lands past this record
+                # with no extra write.
+                if persister.episode_position(handle, ep) > i:
                     continue
             if asks(record.content, handle):
-                _commit(i)
-                _last_tick[key] = record.content
-                room_channels.manager.refresh_lease(room_name, handle)
-                # The turn is handed over: from here until this handle's reply
-                # lands, the room is waiting on it. Transient, bus-only (#513).
-                # A wake already said where it's replying (the thread its
-                # digest named); await serves the oldest message first, so it
-                # doesn't override that with an older thread. Scoped to a task,
-                # the agent chose the thread, so that wins.
-                if scoped or not activity.is_responding(room_name, handle):
-                    activity.signal(room_name, handle, "responding", episode=ep)
-                _metrics.record_await_poll(
-                    room=room_name,
-                    handle=handle,
-                    duration_ms=(_time.monotonic() - _t0) * 1000.0,
-                    delivered=True,
-                )
-                earlier = _said_earlier(room_name, handle, records, i - 1)
-                return _describe(room_name, handle, record, earlier=earlier)
+                unread.append((i, record))
+        if unread:
+            _commit(end)
+            at, record = unread[-1]
+            _last_tick[key] = record.content
+            room_channels.manager.refresh_lease(room_name, handle)
+            # The turn is handed over: from here until this handle's reply
+            # lands, the room is waiting on it. Transient, bus-only (#513). A
+            # wake already said where it's replying (the thread its digest
+            # named); scoped to a task, the agent chose the thread, so that wins.
+            if scoped or not activity.is_responding(room_name, handle):
+                activity.signal(room_name, handle, "responding", episode=record_episode(record))
+            _metrics.record_await_poll(
+                room=room_name,
+                handle=handle,
+                duration_ms=(_time.monotonic() - _t0) * 1000.0,
+                delivered=True,
+            )
+            turn = _describe(
+                room_name, handle, record, earlier=_said_earlier(room_name, handle, records, at)
+            )
+            # All of them, oldest first, the turn last: what the wake showed.
+            turn["asks"] = [_ask_of(room_name, r) for _, r in unread]
+            return turn
         # Nothing addressed in the scanned range: consume it (advance past the
         # observer/broadcast turns this handle doesn't await) and keep polling.
         _commit(len(records))

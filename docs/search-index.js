@@ -1993,9 +1993,9 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
-    "t": "mycelium room messages [<room> | --room <room>] [--limit N] [--sender <handle>] [--type <type>] [--before <stamp|age>] [--since <stamp|age>]",
+    "t": "mycelium room messages [<room> | --room <room>] [--limit N] [--sender <handle>] [--type <type>] [--id <id>] [--before <stamp|age>] [--since <stamp|age>]",
     "s": "CLI Reference",
-    "x": "Read recent messages in a room (point-in-time, newest first). Filter with --sender / --type; walk back through history with --before.",
+    "x": "Read recent messages in a room (point-in-time, newest first), each whole in its own box. Filter with --sender / --type, read one message with --id, and walk back through history with --before.",
     "k": "cmd",
     "p": "Reference"
   },

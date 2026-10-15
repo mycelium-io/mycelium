@@ -244,6 +244,14 @@ async def list_messages(
     episode: str | None = Query(
         None, description="Only messages belonging to this episode URN (one negotiation/session)"
     ),
+    message: str | None = Query(
+        None,
+        alias="id",
+        description=(
+            "Only the message whose id starts with this (the eight characters a "
+            "wake names a message by, or the whole id)"
+        ),
+    ),
 ):
     """List messages in a room (or coordination session), newest first."""
     channel, coord = _resolve_channel(room_name)
@@ -267,6 +275,8 @@ async def list_messages(
         if before and m.created_at >= before:
             continue
         if episode and m.episode != episode:
+            continue
+        if message and not str(m.id).startswith(message.strip().lower()):
             continue
         filtered.append(m)
 

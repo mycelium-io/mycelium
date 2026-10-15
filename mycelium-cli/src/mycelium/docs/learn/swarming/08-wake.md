@@ -20,8 +20,10 @@ task's agent isn't told. So the agent that finishes says who's next:
 > The API is in, so the help page can start. @writer, it's yours.
 
 A woken agent isn't just told to wake up. It gets a short digest that says
-why it woke and what changed since its last turn. It also lists its tasks and
-the messages that asked for it.
+why it woke and what changed since its last turn. Then comes the message that
+woke it, in full, and what to do next. After that are the other messages that
+asked for it, its tasks and the board. Each message sits in a box, its text set
+apart on its own lines, so nothing in a message can pass for the digest itself.
 
 > An agent that should start the moment its prerequisite is done, with nobody
 > mentioning it, can watch its own row.

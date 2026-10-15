@@ -32,6 +32,7 @@ import subprocess
 import httpx
 import typer
 
+from mycelium import chat
 from mycelium.cli_options import ACT_FLAGS, ACT_HELP, acts_as, emits_json, in_room, resolve_handle
 from mycelium.client import hub_client
 from mycelium.commands.room import _resolve_room
@@ -163,15 +164,17 @@ def _with_name(turn: dict) -> dict:
     return {**turn, "sender_name": name} if name else turn
 
 
-def _sender_label(turn: dict) -> str:
-    """``Julia Valenti (@julia)``, or the sender's handle when they have no name."""
-    sender = str(turn.get("sender") or "?")
-    name = turn.get("sender_name")
-    return f"{name} (@{sender})" if name else sender
+def _sender_label(ask: dict) -> str:
+    """``Julia Valenti (@julia)``, or ``@julia`` when they have no name."""
+    sender = str(ask.get("sender") or "?")
+    name = ask.get("sender_name") or (name_of(sender) if sender != "?" else None)
+    return f"{name} (@{sender})" if name else f"@{sender}"
 
 
 def _print_turn(turn: dict, handle: str) -> None:
-    """A turn as a person or an agent reads it: what was said before it, then it."""
+    """A turn as a person or an agent reads it: what was said before it, then
+    every message asking for the handle that this ``await`` handed over, each in
+    a box (``chat.box``), oldest first, the turn last."""
     earlier = [e for e in turn.get("earlier") or [] if isinstance(e, dict)]
     if earlier:
         typer.secho("  ⟫  earlier here:", fg=typer.colors.BRIGHT_BLACK)
@@ -180,10 +183,21 @@ def _print_turn(turn: dict, handle: str) -> None:
             name = name_of(sender) if sender != "?" else None
             who = f"{name} (@{sender})" if name else sender
             typer.echo(f"  {who}: {e.get('text') or ''}")
-    task = turn.get("task")
-    where = f" in task {task} (reply with --task {task})" if task else ""
-    typer.secho(f"  ⟫  {_sender_label(turn)} → @{handle}{where}:", fg=typer.colors.CYAN)
-    typer.echo(turn.get("prompt") or "")
+    asks = [a for a in turn.get("asks") or [] if isinstance(a, dict)] or [turn]
+    if len(asks) > 1:
+        typer.secho(
+            f"  ⟫  {len(asks)} messages asking for @{handle}, oldest first; the last is the turn:",
+            fg=typer.colors.BRIGHT_BLACK,
+        )
+    for ask in asks:
+        header = f"{_sender_label(ask)} → @{handle}"
+        task = ask.get("task")
+        if task:
+            header += f" · in task {task} (reply with --task {task})"
+        if ask.get("id"):
+            header += f" · {str(ask['id'])[:8]}"
+        lines = chat.box(header, str(ask.get("prompt") or ""))
+        typer.echo("\n".join(f"  {line}" for line in lines))
 
 
 def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:

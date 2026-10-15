@@ -923,6 +923,24 @@
               "title": "Episode"
             },
             "description": "Only messages belonging to this episode URN (one negotiation/session)"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the message whose id starts with this (the eight characters a wake names a message by, or the whole id)",
+              "title": "Id"
+            },
+            "description": "Only the message whose id starts with this (the eight characters a wake names a message by, or the whole id)"
           }
         ],
         "responses": {
