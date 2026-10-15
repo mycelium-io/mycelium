@@ -30,7 +30,7 @@ import {
   runnerAgentOf,
 } from "./runners";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
-import { demoOnLaunch, demoOnMessage, demoOnTask, isDemoScenario } from "./demo";
+import { demoBusy, demoOnLaunch, demoOnMessage, demoOnTask, isDemoScenario } from "./demo";
 import {
   LEARN_PERSON,
   LEARN_TEAMMATE,
@@ -410,6 +410,14 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return json(usageKpis(Math.min(Math.max(days, 1), 365)));
     }
     return notFound("unknown observability route (mock)");
+  }
+
+  // ── /api/demo/busy: the demo take's time skip (demo.ts, act 6) ──────────────
+  if (rest[0] === "demo" && isDemoScenario()) {
+    const fx = getRoomFixture("checkout");
+    if (rest[1] !== "busy" || method !== "POST" || !fx) return notFound("unknown demo act (mock)");
+    demoBusy(fx);
+    return json({ ok: true });
   }
 
   // ── /api/users ──────────────────────────────────────────────────────────────

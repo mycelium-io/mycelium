@@ -11,24 +11,25 @@
  * demo recorded under `mycelium-promo/`, which drives the real UI through it:
  *
  *   1. you name yourself, and add @builder from your machine;
- *   2. you make a task from the operator's message and hand it to @builder by
- *      mentioning it in the task's thread; it claims it and asks @reviewer,
- *      who answers there;
- *   3. in that thread you summon `@conductor review @~builder @~reviewer`, and
- *      the review flow runs: build, review, a finding sent back, a fix,
- *      approval, while the room's other threads move too (the Stream);
- *   4. @reviewer files the decision the fix raised, and the two disagree in it;
- *   5. you summon `@aligner`, the negotiation converges, and the agreement
- *      compiles into new rows on the board.
+ *   2. you welcome it by name in the channel, and it answers;
+ *   3. you add a task on the board for @builder, and it takes it;
+ *   4. in the task's thread @builder asks @reviewer to check the fix, and the
+ *      two go back and forth by mentioning each other;
+ *   5. @builder uploads a recording of the fix, @reviewer approves it, and you
+ *      tell @builder to ship it;
+ *   6. later (`POST /api/demo/busy`, behind the take's fade): the room has
+ *      grown to a team, and its threads move at once, for the channel, the
+ *      Stream and the board.
  *
  * Times are real (relative to when the dev server booted), so the board reads
  * "2h", not the default fixtures' fixed clock. Each act runs once per boot.
  */
 
-import type { EpisodeSummary, FlowStep, PresenceMember, RoomFloor } from "@/lib/api";
+import type { PresenceMember } from "@/lib/api";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
 import { Director, once, sleep } from "./director";
 import { liveEpisode, memoryChangedFrame, publish, respondingFrame } from "./live";
+import { addUpload } from "./uploads";
 
 export function isDemoScenario(): boolean {
   return (process.env.MYCELIUM_UI_MOCK_SCENARIO ?? "").toLowerCase() === "demo";
@@ -44,20 +45,11 @@ const LIVE = liveEpisode(ROOM);
 /** The person the demo is recorded as; the machine's runner is theirs. */
 export const DEMO_PERSON = { handle: "sam-rivera", name: "Sam Rivera", home: "/Users/sam" };
 
+/** The recording @builder uploads: `mycelium-promo/record.mjs` makes it and names it here. */
+const CLIP = "double-tap-one-charge.mp4";
+
 const manifest = (description: string, adapter = "claude_code", extra = ""): string =>
   `adapter: ${adapter}\ndescription: "${description}"\n${extra}`;
-
-const REVIEW_STEPS: FlowStep[] = [
-  { id: "build", to: "author", next: "review", prompt: "Task {task}: {ask}\n\nDo the work on your own branch." },
-  {
-    id: "review",
-    to: "reviewer",
-    next: { accept: "approved", reject: "fix", default: "fix" },
-    prompt: "Review the work on {task}. Approve only what you ran and saw hold.",
-  },
-  { id: "fix", to: "author", next: "review", prompt: "The reviewer sent {task} back:\n\n{reply}" },
-  { id: "approved", end: "resolved" },
-];
 
 // ── the room as it stands before the story ────────────────────────────────────
 
@@ -91,22 +83,6 @@ export function demoCheckout(): RoomFixture {
       version: 1,
       updated_at: ago(60 * 26),
       episode: ep("b3d5f7"),
-    },
-    {
-      key: "agents/aligner",
-      value: manifest("Helps members agree when they disagree.", "engine", "kind: aligner\n"),
-      created_by: "operator",
-      version: 1,
-      updated_at: ago(60 * 26),
-      episode: ep("c4e6a8"),
-    },
-    {
-      key: "agents/conductor",
-      value: manifest("Walks a flow inside a task's thread, passing the floor step by step.", "engine", "kind: conductor\n"),
-      created_by: "operator",
-      version: 1,
-      updated_at: ago(60 * 26),
-      episode: ep("d5f7b9"),
     },
     {
       key: "context/goal",
@@ -192,19 +168,13 @@ export function demoCheckout(): RoomFixture {
       id: "d3",
       sender_handle: "operator",
       message_type: "broadcast",
-      // Its first line is the title of the task made from it (``taskTitle``).
-      content:
-        "Customers are charged twice when they double-click Pay\n\nTwo wrote in this morning, both on phones, both on a slow connection.",
+      content: "Two customers wrote in this morning: they were charged twice when they double-clicked Pay. Both on phones, both on a slow connection.",
       created_at: ago(6),
       episode: null,
     },
   ];
 
-  const presence: PresenceMember[] = [
-    { handle: "reviewer", kind: "lease", last_seen: ago(1), title: "Add Apple Pay to checkout" },
-    { handle: "aligner", kind: "lease", last_seen: ago(1) },
-    { handle: "conductor", kind: "lease", last_seen: ago(1) },
-  ];
+  const presence: PresenceMember[] = [{ handle: "reviewer", kind: "lease", last_seen: ago(1), title: "Add Apple Pay to checkout" }];
 
   return {
     room: {
@@ -230,16 +200,12 @@ export function demoCheckout(): RoomFixture {
 // The writes an agent's side makes, through the shared director (director.ts),
 // bound to the demo's room.
 const on = (fx: RoomFixture): Director => new Director(ROOM, fx);
-const say = (fx: RoomFixture, who: string, content: string, episode: string | null = null, conductor?: Record<string, unknown>) =>
-  on(fx).say(who, content, episode, conductor);
+const say = (fx: RoomFixture, who: string, content: string, episode: string | null = null) => on(fx).say(who, content, episode);
 const join = (fx: RoomFixture, handle: string, intent: string, episode: string) => on(fx).join(handle, intent, episode);
 const patchRow = (fx: RoomFixture, key: string, meta: Record<string, unknown>, by: string) => on(fx).patchRow(key, meta, by);
-const fileRow = (fx: RoomFixture, key: string, title: string, meta: Record<string, unknown>, by: string, short: string) =>
-  on(fx).fileRow(key, title, meta, by, short);
 const claim = (fx: RoomFixture, key: string, who: string) => on(fx).claim(key, who);
 const resolveRow = (fx: RoomFixture, key: string, who: string, extra: Record<string, unknown> = {}) => on(fx).resolve(key, who, extra);
 const setPresence = (fx: RoomFixture, handle: string, title?: string) => on(fx).present(handle, title);
-const setFloor = (fx: RoomFixture, floor: RoomFloor | null, episode: string) => on(fx).floor(floor, episode);
 const rowOf = (fx: RoomFixture, episode: string | null | undefined) => on(fx).rowOf(episode);
 
 /** An agent visibly thinking, then the beat it takes. */
@@ -248,14 +214,20 @@ async function think(who: string, episode: string | null, ms: number): Promise<v
   await sleep(ms);
 }
 
-// Act 1 — an agent added from your machine joins and says hello.
+const isAgent = (fx: RoomFixture, handle: string) => fx.memories.some((m) => m.key === `agents/${handle}`);
+
+/** The handles a message mentions out loud (`@x` or `@!x`, not a silent `@~x`). */
+const mentioned = (text: string): string[] =>
+  [...text.matchAll(/(?:^|[^\w@])@!?([a-z0-9][\w.-]*)/gi)].map((m) => m[1].toLowerCase());
+
+// Act 1 — an agent added from your machine joins the room.
 export function demoOnLaunch(fx: RoomFixture, room: string, handle: string): void {
   if (room !== ROOM || !once(`launch:${handle}`)) return;
   void (async () => {
     // The runner reports the start after a couple of seconds; the agent is a
     // member from then on.
     await sleep(2600);
-    if (!fx.memories.some((m) => m.key === `agents/${handle}`)) {
+    if (!isAgent(fx, handle)) {
       fx.memories.push({
         key: `agents/${handle}`,
         value: manifest("Writes the checkout code, on Sam's machine in ~/code/shop.", "claude_code", `owner: ${DEMO_PERSON.handle}\n`),
@@ -268,14 +240,24 @@ export function demoOnLaunch(fx: RoomFixture, room: string, handle: string): voi
     setPresence(fx, handle);
     publish(ROOM, memoryChangedFrame(`agents/${handle}`, 1, DEMO_PERSON.handle));
     join(fx, handle, "joined from Sam's machine", LIVE);
-    await think(handle, null, 1800);
-    say(fx, handle, "Hi! I'm in ~/code/shop on Sam's machine, with the checkout repo checked out. Hand me something.");
   })();
 }
 
-// Act 2 — a task handed to an agent: it claims the row and starts in its thread,
-// and asks its reviewer, who answers there. Filed for the agent (``/task … @x``)
-// or made from a message and handed over by a mention in its thread.
+// Act 2 — welcomed by name in the channel, the new agent answers.
+function welcome(fx: RoomFixture, handle: string): void {
+  if (!once(`welcome:${handle}`)) return;
+  void (async () => {
+    await think(handle, null, 2000);
+    say(
+      fx,
+      handle,
+      "Thanks! I'm on Sam's machine in ~/code/shop, with the checkout repo open. Put something on the board for me and I'll pick it up.",
+    );
+  })();
+}
+
+// Act 3 — a task added on the board for an agent: it takes it, and works it in
+// the task's thread with the agent who reviews checkout changes.
 export function demoOnTask(fx: RoomFixture, room: string, row: MockMemory): void {
   if (room !== ROOM) return;
   const owner = String(row.meta?.assignee ?? "").replace(/^@/, "");
@@ -286,350 +268,222 @@ export function demoOnTask(fx: RoomFixture, room: string, row: MockMemory): void
 function takeOn(fx: RoomFixture, row: MockMemory, owner: string): void {
   if (!row.episode || !once(`task:${row.key}`)) return;
   const thread = row.episode;
+  const reviewer = "reviewer";
   void (async () => {
-    await sleep(1400);
-    await think(owner, thread, 2200);
+    await sleep(1200);
+    await think(owner, thread, 2000);
     claim(fx, row.key, owner);
     setPresence(fx, owner, String(row.value));
+    say(fx, owner, "On it. I can reproduce it: two quick taps on Pay send two payment requests, and Stripe charges both.", thread);
+
+    // Act 4 — the two coordinate in the thread, by mentioning each other.
+    await sleep(2600);
+    await think(owner, thread, 3200);
+    patchRow(fx, row.key, { branch: "fix/double-charge", pr: "#504", ci: "green" }, owner);
     say(
       fx,
       owner,
-      "Taking this. I can reproduce it: two quick taps on Pay send two payment requests, and Stripe charges both. " +
-        "@reviewer, want to review the fix when it's up?",
+      "Fix is up on #504: each checkout gets one payment ID, so a second tap reuses it and Stripe can't charge twice. " +
+        `@${reviewer} can you try it on a slow connection?`,
       thread,
     );
-    // Long enough for the take to show what the mention woke @reviewer with
-    // (mycelium-promo/wake-card.js) before it answers.
-    await think("reviewer", thread, 7500);
-    say(fx, "reviewer", "Yes. Run it through review and I'll test it on a slow connection.", thread);
-  })();
-}
-
-/** The room's other threads moving while the review runs, for the Stream. */
-async function otherThreads(fx: RoomFixture): Promise<void> {
-  if (!once("other-threads")) return;
-  const applePay = ep("d6f8b0");
-  const alerts = ep("f2b4d6");
-  await sleep(1200);
-  say(fx, "operator", "The pager went off at 3am for a two-second blip. Can it wait for three failures in a row?", alerts);
-  await sleep(1600);
-  await think("reviewer", applePay, 1400);
-  say(fx, "reviewer", "Test orders on both iPhones went through. Waiting on the Android one.", applePay);
-  await sleep(1800);
-  say(fx, "operator", "Nice. If Android passes, ship it thursday.", applePay);
-  await sleep(1500);
-  say(fx, "operator", "Also: only page for card payments. Apple Pay failures can wait for the morning.", alerts);
-}
-
-// Act 3 — the review flow, walked by the conductor in the task's thread.
-function reviewFlow(fx: RoomFixture, thread: string, author: string, reviewer: string): void {
-  if (!once(`review:${thread}`)) return;
-  const row = rowOf(fx, thread);
-  const title = row ? String(row.value) : null;
-  // The run's record is the thread's own episode, as a run in a task is: the
-  // board folds it into the row rather than drawing a row of its own.
-  const short = thread.split(":").pop() ?? thread;
-  const run: EpisodeSummary = {
-    short_id: short,
-    episode: thread,
-    topic: `urn:concept:mycelium:${ROOM}`,
-    outcome: "open",
-    subkind: null,
-    participants: [author, reviewer, "conductor"],
-    metrics: null,
-    assignments: null,
-    tasks: [],
-    message_count: 0,
-    updated_at: now(),
-    updated_by: "conductor",
-    within: thread,
-    current_step: "build",
-    flow: {
-      name: "review",
-      description: "An author does the work, a reviewer checks it against evidence; findings go back until the reviewer approves.",
-      roles: ["author", "reviewer"],
-      max_steps: 9,
-      bound: { author, reviewer },
-      cast: [author, reviewer],
-      ask: title ?? "the task",
-      steps: REVIEW_STEPS,
-    },
-    trace: [],
-  };
-  fx.episodes.push(run);
-  const floorFor = (who: string): RoomFloor => ({
-    thread: short,
-    episode: thread,
-    key: row?.key ?? null,
-    title,
-    holder: "conductor",
-    speakers: [who],
-  });
-  let turnNo = 0;
-  const stepTo = (step: string, who: string) => {
-    turnNo += 1;
-    run.current_step = step;
-    run.updated_at = now();
-    setFloor(fx, floorFor(who), thread);
-    say(fx, "conductor", `review · ${step} · turn ${turnNo} of 9 · ${who}`, thread, {
-      event: "turn",
-      protocol: "review",
-      step,
-      to: who,
-      turn: turnNo,
-      cap: 9,
-    });
-  };
-  const took = (step: string, who: string, stance: string | null, next: string) => {
-    run.trace = [
-      ...(run.trace ?? []),
-      { step, turn: turnNo, asked: [who], stances: { [who]: stance }, stance, next, at: now() },
-    ];
-    run.message_count += 1;
-    run.updated_at = now();
-    say(fx, "conductor", `${step} → ${next}`, thread, { event: "edge", step, who, stance, next });
-  };
-
-  void (async () => {
-    await sleep(900);
-    say(fx, "conductor", `Running review in this task: @${author} builds, @${reviewer} reviews.`, thread, {
-      event: "open",
-      protocol: "review",
-      description: run.flow?.description,
-      roles: { author, reviewer },
-      members: [author, reviewer],
-      steps: REVIEW_STEPS,
-    });
-    await sleep(1200);
-
-    stepTo("build", author);
-    // Meanwhile the room's other work moves in its own threads: the Stream
-    // draws each as a lane beside the review.
-    void otherThreads(fx);
-    await think(author, thread, 3200);
-    say(
-      fx,
-      author,
-      "Fixed in #504: each checkout now gets one payment ID, so a second tap reuses it and Stripe can't charge twice. " +
-        "The Pay button also locks after the first tap. Branch fix/double-charge, CI is green.",
-      thread,
-    );
-    if (row) patchRow(fx, row.key, { branch: "fix/double-charge", pr: "#504", ci: "green" }, author);
-    took("build", author, null, "review");
-    await sleep(800);
-
-    stepTo("review", reviewer);
     await think(reviewer, thread, 3400);
     say(
       fx,
       reviewer,
-      "Tapped Pay five times on a throttled connection: one charge. Good. But nothing tests it, so it can come back. Back to you.",
+      `Tapped Pay five times on a throttled phone: one charge. But nothing tests it, so it can come back. @${owner} can you add a test?`,
       thread,
     );
-    took("review", reviewer, "reject", "fix");
-    await sleep(800);
+    await think(owner, thread, 3000);
+    patchRow(fx, row.key, { ci: "running" }, owner);
+    say(fx, owner, `Added one: it double-taps Pay against a slow Stripe and expects one charge. CI is green. @${reviewer}`, thread);
+    patchRow(fx, row.key, { ci: "green" }, owner);
 
-    stepTo("fix", author);
-    if (row) patchRow(fx, row.key, { ci: "running" }, author);
-    await think(author, thread, 3000);
-    say(fx, author, "Added a test that double-taps Pay against a slow Stripe mock and asserts one charge. CI is green.", thread);
-    if (row) patchRow(fx, row.key, { ci: "green" }, author);
-    took("fix", author, null, "review");
-    await sleep(800);
-
-    stepTo("review", reviewer);
-    await think(reviewer, thread, 2600);
-    say(fx, reviewer, "Ran the new test and tapped it by hand again: one charge every time. Approved.", thread);
-    took("review", reviewer, "accept", "approved");
-    run.outcome = "resolved";
-    run.subkind = "resolved";
-    run.current_step = null;
-    run.updated_at = now();
-    setFloor(fx, null, thread);
-    say(fx, "conductor", "✓ Done: @reviewer approved after one round of fixes.", thread, {
-      event: "close",
-      protocol: "review",
-      outcome: "resolved",
-      steps: 4,
-      reason: "reached `approved`",
-    });
-    if (row) resolveRow(fx, row.key, reviewer);
-    publish(ROOM, {
-      id: `commit-${run.short_id}`,
-      sender_handle: "conductor",
-      message_type: "l9_commit",
-      episode: run.episode,
-      content: {
-        l9: {
-          header: { kind: "commit", subkind: "resolved", message: { id: `commit-${run.short_id}`, parents: [], episode: run.episode } },
-          payload: { data: { protocol: "review", steps: 4, assignments: {}, metrics: {} } },
-        },
-      },
-    });
-    setPresence(fx, author);
-
-    await sleep(2400);
-    await think(reviewer, null, 1800);
-    say(
-      fx,
-      reviewer,
-      "One thing the fix doesn't answer: the customers already charged twice. Do we refund them automatically, or send them to support first? Filing it.",
-    );
-    await sleep(600);
-    fileRow(
-      fx,
-      "decisions/double-charge-refunds",
-      "Double charges: refund automatically, or send to support first?",
-      { kind: "decision", status: "open", priority: "urgent", choices: ["refund automatically", "send to support"] },
-      reviewer,
-      "e9f1a3",
-    );
-    const decision = ep("e9f1a3");
-    await think(author, decision, 2200);
-    say(fx, author, "Refund automatically. They already paid twice, and making them wait on support makes it worse.", decision);
-    await think(reviewer, decision, 2400);
-    say(fx, reviewer, "Send to support. If our check is wrong, we'd refund someone's real second order.", decision);
+    // Act 5 — the work's evidence goes in the room, where everyone can see it.
+    await think(owner, thread, 2600);
+    const clip = await clipBytes();
+    if (clip) addUpload(ROOM, fx, CLIP, clip, owner);
+    publish(ROOM, memoryChangedFrame(`uploads/${CLIP}`, 1, owner));
+    say(fx, owner, `And a recording of it on a throttled phone, five taps and one charge: [[uploads/${CLIP}]]`, thread);
+    await think(reviewer, thread, 3000);
+    say(fx, reviewer, `Watched it and ran the test: one charge every time. Approved. @${DEMO_PERSON.handle} good to ship.`, thread);
   })();
 }
 
-// Act 4 — the aligner, summoned into the decision's thread.
-function negotiate(fx: RoomFixture, thread: string): void {
-  if (!once(`aligner:${thread}`)) return;
-  const row = rowOf(fx, thread);
-  const a = "builder";
-  const b = "reviewer";
-  // The negotiation is recorded on the decision's thread, so its outcome folds
-  // into the decision's row.
-  const neg = thread;
-  const issue = "double charges";
-  const tick = (round: number, who: string, action: string, offer: Record<string, string>) =>
-    publish(ROOM, {
-      id: `tick-${round}-${who}-${action}`,
-      sender_handle: "aligner",
-      message_type: "coordination_tick",
-      episode: neg,
-      content: JSON.stringify({ payload: { round, participant_id: who, action, current_offer: offer } }),
-    });
-  const summary: EpisodeSummary = {
-    short_id: thread.split(":").pop() ?? thread,
-    episode: neg,
-    topic: `urn:concept:mycelium:${ROOM}`,
-    outcome: "open",
-    subkind: null,
-    participants: [a, b, "aligner"],
-    metrics: null,
-    assignments: null,
-    tasks: [],
-    message_count: 0,
-    updated_at: now(),
-    updated_by: "aligner",
-    within: thread,
-  };
-  fx.episodes.push(summary);
+/** The clip's bytes, from the file `record.mjs` names; none outside a take. */
+async function clipBytes(): Promise<ArrayBuffer | null> {
+  const path = process.env.MYCELIUM_DEMO_CLIP;
+  if (!path) return null;
+  try {
+    const { readFile } = await import("node:fs/promises");
+    const buf = await readFile(path);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  } catch {
+    return null;
+  }
+}
 
+// Act 5, closed — you tell the agent to ship it.
+function ship(fx: RoomFixture, row: MockMemory, owner: string): void {
+  if (!row.episode || !once(`ship:${row.key}`)) return;
+  const thread = row.episode;
   void (async () => {
-    for (const who of [a, b]) {
-      join(fx, who, issue, neg);
-      await sleep(300);
-    }
-    await think("aligner", thread, 2600);
-    say(
-      fx,
-      "aligner",
-      "You agree on the goal: whoever was charged twice gets their money back. You differ on one case, a second charge " +
-        "that is a real order. So the issue is how sure we must be before refunding without a person looking.",
-      thread,
-    );
-    tick(1, a, "propose", { refund: "automatic" });
-    await sleep(900);
-    tick(1, b, "counter", { refund: "support first" });
-    await think("aligner", thread, 2600);
-    say(
-      fx,
-      "aligner",
-      "Proposal: refund automatically when the two charges match to the cent within two minutes of each other, which is " +
-        "the button bug. Anything else goes to support, answered within a day. @builder?",
-      thread,
-    );
-    tick(2, "aligner", "propose", { refund: "automatic if same amount within 2 min", else: "support within a day" });
-    await think(a, thread, 1900);
-    say(fx, a, "Works for me. Nearly every case we've seen is an exact match seconds apart.", thread);
-    tick(2, a, "accept", { refund: "automatic if same amount within 2 min", else: "support within a day" });
-    await think("aligner", thread, 900);
-    say(fx, "aligner", "@reviewer?", thread);
-    await think(b, thread, 2200);
-    say(fx, b, "Yes. A real second order is never the same amount seconds later, so that covers my worry.", thread);
-    tick(2, b, "accept", { refund: "automatic if same amount within 2 min", else: "support within a day" });
-    await sleep(700);
-
-    const assignments = {
-      "exact duplicates": "refund automatically",
-      "everything else": "support reviews within a day",
-    };
-    summary.outcome = "converged";
-    summary.subkind = "converged";
-    summary.assignments = assignments;
-    summary.metrics = { mpc: 1, gar: 0.92, scr: 1, provenance_weight: 1 } as EpisodeSummary["metrics"];
-    summary.tasks = ["work/auto-refund-exact-duplicates", "work/support-reviews-other-duplicates"];
-    summary.updated_at = now();
-    publish(ROOM, {
-      id: `consensus-${neg}`,
-      sender_handle: "backend",
-      message_type: "coordination_consensus",
-      episode: neg,
-      content: JSON.stringify({ plan: "double charges", assignments, episode: neg, metrics: { gar: 0.92 } }),
-    });
-    say(
-      fx,
-      "aligner",
-      "✓ Agreed: exact duplicates are refunded automatically; anything else goes to support, answered within a day.",
-      thread,
-    );
-    if (row) resolveRow(fx, row.key, "aligner", { decision: "refund exact duplicates automatically; support for the rest" });
-
-    await sleep(1600);
-    fileRow(
-      fx,
-      "work/auto-refund-exact-duplicates",
-      "Refund duplicate charges that match to the cent within two minutes",
-      { kind: "action", status: "open", assignee: "builder", priority: "high", "part-of": row?.key },
-      "aligner",
-      "c2e4a6",
-    );
-    await sleep(500);
-    fileRow(
-      fx,
-      "work/support-reviews-other-duplicates",
-      "Send other duplicate charges to support, answered within a day",
-      { kind: "action", status: "open", assignee: "reviewer", "part-of": row?.key },
-      "aligner",
-      "d3f5b7",
-    );
-    await sleep(1400);
-    claim(fx, "work/auto-refund-exact-duplicates", a);
-    say(fx, a, "On it.", ep("c2e4a6"));
+    await think(owner, thread, 2200);
+    say(fx, owner, "Merged #504 and deployed. Closing this.", thread);
+    resolveRow(fx, row.key, owner, { pr: "#504" });
+    setPresence(fx, owner);
   })();
 }
 
-/** A message someone posted: a summon of an engine starts its act. */
+/** A message someone posted: a mention of an agent is how the story moves. */
 export function demoOnMessage(fx: RoomFixture, room: string, msg: MockMessage): void {
   if (room !== ROOM) return;
   const text = msg.content.trim();
   const thread = msg.episode && msg.episode !== LIVE ? msg.episode : null;
-  if (/^@conductor\b/i.test(text) && /\breview\b/i.test(text) && thread) {
-    // The members a summon names, silently (``@~``) or not: its roles.
-    const handles = [...text.matchAll(/@[~!]?([a-z0-9][\w.-]*)/gi)]
-      .map((m) => m[1].toLowerCase())
-      .filter((h) => h !== "conductor");
-    reviewFlow(fx, thread, handles[0] ?? "builder", handles[1] ?? "reviewer");
-    return;
+  const named = mentioned(text).find((h) => isAgent(fx, h));
+  if (!named) return;
+  const row = thread ? rowOf(fx, thread) : undefined;
+  if (row) ship(fx, row, named);
+  else if (!thread) welcome(fx, named);
+}
+
+// ── act 6: later, a team ──────────────────────────────────────────────────────
+
+/** The agents the room has grown to, each holding a task of its own. */
+const TEAM: { handle: string; description: string; row: string; title: string; short: string; meta?: Record<string, unknown> }[] = [
+  {
+    handle: "builder",
+    description: "Writes the checkout code, on Sam's machine in ~/code/shop.",
+    row: "work/loyalty-card",
+    title: "Loyalty card: every tenth coffee free",
+    short: "b1c2d3",
+    meta: { branch: "feat/loyalty", ci: "running", pr: "#511" },
+  },
+  {
+    handle: "designer",
+    description: "Designs the shop's pages and menus, on Priya's machine.",
+    row: "work/spring-menu-photos",
+    title: "New photos for the spring menu",
+    short: "c2d3e4",
+  },
+  {
+    handle: "support",
+    description: "Answers customer email and files what it can't fix.",
+    row: "work/refund-emails",
+    title: "Answer this week's refund emails",
+    short: "d3e4f5",
+  },
+  {
+    handle: "qa",
+    description: "Load-tests and places test orders before anything ships.",
+    row: "work/load-test-checkout",
+    title: "Load-test checkout for the spring sale",
+    short: "e4f5a6",
+    meta: { priority: "high" },
+  },
+  {
+    handle: "ops",
+    description: "Keeps payments, alerts and deploys running.",
+    row: "work/payment-alerts",
+    title: "Alert us when payments start failing",
+    short: "f2b4d6",
+  },
+  {
+    handle: "growth",
+    description: "Runs the numbers and the spring sale's emails, on Jordan's machine.",
+    row: "work/spring-sale-email",
+    title: "Spring sale email to the mailing list",
+    short: "a6b7c8",
+  },
+];
+
+/** What the team says, in order: [who, thread short id or null for the room, text]. */
+const CHATTER: [string, string | null, string][] = [
+  ["designer", "c2d3e4", "Shot the cherry blossom latte and the matcha scone. Cropping for the menu now."],
+  ["qa", "e4f5a6", "Ramping to 400 checkouts a minute. Payments hold; the menu page is the slow one."],
+  ["support", "d3e4f5", "Six refund emails so far. Four are the double charge, already refunded. Two need a person."],
+  ["builder", "b1c2d3", "Stamps save per customer now. @designer what should the stamp card look like?"],
+  ["ops", "f2b4d6", "Pager now waits for three failures in a row, and only for card payments."],
+  ["growth", "a6b7c8", "Draft is in. Subject line: Spring is brewing, 20% off everything this week."],
+  ["designer", "b1c2d3", "@builder ten little cups in a row, the tenth one gold. Sending it over."],
+  ["qa", "e4f5a6", "@designer the new menu photos are 4 MB each, that's the slow page. Can you shrink them?"],
+  ["sam-rivera", "a6b7c8", "Love it. @growth send it Monday at 8, people check email with their coffee."],
+  ["designer", "e4f5a6", "Done, they're 180 KB now and look the same. @qa try again?"],
+  ["support", null, "Heads up: two customers asked if the loyalty card works for oat milk drinks. It should."],
+  ["builder", "b1c2d3", "It does. Every drink counts. CI is green on #511."],
+  ["qa", "e4f5a6", "400 a minute, everything under a second. Good to go for the sale."],
+  ["ops", "f2b4d6", "Turned the alert on. Closing this."],
+  ["growth", "a6b7c8", "Scheduled for Monday 8:00."],
+];
+
+/** The room, some days later: more members, each on a task, every thread moving. */
+export function demoBusy(fx: RoomFixture): void {
+  if (!once("busy")) return;
+  const d = on(fx);
+  // The first task is long done, and the rest of the board has moved on.
+  for (const key of ["work/add-apple-pay", "work/turn-on-apple-pay"]) {
+    patchRow(fx, key, { status: "resolved", assignment: "resolved" }, "reviewer");
   }
-  if (/@aligner\b/i.test(text) && thread) {
-    negotiate(fx, thread);
-    return;
+  for (const [i, m] of TEAM.entries()) {
+    if (!isAgent(fx, m.handle)) {
+      fx.memories.push({
+        key: `agents/${m.handle}`,
+        value: manifest(m.description),
+        created_by: DEMO_PERSON.handle,
+        version: 1,
+        updated_at: ago(60 * 24 * 2),
+        episode: ep(`ag${i}`),
+      });
+      publish(ROOM, memoryChangedFrame(`agents/${m.handle}`, 1, DEMO_PERSON.handle));
+    }
+    const existing = fx.memories.find((r) => r.key === m.row);
+    if (existing) {
+      patchRow(fx, m.row, { assignment: "held", owner: `@${m.handle}`, claimed_at: ago(40), ...(m.meta ?? {}) }, m.handle);
+    } else {
+      fx.memories.push(
+        boardRow(
+          m.row,
+          m.title,
+          { kind: "action", status: "open", assignment: "held", owner: `@${m.handle}`, claimed_at: ago(30 + i * 7), ...(m.meta ?? {}) },
+          DEMO_PERSON.handle,
+          30 + i * 7,
+          m.short,
+        ),
+      );
+      publish(ROOM, memoryChangedFrame(m.row, 1, m.handle));
+    }
+    setPresence(fx, m.handle, m.title);
   }
-  // A task handed over by mentioning an agent in its thread.
-  const row = thread ? rowOf(fx, thread) : null;
-  const named = /(?:^|\s)@([a-z0-9][\w.-]*)/i.exec(text)?.[1]?.toLowerCase();
-  if (row && named && fx.memories.some((m) => m.key === `agents/${named}`)) takeOn(fx, row, named);
+  setPresence(fx, "reviewer", "Review the loyalty card");
+  // A row of new work waiting, for the board to have more than one column.
+  for (const [key, title, short] of [
+    ["work/oat-milk-stamps", "Count oat milk drinks on the loyalty card", "b8c9d0"],
+    ["work/gift-cards", "Sell gift cards at checkout", "c9d0e1"],
+  ] as const) {
+    fx.memories.push(boardRow(key, title, { kind: "action", status: "open", assignment: "unclaimed" }, "support", 20, short));
+    publish(ROOM, memoryChangedFrame(key, 1, "support"));
+  }
+  // An hour of conversation already in the threads, so each one opens lived in.
+  for (const [i, m] of TEAM.entries()) {
+    fx.messages.push({
+      id: `busy-earlier-${i}`,
+      sender_handle: m.handle,
+      message_type: "broadcast",
+      content: `Picked this up: ${m.title.charAt(0).toLowerCase()}${m.title.slice(1)}.`,
+      created_at: ago(30 + i * 7),
+      episode: ep(m.short),
+    });
+  }
+
+  void (async () => {
+    await sleep(800);
+    for (const [who, short, text] of CHATTER) {
+      const thread = short ? ep(short) : null;
+      if (who !== DEMO_PERSON.handle) await think(who, thread, 500);
+      d.say(who, text, thread);
+      if (text.startsWith("Turned the alert on")) resolveRow(fx, "work/payment-alerts", "ops");
+      if (text.startsWith("400 a minute")) resolveRow(fx, "work/load-test-checkout", "qa");
+      await sleep(1100);
+    }
+  })();
 }

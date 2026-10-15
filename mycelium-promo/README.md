@@ -10,36 +10,35 @@ tilted window over the docs site's glass droplets.
 The story is one coffee shop's checkout room:
 
 1. **You name yourself**, and add @builder, a coding agent on your machine.
-2. **You make a task from a message**: customers are charged twice when they
-   double-click Pay. Its thread opens, and you hand it to @builder by
-   mentioning it there.
-3. **Agents ask each other.** @builder claims it and asks @reviewer, who
-   answers in the thread. A card shows the wake message @reviewer was woken
-   with (`wake-card.js`: the web app has no view of an agent's terminal, so
-   this is the one thing on screen that isn't the app's own UI).
-4. **One builds, another reviews.** In the thread, `@conductor review
-   @~builder @~reviewer` runs the review flow (`@~` names the members without
-   waking them; the conductor asks each in turn): a fix, a finding sent back,
-   a test, approval. Meanwhile the room's other threads move, and the Stream
-   shows them side by side in lanes. The flow's graph shows every edge taken.
-5. **They disagree, and the aligner helps.** @reviewer files the decision the
-   fix raised (refund automatically, or send to support?), the two take sides,
-   and `@aligner` brokers an agreement.
-6. **It lands on the board**: the agreement compiles into two new tasks.
+2. **Agents are members.** You welcome @builder by name in the channel, and it
+   answers.
+3. **The board.** You add a task for @builder on the board (customers are
+   charged twice when they double-click Pay), and it takes it.
+4. **Agents coordinate the same way.** In the task's thread, @builder asks
+   @reviewer to check the fix, @reviewer asks for a test, and @builder adds
+   one, all by mentioning each other.
+5. **One place for the work.** @builder uploads a recording of the fix
+   (`clip/checkout.html`, five taps and one charge), it plays in the room,
+   @reviewer approves, you say ship it, and the Files pane shows it.
+6. **A week later** (`fade.js`, the one thing on screen that isn't the app's
+   own UI): the room has grown to a team of agents, each on a task of its own,
+   every thread moving. The channel, then the Stream with every thread in its
+   own lane, then the board.
 
 ## Files
 
 | | |
 |---|---|
 | `demo.json` | the take: shotkit's options and its `do` action list, in the vocabulary of `shot video --do` |
-| `record.mjs` | boots the frontend in the demo scenario and records `demo.json` through shotkit's library; an `eval:file:<name>` action runs a script from this folder in the page |
-| `wake-card.js` | the wake message card shown over the app (`eval:file:wake-card.js`), in the wake message's own layout |
+| `record.mjs` | records the clip @builder uploads, boots the frontend in the demo scenario, and records `demo.json` through shotkit's library; an `eval:file:<name>` action runs a script from this folder in the page |
+| `clip/checkout.html` | the coffee shop's checkout on a phone, for the clip (`.shotkit/demo/double-tap-one-charge.mp4`, handed to the scenario as `MYCELIUM_DEMO_CLIP`) |
+| `fade.js` | the time skip (`eval:file:fade.js`): fades to "A week later", grows the room (`POST /api/demo/busy`), and `window.__fade.out()` fades back |
 | `mycelium-demo.mp4` | the recording, 1920x1080 H.264. Not committed (git-ignored); see Publishing |
 
 The agents' side of the story is the frontend's demo scenario
 (`MYCELIUM_UI_MOCK_SCENARIO=demo`, `mycelium-frontend/src/mocks/demo.ts`):
 fixture data and a director that answers what you do, with no hub and no model.
-Everything on screen is the app's own UI, except the wake card.
+Everything on screen is the app's own UI, except the fade.
 
 ## Recording
 
@@ -57,9 +56,10 @@ from the `mycelium-demo.mp4.sounds.json` the take writes beside the video.
 re-recording it. See [`audio/README.md`](audio/README.md).
 
 `record.mjs` starts its own `next dev` (the scenario's acts play once per
-server), so stop any dev server in `mycelium-frontend/` first. The staged take
-needs a full ffmpeg on `PATH` for mp4 (`node shotkit/bin/shot.mjs doctor`
-says), and the fonts load from Google Fonts. Behind an egress proxy, set
+server), so stop any dev server in `mycelium-frontend/` first. Every run,
+`--quick` too, records the checkout clip as an mp4 first, so it needs a full
+ffmpeg on `PATH` (`node shotkit/bin/shot.mjs doctor` says); Playwright's own
+ffmpeg writes only webm. The fonts load from Google Fonts. Behind an egress proxy, set
 `SHOTKIT_PROXY`. Staging is a pass after the take; on a laptop with a GPU it is
 quick, and in a software-GL container it is a few minutes per minute of video.
 
@@ -80,6 +80,7 @@ page needs, and every visitor and every Pages deploy downloads all of it.
 ffmpeg -i mycelium-promo/mycelium-demo.mp4 -c:v libx264 -crf 30 -preset slow \
   -pix_fmt yuv420p -c:a copy -movflags +faststart docs/demo/mycelium-demo.mp4
 ```
+
 The README can't play a file from the repo: GitHub only plays a README video
 inline from a `user-attachments/assets/...` URL, minted by dragging the mp4
 into a PR comment in the browser. Swap that URL into the README by hand.
