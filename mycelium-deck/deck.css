@@ -301,6 +301,13 @@ figure.media figcaption { margin-top: 14px; font: 400 22px var(--sans); color: v
 .wakes .hub { text-align: center; padding: 34px; }
 .wakes .hub small { font-size: 22px; }
 
+/* What you need: three plain icons. */
+.needs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; margin-top: 70px; }
+.needs .box { padding: 44px 40px; display: flex; flex-direction: column; gap: 14px; min-height: 320px; }
+.needs svg { width: 72px; height: 72px; fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 10px; }
+.needs h3 { font: 600 40px/1.1 var(--sans); letter-spacing: -0.02em; }
+.needs p { margin: 0; font-size: 27px; color: var(--muted); }
+
 /* The three ways to write a mention, under the "asking" scene. */
 .marks { position: absolute; left: 150px; right: 150px; bottom: 150px; margin: 0; padding: 0; list-style: none; display: flex; justify-content: center; gap: 70px; }
 .marks li { font-size: 30px; color: var(--muted); }
@@ -530,7 +537,7 @@ svg.wires path.plain { marker-end: none; }
 
 /* ── Layout: close ── */
 .layout-close { align-items: center; justify-content: center; text-align: center; }
-.layout-close .display { font-size: 220px; }
+.layout-close .display { font-size: 180px; margin-top: 360px !important; }
 .layout-close .links { margin-top: 60px; display: flex; gap: 26px; }
 .layout-close .links a { font: 500 26px var(--sans); color: var(--text); text-decoration: none; padding: 20px 30px; }
 .layout-close .links a span { color: var(--accent); }
