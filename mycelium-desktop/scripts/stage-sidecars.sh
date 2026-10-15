@@ -190,6 +190,18 @@ stage_mycelium() {
   echo "staged mycelium"
 }
 
+# One PyInstaller --add-data value, "source<sep>dest". Git Bash on Windows
+# rewrites a /d/a/... argument into D:\a\... only sometimes inside a
+# "src:dest" pair (it left app/data/verifier as \d\a\..., with no drive), so
+# there the source is named the Windows way and joined with Windows' ";".
+add_data() {
+  if [ "$os" = windows ]; then
+    echo "$(cygpath -w "$1");$2"
+  else
+    echo "$1:$2"
+  fi
+}
+
 stage_hub() {
   echo "building the hub…"
   # NEGMAS depends on a data-science stack the aligner never loads (pyarrow
@@ -209,8 +221,8 @@ stage_hub() {
       --hidden-import uvicorn.logging --hidden-import uvicorn.loops.auto \
       --hidden-import uvicorn.protocols.http.auto --hidden-import uvicorn.protocols.websockets.auto \
       --hidden-import uvicorn.lifespan.on \
-      --add-data "$repo/fastapi-backend/pyproject.toml:." \
-      --add-data "$repo/fastapi-backend/app/data/verifier:app/data/verifier" \
+      --add-data "$(add_data "$repo/fastapi-backend/pyproject.toml" .)" \
+      --add-data "$(add_data "$repo/fastapi-backend/app/data/verifier" app/data/verifier)" \
       hub_entry.py
   )
   rm -rf "$res/hub" && cp -R "$work/hub-dist/mycelium-hub" "$res/hub"
