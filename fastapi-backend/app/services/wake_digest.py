@@ -18,8 +18,10 @@ column, so no message can pass itself off as a header, a ``Next:`` step or a
 second message, whatever it contains, and no escaping rule can slip. The ask is
 given in full up to :data:`LATEST_CHARS`; the others share :data:`OTHERS_CHARS`,
 newest first, and each one that doesn't fit is named with the command that
-prints it. Asks the agent has replied to since (it posted in their thread
-after them) are counted, not shown.
+prints it. Asks the agent has replied to (it posted in their thread after
+them) are counted, not shown. A task's title is given whole once, on the
+``Why:`` line, and shortened after. What changed (``Since:``, ``Board:``)
+counts from the agent's last turn.
 
 Built when the wake is delivered, not when it was queued, since a wake can wait
 while its agent is busy and the room moves on meanwhile.
@@ -429,14 +431,25 @@ def coverage(wake: dict[str, Any], records: list[Any]) -> dict[str, Any]:
     return covered
 
 
+def _named(where: tuple[str, str]) -> str:
+    """A task named after the ``Why:`` line has given it whole: its title,
+    shortened, so a long one doesn't bury a short message on every line."""
+    return f'"{_short(where[1], TITLE_CHARS)}"'
+
+
+def _in(room: str, record: Any) -> str:
+    """Where ``record`` was said, for a box's header."""
+    where = _where(room, record_episode(record))
+    return f"in {_named(where)}" if where else "in the room"
+
+
 def _ask_box(room: str, record: Any, now: datetime, limit: int) -> list[str]:
     """One message asking for the agent, as a box: who, when, where and its id,
     then its text in full, or up to ``limit`` with the command that reads the rest."""
     # What asked (``asks.py``) always has text, an aligner's tick included.
     text = str(record.content.get("content") or "").strip()
     rid = short_id(record)
-    where = _where(room, record_episode(record))
-    place = f'in "{where[1]}"' if where else "in the room"
+    place = _in(room, record)
     header = (
         f"@{record.sender} · {age(parse_recorded_at(record.recorded_at), now)} · {place} · {rid}"
     )
@@ -492,7 +505,7 @@ def _reply_lines(room: str, me: str, window: list[Any], asked: list[Any]) -> lis
             continue
         seen.add(target)
         task = f" --task {where[0]}" if where else ""
-        lands = f'"{where[1]}"' if where else "the room"
+        lands = _named(where) if where else "the room"
         lines.append(
             f'mycelium respond --room {room} --handle {me}{task} --body "..."   (lands in {lands})'
         )
@@ -516,11 +529,15 @@ def _other_asks(
     left_out = len(earlier) - len(others)
     lines = [""]
     if not others:
-        noun = "ask" if left_out == 1 else "asks"
-        return [*lines, f"({left_out} more {noun} for you, replied to since, aren't shown)"]
+        said = (
+            "1 earlier ask you've replied to isn't"
+            if left_out == 1
+            else (f"{left_out} earlier asks you've replied to aren't")
+        )
+        return [*lines, f"({said} shown)"]
     count = f"Also asking you ({len(others)}"
     if left_out:
-        count += f"; {left_out} more you've replied to since aren't shown"
+        count += f"; {left_out} earlier you've replied to aren't shown"
     lines.append(count + "):")
     budget = OTHERS_CHARS
     named: list[str] = []
@@ -531,8 +548,7 @@ def _other_asks(
             lines += ["", *_ask_box(room, record, now, OTHERS_CHARS)]
             continue
         rid = short_id(record)
-        where = _where(room, record_episode(record))
-        place = f'in "{where[1]}"' if where else "in the room"
+        place = _in(room, record)
         when = age(parse_recorded_at(record.recorded_at), now)
         named.append(
             f"  @{record.sender} · {when} · {place} · {size:,} characters: "
@@ -558,7 +574,14 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         return _thread_of(room, record)
 
     here = _reply_thread(room, asked)
-    said = [r for r in since if _conversational_text(r.content) or r in asked]
+    # What was said since its last *turn*: its read position can lag behind
+    # that (an ``await`` it never ran), and what it saw before it last spoke
+    # is no news. The asks still come from the read position, since ``await``
+    # hands those over.
+    after_turn = {id(r) for r in window[last + 1 :]}
+    said = [
+        r for r in since if id(r) in after_turn and (_conversational_text(r.content) or r in asked)
+    ]
     in_here = [r for r in said if place_of(r) == here]
     elsewhere = len(said) - len(in_here)
     by = Counter(r.sender for r in in_here if r.sender)
@@ -649,9 +672,9 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
             f'Post:   mycelium board send {key} --room {room} --as {me} --body "..."',
         ]
     else:
-        more = len(said) - len(asked)
-        noun = "message" if more == 1 else "messages"
-        extra = f", plus {more} other {noun} since your last turn" if more > 0 else ""
+        asking = {id(r) for r in asked}
+        more = sum(id(r) not in asking for r in said)
+        extra = f"; shows {more} more since your last turn" if more > 0 else ""
         # ``await`` comes first: it is what marks these read and says the agent
         # is on it. Then a reply where each unanswered ask was made, the one
         # that woke it first: an older ask can be a flow's turn in another
@@ -659,14 +682,13 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         replies = _reply_lines(room, me, window, asked)
         if not replies:
             task = f" --task {where[0]}" if here and where else ""
-            lands = f'"{where[1]}"' if here and where else "the room"
+            lands = _named(where) if here and where else "the room"
             replies = [
                 f'mycelium respond --room {room} --handle {me}{task} --body "..."   (lands in {lands})'
             ]
         lines += [
             f"Next:    1. mycelium await --room {room} --handle {me} --json --timeout 5",
-            f"            (every ask in this wake, in full{extra}; it marks them read and"
-            " tells the room you're on it)",
+            f"            (marks these read and says you're on it{extra})",
         ]
         if len(replies) == 1:
             lines.append(f"         2. {replies[0]}")
@@ -686,8 +708,9 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
             lines.append(f"         and {len(mine) - TASKS_SHOWN} more")
     # What changed on the board since its last turn, and on the pull requests
     # behind its rows, then what's open now, so the agent doesn't have to read
-    # the board to learn what moved.
-    moved = moves(room, handle, since, now)
+    # the board to learn what moved. Since its last *turn*, not its read
+    # position: what it saw before it last spoke is no news, even unread.
+    moved = moves(room, handle, [r for r in since if id(r) in after_turn], now)
     if moved:
         lines.append(f"Board:   {moved[0]}")
         lines.extend(f"         {c}" for c in moved[1:CHANGES_SHOWN])
