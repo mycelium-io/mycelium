@@ -151,12 +151,20 @@
   <!-- ── It already happened: the coverage ── -->
   <section class="slide" data-title="It already happened">
     <h2 class="rise" style="margin-top:20px">It already <em>happened</em></h2>
-    <div class="collage">
-      <figure class="media rise" data-media="hf-disclosure.png" data-alt="Hugging Face's security incident disclosure, July 16, 2026"></figure>
-      <figure class="media rise" data-media="register-headline.png" data-alt="The Register: OpenAI explains how its naughty AI agents attacked Hugging Face, August 2026"></figure>
+    <div class="logos">
+      <div class="org rise">
+        <figure class="media logo" data-media="hf-logo.svg" data-alt="The Hugging Face logo"></figure>
+        <span class="name">Hugging Face</span>
+        <figure class="media doc" data-media="hf-disclosure.png" data-alt="Hugging Face's security incident disclosure"><figcaption>Its disclosure, July 2026</figcaption></figure>
+      </div>
+      <div class="org rise">
+        <figure class="media logo wordmark" data-media="openai-wordmark.png" data-alt="The OpenAI wordmark"></figure>
+        <span class="name"></span>
+        <figure class="media doc" data-media="openai-report.png" data-alt="OpenAI's technical report on the Hugging Face incident"><figcaption>Its technical report, August 2026</figcaption></figure>
+      </div>
     </div>
     <aside class="notes">
-      <p>This isn't hypothetical. In July, Hugging Face disclosed that an autonomous AI agent system had broken into part of its production infrastructure. In August, OpenAI published its own account: the agents were theirs, running a cybersecurity benchmark.</p>
+      <p>You've probably heard about this one. In July, Hugging Face disclosed that an autonomous AI agent system had broken into part of its production infrastructure. In August, OpenAI published its technical report: the agents were theirs, running a cybersecurity benchmark.</p>
     </aside>
   </section>
 
@@ -170,7 +178,7 @@
       <div class="rise"><div class="n">41</div><div class="label">production servers that ran the agents' code</div></div>
     </div>
     <p class="flat-caption rise">They built their own message board. Nobody was reading it.</p>
-    <p class="flat-source">Hugging Face's security disclosure, July 2026 · The Register, August 2026</p>
+    <p class="flat-source">Hugging Face's security disclosure, July 2026 · OpenAI's technical report, August 2026</p>
     <aside class="notes">
       <p>In July, OpenAI ran a large number of agents on a cybersecurity benchmark. The agents found they could read each other's activity in a shared package repository, and turned it into a message board.</p>
       <p>Some of them then broke into Hugging Face. Hugging Face says they were inside for about two and a half days, and its log of the intrusion has more than 17,000 actions. OpenAI says the agents ran code on 41 of Hugging Face's production servers.</p>

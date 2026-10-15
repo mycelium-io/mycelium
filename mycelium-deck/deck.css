@@ -282,11 +282,16 @@ figure.media figcaption { margin-top: 14px; font: 400 22px var(--sans); color: v
 .split { display: grid; grid-template-columns: 1fr 560px; gap: 50px; align-items: center; margin-top: 40px; }
 .split figure.media img { width: 560px; }
 .split .funnel { margin-top: 0; }
-.collage { position: relative; flex: 1; margin-top: 40px; }
-.collage figure.media { position: absolute; }
-.collage figure.media:nth-child(1) { left: 0; top: 0; width: 1040px; transform: rotate(-1.2deg); }
-.collage figure.media:nth-child(2) { right: 0; bottom: 40px; width: 1060px; transform: rotate(1.4deg); }
-.collage figure.media img { width: 100%; }
+/* Two organisations side by side: a logo, then the document each published. */
+.logos { display: grid; grid-template-columns: 1fr 1fr; gap: 90px; margin-top: 50px; }
+.logos .org { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+.logos .org > * { flex: none; }
+.logos figure.logo { height: 150px; display: flex; align-items: center; }
+.logos figure.logo img { height: 130px; border: 0; border-radius: 0; box-shadow: none; }
+.logos figure.logo.wordmark img { height: 74px; }
+.logos .name { font: 600 54px/1 var(--sans); letter-spacing: -0.02em; min-height: 54px; }.logos figure.doc { width: 520px; margin-top: 6px; }
+.logos figure.doc img { width: 100%; height: 300px; object-fit: cover; object-position: top; }
+.logos figure.doc figcaption { text-align: center; }
 
 /* ── Layout: memory (a folder tree beside one memory, rendered) ── */
 .memory { display: grid; grid-template-columns: 640px 1fr; gap: 50px; margin-top: 60px; align-items: start; }
