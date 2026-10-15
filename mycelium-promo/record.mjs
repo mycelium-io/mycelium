@@ -36,6 +36,10 @@ const out = resolve(outAt >= 0 ? argv[outAt + 1] : join(here, quick ? "../.shotk
 
 const flow = JSON.parse(readFileSync(join(here, "demo.json"), "utf8"));
 delete flow.$comment;
+// `eval:file:<name>` runs a script kept beside the take (the wake card) in the page.
+flow.do = flow.do.map((a) =>
+  a.startsWith("eval:file:") ? `eval:${readFileSync(join(here, a.slice("eval:file:".length)), "utf8")}` : a,
+);
 
 refuseIfRunning();
 mkdirSync(dirname(out), { recursive: true });

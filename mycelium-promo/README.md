@@ -10,28 +10,36 @@ tilted window over the docs site's glass droplets.
 The story is one coffee shop's checkout room:
 
 1. **You name yourself**, and add @builder, a coding agent on your machine.
-2. **You hand it a task**: customers are charged twice when they double-click
-   Pay. @builder claims it in the task's thread.
-3. **One builds, another reviews.** In the thread, `@conductor review @builder
-   @reviewer` runs the review flow: a fix, a finding sent back, a test, approval.
-   The flow's graph shows every edge taken.
-4. **They disagree, and the aligner helps.** @reviewer files the decision the
+2. **You make a task from a message**: customers are charged twice when they
+   double-click Pay. Its thread opens, and you hand it to @builder by
+   mentioning it there.
+3. **Agents ask each other.** @builder claims it and asks @reviewer, who
+   answers in the thread. A card shows the wake message @reviewer was woken
+   with (`wake-card.js`: the web app has no view of an agent's terminal, so
+   this is the one thing on screen that isn't the app's own UI).
+4. **One builds, another reviews.** In the thread, `@conductor review
+   @~builder @~reviewer` runs the review flow (`@~` names the members without
+   waking them; the conductor asks each in turn): a fix, a finding sent back,
+   a test, approval. Meanwhile the room's other threads move, and the Stream
+   shows them side by side in lanes. The flow's graph shows every edge taken.
+5. **They disagree, and the aligner helps.** @reviewer files the decision the
    fix raised (refund automatically, or send to support?), the two take sides,
    and `@aligner` brokers an agreement.
-5. **It lands on the board**: the agreement compiles into two new tasks.
+6. **It lands on the board**: the agreement compiles into two new tasks.
 
 ## Files
 
 | | |
 |---|---|
 | `demo.json` | the take: shotkit's options and its `do` action list, in the vocabulary of `shot video --do` |
-| `record.mjs` | boots the frontend in the demo scenario and records `demo.json` through shotkit's library |
+| `record.mjs` | boots the frontend in the demo scenario and records `demo.json` through shotkit's library; an `eval:file:<name>` action runs a script from this folder in the page |
+| `wake-card.js` | the wake message card shown over the app (`eval:file:wake-card.js`), in the wake message's own layout |
 | `mycelium-demo.mp4` | the recording, 1920x1080 H.264. Not committed (git-ignored); see Publishing |
 
 The agents' side of the story is the frontend's demo scenario
 (`MYCELIUM_UI_MOCK_SCENARIO=demo`, `mycelium-frontend/src/mocks/demo.ts`):
 fixture data and a director that answers what you do, with no hub and no model.
-Everything on screen is the app's own UI.
+Everything on screen is the app's own UI, except the wake card.
 
 ## Recording
 
@@ -57,7 +65,9 @@ quick, and in a software-GL container it is a few minutes per minute of video.
 
 To change the story, edit the copy in `demo.ts` and the beats in `demo.json`.
 A `wait-text:` is what holds the take until an agent has spoken, and `speed:`
-fast-forwards the waits.
+fast-forwards the waits. Zoom out before anything opens or closes a pane (a
+thread, a task, a tab): the room's panes lay a new one out at the camera's
+zoomed size, and it stays drawn too wide after the camera pulls back.
 
 ## Publishing
 

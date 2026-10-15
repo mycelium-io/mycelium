@@ -11,9 +11,12 @@
  * demo recorded under `mycelium-promo/`, which drives the real UI through it:
  *
  *   1. you name yourself, and add @builder from your machine;
- *   2. you hand @builder a task, and it claims it in the task's thread;
- *   3. in that thread you summon `@conductor review @builder @reviewer`, and
- *      the review flow runs: build, review, a finding sent back, a fix, approval;
+ *   2. you make a task from the operator's message and hand it to @builder by
+ *      mentioning it in the task's thread; it claims it and asks @reviewer,
+ *      who answers there;
+ *   3. in that thread you summon `@conductor review @~builder @~reviewer`, and
+ *      the review flow runs: build, review, a finding sent back, a fix,
+ *      approval, while the room's other threads move too (the Stream);
  *   4. @reviewer files the decision the fix raised, and the two disagree in it;
  *   5. you summon `@aligner`, the negotiation converges, and the agreement
  *      compiles into new rows on the board.
@@ -189,8 +192,9 @@ export function demoCheckout(): RoomFixture {
       id: "d3",
       sender_handle: "operator",
       message_type: "broadcast",
+      // Its first line is the title of the task made from it (``taskTitle``).
       content:
-        "Two customers wrote in this morning saying they were charged twice. Both on phones, both on a slow connection.",
+        "Customers are charged twice when they double-click Pay\n\nTwo wrote in this morning, both on phones, both on a slow connection.",
       created_at: ago(6),
       episode: null,
     },
@@ -269,11 +273,18 @@ export function demoOnLaunch(fx: RoomFixture, room: string, handle: string): voi
   })();
 }
 
-// Act 2 — a task handed to an agent: it claims the row and starts in its thread.
+// Act 2 — a task handed to an agent: it claims the row and starts in its thread,
+// and asks its reviewer, who answers there. Filed for the agent (``/task … @x``)
+// or made from a message and handed over by a mention in its thread.
 export function demoOnTask(fx: RoomFixture, room: string, row: MockMemory): void {
   if (room !== ROOM) return;
   const owner = String(row.meta?.assignee ?? "").replace(/^@/, "");
-  if (!owner || !row.episode || !once(`task:${row.key}`)) return;
+  if (!owner || !row.episode) return;
+  takeOn(fx, row, owner);
+}
+
+function takeOn(fx: RoomFixture, row: MockMemory, owner: string): void {
+  if (!row.episode || !once(`task:${row.key}`)) return;
   const thread = row.episode;
   void (async () => {
     await sleep(1400);
@@ -287,9 +298,27 @@ export function demoOnTask(fx: RoomFixture, room: string, row: MockMemory): void
         "@reviewer, want to review the fix when it's up?",
       thread,
     );
-    await think("reviewer", thread, 1800);
+    // Long enough for the take to show what the mention woke @reviewer with
+    // (mycelium-promo/wake-card.js) before it answers.
+    await think("reviewer", thread, 7500);
     say(fx, "reviewer", "Yes. Run it through review and I'll test it on a slow connection.", thread);
   })();
+}
+
+/** The room's other threads moving while the review runs, for the Stream. */
+async function otherThreads(fx: RoomFixture): Promise<void> {
+  if (!once("other-threads")) return;
+  const applePay = ep("d6f8b0");
+  const alerts = ep("f2b4d6");
+  await sleep(1200);
+  say(fx, "operator", "The pager went off at 3am for a two-second blip. Can it wait for three failures in a row?", alerts);
+  await sleep(1600);
+  await think("reviewer", applePay, 1400);
+  say(fx, "reviewer", "Test orders on both iPhones went through. Waiting on the Android one.", applePay);
+  await sleep(1800);
+  say(fx, "operator", "Nice. If Android passes, ship it thursday.", applePay);
+  await sleep(1500);
+  say(fx, "operator", "Also: only page for card payments. Apple Pay failures can wait for the morning.", alerts);
 }
 
 // Act 3 — the review flow, walked by the conductor in the task's thread.
@@ -374,6 +403,9 @@ function reviewFlow(fx: RoomFixture, thread: string, author: string, reviewer: s
     await sleep(1200);
 
     stepTo("build", author);
+    // Meanwhile the room's other work moves in its own threads: the Stream
+    // draws each as a lane beside the review.
+    void otherThreads(fx);
     await think(author, thread, 3200);
     say(
       fx,
@@ -585,9 +617,19 @@ export function demoOnMessage(fx: RoomFixture, room: string, msg: MockMessage): 
   const text = msg.content.trim();
   const thread = msg.episode && msg.episode !== LIVE ? msg.episode : null;
   if (/^@conductor\b/i.test(text) && /\breview\b/i.test(text) && thread) {
-    const handles = [...text.matchAll(/@([a-z0-9][\w.-]*)/gi)].map((m) => m[1].toLowerCase()).filter((h) => h !== "conductor");
+    // The members a summon names, silently (``@~``) or not: its roles.
+    const handles = [...text.matchAll(/@[~!]?([a-z0-9][\w.-]*)/gi)]
+      .map((m) => m[1].toLowerCase())
+      .filter((h) => h !== "conductor");
     reviewFlow(fx, thread, handles[0] ?? "builder", handles[1] ?? "reviewer");
     return;
   }
-  if (/@aligner\b/i.test(text) && thread) negotiate(fx, thread);
+  if (/@aligner\b/i.test(text) && thread) {
+    negotiate(fx, thread);
+    return;
+  }
+  // A task handed over by mentioning an agent in its thread.
+  const row = thread ? rowOf(fx, thread) : null;
+  const named = /(?:^|\s)@([a-z0-9][\w.-]*)/i.exec(text)?.[1]?.toLowerCase();
+  if (row && named && fx.memories.some((m) => m.key === `agents/${named}`)) takeOn(fx, row, named);
 }
