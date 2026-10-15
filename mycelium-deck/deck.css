@@ -270,6 +270,24 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .triad .box.warn h3 { color: var(--red); }
 .credit { margin-top: 26px; font: 400 24px var(--sans); color: var(--muted); }
 
+/* ── Media: an image or clip from media/, or a placeholder naming it ── */
+figure.media { margin: 0; text-shadow: none; }
+figure.media img, figure.media video { display: block; max-width: 100%; max-height: 100%; border-radius: 16px; border: 1px solid var(--border-hi); box-shadow: var(--shadow); }
+figure.media figcaption { margin-top: 14px; font: 400 22px var(--sans); color: var(--muted); }
+.media-missing { display: grid; place-content: center; gap: 10px; min-height: 260px; padding: 30px; text-align: center; border: 2px dashed var(--border-hi); border-radius: 16px; color: var(--muted); }
+.media-missing b { font: 500 22px var(--mono); color: var(--text); }
+.media-missing span { font-size: 22px; }
+
+/* A diagram beside a picture, and pictures overlapping like a pile of clippings. */
+.split { display: grid; grid-template-columns: 1fr 560px; gap: 50px; align-items: center; margin-top: 40px; }
+.split figure.media img { width: 560px; }
+.split .funnel { margin-top: 0; }
+.collage { position: relative; flex: 1; margin-top: 40px; }
+.collage figure.media { position: absolute; }
+.collage figure.media:nth-child(1) { left: 0; top: 0; width: 1040px; transform: rotate(-1.2deg); }
+.collage figure.media:nth-child(2) { right: 0; bottom: 40px; width: 1060px; transform: rotate(1.4deg); }
+.collage figure.media img { width: 100%; }
+
 /* ── Layout: memory (a folder tree beside one memory, rendered) ── */
 .memory { display: grid; grid-template-columns: 640px 1fr; gap: 50px; margin-top: 60px; align-items: start; }
 .memory .tree { margin: 0; padding: 34px 38px; font: 400 26px/1.9 var(--mono); white-space: pre; }
@@ -440,7 +458,11 @@ svg.wires path.plain { marker-end: none; }
 
 /* ── Layout: staircase (steps rising left to right) ── */
 .stair { position: relative; flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 26px; align-items: end; margin: 30px 0 70px 90px; }
-.stair .box { margin-bottom: calc(var(--n) * 108px); min-height: 150px; }
+.stair .box { margin-bottom: calc(var(--n) * 76px); min-height: 150px; padding: 14px 18px 22px; }
+.stair .box figure.media { margin: 0 0 14px; }
+.stair .box figure.media img { width: 100%; border-radius: 10px; box-shadow: none; }
+.stair .box .media-missing { min-height: 128px; padding: 10px; border-radius: 10px; gap: 4px; }
+.stair .box .media-missing b, .stair .box .media-missing span { font-size: 15px; }
 .stair .box time { display: block; margin-bottom: 10px; font: 500 21px var(--sans); color: var(--accent); letter-spacing: 0.08em; }
 .stair .axis { position: absolute; left: -70px; top: 10px; bottom: 0; width: 2px; background: var(--border-hi); }
 .stair .axis::before { content: ""; position: absolute; left: -8px; top: -4px; border: 9px solid transparent; border-bottom: 14px solid var(--border-hi); border-top: 0; }

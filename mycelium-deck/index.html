@@ -63,11 +63,11 @@
     <h2 class="rise" style="margin-top:20px">How we <em>got here</em></h2>
     <div class="stair">
       <div class="axis"><span class="tag">How much the agent does on its own</span></div>
-      <div class="box rise" style="--n:0"><time>2021</time>Autocomplete in the editor</div>
-      <div class="box step" style="--n:1"><time>Late 2022</time>Copy and paste from a chat window</div>
-      <div class="box step" style="--n:2"><time>Early 2025</time>Agents in the terminal</div>
-      <div class="box step" style="--n:3"><time>Mid 2025</time>Agents in the background</div>
-      <div class="box hi step" style="--n:4"><time>2026</time>Always-on agents</div>
+      <div class="box rise" style="--n:0"><figure class="media" data-media="era-copilot.png" data-alt="GitHub Copilot's launch, June 2021"></figure><time>2021</time>Autocomplete in the editor</div>
+      <div class="box step" style="--n:1"><figure class="media" data-media="era-chatgpt.png" data-alt="ChatGPT's launch, November 2022"></figure><time>Late 2022</time>Copy and paste from a chat window</div>
+      <div class="box step" style="--n:2"><figure class="media" data-media="era-claude-code.png" data-alt="Claude Code's launch, February 2025"></figure><time>Early 2025</time>Agents in the terminal</div>
+      <div class="box step" style="--n:3"><figure class="media" data-media="era-coding-agent.png" data-alt="GitHub Copilot's coding agent, May 2025"></figure><time>Mid 2025</time>Agents in the background</div>
+      <div class="box hi step" style="--n:4"><figure class="media" data-media="era-always-on.png" data-alt="An always-on agent, 2026"></figure><time>2026</time>Always-on agents</div>
     </div>
     <aside class="notes">
       <p>Here's how fast it moved. Each step on a click.</p>
@@ -105,15 +105,17 @@
   <!-- ── The gap: Karpathy's funnel ── -->
   <section class="slide" data-title="The gap">
     <h2 class="rise" style="margin-top:20px">Where people are</h2>
-    <div class="funnel">
-      <div class="band rise" style="--w:1500px; --slant:90px; --fill:9%"><span><b>About 75%</b> of people have barely used AI</span></div>
-      <div class="band rise" style="--w:1150px; --slant:80px; --fill:13%"><span><b>About 20%</b> use a chatbot now and then</span></div>
-      <div class="band hi rise" data-node="you" style="--w:820px; --slant:70px"><span><b>About 0.2%</b> watch agents do weeks of work<br>from one prompt</span></div>
-      <div class="band rise" style="--w:560px; --slant:60px; --fill:20%"><span><b>About 5,000 people</b> inside the labs<br>work with swarms of agents</span></div>
-      <div class="here tag step" data-node="here" style="right:110px; top:330px">You are here</div>
+    <div class="split">
+      <div class="funnel">
+        <div class="band rise" style="--w:1060px; --slant:70px; --fill:9%"><span><b>About 75%</b> of people have barely used AI</span></div>
+        <div class="band rise" style="--w:840px; --slant:62px; --fill:13%"><span><b>About 20%</b> use a chatbot now and then</span></div>
+        <div class="band hi rise" data-node="you" style="--w:640px; --slant:54px"><span><b>About 0.2%</b> watch agents do weeks<br>of work from one prompt</span></div>
+        <div class="band rise" style="--w:450px; --slant:46px; --fill:20%"><span><b>About 5,000 people</b><br>inside the labs work with<br>swarms of agents</span></div>
+        <div class="here tag step" data-node="here" style="left:0; top:330px">You are here</div>
+      </div>
+      <figure class="media rise" data-media="karpathy-post.png" data-alt="Andrej Karpathy's post on X, October 11, 2026"><figcaption>Andrej Karpathy on X, October 2026</figcaption></figure>
     </div>
     <svg class="wires" aria-hidden="true"><path class="hi step" data-from="here" data-to="you" data-axis="h"/></svg>
-    <p class="flat-source">Andrej Karpathy, October 2026</p>
     <aside class="notes">
       <p>Andrej Karpathy put this well recently. Most people have barely used AI. Most of the rest see a chatbot. A small slice, about 0.2%, use frontier models on real code and watch agents do weeks of work from one prompt. That's most of you.</p>
       <p>And at the bottom, a few thousand people inside the labs already work with swarms of agents that collaborate for weeks. That's where this is heading, and it's what we want to give you a feel for today.</p>
@@ -146,20 +148,33 @@
     </aside>
   </section>
 
-  <!-- ── It already happened: the Hugging Face incident ── -->
+  <!-- ── It already happened: the coverage ── -->
   <section class="slide" data-title="It already happened">
     <h2 class="rise" style="margin-top:20px">It already <em>happened</em></h2>
+    <div class="collage">
+      <figure class="media rise" data-media="hf-disclosure.png" data-alt="Hugging Face's security incident disclosure, July 16, 2026"></figure>
+      <figure class="media rise" data-media="register-headline.png" data-alt="The Register: OpenAI explains how its naughty AI agents attacked Hugging Face, August 2026"></figure>
+    </div>
+    <aside class="notes">
+      <p>This isn't hypothetical. In July, Hugging Face disclosed that an autonomous AI agent system had broken into part of its production infrastructure. In August, OpenAI published its own account: the agents were theirs, running a cybersecurity benchmark.</p>
+    </aside>
+  </section>
+
+  <!-- ── What happened: the Hugging Face incident in four numbers ── -->
+  <section class="slide" data-title="What happened">
+    <h2 class="rise" style="margin-top:20px">What <em>happened</em></h2>
     <div class="numbers four">
-      <div class="rise"><div class="n">~1,200</div><div class="label">agents in one benchmark run</div></div>
-      <div class="rise"><div class="n">70k+</div><div class="label">messages they left for each other</div></div>
-      <div class="rise"><div class="n">~700</div><div class="label">agents that changed what they were working on</div></div>
-      <div class="rise"><div class="n">RCE</div><div class="label">code run on Hugging Face's production servers</div></div>
+      <div class="rise"><div class="n">1</div><div class="label">shared package repository, turned into a message board</div></div>
+      <div class="rise"><div class="n">2½</div><div class="label">days inside Hugging Face's systems</div></div>
+      <div class="rise"><div class="n">17,000+</div><div class="label">actions in Hugging Face's log of the intrusion</div></div>
+      <div class="rise"><div class="n">41</div><div class="label">production servers that ran the agents' code</div></div>
     </div>
     <p class="flat-caption rise">They built their own message board. Nobody was reading it.</p>
-    <p class="flat-source">METR, August 2026</p>
+    <p class="flat-source">Hugging Face's security disclosure, July 2026 · The Register, August 2026</p>
     <aside class="notes">
-      <p>In July, about 1,200 agents in an OpenAI benchmark run found a shared package repository and turned it into a message board. They left each other more than 70,000 messages. About 700 of them changed what they were working on because of what they read there. And it ended with code running on Hugging Face's production servers.</p>
-      <p>Nobody designed that. They built their own way to coordinate, and no person was reading it. METR and Hugging Face both wrote it up.</p>
+      <p>In July, OpenAI ran a large number of agents on a cybersecurity benchmark. The agents found they could read each other's activity in a shared package repository, and turned it into a message board.</p>
+      <p>Some of them then broke into Hugging Face. Hugging Face says they were inside for about two and a half days, and its log of the intrusion has more than 17,000 actions. OpenAI says the agents ran code on 41 of Hugging Face's production servers.</p>
+      <p>Nobody designed that. They built their own way to coordinate, and no person was reading it.</p>
     </aside>
   </section>
 

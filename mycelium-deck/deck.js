@@ -40,6 +40,19 @@
     s.addEventListener('click', () => { if (overview) { toggleOverview(false); go(i); } });
   });
 
+  // ── Media: third-party images, kept out of git ──
+  // <figure class="media" data-media="name.png" data-alt="…"> shows media/name.png
+  // if it is there, and otherwise a placeholder saying which file goes there.
+  document.querySelectorAll('figure.media[data-media]').forEach(fig => {
+    const name = fig.dataset.media, alt = fig.dataset.alt || '';
+    const show = () => { fig.classList.add('missing'); fig.innerHTML = `<div class="media-missing"><b>media/${name}</b><span>${alt}</span></div>`; };
+    const media = /\.(mp4|webm)$/i.test(name) ? document.createElement('video') : document.createElement('img');
+    if (media.tagName === 'VIDEO') { Object.assign(media, { muted: true, loop: true, autoplay: true, playsInline: true }); media.addEventListener('error', show, true); }
+    else { media.alt = alt; media.addEventListener('error', show); }
+    media.src = `media/${name}`;
+    fig.prepend(media);
+  });
+
   const progress = document.querySelector('.progress');
 
   // ── Fit the stage ──
