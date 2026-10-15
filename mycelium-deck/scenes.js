@@ -35,20 +35,18 @@
   function draw(ctx) {
     return {
       ctx,
-      // A glass bead: lit from the top left, a rim, and a soft glow on dark.
+      // A bead: a flat disc in its colour with a slightly lighter edge, to
+      // match the deck's flat diagrams. No highlight, gradient or glow.
       bead(x, y, r, color, a = 1) {
         if (r < 0.5 || a < 0.01) return;
         ctx.save();
         ctx.globalAlpha = a;
-        if (C.dark) { ctx.shadowColor = color; ctx.shadowBlur = r * 0.9; }
-        const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
-        g.addColorStop(0, '#ffffff'); g.addColorStop(0.18, color); g.addColorStop(1, mix(color, C.dark ? '#000' : '#334', 0.45));
-        ctx.fillStyle = g;
+        ctx.fillStyle = color;
         ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = a * 0.55;
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1, r * 0.06);
-        ctx.beginPath(); ctx.arc(x, y, r * 0.96, 3.6, 5.2); ctx.stroke();
+        if (r > 6) {
+          ctx.strokeStyle = mix(color, C.dark ? '#fff' : '#000', 0.35); ctx.lineWidth = Math.max(1.5, r * 0.08);
+          ctx.beginPath(); ctx.arc(x, y, r - ctx.lineWidth / 2, 0, 6.2832); ctx.stroke();
+        }
         ctx.restore();
       },
       // A ring: a bead seen as an outline (a person, a slot).
@@ -68,7 +66,6 @@
       pulse(a, b, u, color = C.accent, bend = 0.12, r = 7, alpha = 1) {
         const p = along(a, b, bend, u);
         ctx.save(); ctx.globalAlpha = alpha * Math.min(1, u * 6, (1 - u) * 6);
-        if (C.dark) { ctx.shadowColor = color; ctx.shadowBlur = 16; }
         ctx.fillStyle = color; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 6.2832); ctx.fill(); ctx.restore();
       },
       label(text, x, y, a = 1, color = C.muted, size = 20, align = 'center') {
