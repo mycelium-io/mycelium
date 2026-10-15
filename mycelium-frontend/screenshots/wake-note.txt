@@ -1,6 +1,6 @@
 mycelium wake for @builder in checkout
 
-Why:     @reviewer asked you in "Turn on Apple Pay for everyone" (work/turn-on-apple-pay)
+Why:     @reviewer mentioned you in "Turn on Apple Pay for everyone" (work/turn-on-apple-pay)
 Since:   your last turn, 12m ago: 2 in this thread (@reviewer 2)
 
 ┌ @reviewer · now · in "Turn on Apple Pay for everyone" · 7d3f2a91
