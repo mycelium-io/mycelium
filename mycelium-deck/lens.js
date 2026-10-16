@@ -121,7 +121,11 @@ void main(){
 
     float z = sqrt(max(0., 1.-l*l));
     vec2 dir = q/max(length(q), 1e-3);
-    float f = l*.58 + (1.-z)*.95*l;
+    // Thick glass bends light at its rim and hardly at all in the middle, so
+    // the refraction fades in toward the edge: what sits in the centre (the
+    // mark, on a data-logo slide) is seen undistorted, and the rim still reads
+    // as glass.
+    float f = mix(l, l*.58 + (1.-z)*.95*l, smoothstep(.72, .98, l));
     vec3 c;
     c.r = shade((L.xy + dir*f*(1.-.04*(1.-z))*R)/uRes, 2.5).r;
     c.g = shade((L.xy + dir*f*R)/uRes, 2.5).g;
@@ -131,7 +135,7 @@ void main(){
     // at the refracted point so the glass magnifies and bends it, strongest
     // face-on and fading toward the rim.
     if (i == 0 && uLogoOn > .01) {
-      vec2 luv = dir*f/1.24 + .5;
+      vec2 luv = dir*f/1.5 + .5;
       if (luv.x > 0. && luv.y > 0. && luv.x < 1. && luv.y < 1.) {
         vec4 lg = texture2D(uLogo, luv);
         c = mix(c, lg.rgb*1.08, lg.a*uLogoOn*smoothstep(.2,.65,z));

@@ -55,8 +55,25 @@
     });
   }
 
-  const slides = [...document.querySelectorAll('.slide')].filter(s => s.querySelector('svg.wires'));
-  const all = () => slides.forEach(layout);
+  // Callouts beside a section of a terminal pane (.callout[data-part]): each
+  // sits at the right of its section's first line, or of the blank line just
+  // above it (data-place="above"), wherever its section ends up in the text.
+  function callouts(slide) {
+    slide.querySelectorAll('.callout[data-part]').forEach(c => {
+      const pane = c.parentElement;
+      const part = pane.querySelector(`.part[data-part="${c.dataset.part}"]`);
+      if (!part) return;
+      const line = parseFloat(getComputedStyle(part.closest('pre')).lineHeight) || 32;
+      let y = 0, n = part.closest('pre');
+      while (n && n !== pane) { y += n.offsetTop; n = n.offsetParent; }
+      y += part.offsetTop - part.closest('pre').offsetTop;
+      if (c.dataset.place === 'above') y -= line;
+      c.style.top = `${y + (line - c.offsetHeight) / 2}px`;
+    });
+  }
+
+  const slides = [...document.querySelectorAll('.slide')].filter(s => s.querySelector('svg.wires, .callout'));
+  const all = () => slides.forEach(s => { layout(s); callouts(s); });
   all();
   document.fonts?.ready.then(all);
   addEventListener('load', all);

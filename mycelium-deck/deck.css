@@ -313,6 +313,35 @@ figure.media figcaption { margin-top: 14px; font: 400 22px var(--sans); color: v
 .marks li { font-size: 30px; color: var(--muted); }
 .marks code { font-size: 30px; color: var(--accent); padding: 4px 12px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 10%, transparent); margin-right: 8px; }
 
+/* ── Layout: waking is the hard part (two sides that pull against each other) ── */
+.tension { display: grid; grid-template-columns: 1fr 90px 1fr; gap: 26px 20px; margin-top: 50px; align-items: stretch; }
+.tension .box { padding: 34px 40px; }
+.tension .box h3 { font: 600 42px/1.1 var(--sans); letter-spacing: -0.02em; margin-bottom: 14px; }
+.tension .box p { margin: 0; font-size: 28px; line-height: 1.4; color: var(--muted); }
+.tension .pull { display: grid; place-items: center; font-size: 64px; color: var(--accent); }
+.tension .wide { grid-column: 1 / -1; }
+.answer { list-style: none; margin: 46px 0 0; padding: 0; display: flex; gap: 60px; }
+.answer li { font-size: 32px; color: var(--text); }
+.answer code { font-size: 32px; color: var(--accent); padding: 4px 12px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 10%, transparent); margin-right: 10px; }
+
+/* ── Layout: the wake, one section at a time ──
+ * Every section is lit until the first click; then only the one its step
+ * names is, with its callout. */
+.wake-tour .term { position: relative; flex: none; margin-top: 30px; }
+.wake-tour .term pre { font-size: 19px; line-height: 1.5; padding: 22px 34px 24px; white-space: pre; }
+.wake-tour .part { transition: opacity 0.35s; }
+.wake-tour .callout {
+  position: absolute; right: 26px; opacity: 0; transition: opacity 0.35s;
+  font: 500 24px/1.2 var(--sans); color: var(--accent-ink); background: var(--accent);
+  padding: 8px 16px; border-radius: 10px; text-shadow: none; white-space: nowrap;
+}
+.wake-tour:has(.beat.current) .part { opacity: 0.22; }
+.wake-tour:has(.beat[data-part="why"].current) [data-part="why"],
+.wake-tour:has(.beat[data-part="since"].current) [data-part="since"],
+.wake-tour:has(.beat[data-part="box"].current) [data-part="box"],
+.wake-tour:has(.beat[data-part="next"].current) [data-part="next"],
+.wake-tour:has(.beat[data-part="board"].current) [data-part="board"] { opacity: 1; }
+
 /* ── Layout: compaction (one agent's context over time, and the room's memory) ── */
 svg.timeline { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; }
 svg.timeline .seg { fill: color-mix(in srgb, var(--accent) 55%, transparent); }
@@ -522,6 +551,8 @@ svg.wires path.plain { marker-end: none; }
 /* ── Layout: two rows joined by wires ── */
 .rows { display: grid; grid-template-columns: 300px repeat(3, 1fr); column-gap: 40px; row-gap: 150px; margin-top: 90px; align-items: center; }
 .rows .tag { line-height: 1.4; }
+.rows { grid-template-columns: 260px repeat(4, 1fr); column-gap: 30px; }
+.box.unknown { border-style: dashed; border-color: var(--accent); background: transparent; text-align: center; font: 600 44px/1 var(--sans); color: var(--accent); }
 
 /* ── Layout: funnel ── */
 .funnel { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 50px; position: relative; }

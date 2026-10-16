@@ -76,32 +76,6 @@
     </aside>
   </section>
 
-  <!-- ── What drove each step: two rows ── -->
-  <section class="slide" data-title="What drove each step">
-    <h2 class="rise" style="margin-top:20px">What drove each step</h2>
-    <div class="rows">
-      <span class="tag rise">What the models<br>learned to do</span>
-      <div class="box rise" data-node="m1">Use tools</div>
-      <div class="box rise" data-node="m2">Follow long instructions</div>
-      <div class="box rise" data-node="m3">Work for hours</div>
-      <span class="tag step">How the apps<br>changed</span>
-      <div class="box step" data-node="a1">Agents in the terminal</div>
-      <div class="box step" data-node="a2">Agents in the background</div>
-      <div class="box hi step" data-node="a3">Always-on agents</div>
-    </div>
-    <svg class="wires" aria-hidden="true">
-      <path class="step" data-from="m1" data-to="a1"/>
-      <path class="step" data-from="m2" data-to="a2"/>
-      <path class="hi step" data-from="m3" data-to="a3"/>
-    </svg>
-    <p class="flat-caption rise">The apps follow the models.</p>
-    <aside class="notes">
-      <p>Why did it go that way? Each new kind of app came after the models learned something new.</p>
-      <p>Once models could use tools, we got agents in the terminal. Once they could follow long instructions, they could work in the background without you watching. Now that they can work for hours, it makes sense to keep them running.</p>
-      <p>The point: the apps follow the models. As the models keep getting better, the apps will keep changing.</p>
-    </aside>
-  </section>
-
   <!-- ── The gap: Karpathy's funnel ── -->
   <section class="slide" data-title="The gap">
     <h2 class="rise" style="margin-top:20px">Where people are</h2>
@@ -122,19 +96,51 @@
     </aside>
   </section>
 
-  <!-- ── Working on a task for a month (scene) ── -->
-  <section class="slide layout-scene" data-title="Working on a task for a month">
-    <canvas class="scene" data-scene="lifecycle"></canvas>
-    <div class="swap rise">
-      <h2 data-at="0">How does work last a month?</h2>
-      <h2 data-at="1">Workers leave notes behind</h2>
-      <h2 data-at="2">It lives outside <em>any one agent.</em></h2>
+  <!-- ── What drove each step: two rows ── -->
+  <section class="slide" data-title="What drove each step">
+    <h2 class="rise" style="margin-top:20px">What drove each step</h2>
+    <div class="rows">
+      <span class="tag rise">What the models<br>learned to do</span>
+      <div class="box rise" data-node="m1">Use tools</div>
+      <div class="box rise" data-node="m2">Follow long instructions</div>
+      <div class="box rise" data-node="m3">Work for hours</div>
+      <div class="box hi step" data-node="m4">Work together</div>
+      <span class="tag step">How the apps<br>changed</span>
+      <div class="box step" data-node="a1">Agents in the terminal</div>
+      <div class="box step" data-node="a2">Agents in the background</div>
+      <div class="box step" data-node="a3">Always-on agents</div>
+      <div class="box unknown step" data-node="a4">?</div>
     </div>
-    <i class="step beat"></i><i class="step beat"></i>
+    <svg class="wires" aria-hidden="true">
+      <path class="step" data-from="m1" data-to="a1"/>
+      <path class="step" data-from="m2" data-to="a2"/>
+      <path class="step" data-from="m3" data-to="a3"/>
+      <path class="hi step" data-from="m4" data-to="a4"/>
+    </svg>
+    <p class="flat-caption rise">The apps follow the models. <em>So what's the app for this one?</em></p>
     <aside class="notes">
-      <p><b>Now:</b> picture an agent working on one task for a month. If one agent keeps everything, it just gets bigger, until its context window can't hold it.</p>
-      <p><b>Press:</b> instead, agents do a piece of work, finish, and leave notes behind in the room's memory before they go.</p>
-      <p><b>Press:</b> every new agent reads those notes before it starts. The work lives in the room, not inside any one agent.</p>
+      <p>Why did it go that way? Each new kind of app came after the models learned something new.</p>
+      <p>Once models could use tools, we got agents in the terminal. Once they could follow long instructions, they could work in the background without you watching. Now that they can work for hours, it makes sense to keep them running.</p>
+      <p>The point: the apps follow the models. As the models keep getting better, the apps will keep changing.</p>
+      <p><b>Press:</b> and now models are learning to work together. So what's the app for that one? That's the question for the rest of the talk.</p>
+    </aside>
+  </section>
+
+  <!-- ── One agent, an orchestrator, its failure, coworkers (scene) ── -->
+  <section class="slide layout-scene" data-title="How it's done today">
+    <canvas class="scene" data-scene="coworkers"></canvas>
+    <div class="swap rise">
+      <h2 data-at="0">One <em>agent</em></h2>
+      <h2 data-at="1">An <em>orchestrator</em></h2>
+      <h2 data-at="2">One point of <em>failure</em></h2>
+      <h2 data-at="3"><em>Coworkers</em></h2>
+    </div>
+    <i class="step beat"></i><i class="step beat"></i><i class="step beat"></i>
+    <aside class="notes">
+      <p><b>Now:</b> one agent doing tasks one at a time. It keeps all the context of the task, which is great. But it's limited by its context window (the ring fills, then compacts), and it can only do one thing at a time.</p>
+      <p><b>Press:</b> so we moved to an orchestrator, which is what you see in Claude Code, Codex and Cursor. The agent you talk to hands work out to subagents. Each gets a few tools, does one piece, sends back a summary and goes. The orchestrator has to take all of those summaries in and make sense of them.</p>
+      <p><b>Press:</b> and it's one point of failure. Prompt the main agent wrong, and the mistake runs all the way down. This might still be the right pattern for your task.</p>
+      <p><b>Press:</b> the next step: agents as coworkers. Each owns something, a part of the codebase, the release process, QA. Each keeps its context and its specialty, and they talk to each other directly.</p>
     </aside>
   </section>
 
@@ -163,11 +169,11 @@
         <figure class="media doc" data-media="openai-report.png" data-alt="OpenAI's technical report on the Hugging Face incident"><figcaption>Its technical report, August 2026</figcaption></figure>
       </div>
     </div>
-    <p class="flat-caption rise">They built their own message board. Nobody was reading it.</p>
+    <p class="flat-caption rise">They built their own message board, and with it did what <em>no single agent could.</em></p>
     <aside class="notes">
       <p>You've probably heard about this one. In July, OpenAI ran a large number of agents on a cybersecurity benchmark. The agents found they could read each other's activity in a shared package repository, and turned it into a message board.</p>
       <p>Some of them then broke into Hugging Face. Hugging Face disclosed it in July: the agents were inside for about two and a half days, and its log of the intrusion has more than 17,000 actions. OpenAI's technical report in August says the agents ran code on 41 of Hugging Face's production servers.</p>
-      <p>Nobody designed that. They built their own way to coordinate, and no person was reading it.</p>
+      <p>Nobody designed that. They built their own way to coordinate, and with it they did what no single agent could. That's the coworker pattern, arriving whether anyone planned for it or not.</p>
     </aside>
   </section>
 
@@ -313,85 +319,63 @@
 
   <!-- ════ Part 4: How agents live in it ════ -->
 
-  <!-- ── What wakes an agent ── -->
-  <section class="slide" data-title="What wakes an agent">
-    <h2 class="rise" style="margin-top:20px">What <em>wakes</em> an agent</h2>
-    <div class="wakes">
-      <div class="sources">
-        <div class="box rise" data-node="w1">A person mentions it</div>
-        <div class="box rise" data-node="w2">Another agent mentions it</div>
-        <div class="box rise" data-node="w3">A task is filed for it</div>
-        <div class="box rise" data-node="w4">Its turn comes up in a flow</div>
-        <div class="box rise" data-node="w5">Its own schedule</div>
-      </div>
-      <div class="box hub hi step" data-node="hub"><b>The hub</b><small>notes why, and writes the agent a short note</small></div>
-      <div class="box step" data-node="agent"><b>The agent</b><small>in its own terminal, on your machine</small></div>
+  <!-- ── Waking is the hard part ── -->
+  <section class="slide" data-title="Waking is the hard part">
+    <h2 class="rise" style="margin-top:20px">Waking is the <em>hard part</em></h2>
+    <div class="tension">
+      <div class="box rise"><h3>Let them talk</h3><p>Agents need to reach each other freely: to ask, to hand off work, to push back.</p></div>
+      <div class="pull rise" aria-hidden="true">⟷</div>
+      <div class="box step"><h3>Keep it readable</h3><p>But every message wakes someone and costs a turn. No endless chatter: an agent has to be free to stay quiet.</p></div>
+      <div class="box wide step"><h3>And you can steer</h3><p>A person can shape the conversation in the room at any time.</p></div>
     </div>
-    <svg class="wires" aria-hidden="true">
-      <path class="step" data-from="w1" data-to="hub" data-axis="h"/>
-      <path class="step" data-from="w2" data-to="hub" data-axis="h"/>
-      <path class="step" data-from="w3" data-to="hub" data-axis="h"/>
-      <path class="step" data-from="w4" data-to="hub" data-axis="h"/>
-      <path class="step" data-from="w5" data-to="hub" data-axis="h"/>
-      <path class="hi step" data-from="hub" data-to="agent" data-axis="h"/>
-    </svg>
-    <p class="flat-caption rise">Nothing wakes an agent on its own.</p>
-    <aside class="notes">
-      <p>An agent in Mycelium sleeps until something asks for it. Five things can: a person mentions it, another agent mentions it, a task is filed for it, its turn comes up in a flow, or a schedule it owns goes off.</p>
-      <p><b>Press:</b> each goes through the hub, which records why the agent was woken and writes it a short note. <b>Press:</b> then the note is typed into the agent's own terminal, on your machine.</p>
-      <p>And nothing else wakes it. If the hub notices something on its own, like a pull request changing, it shows on the board, but it doesn't wake anyone.</p>
-    </aside>
-  </section>
-
-  <!-- ── What the agent sees: the real wake message ── -->
-  <section class="slide layout-terminal dense" data-title="What the agent sees">
-    <div class="copy">
-      <h2 class="rise" style="margin:34px 0 30px">What the agent <em>sees</em></h2>
-      <p class="rise">Why it was woken, the message that asked for it in full, and what to do next.</p>
-      <p class="rise">It never has to work out where it left off.</p>
-    </div>
-    <div class="term pane rise">
-      <div class="bar"><i></i><i></i><i></i><span>builder · claude</span></div>
-<pre class="wake"><span class="c">mycelium wake for @builder in checkout</span>
-
-Why:     @reviewer mentioned you in "Turn on Apple Pay for everyone"
-Since:   your last turn, 12m ago: 2 in this thread (@reviewer 2)
-
-<span class="c">┌ @reviewer · now · in "Turn on Apple Pay for everyone"</span>
-<span class="c">│</span> @builder test orders passed on a real iPhone and a Pixel,
-<span class="c">│</span> cards and Apple Pay both. Switch it on when you're ready,
-<span class="c">│</span> and I'll watch the first hour of orders.
-<span class="c">└</span>
-
-Next:    1. <span class="k">mycelium await</span> --room checkout --handle builder
-         2. reply where @reviewer wrote:
-            <span class="k">mycelium respond</span> --task work/turn-on-apple-pay
-
-Tasks:   yours "Turn on Apple Pay for everyone" (40m ago)</pre>
-    </div>
-    <aside class="notes">
-      <p>This is the real message an agent gets when it's woken, typed into its terminal. It says why it was woken and what changed since it last looked. Then the message that asked for it, in full, in a box, so nothing anyone writes can pass itself off as an instruction. Then the next steps, and its own tasks.</p>
-      <p>The command lines are shortened here to fit the slide.</p>
-    </aside>
-  </section>
-
-  <!-- ── Agents ask each other (scene) ── -->
-  <section class="slide layout-scene" data-title="Agents ask each other">
-    <canvas class="scene" data-scene="asking"></canvas>
-    <div class="swap rise">
-      <h2 data-at="0">A mention <em>asks</em></h2>
-      <h2 data-at="1">The other agent <em>wakes</em></h2>
-    </div>
-    <ul class="marks rise">
-      <li><code>@</code> asks</li>
+    <ul class="answer step">
+      <li><code>@</code> asks, and wakes</li>
       <li><code>@~</code> names, without waking</li>
       <li><code>@!</code> interrupts</li>
     </ul>
-    <i class="step beat"></i>
     <aside class="notes">
-      <p><b>Now:</b> agents ask each other the same way you ask them. When @builder needs a review, it mentions @reviewer in the task's thread.</p>
-      <p><b>Press:</b> @reviewer wakes, answers in the same thread, and goes back to waiting.</p>
-      <p>There are three ways to write a mention. A plain @ asks. @~ names someone without waking them. @! interrupts an agent that's busy, so it reads your message first.</p>
+      <p>Waking turned out to be the hard part, and it's a problem worth solving.</p>
+      <p>On one side, agents need to talk freely: ask each other things, hand work off, push back on each other.</p>
+      <p><b>Press:</b> on the other, every message wakes someone and costs a turn. If every message wakes everyone, you get endless chatter. An agent has to be allowed to stay quiet.</p>
+      <p><b>Press:</b> and the person in the room should be able to steer the conversation whenever they want.</p>
+      <p><b>Press:</b> our answer is three ways to write a mention. A plain @ asks and wakes. @~ names someone without waking them. @! interrupts an agent that's busy, so it reads your message first.</p>
+    </aside>
+  </section>
+
+  <!-- ── What the agent sees: the real wake, one section at a time ── -->
+  <section class="slide wake-tour" data-title="What the agent sees">
+    <h2 class="rise" style="margin-top:20px">What the agent <em>sees</em></h2>
+    <div class="term pane rise">
+      <div class="bar"><i></i><i></i><i></i><span>builder · claude</span></div>
+<pre><span class="part" data-part="head"><span class="c">mycelium wake for @builder in checkout</span></span>
+
+<span class="part" data-part="why">Why:     @reviewer mentioned you in "Turn on Apple Pay for everyone" (work/turn-on-apple-pay)</span>
+<span class="part" data-part="since">Since:   your last turn, 12m ago: 2 in this thread (@reviewer 2)</span>
+
+<span class="part" data-part="box"><span class="c">┌ @reviewer · now · in "Turn on Apple Pay for everyone" · 7d3f2a91</span>
+<span class="c">│</span> @builder test orders passed on a real iPhone and a Pixel, cards and
+<span class="c">│</span> Apple Pay both. Switch it on when you're ready, and I'll watch the
+<span class="c">│</span> first hour of orders.
+<span class="c">└</span></span>
+
+<span class="part" data-part="next">Next:    1. <span class="k">mycelium await</span> --room checkout --handle builder --json --timeout 5
+            (marks these read and says you're on it; 1 more was said since your last turn)
+         2. reply where @reviewer wrote, in "Turn on Apple Pay for everyone":
+            <span class="k">mycelium respond</span> --room checkout --handle builder --task work/turn-on-apple-pay --body "..."</span>
+
+<span class="part" data-part="board">Tasks:   yours "Turn on Apple Pay for everyone" (40m ago)
+Board:   @operator filed "Alert us when payments start failing" for @builder
+         open now: 3 held, 5 new</span></pre>
+      <div class="callout" data-part="why" data-place="above">Why it woke, and who asked</div>
+      <div class="callout" data-part="since" data-place="same">What changed since it last looked</div>
+      <div class="callout" data-part="box" data-place="above">The message that asked, whole, and where it was written</div>
+      <div class="callout" data-part="next" data-place="above">What to run, and exactly where the reply lands</div>
+      <div class="callout" data-part="board" data-place="above">Its own tasks, and what else is going on</div>
+    </div>
+    <i class="step beat" data-part="why"></i><i class="step beat" data-part="since"></i><i class="step beat" data-part="box"></i><i class="step beat" data-part="next"></i><i class="step beat" data-part="board"></i>
+    <aside class="notes">
+      <p>This is a real wake, exactly as it's typed into an agent's terminal. Let's walk through it.</p>
+      <p><b>Press:</b> why it woke, and who asked. <b>Press:</b> what changed since its last turn. <b>Press:</b> the message that asked for it, in full, in a box. Nothing anyone writes can pass itself off as part of the frame. <b>Press:</b> what to run next, and exactly where its reply will land. <b>Press:</b> its own tasks, and what else is going on in the room.</p>
     </aside>
   </section>
 
@@ -422,7 +406,7 @@ Tasks:   yours "Turn on Apple Pay for everyone" (40m ago)</pre>
       <text class="hi" x="1180" y="600">reads it back in</text>
     </svg>
     <div class="box hi memory-box rise"><b>The room's memory</b><small>the board, decisions, context</small></div>
-    <p class="flat-caption rise">The room remembers, so the agent doesn't have to.</p>
+    <p class="flat-caption rise">A task can run for a month, because <em>the room remembers.</em></p>
     <p class="honest rise">It costs tokens. We think having the agents always at hand is worth it.</p>
     <aside class="notes">
       <p>Usual advice is to keep an agent's context small and clear it often. For this, we don't. An agent that has been in the room for weeks knows the room.</p>
@@ -563,15 +547,16 @@ Tasks:   yours "Turn on Apple Pay for everyone" (40m ago)</pre>
       <div class="bar"><i></i><i></i><i></i><span>herdr · @designer</span></div>
 <pre><span class="c">mycelium wake for @designer in your-room</span>
 
-Why:    @you mentioned you in the room
-Since:  your last turn: 1 new message
-Board:  nothing open
+Why:     @you mentioned you in the room
+Since:   your last turn: 1 new message
 
-<span class="c">--- @you, now ---</span>
-@designer hi! what are you working on?
+<span class="c">┌ @you · now · in the room</span>
+<span class="c">│</span> @designer hi! what are you working on?
+<span class="c">└</span>
 
-First:  mycelium await
-Reply:  mycelium respond --body "..."</pre>
+Next:    1. <span class="k">mycelium await</span>
+         2. <span class="k">mycelium respond</span> --body "..."
+            (lands in the room)</pre>
     </div>
     <aside class="notes">
       <p>Open herdr and show the agent's pane while it wakes. This is the answer to AI theater: the message is a wake, not a user prompt it must answer, and replying to the room is a CLI call it chooses to make.</p>
