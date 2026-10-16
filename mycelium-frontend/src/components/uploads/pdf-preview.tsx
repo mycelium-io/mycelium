@@ -29,9 +29,12 @@ export function PdfPreview({ url }: { url: string }) {
     let destroy: (() => void) | undefined;
     (async () => {
       try {
-        const pdfjs = await import("pdfjs-dist");
+        // The legacy build: the modern one calls `Iterator` helpers, which the
+        // desktop app's WebKit view doesn't have ("Can't find variable: Iterator").
+        // The legacy build brings its own, in the page and in the worker.
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
         pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-          "pdfjs-dist/build/pdf.worker.min.mjs",
+          "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
           import.meta.url,
         ).toString();
         const task = pdfjs.getDocument({ url, enableXfa: false });
