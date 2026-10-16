@@ -12,7 +12,6 @@ import {
   ArrowUp,
   Bell,
   BellOff,
-  BellRing,
   Boxes,
   Check,
   ChevronRight,
@@ -31,6 +30,7 @@ import {
   Plus,
   Search,
   SearchX,
+  SquareTerminal,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -63,13 +63,15 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { copyText, absoluteUrl } from "@/lib/clipboard";
-import { useIsDesktop } from "@/lib/desktop";
+import { roomCommand } from "@/lib/agent-command";
+import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { DeleteRoomDialog } from "@/components/delete-room-dialog";
 import { useNotifications } from "@/components/notifications-provider";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip } from "@/components/ui/tooltip";
+import { iconButtonClass } from "@/components/ui/icon-button";
 import { KeyBadge } from "@/components/key-badge";
 import { RoomAvatar } from "@/components/ui/room-avatar";
 import { useCommands, useKeyAction } from "@/components/keymap-provider";
@@ -229,6 +231,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
   useKeyAction("nav.home", () => router.push("/"));
 
   const openInstallModal = useOpenInstallModal();
+  const desktop = useIsDesktop();
 
   // Every room by name, plus what this rail can reach. Rooms come from
   // the full list, not the filtered one: the palette has a query of its own,
@@ -273,6 +276,19 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         keywords: ["runner", "computer", "agents", "start", "herdr"],
         run: () => router.push("/machines"),
       },
+      ...(desktop
+        ? [
+            {
+              id: "nav.terminal",
+              title: "Open the agents terminal",
+              group: "Navigate",
+              keywords: ["terminal", "herdr", "pane", "agents", "shell"],
+              run: () => {
+                window.location.href = terminalLink();
+              },
+            },
+          ]
+        : []),
       {
         id: "nav.install",
         title: "Install the CLI",
@@ -281,7 +297,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         run: openInstallModal,
       },
     ],
-    [rooms, go, router, openInstallModal, onCollapsedChange],
+    [rooms, go, router, openInstallModal, onCollapsedChange, desktop],
   );
   useCommands(commands);
 
@@ -504,9 +520,9 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
           <button
             onClick={() => onCollapsedChange?.(true)}
             aria-label={railToggleTitle(true)}
-            className="relative flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+            className={iconButtonClass("sm", "relative")}
           >
-            <PanelLeftClose className="size-4" />
+            <PanelLeftClose />
             <KeyBadge action="rooms.toggle" overlay />
           </button>
         </Tooltip>
@@ -745,9 +761,9 @@ function AddMenu({ onRoom, onFolder }: { onRoom: () => void; onFolder: () => voi
       <Tooltip content="New room or folder">
         <PopoverTrigger
           aria-label="New room or folder"
-          className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text data-[popup-open]:bg-surface data-[popup-open]:text-text"
+          className={iconButtonClass("sm", "ml-auto data-[popup-open]:bg-hairline data-[popup-open]:text-text")}
         >
-          <Plus className="size-4" />
+          <Plus />
         </PopoverTrigger>
       </Tooltip>
       <PopoverContent align="end" className="w-44 p-1">
@@ -1019,6 +1035,9 @@ function RoomContextMenu({
             Copy room ID
           </ContextMenuItem>
         )}
+        <ContextMenuItem icon={SquareTerminal} onClick={() => void copyText(roomCommand(room.name))}>
+          Copy command for an agent
+        </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem icon={Trash2} destructive onClick={onDelete}>
           Delete room…
@@ -1029,8 +1048,7 @@ function RoomContextMenu({
 }
 
 const LEVEL_OPTIONS: { level: RoomLevel; label: string; hint: string; Icon: LucideIcon }[] = [
-  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: BellRing },
-  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: Bell },
+  { level: "mentions", label: "On", hint: "badge; bell and sound on @you", Icon: Bell },
   { level: "muted", label: "Muted", hint: "nothing", Icon: BellOff },
 ];
 

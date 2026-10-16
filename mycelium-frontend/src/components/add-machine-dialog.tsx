@@ -18,7 +18,7 @@ import { Check, KeyRound, Laptop, Loader2 } from "lucide-react";
 import { pairRunner } from "@/lib/api";
 import { fingerprint, normalizeCode, pairRequest, useDeviceKeyId } from "@/lib/device-key";
 import { addMachine } from "@/lib/my-machines";
-import { useIsDesktop } from "@/lib/desktop";
+import { desktopMachine, useIsDesktop } from "@/lib/desktop";
 import { jobSettled, useRunnerJob, useRunnersRevalidate } from "@/lib/runners";
 import { Button } from "@/components/ui/button";
 import { CopyField } from "@/components/ui/copy-field";
@@ -104,7 +104,8 @@ function PairForm({ onClose }: { onClose: () => void }) {
   const { job } = useRunnerJob(pending?.runner ?? null, pending?.job ?? null);
 
   const clean = normalizeCode(code);
-  const deviceName = name.trim() || (desktop ? "Mycelium for Mac" : "");
+  const appName = `Mycelium for ${desktopMachine() === "Mac" ? "Mac" : "this computer"}`;
+  const deviceName = name.trim() || (desktop ? appName : "");
   const done = job?.status === "done";
   const result = (done ? job?.result : null) as { label?: string; name?: string; key?: string } | null;
 
@@ -187,7 +188,7 @@ function PairForm({ onClose }: { onClose: () => void }) {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={desktop ? "Mycelium for Mac" : "work laptop"}
+            placeholder={desktop ? appName : "work laptop"}
             maxLength={40}
             autoComplete="off"
             className="h-8 w-full rounded-md border border-border bg-bg px-2 text-label text-text placeholder:text-faint focus:border-accent focus:outline-none"

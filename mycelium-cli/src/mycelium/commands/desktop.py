@@ -23,6 +23,7 @@ from typing import Any, cast
 import typer
 from rich.console import Console
 
+from mycelium.cli_options import confirms
 from mycelium.doc_ref import doc_ref
 
 app = typer.Typer(help="Run Mycelium on this machine without Docker (what the desktop app runs).")
@@ -92,6 +93,16 @@ def serve(
         "--share-usage/--no-share-usage",
         help="Send the hub's anonymous usage stats (default: config.toml's telemetry setting)",
     ),
+    voice: bool | None = typer.Option(
+        None,
+        "--voice/--no-voice",
+        help="Let the hub transcribe the mic (default: config.toml's voice.enabled)",
+    ),
+    voice_model: str | None = typer.Option(
+        None,
+        "--voice-model",
+        help="The speech model, fast or accurate (default: config.toml's voice.model)",
+    ),
 ) -> None:
     """Run Mycelium here and keep it running until stopped.
 
@@ -107,27 +118,37 @@ def serve(
     if mode == "client" and not hub_url:
         console.print("[red]--mode client needs --hub-url.[/]")
         raise typer.Exit(2)
+    if voice_model not in (None, "fast", "accurate"):
+        console.print("[red]--voice-model is fast or accurate.[/]")
+        raise typer.Exit(2)
 
+    from mycelium.desktop.events import EventWriter
     from mycelium.desktop.supervisor import LOG_PATH
 
-    lock = threading.Lock()
-    # One log per run: what every part said, and each change of state.
-    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    log_file = LOG_PATH.open("w", encoding="utf-8")
+    # One log per run: what every part said, and each change of state. It's
+    # written from a thread of its own, so a slow disk or an app that stops
+    # reading never holds up the threads draining each program's output.
+    writer = EventWriter(LOG_PATH, line=_log_line, stdout=sys.stdout if json_out else None)
 
     def emit(event: dict[str, Any]) -> None:
-        with lock:
-            log_file.write(_log_line(event) + "\n")
-            log_file.flush()
-            if json_out:
-                sys.stdout.write(json.dumps(event) + "\n")
-                sys.stdout.flush()
+        writer.emit(event)
         if not json_out and event.get("type") != "log":
             _human(event)
 
+    from mycelium.old_daemon import remove_old_daemon
+
+    for unit in remove_old_daemon():
+        emit({"type": "log", "component": "app", "line": f"removed the old daemon's job {unit}"})
+
     roots = [p.expanduser().resolve() for p in (root or [Path.home()])]
     sup = Supervisor(
-        cast("Mode", mode), hub_url=hub_url, roots=roots, emit=emit, share_usage=share_usage
+        cast("Mode", mode),
+        hub_url=hub_url,
+        roots=roots,
+        emit=emit,
+        share_usage=share_usage,
+        voice=voice,
+        voice_model=voice_model,
     )
 
     def _stop(*_: object) -> None:
@@ -143,7 +164,10 @@ def serve(
             sup.stop()
 
         threading.Thread(target=watch_parent, daemon=True).start()
-    sup.run()
+    try:
+        sup.run()
+    finally:
+        writer.close()
 
 
 def model_view(llm: Any) -> dict[str, Any]:
@@ -216,6 +240,44 @@ def model(
             raise typer.Exit(2) from None
         config.save()
     sys.stdout.write(json.dumps(model_view(config.llm)) + "\n")
+
+
+@doc_ref(
+    usage="mycelium desktop restart-herdr [--yes]",
+    desc="Restart herdr's server when it's from before Mycelium was updated, so its terminals can read protected folders again.",
+    group="agent",
+)
+@app.command("restart-herdr")
+@confirms()
+def restart_herdr(yes: bool = False) -> None:
+    """Restart herdr's server when it's still the one from before an update.
+
+    After Mycelium is updated in place, the herdr server that kept running is
+    from the old version, and macOS can refuse it and its terminals access to
+    folders like ~/Documents. Restarting it stops the agents running in it;
+    this says what happens to them and asks first.
+
+    Examples:
+        mycelium desktop restart-herdr
+        mycelium desktop restart-herdr --yes
+    """
+    from mycelium.desktop import herdr_server
+    from mycelium.desktop.supervisor import STALE_HERDR_WARNING, Locator
+
+    server = herdr_server.stale(Locator().app_herdr())
+    if server is None:
+        console.print("The app's herdr server is current; there's nothing to restart.")
+        return
+    console.print(STALE_HERDR_WARNING)
+    console.print(herdr_server.agents_after_restart())
+    if not yes and not typer.confirm("Restart herdr's server now?", default=False):
+        raise typer.Exit(1)
+    try:
+        herdr_server.restart(server)
+    except herdr_server.RestartError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from None
+    console.print("[green]✓[/] herdr's server restarted.")
 
 
 @doc_ref(

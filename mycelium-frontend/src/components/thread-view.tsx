@@ -14,6 +14,8 @@ import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { TaskConversation } from "@/components/task/task-conversation";
+import { JumpToLatest } from "@/components/jump-to-latest";
+import { useConversationFollow } from "@/components/messages/use-follow-latest";
 import { useCurrentUser } from "@/components/current-user";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -40,6 +42,9 @@ interface Props {
   roomName: string;
   target: ThreadTarget;
   onClose: () => void;
+  /** Whether the pane draws its own close button and closes on Esc. Off where
+   *  something else closes it, like a tab with its ×. */
+  showClose?: boolean;
   /** A `[[wikilink]]` in a thread message opens the memory, same as in chat. */
   onOpenMemory?: (key: string) => void;
 }
@@ -59,12 +64,12 @@ interface Props {
  * this episode. The read is the conversation's own SWR entry, so opening this
  * never replaces the room's feed with a filtered slice of itself.
  */
-export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
+export function ThreadView({ roomName, target, onClose, showClose = true, onOpenMemory }: Props) {
   // The task this thread is of, resolved by its episode — the row is the thread,
   // so the pane opens with the task itself (its body and fields) above the
   // conversation about it, the way an issue shows its description over its
   // comments. Absent for a negotiation thread bound to no row.
-  const { memories } = useRoomMemories(roomName);
+  const { memories, loading: memoriesLoading } = useRoomMemories(roomName);
   const task = memories.find(m => m.episode === target.episode) ?? null;
   // A run the conductor walked in this thread left a record carrying its
   // flow: the latest one is drawn at the top of the pane, the earlier ones are
@@ -90,9 +95,20 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
   }, []);
   const refresh = useCallback(() => refreshRef.current?.(), []);
 
+  // The pane's one scroll scrolls the conversation the way every message list
+  // scrolls. It opens on the task, with its thread below; a thread that is no
+  // task's is all conversation, so it opens on the newest reply. Until the
+  // room's memories have said which, it is taken to be a task's.
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const latest = useConversationFollow(scroller, {
+    startAt: task || memoriesLoading ? "start" : "end",
+    resetKey: target.episode,
+  });
+
   // Esc closes: the pane is transient, so leaving it must be as cheap as
   // opening it was.
   useEffect(() => {
+    if (!showClose) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       const el = e.target as HTMLElement | null;
@@ -101,7 +117,7 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, showClose]);
 
   return (
     <section
@@ -164,16 +180,18 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
               )}
             </Tooltip>
           )}
-          <Tooltip content="Close (Esc)">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close thread"
-              className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-            >
-              <X className="size-3.5" strokeWidth={1.9} />
-            </button>
-          </Tooltip>
+          {showClose && (
+            <Tooltip content="Close (Esc)">
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close thread"
+                className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+              >
+                <X className="size-3.5" strokeWidth={1.9} />
+              </button>
+            </Tooltip>
+          )}
         </span>
       </header>
 
@@ -199,30 +217,34 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
         // instead of taking a scrollbar of its own, so the wheel does one thing
         // everywhere in the pane. A negotiation thread bound to no row is all
         // conversation.
-        <ScrollArea className="min-h-0 flex-1">
-          {run && (
-            <div className="border-b border-border">
-              <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />
-            </div>
-          )}
-          {task && (
-            <div className="border-b border-border">
-              <MemoryDetail
-                memory={task}
-                roomName={roomName}
-                variant="rail"
-                onNavigate={onOpenMemory}
-                collapseBodyAt={BODY_CLAMP_PX}
-              />
-            </div>
-          )}
-          <TaskConversation
-            roomName={roomName}
-            episode={target.episode}
-            onOpenMemory={onOpenMemory}
-            onReady={onReady}
-          />
-        </ScrollArea>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <ScrollArea className="min-h-0 flex-1" viewportRef={setScroller}>
+            {run && (
+              <div className="border-b border-border">
+                <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />
+              </div>
+            )}
+            {task && (
+              <div className="border-b border-border">
+                <MemoryDetail
+                  memory={task}
+                  roomName={roomName}
+                  variant="rail"
+                  onNavigate={onOpenMemory}
+                  collapseBodyAt={BODY_CLAMP_PX}
+                />
+              </div>
+            )}
+            <TaskConversation
+              roomName={roomName}
+              episode={target.episode}
+              onOpenMemory={onOpenMemory}
+              onReady={onReady}
+              onRows={latest.onRows}
+            />
+          </ScrollArea>
+          {!latest.atBottom && latest.hasRows && <JumpToLatest unread={latest.unread} onClick={latest.jump} />}
+        </div>
       )}
 
       <RoomChatBox

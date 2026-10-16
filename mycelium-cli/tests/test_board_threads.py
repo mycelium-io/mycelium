@@ -31,6 +31,8 @@ from mycelium.cli import app as cli_app
 from mycelium.commands import board as board_cmd
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from mycelium.config import MyceliumConfig
 
 runner = CliRunner()
@@ -312,6 +314,50 @@ class TestCreation:
         assert path == f"/api/rooms/{ROOM}/tasks"
         assert body == {"title": "Ship passkey login", "handle": "julia", "assignee": "sec"}
         assert SHORT in result.output
+
+    @pytest.mark.parametrize(
+        "how",
+        [
+            ["The plan, in full."],
+            ["--body", "The plan, in full."],
+            ["-b", "The plan, in full."],
+        ],
+    )
+    def test_new_files_the_task_with_its_body(
+        self, monkeypatch: pytest.MonkeyPatch, how: list[str]
+    ) -> None:
+        posts: list = []
+        _hub(monkeypatch, memories=[], posts=posts)
+        result = runner.invoke(board_cmd.app, ["new", "Ship passkey login", *how])
+        assert result.exit_code == 0, result.output
+        _path, body = posts[0]
+        assert body["title"] == "Ship passkey login"
+        assert body["content"] == "The plan, in full."
+
+    def test_new_reads_the_body_from_a_file(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        brief = tmp_path / "brief.md"
+        brief.write_text("# Passkeys\n\n- keep passwords as a fallback\n")
+        posts: list = []
+        _hub(monkeypatch, memories=[], posts=posts)
+        result = runner.invoke(board_cmd.app, ["new", "Ship passkey login", "--file", str(brief)])
+        assert result.exit_code == 0, result.output
+        assert posts[0][1]["content"] == "# Passkeys\n\n- keep passwords as a fallback\n"
+
+    def test_new_with_no_body_sends_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        posts: list = []
+        _hub(monkeypatch, memories=[], posts=posts)
+        result = runner.invoke(board_cmd.app, ["new", "Ship passkey login"])
+        assert result.exit_code == 0, result.output
+        assert "content" not in posts[0][1]
+
+    def test_new_refuses_a_body_given_twice(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        posts: list = []
+        _hub(monkeypatch, memories=[], posts=posts)
+        result = runner.invoke(board_cmd.app, ["new", "Ship it", "one", "--body", "two"])
+        assert result.exit_code != 0
+        assert posts == []
 
     def test_a_parent_is_resolved_against_the_board_before_it_is_sent(
         self, monkeypatch: pytest.MonkeyPatch

@@ -85,3 +85,22 @@ def test_ordinary_room_name_still_works() -> None:
     room = get_room_dir("design-review")
     assert room.is_dir()
     assert room_exists("design-review")
+
+
+@pytest.mark.parametrize("key", ["a\\b", "", "  ", "a//b", "a/", "/"])
+def test_a_key_that_names_no_file_or_two_is_refused(tmp_path: Path, key: str) -> None:
+    # `a\b` would be `a/b` on Windows, so two keys would share one file; an
+    # empty key or segment names no file at all.
+    with pytest.raises(UnsafePathError):
+        write_memory_file(tmp_path, key, "x", created_by="agent")
+    assert read_memory_file(tmp_path, key) is None
+
+
+def test_a_key_read_from_a_windows_path_uses_slashes() -> None:
+    from pathlib import PureWindowsPath
+
+    from app.services.filesystem import _key_from_path
+
+    base = PureWindowsPath("C:/data/rooms/r")
+    key = _key_from_path(PureWindowsPath("C:/data/rooms/r/work/plain-row.md"), base)
+    assert key == "work/plain-row"

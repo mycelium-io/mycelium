@@ -3,10 +3,15 @@
 
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { MarkdownContent } from "@/components/markdown-content";
 import type { Highlight } from "@/components/ui/highlight-text";
+import { AttachmentStrip } from "@/components/uploads/attachment-strip";
+import { UploadPreviewDialog } from "@/components/uploads/upload-preview";
+import type { Upload } from "@/lib/api";
+import { useRoomUploads } from "@/lib/room-data";
+import { isUploadKey, uploadKeysIn, withoutTrailingUploadLinks } from "@/lib/uploads";
 
 /** How tall a message's prose gets before it clamps behind a "Show more" —
  *  roughly eight lines of body text. Long enough that ordinary messages never
@@ -29,18 +34,65 @@ const CLAMP_MASK = "linear-gradient(to bottom, black calc(100% - 3.5rem), transp
  * so short messages are untouched. Shared by the channel (`event-stream`) and
  * the thread pane (`task-conversation`) so the affordance is identical in both.
  */
-export function MessageBody({
-  content,
-  hit,
-  onOpenMemory,
-}: {
+export const MessageBody = memo(MessageBodyImpl, sameBody);
+
+interface MessageBodyProps {
   content: string;
   hit?: Highlight;
+  /** Words the verifier couldn't confirm, underlined. A find hit draws instead
+   *  while one is open. */
+  claims?: string[];
   onOpenMemory?: (key: string) => void;
-}) {
+  /** The room the message is in. With it, the files the message links are
+   *  drawn under it and a link to one opens its preview. */
+  roomName?: string;
+}
+
+/** Whether a message would draw the same: its text, where it links, and its
+ *  find mark compared by what it marks rather than by object. A channel
+ *  re-renders on every keystroke in its find bar, and re-parsing every loaded
+ *  message's markdown each time is what made find slow. */
+function sameBody(a: MessageBodyProps, b: MessageBodyProps): boolean {
+  return (
+    a.content === b.content &&
+    a.onOpenMemory === b.onOpenMemory &&
+    a.roomName === b.roomName &&
+    a.hit?.query === b.hit?.query &&
+    a.hit?.active === b.hit?.active &&
+    (a.claims ?? []).join("\n") === (b.claims ?? []).join("\n")
+  );
+}
+
+function MessageBodyImpl({ content, hit, claims, onOpenMemory, roomName }: MessageBodyProps) {
+  const claimKey = (claims ?? []).join("\n");
+  const marks = useMemo<Highlight | undefined>(
+    () => hit ?? (claimKey ? { query: claimKey.split("\n"), variant: "claim" } : undefined),
+    [hit, claimKey],
+  );
   const ref = useRef<HTMLDivElement>(null);
   const [overflows, setOverflows] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [previewing, setPreviewing] = useState<Upload | null>(null);
+  const attached = useMemo(() => (roomName ? uploadKeysIn(content) : []), [roomName, content]);
+  // The files are drawn under the prose, so the line of links naming them isn't repeated above.
+  const prose = attached.length ? withoutTrailingUploadLinks(content) : content;
+  const { uploads } = useRoomUploads(attached.length ? (roomName ?? "") : "");
+  // This message's files, in the order it links them: what the preview steps through.
+  const attachedUploads = useMemo(
+    () => attached.flatMap((key) => uploads.filter((u) => u.key === key)),
+    [attached, uploads],
+  );
+
+  // An upload's chip in the prose opens the same preview its card does; any
+  // other memory link goes where it always went.
+  const openLink = useCallback(
+    (key: string) => {
+      const upload = isUploadKey(key) ? uploads.find((u) => u.key === key) : undefined;
+      if (upload) setPreviewing(upload);
+      else onOpenMemory?.(key);
+    },
+    [uploads, onOpenMemory],
+  );
 
   // Measure the natural height (scrollHeight ignores the clamp) and re-measure on
   // width changes, since re-wrapping changes how tall the prose is.
@@ -74,10 +126,15 @@ export function MessageBody({
             : undefined
         }
       >
-        <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory} highlight={hit}>
-          {content}
+        <MarkdownContent
+          className="contrast text-body leading-relaxed"
+          onLinkClick={onOpenMemory || attached.length ? openLink : undefined}
+          highlight={marks}
+        >
+          {prose}
         </MarkdownContent>
       </div>
+      {/* With the prose it opens, above any files the message carries. */}
       {overflows && !forceOpen && (
         <button
           type="button"
@@ -90,6 +147,18 @@ export function MessageBody({
             <>Show more <ChevronDown className="size-3" /></>
           )}
         </button>
+      )}
+      {roomName && attached.length > 0 && (
+        <>
+          <AttachmentStrip roomName={roomName} keys={attached} onOpen={setPreviewing} />
+          <UploadPreviewDialog
+            upload={previewing}
+            onClose={() => setPreviewing(null)}
+            onOpenMemory={onOpenMemory}
+            set={attachedUploads}
+            onShow={setPreviewing}
+          />
+        </>
       )}
     </>
   );

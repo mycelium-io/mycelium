@@ -1,5 +1,5 @@
 {
-  "_comment": "Frozen vocabulary for the coordination board. The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules — the thin `uv tool` CLI can't import the frontend and vice versa — so the words they must agree on live here, the same way contracts/slim-l9-wire.json freezes the SLIM+L9 constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
+  "_comment": "Frozen vocabulary for the coordination board. The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules — the thin `uv tool` CLI can't import the frontend and vice versa — so the words they must agree on live here, the same way contracts/slim-wire.json freezes the SLIM+message constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
   "version": 3,
   "statuses": [
     "open",
@@ -156,7 +156,17 @@
       "expired"
     ],
     "stale_after": 0.5,
-    "default_ttl_minutes": 30,
+    "_holds": "A row with an `assignee` is held by them until it is released, handed off or resolved: being given the work is holding it (#1136). A hold has no timer unless a claim asks for one (`ttl_minutes`): one without is held until something real ends it (the holder's herdr pane closes, the agent is removed from the room, it hands the row off or resolves it; fastapi-backend/app/services/hold_sweep.py), and only a lease reads `expired` off the clock. `holder` is whoever claimed the row, else its assignee. Every copy asserts `hold_cases`.",
+    "default_ttl_minutes": null,
+    "assignee_field": "assignee",
+    "hold_cases": [
+      { "meta": {}, "state": "unclaimed", "holder": null },
+      { "meta": { "assignee": "coder" }, "state": "held", "holder": "coder" },
+      { "meta": { "assignment": "held", "owner": "@coder" }, "state": "held", "holder": "coder" },
+      { "meta": { "assignment": "held", "owner": "@lead", "assignee": "coder" }, "state": "held", "holder": "lead" },
+      { "meta": { "assignment": "released", "assignee": "coder" }, "state": "released", "holder": null },
+      { "meta": { "assignment": "resolved", "assignee": "coder" }, "state": "resolved", "holder": null }
+    ],
     "companion_fields": [
       "claimed_at",
       "ttl_minutes",

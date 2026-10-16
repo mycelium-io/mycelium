@@ -1,0 +1,110 @@
+/* The memory editor (components/markdown-editor.tsx, lib/editor/): CodeMirror
+ * with Live Preview, in the app's own tokens so it follows light and dark.
+ * Sizes are in em so it scales with the host. A drawn line is never taller or
+ * shorter than its source, so the page holds still as the cursor moves. */
+
+.cm-editor {
+  height: 100%;
+  font-size: 13px;
+  background: transparent !important;
+  color: var(--text);
+}
+.cm-editor.cm-focused { outline: none; }
+.cm-editor .cm-content {
+  padding: 12px 0;
+  font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  caret-color: var(--accent);
+}
+.cm-editor .cm-line { padding: 0 16px; color: var(--text); }
+.cm-editor .cm-cursor, .cm-editor .cm-dropCursor { border-left: 2px solid var(--accent) !important; }
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--accent) 22%, transparent) !important;
+}
+.cm-editor .cm-placeholder { color: var(--faint); }
+
+/* ---- Headings: weight and size, with a fixed line height per level ---- */
+.cm-md-h1, .cm-md-h2, .cm-md-h3, .cm-md-h4, .cm-md-h5, .cm-md-h6 { font-weight: 600; line-height: 1.4; }
+.cm-md-h1 { font-size: 1.6em; }
+.cm-md-h2 { font-size: 1.4em; }
+.cm-md-h3 { font-size: 1.2em; }
+.cm-md-h4 { font-size: 1.1em; }
+.cm-md-h6 { font-size: 0.95em; color: var(--muted-foreground); }
+
+/* ---- Inline ---- */
+.cm-md-bold { font-weight: 700; }
+.cm-md-italic { font-style: italic; }
+.cm-md-strike { text-decoration: line-through; color: var(--muted-foreground); }
+.cm-md-inline-code {
+  font-family: "Geist Mono", "SF Mono", "JetBrains Mono", Menlo, monospace;
+  font-size: 0.9em;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.cm-md-link, .cm-md-wikilink {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  text-underline-offset: 2px;
+}
+.cm-md-wikilink { text-decoration-style: dotted; }
+.cm-md-embed { font-style: italic; }
+.cm-md-image { display: block; max-width: 100%; height: auto; margin: 0.4em 0; border-radius: 4px; }
+
+/* ---- Lists and tasks ---- */
+.cm-md-bullet { display: inline-block; width: 1ch; color: var(--muted-foreground); text-align: center; }
+.cm-md-list-number { color: var(--muted-foreground); }
+.cm-md-checkbox {
+  width: 0.95em;
+  height: 0.95em;
+  margin: 0 0.35em 0 0;
+  vertical-align: -0.1em;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.cm-md-task-done { color: var(--muted-foreground); text-decoration: line-through; }
+
+/* ---- Quotes and rules ---- */
+.cm-content .cm-line.cm-md-quote {
+  border-left: 3px solid var(--border2);
+  padding-left: 13px;
+  color: var(--muted-foreground);
+}
+.cm-md-hr {
+  display: inline-block;
+  width: 100%;
+  vertical-align: middle;
+  border-top: 1px solid var(--border2);
+}
+
+/* ---- Code blocks: fence lines stay, so the block's height never changes ---- */
+.cm-content .cm-line.cm-md-code-block {
+  font-family: "Geist Mono", "SF Mono", "JetBrains Mono", Menlo, monospace;
+  font-size: 0.9em;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.cm-content .cm-line.cm-md-fence { position: relative; color: var(--faint); }
+.cm-md-copy {
+  position: absolute;
+  top: 1px;
+  right: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--muted-foreground);
+  font: 11px/18px "IBM Plex Sans", sans-serif;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 80ms ease-in;
+}
+.cm-line.cm-md-fence:hover .cm-md-copy,
+.cm-md-copy:focus-visible { opacity: 1; }
+
+/* ---- Tables: spacing as padding, which CodeMirror measures (margin it doesn't) ---- */
+/* A wide table scrolls inside its wrapper rather than widening the editor. */
+.cm-md-table-wrap { padding: 0.4em 16px; overflow-x: auto; cursor: text; }
+.cm-md-table { border-collapse: collapse; font-size: 0.95em; }
+.cm-md-table th, .cm-md-table td { border: 1px solid var(--border2); padding: 0.25em 0.6em; }
+.cm-md-table th { font-weight: 600; background: color-mix(in srgb, var(--text) 4%, transparent); }

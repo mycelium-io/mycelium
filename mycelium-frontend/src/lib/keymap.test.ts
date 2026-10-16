@@ -9,6 +9,7 @@ import {
   findConflicts,
   formatChord,
   hintLabels,
+  isCommandChord,
   isRevealChord,
   KEYMAP,
   matchBinding,
@@ -75,7 +76,7 @@ describe("keymap", () => {
   });
 
   it("resolves an action to the chord its badge draws", () => {
-    expect(chordFor("pane.network")).toBe("alt+n");
+    expect(chordFor("pane.schedules")).toBe("alt+k");
     expect(chordFor("nope")).toBeUndefined();
   });
 
@@ -129,5 +130,15 @@ describe("eventToChord", () => {
     expect(eventToChord(chord({ key: "k", code: "KeyK", ctrlKey: true }), false)).toBe("mod+k");
     // ⌃C on macOS must not read as the bare `c` binding.
     expect(eventToChord(chord({ key: "c", code: "KeyC", ctrlKey: true }), true)).toBe("foreign+c");
+  });
+
+  it("reads ⌘⌥V as the mic's chord, whatever character ⌥ makes of the V", () => {
+    const mic = eventToChord(chord({ key: "√", code: "KeyV", metaKey: true, altKey: true }), true);
+    expect(mic).toBe("mod+alt+v");
+    expect(chordFor("composer.mic")).toBe(mic);
+    // A ⌘ chord, so it still fires while the message box has focus.
+    expect(isCommandChord(mic)).toBe(true);
+    expect(formatChord(mic, true)).toBe("⌘⌥V");
+    expect(formatChord(mic, false)).toBe("Ctrl+Alt+V");
   });
 });

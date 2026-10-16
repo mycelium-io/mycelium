@@ -346,8 +346,23 @@ def test_spec_of_carries_what_the_app_needs_to_draw_a_pick():
     assert "kind" not in steps["score"], "an ask step's default is dropped"
     accord = protocols.builtin("accord")
     assert accord is not None
-    lock = {s["id"]: s for s in protocols.spec_of(accord)["steps"]}["lock"]
-    assert lock["require"] == "stance"
+    steps = {s["id"]: s for s in protocols.spec_of(accord)["steps"]}
+    assert steps["frame"]["collect"] == "pieces"
+    assert steps["frame"]["require"] == "pieces"
+    assert steps["added"] == {
+        "id": "added",
+        "kind": "tally",
+        "of": "points",
+        "max_rounds": 3,
+        "next": {"grew": "more", "settled": "ground", "empty": "nothing"},
+    }
+    assert steps["words"]["of"] == "terms"
+    assert steps["restate"]["to"] == "contested"
+    assert steps["lock"] == {
+        "id": "lock",
+        "kind": "lock",
+        "next": {"locked": "locked", "empty": "nothing"},
+    }
 
 
 def test_describe_says_what_a_pick_does():
@@ -356,3 +371,134 @@ def test_describe_says_what_a_pick_does():
     text = protocols.describe(concord)
     assert "- pick: picks the option the least happy member likes best, bar 70" in text
     assert "- agreed: ends converged" in text
+
+
+# ── a shared frame: tally steps, the contested, the lock ─────────────────────
+
+FRAME = {
+    "id": "frame",
+    "to": "all",
+    "collect": "pieces",
+    "require": "pieces",
+    "prompt": "frame it",
+    "next": "added",
+}
+TALLY = {
+    "id": "added",
+    "kind": "tally",
+    "of": "points",
+    "next": {"grew": "frame", "settled": "ground", "empty": "nothing"},
+}
+GROUND = {"id": "ground", "to": "all", "collect": "pieces", "prompt": "words", "next": "words"}
+WORDS = {
+    "id": "words",
+    "kind": "tally",
+    "of": "terms",
+    "next": {"contested": "restate", "clear": "lock"},
+}
+RESTATE = {
+    "id": "restate",
+    "to": "contested",
+    "collect": "pieces",
+    "prompt": "again",
+    "next": "words",
+}
+LOCK = {"id": "lock", "kind": "lock", "next": {"locked": "done", "empty": "nothing"}}
+FRAME_ENDS = ({"id": "done", "end": "resolved"}, {"id": "nothing", "end": "rejected"})
+
+
+def test_a_tally_validates_and_fills_its_round_cap():
+    spec = _spec(FRAME, TALLY, GROUND, WORDS, RESTATE, LOCK, *FRAME_ENDS)
+    assert spec.step("added").max_rounds == protocols.DEFAULT_MAX_ROUNDS["points"]
+    assert spec.step("words").max_rounds == protocols.DEFAULT_MAX_ROUNDS["terms"]
+    assert spec.step("frame").needs == "pieces"
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [{"to": "all"}, {"prompt": "hi"}, {"collect": "pieces"}, {"require": "pieces"}],
+)
+def test_a_tally_and_a_lock_ask_nobody(extra: dict):
+    with pytest.raises(ValueError, match="asks nobody"):
+        _spec(FRAME, TALLY | extra, GROUND, WORDS, RESTATE, LOCK, *FRAME_ENDS)
+    with pytest.raises(ValueError, match="asks nobody"):
+        _spec(FRAME, TALLY, GROUND, WORDS, RESTATE, LOCK | extra, *FRAME_ENDS)
+
+
+def test_a_tally_branches_only_on_what_it_reads():
+    with pytest.raises(ValueError, match="needs of"):
+        _spec(FRAME, {k: v for k, v in TALLY.items() if k != "of"}, LOCK, *FRAME_ENDS)
+    with pytest.raises(ValueError, match="branches on"):
+        _spec(FRAME, TALLY | {"next": {"grew": "frame", "contested": "lock"}}, LOCK, *FRAME_ENDS)
+    with pytest.raises(ValueError, match="branches by map"):
+        _spec(FRAME, TALLY | {"next": "lock"}, LOCK, *FRAME_ENDS)
+    with pytest.raises(ValueError, match="branches on"):
+        _spec(FRAME | {"next": "lock"}, LOCK | {"next": {"feasible": "done"}}, *FRAME_ENDS)
+
+
+def test_round_caps_belong_to_a_tally_and_labels_must_be_collected():
+    with pytest.raises(ValueError, match="belong to a tally"):
+        _spec(FRAME | {"max_rounds": 2}, TALLY, GROUND, WORDS, RESTATE, LOCK, *FRAME_ENDS)
+    with pytest.raises(ValueError, match="must collect them"):
+        _spec(FRAME | {"collect": None}, TALLY, GROUND, WORDS, RESTATE, LOCK, *FRAME_ENDS)
+    with pytest.raises(ValueError, match="belong to a select"):
+        _spec(FRAME, TALLY | {"threshold": 0.5}, LOCK, *FRAME_ENDS)
+
+
+def test_the_contested_are_asked_only_after_a_tally_of_words_on_every_path():
+    with pytest.raises(ValueError, match="before any tally of terms"):
+        _spec(RESTATE | {"next": "frame"}, FRAME, TALLY, GROUND, WORDS, LOCK, *FRAME_ENDS)
+    # A tally of points defines nobody contested.
+    with pytest.raises(ValueError, match="before any tally of terms"):
+        _spec(
+            FRAME,
+            TALLY | {"next": {"grew": "restate", "settled": "ground", "empty": "nothing"}},
+            RESTATE,
+            GROUND,
+            WORDS,
+            LOCK,
+            *FRAME_ENDS,
+        )
+    with pytest.raises(ValueError, match="only its contested edge"):
+        _spec(
+            FRAME,
+            TALLY,
+            GROUND,
+            WORDS | {"next": {"contested": "lock", "clear": "restate"}},
+            RESTATE,
+            LOCK,
+            *FRAME_ENDS,
+        )
+
+
+def test_nobody_can_play_the_contested():
+    with pytest.raises(ValueError, match="cannot be named"):
+        _spec(FRAME, TALLY, GROUND, WORDS, RESTATE, LOCK, *FRAME_ENDS, roles=["contested"])
+
+
+def test_accord_has_no_roles_and_cannot_converge():
+    accord = protocols.builtin("accord")
+    assert accord is not None
+    assert accord.roles == []
+    assert all(s.end != "converged" for s in accord.steps)
+
+
+def test_describe_says_what_a_tally_and_a_lock_do_in_plain_words():
+    accord = protocols.builtin("accord")
+    assert accord is not None
+    text = protocols.describe(accord)
+    assert (
+        "- added: sees whether the last round added a point, up to 3 rounds; new points: "
+        "more, nothing new: ground, nobody gave any: nothing"
+    ) in text
+    assert "- words: sees whether a word is used in different senses, at most 2 times" in text
+    assert "- restate: asks whoever means a word differently, then words" in text
+    assert "- lock: saves the shared summary; saved: locked, nothing to save: nothing" in text
+    assert "roles:" not in text
+
+
+def test_edge_line_says_nothing_for_a_step_that_asks_nobody():
+    accord = protocols.builtin("accord")
+    assert accord is not None
+    assert protocols.edge_line(accord.step("added"), None, "") is None
+    assert protocols.edge_line(accord.step("lock"), None, "") is None

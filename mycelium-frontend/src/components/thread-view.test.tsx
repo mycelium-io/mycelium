@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
+import { layOut } from "@/test/scroll";
 
 const fetchMessages = vi.fn();
 const sendRoomMessage = vi.fn().mockResolvedValue(undefined);
@@ -48,8 +49,8 @@ const THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb";
 /** The backend answers newest-first; a conversation reads the other way. */
 const NEWEST_FIRST = {
   messages: [
-    { id: "m2", sender_handle: "growth", content: "agreed, gating on the lag alarm", created_at: "2026-08-04T10:01:00+00:00" },
-    { id: "m1", sender_handle: "risk", content: "hold the flip until lag is under a second", created_at: "2026-08-04T10:00:00+00:00" },
+    { id: "m2", sender_handle: "growth", message_type: "broadcast", content: "agreed, gating on the lag alarm", created_at: "2026-08-04T10:01:00+00:00" },
+    { id: "m1", sender_handle: "risk", message_type: "broadcast", content: "hold the flip until lag is under a second", created_at: "2026-08-04T10:00:00+00:00" },
   ],
 };
 
@@ -125,6 +126,51 @@ describe("<ThreadView />", () => {
     expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ episode: THREAD });
   });
 
+  it("draws a reply the moment it is sent, and frees the box while the hub answers", async () => {
+    let answer: (value: unknown) => void = () => {};
+    sendRoomMessage.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    renderWithSWR(
+      <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads" }} onClose={vi.fn()} />,
+    );
+    await screen.findByText(/hold the flip/);
+    const box = await screen.findByPlaceholderText(/Reply in flip reads/);
+    await userEvent.type(box, "flag is wired{Enter}");
+
+    expect(screen.getByText("flag is wired")).toBeInTheDocument();
+    expect(screen.getByText("Sending…")).toBeInTheDocument();
+    expect(box).toHaveValue("");
+    expect(box).toBeEnabled();
+
+    // The hub has it and the thread's next read carries it: one copy, not two.
+    fetchMessages.mockResolvedValue({
+      messages: [
+        { id: "m3", sender_handle: "julia", message_type: "broadcast", content: "flag is wired", created_at: new Date().toISOString() },
+        ...NEWEST_FIRST.messages,
+      ],
+    });
+    await act(async () => answer({ id: "m3" }));
+    await waitFor(() => expect(screen.queryByTestId("pending-message")).not.toBeInTheDocument());
+    expect(screen.getAllByText("flag is wired")).toHaveLength(1);
+  });
+
+  it("keeps a reply the hub refused, says why, and sends it again on Retry", async () => {
+    sendRoomMessage.mockRejectedValueOnce(new Error("the floor is @risk's"));
+    renderWithSWR(
+      <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads" }} onClose={vi.fn()} />,
+    );
+    await screen.findByText(/hold the flip/);
+    const box = await screen.findByPlaceholderText(/Reply in flip reads/);
+    await userEvent.type(box, "flag is wired{Enter}");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't send: the floor is @risk's");
+    expect(screen.getByText("flag is wired")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalledTimes(2));
+    expect(sendRoomMessage.mock.calls[1][1]).toMatchObject({ content: "flag is wired", episode: THREAD });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("closes on Esc and on the close button, because it is a pane and not a rail", async () => {
     const onClose = vi.fn();
     renderWithSWR(
@@ -157,7 +203,7 @@ describe("<ThreadView />", () => {
     fetchMessages.mockResolvedValue({
       messages: [
         { id: "c1", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { window: "48h" } }), created_at: "2026-08-04T10:02:00+00:00" },
-        { id: "m1", sender_handle: "risk", content: "hold the flip until lag is under a second", created_at: "2026-08-04T10:00:00+00:00" },
+        { id: "m1", sender_handle: "risk", message_type: "broadcast", content: "hold the flip until lag is under a second", created_at: "2026-08-04T10:00:00+00:00" },
       ],
     });
     renderWithSWR(
@@ -212,6 +258,56 @@ describe("<ThreadView />", () => {
     expect(viewports).toHaveLength(1);
     expect(viewports[0]).toHaveTextContent("the reads have to flip behind a flag");
     expect(viewports[0]).toHaveTextContent("hold the flip until lag is under a second");
+  });
+
+  it("keeps the reader at the bottom when a tall reply lands", async () => {
+    renderWithSWR(<ThreadView roomName="atlas" target={{ episode: THREAD }} onClose={vi.fn()} />);
+    const viewport = document.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+    const box = layOut(viewport, "[data-event-id]");
+    await screen.findByText(/hold the flip/);
+    // A thread that is no task's is all conversation: it opens on the newest reply.
+    expect(box.atBottom()).toBe(true);
+
+    fetchMessages.mockResolvedValue({
+      messages: [
+        { id: "m3", sender_handle: "risk", message_type: "broadcast", content: "a long reply", created_at: "2026-08-04T10:02:00+00:00" },
+        ...NEWEST_FIRST.messages,
+      ],
+    });
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit({ message_type: "broadcast", sender_handle: "risk", content: "a long reply", episode: THREAD });
+    });
+    await screen.findByText("a long reply");
+    expect(box.atBottom()).toBe(true);
+  });
+
+  it("opens a task's thread on the task, and follows replies once the reader is at the bottom", async () => {
+    fetchMemories.mockResolvedValue([TASK]);
+    renderWithSWR(
+      <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads" }} onClose={vi.fn()} />,
+    );
+    const viewport = document.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+    const box = layOut(viewport, "[data-event-id]");
+    await screen.findByText(/hold the flip/);
+    await screen.findByText(/the reads have to flip/);
+    expect(box.top()).toBe(0);
+
+    box.scrollTo(10_000);
+    fetchMessages.mockResolvedValue({
+      messages: [
+        { id: "m3", sender_handle: "risk", message_type: "broadcast", content: "a long reply", created_at: "2026-08-04T10:02:00+00:00" },
+        ...NEWEST_FIRST.messages,
+      ],
+    });
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit({ message_type: "broadcast", sender_handle: "risk", content: "a long reply", episode: THREAD });
+    });
+    await screen.findByText("a long reply");
+    expect(box.atBottom()).toBe(true);
   });
 
   it("re-reads on the ping that announces a write into it", async () => {

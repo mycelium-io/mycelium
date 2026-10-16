@@ -12,8 +12,8 @@ instead.
 
 - `app/routes/` — the HTTP API. This is the only surface clients touch; the CLI
   and the frontend are both just callers of it.
-- `app/services/` — the actual work: SLIM channel + moderator lifecycle, L9
-  envelope construction and episode tracking, the aligner, synthesizer and hello
+- `app/services/` — the actual work: SLIM channel + moderator lifecycle, message
+  construction and episode tracking, the aligner, synthesizer and hello
   engines, memory persistence and the search index, plan compilation.
 - `tests/` — see its own README for how the suite is sliced.
 

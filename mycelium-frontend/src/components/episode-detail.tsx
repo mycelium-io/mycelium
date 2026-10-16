@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchEpisode, type EpisodeDetail as EpisodeDetailT, type L9Envelope } from "@/lib/api";
+import { fetchEpisode, type EpisodeDetail as EpisodeDetailT, type MyceliumMessage } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 
@@ -40,8 +40,8 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-/** One L9 envelope in the causal chain. */
-function EnvelopeRow({ env }: { env: L9Envelope }) {
+/** One message in the causal chain. */
+function EnvelopeRow({ env }: { env: MyceliumMessage }) {
   const kind = env.header.kind;
   const subkind = env.header.subkind ?? undefined;
   const actors = env.header.participants?.actors ?? [];
@@ -63,7 +63,7 @@ function EnvelopeRow({ env }: { env: L9Envelope }) {
   );
 }
 
-/** Read-only review of one episode: outcome, metrics, assignments, L9 chain. */
+/** Read-only review of one episode: outcome, metrics, assignments, message chain. */
 export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId: string }) {
   const [detail, setDetail] = useState<EpisodeDetailT | null>(null);
   const [loading, setLoading] = useState(true);
@@ -140,7 +140,7 @@ export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId
 
       <div className="px-5 py-4">
         <div className="mb-1 flex items-baseline gap-2">
-          <span className="text-micro uppercase tracking-wide text-faint">L9 chain</span>
+          <span className="text-micro uppercase tracking-wide text-faint">Message chain</span>
           <span className="text-micro tabular text-muted-foreground">{detail.messages.length} envelopes</span>
         </div>
         {detail.messages.length === 0 ? (

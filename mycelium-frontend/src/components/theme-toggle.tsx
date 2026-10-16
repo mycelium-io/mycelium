@@ -8,6 +8,7 @@ import { useIsClient } from "@/lib/client-hooks";
 import { useTheme } from "next-themes";
 import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useCommands } from "@/components/keymap-provider";
+import { IconButton } from "@/components/ui/icon-button";
 import type { PaletteCommand } from "@/lib/commands";
 
 const OPTIONS: { value: string; label: string; icon: LucideIcon }[] = [
@@ -54,14 +55,9 @@ export function ThemeToggle() {
 
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
-        aria-label="Theme"
-        onClick={() => setOpen((o) => !o)}
-        className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
-      >
-        {mounted ? <Active className="size-4" /> : <span className="size-4" />}
-      </button>
+      <IconButton label="Theme" size="md" side="bottom" pressed={open} onClick={() => setOpen((o) => !o)}>
+        {mounted ? <Active /> : <span className="size-4" />}
+      </IconButton>
       {open && (
         <div className="absolute right-0 top-full z-30 mt-1.5 w-36 overflow-hidden rounded-xl border border-border bg-elevated p-1 shadow-xl">
           {OPTIONS.map(({ value, label, icon: Icon }) => (

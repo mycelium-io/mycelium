@@ -20,7 +20,7 @@
  * driving the page are the same problems whether the caller is this pipeline or
  * an agent at a terminal, and they were solved twice before. What stays here is
  * what is genuinely publication's business — which shots exist, how they are
- * optimized, and where the files land.
+ * optimized (`optimize.ts`), and where the files land.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -31,6 +31,7 @@ import sharp from "sharp";
 // pipeline at runtime.
 import { capture, shutdown } from "../../shotkit/src/api.mjs";
 import { ensureMockServer, stopMockServer } from "../../shotkit/src/app.mjs";
+import { optimizePng } from "./optimize.ts";
 import { SHOTS, VIEWPORTS, type Shot } from "./shots.ts";
 import { TARGETS } from "./targets.ts";
 
@@ -43,13 +44,27 @@ async function publish(shot: Shot, raw: Buffer): Promise<string[]> {
   const targets = TARGETS[shot.id] ?? [];
   const scale = VIEWPORTS[shot.viewport].scale;
   const written: string[] = [];
+  // A cropped shot keeps only its region, cut from the full-density capture.
+  if (shot.crop) {
+    const { x, y, width: w, height: h } = shot.crop;
+    raw = await sharp(raw)
+      .extract({ left: x * scale, top: y * scale, width: w * scale, height: h * scale })
+      .toBuffer();
+  }
 
   // The raw capture is at deviceScaleFactor pixel density: that IS the @2x asset.
-  const oneX = await sharp(raw)
-    .resize({ width: Math.round(VIEWPORTS[shot.viewport].width) })
-    .png({ compressionLevel: 9, palette: true })
-    .toBuffer();
-  const twoX = await sharp(raw).png({ compressionLevel: 9, palette: true }).toBuffer();
+  // The 1x is it scaled down by that factor; a clipped shot is narrower than
+  // the viewport, so the width comes from the capture, not the viewport.
+  // sharp quantizes to a palette; oxipng then shrinks the encoding losslessly,
+  // which is what CI's hygiene check expects of every committed PNG.
+  const { width = VIEWPORTS[shot.viewport].width * scale } = await sharp(raw).metadata();
+  const oneX = await optimizePng(
+    await sharp(raw)
+      .resize({ width: Math.round(width / scale) })
+      .png({ compressionLevel: 9, palette: true })
+      .toBuffer(),
+  );
+  const twoX = await optimizePng(await sharp(raw).png({ compressionLevel: 9, palette: true }).toBuffer());
 
   for (const t of targets) {
     await mkdir(t.dir, { recursive: true });
@@ -102,6 +117,16 @@ function specFor(shot: Shot, baseUrl: string, offline: boolean) {
         ? { "mycelium.principal": "", "mycelium.name-asked": "" }
         : { "mycelium.principal": "operator", "mycelium.name-asked": "1" }),
       ...Object.fromEntries(["checkout", "scratch", "storefront"].map((room) => [`mycelium.draft:${room}`, ""])),
+      // A room remembers its open tabs and the rail its split, so a shot that
+      // opened the Board or folded a section would hand that to the next one.
+      // Empty reads as "nothing saved": every shot starts on the defaults.
+      ...Object.fromEntries(["checkout", "scratch", "storefront"].map((room) => [`mycelium.dock.${room}`, ""])),
+      // The panels library keys a layout by its group id and its panel ids.
+      ...Object.fromEntries(
+        ["mycelium:shell:rooms:workspace", "mycelium:room:main:inspector", "mycelium:rail:agents:memory"].map(
+          (layout) => [`react-resizable-panels:${layout}`, ""],
+        ),
+      ),
     },
     offline,
     stdout: true,

@@ -151,6 +151,12 @@ def _check_mycelium_dir_ownership() -> CheckResult:
     )
 
 
+def _start_hub() -> str:
+    from mycelium.desktop.checks import start_hub
+
+    return start_hub()
+
+
 def _check_llm_connectivity(
     *,
     set_up: str = "Run: mycelium install --force",
@@ -169,7 +175,7 @@ def _check_llm_connectivity(
 
     ``set_up`` is what to do when no model is set, and ``replace_key`` what to do
     when the provider refuses the key, in the words of wherever this is read:
-    the terminal's ``install``, or the Mac app's Settings.
+    the terminal's ``install``, or the desktop app's Settings.
     """
     # Skip entirely if the LLM isn't configured at all; _check_llm_config
     # already reported that and running the probe would be redundant noise.
@@ -210,7 +216,7 @@ def _check_llm_connectivity(
             name="LLM connectivity",
             status="warning",
             message="Skipped (backend unreachable)",
-            details=[str(exc), "Start the backend: mycelium up"],
+            details=[str(exc), f"Start the backend: {_start_hub()}"],
         )
 
     if resp.status_code >= 500:
@@ -395,13 +401,17 @@ def _check_mediator_pi_binary() -> CheckResult:
             message="backend is dockerized (Pi ships in the image)",
         )
 
+    from mycelium.engine.pi_session import pi_argv
+
     binary = os.environ.get("ALIGNER_PI_BINARY") or "pi"
-    resolved = shutil.which(binary)
-    if resolved is not None:
+    argv = pi_argv(binary)
+    if argv is not None:
+        # A JavaScript entry point shows the node it runs on; a program, where it is.
+        where = " ".join(argv) if len(argv) > 1 else (shutil.which(binary) or binary)
         return CheckResult(
             name="mediator Pi session",
             status="ok",
-            message=f"pi on PATH ({resolved})",
+            message=f"pi on PATH ({where})",
         )
     return CheckResult(
         name="mediator Pi session",
@@ -453,7 +463,7 @@ def _check_backend_reachable(*, local_backend: bool = True) -> CheckResult:
             message=f"{api_url} returned HTTP {resp.status_code}",
         )
     except Exception as exc:
-        hint = "Run: mycelium up" if local_backend else f"Check the remote backend at {api_url}"
+        hint = f"Run: {_start_hub()}" if local_backend else f"Check the remote backend at {api_url}"
         return CheckResult(
             name="Backend reachable",
             status="error",
@@ -793,13 +803,14 @@ def doctor(
     Single-device installs (the default) run the backend locally and
     exercise all checks. In the optional hub-and-spoke deployment mode
     spoke nodes talk to a remote backend and don't run Docker containers
-    locally. When --mode is 'auto' (the default), doctor detects spoke
-    mode from server.api_url: if it points to a non-local host the
-    Docker, runtime-drift, and port-drift checks are skipped automatically.
+    locally. When --mode is 'auto' (the default), doctor checks what the
+    desktop app runs if the app is set up on this machine, and otherwise
+    detects spoke mode from server.api_url: if it points to a non-local
+    host the Docker, runtime-drift, and port-drift checks are skipped.
 
     \b
     Examples:
-        mycelium doctor              # interactive; auto-detects hub vs spoke
+        mycelium doctor              # interactive; auto-detects app, hub or spoke
         mycelium doctor --fix        # auto-fix all fixable issues
         mycelium doctor --mode spoke # force spoke mode (skip local-only checks)
         mycelium doctor --mode hub   # force hub mode (run all checks)
@@ -816,6 +827,12 @@ def doctor(
         except Exception:
             api_url = "http://localhost:8000"
 
+        from mycelium.desktop.checks import settings as desktop_settings
+
+        if mode == "auto" and desktop_settings() is not None:
+            # The desktop app is set up here: it runs no containers, so check
+            # what it does run.
+            mode = "desktop"
         if mode == "auto":
             local = _is_local_backend(api_url)
         elif mode in ("hub", "desktop"):

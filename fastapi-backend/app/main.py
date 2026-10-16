@@ -41,13 +41,16 @@ from app.routes.fields import router as fields_router
 from app.routes.hub import router as hub_router
 from app.routes.joins import router as joins_router
 from app.routes.links import router as links_router
+from app.routes.members import router as members_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.participate import router as participate_router
 from app.routes.patterns import router as patterns_router
 from app.routes.protocols import router as protocols_router
+from app.routes.room_settings import router as room_settings_router
 from app.routes.rooms import router as rooms_router
 from app.routes.runners import router as runners_router
+from app.routes.schedules import router as schedules_router
 from app.routes.search import router as search_router
 from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
@@ -55,7 +58,10 @@ from app.routes.status import router as status_router
 from app.routes.stream import router as stream_router
 from app.routes.swarms import router as swarms_router
 from app.routes.tasks import router as tasks_router
+from app.routes.uploads import router as uploads_router
 from app.routes.users import router as users_router
+from app.routes.verifier import router as verifier_router
+from app.routes.voice import router as voice_router
 from app.services.auth import auth_gate
 from app.services.filesystem import UnsafePathError
 
@@ -79,6 +85,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Uvicorn has set up its loggers by now: put every handler behind a queue,
+    # so a stdout nobody drains drops lines instead of freezing the hub.
+    from app.services import log_queue
+
+    log_queue.install()
     logger.info("Mycelium backend starting up")
     # Say plainly whether the HTTP surface is gated — "is this hub open?" should
     # never require reading config to answer.
@@ -137,6 +148,24 @@ async def lifespan(app: FastAPI):
 
     start_lease_sweep()
 
+    # Upstream watch: raises the `upstream` timeline notice when a pull request
+    # a row links changes (review, CI, merge). GitHub can't call a hub on
+    # localhost, so this looks once a minute instead.
+    from app.services.status.watch import start_watch, stop_watch
+
+    start_watch()
+
+    # Schedules: fires each agent's due check-ins (pre-check, then the wake).
+    from app.services import schedules as _schedules
+
+    _schedules.start_sweep()
+
+    # Voice on and its model missing: fetch it now, in the background, rather
+    # than when the first person turns on a mic. Off, this does nothing.
+    from app.services import voice as _voice
+
+    _voice.prefetch()
+
     # Pre-load embedding model so first request isn't slow
     from app.services.embedding import warmup as warmup_embeddings
 
@@ -175,6 +204,9 @@ async def lifespan(app: FastAPI):
     app.state.conductor.on_step = app.state.standing.on_step
     app.state.persona = PersonaEngine(room_channel_manager)
     app.state.worker = WorkerEngine(room_channel_manager)
+    from app.services.verifier import VerifierEngine
+
+    app.state.verifier = VerifierEngine(room_channel_manager)
     # The A2A responder shares the seam too: it answers @-mentions of a
     # registered a2a agent by calling the remote endpoint, gating on the manifest
     # like the engines gate on their kind, so only one handler ever acts.
@@ -203,28 +235,21 @@ async def lifespan(app: FastAPI):
                 logger.exception("engine summon handler failed for @%s in %s", handle, room)
 
     room_channel_manager.on_summon = _dispatch_summon
+    # A party leaving the room stops the aligner's run, which says so itself.
+    room_channel_manager.on_party_left = app.state.aligner.party_left
 
-    # A turn whose text names nobody, put to one member as its L9 recipient —
-    # the way the aligner and the conductor address one member. The members
-    # the hub plays (persona, worker) answer it; a member living in herdr gets
-    # its doorbell rung, since it would otherwise only wake on a text mention.
-    # Each self-selects by the handle, like the summon handlers.
-    def _dispatch_addressed(room: str, handle: str, envelope: Any, message_text: str) -> None:
+    # A turn put to one member (its message recipient), the way the aligner and
+    # the conductor ask one member. The members the hub plays (persona, worker)
+    # answer it; the manager rings a herdr member's doorbell itself. Each
+    # self-selects by the handle, like the summon handlers.
+    def _dispatch_turn(room: str, handle: str, envelope: Any, message_text: str) -> None:
         for fire in (app.state.persona.handle_addressed, app.state.worker.handle_addressed):
             try:
                 fire(room, handle, envelope, message_text)
             except Exception:
-                logger.exception("addressed handler failed for @%s in %s", handle, room)
-        from app.services.persister import envelope_sender
+                logger.exception("turn handler failed for @%s in %s", handle, room)
 
-        room_channel_manager.herdr_wake_addressed(
-            room,
-            handle,
-            sender=envelope_sender(envelope),
-            episode=envelope.header.message.episode if envelope.header.message else None,
-        )
-
-    room_channel_manager.on_addressed = _dispatch_addressed
+    room_channel_manager.on_turn = _dispatch_turn
 
     # The board moving: a row filed for a worker gets worked, a finished split
     # gets wrapped up, and a row filed for a herdr member rings its doorbell.
@@ -240,6 +265,9 @@ async def lifespan(app: FastAPI):
             logger.exception("usage notice handler failed in %s", room)
 
     room_channel_manager.on_notice = _dispatch_notice
+    # Every recorded message: the verifier reads agents' prose in rooms that
+    # added it, and adds a line under a claim the records don't back up.
+    room_channel_manager.on_recorded = app.state.verifier.handle_recorded
     logger.info(
         "engines wired (aligner @%s, synthesizer @%s, hello @%s, conductor @%s, "
         "persona @%s, workers by kind; llm=pi via %s)",
@@ -284,6 +312,11 @@ async def lifespan(app: FastAPI):
     stop_watcher()
     stop_event_sweep()
     stop_lease_sweep()
+    stop_watch()
+    from app.services import voice_worker
+
+    voice_worker.stop()
+    _schedules.stop_sweep()
 
     # Flush and shut down the OTel SDK so spans are not lost on a clean restart.
     from app.services import telemetry as telemetry_service
@@ -309,6 +342,7 @@ async def lifespan(app: FastAPI):
         logger.warning("SLIM channel teardown failed (non-fatal): %s", exc)
 
     logger.info("Mycelium backend shutting down")
+    log_queue.uninstall()
 
 
 def _read_pkg_version() -> str:
@@ -372,6 +406,7 @@ app.include_router(a2a_state_router, prefix="/api")
 app.include_router(engines_router, prefix="/api")
 app.include_router(rooms_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
+app.include_router(members_router, prefix="/api")
 app.include_router(assignments_router, prefix="/api")
 app.include_router(fields_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
@@ -387,7 +422,12 @@ app.include_router(links_router, prefix="/api")
 app.include_router(briefing_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
+app.include_router(schedules_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
+app.include_router(room_settings_router, prefix="/api")
+app.include_router(uploads_router, prefix="/api")
+app.include_router(voice_router, prefix="/api")
+app.include_router(verifier_router, prefix="/api")
 app.include_router(patterns_router, prefix="/api")
 app.include_router(protocols_router, prefix="/api")
 app.include_router(status_router, prefix="/api")

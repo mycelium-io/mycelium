@@ -44,7 +44,8 @@ function ContextMenuTrigger({
   )
 }
 
-const popupClass =
+/** The menu's look, shared with the dropdown menu (`dropdown-menu.tsx`). */
+export const popupClass =
   "z-50 min-w-52 origin-[var(--transform-origin)] rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
 
 function ContextMenuContent({ className, ...props }: Primitive.Popup.Props) {
@@ -57,7 +58,7 @@ function ContextMenuContent({ className, ...props }: Primitive.Popup.Props) {
   )
 }
 
-const itemClass =
+export const itemClass =
   "flex w-full cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-label text-text outline-none data-highlighted:bg-hairline data-disabled:pointer-events-none data-disabled:opacity-50"
 
 interface ItemProps extends Omit<Primitive.Item.Props, "children"> {

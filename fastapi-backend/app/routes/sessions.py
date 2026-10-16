@@ -31,7 +31,17 @@ from app.schemas import (
     ParticipantListResponse,
     ParticipantRead,
 )
-from app.services import activity, actor, in_memory_store, l9, room_channels, tasks, wake_digest
+from app.services import (
+    activity,
+    actor,
+    in_memory_store,
+    message_format,
+    room_channels,
+    schedules,
+    tasks,
+    wake_digest,
+    wake_log,
+)
 from app.services.filesystem import (
     ensure_room_structure,
     get_room_dir,
@@ -260,6 +270,12 @@ async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
     )
 
 
+#: The wakes that exist to answer a message: one with nothing unread behind
+#: it when it's due is skipped. A task given to the agent, or its schedule,
+#: needs no message.
+NEEDS_A_MESSAGE = frozenset({"mention", "turn", "interrupt"})
+
+
 @router.get("/herdr-wakes")
 async def drain_herdr_wakes(room_name: str):
     """Drain pending herdr wake requests for a room (the sync bridge polls this).
@@ -274,17 +290,123 @@ async def drain_herdr_wakes(room_name: str):
     # Each carries the digest its agent is told (``prompt``), built now rather
     # than when it was queued, so what it says is current when it's typed.
     managed = room_channels.manager.get(room_name)
-    records = managed.persister.log.records if managed and managed.persister else []
+    log = managed.persister.log if managed and managed.persister else None
+    records = log.records if log is not None else []
+    handed: list[dict] = []
     for wake in wakes:
+        handle = str(wake.get("handle") or "")
+        # What its agent has read, so the digest and its cover start there
+        # rather than at its last message, which it may have posted unread.
+        if log is not None and log.knows(handle):
+            wake[wake_digest.READ_FROM] = log.position(handle)
+        covered = wake_digest.coverage(wake, records)
+        # Never ring for nothing: a wake that needs a message to answer, with
+        # none unread when it's due, is recorded and not handed over. With no
+        # transcript to look in there's no telling, and it goes as it is.
+        nothing = log is not None and not covered["messages"]
+        if wake.get("reason", "mention") in NEEDS_A_MESSAGE and nothing:
+            wake_log.dropped(
+                room_name,
+                wake,
+                "nothing unread asks for it: it was read or answered before this wake was due",
+                outcome="skipped",
+            )
+            continue
         try:
+            told = schedules.untold_pauses(room_name, handle)
             wake["prompt"] = wake_digest.build(room_name, wake, records)
+            # The digest has said these pauses now, and says each once.
+            await schedules.mark_pauses_told(room_name, [s.name for s in told])
         except Exception:
-            logger.exception("wake digest failed for @%s in %s", wake.get("handle"), room_name)
+            logger.exception("wake digest failed for @%s in %s", handle, room_name)
+        # What it covered goes in the wake log, kept until the runner says
+        # whether it reached the agent (``POST herdr-wakes/outcomes``).
+        try:
+            wake_log.handed(room_name, wake, covered)
+        except Exception:
+            logger.exception("wake log failed for @%s in %s", handle, room_name)
         # Handed to its host to type now, so the room hears it's being worked
         # on whether or not the agent reads through ``await``. Its reply, or
-        # the TTL, settles it.
-        activity.signal(room_name, wake["handle"], "responding", episode=wake.get("episode"))
-    return {"wakes": wakes}
+        # the TTL, settles it. The thread named is the one its digest tells it
+        # to reply in, or none when what woke it was said in several.
+        try:
+            where = wake_digest.reply_episode(room_name, wake, records)
+        except Exception:
+            where = None
+        activity.signal(room_name, wake["handle"], "responding", episode=where)
+        wake.pop(wake_digest.READ_FROM, None)
+        handed.append(wake)
+    return {"wakes": handed}
+
+
+class WakeOutcome(BaseModel):
+    """What a runner did with one wake it was handed."""
+
+    id: str = Field(..., min_length=1, max_length=64)
+    delivered: bool
+    why: str | None = Field(
+        None, max_length=300, description="Why it wasn't delivered: no pane, herdr refused"
+    )
+
+
+class WakeOutcomes(BaseModel):
+    outcomes: list[WakeOutcome] = Field(default_factory=list, max_length=200)
+
+
+@router.post("/herdr-wakes/outcomes")
+async def report_herdr_wakes(room_name: str, body: WakeOutcomes):
+    """A runner says what happened to the wakes it drained: delivered, or not and why.
+
+    Each settles the wake's line in the room's wake log; one already settled,
+    or not awaited, is ignored, so a retried report records nothing twice.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    recorded = sum(
+        wake_log.report(room_name, o.id, delivered=o.delivered, why=o.why) for o in body.outcomes
+    )
+    return {"recorded": recorded}
+
+
+class WakeRecord(BaseModel):
+    """One wake the hub raised for an agent, and what became of it."""
+
+    id: str | None = None
+    agent: str
+    reason: str = Field(..., description="mention, turn, interrupt, assigned or schedule")
+    outcome: str = Field(
+        ...,
+        description="delivered; dropped (thrown away, see why); unreached (nothing runs "
+        "the agent, which reads the message on its next await); handed (given to a "
+        "runner that hasn't said, or is from before runners said)",
+    )
+    why: str | None = None
+    sender: str | None = Field(None, alias="from")
+    episode: str | None = None
+    task: str | None = None
+    messages: list[str] = Field(
+        default_factory=list, description="Ids of the messages that asked for the agent"
+    )
+    range: list[str] | None = Field(
+        None, description="First and last message id the wake's digest summarized"
+    )
+    at: str | None = Field(None, description="When it was raised or handed over")
+    settled_at: str | None = Field(None, description="When its runner said what became of it")
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/wakes", response_model=list[WakeRecord], response_model_by_alias=True)
+async def list_wakes(room_name: str, agent: str | None = None, limit: int = 50):
+    """What each wake in this room delivered, newest first (``log/wakes.jsonl``).
+
+    For telling "it was told and didn't act" from "it was never woken with it":
+    each names the messages it covered by id, so the transcript holds the text.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    who = agent.lstrip("@").lower() if agent else None
+    return wake_log.read(room_name, agent=who, limit=max(1, min(limit, 1000)))
 
 
 @router.delete("/{session_id}", status_code=204)
@@ -309,7 +431,7 @@ async def leave_room(room_name: str, session_id: UUID):
                 "type": "coordination_leave",
                 "room_name": room_name,
                 "agent_handle": handle,
-                "sender_handle": l9.SYSTEM_ACTOR_ID,
+                "sender_handle": message_format.SYSTEM_ACTOR_ID,
                 "message_type": "coordination_leave",
                 "created_at": datetime.now(UTC).isoformat(),
             },

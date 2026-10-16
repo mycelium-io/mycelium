@@ -3,7 +3,10 @@
 
 import { Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { avatarTint, initials } from "@/lib/avatar-color";
+import { avatarTint, initials, softAvatar } from "@/lib/avatar-color";
+import { useClientSetting } from "@/lib/client-settings";
+import { detailFor, pxOfSizeClass } from "@/lib/sporelings";
+import { Sporeling } from "@/components/ui/sporeling";
 import { Tooltip } from "@/components/ui/tooltip";
 
 export { initials };
@@ -33,7 +36,14 @@ interface Props {
    *  larger hover target (a roster row's card, a facepile chip) that already
    *  names the presence, otherwise the dot's bubble intercepts that hover. */
   mutePresence?: boolean;
+  /** Who this is. Only an agent or an engine is ever drawn as a creature (an
+   *  engine as a lantern), and only when the person has agents shown as
+   *  creatures; a person always keeps their initials. Defaults to a person, so
+   *  a caller that doesn't say can never turn someone into a creature. */
+  kind?: AvatarKind;
 }
+
+export type AvatarKind = "person" | "agent" | "engine";
 
 interface Halo {
   color: string;
@@ -71,36 +81,38 @@ function halo(presence: Presence, status?: string | null): Halo {
 
 /** Circular monogram avatar; shared across roster, stream, and picker.
  *
- *  The disc is a solid fill in the handle's own color with near-white
- *  initials, so a roster reads as distinct people at a glance instead of a
- *  column of identical chips. Presence rides as a **halo** around it — color
- *  for the tier, a breathing ring for a poll in flight — plus a corner dot that
- *  carries the tier on its own for anyone the ring's color doesn't reach. */
-export function Monogram({ handle, color, className, presence, status, wakePending, mutePresence }: Props) {
+ *  The disc is a soft tint of the handle's own color with its initials in a
+ *  lighter shade of it, so a roster reads as distinct people at a glance
+ *  without the discs shouting over the names beside them. Presence rides as a
+ *  **halo** around it — color for the tier, a breathing ring for a poll in
+ *  flight — plus a corner dot that carries the tier on its own for anyone the
+ *  ring's color doesn't reach.
+ *
+ *  An agent or engine (`kind`) is drawn as its creature inside the same disc
+ *  when the person has agents shown as creatures (Settings → General). The
+ *  disc, ring and dot don't change. */
+export function Monogram({ handle, color, className, presence, status, wakePending, mutePresence, kind = "person" }: Props) {
   const tint = color ?? avatarTint(handle);
   const ring = presence ? halo(presence, status) : null;
+  const [agentAvatars] = useClientSetting("general.agent-avatars");
+  const creature = kind !== "person" && agentAvatars === "creatures";
   return (
     <div className="relative flex-shrink-0">
       <div
         aria-hidden
         className={cn(
-          "flex size-8 items-center justify-center rounded-full border font-mono text-micro font-semibold",
+          "flex size-8 items-center justify-center rounded-full font-sans text-micro font-semibold",
           ring?.ring && "avatar-halo",
           ring?.ring && ring.pulse && "pulse",
           className,
         )}
-        // Opaque fill: the command center stacks these, and translucent discs
-        // overlapping would blend into each other. Opaque also holds the
-        // color steady over a hover highlight. Border is the same tint
-        // darkened; glyph is white for contrast against the deep disc.
-        style={{
-          background: tint,
-          borderColor: `color-mix(in srgb, ${tint} 70%, #000)`,
-          color: "#fff",
-          ...(ring ? ({ "--halo": ring.color } as React.CSSProperties) : {}),
-        }}
+        style={{ ...softAvatar(tint), ...(ring ? ({ "--halo": ring.color } as React.CSSProperties) : {}) }}
       >
-        {initials(handle)}
+        {creature ? (
+          <Sporeling handle={handle} tint={tint} detail={detailFor(pxOfSizeClass(className))} engine={kind === "engine"} />
+        ) : (
+          initials(handle)
+        )}
       </div>
       {ring && <PresenceDot halo={ring} mute={mutePresence} />}
       {wakePending && <MailBadge />}

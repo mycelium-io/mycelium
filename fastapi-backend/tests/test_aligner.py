@@ -6,7 +6,7 @@
 Node-free: they drive the engine over fake channels/persisters so the observer
 verdict, the below-threshold rejection, the driver round loop, and the
 reserved-handle summon gate are all exercised as pure async logic. The live-node
-observe slice is in ``test_l9_over_slim_roundtrip.py`` (guarded on a node).
+observe slice is in ``test_message_over_slim_roundtrip.py`` (guarded on a node).
 """
 
 from __future__ import annotations
@@ -16,13 +16,13 @@ from typing import Any
 
 import pytest
 
-from app.services import aligner, l9
-from app.services.l9_models import Kind
+from app.services import aligner, message_format
+from app.services.message_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "align-room"
-_EPISODE = l9.episode_urn(_ROOM, "live")
-_TOPIC = l9.topic_urn(_ROOM)
+_EPISODE = message_format.episode_urn(_ROOM, "live")
+_TOPIC = message_format.topic_urn(_ROOM)
 
 
 def _engine(manager: FakeManager, **kw: Any) -> aligner.AlignerEngine:
@@ -34,46 +34,108 @@ def _engine(manager: FakeManager, **kw: Any) -> aligner.AlignerEngine:
 # ── summon routing ────────────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_summon_fires_only_for_the_reserved_handle():
-    managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
-    engine = _engine(FakeManager(managed, []))
+def _add_aligner(room: str, handle: str = "aligner") -> None:
+    """Add an aligner to ``room``, as `mycelium engine create --kind aligner` does."""
+    import yaml
 
-    called: list[str] = []
+    from app.services.filesystem import get_room_dir, write_memory_file
+
+    write_memory_file(
+        get_room_dir(room),
+        f"agents/{handle}",
+        yaml.safe_dump({"adapter": "engine", "kind": "aligner"}),
+        created_by="cli-user",
+    )
+
+
+def _summon_env(sender: str, room: str) -> Any:
+    """A summon posted in ``room``'s own channel."""
+    return message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=message_format.live_episode_urn(room),
+        sender=sender,
+        topic=message_format.topic_urn(room),
+        payload_type="message",
+    )
+
+
+def _recording(engine: aligner.AlignerEngine) -> list[tuple[str, list[str] | None]]:
+    """Swap the engine's run for a recorder of (room, parties)."""
+    called: list[tuple[str, list[str] | None]] = []
 
     async def fake_mediate(
         room: str,
         engine_handle: str | None = None,
         scoped_participants: list[str] | None = None,
-        **_kwargs: object,
+        **_kw: object,
     ) -> None:
-        called.append(room)
+        called.append((room, scoped_participants))
 
     engine.mediate = fake_mediate  # type: ignore[method-assign]
+    return called
 
-    def _env(sender: str) -> Any:
-        return l9.build_envelope(
-            kind=Kind.exchange,
-            episode=_EPISODE,
-            sender=sender,
-            topic=_TOPIC,
-            payload_type="message",
-        )
 
-    # A summon of a normal teammate does not fire the engine.
-    engine.handle_summon(_ROOM, "agent-a", _env("human"))
+@pytest.mark.asyncio
+async def test_a_mention_in_a_room_without_an_aligner_starts_nothing_and_says_so_once():
+    """No aligner registered, no run: the mention used to fall back to a built-in
+    aligner every room had, which is how a room nobody added one to got a run."""
+    room = "no-aligner-room"
+    channel = FakeChannel()
+    managed = FakeManaged(room, "mycelium", channel, FakePersister())
+    engine = _engine(FakeManager(managed, ["a", "b"]))
+    called = _recording(engine)
+
+    for _ in range(2):
+        engine.handle_summon(room, "aligner", _summon_env("julia", room), ["aligner", "a", "b"])
+        await asyncio.sleep(0.02)
+
+    assert called == []
+    said = [extra["content"] for _env, extra in channel.sent if extra]
+    assert len(said) == 1
+    assert "no aligner in this room" in said[0]
+    assert f"mycelium engine create aligner --kind aligner --room {room}" in said[0]
+
+
+@pytest.mark.asyncio
+async def test_a_registered_aligner_runs_with_the_members_named():
+    room = "named-room"
+    _add_aligner(room)
+    managed = FakeManaged(room, "mycelium", FakeChannel(), FakePersister())
+    engine = _engine(FakeManager(managed, ["a", "b", "reviewer"]))
+    called = _recording(engine)
+
+    # A mention of a teammate doesn't start the aligner.
+    engine.handle_summon(room, "a", _summon_env("julia", room), ["a"])
     await asyncio.sleep(0.02)
     assert called == []
 
-    # A summon of the reserved handle does.
-    engine.handle_summon(_ROOM, "aligner", _env("human"))
+    engine.handle_summon(room, "aligner", _summon_env("julia", room), ["aligner", "a", "b"])
     await asyncio.sleep(0.02)
-    assert called == [_ROOM]
+    # Only who was named: the reviewer present in the room isn't a party.
+    assert called == [(room, ["a", "b"])]
 
-    # The engine never summons off its own message (loop guard).
-    engine.handle_summon("other-room", "aligner", _env("aligner"))
+    # Never off its own message.
+    engine.handle_summon(room, "aligner", _summon_env("aligner", room), ["aligner", "a", "b"])
     await asyncio.sleep(0.02)
-    assert called == [_ROOM]
+    assert len(called) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_summon_in_the_room_that_names_nobody_starts_nothing():
+    """In the room, everyone present is not who should agree: it asks for names."""
+    room = "unnamed-room"
+    _add_aligner(room)
+    channel = FakeChannel()
+    managed = FakeManaged(room, "mycelium", channel, FakePersister())
+    engine = _engine(FakeManager(managed, ["a", "b"]))
+    called = _recording(engine)
+
+    engine.handle_summon(room, "aligner", _summon_env("julia", room), ["aligner"])
+    await asyncio.sleep(0.02)
+
+    assert called == []
+    said = [extra["content"] for _env, extra in channel.sent if extra]
+    assert said and "Mention the members who should agree" in said[0]
 
 
 @pytest.mark.asyncio
@@ -81,6 +143,7 @@ async def test_a_summon_negotiates_in_the_thread_it_was_made_in():
     """The thread the summon was posted in is where the negotiation is held, so
     an agent answers the aligner with the same flags as anything else said
     there; a summon in the room is held in the room."""
+    _add_aligner(_ROOM)
     managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
     engine = _engine(FakeManager(managed, []))
     held_in: list[str | None] = []
@@ -89,14 +152,14 @@ async def test_a_summon_negotiates_in_the_thread_it_was_made_in():
         held_in.append(episode)
 
     engine.mediate = fake_mediate  # type: ignore[method-assign]
-    thread = l9.episode_urn(_ROOM, "t3aa11bb")
-    for where in (thread, l9.live_episode_urn(_ROOM)):
-        summon = l9.build_envelope(
+    thread = message_format.episode_urn(_ROOM, "t3aa11bb")
+    for where in (thread, message_format.live_episode_urn(_ROOM)):
+        summon = message_format.build_envelope(
             kind=Kind.exchange, episode=where, sender="human", topic=_TOPIC, payload_type="message"
         )
-        engine.handle_summon(_ROOM, "aligner", summon)
+        engine.handle_summon(_ROOM, "aligner", summon, ["aligner", "a", "b"])
         await asyncio.sleep(0.02)
-    assert held_in == [thread, l9.live_episode_urn(_ROOM)]
+    assert held_in == [thread, message_format.live_episode_urn(_ROOM)]
 
 
 @pytest.mark.asyncio
@@ -156,8 +219,8 @@ async def test_mediate_stall_falls_back_when_brain_unavailable():
 async def test_engine_runtime_host_skips_registered_engine(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With ENGINE_RUNTIME=host the backend must NOT mediate a *registered* engine
-    (the host daemon owns the run) — but the reserved handle still runs backend-side."""
+    """With ENGINE_RUNTIME=host the backend must NOT mediate a registered engine
+    (the host daemon owns the run)."""
     import yaml
 
     from app.config import settings
@@ -187,7 +250,7 @@ async def test_engine_runtime_host_skips_registered_engine(
     monkeypatch.setattr(settings, "ENGINE_RUNTIME", "host")
 
     def _env(sender: str) -> Any:
-        return l9.build_envelope(
+        return message_format.build_envelope(
             kind=Kind.exchange,
             episode=_EPISODE,
             sender=sender,
@@ -196,14 +259,9 @@ async def test_engine_runtime_host_skips_registered_engine(
         )
 
     # The registered engine is skipped — the host daemon drives it.
-    engine.handle_summon(room, "mediator-1", _env("human"))
+    engine.handle_summon(room, "mediator-1", _env("human"), ["mediator-1", "a", "b"])
     await asyncio.sleep(0.02)
     assert called == []
-
-    # The reserved handle has no host manifest, so it always runs backend-side.
-    engine.handle_summon(room, "aligner", _env("human"))
-    await asyncio.sleep(0.02)
-    assert called == [room]
 
 
 def test_registered_engine_kind_reads_manifest() -> None:
@@ -228,25 +286,25 @@ def test_registered_engine_kind_reads_manifest() -> None:
     assert _registered_engine_kind(room, "ghost") is None  # no manifest
 
 
-def test_at_mention_neutralized_in_mediator_prompt() -> None:
-    """The mediator strips ``@`` before a word so its broker summary (which names
-    the other agents) can't spuriously wake them — only the L9 recipient wakes."""
-    from app.services.aligner import _AT_MENTION
+def test_the_mediator_is_told_a_bare_mention_asks() -> None:
+    """What the aligner posts is posted as written, so its model is told what a
+    bare ``@`` does, the same as every member the hub plays."""
+    import inspect
 
-    text = "@growth holds tech at 40%; @risk wants a hard cap. Email @ home is fine."
-    out = _AT_MENTION.sub("", text)
-    assert "@growth" not in out and "@risk" not in out
-    assert "growth holds tech" in out and "risk wants" in out
-    assert "@ home" in out  # a lone @ (not before a word char) is untouched
+    from app.services import mediator
+    from app.services.asks import MENTION_ETIQUETTE
+
+    assert "MENTION_ETIQUETTE" in inspect.getsource(mediator)
+    assert "@~name" in MENTION_ETIQUETTE
 
 
 # ── move type reaches the wire ─────────────────────────────────────────────
 
 
 def _fold_episode() -> Any:
-    from app.services import l9_episode
+    from app.services import episode_state
 
-    return l9_episode.open_episode(
+    return episode_state.open_episode(
         parent_room=_ROOM,
         short_id="abc123",
         workspace_id="ws-1",

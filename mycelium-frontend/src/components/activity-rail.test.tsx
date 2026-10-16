@@ -4,7 +4,7 @@
 // The "Recently updated" rail: live work first, finished work behind one line,
 // and each row saying what last happened to it.
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ActivityRail, lastChange, type ActivityItem, type ActivityUpdate } from "@/components/activity-rail";
@@ -47,6 +47,27 @@ describe("<ActivityRail />", () => {
     expect(screen.getByText("2 done")).toBeTruthy();
   });
 
+  it("folds to its header, keeps the counts and the task that moved last, and remembers", () => {
+    localStorage.removeItem("mycelium.activity.folded");
+    const items = [
+      { ...item("older", "claimed", [update("Claimed", "@ana", "claimed")]), at: AT - 60_000 },
+      item("newest", "blocked", [update("Blocked", "@sam", "blocked")]),
+    ];
+    const { unmount } = render(<ActivityRail items={items} />);
+    fireEvent.click(screen.getByRole("button", { name: "Fold recently updated tasks" }));
+
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.getByText(/^1 blocked$/)).toBeTruthy();
+    expect(screen.getByText("newest")).toBeTruthy();
+    expect(screen.queryByText("older")).toBeNull();
+    expect(localStorage.getItem("mycelium.activity.folded")).toBe("1");
+
+    unmount();
+    render(<ActivityRail items={items} />);
+    expect(screen.getByRole("button", { name: "Show recently updated tasks" })).toBeTruthy();
+    localStorage.removeItem("mycelium.activity.folded");
+  });
+
   it("doesn't count a lease running out as news in the header", () => {
     const items = [
       item("drained", "expired", [update("Expired", "held by @ana", "expired")]),
@@ -63,10 +84,16 @@ describe("<ActivityRail />", () => {
     expect(lastChange(update("Claimed", "@ana", "claimed"))).toBe("claimed by @ana");
   });
 
-  it("says an expired lease ran out on its holder, rather than that the holder expired it", () => {
-    expect(lastChange(update("Expired", "held by @ana", "expired"))).toBe("@ana's lease ran out");
+  it("says what its pull request did, and who a review was asked of", () => {
+    expect(lastChange(update("CI went red", "acme/shop#12"))).toBe("CI went red");
+    expect(lastChange(update("Merged", "acme/shop#12"))).toBe("merged");
+    expect(lastChange(update("Review requested", "acme/shop#12 · @ana"))).toBe("review requested from @ana");
+  });
+
+  it("says an expired hold ran out on its holder, rather than that the holder expired it", () => {
+    expect(lastChange(update("Expired", "held by @ana", "expired"))).toBe("@ana's hold ran out");
     render(<ActivityRail items={[item("drained", "expired", [update("Expired", "held by @ana", "expired")])]} />);
-    expect(screen.getByText("@ana's lease ran out")).toBeTruthy();
+    expect(screen.getByText("@ana's hold ran out")).toBeTruthy();
   });
 
   it("says whose turn it is when the floor was the last thing to move", () => {

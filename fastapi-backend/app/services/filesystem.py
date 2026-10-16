@@ -18,13 +18,17 @@ File format:
 """
 
 import contextlib
+import copy
 import json
 import logging
 import re
+import threading
+import time
 import uuid
 import zlib
+from collections import OrderedDict
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 import yaml
@@ -48,6 +52,12 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 # would be a board row claiming a conversation it was never part of.
 EPISODE_META = "episode"
 
+# The frontmatter key binding an ``uploads/`` memory to the file it records:
+# its blob's hash, size, type and original name (``services/uploads.py``).
+# Store-owned like the episode, so a memory write can't point a record at
+# another blob or change the type a file is served as.
+UPLOAD_META = "upload"
+
 # Frontmatter the store owns. Everything else in a memory's frontmatter is user
 # data: it survives a rewrite, a caller can set it via ``MemoryCreate.meta``, and
 # it is returned as ``MemoryRead.meta``.
@@ -62,6 +72,7 @@ MANAGED_META = frozenset(
         "tags",
         "value",
         EPISODE_META,
+        UPLOAD_META,
     }
 )
 
@@ -69,7 +80,7 @@ MANAGED_META = frozenset(
 # forward verbatim on every later write. Managed, so no caller sets one through
 # ``MemoryCreate.meta``; carried forward, so a write that doesn't supply one
 # keeps what the row has instead of dropping it.
-SYSTEM_META = frozenset({EPISODE_META})
+SYSTEM_META = frozenset({EPISODE_META, UPLOAD_META})
 
 
 def unmanaged_meta(meta: dict[str, Any]) -> dict[str, Any]:
@@ -125,8 +136,11 @@ def contained(base_dir: Path, relative: str) -> Path:
 
     Rejects ``..`` segments, absolute paths, symlinks that leave the base, and the
     base itself. The returned path is unresolved, so callers keep their existing
-    path semantics.
+    path semantics. Also rejects a backslash, which Windows reads as a separator
+    (so ``a\\b`` and ``a/b`` would be one file), and an empty segment.
     """
+    if "\\" in relative or any(not part.strip() for part in relative.split("/")):
+        raise UnsafePathError(f"not a valid name: {relative!r}")
     path = base_dir / relative
     resolved, base = path.resolve(), base_dir.resolve()
     if resolved == base or not resolved.is_relative_to(base):
@@ -162,17 +176,21 @@ def _sanitize_filename(key: str) -> str:
     """Convert a memory key to a safe filename.
 
     Keys like 'decisions/db' become 'decisions/db.md'.
-    Keys already ending in .md are left as-is.
+    Keys already ending in .md are left as-is. An empty key, or one ending in a
+    `/`, names no file and raises ``UnsafePathError``.
     """
+    if not key.strip() or key.endswith("/"):
+        raise UnsafePathError(f"not a valid key: {key!r}")
     if not key.endswith(".md"):
         key = key + ".md"
     return key
 
 
-def _key_from_path(file_path: Path, base_dir: Path) -> str:
+def _key_from_path(file_path: PurePath, base_dir: PurePath) -> str:
     """Extract a memory key from a file path relative to the base directory."""
     rel = file_path.relative_to(base_dir)
-    key = str(rel)
+    # Keys are `/`-separated on every platform; str() would give `\` on Windows.
+    key = rel.as_posix()
     if key.endswith(".md"):
         key = key[:-3]
     return key
@@ -279,6 +297,52 @@ def parse_memory(text: str) -> tuple[dict[str, Any], str]:
     return meta, match.group(2).strip()
 
 
+# ── Parsed-file cache ────────────────────────────────────────────────────────
+#
+# Parsing a memory's YAML frontmatter is most of what listing a room costs, and
+# the app lists memories on every poll. A file is parsed again only when its
+# stamp (modification and change times, size, inode) changes; otherwise its last
+# parse is reused. The file stays the source of truth: a write, an edit on disk
+# or a restore changes the stamp, and the next read parses it afresh.
+
+#: How many parsed files the hub keeps, oldest dropped first.
+PARSE_CACHE_MAX = 20_000
+#: How long after a change a file's parse isn't cached (see ``parse_memory_file``).
+RACY_WINDOW_NS = 2_000_000_000
+_parse_cache: OrderedDict[str, tuple[tuple[int, int, int, int], dict[str, Any], str]] = (
+    OrderedDict()
+)
+_parse_lock = threading.Lock()
+
+
+def parse_memory_file(path: Path) -> tuple[dict[str, Any], str]:
+    """``parse_memory`` of the file at ``path``, from cache when it hasn't changed.
+
+    Each call gets its own copy of the metadata, so a caller that edits it (as
+    ``list_memory_files`` does) can't change what the next caller sees.
+    """
+    stat = path.stat()
+    key = str(path)
+    stamp = (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, stat.st_ino)
+    with _parse_lock:
+        hit = _parse_cache.get(key)
+        if hit is not None and hit[0] == stamp:
+            _parse_cache.move_to_end(key)
+            return copy.deepcopy(hit[1]), hit[2]
+    meta, content = parse_memory(path.read_text(encoding="utf-8"))
+    # A file changed in the last moment isn't cached yet: a second same-size
+    # write inside the filesystem's timestamp resolution (a second or two on
+    # some filesystems) would leave its stamp unchanged. Once it has settled,
+    # any later change moves the stamp. Git treats its index the same way.
+    if time.time_ns() - stat.st_mtime_ns >= RACY_WINDOW_NS:
+        with _parse_lock:
+            _parse_cache[key] = (stamp, copy.deepcopy(meta), content)
+            _parse_cache.move_to_end(key)
+            while len(_parse_cache) > PARSE_CACHE_MAX:
+                _parse_cache.popitem(last=False)
+    return meta, content
+
+
 # ── File operations ──────────────────────────────────────────────────────────
 
 
@@ -323,8 +387,7 @@ def read_memory_file(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | N
         return None
     if not file_path.exists():
         return None
-    text = file_path.read_text(encoding="utf-8")
-    return parse_memory(text)
+    return parse_memory_file(file_path)
 
 
 def delete_memory_file(base_dir: Path, key: str) -> bool:
@@ -371,8 +434,7 @@ def list_memory_files(
     dated: list[tuple[datetime, tuple[str, dict[str, Any], str]]] = []
     for f in files:
         try:
-            text = f.read_text(encoding="utf-8")
-            meta, content = parse_memory(text)
+            meta, content = parse_memory_file(f)
             key = _key_from_path(f, base_dir)
         except Exception:
             logger.warning("Failed to read memory file: %s", f)

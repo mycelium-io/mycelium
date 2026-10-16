@@ -15,9 +15,10 @@ import pytest
 from starlette.requests import Request
 
 from app.routes import participate
-from app.services import l9, persister
-from app.services.l9_models import Kind
-from app.services.l9_slim import serialize_content
+from app.services import message_format, persister
+from app.services.asks import asks
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 
 # A bare ASGI request — ``authorize_handle`` is stubbed out, so the route never
 # reads it; it exists only to satisfy the ``Request`` parameter type.
@@ -25,15 +26,15 @@ _REQUEST = Request({"type": "http", "method": "GET", "path": "/await", "headers"
 
 
 def _addressed_record(message_id: str, *, to: str, sender: str = "avery"):
-    """A human exchange @-addressed to ``to`` (an L9 recipient, as the send path
+    """A human exchange @-addressed to ``to`` (a message recipient, as the send path
     builds it), recorded as a transcript record."""
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
-        episode=l9.episode_urn("r", "live"),
+        episode=message_format.episode_urn("r", "live"),
         sender=sender,
         sender_role="human",
         recipients=[to],
-        topic=l9.topic_urn("r"),
+        topic=message_format.topic_urn("r"),
         message_id=message_id,
         payload_type="message",
     )
@@ -124,6 +125,30 @@ async def test_await_consumes_the_message_it_serves(wired):
 
 
 @pytest.mark.asyncio
+async def test_await_hands_over_every_unread_ask_led_by_the_newest(wired):
+    """The wake shows every ask and leads with the newest, so one ``await``
+    hands over the same: all of them, oldest first, with the newest as the turn.
+    Serving the oldest first gave the agent a message the wake had moved past."""
+    log = persister.DeliveryLog()
+    for mid in ("m1", "m2", "m3"):
+        log.record(
+            _addressed_record(mid, to="claude-code-agent"),
+            delivered_to=set(),
+            recipients=["claude-code-agent"],
+        )
+
+    wired(log)
+    turn = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=0)
+    assert turn["message_id"] == "m3"
+    assert [a["message_id"] for a in turn["asks"]] == ["m1", "m2", "m3"]
+    assert turn["asks"][-1]["prompt"] == turn["prompt"]
+    assert turn["asks"][0]["id"] == str(persister.read_id(log.records[0]))
+
+    again = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=1)
+    assert again["message"] is None  # all three were handed over
+
+
+@pytest.mark.asyncio
 async def test_await_ignores_turns_addressed_to_others(wired):
     """A handle only wakes on turns addressed to it — an observer broadcast to a
     peer is consumed silently, never returned."""
@@ -142,18 +167,60 @@ async def test_await_ignores_turns_addressed_to_others(wired):
 def test_a_silent_mention_is_not_a_turn():
     """``@~handle`` names a member without asking it anything: the send path
     makes it no recipient, and the text alone does not address it either."""
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
-        episode=l9.episode_urn("r", "live"),
+        episode=message_format.episode_urn("r", "live"),
         sender="avery",
         sender_role="human",
         recipients=persister.parse_mentions("@reviewer look, cc @~claude-code-agent"),
-        topic=l9.topic_urn("r"),
+        topic=message_format.topic_urn("r"),
         payload_type="message",
     )
     content = serialize_content(env, extra={"content": "@reviewer look, cc @~claude-code-agent"})
-    assert participate._addressed_to(content, "reviewer")
-    assert not participate._addressed_to(content, "claude-code-agent")
+    assert asks(content, "reviewer")
+    assert not asks(content, "claude-code-agent")
+
+
+@pytest.mark.asyncio
+async def test_await_does_not_serve_a_handle_quoted_in_code(wired):
+    """A handle inside code is quoted, not mentioned: the send path makes it no
+    recipient, and ``await`` reads the text by the same rule, so a message whose
+    only mention of the handle is in code is never served to it."""
+    text = "quoting `ask @claude-code-agent to look` for @reviewer"
+    env = message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=message_format.episode_urn("r", "live"),
+        sender="avery",
+        sender_role="human",
+        recipients=persister.parse_mentions(text),
+        topic=message_format.topic_urn("r"),
+        message_id="m1",
+        payload_type="message",
+    )
+    content = serialize_content(env, extra={"content": text})
+    assert asks(content, "reviewer")
+    assert not asks(content, "claude-code-agent")
+
+    log = persister.DeliveryLog()
+    log.record(persister.record_from(env, content), delivered_to=set(), recipients=["reviewer"])
+    wired(log)
+    result = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=1)
+    assert result["message"] is None
+
+
+def test_an_interrupting_mention_addresses_by_text():
+    """``@!handle`` in the text addresses the handle like ``@handle`` does."""
+    env = message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=message_format.episode_urn("r", "live"),
+        sender="avery",
+        sender_role="human",
+        recipients=[],
+        topic=message_format.topic_urn("r"),
+        payload_type="message",
+    )
+    content = serialize_content(env, extra={"content": "@!Coder stop, wrong checkout"})
+    assert asks(content, "coder")
 
 
 @pytest.mark.asyncio
@@ -184,8 +251,34 @@ async def test_a_served_turn_says_the_handle_is_responding(wired):
     assert frame["type"] == activity.ACTIVITY_TYPE
     assert frame["handle"] == "claude-code-agent"
     assert frame["state"] == "responding"
-    assert frame["episode"] == l9.episode_urn("r", "live")
+    assert frame["episode"] == message_format.episode_urn("r", "live")
     assert len(log.records) == 1  # nothing was written to the transcript
+
+
+@pytest.mark.asyncio
+async def test_await_keeps_the_thread_a_wake_already_named(wired):
+    """A wake said where the agent is replying; await serves the oldest message
+    first and must not move the room's "responding in" line to an older place."""
+    from app.bus import bus, room_channel
+    from app.services import activity
+
+    log = persister.DeliveryLog()
+    log.record(
+        _addressed_record("m1", to="claude-code-agent"),
+        delivered_to=set(),
+        recipients=["claude-code-agent"],
+    )
+    wired(log)
+    activity.signal("r", "claude-code-agent", "responding", episode="urn:the-newest-thread")
+    queue = bus.subscribe(room_channel("r"))
+    try:
+        result = await participate.await_message(
+            "r", _REQUEST, handle="claude-code-agent", timeout=0
+        )
+        assert result["message_id"] == "m1"
+        assert queue.empty()  # nothing re-raised over the wake's thread
+    finally:
+        bus.unsubscribe(room_channel("r"), queue)
 
 
 def _said(
@@ -198,13 +291,13 @@ def _said(
     payload_type: str = "message",
 ):
     """A message said in the room (or ``thread``), addressed to ``to`` if given."""
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
-        episode=l9.episode_urn("r", thread),
+        episode=message_format.episode_urn("r", thread),
         sender=sender,
         sender_role="human",
         recipients=to or [],
-        topic=l9.topic_urn("r"),
+        topic=message_format.topic_urn("r"),
         message_id=message_id,
         payload_type=payload_type,
     )
@@ -299,7 +392,7 @@ async def test_earlier_carries_only_what_was_said(wired):
     wired(
         _log(
             _said("m1", "a real message"),
-            _said("m2", "", payload_type=l9.PING_PAYLOAD_TYPE),
+            _said("m2", "", payload_type=message_format.PING_PAYLOAD_TYPE),
             _said("m3", "@agent see above"),
         )
     )
@@ -337,7 +430,7 @@ async def test_a_turn_in_a_tasks_thread_names_the_task(wired, monkeypatch):
     """Asked in a row's thread, the turn names the row, which is what the caller
     passes as ``respond --task`` to answer there: a reply never follows the turn
     on its own."""
-    thread = l9.episode_urn("r", "t3")
+    thread = message_format.episode_urn("r", "t3")
     rows = {thread: ("work/fix-receipt", "Fix the receipt")}
     monkeypatch.setattr(participate.tasks, "row_of_episode", lambda _room, ep: rows.get(ep))
     wired(_log(_said("m1", "@agent can you review?", thread="t3")))

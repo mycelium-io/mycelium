@@ -12,7 +12,7 @@ function Room({ onPane }: { onPane: (id: string) => void }) {
   useKeyScope("room");
   useKeyAction("pane.channel", () => onPane("channel"));
   useKeyAction("pane.board", () => onPane("board"));
-  return <KeyBadge action="pane.network" />;
+  return <KeyBadge action="pane.schedules" />;
 }
 
 function Composer() {
@@ -48,6 +48,38 @@ describe("<KeymapProvider />", () => {
 
     await user.keyboard("c");
     expect(onPane).not.toHaveBeenCalled();
+  });
+
+  it("leaves Enter and Space to a focused button, and takes Enter elsewhere", async () => {
+    const chat = vi.fn();
+    const pressed = vi.fn();
+    const user = userEvent.setup();
+
+    function RoomWithButton() {
+      useKeyScope("room");
+      useKeyAction("focus.chat", () => chat());
+      return (
+        <button type="button" onClick={pressed}>
+          Open
+        </button>
+      );
+    }
+
+    render(
+      <KeymapProvider>
+        <RoomWithButton />
+      </KeymapProvider>,
+    );
+
+    screen.getByRole("button", { name: "Open" }).focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+    expect(pressed).toHaveBeenCalledTimes(2);
+    expect(chat).not.toHaveBeenCalled();
+
+    (document.activeElement as HTMLElement).blur();
+    await user.keyboard("{Enter}");
+    expect(chat).toHaveBeenCalledTimes(1);
   });
 
   it("leaves a room binding inert outside a room", async () => {
@@ -115,7 +147,7 @@ describe("<KeymapProvider />", () => {
 
     expect(document.querySelector("[data-key-badge]")).toBeNull();
     await user.keyboard("{Alt>}");
-    expect(document.querySelector("[data-key-badge]")).toHaveTextContent("N");
+    expect(document.querySelector("[data-key-badge]")).toHaveTextContent("K");
     await user.keyboard("{/Alt}");
     expect(document.querySelector("[data-key-badge]")).toBeNull();
   });

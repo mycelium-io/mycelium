@@ -4,10 +4,10 @@
 // Contract drift guard for the thread/ping wire constants (frontend side).
 //
 // The backend produces a ping (`room_channels.raise_ping`), the CLI reads one
-// (`mycelium.slim.l9.ping_of`), and this is the third reader. All three carry
+// (`mycelium.slim.message_format.ping_of`), and this is the third reader. All three carry
 // their own copy — the frontend's Docker build context is mycelium-frontend/
 // only, so it cannot import the repo root at runtime — and each asserts its copy
-// against contracts/slim-l9-wire.json here. Rename the payload type on one side
+// against contracts/slim-wire.json here. Rename the payload type on one side
 // alone and the room silently stops hearing that its threads have moved.
 
 import { readFileSync } from "node:fs";
@@ -17,16 +17,17 @@ import {
   LIVE_SESSION,
   NOTICE_PAYLOAD_TYPE,
   NOTICE_SUBKINDS,
+  UPSTREAM_CHANGES,
   PING_PAYLOAD_FIELDS,
   PING_PAYLOAD_TYPE,
   liveEpisodeUrn,
 } from "@/lib/threads";
 
-const CONTRACT_PATH = path.resolve(__dirname, "../../../contracts/slim-l9-wire.json");
+const CONTRACT_PATH = path.resolve(__dirname, "../../../contracts/slim-wire.json");
 
 function contract(): {
   ping: { payload_type: string; payload_fields: string[] };
-  notice: { payload_type: string; subkinds: string[] };
+  notice: { payload_type: string; subkinds: string[]; upstream_changes: string[] };
   urn: { room: string; session: string; expected_episode: string };
 } {
   return JSON.parse(readFileSync(CONTRACT_PATH, "utf-8"));
@@ -49,5 +50,6 @@ describe("thread wire constants contract", () => {
     const { notice } = contract();
     expect(NOTICE_PAYLOAD_TYPE).toBe(notice.payload_type);
     expect([...NOTICE_SUBKINDS]).toEqual(notice.subkinds);
+    expect([...UPSTREAM_CHANGES]).toEqual(notice.upstream_changes);
   });
 });

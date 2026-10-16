@@ -32,18 +32,18 @@ It hears four things:
 
 - a text **mention** (the summon seam) — a teammate asking it something, most
   often to review;
-- an **addressed turn** (``persister.on_addressed``) — how the conductor puts a
+- an **addressed turn** (``room_channels.on_turn``) — how the conductor puts a
   step to one member;
 - a row **filed for it** (a ``filed`` notice naming it) — it claims the row and
   works it in the row's thread;
 - the last child of a task it split **settling** (a ``resolved`` notice) — it
   writes the combined result into the parent's thread and resolves it.
 
-Unlike a persona, a worker may ``@``-mention a teammate, because asking for a
-review is the collaboration; a mention of anything else is neutralized, so a
-worker never summons an engine. Turns are serial per worker and capped per
-room (:attr:`~app.config.Settings.WORKER_MAX_TURNS_PER_ROOM`), so workers
-mentioning each other cannot run forever.
+What it says is posted as it said it: a mention asks whoever it names, by the
+same rule as anyone's (``asks.py``). Turns are serial per worker and capped per
+room (:attr:`~app.config.Settings.WORKER_MAX_TURNS_PER_ROOM`, which a room
+can lower with its ``worker-turns`` setting), so workers mentioning each other
+cannot run forever.
 """
 
 from __future__ import annotations
@@ -58,13 +58,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
-from app.services import activity, l9, markers
+from app.services import activity, markers, message_format, room_settings
+from app.services.agreed import for_prompt as agreed_for_prompt
 from app.services.aligner import _norm, _registered_engine_kind
-from app.services.l9_models import Kind
+from app.services.message_models import Kind
 from app.services.synthesizer import _strip_fences
 
 if TYPE_CHECKING:
-    from app.services.l9_models import L9
+    from app.services.message_models import MyceliumMessage
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
 logger = logging.getLogger(__name__)
@@ -91,7 +92,7 @@ REVISE = (
 
 _ACTION = re.compile(r"\[\[\s*(new|done)\b\s*:?\s*([^\]]*)\]\]", re.IGNORECASE)
 _NEW_ARGS = re.compile(r"^(?P<title>.+?)\s*(?:->|→)\s*@?(?P<handle>[\w.-]+)\s*$")
-_MENTION = re.compile(r"@([\w.-]+)")
+_MENTION = re.compile(r"@!?([\w.-]+)")
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 DEFAULT_CHARACTER = (
@@ -114,9 +115,11 @@ own line:
 When the task leaves something open, do not wait for someone to settle it:
 say in one line what you will assume, and go on. Nobody may be there to answer.
 
-Writing @name asks that teammate to act: review something, answer a question.
-Only do that when you need them to act, never to thank or acknowledge. Talk
-like a teammate: short, specific, no filler, no preamble, no code fences."""
+Writing @name asks that member to act, and wakes them: review something,
+answer a question. Write a bare @ only when you need them to act, never to
+thank or acknowledge; to name someone without asking them, write @~name or just
+their name. Talk like a teammate: short, specific, no filler, no preamble, no
+code fences."""
 
 #: How a worker with no tools does its work.
 WRITES_ONLY = """\
@@ -210,21 +213,6 @@ def team_of(room: str) -> list[str]:
         if agent.adapter != "engine" or agent.kind == ENGINE_KIND:
             team.append(agent.handle)
     return sorted(team)
-
-
-def keep_team_mentions(text: str, team: list[str], me: str) -> str:
-    """``text`` with every ``@`` that does not name a teammate neutralized.
-
-    A worker asks a teammate to act by naming them, so those mentions stay; a
-    mention of anything else (an engine, an unknown handle, itself) loses its
-    sigil, so a worker can never summon the aligner or the conductor.
-    """
-    members = {_norm(h) for h in team} - {_norm(me)}
-
-    def keep(match: re.Match[str]) -> str:
-        return match.group(0) if _norm(match.group(1)) in members else match.group(1)
-
-    return _MENTION.sub(keep, text)
 
 
 def _character(room: str, handle: str) -> str:
@@ -392,14 +380,18 @@ def build_prompt(
     thread: str,
     ask: str,
     checkout: str = "",
+    agreed: str = "",
 ) -> str:
-    """Assemble one turn's prompt. Pure — no I/O, directly unit-testable."""
+    """Assemble one turn's prompt. Pure — no I/O, directly unit-testable.
+
+    ``agreed`` is what the team already agreed for the task, when it did."""
     others = ", ".join(h for h in team if _norm(h) != _norm(me)) or "nobody else yet"
     where = f"the thread of task {task[0]}: {task[1]}" if task else "the room"
     at = f"{checkout}\n" if checkout else ""
     return (
         f"You are @{me}, in room '{room}', working with {others}.\n"
         f"You are speaking in {where}.\n{at}\n"
+        f"{agreed}"
         f"The thread so far:\n{thread}\n\n"
         f"{ask}"
     )
@@ -458,7 +450,8 @@ class WorkerEngine:
     ) -> None:
         self._manager = manager
         self._timeout_s = timeout_s if timeout_s is not None else settings.WORKER_PI_TIMEOUT_S
-        self._max_turns = max_turns if max_turns is not None else settings.WORKER_MAX_TURNS_PER_ROOM
+        #: A cap given here (tests) wins; otherwise each room's own, read per turn.
+        self._max_turns = max_turns
         # One turn at a time per worker: a second ask waits its turn rather
         # than being dropped, since a worker is often asked twice in a row (a
         # conductor step, then a row filed for it).
@@ -476,7 +469,7 @@ class WorkerEngine:
         self,
         room: str,
         handle: str,
-        envelope: L9,
+        envelope: MyceliumMessage,
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
@@ -493,8 +486,10 @@ class WorkerEngine:
                 return
         self._answer(room, handle, envelope, message_text)
 
-    def handle_addressed(self, room: str, handle: str, envelope: L9, message_text: str) -> None:
-        """A turn put to a worker as its L9 recipient: answer it."""
+    def handle_addressed(
+        self, room: str, handle: str, envelope: MyceliumMessage, message_text: str
+    ) -> None:
+        """A turn put to a worker as its message recipient: answer it."""
         self._answer(room, handle, envelope, message_text)
 
     def handle_notice(self, room: str, notice: dict[str, str]) -> None:
@@ -527,7 +522,7 @@ class WorkerEngine:
     def _is_worker(room: str, handle: str) -> bool:
         return _registered_engine_kind(room, handle) == ENGINE_KIND
 
-    def _answer(self, room: str, handle: str, envelope: L9, message_text: str) -> None:
+    def _answer(self, room: str, handle: str, envelope: MyceliumMessage, message_text: str) -> None:
         if not self._is_worker(room, handle):
             return
         if settings.ENGINE_RUNTIME == "host":
@@ -539,7 +534,7 @@ class WorkerEngine:
         if sender is None or _norm(sender) == _norm(handle):
             return
         episode = (envelope.header.message.episode if envelope.header.message else None) or ""
-        where = episode or l9.live_episode_urn(room)
+        where = episode or message_format.live_episode_urn(room)
         ask = (
             f"{sender} said to you:\n\n{message_text.strip()}\n\n"
             f"Answer {sender}. If you were asked to review something, say plainly what "
@@ -661,7 +656,12 @@ class WorkerEngine:
         from app.services import tasks
 
         used = self._turns.get(room, 0)
-        if used >= self._max_turns:
+        cap = (
+            self._max_turns
+            if self._max_turns is not None
+            else room_settings.value(room, "worker-turns")
+        )
+        if used >= cap:
             logger.info("room %s spent its %d worker turns; @%s stays quiet", room, used, handle)
             return None
         self._turns[room] = used + 1
@@ -686,6 +686,7 @@ class WorkerEngine:
             thread=_thread_so_far(room, episode),
             ask=ask,
             checkout=checkout.describe() if checkout else "",
+            agreed=await asyncio.to_thread(agreed_for_prompt, room, row[0]) if row else "",
         )
         system = f"{rules()}\n\n{_character(room, handle)}"
         activity.signal(room, handle, "responding", episode=episode)
@@ -712,7 +713,6 @@ class WorkerEngine:
         reply = _strip_fences(raw or "")
         payload, prose = markers.parse_marker(reply)
         actions, prose = parse_actions(prose)
-        prose = keep_team_mentions(prose, team, handle)
         if not prose.strip() and not actions:
             await self._say(
                 managed, episode, handle, "Pi returned an empty response; ask me again."
@@ -720,9 +720,6 @@ class WorkerEngine:
             return None
         if prose.strip():
             await self._say(managed, episode, handle, prose, payload=payload)
-            self._manager.enqueue_herdr_wakes_for_mentions(
-                room, prose, exclude=handle, episode=episode
-            )
         await self._act(room, handle, row[0] if row else None, actions, prose)
         if row is not None and prose.strip():
             self._hand_back(room, handle, row[0], episode, prose, actions, team)
@@ -750,8 +747,11 @@ class WorkerEngine:
         """
         if any(a.kind == "done" for a in actions):
             return
+        from app.services.persister import blank_code
+
         members = {_norm(h) for h in team} - {_norm(handle)}
-        if any(_norm(m) in members for m in _MENTION.findall(prose)):
+        # A teammate quoted in code isn't asked anything; the hub won't wake them.
+        if any(_norm(m) in members for m in _MENTION.findall(blank_code(prose))):
             return
         holder = _holder(room, key)
         if holder is None:
@@ -769,8 +769,12 @@ class WorkerEngine:
             )
             self._spawn(room, holder, self.turn(room, holder, episode=episode, ask=ask))
         elif self._manager.herdr_status(room, _norm(holder)) is not None:
-            # Rung with who and where, so the holder's digest can say it.
-            self._manager.enqueue_herdr_wake(room, _norm(holder), sender=handle, episode=episode)
+            # Rung with who, where and which task, so the holder's digest can
+            # say it. Not a mention: the post names nobody, which is why it's
+            # handed back.
+            self._manager.enqueue_herdr_wake(
+                room, _norm(holder), reason="handback", key=key, sender=handle, episode=episode
+            )
 
     @staticmethod
     def _may_resolve(room: str, handle: str, key: str) -> bool:
@@ -856,12 +860,12 @@ class WorkerEngine:
         if floor is not None and not floor.admits(sender):
             logger.info("worker @%s is off the floor in %s; not posting", sender, episode)
             return
-        env = l9.build_envelope(
+        env = message_format.build_envelope(
             kind=Kind.exchange,
             episode=episode,
             sender=sender,
             sender_role="agent",
-            topic=l9.topic_urn(managed.room),
+            topic=message_format.topic_urn(managed.room),
             payload_type="reply",
             payload_data=payload or {"action": "reply"},
         )

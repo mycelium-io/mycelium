@@ -112,11 +112,18 @@ async def sweep_expired_leases(now: datetime | None = None) -> list[tuple[str, s
 
 
 async def _sweep_loop() -> None:
+    from app.services import hold_sweep
+
     while True:
         try:
             await sweep_expired_leases()
         except Exception:  # keep the loop alive
             logger.exception("lease sweep iteration failed")
+        # Holds with no timer end on what the hub sees instead (#1136).
+        try:
+            await hold_sweep.sweep()
+        except Exception:
+            logger.exception("hold sweep iteration failed")
         await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
 
 

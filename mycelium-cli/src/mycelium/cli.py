@@ -5,6 +5,9 @@
 Mycelium CLI: Multi-agent coordination + persistent memory.
 """
 
+import os
+import sys
+
 import typer
 
 from mycelium import __version__
@@ -18,6 +21,7 @@ from mycelium.commands import (
     doctor,
     engine,
     experience,
+    file,
     herdr,
     hub,
     install,
@@ -32,6 +36,7 @@ from mycelium.commands import (
     pattern,
     room,
     runner,
+    schedule,
     skill,
     swarm,
     ui,
@@ -43,9 +48,27 @@ from mycelium.commands import (
     login as login_cmd,
 )
 
+#: The top of `mycelium --help`. Coding agents often start a new tool by
+#: reading its help, so the first thing it tells them is where the skill is.
+HELP = (
+    "[bold]Mycelium[/bold]: Multi-agent coordination + persistent memory\n\n"
+    "[bold]AI coding agents: run [cyan]mycelium skill print[/cyan] before anything else.[/bold] "
+    "It explains how to take part in a room: check the board for your tasks, work each one "
+    "in its thread, and reply where you were asked. [cyan]mycelium whoami[/cyan] shows "
+    "your handle and the room you're in."
+)
+
+# A PyInstaller build tells what it starts where it unpacked itself, so that a
+# one-file `mycelium` started under it reuses that temporary folder instead of
+# unpacking its own. What a long-running `mycelium` starts (herdr, and the
+# shells agents run in) lives on after it, so that folder goes away under them
+# (#1269). Everything started from here starts afresh instead.
+if getattr(sys, "frozen", False):
+    os.environ["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+
 app = typer.Typer(
     name="mycelium",
-    help="[bold]Mycelium[/bold]: Multi-agent coordination + persistent memory",
+    help=HELP,
     add_completion=True,
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
@@ -75,7 +98,6 @@ def main(
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress non-essential output"),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
 ) -> None:
-    """[bold]Mycelium[/bold]: Multi-agent coordination + persistent memory."""
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet
@@ -122,6 +144,8 @@ app.add_typer(board.app, name="board")
 app.add_typer(room.app, name="room")
 app.add_typer(memory.app, name="memory")
 app.add_typer(skill.app, name="skill")
+app.add_typer(schedule.app, name="schedule")
+app.add_typer(file.app, name="file")
 app.add_typer(config.app, name="config")
 app.add_typer(docs.app, name="docs")
 app.add_typer(metrics.app, name="metrics")
@@ -139,8 +163,8 @@ app.add_typer(openshell.app, name="openshell")
 app.add_typer(demo.app, name="demo")
 app.add_typer(hub.app, name="hub")
 
-# Hidden dev/testing plumbing: inject raw L9/SLIM traffic (see commands/wire.py).
-app.add_typer(wire.l9_app, name="l9", hidden=True)
+# Hidden dev/testing plumbing: inject raw message/SLIM traffic (see commands/wire.py).
+app.add_typer(wire.message_app, name="message", hidden=True)
 app.add_typer(wire.slim_app, name="slim", hidden=True)
 
 

@@ -74,13 +74,15 @@ def resolve_text(text: str | None, body: str | None, file: str | None, *, noun: 
 
 
 def takes_text(
-    param: str, help: str, *, noun: str = "text"
+    param: str, help: str, *, noun: str = "text", optional: bool = False
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:  # noqa: A002 - typer's own word
     """Let a command take ``param`` as an argument, ``--body`` or ``--file``.
 
     Put it under ``@app.command``. ``param`` must be one of the command's
     parameters; its argument becomes optional, and ``--body``/``-b`` and
     ``--file``/``-f`` are added. ``noun`` names the text in an error.
+    ``optional`` lets the command run with none of the three, ``param`` then
+    being ``None``; giving it twice is still refused.
     """
 
     def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -120,9 +122,11 @@ def takes_text(
         ]
 
         def before(kwargs: dict[str, Any], extras: dict[str, Any], _ctx: Any) -> None:
-            kwargs[param] = resolve_text(
-                kwargs.get(param), extras.get(_BODY), extras.get(_FILE), noun=noun
-            )
+            given = (kwargs.get(param), extras.get(_BODY), extras.get(_FILE))
+            if optional and all(s is None for s in given):
+                kwargs[param] = None
+                return
+            kwargs[param] = resolve_text(*given, noun=noun)
 
         return rewrite(fn, replace={param: argument}, add=options, before=before)
 

@@ -21,7 +21,7 @@
 
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { capture, shutdown } from "../shotkit/src/api.mjs";
 import { soundTake } from "./audio/build.mjs";
@@ -36,9 +36,36 @@ const out = resolve(outAt >= 0 ? argv[outAt + 1] : join(here, quick ? "../.shotk
 
 const flow = JSON.parse(readFileSync(join(here, "demo.json"), "utf8"));
 delete flow.$comment;
+// `eval:file:<name>` runs a script kept beside the take (the fade) in the page.
+flow.do = flow.do.map((a) =>
+  a.startsWith("eval:file:") ? `eval:${readFileSync(join(here, a.slice("eval:file:".length)), "utf8")}` : a,
+);
 
 refuseIfRunning();
 mkdirSync(dirname(out), { recursive: true });
+
+// The recording @builder uploads in the take: the checkout page in `clip/`,
+// Pay tapped five times. The scenario's server reads it from this path.
+const clip = resolve(here, "../.shotkit/demo/double-tap-one-charge.mp4");
+mkdirSync(dirname(clip), { recursive: true });
+await capture(
+  {
+    op: "video",
+    url: pathToFileURL(join(here, "clip/checkout.html")).href,
+    viewport: "390x720@2",
+    theme: "light",
+    format: "mp4",
+    leadIn: 900,
+    dwell: 250,
+    moveMs: 500,
+    tail: 1600,
+    do: ["hold:600", ...Array(5).fill("click:css=#pay"), "wait-text:Paid", "hold:1500"],
+    out: clip,
+  },
+  { log: (m) => console.error(`[clip] ${m}`) },
+);
+process.env.MYCELIUM_DEMO_CLIP = clip;
+
 const { baseUrl, stop } = await startScenario("demo", [flow.route]);
 
 try {

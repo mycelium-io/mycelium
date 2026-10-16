@@ -9,6 +9,12 @@
  *  `findConflicts` is asserted empty by a unit test, so a duplicate is a red
  *  gate rather than a key that silently stops working.
  *
+ *  A person can change an action's keys on the Keyboard shortcuts settings
+ *  page. Those changes are client settings (`lib/client-settings.ts`), applied
+ *  here with `setKeyOverrides`, and every lookup reads the table with them
+ *  applied, so the dispatcher, the badges and the cheatsheet all show the
+ *  person's keys rather than the defaults.
+ *
  *  Notation: a chord is an optional `mod+` (⌘ on macOS, Ctrl elsewhere) and
  *  `alt+` (⌥ on macOS) prefix followed by the key — case-sensitive for bare
  *  letters, so "J" means shift+j. */
@@ -95,15 +101,36 @@ export const KEYMAP: Binding[] = [
   { id: "nav.home", keys: ["alt+h"], label: "Home", group: "Navigate", scope: "global" },
 
   { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },
+  { id: "pane.stream", keys: ["alt+l"], label: "Stream", group: "Panes", scope: "room" },
   { id: "pane.board", keys: ["alt+p"], label: "Board", group: "Panes", scope: "room" },
-  // Network = the merged SLIM diagnostics rail + L9 protocol feed.
-  { id: "pane.network", keys: ["alt+n"], label: "Network", group: "Panes", scope: "room" },
+  // U for uploads: alt+F opens the browser's own menu on Windows and Linux.
+  { id: "pane.files", keys: ["alt+u"], label: "Files", group: "Panes", scope: "room" },
+  { id: "pane.schedules", keys: ["alt+k"], label: "Schedules", group: "Panes", scope: "room" },
+  { id: "tab.close", keys: ["alt+w"], label: "Close the tab", group: "Panes", scope: "room" },
+  { id: "tab.reopen", keys: ["alt+r"], label: "Reopen the last closed tab", group: "Panes", scope: "room" },
+  { id: "tab.split", keys: ["alt+s"], label: "Split the tab to the right", group: "Panes", scope: "room" },
+  { id: "group.next", keys: ["alt+BracketRight"], label: "Next group of tabs", group: "Panes", scope: "room" },
+  { id: "group.prev", keys: ["alt+BracketLeft"], label: "Previous group of tabs", group: "Panes", scope: "room" },
 
   { id: "rail.agents", keys: ["alt+a"], label: "Members", group: "Inspector", scope: "room" },
   { id: "rail.memory", keys: ["alt+m"], label: "Memory", group: "Inspector", scope: "room" },
   { id: "rail.toggle", keys: ["\\"], label: "Collapse / expand the rail", group: "Inspector", scope: "room" },
 
   { id: "focus.chat", keys: ["i", "Enter"], label: "Write a message", group: "Focus", scope: "room" },
+  // A ⌘/Ctrl chord, because it has to work while typing in the box, where
+  // ⌥ chords are characters. Plain ⌘ letters belong to the browser.
+  {
+    id: "composer.mic",
+    keys: ["mod+alt+v"],
+    label: "Turn the mic on or off",
+    group: "Focus",
+    scope: "room",
+  },
+  // Live only while the pointer is on a channel message: its hover bar
+  // registers them, and an unclaimed binding leaves the key alone.
+  { id: "message.reply", keys: ["r"], label: "Reply to the message", group: "Messages", scope: "room", palette: false },
+  { id: "message.quote", keys: ["q"], label: "Quote the message", group: "Messages", scope: "room", palette: false },
+  { id: "message.copy", keys: ["c"], label: "Copy the message's text", group: "Messages", scope: "room", palette: false },
   {
     id: "mode.command",
     keys: ["Escape"],
@@ -153,7 +180,12 @@ export function eventToChord(e: KeyboardEvent, mac: boolean): string {
   return parts.join("+");
 }
 
-const CHORD_LABELS: Record<string, string> = { Escape: "Esc", Backslash: "\\" };
+const CHORD_LABELS: Record<string, string> = {
+  Escape: "Esc",
+  Backslash: "\\",
+  BracketLeft: "[",
+  BracketRight: "]",
+};
 
 /** True for a chord the reveal modifier fires — the only kind a badge can
  *  honestly draw, since a badge is read while that modifier is held. */
@@ -181,12 +213,59 @@ export function formatChord(chord: string, mac: boolean): string {
   return [...mods, chordKey(chord)].join(mac ? "" : "+");
 }
 
+/** Actions whose keys can't be changed: a run of keys (⌥1–9) that only makes
+ *  sense whole, and Escape, which every overlay already answers. */
+export const FIXED_BINDINGS: ReadonlySet<string> = new Set(["rooms.digit", "mode.command"]);
+
+/** ⌘/Ctrl chords a browser handles before any page sees them, so a page can't
+ *  bind them; the desktop app can. */
+const BROWSER_KEPT = new Set(["mod+w", "mod+t", "mod+n", "mod+q", "mod+Tab"]);
+
+export function isBrowserKept(chord: string): boolean {
+  return BROWSER_KEPT.has(chord);
+}
+
+let overrides: Readonly<Record<string, readonly string[]>> = {};
+let active: Binding[] = KEYMAP;
+
+/** Replace the person's changed shortcuts (from their client settings). An
+ *  override for an unknown or fixed action is ignored. */
+export function setKeyOverrides(next: Readonly<Record<string, readonly string[]>>): void {
+  overrides = next;
+  active = applyOverrides(KEYMAP, next);
+}
+
+/** The table with a set of overrides applied. */
+export function applyOverrides(
+  table: readonly Binding[],
+  changes: Readonly<Record<string, readonly string[]>>,
+): Binding[] {
+  return table.map(b =>
+    changes[b.id] && !FIXED_BINDINGS.has(b.id) && changes[b.id].length > 0 ? { ...b, keys: [...changes[b.id]] } : b,
+  );
+}
+
+/** The bindings in force: the table with the person's changes applied. */
+export function activeKeymap(): readonly Binding[] {
+  return active;
+}
+
+/** The keys an action has by default, before anyone changed them. */
+export function defaultKeys(id: string): string[] {
+  return KEYMAP.find(b => b.id === id)?.keys ?? [];
+}
+
+/** Whether the person changed an action's keys. */
+export function isOverridden(id: string): boolean {
+  return Boolean(overrides[id]) && !FIXED_BINDINGS.has(id);
+}
+
 function inScope(binding: Binding, scopes: readonly KeyScope[]): boolean {
   return scopes.includes(binding.scope);
 }
 
 export function bindingsInScope(scopes: readonly KeyScope[]): Binding[] {
-  return KEYMAP.filter(b => inScope(b, scopes));
+  return active.filter(b => inScope(b, scopes));
 }
 
 /** Bindings a command palette row can stand for: live here, and not opted out. */
@@ -196,12 +275,28 @@ export function paletteBindings(scopes: readonly KeyScope[]): Binding[] {
 
 /** The binding a chord fires, if any. */
 export function matchBinding(chord: string, scopes: readonly KeyScope[]): Binding | undefined {
-  return KEYMAP.find(b => inScope(b, scopes) && b.keys.includes(chord));
+  return active.find(b => inScope(b, scopes) && b.keys.includes(chord));
 }
 
 /** The chord a given action answers to — what a target draws on its badge. */
 export function chordFor(id: string): string | undefined {
-  return KEYMAP.find(b => b.id === id)?.keys[0];
+  return active.find(b => b.id === id)?.keys[0];
+}
+
+/** Whether a clash can be settled by swapping: a fixed action keeps its keys
+ *  whatever is written for it, so a swap onto one would leave two actions on
+ *  the same key. */
+export function canSwap(clashes: readonly Binding[]): boolean {
+  return clashes.every(b => !FIXED_BINDINGS.has(b.id));
+}
+
+/** What giving ``id`` the keys ``keys`` would collide with, in the bindings in
+ *  force: the other actions sharing one of those keys where both are live. */
+export function conflictsFor(id: string, keys: readonly string[]): Binding[] {
+  const self = active.find(b => b.id === id);
+  if (!self) return [];
+  const overlap = (b: Binding) => b.scope === self.scope || b.scope === "global" || self.scope === "global";
+  return active.filter(b => b.id !== id && overlap(b) && b.keys.some(k => keys.includes(k)));
 }
 
 /** Two bindings collide if they share a chord in overlapping scopes, or reuse

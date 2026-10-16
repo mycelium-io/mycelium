@@ -4,6 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -12,10 +13,12 @@ import {
   LogIn,
   LogOut,
   Pencil,
+  Settings,
   Terminal,
   UserRound,
   Users,
 } from "lucide-react";
+import { settingHref } from "@/lib/client-settings";
 import { useNetworkStatus } from "@/lib/room-data";
 import { desktopVersion } from "@/lib/desktop";
 import { DOCS_URL } from "@/lib/install";
@@ -76,6 +79,7 @@ export function iamCommand(handle: string, user?: Pick<User, "display_name" | "t
 export function AccountMenu() {
   const { principal, setPrincipal } = useCurrentUser();
   const { signedIn, handle: sessionHandle, oidcConfigured, login, logout } = useAuthSession();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("menu");
   const [users, setUsers] = useState<User[]>([]);
@@ -156,6 +160,10 @@ export function AccountMenu() {
             signedIn={signedIn}
             canSignIn={oidcConfigured}
             onGo={setView}
+            onSettings={() => {
+              setOpen(false);
+              router.push(settingHref("general"));
+            }}
             onSignIn={login}
             onSignOut={async () => {
               setOpen(false);
@@ -210,12 +218,13 @@ export function AccountMenu() {
   );
 }
 
-function MenuView({
+export function MenuView({
   me,
   user,
   signedIn,
   canSignIn,
   onGo,
+  onSettings,
   onSignIn,
   onSignOut,
 }: {
@@ -224,6 +233,7 @@ function MenuView({
   signedIn: boolean;
   canSignIn: boolean;
   onGo: (view: View) => void;
+  onSettings: () => void;
   onSignIn: () => void;
   onSignOut: () => void;
 }) {
@@ -256,6 +266,9 @@ function MenuView({
         )}
         <Item icon={Terminal} onClick={() => onGo("terminal")} more>
           Use in a terminal
+        </Item>
+        <Item icon={Settings} onClick={onSettings}>
+          Settings
         </Item>
         <Item icon={Info} onClick={() => onGo("about")} more>
           About Mycelium
@@ -511,7 +524,7 @@ function TerminalView({ command, onBack }: { command: string; onBack: () => void
 
 /**
  * Which Mycelium this is: the hub's release (what the UI and every agent here
- * run against) and, inside the Mac app, the app's own, with where to read what
+ * run against) and, inside the desktop app, the app's own, with where to read what
  * changed. An unreleased build says so rather than printing a placeholder.
  */
 export function AboutView({ onBack }: { onBack?: () => void }) {
@@ -532,7 +545,7 @@ export function AboutView({ onBack }: { onBack?: () => void }) {
         <dd className="font-mono text-text">{version(hub)}</dd>
         {app && (
           <>
-            <dt className="text-muted-foreground">Mac app</dt>
+            <dt className="text-muted-foreground">Desktop app</dt>
             <dd className="font-mono text-text">{version(app)}</dd>
           </>
         )}

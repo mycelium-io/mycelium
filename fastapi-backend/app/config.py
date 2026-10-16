@@ -88,6 +88,22 @@ class Settings(BaseSettings):
     # (compose sets it from the bind mount's source). /health reports it so a
     # client can tell which folder on its machine this hub writes to.
     MYCELIUM_HOST_DATA_DIR: str | None = None
+    # The largest file a room takes as an upload (routes/uploads.py), in bytes.
+    UPLOADS_MAX_BYTES: int = 25 * 1024 * 1024
+
+    # Voice (services/voice.py): speech from the app's mic, transcribed here
+    # with Silero VAD through sherpa-onnx. Off unless the operator turns it on
+    # (`voice.enabled` in config.toml; the Mac app's own switch). VOICE_MODEL
+    # picks the speech model: `fast` (Moonshine v2, ~150 MB on disk and a ~500 MB
+    # worker while anyone talks) or `accurate` (Parakeet TDT 0.6B v2, ~630 MB
+    # and ~1.4 GB), read when the hub starts. The models are files in
+    # VOICE_MODEL_DIR (empty means <data dir>/models/voice), fetched once when
+    # VOICE_DOWNLOAD allows. VOICE_THREADS is the CPU threads one decode may use.
+    VOICE_ENABLED: bool = False
+    VOICE_MODEL: str = "fast"
+    VOICE_MODEL_DIR: str = ""
+    VOICE_DOWNLOAD: bool = True
+    VOICE_THREADS: int = 2
 
     # Metrics collector (for proxying /api/observability/collector and /traces)
     COLLECTOR_URL: str = "http://mycelium-collector:4318"
@@ -115,10 +131,10 @@ class Settings(BaseSettings):
     # so the CLI mirror agrees without config coupling.
     SLIM_IDENTITY: str = "psk"
 
-    # SIEP aligner — the first cognition engine. Dormant by default:
-    # nothing runs until the reserved handle is @-summoned on a room channel.
-    # A reserved handle is how a summon of the engine is told apart from an
-    # @-mention of a normal teammate.
+    # SIEP aligner — the first cognition engine. Dormant: nothing runs until a
+    # room's registered aligner is @-summoned. This handle is the usual one, so
+    # a mention of it in a room with no aligner gets one reply saying how to
+    # add it (and starts nothing).
     ALIGNER_HANDLE: str = "aligner"
     # MPC at/above this converges; below rejects (mirrors the old CFN
     # validation-intervention default of 0.6).
@@ -167,7 +183,7 @@ class Settings(BaseSettings):
     TELEMETRY_OTLP_ENDPOINT: str = ""
     # Whether the hub shares its usage events (app/services/analytics.py). The
     # hub records them either way; this sends them to the destination below.
-    # Asked at interactive install and on the Mac app's first-run screen.
+    # Asked at interactive install and on the desktop app's first-run screen.
     TELEMETRY_SEND_PRODUCT_ANALYTICS: bool = False
     # Where shared usage events are POSTed: HTTPS, or plain HTTP to this machine.
     TELEMETRY_ANALYTICS_DESTINATION: str = ""
@@ -206,6 +222,19 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_synthesizer_source(cls, v: object) -> object:
         return v.strip().lower() if isinstance(v, str) else v
+
+    # Verifier engine (kind ``verifier``) — checks what agents say about
+    # approvals and merges against the room's records and adds a line under a
+    # message whose claim doesn't hold. Off for the whole hub until turned on, and
+    # then it reads only the rooms that added it. Reuses the shared LLM_* +
+    # ALIGNER_PI_* Pi runtime for its last step.
+    VERIFIER_ENABLED: bool = False
+    VERIFIER_HANDLE: str = "verifier"
+    # Whether the hub's model reads the thread before a flag is shown. Off, the
+    # records step alone decides: cheaper, and noisier.
+    VERIFIER_CONFIRM: bool = True
+    # Per-call wall-clock bound (seconds) on that one-shot pi call.
+    VERIFIER_PI_TIMEOUT_S: float = 60.0
 
     # Hello engine (kind ``hello``) — answers a summon with one Pi turn and
     # writes nothing anywhere: the cheap proof that the whole engine path works
@@ -246,6 +275,16 @@ class Settings(BaseSettings):
     WORKER_PI_TIMEOUT_S: float = 600.0
     WORKER_MAX_TURNS_PER_ROOM: int = 60
 
+    # Schedules (services/schedules.py) — an agent's recurring check-in, fired
+    # by the hub. How often the hub looks for due ones, the shortest interval a
+    # schedule may have, how many one agent may hold in a room, and how long one
+    # lasts before it has to be renewed (by default, and at most).
+    SCHEDULE_TICK_S: float = 30.0
+    SCHEDULE_MIN_INTERVAL_S: int = 300
+    SCHEDULE_MAX_PER_AGENT: int = 5
+    SCHEDULE_DEFAULT_TTL_DAYS: float = 7.0
+    SCHEDULE_MAX_TTL_DAYS: float = 30.0
+
     # Pattern packs (routes/patterns.py) — scenarios a visitor can load as a room.
     # Set in config.toml under [patterns] (dir, allow_inline, personas_only); `.env`
     # carries them here, and compose mounts the folder and points PATTERNS_DIR at it.
@@ -275,8 +314,7 @@ class Settings(BaseSettings):
     # the engine runtime. "backend" (default):
     # this backend owns the run via its summon seam. "host": the host daemon owns
     # it (the engine runs where `pi` lives), so `handle_summon` must NOT also fire
-    # for a registered engine or the negotiation double-runs. The reserved
-    # ALIGNER_HANDLE fallback always runs backend-side (it has no host manifest).
+    # for a registered engine or the negotiation double-runs.
     # Flip this in tandem with the CLI's `engine.runtime` — they're a pair.
     ENGINE_RUNTIME: EngineRuntime = "backend"
 

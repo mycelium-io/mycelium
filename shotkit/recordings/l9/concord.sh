@@ -36,8 +36,6 @@ node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --do "zoom:text=/Everyone's on board|Couldn't get everyone there/@1.4" \
   --do "hold:3800" \
   --do "zoomout" \
-  --do "caption:The agreement files its follow-up work as sub-tasks on the board." \
-  --do "speed:4" \
-  --do "hold:24000" \
-  --do "speed:1" \
-  --do "hold:3000"
+  --do "caption:The decision is saved to the room's memory, next to the task." \
+  --do "click:context/decision/acme-renewal-offer" \
+  --do "hold:5000"

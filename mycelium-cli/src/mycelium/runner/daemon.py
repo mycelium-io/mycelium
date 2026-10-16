@@ -30,8 +30,8 @@ is exactly "start one of the agent CLIs you found, here".
 Even that is asked of the person here first. Anyone who can reach a hub can
 queue a job for any runner on it, so a launch, swarm or restart waits for a yes on
 this machine (``approvals``) unless a device paired here signed it, within
-what the pairing allows (``pairing``), or the runner trusts its hub: the Mac
-app's own hub, which only this machine can reach, or one the person said to
+what the pairing allows (``pairing``), or the runner trusts its hub: the
+desktop app's own hub, which only this machine can reach, or one the person said to
 trust with ``--trust-hub``. Scans and stops don't ask: a scan changes nothing,
 and a stop only ends an agent this machine already agreed to start. A ``pair``
 job doesn't ask either: it carries proof of a code only this machine printed.
@@ -50,7 +50,7 @@ import sys
 import threading
 import time
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -65,13 +65,26 @@ from mycelium import machine as this_machine
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
-from mycelium.integrations.herdr import HerdrBridge, HerdrError
+from mycelium.integrations import agents
+from mycelium.integrations.agents import of_kind
+from mycelium.integrations.herdr import HerdrBridge, HerdrError, HerdrPaneMapping
 from mycelium.runner import approvals, frameworks, pairing
-from mycelium.runner.hosts import AgentHost, HerdrHost, HostError, OmnigentHost
+from mycelium.runner.hosts import (
+    STEP_AGENT,
+    STEP_SHELL,
+    AgentHost,
+    HerdrHost,
+    HostError,
+    OmnigentHost,
+    StartHooks,
+)
 from mycelium.runner.log import failing, log, ms, open_log, recovered
+from mycelium.utils.process import pid_alive
 
-#: Jobs that start something on this machine, and so wait for a yes here.
-ASK_FIRST = frozenset({"launch", "swarm", "restart"})
+#: Jobs that start something on this machine, or type into a terminal on it
+#: (``adopt`` introduces an agent someone already has running), and so wait
+#: for a yes here.
+ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
 
@@ -89,6 +102,12 @@ SYNC_STALL_S = 30.0
 WATCH_S = 5.0
 #: A stopped agent is still listed for this long, so the app can start it again.
 KEEP_STOPPED = timedelta(hours=24)
+#: An agent waiting for input this long says how long, so the person knows it
+#: is still waiting; nothing closes it, that is theirs to decide.
+WAITING_LONG = timedelta(minutes=10)
+
+#: herdr's state for an agent being adopted, as a tracked agent's status.
+_ADOPTED_STATUS = {"idle": "idle", "done": "idle", "working": "working", "blocked": "blocked"}
 
 _SLUG = re.compile(r"[^a-z0-9]+")
 #: A UUID-shaped identity: an id, not a handle anyone reads.
@@ -96,7 +115,42 @@ _OPAQUE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 
 
 class JobError(Exception):
-    """A job this runner could not do, said as a sentence for the app to show."""
+    """A job this runner could not do, said as a sentence for the app to show.
+
+    ``result`` goes with the failure to the app: for a start, the step it
+    stopped at and the terminal it left open.
+    """
+
+    def __init__(self, message: str, *, result: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.result = result
+
+
+class _JobStart(StartHooks):
+    """A start the hub asked for: each step is reported on its job, and the wait
+    on the agent runs with the runner's pane lock let go.
+
+    Only for a start running under that lock (``_do_and_report``), which
+    ``unlocked`` gives back and takes again.
+    """
+
+    def __init__(self, runner: Runner, job_id: str) -> None:
+        self._runner = runner
+        self._job_id = job_id
+
+    def step(self, step: str) -> None:
+        self._runner._report(self._job_id, "running", {"step": step}, None)  # noqa: SLF001 - the job's own report
+
+    @contextlib.contextmanager
+    def unlocked(self) -> Iterator[None]:
+        # The pane is mapped by now, so a sync pass that runs meanwhile can't
+        # take the agent for a new one; it only has to not wait out this start.
+        panes = self._runner._panes  # noqa: SLF001
+        panes.release()
+        try:
+            yield
+        finally:
+            panes.acquire()
 
 
 def runner_dir() -> Path:
@@ -108,12 +162,12 @@ def runner_dir() -> Path:
 # ── registration ──────────────────────────────────────────────────────────────
 #
 # Every runner says it is running the same way, however it was started:
-# `mycelium runner` in a terminal, or the one inside the Mac app's supervisor.
+# `mycelium runner` in a terminal, or the one inside the desktop app's supervisor.
 # `runner.pid` holds the pid of the process it runs in (just the number, which
 # older CLIs read too), and `runner.started-by` beside it says who started it,
 # so a command that would signal that pid knows when it is the app's.
 
-#: Who started a runner: a terminal (`mycelium runner`), or the Mac app.
+#: Who started a runner: a terminal (`mycelium runner`), or the desktop app.
 TERMINAL, APP = "terminal", "app"
 
 _PID, _STARTED_BY = "runner.pid", "runner.started-by"
@@ -126,12 +180,8 @@ def registered(base: Path | None = None) -> tuple[int, str] | None:
         pid = int((folder / _PID).read_text().strip())
     except (OSError, ValueError):
         return None
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+    if not pid_alive(pid):
         return None
-    except PermissionError:
-        pass
     try:
         started_by = (folder / _STARTED_BY).read_text().strip() or TERMINAL
     except OSError:
@@ -171,12 +221,8 @@ def read_sync(path: Path | None = None) -> dict[str, Any] | None:
         return None
     if datetime.now(UTC) - at > timedelta(seconds=WATCH_S * 6):
         return None
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+    if not pid_alive(pid):
         return None
-    except PermissionError:
-        pass
     return body
 
 
@@ -230,13 +276,15 @@ def intro_prompt(
     if has_notes:
         return (
             who + f"Your notes say who you are and how to work: run `mycelium memory get "
-            f"agents/{handle}/notes` and follow them. Then run `mycelium board --room {room}` "
-            f"to see the work. {later}"
+            f"agents/{handle}/notes` and follow them. Then check the board "
+            f"(`mycelium board --room {room}`) for what's going on. {later}"
         )
     return (
-        who + f"Run `mycelium board --room {room}` to see the work. Take something that fits "
-        f"(`mycelium board claim <id> --room {room} --to @{handle}`) and post what you do in "
-        f'its thread (`mycelium board send <id> --room {room} --as {handle} --body "..."`). {later}'
+        who + f"Check the board (`mycelium board --room {room}`) for what's going on and "
+        "anything assigned to you. Don't take a task nobody gave you; when one is yours, "
+        f"claim it (`mycelium board claim <id> --room {room} --to @{handle}`) and post what "
+        f'you do in its thread (`mycelium board send <id> --room {room} --as {handle} --body "..."`). '
+        f"{later}"
     )
 
 
@@ -254,6 +302,15 @@ class Tracked:
     detail: str | None = None
     stopped_at: str | None = None
     workspace: str | None = None
+    #: Its introduction, until it is idle enough to be handed it.
+    intro: str | None = None
+    #: Since when it has been waiting for input (``blocked``), and what its host
+    #: said would help the person answer it.
+    waiting_since: str | None = None
+    waiting_note: str | None = None
+    #: Already running in its pane before it joined (an ``adopt``), so stopping
+    #: it from the app takes it out of the room but never closes its pane.
+    adopted: bool = False
 
     @property
     def live(self) -> bool:
@@ -359,7 +416,7 @@ class Runner:
         self.started_by = started_by
         #: Start what the hub asks without asking here: only for a hub nobody else can reach.
         self.trust_hub = trust_hub
-        #: Told of each question as it is asked (the Mac app shows it as a dialog).
+        #: Told of each question as it is asked (the desktop app shows it as a dialog).
         self.on_request = on_request
         self._requests_base = requests_base
         #: Where the devices paired with this machine are kept (``pairing.folder``).
@@ -400,6 +457,8 @@ class Runner:
         self.last_pass_at: str | None = None
         self.last_pass_ms: int | None = None
         self.sync_error: str | None = None
+        #: ``{workspace: (room, error)}`` for each binding the last pass couldn't sync.
+        self.failing_bindings: dict[str, tuple[str, str]] = {}
 
     # ── what this machine has ────────────────────────────────────────────────
 
@@ -568,15 +627,23 @@ class Runner:
                     self.host.gone(agent)
                     changed = True
                     continue
-                if found != (agent.status, agent.detail):
+                before = (agent.status, agent.detail, agent.intro)
+                if found[0] == "blocked":
+                    self._mark_waiting(agent)
+                else:
                     agent.status, agent.detail = found
+                    agent.waiting_since = agent.waiting_note = None
+                    # Not mid-turn: what herdr reads as idle, or can't read at all.
+                    if found[0] in ("idle", "running"):
+                        self._hand_intro(agent)
+                if (agent.status, agent.detail, agent.intro) != before:
                     changed = True
             if changed:
                 self.host.release(self.state)
                 self.state.save(self._state_path)
 
-    def framework(self, framework_id: str) -> frameworks.Known:
-        known = frameworks.by_id(framework_id)
+    def framework(self, framework_id: str) -> agents.AgentKind:
+        known = agents.by_id(framework_id)
         found = next((f for f in self.found if f.id == framework_id), None)
         if known is None or found is None or not found.installed:
             raise JobError(f"{framework_id} is not installed on {self.label}.")
@@ -637,10 +704,16 @@ class Runner:
     def has_notes(self, room: str, handle: str) -> bool:
         return self.notes(room, handle) is not None
 
-    def launch(self, spec: dict[str, Any]) -> dict[str, Any]:
-        """Start one agent on this machine's host, as ``@handle`` in ``room``, and tell it who it is."""
+    def launch(self, spec: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
+        """Start one agent on this machine's host, as ``@handle`` in ``room``, and tell it who it is.
+
+        ``job_id`` is the hub's job when the start runs as one, under the pane
+        lock: its steps are reported on it as they're reached.
+        """
         if not self.herdr:
-            raise JobError(f"{self.host.name} isn't running on {self.label}.")
+            raise JobError(
+                f"{self.host.name} isn't running on {self.label}. Start it, then try again."
+            )
         room, handle = str(spec["room"]), str(spec["handle"])
         known = self.framework(str(spec["framework"]))
         cwd = self.folder(spec.get("cwd"))
@@ -649,6 +722,13 @@ class Runner:
             running = self.state.agents.get(key)
             if running is not None and running.live and self.host.alive(running.pane):
                 return {"pane": running.pane, "already": True}
+        if spec.get("worktree") and not self.host.worktrees:
+            from mycelium.commands.swarm import SwarmError, member_worktree
+
+            try:
+                cwd = member_worktree(cwd, room, handle)
+            except SwarmError as e:
+                raise JobError(str(e)) from e
 
         join = (
             (self.join_code(room, handle), self.config.server.api_url) if self.host.joins else None
@@ -663,25 +743,176 @@ class Runner:
                 cwd=cwd,
                 env=self.pane_env(room, handle),
                 intro=intro,
+                hooks=_JobStart(self, job_id) if job_id else None,
             )
         except HostError as e:
-            raise JobError(f"{self.host.name} could not start {known.name}: {e}") from e
+            raise self._start_failed(e, known.name, handle) from e
+        agent = Tracked(
+            handle=handle,
+            room=room,
+            framework=known.id,
+            pane=started.ref,
+            cwd=started.cwd or str(cwd),
+            started_at=_now(),
+            status=started.status or "running",
+            workspace=started.workspace,
+            intro=intro if started.intro_pending else None,
+        )
+        if agent.status == "blocked":
+            self._mark_waiting(agent)
         with self._lock:
-            self.state.agents[key] = Tracked(
-                handle=handle,
-                room=room,
-                framework=known.id,
-                pane=started.ref,
-                cwd=started.cwd or str(cwd),
-                started_at=_now(),
-                status="running",
-                workspace=started.workspace,
-            )
+            self.state.agents[key] = agent
             self.state.save(self._state_path)
-        self.log.print(f"[green]started[/green] @{handle} ({known.name}) in {room} → {started.ref}")
         result = {"pane": started.ref}
         if started.workspace:
             result["workspace"] = started.workspace
+        if agent.status == "blocked":
+            result["waiting"] = agent.detail or f"waiting for input on {self.label}"
+            self.log.print(
+                f"[yellow]started[/yellow] @{handle} ({known.name}) in {room} → {started.ref}, "
+                "waiting for input there"
+            )
+        else:
+            self.log.print(
+                f"[green]started[/green] @{handle} ({known.name}) in {room} → {started.ref}"
+            )
+        return result
+
+    def _start_failed(self, e: HostError, name: str, handle: str) -> JobError:
+        """A start that didn't come up, said as what happened and what to do next.
+
+        What the host said stays in the result's ``detail`` and in the log, for
+        whoever is debugging; the sentence is for the person who asked.
+        """
+        from mycelium.commands.swarm import SHELL_WAIT_S
+        from mycelium.integrations.herdr import AgentNotReadyError
+
+        where = (
+            f"It's still open in herdr (pane {e.ref})" if e.ref else "Its terminal is still open"
+        )
+        # Why, in one word the app picks its guidance by: the shell never got to
+        # a prompt, the agent CLI ran but is showing something of its own, or
+        # the host refused for a reason of its own.
+        if e.step == STEP_SHELL:
+            why = "shell"
+            message = (
+                f"{name} couldn't start on {self.label}: the terminal opened for @{handle} "
+                f"didn't reach a shell prompt within {SHELL_WAIT_S:.0f} seconds. {where}. "
+                f"When it shows a prompt, start @{handle} again: it goes back to that terminal."
+            )
+        elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentNotReadyError):
+            why = "cli"
+            message = (
+                f"{name} didn't finish starting on {self.label}. Often it's waiting for an "
+                f"update, a sign-in or a first-run question. {where}: answer what it shows "
+                f"there, then start @{handle} again."
+            )
+        else:
+            why = "host"
+            message = f"{self.host.name} couldn't start {name} on {self.label}: {e}."
+            if e.ref:
+                message += f" {where}, and starting @{handle} again tries in it once more."
+        result = {
+            "step": e.step,
+            "why": why,
+            "pane": e.ref,
+            "screen": e.screen,
+            "detail": str(e),
+        }
+        return JobError(message, result={k: v for k, v in result.items() if v})
+
+    def _mark_waiting(self, agent: Tracked) -> None:
+        """Say ``agent`` is waiting for input, on which machine, and for how long once that's long."""
+        if agent.waiting_since is None:
+            agent.waiting_since = _now()
+            known = agents.by_id(agent.framework)
+            kind = (known.herdr_kind if known else None) or agent.framework
+            agent.waiting_note = self.host.blocker(agent.pane, kind)
+        waited = datetime.now(UTC) - datetime.fromisoformat(agent.waiting_since)
+        line = f"waiting for input on {self.label}"
+        if waited >= WAITING_LONG:
+            line += f" for {int(waited.total_seconds() // 60)} min"
+        agent.status = "blocked"
+        agent.detail = f"{line}\n{agent.waiting_note}" if agent.waiting_note else line
+
+    def _hand_intro(self, agent: Tracked) -> None:
+        """Give an agent that came up waiting the introduction it was kept from."""
+        if agent.intro is None:
+            return
+        try:
+            self.host.wake(agent.pane, agent.intro)
+        except HostError as e:
+            log.warning("@%s: couldn't hand over its introduction yet: %s", agent.handle, e)
+            return
+        log.info("@%s: answered; handed its introduction -> %s", agent.handle, agent.pane)
+        self.log.print(f"[green]introduced[/green] @{agent.handle} → {agent.pane}")
+        agent.intro = None
+
+    def _running_in(self, pane: str) -> dict[str, Any]:
+        """The agent herdr has running in ``pane``, or why there isn't one."""
+        if not self.herdr:
+            raise JobError(f"herdr isn't running on {self.label}. Start it, then try again.")
+        running = self.bridge.get_agent(pane)
+        if running is None:
+            raise JobError(f"No agent is running in pane {pane} on {self.label} any more.")
+        return running
+
+    def adopt(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Make an agent already running in a herdr pane ``@handle`` in ``room``, and introduce it.
+
+        Nothing is started: the pane is mapped to the handle (not ``managed``,
+        so closing it doesn't take the member out of the room), and its
+        introduction is typed in once it's idle. The mapping alone is what the
+        runner's sync pass reads for presence and wakes. Its workspace is not
+        bound to the room: binding one enrolls every agent running in it, and
+        the person chose this one.
+        """
+        room, handle, pane = str(spec["room"]), str(spec["handle"]), str(spec["pane"])
+        key = f"{room}/{handle}"
+        with self._lock:
+            tracked = self.state.agents.get(key)
+            if tracked is not None and tracked.live and tracked.pane == pane:
+                return {"pane": pane, "already": True}
+        running = self._running_in(pane)
+        taken = next((m for m in self.bridge.registry.all() if m.pane == pane), None)
+        if taken is not None and (taken.room, taken.handle) != (room, handle):
+            raise JobError(f"Pane {pane} is already @{taken.handle} in {taken.room}.")
+        kind = str(running.get("agent") or spec.get("framework") or "") or None
+        cwd = running.get("foreground_cwd") or running.get("cwd") or spec.get("cwd")
+        self.bridge.registry.set(
+            HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, cwd=cwd)
+        )
+        workspace = str(running.get("workspace_id") or "") or None
+        try:
+            agent = Tracked(
+                handle=handle,
+                room=room,
+                framework=kind or "claude",
+                pane=pane,
+                cwd=cwd,
+                started_at=_now(),
+                status=_ADOPTED_STATUS.get(str(running.get("agent_status") or ""), "running"),
+                workspace=workspace,
+                intro=intro_prompt(room, handle, has_notes=self.has_notes(room, handle)),
+                adopted=True,
+            )
+            if agent.status == "blocked":
+                self._mark_waiting(agent)
+            elif agent.status == "idle":
+                self._hand_intro(agent)
+            with self._lock:
+                self.state.agents[key] = agent
+                self.state.save(self._state_path)
+        except Exception as e:
+            # A failed adopt makes the hub take the member back, so let go of the pane too.
+            self.bridge.registry.remove(room, handle)
+            with self._lock:
+                self.state.agents.pop(key, None)
+            raise JobError(f"Couldn't bring in the agent in pane {pane}: {e}") from e
+        self.log.print(f"[green]adopted[/green] {pane} as @{handle} in {room}")
+        result: dict[str, Any] = {"pane": pane, "introduced": agent.intro is None}
+        if workspace:
+            result["workspace"] = workspace
         return result
 
     def stop_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
@@ -690,7 +921,11 @@ class Runner:
             agent = self.state.agents.get(key)
             if agent is None:
                 raise JobError(f"{self.label} isn't running @{spec['handle']} in {spec['room']}.")
-            self.host.stop(agent)
+            if agent.adopted:
+                # It was running before it joined: let go of it, never close its pane.
+                self.host.gone(agent)
+            else:
+                self.host.stop(agent)
             agent.status = "stopped"
             agent.detail = "stopped from the app"
             agent.stopped_at = _now()
@@ -698,6 +933,33 @@ class Runner:
             self.state.save(self._state_path)
         self.log.print(f"[yellow]stopped[/yellow] @{agent.handle} in {agent.room}")
         return {"pane": agent.pane}
+
+    def interrupt_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Stop an agent mid-turn with its CLI's own key, keeping its session.
+
+        For an ``@!`` mention. Only a working agent is sent the key; what it is
+        told is the wake the hub queued, which the sync pass delivers once it is
+        idle. One this runner started is on its own host; any other agent bound
+        to a room here is in a herdr pane (``mycelium machine`` lists them).
+        """
+        room, handle = str(spec["room"]), str(spec["handle"])
+        tracked = self.state.agents.get(f"{room}/{handle}")
+        host: AgentHost
+        if tracked is not None and tracked.live:
+            host, ref, kind = self.host, tracked.pane, tracked.framework
+        else:
+            mapping = self.bridge.registry.get(room, handle)
+            if mapping is None:
+                raise JobError(f"Nothing on {self.label} is running @{handle} in {room}.")
+            host = self.host if isinstance(self.host, HerdrHost) else HerdrHost(self.bridge)
+            ref, kind = mapping.pane, mapping.kind
+        try:
+            sent = host.interrupt(ref, kind)
+        except HostError as e:
+            raise JobError(str(e)) from e
+        said = "interrupted" if sent else "left alone (not working)"
+        self.log.print(f"[yellow]{said}[/yellow] @{handle} in {room}")
+        return {"pane": ref, "interrupted": sent}
 
     def swarm(self, spec: dict[str, Any], created_by: str | None) -> dict[str, Any]:
         """Open a herdr workspace for a team the hub set up, brief it, and start the kickoff.
@@ -793,11 +1055,14 @@ class Runner:
 
     def _cli_of(self, kind: str | None) -> str | None:
         """The framework id for a herdr kind, which is how a pairing names an agent CLI."""
-        return next((k.id for k in frameworks.KNOWN if kind and k.herdr_kind == kind), kind)
+        return next((k.id for k in agents.KNOWN if kind and k.herdr_kind == kind), kind)
 
     def _within(self, paired: pairing.Pairing, job: dict[str, Any], fields: dict[str, Any]) -> None:
         """Refuse unless ``fields`` are ``job``'s and the pairing covers them."""
         kind, spec = job.get("kind"), job.get("spec") or {}
+        if kind == "adopt":
+            # Nothing here checks its pane or handle: always ask.
+            raise pairing.Refused("bringing in a running agent is always asked")
         different = pairing.Refused("the signed request doesn't match the job")
         if kind == "restart":
             agents = [
@@ -828,10 +1093,9 @@ class Runner:
         )
         if any(str(fields.get(k)) != str(spec.get(k)) for k in same):
             raise different
-        if kind == "swarm" and (
-            fields.get("size") != len(spec.get("team") or [])
-            or bool(fields.get("worktree")) != bool(spec.get("worktree"))
-        ):
+        if bool(fields.get("worktree")) != bool(spec.get("worktree")):
+            raise different
+        if kind == "swarm" and fields.get("size") != len(spec.get("team") or []):
             raise different
         cwd = self.folder(spec.get("cwd"))
         if self._signed_folder(fields.get("cwd")) != cwd:
@@ -846,9 +1110,13 @@ class Runner:
     def do(self, job: dict[str, Any]) -> dict[str, Any]:
         kind, spec = job.get("kind"), job.get("spec") or {}
         if kind == "launch":
-            return self.launch(spec)
+            return self.launch(spec, job_id=str(job["id"]) if job.get("id") else None)
+        if kind == "adopt":
+            return self.adopt(spec)
         if kind == "stop":
             return self.stop_agent(spec)
+        if kind == "interrupt":
+            return self.interrupt_agent(spec)
         if kind == "scan":
             found = self.scan()
             return {"installed": [f.id for f in found if f.installed]}
@@ -880,6 +1148,29 @@ class Runner:
                 "message": (
                     f"Each starts again as itself and catches up from the room:\n{lines}\n\n"
                     f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
+                ),
+                "hub": hub,
+                "asked_by": asked_by,
+            }
+        if kind == "adopt":
+            room, handle, pane = (
+                str(spec.get("room")),
+                str(spec.get("handle")),
+                str(spec.get("pane")),
+            )
+            running = self._running_in(pane)
+            name = of_kind(running.get("agent") or spec.get("framework")).name or "agent"
+            folder = running.get("foreground_cwd") or running.get("cwd")
+            return {
+                "kind": kind,
+                "title": f"Bring the {name} in pane {pane} into {room} as @{handle}?",
+                "message": (
+                    f"It's already running on {self.label}"
+                    + (f", in {_tilde(Path(folder))}" if folder else "")
+                    + f". Mycelium would make that pane @{handle} in {room}, and type a short "
+                    "introduction into it once it's idle.\n\n"
+                    f"Room {room} on {hub}. Asked for by "
+                    f"{'@' + asked_by if asked_by else 'someone on that hub'}."
                 ),
                 "hub": hub,
                 "asked_by": asked_by,
@@ -995,8 +1286,16 @@ class Runner:
             with self._panes:
                 result = self.do(job)
         except JobError as e:
-            log.warning("job %s %s failed %dms: %s", job_id, kind, ms(started), e)
-            self._report(job_id, "failed", None, str(e), paired)
+            detail = (e.result or {}).get("detail")
+            log.warning(
+                "job %s %s failed %dms: %s%s",
+                job_id,
+                kind,
+                ms(started),
+                e,
+                f" ({detail})" if detail else "",
+            )
+            self._report(job_id, "failed", e.result, str(e), paired)
             self.log.print(f"[red]job {job_id} failed:[/red] {e}")
         except Exception as e:  # noqa: BLE001 - a job must always be reported
             log.exception("job %s %s failed %dms", job_id, kind, ms(started))
@@ -1051,14 +1350,22 @@ class Runner:
                 log.warning("sync pass finished after %dms; wakes go out again", ms(started))
 
     def _sync_once(self) -> None:
+        from mycelium.commands.herdr import BindingSyncError
+
         try:
             self.host.sync(self.config, self.state, self.log)
+        except BindingSyncError as e:
+            # The pass ran; only these bindings didn't. Each is logged as it fails.
+            self.sync_error = str(e)
+            self.failing_bindings = e.failed
         except Exception as e:  # noqa: BLE001 - a missed pass is retried on the next
             self.sync_error = str(e)
+            self.failing_bindings = {}
             failing(log, f"{self.host.name} sync", f"{self.host.name} sync failed: {e!r}")
             self.log.print(f"[dim]{self.host.name} sync: {e}[/dim]")
         else:
             self.sync_error = None
+            self.failing_bindings = {}
             recovered(log, f"{self.host.name} sync")
 
     def sync_health(self) -> dict[str, Any]:
@@ -1070,6 +1377,10 @@ class Runner:
             "running_s": round(time.monotonic() - running[1], 1) if running else None,
             "stall_s": SYNC_STALL_S,
             "error": self.sync_error,
+            "bindings": [
+                {"workspace": ws, "room": room, "error": err}
+                for ws, (room, err) in self.failing_bindings.items()
+            ],
         }
 
     def watch(self) -> None:
@@ -1101,7 +1412,7 @@ class Runner:
 
         The registration is what `mycelium machine`, `runner pair` and
         `herdr sync` read, so a runner counts as running however it was
-        started, the Mac app's included.
+        started, the desktop app's included.
         """
         register(self.started_by, self._state_path.parent)
         try:

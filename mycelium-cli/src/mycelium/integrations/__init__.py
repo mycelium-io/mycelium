@@ -5,8 +5,10 @@
 Integration registry: the single resolution point for a runtime family.
 
 Each family implements an :class:`Integration` subclass that builds, registers
-and destroys agent manifests, under ``integrations/<family>/`` (cursor also
-keeps the workspace assets it drops there).
+and destroys agent manifests. The agent CLIs' families (``claude_code``,
+``cursor``) live with everything else known about each CLI, in
+:mod:`mycelium.integrations.agents`; ``engine`` and ``a2a`` are members that
+are not CLIs and have packages of their own.
 
 One canonical family id is used everywhere internally: the **underscore**
 spelling (``claude_code``), since that is the value persisted in
@@ -19,9 +21,8 @@ one translation boundary.
 from __future__ import annotations
 
 from mycelium.integrations.a2a import A2aIntegration
+from mycelium.integrations.agents import CursorIntegration, ResidentIntegration, adapter_for
 from mycelium.integrations.base import AddOptions, AgentAdapter, Integration
-from mycelium.integrations.claude_code import ClaudeCodeIntegration
-from mycelium.integrations.cursor import CursorIntegration
 from mycelium.integrations.engine import EngineIntegration
 
 __all__ = [
@@ -54,17 +55,6 @@ def normalize_family_id(name: str) -> str:
     return _FAMILY_ALIASES.get(name, name)
 
 
-def adapter_for(framework: str | None) -> str:
-    """The adapter an agent CLI's agents are recorded under.
-
-    Every resident agent takes part the same way (``await``/``respond``), so the
-    adapter only matters where a family drops workspace assets; the agent CLI
-    itself is recorded beside it, as the manifest's ``framework``. The hub's
-    ``routes/runners.adapter_for`` answers the same for the agents it writes.
-    """
-    return "cursor" if framework == "cursor" else "claude_code"
-
-
 def get_integration(
     name: str,
     *,
@@ -80,7 +70,7 @@ def get_integration(
     """
     canonical = normalize_family_id(name)
     if canonical == "claude_code":
-        return ClaudeCodeIntegration(cwd=cwd)
+        return ResidentIntegration(cwd=cwd)
     if canonical == "cursor":
         # cursor takes the same ``cwd`` flag claude_code does; it's the
         # workspace root ``cursor-agent --workspace`` opens.

@@ -4,10 +4,11 @@
 #   bash shotkit/recordings/l9/record.sh concord acme-renewal-q4 acme-renewal-2027
 #   bash shotkit/recordings/l9/record.sh accord acme-handoff
 #
-# Each room name after the flow is one try. The same room name gives the same
-# run word for word, so a failed try is only worth repeating under a new name,
-# and a name that worked before (acme-renewal-q4 for Concord, acme-handoff for
-# Accord) will most likely give the same take again. The backend is restarted
+# Each room name after the flow is one try. Runs under one room name often come
+# out alike, so a failed try is best repeated under a new name; a name that
+# worked before (acme-renewal-2027 for Concord, acme-handoff for Accord) is a
+# good first try. HUB defaults to the recording hub on 8100, never your
+# everyday hub, since setup deletes every acme-* room. The backend is restarted
 # before each try, because persona teammates keep a model session per room and
 # handle, and a room recreated under an old name would otherwise remember the
 # last take. Takes land in .shotkit/l9-<flow>-<room>.mp4.
@@ -23,7 +24,7 @@ esac
 
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
-hub=${HUB:-http://localhost:8000}
+hub=${HUB:-http://localhost:8100}
 backend=${BACKEND_CONTAINER:-mycelium-l9-backend}
 cd "$root"
 

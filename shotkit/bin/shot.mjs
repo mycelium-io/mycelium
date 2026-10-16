@@ -17,9 +17,11 @@
  */
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { resolve } from "node:path";
-import { helpFor, parse } from "../src/args.mjs";
+import { pathToFileURL } from "node:url";
+import { camel, helpFor, parse, UsageError } from "../src/args.mjs";
 import { ACTION_HELP } from "../src/actions.mjs";
 
 const OUTPUT = {
@@ -180,6 +182,8 @@ const TERM = {
   pty: { type: "boolean", help: "run under a pty so Rich emits color (default on)" },
   prompt: { type: "string", value: "<sigil>", help: "prompt sigil, or --no-prompt to hide the line" },
   "show-exit": { type: "boolean", help: "show a non-zero exit code (default on)" },
+  verbose: { type: "boolean", help: "on failure, print the stack too" },
+  project: { type: "string", value: "<dir>", help: "the project (config, output folder) to work as" },
   "command-timeout": { type: "number", value: "<ms>", help: "kill the command after N ms" },
   env: { type: "map", value: "<k>=<v>", help: "extra environment (repeatable)" },
   echo: { type: "boolean", help: "include the plain-text output in --json" },
@@ -202,12 +206,48 @@ const APP = {
   mock: { type: "boolean", help: "boot the project's mock dev script (dev:mock) and keep it warm in the daemon" },
 };
 
+/** The project's committed flows (see src/flows.mjs), for ops that open the app. */
+const FLOW = {
+  flow: { type: "list", value: "<name>", help: "run a committed flow first (repeatable; shot flows lists them)" },
+  setup: { type: "boolean", help: "run the project's setup flow first, when it names one (default on; --no-setup)" },
+};
+
 // A take has no still-image business: nothing is clipped to an element, masked,
 // or made transparent, so those flags stay out of `shot help video`.
 const { "full-page": _fullPage, element: _element, mask: _mask, ...VIDEO_PAGE } = PAGE;
 const { transparent: _transparent, ...VIDEO_FRAME } = FRAME;
 
 const err = (m) => process.stderr.write(`${m}\n`);
+
+/**
+ * `--verbose` is taken out of argv before any command parses it, so it works
+ * the same after every command: a failure then prints its stack. Not after
+ * `shot term`, whose line belongs to the child from its first word on; there it
+ * is an ordinary flag ahead of the command.
+ */
+const VERBOSE_FLAG = process.argv[2] === "term" ? -1 : process.argv.indexOf("--verbose");
+if (VERBOSE_FLAG !== -1) process.argv.splice(VERBOSE_FLAG, 1);
+let VERBOSE = VERBOSE_FLAG !== -1 || Boolean(process.env.SHOTKIT_DEBUG || process.env.SHOT_DEBUG);
+
+/**
+ * `--project <dir>`: shoot another checkout (a worktree of main, say) without
+ * cd-ing into it. It has to land before src/project.mjs is first imported,
+ * which fixes the project for the process, so like --verbose it is taken out
+ * of argv up front; `shot term` reads it as an ordinary flag instead.
+ */
+function useProject(dir) {
+  if (!dir) throw new UsageError("--project needs a folder: shot app / --project ../app-main");
+  const path = resolve(dir);
+  if (!existsSync(path)) throw new UsageError(`--project ${dir}: no such folder`);
+  process.env.SHOTKIT_PROJECT = path;
+}
+const PROJECT_FLAG = process.argv[2] === "term" ? -1 : process.argv.findIndex((a) => a === "--project" || a.startsWith("--project="));
+const projectArg =
+  PROJECT_FLAG === -1
+    ? undefined
+    : process.argv[PROJECT_FLAG].includes("=")
+      ? process.argv.splice(PROJECT_FLAG, 1)[0].slice("--project=".length)
+      : (process.argv.splice(PROJECT_FLAG, 2)[1] ?? "");
 
 const USAGE = `shot — fast screenshots of the app and of CLI output
 
@@ -234,29 +274,38 @@ navigation — a page held open, driven step by step
   shot shoot --session r              shoot it as it stands
   shot sessions | shot close --session r
 
+flows — steps the project commits for reuse (shotkit/flows/*.json)
+  shot flows                          what the project ships
+  shot app --flow task-drawer         run one, then shoot
+
 daemon
   shot warm | status | stop | serve
   shot doctor | bench
 
 stdout carries the path and nothing else, so it composes:
   open "$(shot app /settings --mock)"
+A failure is one line, last: [shot] error: … — add --verbose for the stack.
+--project <dir> on any command works as that checkout (a worktree of main, say).
 ` + `
 actions (--do, and the arguments to \`shot do\` / \`shot shoot\`)${ACTION_HELP}
 `;
 
 const COMMAND_HELP = {
-  app: ["shot app [route] [options]", { ...APP, ...PAGE, ...RESPONSIVE, ...CHROME, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
+  app: ["shot app [route] [options]", { ...APP, ...FLOW, ...PAGE, ...RESPONSIVE, ...CHROME, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
   url: ["shot url <url> [options]", { ...PAGE, ...RESPONSIVE, ...CHROME, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
   term: ["shot term [options] <command…>   (flags must precede the command)", { ...TERM, ...CARD, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
   text: ["shot text <file|-> [options]", { ...TERM, ...CARD, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
   code: ["shot code <file> [options]", { ...CODE, ...CARD, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
-  html: ["shot html <file|-> [options]", { ...CARD, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
-  open: ["shot open <route|url> [options]   — hold a page open under a name", { ...SESSION, ...APP, ...PAGE, ...RESPONSIVE, ...FRAME, ...DAEMON }],
+  html: [
+    "shot html <file|-> [options]       — a page option (--do, --wait, --full-page…) opens the file as a page",
+    { ...CARD, ...PAGE, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON },
+  ],
+  open: ["shot open <route|url> [options]   — hold a page open under a name", { ...SESSION, ...APP, ...FLOW, ...PAGE, ...RESPONSIVE, ...FRAME, ...DAEMON }],
   do: ["shot do <verb:arg…> [options]       — drive the held page", { ...SESSION, ...PAGE, ...DAEMON }],
   shoot: ["shot shoot [verb:arg…] [options]   — shoot the held page as it stands", { ...SESSION, ...PAGE, ...CHROME, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
   video: [
     "shot video [route|url] [options]   — a recorded take, with a visible cursor",
-    { ...APP, ...VIDEO_PAGE, ...VIDEO_FRAME, ...OUTPUT, ...DAEMON, ...VIDEO, ...VIDEO_STAGE, ...SOUND },
+    { ...APP, ...FLOW, ...VIDEO_PAGE, ...VIDEO_FRAME, ...OUTPUT, ...DAEMON, ...VIDEO, ...VIDEO_STAGE, ...SOUND },
   ],
   sound: [
     "shot sound <video> [options]       — mix its clicks and keys (from <video>.sounds.json) over --bed, and mux",
@@ -324,7 +373,7 @@ function toSpec(op, flags) {
     const state = storageStatePath(flags.storageState ?? process.env.SHOTKIT_STORAGE_STATE);
     if (state) spec.storageState = state;
   }
-  for (const local of ["daemon", "idle", "json", "open", "clickNames"]) delete spec[local];
+  for (const local of ["daemon", "idle", "json", "open", "clickNames", "flow", "setup"]) delete spec[local];
   // `--click Foo` is sugar; the ordered `--do` list is the real interface, so
   // the shorthand lands at the end of it rather than in a second channel.
   if (flags.clickNames?.length) {
@@ -336,6 +385,62 @@ function toSpec(op, flags) {
     spec.range = [a || 1, b || Number.MAX_SAFE_INTEGER];
   }
   return spec;
+}
+
+/** Which flow a `--do` step (1-based) came from, so a failing one can say. */
+let blameStep = (_n) => null;
+
+/**
+ * Put the flows a capture asked for (`--flow`), behind the project's setup
+ * flow, ahead of the spec: their steps run first, their storage is overridden
+ * by `--storage`, and their route, viewport and theme apply only where the
+ * command line names none. The setup flow is for the app, so a URL skips it.
+ *
+ * @param {Record<string, any>} spec @param {Record<string, any>} flags
+ * @param {string | undefined} target the route or URL typed, if any
+ */
+async function withFlows(spec, flags, target) {
+  const { SETUP_FLOW } = await import("../src/project.mjs");
+  const isApp = !spec.url;
+  const names = [...(isApp && SETUP_FLOW && flags.setup !== false ? [SETUP_FLOW] : []), ...(flags.flow ?? [])];
+  if (!names.length) return spec;
+  const { flowOfStep, loadFlows, resolveFlows } = await import("../src/flows.mjs");
+  const flow = resolveFlows(names, loadFlows());
+  blameStep = (n) => flowOfStep(n, flow.segments);
+  const framed = ["viewport", "viewports", "responsive", "width", "height"].some((k) => spec[k] !== undefined);
+  return {
+    ...spec,
+    storage: { ...flow.storage, ...(spec.storage ?? {}) },
+    do: [...flow.do, ...(spec.do ?? [])],
+    ...(isApp && !target && flow.route ? { route: flow.route } : {}),
+    ...(!framed && flow.viewport ? { viewport: flow.viewport } : {}),
+    ...(spec.theme === undefined && flow.theme ? { theme: flow.theme } : {}),
+  };
+}
+
+/** `shot flows`: what the project ships, so an agent finds them before writing its own. */
+async function listFlows(argv) {
+  const { flags } = parse(argv, { json: OUTPUT.json });
+  const { FLOWS_DIR, PROJECT_ROOT, SETUP_FLOW } = await import("../src/project.mjs");
+  const { loadFlows } = await import("../src/flows.mjs");
+  const flows = [...loadFlows().values()].map(({ file, ...f }) => ({ ...f, setup: f.name === SETUP_FLOW }));
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(flows, null, 2)}\n`);
+    return;
+  }
+  const where = FLOWS_DIR.startsWith(`${PROJECT_ROOT}/`) ? FLOWS_DIR.slice(PROJECT_ROOT.length + 1) : FLOWS_DIR;
+  if (!flows.length) {
+    err(`[shot] no flows in ${where}/ — see "Flows" in the shotkit README`);
+    return;
+  }
+  const width = Math.max(...flows.map((f) => f.name.length));
+  for (const f of flows) {
+    const notes = [f.setup && "setup, runs first on every app capture", f.uses?.length && `uses ${f.uses.join(", ")}`, f.route]
+      .filter(Boolean)
+      .join(" · ");
+    process.stdout.write(`${f.name.padEnd(width)}  ${f.description ?? ""}${notes ? `  (${notes})` : ""}\n`);
+  }
+  err(`[shot] ${flows.length} in ${where}/ · shot app --flow <name>`);
 }
 
 async function runSpec(spec, flags) {
@@ -381,9 +486,17 @@ function report(result, flags) {
     bits.push(`${(result.durationMs / 1000).toFixed(1)}s`, `${result.frames} frames @ ${result.fps}fps`);
     if (result.meta?.truncated) bits.push("truncated at --max-seconds");
   }
-  err(`[shot] ${result.op} · ${bits.join(" · ")} · ${result.mode ?? "daemon"}${size}`);
+  // The checkout on camera, when known: with worktrees, two can serve the app.
+  const app = result.meta?.app;
+  const from = app ? ` · ${app.startsWith(`${homedir()}/`) ? `~${app.slice(homedir().length)}` : app}` : "";
+  err(`[shot] ${result.op} · ${bits.join(" · ")} · ${result.mode ?? "daemon"}${size}${from}`);
   if (result.meta?.exitCode) err(`[shot] command exited ${result.meta.exitCode}`);
   if (result.meta?.hint) err(`[shot] ${result.meta.hint}`);
+  // What an `eval:` read off the page. On stderr, so stdout stays the path.
+  for (const step of result.meta?.trace ?? result.trace ?? []) {
+    if (step.value === undefined) continue;
+    err(`[shot] ${step.action.slice(0, 60)} → ${typeof step.value === "string" ? step.value : JSON.stringify(step.value)}`);
+  }
   for (const step of result.trace ?? []) err(`[shot]   ${step.action} (${step.ms}ms)`);
   for (const shot of result.shots ?? []) err(`[shot]   ${shot.viewport} · ${shot.ms}ms · ${shot.width}x${shot.height}`);
   reportSound(result.sound, result.ms?.sound);
@@ -406,6 +519,7 @@ function report(result, flags) {
 }
 
 async function main() {
+  if (projectArg !== undefined) useProject(projectArg);
   const [command, ...argv] = process.argv.slice(2);
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
@@ -463,6 +577,11 @@ async function main() {
     return;
   }
 
+  if (command === "flows") {
+    await listFlows(argv);
+    return;
+  }
+
   if (command === "doctor") {
     const { doctor } = await import("../src/doctor.mjs");
     await doctor();
@@ -499,7 +618,18 @@ async function main() {
     return;
   }
   const [, flagSpec] = entry;
-  const { flags, rest } = parse(argv, flagSpec, { stopAtPositional: command === "term" });
+  let parsed;
+  try {
+    parsed = parse(argv, flagSpec, { stopAtPositional: command === "term" });
+  } catch (e) {
+    if (e instanceof UsageError) throw new UsageError(`${e.message}\n  shot help ${command} lists what it takes.`);
+    throw e;
+  }
+  const { flags, rest } = parsed;
+  if (flags.verbose) VERBOSE = true;
+  if (flags.project) useProject(flags.project);
+  delete flags.verbose;
+  delete flags.project;
 
   let spec;
   if (command === "term") {
@@ -511,6 +641,7 @@ async function main() {
     const target = rest[0] ?? "/";
     if (isUrl(target)) spec.url = target;
     else spec.route = target;
+    spec = await withFlows(spec, flags, rest[0]);
   } else if (command === "do" || command === "shoot") {
     spec = toSpec(command === "do" ? "act" : "shoot", flags);
     // Bare positionals are actions, so the common case reads as a sentence:
@@ -534,14 +665,26 @@ async function main() {
   } else if (command === "html") {
     const src = rest[0];
     if (!src) throw new Error("shot html needs a file, or - for stdin");
-    spec = toSpec("html", flags);
-    if (src === "-") spec.html = await readStdin();
-    else spec.file = resolve(src);
+    // A document that loads its fonts, runs a script, or has to be clicked
+    // through is a page, not a card: given anything a page takes, it is opened
+    // from disk the way `shot url` opens one, so its relative paths resolve and
+    // --do runs against it.
+    const pageFlags = Object.entries(PAGE).map(([name, s]) => s.dest ?? camel(name));
+    if (pageFlags.some((f) => flags[f] !== undefined)) {
+      if (src === "-") throw new UsageError("shot html - (stdin) is shot as a card; page options need a file");
+      spec = toSpec("url", flags);
+      spec.url = pathToFileURL(resolve(src)).href;
+    } else {
+      spec = toSpec("html", flags);
+      if (src === "-") spec.html = await readStdin();
+      else spec.file = resolve(src);
+    }
   } else if (command === "video") {
     spec = toSpec("video", flags);
     const target = rest[0] ?? "/";
     if (isUrl(target)) spec.url = target;
     else spec.route = target;
+    spec = await withFlows(spec, flags, rest[0]);
   } else if (command === "url") {
     if (!rest[0]) throw new Error("shot url needs a URL");
     spec = toSpec("url", flags);
@@ -549,6 +692,7 @@ async function main() {
   } else {
     spec = toSpec("app", flags);
     spec.route = rest[0] ?? "/";
+    spec = await withFlows(spec, flags, rest[0]);
   }
 
   const result = await runSpec(spec, flags);
@@ -556,6 +700,19 @@ async function main() {
 }
 
 main().catch((e) => {
-  err(`[shot] ${e?.stack ?? e}`);
-  process.exit(1);
+  // What went wrong, once, at the end of the output where `| tail -1` keeps it.
+  // A stack says nothing to someone who mistyped a flag, and Playwright's call
+  // log is detail; --verbose (or SHOTKIT_DEBUG=1) brings both back, first.
+  let message = String(e?.message ?? e).replace(/^(Error: )+/, "");
+  const cut = message.indexOf("\nCall log:");
+  if (cut !== -1) message = message.slice(0, cut).trimEnd();
+  const step = /^step (\d+), /.exec(message);
+  if (step) {
+    // Combined with the flows' steps, the number alone points at the wrong line.
+    const from = blameStep(Number(step[1]));
+    if (from) message = `${from.flow ? `flow ${from.flow}, ` : ""}${message.replace(/^step \d+/, `step ${from.step}`)}`;
+  }
+  if (VERBOSE && e?.stack) err(String(e.stack));
+  err(`[shot] error: ${message}`);
+  process.exit(e instanceof UsageError ? 2 : 1);
 });

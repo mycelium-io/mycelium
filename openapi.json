@@ -346,6 +346,59 @@
         }
       }
     },
+    "/api/rooms/{room_name}/engines/stop": {
+      "post": {
+        "tags": [
+          "engines"
+        ],
+        "summary": "Stop Negotiation",
+        "description": "Stop the aligner's negotiation running in the room.\n\nIt ends before its next turn (a turn being waited on is cut short),\ncommits ``rejected`` with reason ``stopped``, and posts one line saying who\nstopped it. 409 when nothing is running there.",
+        "operationId": "stop_negotiation_api_rooms__room_name__engines_stop_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NegotiationStop"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NegotiationStopped"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms": {
       "post": {
         "tags": [
@@ -866,10 +919,28 @@
                   "type": "null"
                 }
               ],
-              "description": "Only messages belonging to this L9 episode URN (one negotiation/session)",
+              "description": "Only messages belonging to this episode URN (one negotiation/session)",
               "title": "Episode"
             },
-            "description": "Only messages belonging to this L9 episode URN (one negotiation/session)"
+            "description": "Only messages belonging to this episode URN (one negotiation/session)"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the message whose id starts with this (the eight characters a wake names a message by, or the whole id)",
+              "title": "Id"
+            },
+            "description": "Only the message whose id starts with this (the eight characters a wake names a message by, or the whole id)"
           }
         ],
         "responses": {
@@ -995,14 +1066,14 @@
         }
       }
     },
-    "/api/rooms/{room_name}/messages/l9": {
+    "/api/rooms/{room_name}/messages/wire": {
       "get": {
         "tags": [
           "messages"
         ],
-        "summary": "List L9 Wire",
-        "description": "The room's L9 wire feed, replayed from the transcript (oldest first).\n\nBackfills the live L9 inspector: the SSE bus carries no history, so a freshly\nopened tab would otherwise start empty. Frames are the exact shape the bus\npushes, so the client projects backfill and live frames identically.\n\n``before`` is the same backward cursor ``GET /messages`` takes, and the\nchannel needs both: its feed is those two reads merged, so paging only the\nprose would hand back older pages with the control frames missing.",
-        "operationId": "list_l9_wire_api_rooms__room_name__messages_l9_get",
+        "summary": "List Wire",
+        "description": "The room's wire feed, replayed from the transcript (oldest first).\n\nBackfills the channel and Stream: the SSE bus carries no history, so a freshly\nopened tab would otherwise start empty. Frames are the exact shape the bus\npushes, so the client projects backfill and live frames identically.\n\n``before`` is the same backward cursor ``GET /messages`` takes, and the\nchannel needs both: its feed is those two reads merged, so paging only the\nprose would hand back older pages with the control frames missing.",
+        "operationId": "list_wire_api_rooms__room_name__messages_wire_get",
         "parameters": [
           {
             "name": "room_name",
@@ -1055,7 +1126,7 @@
                     "type": "object",
                     "additionalProperties": true
                   },
-                  "title": "Response List L9 Wire Api Rooms  Room Name  Messages L9 Get"
+                  "title": "Response List Wire Api Rooms  Room Name  Messages Wire Get"
                 }
               }
             }
@@ -1184,6 +1255,145 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/members": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "List Members",
+        "description": "Everyone in the room, from records rather than from who has posted.",
+        "operationId": "list_members_api_rooms__room_name__members_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMembers"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Add Person",
+        "description": "Add a person to the room. They need a user record and can't be an agent here.\n\nOn a gated hub the caller must be one of the room's people (or its owner).\nAdding someone already in the room returns their entry unchanged.",
+        "operationId": "add_person_api_rooms__room_name__members_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomPersonAdd"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomPerson"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/members/{handle}": {
+      "delete": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Remove Person",
+        "description": "Take a person out of the room. On a gated hub, yourself or, as its owner, anyone.",
+        "operationId": "remove_person_api_rooms__room_name__members__handle__delete",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -2297,6 +2507,59 @@
         }
       }
     },
+    "/api/runners/{runner_id}/adopt": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Adopt Agent",
+        "description": "Bring an agent already running on this runner's machine into a room.\n\nThe agent is one the machine reports as running in herdr and in no room\n(its report's ``unenrolled``). The member is written here first, owned by\nwhoever asked, so it shows in the room at once; the runner then asks the\nperson at the machine, maps the pane to the handle and introduces the\nagent once it's idle.",
+        "operationId": "adopt_agent_api_runners__runner_id__adopt_post",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerAgentAdopt"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runners/{runner_id}/agents/{room_name}/{handle}/stop": {
       "post": {
         "tags": [
@@ -2512,7 +2775,7 @@
           "episodes"
         ],
         "summary": "Get Episode",
-        "description": "Return one episode: its summary plus the full L9 envelope chain.",
+        "description": "Return one episode: its summary plus the full message chain.",
         "operationId": "get_episode_api_rooms__room_name__episodes__short_id__get",
         "parameters": [
           {
@@ -2642,7 +2905,7 @@
           "participate"
         ],
         "summary": "Post Reply",
-        "description": "Publish ``handle``'s reply as an L9 agent exchange the aligner scores.",
+        "description": "Publish ``handle``'s reply as an agent exchange message the aligner scores.",
         "operationId": "post_reply_api_rooms__room_name__reply_post",
         "parameters": [
           {
@@ -2985,6 +3248,130 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/sessions/herdr-wakes/outcomes": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Report Herdr Wakes",
+        "description": "A runner says what happened to the wakes it drained: delivered, or not and why.\n\nEach settles the wake's line in the room's wake log; one already settled,\nor not awaited, is ignored, so a retried report records nothing twice.",
+        "operationId": "report_herdr_wakes_api_rooms__room_name__sessions_herdr_wakes_outcomes_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WakeOutcomes"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/sessions/wakes": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "List Wakes",
+        "description": "What each wake in this room delivered, newest first (``log/wakes.jsonl``).\n\nFor telling \"it was told and didn't act\" from \"it was never woken with it\":\neach names the messages it covered by id, so the transcript holds the text.",
+        "operationId": "list_wakes_api_rooms__room_name__sessions_wakes_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "agent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WakeRecord"
+                  },
+                  "title": "Response List Wakes Api Rooms  Room Name  Sessions Wakes Get"
+                }
               }
             }
           },
@@ -3589,7 +3976,7 @@
           "memory"
         ],
         "summary": "Delete Memory",
-        "description": "Delete a memory by key. Removes the file and its search-index entry.",
+        "description": "Delete a memory by key. Removes the file and its search-index entry.\n\nAn ``uploads/`` record takes its file's bytes with it once no other upload\nin the room names them.",
         "operationId": "delete_memory_api_rooms__room_name__memory__key__delete",
         "parameters": [
           {
@@ -4170,6 +4557,341 @@
         }
       }
     },
+    "/api/rooms/{room_name}/schedules": {
+      "get": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "List Schedules",
+        "description": "Every schedule in the room, soonest next run first.",
+        "operationId": "list_schedules_api_rooms__room_name__schedules_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "owner",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this agent's",
+              "title": "Owner"
+            },
+            "description": "Only this agent's"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Create Schedule",
+        "description": "Set an agent a schedule. Held to the hub's minimum interval and per-agent cap.",
+        "operationId": "create_schedule_api_rooms__room_name__schedules_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/schedules/{name}": {
+      "get": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Get Schedule",
+        "description": "One schedule, with its recent runs (newest first).",
+        "operationId": "get_schedule_api_rooms__room_name__schedules__name__get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Update Schedule",
+        "description": "Change a schedule: its timing, prompt, check or task; pause, resume or renew it.",
+        "operationId": "update_schedule_api_rooms__room_name__schedules__name__patch",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Delete Schedule",
+        "operationId": "delete_schedule_api_rooms__room_name__schedules__name__delete",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/schedules/{name}/run": {
+      "post": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Run Schedule",
+        "description": "Run a schedule now: its pre-check, then the wake if it found anything.\n\nLeaves its timetable alone. ``wake`` skips the pre-check.",
+        "operationId": "run_schedule_api_rooms__room_name__schedules__name__run_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ScheduleRunRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleRunRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/skills": {
       "post": {
         "tags": [
@@ -4352,6 +5074,756 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/settings": {
+      "get": {
+        "tags": [
+          "room-settings"
+        ],
+        "summary": "List Room Settings",
+        "description": "Every room setting, with the room's own value where it set one.",
+        "operationId": "list_room_settings_api_rooms__room_name__settings_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RoomSettingRead"
+                  },
+                  "title": "Response List Room Settings Api Rooms  Room Name  Settings Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/settings/{setting_id}": {
+      "put": {
+        "tags": [
+          "room-settings"
+        ],
+        "summary": "Set Room Setting",
+        "description": "Set a room setting for this room, as a memory write at ``settings/<id>``.",
+        "operationId": "set_room_setting_api_rooms__room_name__settings__setting_id__put",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "setting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Setting Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomSettingWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomSettingRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "room-settings"
+        ],
+        "summary": "Reset Room Setting",
+        "description": "Drop the room's own value, so it runs with the hub's (or the default) again.",
+        "operationId": "reset_room_setting_api_rooms__room_name__settings__setting_id__delete",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "setting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Setting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomSettingRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/uploads": {
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Create Upload",
+        "description": "Add a file to the room. Refused (415) unless the app can preview it.",
+        "operationId": "create_upload_api_rooms__room_name__uploads_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_upload_api_rooms__room_name__uploads_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "List Room Uploads",
+        "description": "The room's uploads, newest first, with what this hub accepts.\n\nEach carries the message it was posted with, read from the room's history\nin one pass (``upload_origins``).",
+        "operationId": "list_room_uploads_api_rooms__room_name__uploads_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/uploads/{name}": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Get Upload",
+        "description": "One upload's record.",
+        "operationId": "get_upload_api_rooms__room_name__uploads__name__get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Delete Upload",
+        "description": "Remove an upload's record, and its bytes once nothing else names them.",
+        "operationId": "delete_upload_api_rooms__room_name__uploads__name__delete",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/uploads/{name}/raw": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Get Upload Bytes",
+        "description": "The file itself, sandboxed. Supports ranges, so audio and video can seek.",
+        "operationId": "get_upload_bytes_api_rooms__room_name__uploads__name__raw_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Save it rather than show it",
+              "default": false,
+              "title": "Download"
+            },
+            "description": "Save it rather than show it"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/uploads/{name}/thumb": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Get Upload Thumbnail",
+        "description": "A small WebP of an image upload, so a gallery doesn't load every full image.\n\nMade the first time it's asked for and kept beside the blobs, named by the\nimage's hash, so it can be cached for as long as the browser likes.",
+        "operationId": "get_upload_thumbnail_api_rooms__room_name__uploads__name__thumb_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/voice": {
+      "get": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "Voice Status",
+        "description": "Whether a mic can be turned on against this hub.",
+        "operationId": "voice_status_api_voice_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/voice/sessions/{session_id}": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "Hear",
+        "description": "Take a chunk of audio; return the text of any speech it finished.",
+        "operationId": "hear_api_voice_sessions__session_id__post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{16,64}$",
+              "description": "The app's id for one open mic",
+              "title": "Session Id"
+            },
+            "description": "The app's id for one open mic"
+          },
+          {
+            "name": "final",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "The mic is being turned off",
+              "default": false,
+              "title": "Final"
+            },
+            "description": "The mic is being turned off"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceHeard"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "Close",
+        "description": "Close a mic, dropping whatever it was in the middle of hearing.",
+        "operationId": "close_api_voice_sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{16,64}$",
+              "description": "The app's id for one open mic",
+              "title": "Session Id"
+            },
+            "description": "The app's id for one open mic"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/verifier/flags": {
+      "get": {
+        "tags": [
+          "verifier"
+        ],
+        "summary": "List Flags",
+        "description": "The room's flags, oldest first: shown ones and ones someone said are fine.",
+        "operationId": "list_flags_api_rooms__room_name__verifier_flags_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only flags raised at or after this time",
+              "title": "Since"
+            },
+            "description": "Only flags raised at or after this time"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VerifierFlagRead"
+                  },
+                  "title": "Response List Flags Api Rooms  Room Name  Verifier Flags Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/verifier/flags/{flag_id}/fine": {
+      "post": {
+        "tags": [
+          "verifier"
+        ],
+        "summary": "Mark Fine",
+        "description": "Someone says the claim is fine: the line goes away for everyone, and the\nanswer is kept for the verifier to learn from.",
+        "operationId": "mark_fine_api_rooms__room_name__verifier_flags__flag_id__fine_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "flag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Flag Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifierFineRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifierFlagRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/verifier/settings": {
+      "get": {
+        "tags": [
+          "verifier"
+        ],
+        "summary": "Get Settings",
+        "description": "On or off, the rooms it checks, which model it's using, and Learn's state.",
+        "operationId": "get_settings_api_verifier_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifierSettingsRead"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/verifier/learn": {
+      "post": {
+        "tags": [
+          "verifier"
+        ],
+        "summary": "Start Learn",
+        "description": "Label the past messages of the rooms it checks with the hub's model, once,\nthen fit the claim spotter to them. Runs in the background; poll the settings.\n\nIt spends the hub's model budget, so with sign-in on only a person may start\nit, never an agent's token.",
+        "operationId": "start_learn_api_verifier_learn_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifierSettingsRead"
                 }
               }
             }
@@ -4645,7 +6117,7 @@
           "hub"
         ],
         "summary": "Hub Settings",
-        "description": "What this hub is set up with, without a key or an address in it.",
+        "description": "What this hub is set up with, without a key or an address in it unless the\ncaller may change it (and never a key).",
         "operationId": "hub_settings_api_hub_settings_get",
         "responses": {
           "200": {
@@ -4654,6 +6126,72 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HubSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Change Hub Settings",
+        "description": "Save settings to config.toml through the CLI. They apply at the hub's next start.",
+        "operationId": "change_hub_settings_api_hub_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HubSettingsChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubSettingsSaved"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hub/restart": {
+      "post": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Restart Hub",
+        "description": "Restart this hub so saved settings apply. A desktop hub only: its\nsupervisor starts it again. Answers before it goes.",
+        "operationId": "restart_hub_api_hub_restart_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Restart Hub Api Hub Restart Post"
                 }
               }
             }
@@ -5462,6 +7000,27 @@
         "title": "AgentRead",
         "description": "Structured view of an agent's manifest, as returned by GET /rooms/{room}/agents."
       },
+      "Body_create_upload_api_rooms__room_name__uploads_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File",
+            "description": "The file to add"
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By",
+            "description": "Handle adding the file"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "created_by"
+        ],
+        "title": "Body_create_upload_api_rooms__room_name__uploads_post"
+      },
       "ClaimBody": {
         "properties": {
           "key": {
@@ -5475,11 +7034,17 @@
             "description": "The handle taking assignment"
           },
           "ttl_minutes": {
-            "type": "integer",
-            "minimum": 1.0,
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Ttl Minutes",
-            "description": "Minutes the claim holds without a renewal before it drains",
-            "default": 30
+            "description": "Make the hold a lease: minutes it lasts without a renewal before it drains. Omit for a hold with no timer, which ends only when the holder goes away, hands it off or resolves it."
           },
           "force": {
             "type": "boolean",
@@ -5742,6 +7307,234 @@
         "title": "EngineCreate",
         "description": "Request body to invite an engine into a room."
       },
+      "EnvelopeActorRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role"
+        ],
+        "title": "EnvelopeActorRead"
+      },
+      "EnvelopeContextRead": {
+        "properties": {
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
+          }
+        },
+        "type": "object",
+        "title": "EnvelopeContextRead"
+      },
+      "EnvelopeHeaderRead": {
+        "properties": {
+          "protocol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocol"
+          },
+          "subprotocol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subprotocol"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "subkind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subkind"
+          },
+          "participants": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnvelopeParticipantsRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnvelopeMessageRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnvelopeContextRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "EnvelopeHeaderRead"
+      },
+      "EnvelopeMessageRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "default": ""
+          },
+          "parents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Parents"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          }
+        },
+        "type": "object",
+        "title": "EnvelopeMessageRef"
+      },
+      "EnvelopeParticipantsRead": {
+        "properties": {
+          "actors": {
+            "items": {
+              "$ref": "#/components/schemas/EnvelopeActorRead"
+            },
+            "type": "array",
+            "title": "Actors"
+          },
+          "groups": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "title": "EnvelopeParticipantsRead"
+      },
+      "EnvelopePayloadRead": {
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "title": "EnvelopePayloadRead"
+      },
+      "EnvelopeRead": {
+        "properties": {
+          "header": {
+            "$ref": "#/components/schemas/EnvelopeHeaderRead"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnvelopePayloadRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "header"
+        ],
+        "title": "EnvelopeRead",
+        "description": "One faithful message in an episode's causal chain.\n\nThe sender is the first actor (`header.participants.actors[0].id`) by the\nbus convention in `app.services.message_format`; there is deliberately no flattened\n`sender_handle` on the wire envelope \u2014 the frontend derives it from actors."
+      },
       "EpisodeDetailRead": {
         "properties": {
           "short_id": {
@@ -5868,7 +7661,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/L9EnvelopeRead"
+              "$ref": "#/components/schemas/EnvelopeRead"
             },
             "type": "array",
             "title": "Messages"
@@ -6369,6 +8162,60 @@
         "title": "HerdrPresenceBody",
         "description": "The host-side ``mycelium herdr sync`` push: handle \u2192 herdr agent state.\n\nEach value may be a bare status string (simple form) or a\n:class:`HerdrAgentState` object carrying the status + current task title."
       },
+      "HubEditing": {
+        "properties": {
+          "may_edit": {
+            "type": "boolean",
+            "title": "May Edit"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why not, when it may not"
+          },
+          "can_restart": {
+            "type": "boolean",
+            "title": "Can Restart",
+            "description": "The hub can restart itself to apply changes"
+          },
+          "app_owned": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "App Owned",
+            "description": "Keys the desktop app sets itself; changed in the app's own settings"
+          },
+          "pending": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pending",
+            "description": "Keys saved since the hub started: they apply at its next start"
+          },
+          "values": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Values",
+            "description": "What each editable key is set to, saved changes included, for an editor only. A key is sent only as whether it is set."
+          }
+        },
+        "type": "object",
+        "required": [
+          "may_edit",
+          "can_restart"
+        ],
+        "title": "HubEditing",
+        "description": "Whether this caller may change the hub's settings from the page, and how."
+      },
       "HubExperience": {
         "properties": {
           "id": {
@@ -6475,6 +8322,36 @@
             "type": "boolean",
             "title": "Share Usage",
             "description": "Whether this hub sends its anonymous usage stats"
+          },
+          "workers": {
+            "$ref": "#/components/schemas/HubWorkers"
+          },
+          "dependency_gate": {
+            "type": "boolean",
+            "title": "Dependency Gate",
+            "description": "A row waiting on another can't be claimed, unless a room sets otherwise"
+          },
+          "patterns_inline": {
+            "type": "boolean",
+            "title": "Patterns Inline",
+            "description": "A caller may send a scenario in the request"
+          },
+          "sign_in": {
+            "type": "boolean",
+            "title": "Sign In",
+            "description": "Callers must present a token"
+          },
+          "voice": {
+            "$ref": "#/components/schemas/HubVoice"
+          },
+          "verifier": {
+            "type": "boolean",
+            "title": "Verifier",
+            "description": "The verifier is on for this hub",
+            "default": false
+          },
+          "editing": {
+            "$ref": "#/components/schemas/HubEditing"
           }
         },
         "type": "object",
@@ -6482,10 +8359,109 @@
           "model",
           "experiences",
           "personas_only",
-          "share_usage"
+          "share_usage",
+          "workers",
+          "dependency_gate",
+          "patterns_inline",
+          "sign_in",
+          "voice",
+          "editing"
         ],
         "title": "HubSettings",
-        "description": "What this hub is set up with. Read-only: change it on the hub's machine."
+        "description": "What this hub is set up with, and whether this caller may change it."
+      },
+      "HubSettingsChange": {
+        "properties": {
+          "changes": {
+            "additionalProperties": true,
+            "type": "object",
+            "minProperties": 1,
+            "title": "Changes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "changes"
+        ],
+        "title": "HubSettingsChange",
+        "description": "Settings to save, by config key (``contracts/hub-settings.json``). An empty\ntext or key clears it."
+      },
+      "HubSettingsSaved": {
+        "properties": {
+          "saved": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Saved"
+          },
+          "pending": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pending",
+            "description": "Everything saved since the hub started"
+          },
+          "restart_needed": {
+            "type": "boolean",
+            "title": "Restart Needed",
+            "description": "Saved settings apply when the hub next starts",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "saved",
+          "pending"
+        ],
+        "title": "HubSettingsSaved"
+      },
+      "HubVoice": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "The hub transcribes the message box's mic"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "fast or accurate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "model"
+        ],
+        "title": "HubVoice"
+      },
+      "HubWorkers": {
+        "properties": {
+          "tools": {
+            "type": "boolean",
+            "title": "Tools",
+            "description": "Workers can run commands in their checkout"
+          },
+          "turn_timeout_s": {
+            "type": "number",
+            "title": "Turn Timeout S",
+            "description": "The longest one worker turn may take"
+          },
+          "max_turns_per_room": {
+            "type": "integer",
+            "title": "Max Turns Per Room",
+            "description": "Worker turns a room gets; a room may lower it"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tools",
+          "turn_timeout_s",
+          "max_turns_per_room"
+        ],
+        "title": "HubWorkers"
       },
       "JoinCreate": {
         "properties": {
@@ -6547,234 +8523,6 @@
           "code"
         ],
         "title": "JoinRedeem"
-      },
-      "L9ActorRead": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "role": {
-            "type": "string",
-            "title": "Role"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "role"
-        ],
-        "title": "L9ActorRead"
-      },
-      "L9ContextRead": {
-        "properties": {
-          "topic": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Topic"
-          }
-        },
-        "type": "object",
-        "title": "L9ContextRead"
-      },
-      "L9EnvelopeRead": {
-        "properties": {
-          "header": {
-            "$ref": "#/components/schemas/L9HeaderRead"
-          },
-          "payload": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/L9PayloadRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "header"
-        ],
-        "title": "L9EnvelopeRead",
-        "description": "One faithful L9 envelope in an episode's causal chain.\n\nThe sender is the first actor (`header.participants.actors[0].id`) by the\nbus convention in `app.services.l9`; there is deliberately no flattened\n`sender_handle` on the wire envelope \u2014 the frontend derives it from actors."
-      },
-      "L9HeaderRead": {
-        "properties": {
-          "protocol": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Protocol"
-          },
-          "subprotocol": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subprotocol"
-          },
-          "version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Version"
-          },
-          "kind": {
-            "type": "string",
-            "title": "Kind"
-          },
-          "subkind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subkind"
-          },
-          "participants": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/L9ParticipantsRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "message": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/L9MessageRef"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "context": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/L9ContextRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "kind"
-        ],
-        "title": "L9HeaderRead"
-      },
-      "L9MessageRef": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "default": ""
-          },
-          "parents": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Parents"
-          },
-          "episode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Episode"
-          }
-        },
-        "type": "object",
-        "title": "L9MessageRef"
-      },
-      "L9ParticipantsRead": {
-        "properties": {
-          "actors": {
-            "items": {
-              "$ref": "#/components/schemas/L9ActorRead"
-            },
-            "type": "array",
-            "title": "Actors"
-          },
-          "groups": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Groups"
-          }
-        },
-        "type": "object",
-        "title": "L9ParticipantsRead"
-      },
-      "L9PayloadRead": {
-        "properties": {
-          "type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Type"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data"
-          }
-        },
-        "type": "object",
-        "title": "L9PayloadRead"
       },
       "MachineAgentRead": {
         "properties": {
@@ -6875,6 +8623,7 @@
               "lost",
               "runner_down",
               "wakes_stalled",
+              "binding_failing",
               "no_restore",
               "herdr_update",
               "herdr_down"
@@ -6984,6 +8733,13 @@
             },
             "type": "array",
             "title": "Problems"
+          },
+          "unenrolled": {
+            "items": {
+              "$ref": "#/components/schemas/MachineUnenrolledRead"
+            },
+            "type": "array",
+            "title": "Unenrolled"
           }
         },
         "type": "object",
@@ -7065,6 +8821,13 @@
             },
             "type": "array",
             "title": "Problems"
+          },
+          "unenrolled": {
+            "items": {
+              "$ref": "#/components/schemas/MachineUnenrolledRead"
+            },
+            "type": "array",
+            "title": "Unenrolled"
           }
         },
         "type": "object",
@@ -7103,6 +8866,100 @@
         "type": "object",
         "title": "MachineRestart",
         "description": "Agents to restart on a machine: some by handle, or every stopped one."
+      },
+      "MachineUnenrolledRead": {
+        "properties": {
+          "pane": {
+            "type": "string",
+            "title": "Pane"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind",
+            "description": "The agent CLI, as herdr names its kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "working",
+              "idle",
+              "blocked",
+              "unknown"
+            ],
+            "title": "State",
+            "default": "unknown"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          },
+          "workspace_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Label"
+          },
+          "tab_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tab Label",
+            "description": "The pane's tab name, where a handle comes from"
+          },
+          "suggested_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Handle",
+            "description": "A handle made from the tab name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pane"
+        ],
+        "title": "MachineUnenrolledRead",
+        "description": "An agent CLI running in a herdr pane on a machine that no room has yet,\nwhich Members \u2192 Add can bring into a room (an ``adopt`` job)."
       },
       "MachineWorkspaceRead": {
         "properties": {
@@ -7703,7 +9560,7 @@
               }
             ],
             "title": "Episode",
-            "description": "L9 episode URN this message belongs to, if any (for grouping/folding)"
+            "description": "episode URN this message belongs to, if any (for grouping/folding)"
           },
           "edited_at": {
             "anyOf": [
@@ -7982,6 +9839,39 @@
         "type": "object",
         "title": "MessageSearchScope",
         "description": "The interpretation a message search ran under, echoed so a client draws\nits chips from the same parse the server used."
+      },
+      "NegotiationStop": {
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who is stopping it; defaults to the caller."
+          }
+        },
+        "type": "object",
+        "title": "NegotiationStop",
+        "description": "Request body to stop the negotiation running in a room."
+      },
+      "NegotiationStopped": {
+        "properties": {
+          "stopped": {
+            "type": "boolean",
+            "title": "Stopped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stopped"
+        ],
+        "title": "NegotiationStopped",
+        "description": "What stopping did."
       },
       "NotesDraftRead": {
         "properties": {
@@ -8746,6 +10636,31 @@
         ],
         "title": "ResolveBody"
       },
+      "RoomAgentEntry": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "RoomAgentEntry",
+        "description": "An agent or engine, from its manifest."
+      },
       "RoomCreate": {
         "properties": {
           "name": {
@@ -8885,6 +10800,119 @@
         "title": "RoomFolders",
         "description": "How one person organizes their rooms list: theirs alone, not the room's.\n\nA room sits in at most one folder; rooms in none are listed as before.\nA name that no longer names a room is kept, and simply not drawn."
       },
+      "RoomMembers": {
+        "properties": {
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/RoomPerson"
+            },
+            "type": "array",
+            "title": "People"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/RoomAgentEntry"
+            },
+            "type": "array",
+            "title": "Agents"
+          },
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/RoomAgentEntry"
+            },
+            "type": "array",
+            "title": "Engines"
+          },
+          "others": {
+            "items": {
+              "$ref": "#/components/schemas/RoomOther"
+            },
+            "type": "array",
+            "title": "Others"
+          }
+        },
+        "type": "object",
+        "required": [
+          "people",
+          "agents",
+          "engines",
+          "others"
+        ],
+        "title": "RoomMembers",
+        "description": "Everyone in a room, from records rather than from who has posted."
+      },
+      "RoomOther": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "holds_task": {
+            "type": "boolean",
+            "title": "Holds Task",
+            "default": false
+          },
+          "present": {
+            "type": "boolean",
+            "title": "Present",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "RoomOther",
+        "description": "A handle that holds a task or is present, but is neither a person nor an agent here."
+      },
+      "RoomPerson": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          },
+          "via": {
+            "type": "string",
+            "enum": [
+              "created",
+              "added",
+              "message",
+              "seeded"
+            ],
+            "title": "Via",
+            "description": "How they joined: made the room, were added, posted in it, or were there before rooms kept a list"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "joined_at",
+          "via"
+        ],
+        "title": "RoomPerson",
+        "description": "One of a room's people, as recorded when they joined."
+      },
+      "RoomPersonAdd": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "RoomPersonAdd",
+        "description": "Add a person (someone with a user record) to a room."
+      },
       "RoomRead": {
         "properties": {
           "id": {
@@ -9015,6 +11043,167 @@
         ],
         "title": "RoomRead"
       },
+      "RoomSettingRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "bool, int or set"
+          },
+          "value": {
+            "title": "Value",
+            "description": "What the room runs with"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "room (set here), hub (the hub's value) or default"
+          },
+          "hub_value": {
+            "title": "Hub Value",
+            "description": "What the room would run with if it set nothing"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options",
+            "description": "A set's choices"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max",
+            "description": "The hub's cap, for a setting a room may only lower"
+          },
+          "inherits": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inherits",
+            "description": "The hub's config key this comes from"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why the room set it (the memory's body)"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "value",
+          "source",
+          "hub_value"
+        ],
+        "title": "RoomSettingRead"
+      },
+      "RoomSettingWrite": {
+        "properties": {
+          "value": {
+            "title": "Value"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Reason",
+            "description": "Why, kept as the memory's body",
+            "default": ""
+          },
+          "by": {
+            "type": "string",
+            "minLength": 1,
+            "title": "By",
+            "description": "Who is changing it"
+          },
+          "base_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version",
+            "description": "The version this change was made against; a newer one refuses it (409)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "by"
+        ],
+        "title": "RoomSettingWrite"
+      },
       "RoomStatusResponse": {
         "properties": {
           "room": {
@@ -9127,6 +11316,46 @@
         "title": "RoomUpdate",
         "description": "What a caller may change about a room after it exists."
       },
+      "RunnerAgentAdopt": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Room"
+          },
+          "pane": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pane",
+            "description": "The pane, from the machine's unenrolled agents"
+          },
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "pane",
+          "handle"
+        ],
+        "title": "RunnerAgentAdopt",
+        "description": "Bring an agent already running in a herdr pane on a runner's machine into\na room, as ``handle``. The runner asks the person there first, since it\ntypes the agent's introduction into their terminal."
+      },
       "RunnerAgentLaunch": {
         "properties": {
           "room": {
@@ -9174,6 +11403,12 @@
             ],
             "title": "Cwd",
             "description": "Folder to start it in; inside one of the roots"
+          },
+          "worktree": {
+            "type": "boolean",
+            "title": "Worktree",
+            "description": "Start it in its own git worktree of cwd",
+            "default": false
           },
           "created_by": {
             "anyOf": [
@@ -9439,7 +11674,9 @@
               "scan",
               "swarm",
               "restart",
-              "pair"
+              "pair",
+              "interrupt",
+              "adopt"
             ],
             "title": "Kind"
           },
@@ -9865,6 +12102,512 @@
         "type": "object",
         "title": "RunnerSyncRead",
         "description": "How a runner's sync pass (presence up, wakes down) is doing."
+      },
+      "ScheduleCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9._-]*$",
+            "title": "Name",
+            "description": "Schedule slug"
+          },
+          "owner": {
+            "type": "string",
+            "title": "Owner",
+            "description": "The agent the schedule wakes"
+          },
+          "every": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Every",
+            "description": "An interval like 30m, 2h or 1d"
+          },
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron",
+            "description": "A five-field cron line, read in UTC"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Prompt",
+            "description": "What the owner is told when it wakes",
+            "default": ""
+          },
+          "check": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check",
+            "description": "The pre-check that decides whether the owner wakes: always, mentions, assigned, stale, silent, task, or search:<query>"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task",
+            "description": "A board row the schedule is bound to"
+          },
+          "expires_in_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Days",
+            "description": "How long until it has to be renewed (hub default when omitted)"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By",
+            "description": "Who is setting it up"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "owner"
+        ],
+        "title": "ScheduleCreate"
+      },
+      "ScheduleListResponse": {
+        "properties": {
+          "schedules": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleRead"
+            },
+            "type": "array",
+            "title": "Schedules"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "checks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Checks",
+            "description": "The pre-checks the hub runs, and what each finds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedules",
+          "total"
+        ],
+        "title": "ScheduleListResponse"
+      },
+      "ScheduleRead": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "owner": {
+            "type": "string",
+            "title": "Owner"
+          },
+          "every": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Every"
+          },
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "default": ""
+          },
+          "check": {
+            "type": "string",
+            "title": "Check"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "expired"
+            ],
+            "title": "State"
+          },
+          "paused": {
+            "type": "boolean",
+            "title": "Paused"
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_by": {
+            "type": "string",
+            "title": "Updated By",
+            "description": "Who made the last change",
+            "default": ""
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "paused_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused By",
+            "description": "Who paused it, while it is paused"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "next_run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run"
+          },
+          "last_result": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "woke",
+                  "quiet",
+                  "held",
+                  "busy",
+                  "error"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Result"
+          },
+          "runs": {
+            "type": "integer",
+            "title": "Runs",
+            "default": 0
+          },
+          "wakes": {
+            "type": "integer",
+            "title": "Wakes",
+            "description": "Runs that woke the owner: each one is a model turn",
+            "default": 0
+          },
+          "quiet": {
+            "type": "integer",
+            "title": "Quiet",
+            "description": "Runs whose pre-check found nothing, costing no turn",
+            "default": 0
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleRunRead"
+            },
+            "type": "array",
+            "title": "History",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "owner",
+          "check",
+          "state",
+          "paused",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "expires_at"
+        ],
+        "title": "ScheduleRead"
+      },
+      "ScheduleRunRead": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "woke",
+              "quiet",
+              "held",
+              "busy",
+              "error"
+            ],
+            "title": "Result"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "manual"
+            ],
+            "title": "Trigger"
+          },
+          "missed": {
+            "type": "integer",
+            "title": "Missed",
+            "default": 0
+          },
+          "found": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Found",
+            "default": []
+          },
+          "found_total": {
+            "type": "integer",
+            "title": "Found Total",
+            "default": 0
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "result",
+          "trigger"
+        ],
+        "title": "ScheduleRunRead"
+      },
+      "ScheduleRunRequest": {
+        "properties": {
+          "wake": {
+            "type": "boolean",
+            "title": "Wake",
+            "description": "Skip the pre-check and wake the owner",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ScheduleRunRequest"
+      },
+      "ScheduleUpdate": {
+        "properties": {
+          "every": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Every"
+          },
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
+          },
+          "check": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task",
+            "description": "A row key, or an empty string to unbind"
+          },
+          "paused": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused"
+          },
+          "renew": {
+            "type": "boolean",
+            "title": "Renew",
+            "description": "Start its expiry again from now",
+            "default": false
+          },
+          "renew_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Renew Days",
+            "description": "Renew for this many days"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By",
+            "description": "Who is making the change"
+          }
+        },
+        "type": "object",
+        "title": "ScheduleUpdate"
       },
       "SearchHitRead": {
         "properties": {
@@ -10383,6 +13126,18 @@
             "title": "Title",
             "description": "What the task is \u2014 the row's title"
           },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content",
+            "description": "The task's description, in markdown: written into the row under its title, so the row and its memory page show it, search indexes it and its links are edges. The thread is for talking about the task."
+          },
           "handle": {
             "type": "string",
             "title": "Handle",
@@ -10478,6 +13233,210 @@
         ],
         "title": "TeamRead",
         "description": "A team, rolled up from the agents fielded under it and its member users."
+      },
+      "UploadListResponse": {
+        "properties": {
+          "uploads": {
+            "items": {
+              "$ref": "#/components/schemas/UploadRead"
+            },
+            "type": "array",
+            "title": "Uploads"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "accepted": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Accepted",
+            "description": "The file extensions this hub takes, lowercase, no dot"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "title": "Max Bytes",
+            "description": "The largest file this hub takes, in bytes",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "uploads",
+          "total"
+        ],
+        "title": "UploadListResponse"
+      },
+      "UploadOrigin": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "The message's id, as the room's history reads it"
+          },
+          "sender": {
+            "type": "string",
+            "title": "Sender"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "The task thread it was said in; none when it was said in the channel"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task",
+            "description": "That thread's board row key, when a row carries it"
+          },
+          "task_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "sender",
+          "at"
+        ],
+        "title": "UploadOrigin",
+        "description": "The message an upload was posted with."
+      },
+      "UploadRead": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The upload's name in the room, unique there; its URL segment"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "The memory key, `uploads/<name>`; link it as [[key]]"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "The name the file had when it was added, for download"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "pdf",
+              "text",
+              "audio",
+              "video"
+            ],
+            "title": "Kind"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type",
+            "description": "The type the file is served as"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Size in bytes, after cleaning"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "The upload's own thread, as every memory has"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Path of the file's bytes on this hub, under /api"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url",
+            "description": "Path of a small WebP of an image, for a gallery; none for other kinds"
+          },
+          "posted_in": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UploadOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first message that linked this upload; none when no message does"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "key",
+          "filename",
+          "kind",
+          "content_type",
+          "size",
+          "sha256",
+          "created_by",
+          "created_at",
+          "url"
+        ],
+        "title": "UploadRead",
+        "description": "A file the room keeps: an ``uploads/<name>`` memory and the bytes it names."
       },
       "UpstreamRead": {
         "properties": {
@@ -10751,6 +13710,574 @@
         ],
         "title": "ValidationError"
       },
+      "VerifierCheckedRead": {
+        "properties": {
+          "what": {
+            "type": "string",
+            "title": "What",
+            "description": "What was looked at: 'approvals of #1278 in this room'"
+          },
+          "found": {
+            "type": "string",
+            "title": "Found",
+            "description": "What it found: 'none', 'approved', 'merged at 20:08'"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "The message or notice it found, when there is one"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "what",
+          "found"
+        ],
+        "title": "VerifierCheckedRead",
+        "description": "One record the verifier looked at, for *Show why*."
+      },
+      "VerifierEstimateRead": {
+        "properties": {
+          "messages": {
+            "type": "integer",
+            "title": "Messages"
+          },
+          "approx_tokens": {
+            "type": "integer",
+            "title": "Approx Tokens"
+          },
+          "approx_usd": {
+            "type": "number",
+            "title": "Approx Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "messages",
+          "approx_tokens",
+          "approx_usd"
+        ],
+        "title": "VerifierEstimateRead"
+      },
+      "VerifierFineRequest": {
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who says it's fine (bound to the caller when sign-in is on)"
+          }
+        },
+        "type": "object",
+        "title": "VerifierFineRequest"
+      },
+      "VerifierFlagRead": {
+        "properties": {
+          "flag_id": {
+            "type": "string",
+            "title": "Flag Id"
+          },
+          "failure": {
+            "type": "string",
+            "title": "Failure",
+            "description": "Which failure it is: ungranted_approval, unsupported_completion, decision_taken, dropped_directive, misread_intent, stale_state, handoff_loss, scope_violation or unasked_side_effect. The checks so far find ungranted_approval and stale_state.",
+            "default": ""
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "The message the line goes under: its id in the room's history read"
+          },
+          "envelope_id": {
+            "type": "string",
+            "title": "Envelope Id",
+            "description": "The same message's envelope id: the id it carries when it arrives live over the room's stream, before a reload reads it from history",
+            "default": ""
+          },
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "The thread's short id, or 'live'"
+          },
+          "about": {
+            "type": "string",
+            "title": "About",
+            "description": "The agent that made the claim"
+          },
+          "by": {
+            "type": "string",
+            "title": "By",
+            "description": "The verifier engine's handle"
+          },
+          "claim": {
+            "type": "string",
+            "enum": [
+              "approval",
+              "open"
+            ],
+            "title": "Claim"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref",
+            "description": "The pull request it is about: '#1278'"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line",
+            "description": "The line to show, written by the verifier"
+          },
+          "sure": {
+            "type": "boolean",
+            "title": "Sure",
+            "description": "True when the records say the opposite, false when nothing was found"
+          },
+          "quotes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Quotes",
+            "description": "The exact words to underline"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why",
+            "default": ""
+          },
+          "checked": {
+            "items": {
+              "$ref": "#/components/schemas/VerifierCheckedRead"
+            },
+            "type": "array",
+            "title": "Checked",
+            "default": []
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "shown",
+              "fine"
+            ],
+            "title": "State"
+          },
+          "fine_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fine By"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "flag_id",
+          "message_id",
+          "key",
+          "about",
+          "by",
+          "claim",
+          "ref",
+          "line",
+          "sure",
+          "sentence",
+          "state",
+          "at"
+        ],
+        "title": "VerifierFlagRead",
+        "description": "A multi-agent failure the verifier found, drawn as a line under its message."
+      },
+      "VerifierLearningRead": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done",
+            "default": 0
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "VerifierLearningRead"
+      },
+      "VerifierSettingsRead": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "rooms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rooms",
+            "description": "The rooms that added the verifier"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "The search model its claim spotter runs on"
+          },
+          "using": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "learned",
+              "none"
+            ],
+            "title": "Using"
+          },
+          "learned": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learned",
+            "description": "Messages it learned from, or null on the starting model"
+          },
+          "answers_since_learned": {
+            "type": "integer",
+            "title": "Answers Since Learned",
+            "default": 0
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/VerifierEstimateRead"
+          },
+          "learning": {
+            "$ref": "#/components/schemas/VerifierLearningRead"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "model",
+          "using",
+          "estimate",
+          "learning"
+        ],
+        "title": "VerifierSettingsRead"
+      },
+      "VoiceHeard": {
+        "properties": {
+          "texts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Texts",
+            "description": "Each piece of speech the chunk ended, in order"
+          },
+          "speaking": {
+            "type": "boolean",
+            "title": "Speaking",
+            "description": "Whether speech is still under way",
+            "default": false
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "description": "False while the hub loads (or downloads) its speech model: the chunk wasn't read, so send the same audio again",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "VoiceHeard",
+        "description": "What one chunk of a mic's audio finished: text for the draft, if any."
+      },
+      "VoiceStatus": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "not_downloaded",
+              "unavailable"
+            ],
+            "title": "State",
+            "description": "`ready`: the model is loaded or on disk. `not_downloaded`: it will be fetched the first time a mic is turned on. `unavailable`: it can't run here."
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Why, when it isn't ready",
+            "default": ""
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "The language it transcribes",
+            "default": "en"
+          },
+          "sample_rate": {
+            "type": "integer",
+            "title": "Sample Rate",
+            "description": "The rate audio is sent at, in Hz",
+            "default": 16000
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "The speech model's name",
+            "default": ""
+          },
+          "choice": {
+            "type": "string",
+            "title": "Choice",
+            "description": "`voice.model` on this hub: `fast` (Moonshine) or `accurate` (Parakeet)",
+            "default": "fast"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "VoiceStatus",
+        "description": "Whether this hub can transcribe a mic, and what it hears."
+      },
+      "WakeOutcome": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "delivered": {
+            "type": "boolean",
+            "title": "Delivered"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why",
+            "description": "Why it wasn't delivered: no pane, herdr refused"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "delivered"
+        ],
+        "title": "WakeOutcome",
+        "description": "What a runner did with one wake it was handed."
+      },
+      "WakeOutcomes": {
+        "properties": {
+          "outcomes": {
+            "items": {
+              "$ref": "#/components/schemas/WakeOutcome"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Outcomes"
+          }
+        },
+        "type": "object",
+        "title": "WakeOutcomes"
+      },
+      "WakeRecord": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "agent": {
+            "type": "string",
+            "title": "Agent"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "mention, turn, interrupt, assigned or schedule"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome",
+            "description": "delivered; dropped (thrown away, see why); unreached (nothing runs the agent, which reads the message on its next await); handed (given to a runner that hasn't said, or is from before runners said)"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          },
+          "messages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Messages",
+            "description": "Ids of the messages that asked for the agent"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range",
+            "description": "First and last message id the wake's digest summarized"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At",
+            "description": "When it was raised or handed over"
+          },
+          "settled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled At",
+            "description": "When its runner said what became of it"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent",
+          "reason",
+          "outcome"
+        ],
+        "title": "WakeRecord",
+        "description": "One wake the hub raised for an agent, and what became of it."
+      },
       "WriteBody": {
         "properties": {
           "key": {
@@ -10768,6 +14295,12 @@
             "type": "object",
             "title": "Fields",
             "description": "Frontmatter to merge onto the row. A null value clears its key. Assignment keys are refused: those move through /assignments."
+          },
+          "reassign": {
+            "type": "boolean",
+            "title": "Reassign",
+            "description": "Give the row to a new assignee even though someone else holds it. Without it, changing the assignee of a held row is refused (409).",
+            "default": false
           }
         },
         "type": "object",

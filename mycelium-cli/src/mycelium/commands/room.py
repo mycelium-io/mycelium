@@ -14,6 +14,7 @@ Commands:
 - send: Broadcast a chat message into a room (an @handle mention summons a
   registered engine, e.g. @aligner)
 - messages: Show a room's recent messages
+- export: Write a room's whole history to local JSON lines
 - delegate: Delegate a task to an agent in a room
 - clone: Clone a room from a remote backend instance
 """
@@ -33,19 +34,19 @@ from mycelium.error_handler import print_error
 from mycelium.exceptions import MyceliumError
 from mycelium.identity import resolve_actor
 from mycelium.names import who
-from mycelium.slim.l9 import room_episode
+from mycelium.slim.message_format import room_episode
 from mycelium.text_input import takes_text
 
-# The L9 "raise-up" whitelist: message types promoted onto the primary channel
+# The "raise-up" whitelist: message types promoted onto the primary channel
 # surface (here, `room watch`'s live stream) rather than staying inspector-only.
-# Must mirror contracts/l9-surface.json's `raise_up_types` byte-for-byte; the
+# Must mirror contracts/channel-surface.json's `raise_up_types` byte-for-byte; the
 # frontend (mycelium-frontend/src/components/event-stream.tsx) carries an
-# independent copy, and tests/test_l9_surface_contract.py asserts both stay in
+# independent copy, and tests/test_channel_surface_contract.py asserts both stay in
 # sync with the contract so the two surfaces can't silently drift apart.
 # (`room watch` also renders CLI-native detail: ticks, session start, raw
 # memory_changed; that has no frontend-inspector equivalent to hide behind;
 # that detail is intentionally outside this shared list.)
-L9_RAISE_UP_TYPES = frozenset(
+RAISE_UP_TYPES = frozenset(
     {
         "coordination_join",
         "coordination_consensus",
@@ -401,17 +402,23 @@ def clone_room(
                 content = value.get("text", _json.dumps(value))
             else:
                 content = str(value)
-            write_memory(
-                target,
-                mem["key"],
-                content,
-                created_by=mem.get("created_by"),
-                updated_by=mem.get("updated_by"),
-                version=mem.get("version", 1),
-                tags=mem.get("tags"),
-                created_at=_parse_dt(mem.get("created_at")),
-                updated_at=_parse_dt(mem.get("updated_at")),
-            )
+            # A hub on Windows before 3.0.31 sent its own separator in keys.
+            key = mem["key"].replace("\\", "/")
+            try:
+                write_memory(
+                    target,
+                    key,
+                    content,
+                    created_by=mem.get("created_by"),
+                    updated_by=mem.get("updated_by"),
+                    version=mem.get("version", 1),
+                    tags=mem.get("tags"),
+                    created_at=_parse_dt(mem.get("created_at")),
+                    updated_at=_parse_dt(mem.get("updated_at")),
+                )
+            except ValueError as e:
+                typer.echo(f"Skipped: {e}", err=True)
+                continue
             written += 1
 
         typer.secho(f"Cloned room: {room_name} ({written} memories)", fg=typer.colors.GREEN)
@@ -528,7 +535,7 @@ def frame_episode(mtype: str, msg: dict, data: dict) -> str | None:
     """The episode a tail frame belongs to, however it reached the tail.
 
     Chat arrives two ways — the history replay's folded row, which carries the
-    episode as a plain field, and the live stream's raw L9 envelope, which
+    episode as a plain field, and the live stream's raw message, which
     carries it in the header — so the question "which conversation is this?" has
     to be asked of both shapes to be worth asking at all.
     """
@@ -565,7 +572,7 @@ def _ping_line(data: dict, stamp: str) -> str | None:
     a line that has already scrolled past is what this surface declines to do
     for an amendment too.
     """
-    from mycelium.slim.l9 import ping_of
+    from mycelium.slim.message_format import ping_of
 
     ping = ping_of(data)
     if ping is None:
@@ -584,7 +591,7 @@ def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: s
     Chat reaches the tail two ways: the history replay hands back a plain
     ``broadcast`` the backend has already folded (so a revised message arrives as
     its newest text, stamped ``edited_at``), while the live stream carries the raw
-    L9 envelope — including an amendment, which arrives as the message it is. A
+    message — including an amendment, which arrives as the message it is. A
     tail is a tail: it shows the amendment as it lands rather than rewriting a line
     that already scrolled past, but marks it an edit and names what it revises.
     """
@@ -703,9 +710,9 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             return "\n".join(lines)
 
         if mtype == "l9_knowledge":
-            l9_payload = data.get("l9", {}).get("payload", {}).get("data", {})
-            key = l9_payload.get("key", "memory")
-            by = l9_payload.get("updated_by")
+            message_payload = data.get("l9", {}).get("payload", {}).get("data", {})
+            key = message_payload.get("key", "memory")
+            by = message_payload.get("updated_by")
             text = data.get("content") or f"{key} updated"
             suffix = f" [dim]by {by}[/]" if by else ""
             return f"  {ts()}  [yellow]knowledge[/] {text}{suffix}"
@@ -992,8 +999,8 @@ def amend(
 
 
 @doc_ref(
-    usage="mycelium room messages [<room> | --room <room>] [--limit N] [--sender <handle>] [--type <type>] [--before <stamp|age>] [--since <stamp|age>]",
-    desc="Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>; walk back through history with <code>--before</code>.",
+    usage="mycelium room messages [<room> | --room <room>] [--limit N] [--sender <handle>] [--type <type>] [--id <id>] [--before <stamp|age>] [--since <stamp|age>]",
+    desc="Read recent messages in a room (point-in-time, newest first), each whole in its own box. Filter with <code>--sender</code> / <code>--type</code>, read one message with <code>--id</code>, and walk back through history with <code>--before</code>.",
     group="room",
 )
 @app.command("messages")
@@ -1010,6 +1017,11 @@ def messages(
     ),
     message_type: str | None = typer.Option(
         None, "--type", "-t", help="Only this message type (e.g. direct, broadcast, announce)"
+    ),
+    message_id: str | None = typer.Option(
+        None,
+        "--id",
+        help="Only the message whose id starts with this (the eight characters a wake names it by)",
     ),
     before: str | None = typer.Option(
         None,
@@ -1028,6 +1040,10 @@ def messages(
     with the most recent messages and exits. Handy for scripts and for checking
     whether an agent's reply has landed.
 
+    Each message is printed whole, in a box with its text behind a `│`, so
+    where one ends is never in doubt. A wake names a message by the first
+    eight characters of its id; `--id` reads that one message.
+
     History is paged by content, not position: when older messages exist the
     footer names the `--before` cursor that reads the next page back, so a
     walk through a busy room does not shift under messages arriving live.
@@ -1037,6 +1053,7 @@ def messages(
         mycelium room messages design-review --limit 5
         mycelium room messages cc-e2e --sender cc-x
         mycelium room messages my-room --type broadcast
+        mycelium room messages my-room --id 930ecf2c
         mycelium room messages my-room --before 2h
         mycelium room messages my-room --since 2026-09-03T09:00:00Z --before 2026-09-03T12:00:00Z
     """
@@ -1057,12 +1074,194 @@ def messages(
             limit=limit,
             sender=sender,
             message_type=message_type,
+            message_id=message_id,
             since=chat.parse_stamp(since) if since else None,
             before=chat.parse_stamp(before) if before else None,
             older_with=stem,
+            empty_note=f"no message with an id starting {message_id}" if message_id else None,
             json_output=json_output,
         )
 
+    except (typer.Exit, typer.Abort):
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+#: How each wake outcome reads, and its color.
+WAKE_OUTCOME = {
+    "delivered": ("delivered", "green"),
+    "dropped": ("dropped", "red"),
+    "unreached": ("unreached, reads it on its next await", "yellow"),
+    "handed": ("handed over, no word from its runner", "yellow"),
+    "skipped": ("skipped, nothing unread asked for it by then", "dim"),
+}
+
+
+@doc_ref(
+    usage="mycelium room wakes [<room> | --room <room>] [--agent <handle>] [--limit N]",
+    desc="What each wake the hub raised in a room delivered, newest first: who it was for, why, the messages it covered, and whether it reached the agent.",
+    group="room",
+)
+@app.command("wakes")
+@in_room("room_opt", resolve=False)
+@paged()
+@emits_json()
+def wakes(
+    ctx: typer.Context,
+    room: str | None = typer.Argument(None, help="Room to read (defaults to active room)"),
+    room_opt: str | None = None,
+    agent: str | None = typer.Option(None, "--agent", help="Only wakes for this handle"),
+    limit: int = 20,
+) -> None:
+    """
+    What each wake in a room delivered, newest first.
+
+    When an agent misses something, this tells "it was woken with it and didn't
+    act" from "it was never woken with it". Each wake names the messages that
+    asked for the agent by id (read them with `mycelium room messages`), and
+    says whether it was delivered, or dropped and why (no pane bound to the
+    agent, or held too long while it worked). A mention of an agent nothing
+    runs is unreached: it reads the message on its next await. A wake that,
+    by the time it was due, had nothing unread behind it (the agent had read
+    or answered it already) is skipped rather than rung for nothing.
+
+    Examples:
+        mycelium room wakes
+        mycelium room wakes --agent builder --limit 5
+        mycelium room wakes design-review --json
+    """
+    try:
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, _one_room(room, room_opt))
+        params: dict[str, str | int] = {"limit": limit}
+        if agent:
+            params["agent"] = agent.lstrip("@")
+        with hub_client(config) as client:
+            resp = client.get(f"/api/rooms/{room_name}/sessions/wakes", params=params)
+            resp.raise_for_status()
+            records = resp.json()
+        if json_output:
+            typer.echo(json_module.dumps(records, indent=2))
+            return
+        from rich.console import Console
+
+        console = Console()
+        if not records:
+            console.print(f"[dim]No wakes recorded in {room_name} yet.[/dim]")
+            return
+        for r in records:
+            said, color = WAKE_OUTCOME.get(r.get("outcome", ""), (r.get("outcome"), "dim"))
+            when = (r.get("at") or "")[:19].replace("T", " ")
+            sender = f" from @{r['from']}" if r.get("from") else ""
+            line = (
+                f"{when}  @{r.get('agent')}  {r.get('reason')}{sender}  [{color}]{said}[/{color}]"
+            )
+            if r.get("why"):
+                line += f" [dim]({escape(str(r['why']))})[/dim]"
+            console.print(line)
+            covered = r.get("messages") or []
+            if covered:
+                console.print(f"[dim]    asked in: {', '.join(covered)}[/dim]")
+    except (typer.Exit, typer.Abort):
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
+    usage="mycelium room export [<room> | --room <room>] [--out <dir>] [--since <stamp|age>] [--redact]",
+    desc=(
+        "Write a room's whole history to local files: every message, channel and task threads "
+        "alike, as JSON lines, plus the board. Run it again with the same <code>--out</code> "
+        "to add only what is new. <code>--redact</code> replaces emails, tokens and non-GitHub URLs."
+    ),
+    group="room",
+)
+@app.command("export")
+@in_room("room_opt", resolve=False)
+@emits_json()
+def export(
+    ctx: typer.Context,
+    room: str | None = typer.Argument(None, help="Room to export (defaults to active room)"),
+    room_opt: str | None = None,
+    out: str | None = typer.Option(
+        None,
+        "--out",
+        "-o",
+        help="Directory to write into (default: ~/mycelium-exports/<room>). It keeps its own cursor.",
+    ),
+    since: str | None = typer.Option(
+        None,
+        "--since",
+        help="On a first export, only messages at/after this ISO stamp or age (2h, 30m, 1d)",
+    ),
+    redact: bool = typer.Option(
+        False,
+        "--redact",
+        help="Replace emails, tokens, non-GitHub URLs and home-folder names with placeholders",
+    ),
+) -> None:
+    """
+    Write a room's whole history to local files, for backups, analysis or a bug report.
+
+    The directory gets three files:
+
+    - messages.jsonl: one line per message, channel and task threads alike,
+      notices and pings included. Each line has the sender and whether they are
+      a person, an agent, an engine or the system; the thread and the task it
+      belongs to; the type; the mentions in it; and the text.
+    - board.json: every task row, with its status, who it is for and who holds it.
+    - cursor.json: where this export stopped.
+
+    Running it again with the same --out reads only what is new and appends it,
+    so a scheduled export stays cheap. The default folder is outside the one you
+    run it in, and a folder inside a git checkout gets a warning, so a room's
+    transcript doesn't end up in a commit.
+
+    Examples:
+        mycelium room export
+        mycelium room export design-review --out ~/backup/design-review
+        mycelium room export my-room --since 7d --redact
+    """
+    from pathlib import Path
+
+    from mycelium import room_export
+
+    try:
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, _one_room(room, room_opt))
+        target = Path(out).expanduser() if out else room_export.default_out(room_name)
+        if room_export.in_git_work_tree(target):
+            typer.secho(
+                f"Warning: {target} is inside a git checkout. Keep it out of commits, "
+                "or pick another --out.",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+        with hub_client(config, timeout=120) as client:
+            result = room_export.export_room(
+                client,
+                room_name,
+                target,
+                since=chat.parse_stamp(since) if since else None,
+                redacted=redact,
+            )
+        if json_output:
+            typer.echo(json_module.dumps(result.as_dict(), indent=2))
+            return
+        verb = "Exported" if result.from_start else "Added"
+        typer.echo(
+            f"{verb} {result.new} message{'' if result.new == 1 else 's'} from {room_name} "
+            f"({result.total} in the export) and {result.board_rows} board rows to {target}"
+        )
+    except room_export.ExportError as e:
+        typer.secho(str(e), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from e
     except (typer.Exit, typer.Abort):
         raise
     except Exception as e:

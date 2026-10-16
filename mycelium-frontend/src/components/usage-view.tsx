@@ -338,7 +338,7 @@ export function UsageView({ refreshInterval }: { refreshInterval: number }) {
         Counts and outcomes only: no names, rooms or what anyone wrote.{" "}
         {usage.sharing
           ? "This hub sends these events to its analytics destination."
-          : "They stay on this hub. Sharing is asked at install and on the Mac app's first screen."}
+          : "They stay on this hub. Sharing is asked at install and on the desktop app's first screen."}
       </Note>
     </>
   );

@@ -229,54 +229,24 @@ def test_pending_herdr_wakes_peeks_without_draining(
     assert manager.pending_herdr_wakes("room-a", hold_ttl_s=-1.0) == set()
 
 
-def test_enqueue_wakes_for_mentions_is_the_shared_hook(
+# Who a message asks is ``asks``'s rule, held end to end in
+# ``test_wake_paths_table``; these hold what ringing one does.
+
+
+def test_a_busy_member_asked_is_held_until_it_is_free(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    # The one hook every write path shares: an agent reply that tags @docs
-    # enqueues a wake exactly as a human message would. A working target is
-    # held (surfaces as pending).
-    manager.set_herdr_presence("room-a", {"docs": "working", "reviewer": "idle"})
-    enq = manager.enqueue_herdr_wakes_for_mentions(
-        "room-a", "hey @docs take a look", exclude="reviewer"
-    )
-    assert enq == ["docs"]
+    manager.set_herdr_presence("room-a", {"docs": "working"})
+    assert manager.ring_asked("room-a", "docs", "mention", sender="reviewer") is True
+    assert manager.drain_herdr_wakes("room-a") == []
     assert manager.pending_herdr_wakes("room-a") == {"docs"}
 
 
-def test_enqueue_wakes_for_mentions_skips_self_and_non_herdr(
+def test_a_handle_with_no_herdr_pane_is_not_rung(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    # A reply naming its own handle doesn't self-wake; a mention with no herdr
-    # presence isn't ours (normal SLIM/consent path covers it).
-    manager.set_herdr_presence("room-a", {"docs": "idle"})
-    enq = manager.enqueue_herdr_wakes_for_mentions("room-a", "@docs @ghost done", exclude="docs")
-    assert enq == []
-    assert manager.pending_herdr_wakes("room-a") == set()
-
-
-def test_a_silent_mention_rings_no_doorbell(
-    manager: room_channels.RoomChannelManager,
-) -> None:
-    # `@~docs` names docs without asking anything of it; only `@reviewer` asks.
-    manager.set_herdr_presence("room-a", {"docs": "idle", "reviewer": "idle"})
-    enq = manager.enqueue_herdr_wakes_for_mentions("room-a", "@reviewer please check, cc @~docs")
-    assert enq == ["reviewer"]
-    assert manager.pending_herdr_wakes("room-a") == {"reviewer"}
-
-
-def test_members_named_beside_a_conductor_are_roles_not_doorbells(
-    manager: room_channels.RoomChannelManager, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The conductor addresses each role in its turn; waking them all at the
-    # summon would have every member reach for a turn nobody has put yet.
-    monkeypatch.setattr(
-        room_channels, "_registered_kind", lambda _r, h: "conductor" if h == "conductor" else None
-    )
-    manager.set_herdr_presence("room-a", {"agent-1": "idle", "agent-2": "idle"})
-    enq = manager.enqueue_herdr_wakes_for_mentions(
-        "room-a", "@conductor swarm @agent-1 @agent-2: fix the tests"
-    )
-    assert enq == []
+    # Not ours: it reads the message on its next ``await``.
+    assert manager.ring_asked("room-a", "ghost", "mention", sender="reviewer") is False
     assert manager.pending_herdr_wakes("room-a") == set()
 
 
@@ -284,8 +254,8 @@ def test_an_addressed_turn_rings_a_herdr_member_as_a_turn(
     manager: room_channels.RoomChannelManager,
 ) -> None:
     manager.set_herdr_presence("room-a", {"agent-1": "idle"})
-    assert manager.herdr_wake_addressed("room-a", "agent-1") is True
-    assert manager.herdr_wake_addressed("room-a", "ghost") is False
+    assert manager.ring_asked("room-a", "agent-1", "turn") is True
+    assert manager.ring_asked("room-a", "ghost", "turn") is False
     [wake] = manager.drain_herdr_wakes("room-a")
     assert wake["handle"] == "agent-1"
     assert wake["reason"] == "turn"
@@ -366,64 +336,85 @@ async def test_open_and_close_episode_lifecycle(
 
 
 @pytest.mark.asyncio
-async def test_open_episode_freezes_the_full_roster_not_just_slim(
+async def test_open_episode_freezes_the_parties_it_was_given(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    """A lease-only participant (headless HTTP await/respond, never SLIM-invited
-    because it never goes through a SLIM join at all) is exactly who a
-    negotiation runs with — ``members()``'s own union, which the mediator reads
-    to build its participant list. The freeze has to protect that same roster,
-    not the narrower SLIM-only set, or a lease-only agent is frozen out of its
-    own negotiation the instant it tries to respond.
-    """
+    """A negotiation freezes who it brokers between, not everyone present: in a
+    busy room that's how members nobody named were pulled in."""
     managed = await manager.provision("room-a")
     assert managed is not None
-    await manager.invite("room-a", "agent-slim")
-    manager.refresh_lease("room-a", "agent-http")
+    await manager.invite("room-a", "reviewer")
+    manager.refresh_lease("room-a", "bystander")
 
-    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
-    assert managed.lifecycle.members == frozenset({"agent-slim", "agent-http"})
-
-
-@pytest.mark.asyncio
-async def test_a_real_slim_join_still_aborts_a_frozen_negotiation(
-    manager: room_channels.RoomChannelManager,
-) -> None:
-    """Freezing on the union must not blunt the abort-on-change rule: a genuine
-    SLIM join mid-negotiation still changes the roster and still aborts it."""
-    managed = await manager.provision("room-a")
-    assert managed is not None
-    manager.refresh_lease("room-a", "agent-http")
-    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
-    assert managed.lifecycle.active
-
-    await manager.invite("room-a", "agent-slim")  # a real join mid-negotiation
-    assert not managed.lifecycle.active
+    episode = "urn:ioc:mycelium:episode:room-a:e1"
+    assert manager.open_episode("room-a", episode, parties=["@Agent-A", "agent-b"]) is True
+    assert managed.lifecycle.members == frozenset({"agent-a", "agent-b"})
 
 
 async def _settle(manager: room_channels.RoomChannelManager) -> None:
-    """Let the fire-and-forget roster check a lease join schedules run to completion."""
+    """Let anything a join schedules run to completion."""
     if manager._tasks:
         await asyncio.gather(*manager._tasks)
 
 
 @pytest.mark.asyncio
-async def test_a_lease_only_join_mid_negotiation_aborts_it(
+async def test_joins_mid_negotiation_never_abort_it(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    """The roster is frozen on the SLIM-plus-lease union, so a change on the lease
-    half is a change too: a brand-new headless ``await`` caller appearing
-    mid-negotiation aborts it, exactly as a SLIM join does (#932)."""
+    """Presence coming and going isn't a reason to stop a run (what #932 meant
+    to fix): a SLIM join, a brand-new headless caller and a party's own lease
+    starting all leave it running."""
     managed = await manager.provision("room-a")
     assert managed is not None
-    manager.refresh_lease("room-a", "agent-http")
-    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
-    assert managed.lifecycle.active
+    episode = "urn:ioc:mycelium:episode:room-a:e1"
+    assert manager.open_episode("room-a", episode, parties=["agent-a", "agent-b"]) is True
 
-    manager.refresh_lease("room-a", "agent-new")  # a lease-only join mid-negotiation
+    await manager.invite("room-a", "agent-slim")
+    manager.refresh_lease("room-a", "agent-new")
+    manager.refresh_lease("room-a", "agent-a")
     await _settle(manager)
 
+    assert managed.lifecycle.active
+
+
+@pytest.mark.asyncio
+async def test_removing_a_party_from_the_room_ends_the_negotiation(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    """Only a party actually leaving ends it; what it posts is checked in
+    ``test_mentions_and_invites``, whose channel records."""
+    managed = await manager.provision("room-a")
+    assert managed is not None
+    await manager.invite("room-a", "agent-a")
+    await manager.invite("room-a", "reviewer")
+    episode = "urn:ioc:mycelium:episode:room-a:e1"
+    assert manager.open_episode("room-a", episode, parties=["agent-a", "agent-b"]) is True
+
+    # Someone who isn't a party leaving changes nothing.
+    await manager.remove("room-a", "reviewer")
+    assert managed.lifecycle.active
+
+    await manager.remove("room-a", "agent-a")
     assert not managed.lifecycle.active
+
+
+@pytest.mark.asyncio
+async def test_removing_a_party_tells_the_engine_running_the_negotiation(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    told: list[tuple[str, str, str]] = []
+    manager.on_party_left = (
+        lambda room, episode, handle: told.append((room, episode, handle)) or True
+    )
+    managed = await manager.provision("room-a")
+    assert managed is not None
+    await manager.invite("room-a", "agent-a")
+    episode = "urn:ioc:mycelium:episode:room-a:e1"
+    manager.open_episode("room-a", episode, parties=["agent-a", "agent-b"])
+
+    await manager.remove("room-a", "agent-a")
+
+    assert told == [("room-a", episode, "agent-a")]
 
 
 @pytest.mark.asyncio

@@ -214,11 +214,18 @@ def _remote_memory_text(client: Any, room_name: str, key: str) -> str | None:
     from mycelium_backend_client.api.memory import (
         get_memory_api_rooms_room_name_memory_key_get as get_api,
     )
+    from mycelium_backend_client.errors import UnexpectedStatus
     from mycelium_backend_client.models import MemoryRead
 
-    result = get_api.sync(room_name=room_name, key=key, client=client)
-    # The endpoint returns ``HTTPValidationError | MemoryRead | None`` for
-    # 200/404/422; only ``MemoryRead`` carries a usable body.
+    try:
+        result = get_api.sync(room_name=room_name, key=key, client=client)
+    except UnexpectedStatus as exc:
+        # The spec doesn't declare this route's 404, so the generated client
+        # raises on it rather than answering ``None``. A 404 is "not there".
+        if exc.status_code == 404:
+            return None
+        raise
+    # Only ``MemoryRead`` carries a usable body (a 422 is ``HTTPValidationError``).
     if not isinstance(result, MemoryRead):
         return None
     return _memory_body(result)
@@ -247,6 +254,9 @@ def _delete_manifest(
 ) -> None:
     """Delete a manifest from the backend and the local mirror (notes/logs kept).
 
+    One the hub no longer has counts as deleted, so a stale mirror can't make
+    every later teardown fail.
+
     The unregister half of ``agent rm``, factored out so other lifecycle owners
     (e.g. the herdr sync bridge retiring a member whose pane closed) reuse the
     exact same teardown instead of re-implementing the backend delete + unlink.
@@ -254,9 +264,16 @@ def _delete_manifest(
     from mycelium_backend_client.api.memory import (
         delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
     )
+    from mycelium_backend_client.errors import UnexpectedStatus
 
     with _typed_client(config, timeout=timeout) as client:
-        delete_api.sync_detailed(room_name=room_name, key=manifest.memory_key, client=client)
+        try:
+            delete_api.sync_detailed(room_name=room_name, key=manifest.memory_key, client=client)
+        except UnexpectedStatus as e:
+            # Already gone from the hub (the local mirror outlived it): the
+            # delete's goal is reached, so the mirror still goes below.
+            if e.status_code != 404:
+                raise
     local = get_room_dir(room_name) / f"{manifest.memory_key}.md"
     if local.exists():
         local.unlink()

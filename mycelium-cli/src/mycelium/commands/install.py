@@ -17,6 +17,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -618,7 +619,7 @@ def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # n
 
     The hub records its usage either way (the app's Metrics page reads it);
     this only decides whether the events are also sent. Defaults to *No*. The
-    Mac app asks the same question on its first-run screen.
+    desktop app asks the same question on its first-run screen.
 
     Non-interactive installs never reach this path; they stay off unconditionally
     as required by #938.
@@ -801,6 +802,11 @@ def install(
     """
     import sys
 
+    from mycelium.old_daemon import remove_old_daemon
+
+    for unit in remove_old_daemon():
+        typer.secho(f"  Removed the old daemon's job {unit}", fg=typer.colors.YELLOW)
+
     try:
         # ── Detect existing install and redirect ──────────────────────────
         _existing_env = Path.home() / ".mycelium" / ".env"
@@ -905,10 +911,7 @@ def install(
                 "\n  ✗ Non-interactive terminal detected. Interactive install requires a TTY.\n",
                 fg=typer.colors.RED,
             )
-            import click
-
-            click_ctx = click.get_current_context()
-            typer.echo(click_ctx.get_help())
+            typer.echo(ctx.get_help())
             raise typer.Exit(1) from None
 
         from mycelium.animations import run_animation_live
@@ -1237,6 +1240,20 @@ def upgrade(
         typer.echo(f"  Current CLI version: v{__version__}")
         typer.echo("")
 
+        # The Mac app's own CLI is replaced with the app, which updates itself;
+        # a wheel installed over its link would only be put back on its next start.
+        from mycelium.desktop.supervisor import bundle_dir
+
+        bundle = bundle_dir()
+        if (
+            bundle is not None
+            and bundle.parent.name == "Contents"
+            and bundle.parent.parent.suffix == ".app"
+        ):
+            typer.echo("  This mycelium is Mycelium for Mac's, and the app updates itself:")
+            typer.echo("  use Check for Updates… in its menu bar icon.")
+            raise typer.Exit(0)
+
         # --version pins directly without is-this-newer check (for downgrade/pin).
         if target_version is not None:
             latest_version = target_version.lstrip("v")
@@ -1276,7 +1293,7 @@ def upgrade(
         # Try wheel from GitHub first, fall back to PyPI
         wheel_name = f"mycelium_cli-{latest_version}-py3-none-any.whl"
         wheel_url = f"https://github.com/{_GITHUB_REPO}/releases/download/{latest_tag}/{wheel_name}"
-        wheel_tmp = Path(f"/tmp/{wheel_name}")  # noqa: S108
+        wheel_tmp = Path(tempfile.gettempdir()) / wheel_name
 
         installed = False
 

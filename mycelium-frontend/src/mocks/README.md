@@ -76,7 +76,7 @@ moving on the board, a swarm checking in and splitting its task.
 
 Files:
 - `fixtures.ts` — the canonical data (rooms, memories, agents, plans, messages,
-  episodes + L9 chains, invites, metrics), shaped to match `src/lib/api.ts`.
+  episodes + message chains, invites, metrics), shaped to match `src/lib/api.ts`.
 - `handlers.ts` — the REST router mirroring the backend endpoints.
 - `stream.ts` — the scripted live SSE timeline.
 - `live.ts` — the room streams writes publish to, shared across route modules.

@@ -45,16 +45,16 @@ os.environ.setdefault("MYCELIUM_DATA_DIR", str(_DATA_DIR))
 os.environ.setdefault("MYCELIUM_STUB_EMBEDDINGS", "1")
 
 from app.config import settings  # noqa: E402
-from app.services import aligner, l9  # noqa: E402
-from app.services.l9_models import Kind  # noqa: E402
-from app.services.l9_slim import serialize_content  # noqa: E402
+from app.services import aligner, message_format  # noqa: E402
+from app.services.message_models import Kind  # noqa: E402
+from app.services.message_slim import serialize_content  # noqa: E402
 from app.services.persister import record_from  # noqa: E402
 from app.services.pi_session import PiSession  # noqa: E402
 from tests.fakes import FakeManaged, FakeManager, FakePersister  # noqa: E402
 
 _ROOM = "aligner-lab"
-_EPISODE = l9.episode_urn(_ROOM, "live")
-_TOPIC = l9.topic_urn(_ROOM)
+_EPISODE = message_format.episode_urn(_ROOM, "live")
+_TOPIC = message_format.topic_urn(_ROOM)
 
 _DEFAULT_POSITIONS = {
     "growth": "Allocate 60% of the budget to the tech platform rebuild; growth depends on it. Ship in Q3.",
@@ -84,12 +84,12 @@ def _position_record(handle: str, text: str, seq: int) -> Any:
     """A transcript reply record from ``handle`` carrying ``text`` — the shape the
     mediator's ``_is_position`` accepts and ``_slim_turn`` / ``_opening_positions``
     read (an agent-role ``exchange`` reply whose content is the prose)."""
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
         episode=_EPISODE,
         sender=handle,
         sender_role="agent",
-        recipients=[l9.SYSTEM_ACTOR_ID],
+        recipients=[message_format.SYSTEM_ACTOR_ID],
         topic=_TOPIC,
         payload_type="reply",
         payload_data={"action": "position"},
@@ -99,7 +99,7 @@ def _position_record(handle: str, text: str, seq: int) -> Any:
 
 
 class InteractiveChannel:
-    """An ``L9SlimChannel`` stand-in whose agent turns are answered by a human.
+    """An ``MessageChannel`` stand-in whose agent turns are answered by a human.
 
     On every ``exchange`` prompt the engine sends, surfaces the addressed agent's
     turn to ``turn.json`` and blocks until ``reply.txt`` appears, then injects the

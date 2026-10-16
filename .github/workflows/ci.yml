@@ -29,10 +29,18 @@ jobs:
     # generated site matching its markdown, in the CLI job). A skipped job reads
     # as passed for a required check, so nothing waits on it. Pushes to main
     # always run everything: those runs are the record of what landed.
+    #
+    # It also says whether the frontend's inputs and the backend's changed, so
+    # a PR that only touches one side skips the other's tests. Each is a
+    # deny-list: the side is skipped only when every changed file is in a
+    # folder its tests never read, so a new or unknown path runs everything.
+    # Both read contracts/ and openapi.json, which aren't in either list.
     name: Changed files
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.changed.outputs.code }}
+      frontend: ${{ steps.changed.outputs.frontend }}
+      backend: ${{ steps.changed.outputs.backend }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,31 +49,50 @@ jobs:
       - name: Is anything besides docs changing?
         id: changed
         run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+          everything() {
+            { echo "code=true"; echo "frontend=true"; echo "backend=true"; } >> "$GITHUB_OUTPUT"
             exit 0
-          fi
+          }
+          [ "${{ github.event_name }}" != "pull_request" ] && everything
           # When the list can't be read, run everything: skipping is only ever
           # the result of reading a list that is all docs.
           if ! changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD") || [ -z "$changed" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            everything
           fi
           # Docs: the built site, its markdown sources, and README-style
           # markdown at the top of the repo or a top-level folder.
           # docs/ also holds the installer and the generators; those are code.
-          if echo "$changed" | grep -vE '^(docs/|mycelium-cli/src/mycelium/docs/|[^/]+\.md$|[^/]+/README\.md$)' > /dev/null \
-            || echo "$changed" | grep -E '^docs/.*\.(py|sh)$' > /dev/null; then
+          docs='^(docs/|mycelium-cli/src/mycelium/docs/|[^/]+\.md$|[^/]+/README\.md$)'
+          if echo "$changed" | grep -vE "$docs" > /dev/null || echo "$changed" | grep -E '^docs/.*\.(py|sh)$' > /dev/null; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
-            echo "code=false" >> "$GITHUB_OUTPUT"
+            { echo "code=false"; echo "frontend=false"; echo "backend=false"; } >> "$GITHUB_OUTPUT"
             echo "Only docs changed; skipping the jobs that build and test code."
+            exit 0
           fi
+          # Folders neither side's tests read: the CLI, the desktop app and the
+          # repo's own tooling (shotkit, the promo, the deck), plus docs. The
+          # CLI job runs on every PR anyway.
+          elsewhere='^(mycelium-cli/|mycelium-desktop/|shotkit/|mycelium-promo/|mycelium-deck/)'
+          side() {
+            local name=$1 own=$2
+            if echo "$changed" | grep -vE "$docs" | grep -vE "$elsewhere" | grep -vE "$own" > /dev/null; then
+              echo "$name=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=false" >> "$GITHUB_OUTPUT"
+              echo "Nothing the $name reads changed; skipping its tests."
+            fi
+          }
+          # The frontend skips when everything is the backend's or elsewhere,
+          # and the backend when everything is the frontend's or elsewhere.
+          side frontend '^fastapi-backend/'
+          side backend '^mycelium-frontend/'
 
   hygiene:
     # Repo-level contracts that have no other home: actions pinned to SHAs,
-    # workflows declaring their permissions, budgets that still name real jobs.
-    # No toolchain install — it's stdlib Python over the workflow files, so it
+    # workflows declaring their permissions, budgets that still name real jobs,
+    # no big file outside LFS and no uncompressed PNG. Python over the repo's
+    # own files, with one wheel (oxipng's bindings) for the PNG check, so it
     # finishes long before the jobs that build something.
     name: Repo hygiene
     runs-on: ubuntu-latest
@@ -75,10 +102,30 @@ jobs:
       - name: Workflow contracts
         run: python3 scripts/check_workflows.py
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: false
+
+      - name: File sizes, and PNGs compressed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        # Only the PNGs this change adds or touches: all of them take ~50s on
+        # a runner, and every one was compressed when this check went in. Comparing two
+        # trees needs only the base commit itself, not the history between.
+        run: |
+          check="uv run --no-project --with pyoxipng==9.1.1 python scripts/check_file_sizes.py"
+          if [ -n "$BASE" ] && [ "$BASE" != "0000000000000000000000000000000000000000" ] \
+            && git fetch -q --depth=1 origin "$BASE"; then
+            $check --pngs-since "$BASE"
+          else
+            $check --all-pngs
+          fi
+
   test-backend:
     name: Backend tests
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
 
     # No database service: the SLIM-native rebuild removed Postgres/AgensGraph
@@ -333,7 +380,7 @@ jobs:
   build-frontend:
     name: Frontend typecheck + lint + build
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -357,13 +404,61 @@ jobs:
         working-directory: mycelium-frontend
         run: npx eslint .
 
-      - name: Component tests (vitest)
-        working-directory: mycelium-frontend
-        run: npx vitest run
-
       - name: Build
         working-directory: mycelium-frontend
         run: npx next build
+
+  test-frontend-1:
+    # The component tests on runners of their own, beside typecheck, lint and
+    # build rather than after them, and split in two: vitest is the longest
+    # step (~110s on one runner, most of it starting a jsdom per file), and in
+    # one job it set every run's critical path. Two plain jobs rather than a
+    # matrix, so each has a literal name for ci-budgets.json to budget.
+    name: Frontend tests (vitest 1/2)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mycelium-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mycelium-frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Component tests (vitest, first half)
+        working-directory: mycelium-frontend
+        run: npx vitest run --shard=1/2
+
+  test-frontend-2:
+    # The other half of test-frontend-1's files.
+    name: Frontend tests (vitest 2/2)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mycelium-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mycelium-frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Component tests (vitest, second half)
+        working-directory: mycelium-frontend
+        run: npx vitest run --shard=2/2
 
   build-frontend-image:
     name: Frontend docker build
@@ -451,7 +546,7 @@ jobs:
     # also re-run no-node unit tests that assume the fabric is down.
     name: Live-node integration slices (SLIM)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -508,7 +603,7 @@ jobs:
         run: >-
           uv run pytest -q
           tests/test_slim_roundtrip.py
-          tests/test_l9_over_slim_roundtrip.py
+          tests/test_message_over_slim_roundtrip.py
 
       # The CLI has no live-node slices: `await`/`respond` are pure HTTP (the
       # SLIM member connector that needed a node was removed with the daemon).
@@ -537,6 +632,8 @@ jobs:
       - build-backend
       - build-collector
       - build-frontend
+      - test-frontend-1
+      - test-frontend-2
       - build-frontend-image
       - integration-slim
     permissions:

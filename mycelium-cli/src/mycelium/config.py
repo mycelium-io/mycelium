@@ -535,6 +535,126 @@ class A2aConfig(BaseModel):
     )
 
 
+class AlignerConfig(BaseModel):
+    """How the hub's aligner engine negotiates. Defaults match the backend's."""
+
+    handle: str = Field(
+        default="aligner",
+        description="The handle the hub's built-in aligner answers to when no aligner is registered.",
+    )
+    term_check: bool = Field(
+        default=True,
+        description="Check whether agents use a word in different senses before negotiating.",
+    )
+    round_timeout_s: float = Field(
+        default=30.0,
+        description="Seconds an agent has to answer a round before the aligner moves on without it.",
+    )
+    max_steps: int = Field(
+        default=20,
+        description="The most rounds one negotiation can run. Most finish well before this.",
+    )
+    pi_timeout_s: float = Field(
+        default=120.0,
+        description="Seconds one model call by the aligner can take.",
+    )
+
+
+class SynthesizerConfig(BaseModel):
+    """What the synthesizer engine summarizes."""
+
+    source: Literal["messages", "memory"] = Field(
+        default="messages",
+        description=(
+            "messages: summarize the room's conversation since the last summary. "
+            "memory: summarize every memory in the room each time."
+        ),
+    )
+
+
+class WorkerConfig(BaseModel):
+    """Limits on worker engines, the coding agents the hub runs."""
+
+    tools: bool = Field(
+        default=True,
+        description=(
+            "Let workers edit files and run commands. Off makes them write replies only, "
+            "which is safer on a hub other people can use."
+        ),
+    )
+    pi_timeout_s: float = Field(
+        default=600.0,
+        description="Seconds one worker request can take.",
+    )
+    max_turns_per_room: int = Field(
+        default=60,
+        description="Turns all workers in a room can take in total.",
+    )
+
+
+class VerifierConfig(BaseModel):
+    """The verifier: checks what agents say about approvals and merges against the
+    room's records, and adds a line under a message when a claim doesn't hold up."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Turn the verifier on for this hub. It then reads only the rooms that add it "
+            "(`/engine verifier`, or Add member). Off, nothing is checked."
+        ),
+    )
+    confirm: bool = Field(
+        default=True,
+        description=(
+            "Have the hub's model read the thread before a line is shown, so a claim the "
+            "records got wrong is dropped. It runs on a few messages in a hundred. Off, the "
+            "records alone decide: cheaper, and noisier."
+        ),
+    )
+
+
+class BoardConfig(BaseModel):
+    """Board rules the hub enforces."""
+
+    dependency_gate: bool = Field(
+        default=False,
+        description=(
+            "Refuse a claim on a task that is still waiting on another task "
+            "(depends-on). `board claim --force` claims it anyway."
+        ),
+    )
+
+
+class VoiceConfig(BaseModel):
+    """The message box's mic, transcribed on the hub."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Let people talk into the message box. The hub transcribes on its own CPU, "
+            "with a speech model of about 150 MB on disk, in a separate process that uses "
+            "about 500 MB of memory while anyone is talking and exits a few minutes after. "
+            "Off, the mic isn't offered and nothing is downloaded."
+        ),
+    )
+    model: Literal["fast", "accurate"] = Field(
+        default="fast",
+        description=(
+            "The speech model. fast is Moonshine: about 150 MB on disk and 500 MB of memory. "
+            "accurate is Parakeet: about half the mistakes, at about 630 MB on disk (a 480 MB "
+            "download, made the first time a mic is turned on) and 1.4 GB of memory. Both "
+            "are English only. The hub reads it when it starts."
+        ),
+    )
+    download: bool = Field(
+        default=True,
+        description=(
+            "Let the hub download the speech model when voice is on and the model isn't "
+            "there. Off, put the files in the hub's data folder under models/voice yourself."
+        ),
+    )
+
+
 class PatternsConfig(BaseModel):
     """Design-pattern packs this hub offers (``/api/patterns``).
 
@@ -583,7 +703,7 @@ class TelemetryConfig(BaseModel):
     them either way (tasks filed and resolved, flows and negotiations finished,
     agents joined, the hub starting) and the app's Metrics page reads them;
     this sends the same events to ``analytics_destination``. Off by default,
-    asked at interactive install and on the Mac app's first-run screen. No
+    asked at interactive install and on the desktop app's first-run screen. No
     names, handles, rooms, task text, prompts or replies are ever included.
     """
 
@@ -600,8 +720,23 @@ class TelemetryConfig(BaseModel):
             "OTLP HTTP endpoint the backend pushes spans and metrics to. "
             "When unset and telemetry.enabled is true, defaults to "
             "http://mycelium-collector:4318, the collector's address in the Docker stack. "
-            "The Mac app runs no collector, so set this there (for example "
-            "http://127.0.0.1:4318 for a collector on the same Mac)."
+            "The desktop app runs no collector, so set this there (for example "
+            "http://127.0.0.1:4318 for a collector on the same machine)."
+        ),
+    )
+    otlp_headers: str | None = Field(
+        default=None,
+        description=(
+            "Headers sent with every OTLP export, such as a hosted backend's auth "
+            '(for example "x-honeycomb-team=<key>"). Also used by the local Grafana '
+            "when it forwards. Rendered as OTEL_EXPORTER_OTLP_HEADERS."
+        ),
+    )
+    forward_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "With the local Grafana (`mycelium up --grafana`), also forward everything it "
+            "receives to this OTLP endpoint. Rendered as OTEL_EXPORTER_OTLP_ENDPOINT."
         ),
     )
     send_product_analytics: bool = Field(
@@ -609,7 +744,7 @@ class TelemetryConfig(BaseModel):
         description=(
             "Share the hub's anonymous usage events (tasks filed and resolved, flows and "
             "negotiations finished, agents joined) with the analytics destination. The hub "
-            "records them either way. Off by default; the Mac app's own setting wins there."
+            "records them either way. Off by default; the desktop app's own setting wins there."
         ),
     )
     analytics_destination: str | None = Field(
@@ -689,6 +824,12 @@ class MyceliumConfig(BaseModel):
     slim: SlimConfig = Field(default_factory=SlimConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     engine: EngineConfig = Field(default_factory=EngineConfig)
+    aligner: AlignerConfig = Field(default_factory=AlignerConfig)
+    synthesizer: SynthesizerConfig = Field(default_factory=SynthesizerConfig)
+    worker: WorkerConfig = Field(default_factory=WorkerConfig)
+    board: BoardConfig = Field(default_factory=BoardConfig)
+    voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    verifier: VerifierConfig = Field(default_factory=VerifierConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     login: LoginConfig = Field(default_factory=LoginConfig)
     agent_auth: AgentAuthConfig = Field(default_factory=AgentAuthConfig)

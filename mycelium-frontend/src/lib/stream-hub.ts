@@ -6,7 +6,7 @@
 /**
  * The browser's live connections.
  *
- * Every pushed update in the UI — room messages, the L9 wire, app events,
+ * Every pushed update in the UI — room messages, the wire, app events,
  * notifications — arrives over a connection this module owns and fans out to
  * subscribers by channel. Components ask for the feed they care about and never
  * touch `EventSource` themselves.
@@ -227,7 +227,7 @@ function useStream(channel: StreamChannel, room: string | null, handler: StreamH
   }, [channel, room]);
 }
 
-/** Live messages for one room — the room feed and the L9 wire. */
+/** Live messages for one room — the room feed and the wire. */
 export function useRoomStream(room: string, handler: StreamHandler): void {
   useStream("room", room, handler);
 }

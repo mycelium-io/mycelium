@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const network = vi.fn();
@@ -9,7 +9,26 @@ vi.mock("@/lib/room-data", () => ({
   useNetworkStatus: () => network(),
 }));
 
-import { AboutView } from "@/components/account-menu";
+import { AboutView, MenuView } from "@/components/account-menu";
+
+describe("<MenuView />", () => {
+  it("offers Settings, which goes to the settings pages", () => {
+    const onSettings = vi.fn();
+    render(
+      <MenuView
+        me="julia"
+        signedIn={false}
+        canSignIn={false}
+        onGo={() => {}}
+        onSettings={onSettings}
+        onSignIn={() => {}}
+        onSignOut={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Settings/ }));
+    expect(onSettings).toHaveBeenCalledOnce();
+  });
+});
 
 describe("<AboutView />", () => {
   it("shows the hub's release and links to its notes", () => {
@@ -23,7 +42,7 @@ describe("<AboutView />", () => {
     );
     expect(screen.getByRole("link", { name: /Changelog/ })).toHaveAttribute("target", "_blank");
     // In a browser there is no app version to show.
-    expect(screen.queryByText("Mac app")).toBeNull();
+    expect(screen.queryByText("Desktop app")).toBeNull();
   });
 
   it("calls an unreleased hub a development build, not a placeholder version", () => {
@@ -44,12 +63,12 @@ describe("<AboutView />", () => {
     expect(screen.getByText("unreachable")).toBeInTheDocument();
   });
 
-  it("shows the Mac app's own version inside the app", () => {
+  it("shows the desktop app's own version inside the app", () => {
     network.mockReturnValue({ network: { version: "3.0.14" }, loading: false });
     const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("WebKit MyceliumDesktop/3.0.12");
     render(<AboutView />);
 
-    expect(screen.getByText("Mac app")).toBeInTheDocument();
+    expect(screen.getByText("Desktop app")).toBeInTheDocument();
     expect(screen.getByText("v3.0.12")).toBeInTheDocument();
     ua.mockRestore();
   });

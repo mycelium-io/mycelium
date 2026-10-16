@@ -14,11 +14,11 @@ import asyncio
 
 import pytest
 
-from app.services import l9, turns
+from app.services import message_format, turns
 from tests.fakes import DEFAULT_ROOM, FakeChannel, FakeManaged, FakePersister, position_record
 
-EPISODE = l9.episode_urn(DEFAULT_ROOM, "e1")
-TOPIC = l9.topic_urn(DEFAULT_ROOM)
+EPISODE = message_format.episode_urn(DEFAULT_ROOM, "e1")
+TOPIC = message_format.topic_urn(DEFAULT_ROOM)
 
 
 def _is_position(record) -> bool:
@@ -52,16 +52,26 @@ def test_neutralizing_keeps_the_names_and_drops_the_sigil():
 
 
 @pytest.mark.asyncio
-async def test_one_recipient_and_no_sigils_in_the_prose():
+async def test_one_recipient_and_the_prose_as_written():
+    # The caller writes a bare @ only for who it asks; a name it doesn't ask
+    # it writes @~, and the turn posts what it was given.
     managed, persister, channel = _wired()
-    await _turn(managed, persister)
+    await _turn(managed, persister, prompt="@a your move; @~b is waiting")
 
     env, extra = channel.sent[0]
     assert [a.id for a in env.header.participants.actors] == ["mediator", "a"]
-    assert extra == {"content": "a your move; b is waiting"}
+    assert extra == {"content": "@a your move; @~b is waiting"}
     assert env.payload.type == "tick"
     # The prompt is in the transcript, so the room can follow along.
-    assert persister.ingested[0][1]["content"] == "a your move; b is waiting"
+    assert persister.ingested[0][1]["content"] == "@a your move; @~b is waiting"
+
+
+@pytest.mark.asyncio
+async def test_mention_puts_the_handle_in_front_once():
+    managed, persister, channel = _wired()
+    await _turn(managed, persister, prompt="your move", mention=True)
+    await _turn(managed, persister, prompt="@a your move", mention=True)
+    assert [extra["content"] for _env, extra in channel.sent] == ["@a your move", "@a your move"]
 
 
 @pytest.mark.asyncio

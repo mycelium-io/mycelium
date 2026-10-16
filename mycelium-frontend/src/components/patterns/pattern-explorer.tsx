@@ -358,7 +358,7 @@ function Attendants({
             <Tooltip key={m.handle} content={card} side="right" align="start" className="max-w-72 p-3">
               <div className={cn("flex cursor-default items-center gap-2.5 rounded-md px-2 py-1.5", up && "bg-surface")}>
                 <span className={cn("relative rounded-full", up && "ring-2 ring-offset-2 ring-offset-bg", up && (human ? "ring-yellow" : "ring-accent"))}>
-                  <Monogram handle={handle} className="size-7" color={human ? "var(--muted-foreground)" : undefined} />
+                  <Monogram handle={handle} className="size-7" color={human ? "var(--muted-foreground)" : undefined} kind={human ? "person" : "agent"} />
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-[13.5px] font-medium leading-tight">{human ? "you" : m.handle}</span>
@@ -378,7 +378,7 @@ function Attendants({
             className="max-w-72 p-3 text-[12.5px] text-muted-foreground"
           >
             <div className="mt-1 flex cursor-default items-center gap-2.5 rounded-md px-2 py-1.5 opacity-70">
-              <Monogram handle="conductor" className="size-7" color="var(--faint)" />
+              <Monogram handle="conductor" className="size-7" color="var(--faint)" kind="engine" />
               <span className="min-w-0">
                 <span className="block text-[13.5px] font-medium leading-tight">conductor</span>
                 <span className="block text-[11.5px] leading-tight text-faint">runs the flow</span>
@@ -537,6 +537,14 @@ function handoff(line: ConductorLine, me: string): string | null {
       return null;
     case "select":
       return line.select.pick ? `picked option ${line.select.pick}` : "no option cleared the bar";
+    case "tally":
+      if (line.tally.of === "points") {
+        if (line.tally.outcome === "empty") return "nobody gave any points";
+        return line.tally.outcome === "grew" ? `${line.tally.points} points so far` : "nobody added anything new";
+      }
+      return line.tally.outcome === "contested" ? "a word used in different senses" : null;
+    case "lock":
+      return line.lock.outcome === "locked" ? "shared summary written" : "nothing to put in a shared summary";
     case "close":
       return isSuccess(line.outcome) ? "done" : `ended · ${line.outcome}`;
   }

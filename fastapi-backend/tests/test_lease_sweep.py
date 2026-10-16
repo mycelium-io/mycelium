@@ -202,6 +202,6 @@ async def test_start_is_idempotent_and_stop_cancels() -> None:
 
 
 def test_expired_is_a_contracted_notice_subkind() -> None:
-    from app.services.l9 import NOTICE_SUBKINDS
+    from app.services.message_format import NOTICE_SUBKINDS
 
     assert "expired" in NOTICE_SUBKINDS

@@ -14,7 +14,7 @@ Two properties everything downstream reads off this module:
 **The container outlives what happens inside it.**  A task's episode is minted
 when the task is created, not when someone argues about it.  A negotiation
 inside a task is its own, later episode with its own lifecycle
-(:class:`~app.services.l9_slim.EpisodeLifecycle`), and closing or aborting one
+(:class:`~app.services.message_slim.EpisodeLifecycle`), and closing or aborting one
 touches neither the row's custody nor its status.  A task can be created,
 claimed, worked and resolved with no negotiation ever opened.
 
@@ -35,15 +35,15 @@ namespaces are *worked*.
 
 from __future__ import annotations
 
-import fcntl
 import logging
 import re
+import sys
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from app.services import l9
+from app.services import message_format
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import (
     EPISODE_META,
@@ -60,6 +60,20 @@ if TYPE_CHECKING:
     from app.services.floor import Floor
 
 logger = logging.getLogger(__name__)
+
+
+def _lock_exclusive(fh: Any) -> None:
+    """Hold ``fh`` exclusively until it is closed (flock; a byte lock on Windows)."""
+    if sys.platform == "win32":
+        import msvcrt
+
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(fh, fcntl.LOCK_EX)
+
 
 #: The namespace a task lives in — the one the board leases against.
 WORK_NAMESPACE = "work"
@@ -130,7 +144,7 @@ def mint_episode_id() -> str:
 
 def mint_episode_urn(room: str) -> str:
     """A fresh episode URN over ``room``'s own channel."""
-    return l9.episode_urn(room, mint_episode_id())
+    return message_format.episode_urn(room, mint_episode_id())
 
 
 def short_id_of(episode: str) -> str:
@@ -234,7 +248,7 @@ def episode_write_rejection(
     how one comes into being, or the transcript grows threads nobody opened.
 
     A thread that is a **frozen negotiation** is refused to anyone outside the
-    roster it froze on (403). That is L9's stable-membership rule: an
+    roster it froze on (403). That is the stable-membership rule: an
     offer/counter exchange scored across a set of participants means nothing if
     an outsider can drop a position into it.
 
@@ -247,7 +261,7 @@ def episode_write_rejection(
 
     A **container** — a task's thread — refuses none of these on its own, and
     that is deliberate rather than unfinished. Freezing membership is a negotiation's
-    policy, not an episode's (:class:`~app.services.l9_slim.EpisodeLifecycle`):
+    policy, not an episode's (:class:`~app.services.message_slim.EpisodeLifecycle`):
     a task outlives what happens inside it, so an agent that claims a row after
     the thread opened must be able to speak in it.  The honest boundary: a task's
     thread is scoped to the room, not narrower.  Everyone who may write in the
@@ -256,7 +270,7 @@ def episode_write_rejection(
     still has to pass.  The two narrowings above are the only exceptions, and
     both are held by a run of backend code for as long as it runs.
     """
-    if episode is None or l9.is_live_episode(room, episode):
+    if episode is None or message_format.is_live_episode(room, episode):
         return None
     if not known_episode(room, episode, transcript=transcript):
         return ThreadRefusal(404, f"No thread {short_id_of(episode)!r} in room {room!r}")
@@ -282,7 +296,7 @@ def thread_write_refusal(room: str, handle: str, episode: str | None) -> ThreadR
     has no negotiation to be outside of and no transcript to recognize a thread
     by, so the rule falls back to what the store knows.
     """
-    if episode is None or l9.is_live_episode(room, episode):
+    if episode is None or message_format.is_live_episode(room, episode):
         return None
 
     from app.services.room_channels import manager
@@ -340,7 +354,7 @@ async def bind_episode(room: str, key: str, *, episode: str | None = None) -> st
                     embed=False,
                     created_by=meta.get("updated_by")
                     or meta.get("created_by")
-                    or l9.SYSTEM_ACTOR_ID,
+                    or message_format.SYSTEM_ACTOR_ID,
                 )
             ]
         ),
@@ -354,23 +368,29 @@ async def create_task(
     title: str,
     *,
     created_by: str,
+    content: str | None = None,
     key: str | None = None,
     meta: dict[str, Any] | None = None,
 ) -> MemoryRead:
     """Create a task board-first, with its thread already minted.
 
     The row comes first and any coordination inside it is optional, so putting
-    something on the board takes no negotiation to converge first.
+    something on the board takes no negotiation to converge first. ``content``
+    is what the task is, written under the title in the same write: the title
+    stays the row's first line, which is what every surface reads it by, the
+    way ``worker_engine.record_result`` keeps it.
     """
     from app.routes.memory import upsert_memories
     from app.schemas import MemoryBatchCreate, MemoryCreate
 
     row_key = key or f"{WORK_NAMESPACE}/{slugify(title)}"
     fields: dict[str, Any] = {"kind": TASK_KIND, "status": "open", **(meta or {})}
+    described = (content or "").strip()
+    body = f"{title.strip()}\n\n{described}" if described else title
     written = await upsert_memories(
         room,
         MemoryBatchCreate(
-            items=[MemoryCreate(key=row_key, value=title, created_by=created_by, meta=fields)]
+            items=[MemoryCreate(key=row_key, value=body, created_by=created_by, meta=fields)]
         ),
         system={EPISODE_META: mint_episode_urn(room)},
     )
@@ -403,7 +423,7 @@ def backfill_room(room: str) -> int:
         path = base / f"{key}.md"
         try:
             with path.open("r+", encoding="utf-8") as fh:
-                fcntl.flock(fh, fcntl.LOCK_EX)
+                _lock_exclusive(fh)
                 locked_meta, locked_content = parse_memory(fh.read())
                 if system_meta(locked_meta).get(EPISODE_META):
                     continue
@@ -412,7 +432,7 @@ def backfill_room(room: str) -> int:
                 new_text = serialize_memory(
                     locked_content,
                     key=locked_meta.get("key", key),
-                    created_by=locked_meta.get("created_by", l9.SYSTEM_ACTOR_ID),
+                    created_by=locked_meta.get("created_by", message_format.SYSTEM_ACTOR_ID),
                     updated_by=locked_meta.get("updated_by"),
                     version=locked_meta.get("version", 1),
                     tags=locked_meta.get("tags"),

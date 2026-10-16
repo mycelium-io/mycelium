@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-//! Mycelium for macOS: a thin shell over `mycelium desktop serve`.
+//! Mycelium for macOS, Linux and Windows: a thin shell over `mycelium desktop serve`.
 //!
 //! The shell starts the supervisor, shows its progress on a local page, then
 //! points the main window at the room UI it serves (or at the remote hub).
@@ -9,13 +9,15 @@
 //! links, and a window with the agents' terminals. The hub's UI, once loaded,
 //! gets no IPC: every command here refuses a page that isn't the app's own.
 
+mod download;
 mod paths;
 mod settings;
+mod signature;
 mod supervisor;
 mod terminal;
 mod updates;
+mod zoom;
 
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
@@ -23,6 +25,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
+use tauri::webview::{PermissionKind, PermissionResponse};
 use tauri::{
     AppHandle, Emitter, Manager, RunEvent, Url, Webview, WebviewUrl, WebviewWindowBuilder,
     WindowEvent, Wry,
@@ -34,6 +37,9 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use settings::{Mode, Settings};
 use supervisor::Supervisor;
 use terminal::Terminal;
+
+/// What copy calls this machine.
+const MACHINE: &str = if cfg!(target_os = "macos") { "Mac" } else { "computer" };
 
 #[derive(Default)]
 struct Shell {
@@ -70,9 +76,41 @@ pub(crate) fn set_update_status(app: &AppHandle, status: Option<&str>) {
 
 // ── pages ───────────────────────────────────────────────────────────────────
 
+/// Where Tauri serves the app's own pages: the dev server, or the bundle.
+/// Known from the platform rather than read off the window, whose URL isn't
+/// settled when it is built (WebView2 navigates after `build()` returns).
+fn app_base(app: &AppHandle) -> Option<Url> {
+    if tauri::is_dev() {
+        return app.config().build.dev_url.clone();
+    }
+    // Windows serves a custom protocol as http://<scheme>.localhost.
+    let base = if cfg!(windows) { "http://tauri.localhost/" } else { "tauri://localhost/" };
+    Url::parse(base).ok()
+}
+
 fn local_url(app: &AppHandle, page: &str) -> Option<Url> {
     let base = app.state::<Shell>().local_base.lock().unwrap().clone()?;
     base.join(page).ok()
+}
+
+/// The microphone goes only to this Mac's own hub UI. In client mode the
+/// window shows another hub's pages, and once macOS has let the app use the
+/// mic, a page granted it here could record without anyone pressing the mic.
+/// The camera and anything else not handled here keep WebKit's own prompt.
+fn media_permission(app: &AppHandle, webview: &Webview, kind: PermissionKind) -> PermissionResponse {
+    if !matches!(kind, PermissionKind::Microphone) {
+        return PermissionResponse::Default;
+    }
+    let status = app.state::<Supervisor>().status();
+    let own_ui = status
+        .as_ref()
+        .filter(|s| s.get("mode").and_then(Value::as_str) == Some("hub"))
+        .and_then(|s| s.get("ui_url").and_then(Value::as_str))
+        .and_then(|u| Url::parse(u).ok());
+    match (webview.url(), own_ui) {
+        (Ok(page), Some(ui)) if page.origin() == ui.origin() => PermissionResponse::Allow,
+        _ => PermissionResponse::Deny,
+    }
 }
 
 /// Commands answer only the app's own pages, never a hub's page loaded in the window.
@@ -115,6 +153,32 @@ fn show_page(app: &AppHandle, path: &str) {
         url.query_pairs_mut().append_pair("machine", runner);
     }
     navigate_main(app, url);
+}
+
+/// Settings… (⌘,): the settings pages of the hub the window is showing. With
+/// no hub page open (first run, or the hub isn't up), the app's own window,
+/// which is where a hub is chosen and works without one.
+fn open_settings(app: &AppHandle) {
+    let local = app.state::<Shell>().local_base.lock().unwrap().clone();
+    let shown = app
+        .get_webview_window("main")
+        .and_then(|w| w.url().ok())
+        .filter(|u| matches!(u.scheme(), "http" | "https"))
+        .filter(|u| local.as_ref().is_none_or(|l| l.origin() != u.origin()));
+    if let Some(page) = shown {
+        if let Ok(url) = page.join("/settings/general") {
+            navigate_main(app, url);
+            return;
+        }
+    }
+    // `ui_url` is in the status from the start, before the UI answers, so ask
+    // whether there's something to show yet rather than whether it has an address.
+    let up = app.state::<Supervisor>().status().as_ref().is_some_and(supervisor::ready);
+    if up {
+        show_page(app, "/settings/general");
+    } else {
+        show_local(app, "onboarding");
+    }
 }
 
 fn show_local(app: &AppHandle, view: &str) {
@@ -178,7 +242,7 @@ pub(crate) fn on_status(app: &AppHandle, generation: u64, status: &Value) {
 /// agent CLIs on this Mac, and the person's answer about them.
 fn machine_integrations(args: &[&str]) -> Option<std::process::Output> {
     let bin = paths::resolve("mycelium")?;
-    Command::new(bin)
+    paths::command(bin)
         .args(["machine", "integrations"])
         .args(args)
         .env("PATH", paths::shell_path())
@@ -258,6 +322,9 @@ pub(crate) fn on_request(app: &AppHandle, event: &Value) {
     }
     let text = |key: &str| request.get(key).and_then(Value::as_str).unwrap_or("").to_string();
     let (title, message) = (text("title"), text("message"));
+    // A launch says Start; the supervisor's own questions name their buttons.
+    let label = |key: &str, default: &str| Some(text(key)).filter(|s| !s.is_empty()).unwrap_or(default.into());
+    let (yes_label, no_label) = (label("yes", "Start"), label("no", "Decline"));
     let folder = std::path::PathBuf::from(folder);
     let app = app.clone();
     std::thread::spawn(move || {
@@ -266,7 +333,7 @@ pub(crate) fn on_request(app: &AppHandle, event: &Value) {
             .message(message)
             .title(title)
             .kind(MessageDialogKind::Warning)
-            .buttons(MessageDialogButtons::OkCancelCustom("Start".into(), "Decline".into()))
+            .buttons(MessageDialogButtons::OkCancelCustom(yes_label, no_label))
             .blocking_show();
         let answer = folder.join(format!("{id}.{}", if yes { "yes" } else { "no" }));
         if let Err(e) = std::fs::write(&answer, "") {
@@ -312,10 +379,18 @@ fn status_line(status: &Value) -> String {
     let parts: Vec<String> = ["herdr", "slim", "hub", "ui", "runner"].iter().map(|p| state(p)).collect();
     // A hub the app didn't start, on its port: running, but not on its own.
     let other_hub = status.get("existing_hub").is_some_and(|h| !h.is_null());
-    if parts.iter().any(|s| s == "failed" || s == "stopped") {
+    // herdr from before the app was updated: its terminals can lose folders.
+    let stale_herdr = status.get("stale_herdr").is_some_and(|h| !h.is_null());
+    // A program the supervisor started that stopped answering (the hub).
+    let hung = status.get("hung").and_then(Value::as_str);
+    if let Some(name) = hung {
+        format!("○ The {name} stopped responding")
+    } else if parts.iter().any(|s| s == "failed" || s == "stopped") {
         "○ Something stopped: open Health check".into()
     } else if parts.iter().all(|s| s == "running" || s == "disabled") {
-        if other_hub {
+        if stale_herdr {
+            "● herdr needs a restart: open Health check".into()
+        } else if other_hub {
             "● Running on another hub: open Health check".into()
         } else {
             "● Mycelium is running".into()
@@ -362,8 +437,24 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         ],
     )?;
     let experiences = Submenu::with_id(app, "experiences", "Experiences", true)?;
-    let switch = MenuItem::with_id(app, "switch", "Settings…", true, Some("CmdOrCtrl+,"))?;
+    let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+    let switch = MenuItem::with_id(app, "switch", "Hub and Connection…", true, None::<&str>)?;
     let health = MenuItem::with_id(app, "doctor", "Health check…", true, None::<&str>)?;
+    // Where to look when something won't start: the app's own log, and the
+    // runner's, which says why an agent didn't.
+    let logs = Submenu::with_id_and_items(
+        app,
+        "logs",
+        "Logs",
+        true,
+        &[
+            &MenuItem::with_id(app, "log:desktop", "App log", true, None::<&str>)?,
+            &MenuItem::with_id(app, "log:runner", "Agent starts (runner log)", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            // Both logs' folders, with the runner's older logs beside it.
+            &MenuItem::with_id(app, "log:folder", "Open the Mycelium folder", true, None::<&str>)?,
+        ],
+    )?;
     let updates = MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit Mycelium", true, Some("CmdOrCtrl+Q"))?;
     let menu = Menu::with_items(
@@ -375,8 +466,10 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &agents,
             // The experiences folder goes here while one is added.
             &PredefinedMenuItem::separator(app)?,
+            &settings,
             &switch,
             &health,
+            &logs,
             &updates,
             &PredefinedMenuItem::separator(app)?,
             &quit_item,
@@ -388,8 +481,13 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(true);
     // A template image: one colour with transparency, which macOS tints to
     // match the menu bar (white on dark, black on light) like its own icons.
-    let template = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?;
-    tray = tray.icon(template).icon_as_template(true);
+    // Other platforms don't tint, so they get the app's own icon.
+    if cfg!(target_os = "macos") {
+        let template = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?;
+        tray = tray.icon(template).icon_as_template(true);
+    } else {
+        tray = tray.icon(tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?);
+    }
     tray.build(app)?;
     *app.state::<Shell>().tray.lock().unwrap() = Some(TrayItems {
         status,
@@ -503,13 +601,24 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         "open" => show_main(app),
         "terminal" => open_terminal_window(app, None),
         "machines" => show_page(app, "/machines"),
-        "switch" | "settings" => show_local(app, "onboarding"),
+        "settings" => open_settings(app),
+        "switch" => show_local(app, "onboarding"),
         "status" | "doctor" => show_local(app, "doctor"),
-        "updates" => updates::check(app.clone(), true),
+        "updates" => updates::check(app.clone(), updates::Check::Asked),
+        "log:desktop" => open_log_from_menu(app, &desktop_log()),
+        "log:runner" => open_log_from_menu(app, &runner_log()),
+        "log:folder" => {
+            let folder = paths::home().join(".mycelium");
+            if let Err(e) = paths::open(folder.as_os_str()) {
+                app.dialog().message(e.to_string()).title("Logs").show(|_| {});
+            }
+        }
         "quit" => quit(app),
         // An experience's item carries the path it opens on.
         id => {
-            if let Some(path) = id.strip_prefix(EXPERIENCE_ITEM) {
+            if let Some(step) = zoom::Step::from_id(id) {
+                zoom::apply(app, step);
+            } else if let Some(path) = id.strip_prefix(EXPERIENCE_ITEM) {
                 show_page(app, path);
             }
         }
@@ -517,7 +626,9 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
 }
 
 /// The macOS app menu, with Check for Updates… and Settings… (⌘,) where a
-/// Mac app keeps them.
+/// Mac app keeps them. Windows and Linux get no menu bar: the tray menu has
+/// everything, and a native menu bar there is a bare strip over the app.
+#[cfg(target_os = "macos")]
 fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let menu = Menu::default(app)?;
     if let Some(first) = menu.items()?.into_iter().next() {
@@ -525,10 +636,32 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             let updates =
                 MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+            let switch = MenuItem::with_id(app, "switch", "Hub and Connection…", true, None::<&str>)?;
             // After "About Mycelium" and its separator.
             app_submenu.insert(&updates, 2)?;
             app_submenu.insert(&settings, 3)?;
-            app_submenu.insert(&PredefinedMenuItem::separator(app)?, 4)?;
+            app_submenu.insert(&switch, 4)?;
+            app_submenu.insert(&PredefinedMenuItem::separator(app)?, 5)?;
+        }
+    }
+    // Zoom, at the top of View, where a browser keeps it.
+    let zoom_in = MenuItem::with_id(app, "zoom:in", "Zoom In", true, Some("CmdOrCtrl+="))?;
+    let zoom_out = MenuItem::with_id(app, "zoom:out", "Zoom Out", true, Some("CmdOrCtrl+-"))?;
+    let actual = MenuItem::with_id(app, "zoom:reset", "Actual Size", true, Some("CmdOrCtrl+0"))?;
+    let view = menu
+        .items()?
+        .into_iter()
+        .filter_map(|item| item.as_submenu().cloned())
+        .find(|sub| sub.text().is_ok_and(|t| t == "View"));
+    match view {
+        Some(view) => {
+            view.insert(&actual, 0)?;
+            view.insert(&zoom_in, 1)?;
+            view.insert(&zoom_out, 2)?;
+            view.insert(&PredefinedMenuItem::separator(app)?, 3)?;        }
+        None => {
+            let view = Submenu::with_items(app, "View", true, &[&actual, &zoom_in, &zoom_out])?;
+            menu.append(&view)?;
         }
     }
     Ok(menu)
@@ -550,6 +683,9 @@ fn handle_link(app: &AppHandle, link: &Url) {
     match link.host_str() {
         Some("terminal") => open_terminal_window(app, param("pane").filter(|p| !p.is_empty())),
         Some("settings") => show_local(app, "onboarding"),
+        // The room UI's "update available": Check for Updates…, which asks
+        // before anything downloads, so a page can't restart the app.
+        Some("update") => updates::check(app.clone(), updates::Check::Asked),
         Some("join") => {
             let Some(hub) = param("hub") else { return };
             let path = param("room").filter(|r| !r.is_empty()).map(|room| {
@@ -581,13 +717,13 @@ fn join(app: AppHandle, hub: String, path: Option<String>) {
     // A dialog that waits for an answer must not block the main thread.
     std::thread::spawn(move || {
         let leaving = match &current {
-            Some(s) if s.mode == Mode::Hub => " This Mac will stop running its own hub.".to_string(),
-            Some(s) => format!(" This Mac will leave {}.", s.hub_url.clone().unwrap_or_default()),
+            Some(s) if s.mode == Mode::Hub => format!(" This {MACHINE} will stop running its own hub."),
+            Some(s) => format!(" This {MACHINE} will leave {}.", s.hub_url.clone().unwrap_or_default()),
             None => String::new(),
         };
         let yes = app
             .dialog()
-            .message(format!("Connect this Mac to the hub at {hub}?{leaving}"))
+            .message(format!("Connect this {MACHINE} to the hub at {hub}?{leaving}"))
             .title("Join a hub")
             .buttons(MessageDialogButtons::OkCancelCustom("Join".into(), "Cancel".into()))
             .blocking_show();
@@ -595,7 +731,8 @@ fn join(app: AppHandle, hub: String, path: Option<String>) {
             return;
         }
         let roots = current.map(|s| s.roots).unwrap_or_default();
-        let next = Settings { mode: Mode::Client, hub_url: Some(hub), roots, share_usage: false };
+        let next =
+            Settings { mode: Mode::Client, hub_url: Some(hub), roots, share_usage: false, voice: false, voice_model: Default::default() };
         match next.validate() {
             Ok(next) => {
                 if settings::save(&next).is_ok() {
@@ -645,7 +782,7 @@ async fn scan_agents(app: AppHandle, webview: Webview) -> Result<Value, String> 
     local_only(&app, &webview)?;
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
-        Command::new(bin)
+        paths::command(bin)
             .args(["runner", "scan", "--json"])
             .env("PATH", paths::shell_path())
             .output()
@@ -654,7 +791,7 @@ async fn scan_agents(app: AppHandle, webview: Webview) -> Result<Value, String> 
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
     if !out.status.success() {
-        return Err("Couldn't scan this Mac for agent CLIs.".into());
+        return Err(format!("Couldn't scan this {MACHINE} for agent CLIs."));
     }
     serde_json::from_slice(&out.stdout).map_err(|_| "The scan returned something unreadable.".into())
 }
@@ -665,7 +802,7 @@ async fn run_doctor(app: AppHandle, webview: Webview) -> Result<Value, String> {
     local_only(&app, &webview)?;
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
-        Command::new(bin)
+        paths::command(bin)
             .args(["--json", "doctor", "--mode", "desktop"])
             .env("PATH", paths::shell_path())
             .output()
@@ -705,7 +842,7 @@ async fn model_cli(input: Option<String>) -> Result<Value, String> {
 
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
-        let mut cmd = Command::new(bin);
+        let mut cmd = paths::command(bin);
         cmd.args(["desktop", "model"])
             .env("PATH", paths::shell_path())
             .stdin(Stdio::piped())
@@ -772,7 +909,7 @@ async fn remove_experience(app: AppHandle, webview: Webview, id: String) -> Resu
 async fn experiences_cli(args: Vec<String>) -> Result<Value, String> {
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
-        Command::new(bin)
+        paths::command(bin)
             .args(["desktop", "experiences"])
             .args(&args)
             .env("PATH", paths::shell_path())
@@ -801,7 +938,7 @@ async fn get_hub_settings(app: AppHandle, webview: Webview) -> Result<Value, Str
 async fn hub_settings_cli(hub: Option<String>) -> Result<Value, String> {
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
-        let mut cmd = Command::new(bin);
+        let mut cmd = paths::command(bin);
         cmd.args(["hub", "settings", "--json"])
             .env("PATH", paths::shell_path())
             .env("NO_COLOR", "1");
@@ -834,20 +971,37 @@ fn open_experience(app: AppHandle, webview: Webview, path: String) -> Result<(),
     Ok(())
 }
 
-/// Open the supervisor's log (`~/.mycelium/logs/desktop.log`) in Console.
-#[tauri::command]
-fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
-    local_only(&app, &webview)?;
-    let log = paths::home().join(".mycelium").join("logs").join("desktop.log");
+/// The supervisor's log: what the app started, and why something stopped.
+fn desktop_log() -> std::path::PathBuf {
+    paths::home().join(".mycelium").join("logs").join("desktop.log")
+}
+
+/// The runner's log: every agent a room asked this machine to start, and
+/// whether it started, waited for a yes, or failed and why.
+fn runner_log() -> std::path::PathBuf {
+    paths::home().join(".mycelium").join("runner").join("runner.log")
+}
+
+/// Open a log in whatever this machine opens it with (Console, on a Mac).
+fn open_log_file(log: &std::path::Path) -> Result<(), String> {
     if !log.exists() {
         return Err("There's no log yet. It starts when Mycelium does.".into());
     }
-    Command::new("open")
-        .args(["-a", "Console"])
-        .arg(&log)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    paths::open(log.as_os_str()).map_err(|e| e.to_string())
+}
+
+/// A log opened from the menu bar, which has no page to show an error on.
+fn open_log_from_menu(app: &AppHandle, log: &std::path::Path) {
+    if let Err(e) = open_log_file(log) {
+        app.dialog().message(e).title("Logs").show(|_| {});
+    }
+}
+
+/// Open the supervisor's log (`~/.mycelium/logs/desktop.log`).
+#[tauri::command]
+fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
+    local_only(&app, &webview)?;
+    open_log_file(&desktop_log())
 }
 
 /// Back to the room UI from one of the app's own pages, once it is up.
@@ -898,6 +1052,22 @@ fn start(app: AppHandle, webview: Webview, settings: Settings) -> Result<paths::
     Ok(setup)
 }
 
+/// How an update's download is going, for the update window's first look.
+#[tauri::command]
+fn update_progress(app: AppHandle, webview: Webview) -> Result<Option<updates::Progress>, String> {
+    local_only(&app, &webview)?;
+    Ok(updates::progress())
+}
+
+/// The update window's Try again, after a download failed: the person already
+/// said yes, so it carries on from the partial download without asking.
+#[tauri::command]
+fn update_retry(app: AppHandle, webview: Webview) -> Result<(), String> {
+    local_only(&app, &webview)?;
+    updates::check(app, updates::Check::Retry);
+    Ok(())
+}
+
 #[tauri::command]
 fn terminal_open(
     app: AppHandle,
@@ -932,16 +1102,28 @@ fn terminal_close(app: AppHandle, webview: Webview) -> Result<(), String> {
 
 // ── the app ─────────────────────────────────────────────────────────────────
 
-/// WKWebView's own user agent on macOS.
-const WEBKIT_UA: &str =
+/// The webview's own user agent on this platform, which the pages read to
+/// name the machine and its keys.
+#[cfg(target_os = "macos")]
+const WEBVIEW_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)";
+#[cfg(windows)]
+const WEBVIEW_UA: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)";
+#[cfg(target_os = "linux")]
+const WEBVIEW_UA: &str =
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko)";
 
 /// The main window. Its user agent ends in `MyceliumDesktop/<version>`, which
 /// is how the room UI knows to offer links only the app can open (the
 /// agents terminal, through `mycelium://terminal`).
 fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
-    let ua = format!("{WEBKIT_UA} MyceliumDesktop/{}", app.package_info().version);
-    WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+    let ua = format!("{WEBVIEW_UA} MyceliumDesktop/{}", app.package_info().version);
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()));
+    // A Mac has the View menu's shortcuts; elsewhere a script catches the keys.
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.initialization_script(zoom::keys_script());
+    builder
         .title("Mycelium")
         .inner_size(1320.0, 860.0)
         .min_inner_size(720.0, 520.0)
@@ -954,12 +1136,39 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
         // room folders, panels) never sees a drop. The UI listens for none of
         // Tauri's drop events, so the page gets them all.
         .disable_drag_drop_handler()
+        .on_permission_request({
+            let app = app.clone();
+            move |webview, kind| media_permission(&app, &webview, kind)
+        })
+        // Every page load starts the page over, so it is told again whether
+        // an update is available, and put back at the window's zoom.
+        .on_page_load(|window, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                updates::announce(&window);
+                zoom::restore(window.app_handle());
+            }
+        })
+        // The keyboard script's zoom steps arrive as navigations to an address
+        // that never resolves; each is carried out and cancelled.
+        .on_navigation({
+            let app = app.clone();
+            move |url| {
+                if !zoom::is_zoom_address(url) {
+                    return true;
+                }
+                if let Some(step) = zoom::from_navigation(url) {
+                    let app = app.clone();
+                    let _ = app.clone().run_on_main_thread(move || zoom::apply(&app, step));
+                }
+                false
+            }
+        })
         // A link the UI opens in a new tab (one out of the app, from chat or a
         // memory) goes to the default browser: the app never opens a second
         // web window of its own, and only web and mail links are passed on.
         .on_new_window(|url, _features| {
             if matches!(url.scheme(), "http" | "https" | "mailto") {
-                let _ = Command::new("open").arg(url.as_str()).spawn();
+                let _ = paths::open(url.as_str().as_ref());
             }
             tauri::webview::NewWindowResponse::Deny
         })
@@ -967,18 +1176,28 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
 }
 
 pub fn run() {
-    let app = tauri::Builder::default()
+    // WebKitGTK's DMA-BUF renderer draws a blank window on some GPUs (NVIDIA's
+    // driver among them) and in VMs; the person can still turn it back on.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    let builder = tauri::Builder::default()
         // First, so a second launch (or a link opened while running) lands here.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| show_main(app)))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .menu(app_menu)
+        .plugin(tauri_plugin_updater::Builder::new().build());
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(app_menu);
+    let app = builder
+        // The tray's items, and on a Mac the menu bar's.
         .on_menu_event(on_menu_event)
         .manage(Shell::default())
         .manage(Supervisor::default())
         .manage(Terminal::default())
+        .manage(zoom::Zoom::default())
         .invoke_handler(tauri::generate_handler![
             get_state,
             scan_agents,
@@ -997,6 +1216,8 @@ pub fn run() {
             open_room,
             open_log,
             start,
+            update_progress,
+            update_retry,
             terminal_open,
             terminal_write,
             terminal_resize,
@@ -1004,10 +1225,19 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
-            let window = main_window(&handle)?;
-            *app.state::<Shell>().local_base.lock().unwrap() = window.url().ok();
+            #[cfg(windows)]
+            paths::clear_moved_aside();
+            *app.state::<Shell>().local_base.lock().unwrap() = app_base(&handle);
+            main_window(&handle)?;
+            zoom::restore(&handle);
             build_tray(&handle)?;
 
+            // macOS and the Windows installer register mycelium:// links with
+            // the system; an AppImage has no installer, so it registers itself.
+            #[cfg(target_os = "linux")]
+            if let Err(e) = app.deep_link().register_all() {
+                eprintln!("[mycelium] could not register mycelium:// links: {e}");
+            }
             let links = handle.clone();
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {
@@ -1024,13 +1254,18 @@ pub fn run() {
                 paths::link_bundled();
                 supervisor::restart(&handle, saved);
             }
-            // A quiet look for an update once the app has settled; it speaks
-            // only if there is one. Not in development, where every release is newer.
+            // A look for an update once the app has settled, which asks only
+            // if there is one; then a silent look every few hours, which the
+            // room UI shows. Not in development, where every release is newer.
             if !cfg!(debug_assertions) {
                 let later = handle.clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(10));
-                    updates::check(later, false);
+                    updates::check(later.clone(), updates::Check::Launch);
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
+                        updates::check(later.clone(), updates::Check::Quiet);
+                    }
                 });
             }
             Ok(())

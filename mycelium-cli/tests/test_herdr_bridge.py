@@ -490,6 +490,7 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
             self.memory_key = f"agents/{handle}"
 
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr("mycelium.caller.person", lambda _config, **_kw: "julia")
     monkeypatch.setattr(
         "mycelium.commands.agent._write_manifest",
         lambda config, room, manifest, created_by, **_kw: written.append(manifest),
@@ -534,6 +535,8 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
     assert [m.handle for m in written] == ["fresh-agent"]
     # It takes part like any resident agent, and says which agent CLI it is.
     assert (written[0].adapter, written[0].framework) == ("claude_code", "codex")
+    # Owned by the machine's person, not by whatever identity the runner has.
+    assert written[0].owner == "julia"
     assert retired == ["old"] and deleted == ["old"]
     # New member is managed, with its folder; the dead managed one is gone;
     # the hand-mapped one stays.
@@ -546,6 +549,88 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
 class _Cfg:
     def get_current_identity(self) -> str:
         return "tester"
+
+
+def _member_pass(
+    monkeypatch: pytest.MonkeyPatch, hub: object, passes: int = 3
+) -> list[AgentManifest]:
+    """Run ``passes`` sync passes over one enrolled member whose pane is live,
+    with ``hub`` as what the hub holds at its ``agents/<handle>`` (a string, None
+    for nothing there, or an exception the read raises). Returns what was written."""
+    import contextlib
+
+    from mycelium.commands import herdr as herdr_cmd
+
+    written: list[AgentManifest] = []
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr("mycelium.caller.person", lambda _config, **_kw: "julia")
+    monkeypatch.setattr(
+        "mycelium.client.typed_client", lambda *_a, **_k: contextlib.nullcontext(None)
+    )
+
+    def read(_client: object, _room: str, _key: str) -> str | None:
+        if isinstance(hub, Exception):
+            raise hub
+        return cast("str | None", hub)
+
+    monkeypatch.setattr("mycelium.commands.agent._remote_memory_text", read)
+    monkeypatch.setattr(
+        "mycelium.commands.agent._write_manifest",
+        lambda config, room, manifest, created_by, **_kw: written.append(manifest),
+    )
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="r", handle="tally", pane="wX:p5", kind="claude"))
+    agents = [{"pane_id": "wX:p5", "workspace_id": "wX", "agent": "claude", "cwd": "/x"}]
+    bridge = HerdrBridge(
+        runner=ScriptedRunner(
+            {
+                "agent list": _proc(_ok({"agents": agents})),
+                "tab list": _proc(_ok({"tabs": []})),
+                "pane list": _proc(_ok({"panes": [{"pane_id": "wX:p5"}]})),
+            }
+        ),
+        registry=reg,
+    )
+    for _ in range(passes):
+        herdr_cmd._reconcile_workspace(
+            cast("MyceliumConfig", _Cfg()), bridge, "wX", "r", name_from="tab", prefix="", kind=None
+        )
+    return written
+
+
+def test_sync_leaves_an_edited_manifest_alone(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """#1315: a person gave an enrolled agent its own description and owner. The
+    sync owns the pane mapping, not the manifest, so it writes nothing, and the
+    version doesn't climb pass after pass."""
+    edited = "adapter: claude_code\ndescription: Combat designer\nowner: julia\n"
+    assert _member_pass(monkeypatch, edited) == []
+
+
+def test_sync_leaves_a_manifest_it_cant_parse_alone(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """The case behind #1315: an edit that isn't valid YAML (an unquoted colon)
+    read as "missing", and every pass rewrote it as "herdr-enrolled", owner
+    unknown. It's still the person's text, so the sync keeps out of it."""
+    unparseable = "description: Combat designer. Owns how fights play: weapons\n"
+    assert _member_pass(monkeypatch, unparseable) == []
+
+
+def test_sync_heals_a_manifest_that_is_gone_once_owned_by_the_person(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    written = _member_pass(monkeypatch, None, passes=1)
+    assert [(m.handle, m.owner) for m in written] == [("tally", "julia")]
+
+
+def test_sync_writes_nothing_when_it_cant_ask_the_hub(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    import httpx
+
+    assert _member_pass(monkeypatch, httpx.ConnectError("hub down")) == []
 
 
 def test_reconcile_keeps_a_member_whose_pane_is_open_but_empty(
@@ -577,6 +662,45 @@ def test_reconcile_keeps_a_member_whose_pane_is_open_but_empty(
     )
     assert retired == [] and deleted == []
     assert bridge.registry.get("r", "builder") is not None
+
+
+def test_reconcile_leaves_a_member_whose_pane_is_open_in_another_workspace(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """A room bound to two workspaces: each pass sees the other's members in the
+    registry. A pane open in the other workspace is not closed, so this pass
+    must not retire it (and the other pass then re-enroll it, every pass)."""
+    from mycelium.commands import herdr as herdr_cmd
+
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="r", handle="voice", pane="w2:p36", kind="claude", managed=True))
+    deleted: list[str] = []
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr(
+        "mycelium.commands.agent._delete_manifest",
+        lambda config, room, manifest, **_kw: deleted.append(manifest.handle),
+    )
+    agents = [
+        {"pane_id": "w2:p36", "workspace_id": "w2", "agent": "claude", "agent_status": "idle"}
+    ]
+    panes = [
+        {"pane_id": "w2:p36", "workspace_id": "w2"},
+        {"pane_id": "wS:p1", "workspace_id": "wS"},
+    ]
+    bridge = HerdrBridge(
+        runner=ScriptedRunner(
+            {
+                "agent list": _proc(_ok({"agents": agents})),
+                "tab list": _proc(_ok({"tabs": []})),
+                "pane list": _proc(_ok({"panes": panes})),
+            }
+        )
+    )
+    _enrolled, retired = herdr_cmd._reconcile_workspace(
+        cast("MyceliumConfig", _Cfg()), bridge, "wS", "r", name_from="tab", prefix="", kind=None
+    )
+    assert retired == [] and deleted == []
+    assert bridge.registry.get("r", "voice") is not None
 
 
 def test_reconcile_retires_nothing_when_herdr_cant_list_panes(
@@ -767,3 +891,57 @@ def test_a_workspace_that_is_gone_is_opened_again(
     workspace, pane = bridge.place_pane("checkout", "w5", handle="a")
     assert (workspace, pane) == ("w9", "w9:p1")
     assert herdr.labels() == ["@a"]
+
+
+def test_retiring_a_member_the_hub_already_forgot_still_retires_it(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """A 404 on the manifest delete means it is already gone. Raising instead
+    kept the mapping, so the same delete failed on every later pass."""
+    from contextlib import nullcontext
+
+    from mycelium.commands import agent as agent_cmd
+    from mycelium.filesystem import get_room_dir
+    from mycelium_backend_client.api.memory import (
+        delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
+    )
+    from mycelium_backend_client.errors import UnexpectedStatus
+
+    status = 404
+
+    def delete(**_kw: object) -> None:
+        raise UnexpectedStatus(status, b'{"detail":"Memory not found"}')
+
+    monkeypatch.setattr(delete_api, "sync_detailed", delete)
+    monkeypatch.setattr(agent_cmd, "_typed_client", lambda *_a, **_kw: nullcontext())
+    mirror = get_room_dir("r") / "agents" / "old.md"
+    mirror.parent.mkdir(parents=True, exist_ok=True)
+    mirror.write_text("---\n---\n")
+    manifest = cast("AgentManifest", type("M", (), {"memory_key": "agents/old"})())
+
+    agent_cmd._delete_manifest(cast("MyceliumConfig", _Cfg()), "r", manifest)
+    assert not mirror.exists()
+
+    status = 500
+    with pytest.raises(UnexpectedStatus):
+        agent_cmd._delete_manifest(cast("MyceliumConfig", _Cfg()), "r", manifest)
+
+
+def test_herdr_unbind_forgets_the_workspace_and_keeps_its_members(isolated_home: Path) -> None:
+    from typer.testing import CliRunner
+
+    from mycelium.commands import herdr as herdr_cmd
+
+    reg = HerdrRegistry()
+    reg.bind("w2", "r")
+    reg.set(HerdrPaneMapping(room="r", handle="a", pane="w2:p1", managed=True))
+
+    result = CliRunner().invoke(herdr_cmd.app, ["unbind", "w2"])
+    assert result.exit_code == 0, result.output
+    assert "Unbound w2 from r" in result.output
+    assert reg.bindings() == {}
+    assert reg.get("r", "a") is not None
+
+    again = CliRunner().invoke(herdr_cmd.app, ["unbind", "w2"])
+    assert again.exit_code == 1
+    assert "No binding" in again.output

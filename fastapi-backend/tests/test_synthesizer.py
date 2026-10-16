@@ -19,15 +19,15 @@ from typing import Any
 import pytest
 import yaml
 
-from app.services import l9, memory_sync, persister, synthesizer
+from app.services import memory_sync, message_format, persister, synthesizer
 from app.services.filesystem import get_room_dir, read_memory_file, write_memory_file
-from app.services.l9_models import Kind
-from app.services.l9_slim import serialize_content
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "synth-room"
-_EPISODE = l9.episode_urn(_ROOM, "live")
-_TOPIC = l9.topic_urn(_ROOM)
+_EPISODE = message_format.episode_urn(_ROOM, "live")
+_TOPIC = message_format.topic_urn(_ROOM)
 _T0 = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
 
 
@@ -37,7 +37,7 @@ def _engine() -> synthesizer.SynthesizerEngine:
 
 
 def _env(sender: str) -> Any:
-    return l9.build_envelope(
+    return message_format.build_envelope(
         kind=Kind.exchange,
         episode=_EPISODE,
         sender=sender,
@@ -51,11 +51,11 @@ def _env(sender: str) -> Any:
 
 def _chat(room: str, message_id: str, *, sender: str, text: str, at: datetime) -> None:
     """Append one plain chat message to the room's durable transcript."""
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
         episode=_EPISODE,
         sender=sender,
-        recipients=[l9.SYSTEM_ACTOR_ID],
+        recipients=[message_format.SYSTEM_ACTOR_ID],
         topic=_TOPIC,
         message_id=message_id,
         payload_type="message",
@@ -66,7 +66,7 @@ def _chat(room: str, message_id: str, *, sender: str, text: str, at: datetime) -
 
 
 def _knowledge(room: str, message_id: str, *, at: datetime) -> None:
-    """Append a ``knowledge`` memory-push record — a promoted L9 frame whose
+    """Append a ``knowledge`` memory-push record — a promoted message frame whose
     projected content is a serialized envelope, not prose."""
     write = memory_sync.KnowledgeWrite(
         key="decisions/db",
@@ -79,7 +79,7 @@ def _knowledge(room: str, message_id: str, *, at: datetime) -> None:
     env = memory_sync.build_knowledge_envelope(
         room=room,
         write=write,
-        recipients=[l9.SYSTEM_ACTOR_ID],
+        recipients=[message_format.SYSTEM_ACTOR_ID],
         subkind=memory_sync.MEMORY_WRITE_SUBKIND,
     )
     record = persister.record_from(

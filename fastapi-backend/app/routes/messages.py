@@ -34,11 +34,12 @@ from app.schemas import (
 from app.services import (
     actor,
     in_memory_store,
-    l9,
+    message_format,
     message_search,
     persister,
     principals,
     room_channels,
+    room_people,
     tasks,
 )
 from app.services.filesystem import room_exists
@@ -78,7 +79,7 @@ def _room_episode(
     """
     if coord is not None:
         return episode
-    return episode or l9.live_episode_urn(room)
+    return episode or message_format.live_episode_urn(room)
 
 
 @router.post("", response_model=MessageRead, status_code=201)
@@ -104,7 +105,7 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     # A thread write has to name a thread the room has, and stay out of a
     # negotiation it is not part of. Refused before anything is stored, so a
     # rejected write leaves nothing behind.
-    if payload.episode and not l9.is_live_episode(base_room, payload.episode):
+    if payload.episode and not message_format.is_live_episode(base_room, payload.episode):
         if coord is not None:
             raise HTTPException(
                 status_code=409,
@@ -195,15 +196,17 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     await room_channels.manager.raise_ping(
         base_room, episode=msg.episode, sender=msg.sender_handle, message_id=msg.message_id
     )
-    # herdr wake-on-mention: the backend is herdr-blind, but it sees every tag. If
-    # a mention targets a handle that's alive in herdr but NOT a joined member
-    # (would otherwise ignore the tag), enqueue a wake for the host-side sync
-    # bridge to run `herdr agent prompt`. This is the "commands down" leg that
-    # makes tagging-from-the-UI actually reach a resident-but-idle herdr agent.
+    # A mention rings its herdr doorbell where every message's does: as the room
+    # records it (``room_channels.ring_asked``), not here. Unpublished, it isn't
+    # recorded, so nothing rings; the wake log says why.
     if coord is None and msg.message_type == MessageType.BROADCAST:
-        room_channels.manager.enqueue_herdr_wakes_for_mentions(
-            base_room, msg.content or "", sender=msg.sender_handle, episode=msg.episode
-        )
+        if not published:
+            room_channels.manager.note_unrecorded_asks(
+                base_room, sender=msg.sender_handle, text=msg.content or "", episode=msg.episode
+            )
+        # A person who posts in a room has joined it; an agent or an unknown
+        # handle hasn't (``room_people``).
+        room_people.joined_by_message(base_room, msg.sender_handle)
     return MessageRead.model_validate(msg)
 
 
@@ -239,7 +242,15 @@ async def list_messages(
         ),
     ),
     episode: str | None = Query(
-        None, description="Only messages belonging to this L9 episode URN (one negotiation/session)"
+        None, description="Only messages belonging to this episode URN (one negotiation/session)"
+    ),
+    message: str | None = Query(
+        None,
+        alias="id",
+        description=(
+            "Only the message whose id starts with this (the eight characters a "
+            "wake names a message by, or the whole id)"
+        ),
     ),
 ):
     """List messages in a room (or coordination session), newest first."""
@@ -264,6 +275,8 @@ async def list_messages(
         if before and m.created_at >= before:
             continue
         if episode and m.episode != episode:
+            continue
+        if message and not str(m.id).startswith(message.strip().lower()):
             continue
         filtered.append(m)
 
@@ -341,17 +354,17 @@ async def search_messages(
     )
 
 
-@router.get("/l9")
-async def list_l9_wire(
+@router.get("/wire")
+async def list_wire(
     room_name: str,
     limit: int = Query(200, le=1000),
     before: datetime | None = Query(
         None, description="Only frames recorded strictly before this time (backward cursor)"
     ),
 ) -> list[dict]:
-    """The room's L9 wire feed, replayed from the transcript (oldest first).
+    """The room's wire feed, replayed from the transcript (oldest first).
 
-    Backfills the live L9 inspector: the SSE bus carries no history, so a freshly
+    Backfills the channel and Stream: the SSE bus carries no history, so a freshly
     opened tab would otherwise start empty. Frames are the exact shape the bus
     pushes, so the client projects backfill and live frames identically.
 
@@ -362,7 +375,7 @@ async def list_l9_wire(
     channel, coord = _resolve_channel(room_name)
     if coord is not None:
         return []  # a coordination session has no durable transcript
-    return persister.l9_wire_history(channel, limit=limit, before=before)
+    return persister.wire_history(channel, limit=limit, before=before)
 
 
 def _find_amend_target(
@@ -458,7 +471,7 @@ async def amend_message(
             channel,
             sender=sender_handle,
             text=payload.content,
-            subkind=l9.AMEND_SUBKIND,
+            subkind=message_format.AMEND_SUBKIND,
             parents=[amends],
             episode=target.episode,
         )

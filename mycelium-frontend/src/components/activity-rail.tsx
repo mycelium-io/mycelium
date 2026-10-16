@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, MessageSquare } from "lucide-react";
 
 import { Tooltip } from "@/components/ui/tooltip";
+import { useIsClient } from "@/lib/client-hooks";
+import { isUpstreamLabel } from "@/lib/threads";
 import { cn } from "@/lib/utils";
 
 /** One thing the room raised about a task, as it reads once a row is opened. */
@@ -53,6 +55,28 @@ export interface ActivityItem {
 /** How many rows stand open before the rest go behind one line. */
 const SHOWN = 4;
 
+/** Whether the strip is folded to its header, remembered in this browser for
+ *  every room: how much of the screen it gets is the reader's preference. */
+const FOLDED_KEY = "mycelium.activity.folded";
+
+function loadFolded(): boolean {
+  if (typeof localStorage === "undefined") return false;
+  try {
+    return localStorage.getItem(FOLDED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveFolded(folded: boolean): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(FOLDED_KEY, folded ? "1" : "0");
+  } catch {
+    // Storage refused: the strip still folds, it just won't be remembered.
+  }
+}
+
 /** The state a row is standing in, said as a word, and the color it wears.
  *  Green when work arrives, accent while somebody holds it, red when it
  *  stalls, yellow when it comes back up for grabs, and grey once it's done:
@@ -63,6 +87,7 @@ const STANDING: Record<string, { word: string; tone: string }> = {
   blocked: { word: "Blocked", tone: "var(--red)" },
   released: { word: "Released", tone: "var(--yellow)" },
   expired: { word: "Expired", tone: "var(--yellow)" },
+  quiet: { word: "Quiet", tone: "var(--muted-foreground)" },
   unblocked: { word: "Unblocked", tone: "var(--green)" },
   resolved: { word: "Done", tone: "var(--faint)" },
 };
@@ -118,8 +143,14 @@ export function lastChange(update: ActivityUpdate): string {
   const who = update.detail.match(/@[\w.@-]+/g)?.join(", ") ?? "";
   if (update.label === "Activity") return who ? `${who} posted in the thread` : "a message in the thread";
   if (update.label === "Knowledge") return who ? `${who} edited its notes` : "its notes changed";
-  // The handle on an expired lease is whoever stopped renewing it, not who did it.
-  if (update.label === "Expired") return who ? `${who}'s lease ran out` : "its lease ran out";
+  // Its pull request: nobody here did it, and the handles are who a review
+  // was asked of. "CI" keeps its capitals.
+  if (isUpstreamLabel(update.label)) {
+    const said = update.label.startsWith("CI") ? update.label : update.label.toLowerCase();
+    return who ? `${said} from ${who}` : said;
+  }
+  // The handle on an expired hold is whoever was holding it, not who ended it.
+  if (update.label === "Expired") return who ? `${who}'s hold ran out` : "its hold ran out";
   // Whose turn it is in the thread: the holder alone, the handles it gave the
   // floor to, or the floor opening back up.
   if (update.label === "Floor") {
@@ -152,6 +183,10 @@ function Dot({ tone }: { tone: string }) {
  * life in order. One task is a single line with no header; past four, the rest
  * wait behind one line that says what they are, and showing them all scrolls
  * inside the strip rather than growing it.
+ *
+ * The header folds the strip to itself: one line with the counts and the task
+ * that moved last, for a reader who wants the conversation to have the room.
+ * Three densities, then: folded, four rows, all of them.
  */
 export function ActivityRail({
   items,
@@ -164,8 +199,17 @@ export function ActivityRail({
 }) {
   const [showAll, setShowAll] = useState(false);
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  // The stored fold is read once mounted, so the server's render and the first
+  // client one agree; a click here wins over it from then on.
+  const mounted = useIsClient();
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const folded = chosen ?? (mounted && loadFolded());
   const now = useNow();
   if (!items.length) return null;
+  const fold = (next: boolean) => {
+    setChosen(next);
+    saveFolded(next);
+  };
 
   const toggle = (subject: string) =>
     setOpened((prev) => {
@@ -206,12 +250,23 @@ export function ActivityRail({
   const shown = showAll ? ordered : live.slice(0, SHOWN);
   const rest = ordered.slice(shown.length);
   const restLive = live.slice(SHOWN);
+  // Folded, the line still says what moved last, so it is news rather than a label.
+  const latest = live.reduce<ActivityItem | null>((a, b) => (!a || b.at > a.at ? b : a), null);
 
   return (
-    <div className="@container flex-shrink-0 border-b border-border bg-surface px-3 pb-1 sm:px-4">
-      <div className="flex h-7 items-center gap-3 text-micro text-muted-foreground">
-        <span className="font-medium">Recently updated</span>
-        <span className="flex min-w-0 items-center gap-2.5 overflow-hidden whitespace-nowrap text-muted-foreground">
+    <div className={cn("@container flex-shrink-0 border-b border-border bg-surface px-3 sm:px-4", !folded && "pb-1")}>
+      <button
+        type="button"
+        onClick={() => fold(!folded)}
+        aria-expanded={!folded}
+        aria-label={folded ? "Show recently updated tasks" : "Fold recently updated tasks"}
+        className="group flex h-7 w-full items-center gap-3 text-left text-micro text-muted-foreground"
+      >
+        <span className="flex flex-shrink-0 items-center gap-1 font-medium group-hover:text-text">
+          {folded ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
+          Recently updated
+        </span>
+        <span className="flex flex-shrink-0 items-center gap-2.5 whitespace-nowrap text-muted-foreground">
           {tally(items).map((t) => (
             <span key={t.key} className="inline-flex items-center gap-1.5">
               <Dot tone={t.tone} />
@@ -219,12 +274,21 @@ export function ActivityRail({
             </span>
           ))}
         </span>
+        {folded && latest && (
+          <span className="hidden min-w-0 flex-1 items-center gap-1.5 text-faint @[36rem]:flex">
+            <span aria-hidden>·</span>
+            <span className="truncate text-muted-foreground">{latest.title}</span>
+            <span className="flex-shrink-0 tabular">{shortAge(latest.at, now)}</span>
+          </span>
+        )}
         <span className="ml-auto hidden flex-shrink-0 text-faint @[30rem]:inline">
           {items.length} tasks
         </span>
-      </div>
-      <ul className={cn("flex flex-col", showAll && "max-h-[12.5rem] overflow-y-auto")}>{shown.map(row)}</ul>
-      {(rest.length > 0 || showAll) && (
+      </button>
+      {!folded && (
+        <ul className={cn("flex flex-col", showAll && "max-h-[12.5rem] overflow-y-auto")}>{shown.map(row)}</ul>
+      )}
+      {!folded && (rest.length > 0 || showAll) && (
         <div className="flex h-7 items-center gap-3 text-micro">
           <button
             type="button"

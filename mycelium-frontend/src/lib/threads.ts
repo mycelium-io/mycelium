@@ -13,9 +13,9 @@
  * who wrote, and the message's id. Deliberately no prose — a thread exists so
  * an argument inside a task does not become the room's problem, and echoing it
  * here would undo that. The backend produces the ping
- * (`room_channels.raise_ping`) and the CLI reads it (`slim.l9.ping_of`); this
+ * (`room_channels.raise_ping`) and the CLI reads it (`slim.message_format.ping_of`); this
  * is the third reader, so the constants below are frozen in
- * `contracts/slim-l9-wire.json` and asserted by `threads.contract.test.ts`.
+ * `contracts/slim-wire.json` and asserted by `threads.contract.test.ts`.
  */
 
 /** The session literal naming a room's own channel among its episodes. */
@@ -73,7 +73,7 @@ export interface Ping {
 /**
  * The ping a wire frame carries, or null when it isn't one.
  *
- * Reads the L9 envelope's own payload rather than the frame's `episode` field:
+ * Reads the message's own payload rather than the frame's `episode` field:
  * a ping rides in `live` (that is the point of it) and names the thread it is
  * about in its payload, so the two answer different questions.
  */
@@ -98,7 +98,7 @@ export const NOTICE_PAYLOAD_TYPE = "notice";
 export const NOTICE_TYPE = "notice";
 
 /** What a board event did to a task — the closed set the backend raises, frozen
- *  in `contracts/slim-l9-wire.json` and asserted by `threads.contract.test.ts`. */
+ *  in `contracts/slim-wire.json` and asserted by `threads.contract.test.ts`. */
 export const NOTICE_SUBKINDS = [
   "filed",
   "claimed",
@@ -107,10 +107,49 @@ export const NOTICE_SUBKINDS = [
   "blocked",
   "unblocked",
   "expired",
+  "quiet",
   "floor",
+  "upstream",
+  "check",
 ] as const;
 
 export type NoticeSubkind = (typeof NOTICE_SUBKINDS)[number];
+
+/** What an `upstream` notice says happened to the pull request a row links,
+ *  frozen beside the subkinds. */
+export const UPSTREAM_CHANGES = [
+  "opened",
+  "review_requested",
+  "approved",
+  "changes_requested",
+  "ci_failed",
+  "ci_passed",
+  "merged",
+  "closed",
+] as const;
+
+/** The label an `upstream` notice wears, by what changed. */
+const UPSTREAM_LABEL: Record<string, string> = {
+  opened: "Pull request opened",
+  review_requested: "Review requested",
+  approved: "Approved",
+  changes_requested: "Changes requested",
+  ci_failed: "CI went red",
+  ci_passed: "CI went green",
+  merged: "Merged",
+  closed: "Closed",
+};
+
+/** Whether a timeline label is one an `upstream` notice wears. */
+export function isUpstreamLabel(label: string): boolean {
+  return Object.values(UPSTREAM_LABEL).includes(label);
+}
+
+/** Whether an `upstream` change is news for the chat (work going up for
+ *  review, landing, or CI breaking) rather than for the task's activity alone. */
+export function upstreamInChat(change: string | null | undefined): boolean {
+  return change === "opened" || change === "merged" || change === "ci_failed";
+}
 
 /** What a notice says: what happened, to which task, and the thread to open. */
 export interface Notice {
@@ -121,13 +160,25 @@ export interface Notice {
   by: string | null;
   /** The board kind, on a `filed` notice, so the line reads "New decision". */
   kind: string | null;
-  /** Who a `filed` task is for (its assignee), so the line can read "for @x". */
+  /** Who a `filed` task is for (its assignee), so the line can read "for @x";
+   *  on a reassigning `claimed` one, who it went to. */
   assignee: string | null;
+  /** On a reassigning `claimed` notice, who held the task before (#1136). */
+  from: string | null;
+  /** On a `released` or `expired` notice the hub raised, why the hold ended. */
+  why: string | null;
   /** On a `floor` notice: the handles the floor was given to (empty when the
    *  holder alone has it). */
   speakers: string[];
   /** On a `floor` notice: the floor opened back up. */
   released: boolean;
+  /** On an `upstream` notice: what happened (one of {@link UPSTREAM_CHANGES}),
+   *  to which pull request (`owner/repo#123`), its link, and who a review was
+   *  asked of. */
+  change: string | null;
+  ref: string | null;
+  url: string | null;
+  who: string[];
 }
 
 /**
@@ -154,8 +205,14 @@ export function noticeOf(raw: Record<string, unknown> | null | undefined): Notic
     by: str(data.by),
     kind: str(data.kind),
     assignee: str(data.for),
+    from: str(data.from),
+    why: str(data.why),
     speakers: str(data.speakers)?.split(",").filter(Boolean) ?? [],
     released: data.released === "1",
+    change: str(data.change),
+    ref: str(data.ref),
+    url: str(data.url),
+    who: str(data.who)?.split(",").filter(Boolean) ?? [],
   };
 }
 
@@ -171,9 +228,16 @@ const FILED_AS: Record<string, string> = {
   signal: "note",
 };
 
-/** The label a notice wears in the timeline, by subkind (and, when filed, kind). */
-export function noticeLabel(subkind: string, kind: string | null | undefined): string {
+/** The label a notice wears in the timeline, by subkind (and, when filed, kind;
+ *  for an `upstream` one, what changed). */
+export function noticeLabel(
+  subkind: string,
+  kind: string | null | undefined,
+  change?: string | null,
+): string {
   switch (subkind) {
+    case "upstream":
+      return (change && UPSTREAM_LABEL[change]) || "Pull request";
     case "filed":
       return `New ${(kind && FILED_AS[kind]) || "task"}`;
     case "claimed":
@@ -188,8 +252,12 @@ export function noticeLabel(subkind: string, kind: string | null | undefined): s
       return "Unblocked";
     case "expired":
       return "Expired";
+    case "quiet":
+      return "Quiet";
     case "floor":
       return "Floor";
+    case "check":
+      return "Verifier";
     default:
       return subkind;
   }

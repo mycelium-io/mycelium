@@ -19,6 +19,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { Tooltip } from "@/components/ui/tooltip";
 import { KbdChord } from "@/components/ui/kbd";
 import { KeymapCheatsheet } from "@/components/keymap-cheatsheet";
+import { useClientSetting } from "@/lib/client-settings";
 import { loadRecent, pushRecent, saveRecent, type PaletteCommand } from "@/lib/commands";
 import {
   chordFor,
@@ -63,6 +64,30 @@ function isEditable(el: Element | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
 }
 
+const CONTROL_ROLES = new Set([
+  "button",
+  "link",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "tab",
+  "option",
+  "checkbox",
+  "radio",
+  "switch",
+]);
+
+/** A focused control that Enter or Space presses. Those keys are the
+ *  control's: the room's own Enter (write a message) would otherwise take
+ *  them, and no button in the room could be pressed from the keyboard. */
+function isControl(el: Element | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  const tag = el.tagName;
+  if (tag === "BUTTON" || tag === "SUMMARY" || (tag === "A" && el.hasAttribute("href"))) return true;
+  const role = el.getAttribute("role");
+  return role !== null && CONTROL_ROLES.has(role);
+}
+
 /** Keys stay out of the way of an open dialog: what's behind it isn't what the
  *  user is looking at, and the dialog owns its own Escape. Presence is the
  *  test, not focus — a click on the backdrop moves focus out of the dialog
@@ -97,6 +122,9 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
     setRecent(loadRecent());
   }, []);
   const mac = useIsMac();
+  // Reading the person's changed shortcuts installs them in the keymap, and a
+  // change re-renders the cheatsheet and the palette with the new keys.
+  useClientSetting("keys.overrides");
 
   // Reveal is pushed to subscribers rather than held in state: holding ⌥ would
   // otherwise re-render the whole app through the context value.
@@ -278,6 +306,7 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
         // character, so the palette stays reachable from the composer.
         if (!isCommandChord(chord)) return;
       }
+      if ((chord === "Enter" || chord === "Space") && isControl(target)) return;
 
       const binding = matchBinding(chord, scopesRef.current);
       if (!binding) return;

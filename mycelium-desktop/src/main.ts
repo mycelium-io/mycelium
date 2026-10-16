@@ -17,13 +17,26 @@ interface Settings {
   hubUrl: string | null;
   roots: string[];
   shareUsage?: boolean;
+  voice?: boolean;
+  voiceModel?: VoiceModel;
 }
+
+/** The speech model this Mac's hub transcribes with (`voice.model`). */
+type VoiceModel = "fast" | "accurate";
 
 interface Found {
   name: string;
   path: string | null;
   bundled: boolean;
 }
+
+/** What copy calls this machine, and the keys for Settings, on this platform. */
+const ON_MAC = navigator.userAgent.includes("Mac");
+const ON_WINDOWS = navigator.userAgent.includes("Windows");
+const MACHINE = ON_MAC ? "Mac" : "computer";
+const SETTINGS_KEYS = ON_MAC ? "⌘," : "Ctrl+,";
+/** Where the app's icon and menu live: the menu bar on a Mac, the tray elsewhere. */
+const TRAY = ON_MAC ? "the menu bar icon" : "the tray icon";
 
 /** A hub on this Mac, as `mycelium.hubs` found it. */
 interface HubSeen {
@@ -221,7 +234,7 @@ const PREVIEW: Snapshot = {
     : null,
   status: PREVIEW_OTHER_HUB,
   lastError: null,
-  mycelium: { name: "mycelium", path: "/Applications/Mycelium.app/Contents/MacOS/mycelium", bundled: true },
+  mycelium: { name: "mycelium", path: "/Applications/Mycelium.app/Contents/Resources/cli/mycelium", bundled: true },
   herdr: { name: "herdr", path: "/Applications/Mycelium.app/Contents/MacOS/herdr", bundled: true },
   home: "/Users/you",
 };
@@ -259,14 +272,14 @@ const PREVIEW_HUB: HubSettings = {
   share_usage: false,
 };
 const PREVIEW_CHECKS: Check[] = [
-  { section: "This Mac", name: "Hub", status: "ok", message: "answering at http://127.0.0.1:8000", details: [] },
+  { section: `This ${MACHINE}`, name: "Hub", status: "ok", message: "answering at http://127.0.0.1:8000", details: [] },
   { section: "Agents", name: "herdr", status: "ok", message: "running (0.9.1)", details: [] },
   {
     section: "Models",
     name: "LLM connectivity",
     status: previewSetUp ? "ok" : "warning",
     message: previewSetUp ? "anthropic/claude-sonnet-4-6: completion probe succeeded" : "Not configured",
-    details: previewSetUp ? [] : ["Choose a model and add its key in Settings (⌘,)"],
+    details: previewSetUp ? [] : [`Choose a model and add its key in Settings (${SETTINGS_KEYS})`],
   },
 ];
 
@@ -290,7 +303,9 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+/** A path under the home folder as `~/…`, where people read paths that way; Windows shows it whole. */
 function tilde(path: string, home: string): string {
+  if (ON_WINDOWS) return path;
   return home && path.startsWith(home) ? "~" + path.slice(home.length) : path;
 }
 
@@ -325,6 +340,10 @@ interface Choices {
   hubUrl: string;
   root: string;
   shareUsage: boolean;
+  /** Whether this Mac's hub transcribes the message box's mic. Off unless chosen. */
+  voice: boolean;
+  /** Which speech model it uses: fast unless chosen. */
+  voiceModel: VoiceModel;
   /** Whether to install herdr's integrations: asked on first run only, so
    *  absent from Settings, which leaves the answer given then alone. */
   restore?: boolean;
@@ -336,6 +355,8 @@ function choicesFrom(snap: Snapshot): Choices {
     hubUrl: snap.settings?.hubUrl ?? "",
     root: tilde(snap.settings?.roots[0] ?? snap.home, snap.home),
     shareUsage: snap.settings?.shareUsage ?? false,
+    voice: snap.settings?.voice ?? false,
+    voiceModel: snap.settings?.voiceModel ?? "fast",
   };
 }
 
@@ -345,6 +366,8 @@ function settingsOf(c: Choices): Settings {
     hubUrl: c.mode === "client" ? c.hubUrl.trim() : null,
     roots: [c.root.trim()],
     shareUsage: c.mode === "hub" && c.shareUsage,
+    voice: c.mode === "hub" && c.voice,
+    voiceModel: c.voiceModel,
   };
 }
 
@@ -397,7 +420,7 @@ function placePiece(c: Choices, onModeChange: () => void): { el: HTMLElement; pr
     });
     return b;
   };
-  const here = choice("hub", "On this Mac", "Everything stays on this Mac. Good for trying it out or giving a demo.");
+  const here = choice("hub", `On this ${MACHINE}`, `Everything stays on this ${MACHINE}. Good for trying it out or giving a demo.`);
   const team = choice("client", "On my team's hub", "Join rooms someone else hosts. You'll need the hub's address.");
   const render = () => {
     here.setAttribute("aria-checked", String(c.mode === "hub"));
@@ -524,7 +547,7 @@ async function modelPiece(variant: "wizard" | "settings"): Promise<{ el: HTMLEle
     keyField.placeholder = provider.key ?? "";
     keyHint.replaceChildren(
       provider.keyFrom ? `Get one at ${provider.keyFrom}. ` : "",
-      "It stays on this Mac. ",
+      `It stays on this ${MACHINE}. `,
       variant === "wizard" ? outLink(MODELS_DOC, "What uses this?") : "",
     );
     baseRow.hidden = provider.baseUrl === undefined;
@@ -683,6 +706,68 @@ function privacyPiece(c: Choices): HTMLElement {
       { class: "hint" },
       "Only counts of tasks, flows and agents. Never names, rooms or messages. You can see them on the Metrics page.",
     ),
+  );
+}
+
+/** Talking into the message box. Off unless chosen, and saying what each
+ *  speech model costs, since turning it on downloads one and the hub holds it
+ *  in memory while anyone is talking. */
+function voicePiece(c: Choices): HTMLElement {
+  const choice = (value: VoiceModel, title: string, sub: string) => {
+    const b = el(
+      "button",
+      { class: "choice stacked", type: "button", role: "radio" },
+      el("strong", {}, title),
+      el("span", {}, sub),
+      el("i", { class: "radio", "aria-hidden": "true" }),
+    );
+    b.addEventListener("click", () => {
+      c.voiceModel = value;
+      render();
+    });
+    return b;
+  };
+  const fast = choice("fast", "Fast", "A 150 MB download, and about 500 MB of memory while you talk.");
+  const accurate = choice(
+    "accurate",
+    "Accurate",
+    "About half the mistakes. A 480 MB download, made the first time you turn on the mic, and about 1.4 GB of memory while you talk.",
+  );
+  const models = el(
+    "div",
+    { class: "indent" },
+    el("div", { class: "label" }, "Speech model"),
+    el("div", { class: "choices column", role: "radiogroup", "aria-label": "Speech model" }, fast, accurate),
+  );
+  const render = () => {
+    fast.setAttribute("aria-checked", String(c.voiceModel === "fast"));
+    accurate.setAttribute("aria-checked", String(c.voiceModel === "accurate"));
+    models.hidden = !c.voice;
+  };
+  render();
+  return el(
+    "div",
+    { class: "share" },
+    el(
+      "label",
+      { class: "share-label", for: "voice" },
+      checkbox("voice", c.voice, (on) => {
+        c.voice = on;
+        render();
+      }),
+      "Talk instead of type",
+    ),
+    el(
+      "p",
+      { class: "hint" },
+      "A mic in every message box: what you say is typed into it, and nothing sends until you do. ⌘⌥V turns it on and off.",
+    ),
+    el(
+      "p",
+      { class: "hint" },
+      `It runs on this ${MACHINE}, in English. Its memory is given back a few minutes after you stop talking. Your audio isn't saved or sent anywhere.`,
+    ),
+    models,
   );
 }
 
@@ -849,20 +934,22 @@ function hubReadOnly(at: "model" | "experiences" | "privacy", answer: Promise<Hu
 /** Everything Start changes on this Mac, said before anything happens. */
 function setsUpPiece(c: Choices): HTMLElement {
   const items: [string, string][] = [
-    ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
-    ["~/.mycelium", "Your settings, and these choices. Rooms on this Mac keep their notes here too."],
+    ON_WINDOWS
+      ? ["mycelium and herdr on your PATH", "The app's folder is added to your own PATH, so agents and your terminals can run them."]
+      : ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
+    [ON_WINDOWS ? "%USERPROFILE%\\.mycelium" : "~/.mycelium", `Your settings, and these choices. Rooms on this ${MACHINE} keep their notes here too.`],
     c.mode === "hub"
-      ? ["Rooms on this Mac, while Mycelium is open", "SLIM, the hub and its UI, reachable only from this Mac (127.0.0.1)."]
-      : ["The runner, while Mycelium is open", "It tells the hub which agents this Mac can start, and starts them in herdr."],
+      ? [`Rooms on this ${MACHINE}, while Mycelium is open`, `SLIM, the hub and its UI, reachable only from this ${MACHINE} (127.0.0.1).`]
+      : ["The runner, while Mycelium is open", `It tells the hub which agents this ${MACHINE} can start, and starts them in herdr.`],
     ...(c.restore
       ? ([["herdr's integrations", "A hook in each agent program's own settings, so herdr can reopen its agents after a restart."]] as [string, string][])
       : []),
-    ["Start at login", "Only if you turn it on, in Settings or from the menu bar icon."],
+    ["Start at login", `Only if you turn it on, in Settings or from ${TRAY}.`],
   ];
   return el(
     "details",
     { class: "sets-up-box" },
-    el("summary", {}, "What this sets up on your Mac"),
+    el("summary", {}, `What this sets up on your ${MACHINE}`),
     el("ul", { class: "sets-up" }, ...items.map(([what, why]) => el("li", {}, el("strong", {}, what), el("span", {}, why)))),
     el("p", { class: "hint" }, "No admin password, and nothing outside your home folder."),
   );
@@ -870,7 +957,7 @@ function setsUpPiece(c: Choices): HTMLElement {
 
 // ── first run: a short wizard ───────────────────────────────────────────────
 
-type Step = "place" | "model" | "agents" | "experiences" | "ready";
+type Step = "place" | "model" | "agents" | "voice" | "experiences" | "ready";
 
 async function wizard() {
   const snap = await snapshot();
@@ -887,9 +974,9 @@ async function wizard() {
   // Nothing to restart yet: the hub that starts at the end reads what's added.
   const experiences = experiencesPiece("wizard", () => {});
 
-  // An experience runs on rooms on this Mac, so a team's hub skips it.
+  // Voice and experiences run on this Mac's own hub, so a team's hub skips them.
   const steps = (): Step[] =>
-    c.mode === "hub" ? ["place", "model", "agents", "experiences", "ready"] : ["place", "agents", "ready"];
+    c.mode === "hub" ? ["place", "model", "agents", "voice", "experiences", "ready"] : ["place", "agents", "ready"];
 
   const show = () => {
     const order = steps();
@@ -913,9 +1000,13 @@ async function wizard() {
         "Mycelium comes with agents of its own: one helps your agents agree, others play a role in a scenario, another keeps notes. They need a model to think with. Agents you bring, like Claude Code, sign in on their own.";
       body = model.el;
     } else if (at === "agents") {
-      title = "Agents on this Mac";
+      title = `Agents on this ${MACHINE}`;
       lede = "Mycelium can start these for you and bring them into a room.";
       body = agents;
+    } else if (at === "voice") {
+      title = "Talk instead of type";
+      lede = "Optional, and off unless you turn it on here or later in Settings.";
+      body = voicePiece(c);
     } else if (at === "experiences") {
       title = "Add an experience";
       lede = "Ready-made rooms to explore. Optional, and you can add them later.";
@@ -923,10 +1014,17 @@ async function wizard() {
     } else {
       title = "Ready to start";
       const summary: [string, string][] = [
-        ["Rooms", c.mode === "hub" ? "On this Mac, reachable only from it" : `On ${c.hubUrl.trim()}`],
+        ["Rooms", c.mode === "hub" ? `On this ${MACHINE}, reachable only from it` : `On ${c.hubUrl.trim()}`],
       ];
-      if (c.mode === "hub") summary.push(["Model", skippedModel ? "Not set yet. Add one in Settings (⌘,)." : model.summary()]);
+      if (c.mode === "hub") summary.push(["Model", skippedModel ? `Not set yet. Add one in Settings (${SETTINGS_KEYS}).` : model.summary()]);
       summary.push(["Agents work in", c.root]);
+      if (c.mode === "hub") {
+        const voice =
+          c.voiceModel === "accurate"
+            ? "On, accurate. The speech model downloads the first time you turn on the mic."
+            : "On. The speech model downloads when Mycelium starts.";
+        summary.push(["Voice", c.voice ? voice : "Off"]);
+      }
       const added = c.mode === "hub" ? experiences.added() : [];
       if (added.length > 0) summary.push(["Added", added.map((x) => x.title).join(", ")]);
       body = el(
@@ -1002,7 +1100,7 @@ async function wizard() {
 
 // ── Settings: the same pieces, one section at a time ─────────────────────────
 
-type Section = "mac" | "model" | "agents" | "experiences" | "privacy";
+type Section = "mac" | "model" | "agents" | "voice" | "experiences" | "privacy";
 
 async function settingsWindow(open: Section = "mac") {
   const snap = await snapshot();
@@ -1010,9 +1108,10 @@ async function settingsWindow(open: Section = "mac") {
   // The same sections whatever is chosen: one that doesn't apply says why,
   // rather than leaving the sidebar.
   const sections = (): [Section, string][] => [
-    ["mac", "This Mac"],
+    ["mac", `This ${MACHINE}`],
     ["model", "Model"],
     ["agents", "Agents"],
+    ["voice", "Voice"],
     ["experiences", "Experiences"],
     ["privacy", "Privacy"],
   ];
@@ -1055,6 +1154,20 @@ async function settingsWindow(open: Section = "mac") {
       const model = await modelPiece("settings");
       body = el("div", { class: "piece" }, el("p", { class: "lede" }, "The model Mycelium's built-in agents use. Agents like Claude Code use their own accounts."), model.el);
       save = () => startWith(c, model.value());
+    } else if (at === "voice" && c.mode === "client") {
+      // The app gives the mic only to the hub it runs itself.
+      body = el(
+        "div",
+        { class: "piece" },
+        el(
+          "p",
+          { class: "lede" },
+          `Voice works with a hub on this ${MACHINE}. Connected to a team's hub, the app doesn't offer the mic; use that hub in a browser to talk to it.`,
+        ),
+      );
+      nothingToSave = true;
+    } else if (at === "voice") {
+      body = el("div", { class: "piece" }, voicePiece(c));
     } else if (at === "agents") {
       body = agentsPiece(c, snap);
     } else if (at === "experiences") {
@@ -1177,7 +1290,7 @@ function otherHubNotice(h: OtherHub, home: string): HTMLElement {
         ? `Docker, project ${h.project}`
         : `Docker, container ${h.container ?? "unknown"}`
       : h.source === "process"
-        ? `A process on this Mac (${h.pid})`
+        ? `A process on this ${MACHINE} (${h.pid})`
         : "Something Mycelium can't identify";
   const older = h.version && !h.dev_build && olderThan(h.version, h.app_version);
   const data = h.data_path ? tilde(h.data_path, home) : "unknown";
@@ -1255,16 +1368,27 @@ async function loading(setup: PathSetup | null = null) {
 
   const pathNote =
     setup && !setup.onPath && setup.linked.length > 0
-      ? el(
-          "div",
-          { class: "note" },
-          "Mycelium put ",
-          el("code", {}, "mycelium"),
-          " and ",
-          el("code", {}, "herdr"),
-          " in ~/.local/bin, which your shell doesn't search yet. Add this line to your shell profile so your own terminals find them too: ",
-          el("code", {}, setup.line),
-        )
+      ? ON_WINDOWS
+        ? el(
+            "div",
+            { class: "note" },
+            "Your agents can run ",
+            el("code", {}, "mycelium"),
+            " and ",
+            el("code", {}, "herdr"),
+            ". So your own terminals find them too, add the app's folder to your PATH by running this once in PowerShell: ",
+            el("code", {}, setup.line),
+          )
+        : el(
+            "div",
+            { class: "note" },
+            "Mycelium put ",
+            el("code", {}, "mycelium"),
+            " and ",
+            el("code", {}, "herdr"),
+            " in ~/.local/bin, which your shell doesn't search yet. Add this line to your shell profile so your own terminals find them too: ",
+            el("code", {}, setup.line),
+          )
       : null;
   const skipped =
     setup && setup.skipped.length > 0
@@ -1300,7 +1424,7 @@ async function loading(setup: PathSetup | null = null) {
     error.hidden = false;
   }
 
-  const where = mode === "hub" ? "Starting on this Mac" : `Connecting to ${snap.settings?.hubUrl ?? "the hub"}`;
+  const where = mode === "hub" ? `Starting on this ${MACHINE}` : `Connecting to ${snap.settings?.hubUrl ?? "the hub"}`;
   app.replaceChildren(
     el(
       "section",
@@ -1404,7 +1528,7 @@ async function doctor() {
     el(
       "section",
       { class: "card" },
-      head("Health check. Each part Mycelium runs on this Mac, and whether it's working."),
+      head(`Health check. Each part Mycelium runs on this ${MACHINE}, and whether it's working.`),
       body,
       el("div", { class: "card-foot" }, verdict, el("div", { class: "actions" }, showLog, again, back)),
     ),
@@ -1424,4 +1548,14 @@ async function boot() {
   await loading();
 }
 
-void boot();
+// A failure before any page draws would otherwise leave an empty window.
+boot().catch((e) => {
+  app.replaceChildren(
+    el(
+      "section",
+      { class: "card" },
+      head("Mycelium couldn't start."),
+      el("p", { class: "error", role: "alert" }, String(e)),
+    ),
+  );
+});

@@ -1,16 +1,23 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 vi.mock("@/components/account-menu", () => ({ AccountMenu: () => <span>account</span> }));
 vi.mock("@/components/notification-bell", () => ({ NotificationBell: () => <span>bell</span> }));
 vi.mock("@/components/key-badge", () => ({ KeyBadge: () => null }));
+const pathname = vi.hoisted(() => ({ current: "/" }));
+vi.mock("next/navigation", () => ({ usePathname: () => pathname.current }));
 
 import { TitleBar, hubLabel } from "./title-bar";
+
+beforeEach(() => {
+  pathname.current = "/";
+});
 
 describe("hubLabel", () => {
   it("names a hub on this computer, never by its port", () => {
     expect(hubLabel("localhost:59370", false)).toBe("This computer");
-    expect(hubLabel("127.0.0.1:8000", true)).toBe("This Mac");
+    expect(hubLabel("127.0.0.1:8000", true, "Mac")).toBe("This Mac");
+    expect(hubLabel("127.0.0.1:8000", true, "computer")).toBe("This computer");
     expect(hubLabel("[::1]:3000", false)).toBe("This computer");
   });
 
@@ -32,5 +39,22 @@ describe("TitleBar", () => {
   it("draws no separator without a page to name", () => {
     render(<TitleBar />);
     expect(screen.queryByText("/")).not.toBeInTheDocument();
+  });
+
+  it("has a settings button on every screen that opens General", () => {
+    for (const where of ["/", "/room/checkout"]) {
+      pathname.current = where;
+      const { unmount } = render(<TitleBar />);
+      const gear = screen.getByRole("link", { name: "Settings" });
+      expect(gear).toHaveAttribute("href", "/settings/general");
+      expect(gear).not.toHaveAttribute("aria-current");
+      unmount();
+    }
+  });
+
+  it("lights the settings button while a settings page is open", () => {
+    pathname.current = "/settings/keys";
+    render(<TitleBar />);
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
   });
 });

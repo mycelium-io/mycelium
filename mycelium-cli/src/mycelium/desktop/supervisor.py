@@ -12,7 +12,12 @@ Two modes, which are what the desktop app offers on its first screen:
   pointed at it.
 
 herdr's server is started only when none is running, and is left running
-when the supervisor stops: agents live in its panes.
+when the supervisor stops: agents live in its panes. So after the app is
+updated, the server still running is the old one, and macOS can refuse it and
+its terminals access to protected folders such as ``~/Documents``. The
+supervisor checks for that once a minute (``herdr_server``), says so in its
+status, and asks once per server, through the app, whether to restart it.
+herdr is never restarted without a yes, since that stops the agents in it.
 
 Everything the app shows comes from here as JSON lines on stdout (a status
 object on every change, log lines, errors), so the app is a window over this
@@ -22,6 +27,15 @@ keeps failing is left failed with the reason. A port something else already
 answers on counts as running, so the app sits beside a Docker stack rather
 than fighting it for its ports.
 
+Each program's output is a pipe, drained by a thread per program. A program
+whose pipe nobody drains blocks on its next write, so a reader survives
+anything that happens to a line, one that dies anyway is replaced, and the
+events it hands on are written from a thread of their own
+(:mod:`mycelium.desktop.events`), never in its way. The hub is also watched
+while it runs: when it hasn't answered ``/health`` for :data:`HUNG_S`, the
+status says so (``hung``) and the person is asked, once per process, whether
+to restart it, with its last lines.
+
 A hub the app didn't start is never used without saying so. Before starting
 anything in hub mode the supervisor looks for every hub on this machine
 (``mycelium.hubs``), warns when there is more than one, and reports the one
@@ -29,8 +43,8 @@ on its port (its owner, version and data folder) in its status. It never
 stops one: that hub may be someone's on purpose, so the person decides.
 
 Where each program comes from, first found wins: an environment override,
-the app bundle (the directory this binary runs from, and its ``Resources``),
-then a checkout of the repository, then ``PATH``.
+the app bundle (the directory this binary runs from, and where each platform's
+bundle keeps its resources), then a checkout of the repository, then ``PATH``.
 """
 
 from __future__ import annotations
@@ -66,12 +80,48 @@ READY_TIMEOUT_S = 90.0
 BACKOFF_S = (1.0, 2.0, 4.0, 8.0, 16.0)
 #: A component that crashes this many times in a row is left failed.
 MAX_RESTARTS = len(BACKOFF_S)
+#: What the hub leaves in its data folder before it exits to be restarted with
+#: new settings (`contracts/hub-settings.json`'s `restart_marker`).
+HUB_RESTART_MARKER = ".hub-restart-requested"
 #: How often the supervisor looks at its processes.
 TICK_S = 0.5
 #: How many lines of each component's output are kept to explain a crash.
 TAIL_LINES = 40
 #: Everything the supervisor says, for when something goes wrong.
 LOG_PATH = Path.home() / ".mycelium" / "logs" / "desktop.log"
+#: How often the running herdr server is checked for a replaced program.
+HERDR_CHECK_S = 60.0
+#: How long the question about restarting herdr waits for an answer.
+HERDR_ASK_S = 6 * 3600.0
+#: Where the supervisor's own questions to the app are written.
+REQUESTS_BASE = Path.home() / ".mycelium" / "desktop"
+#: What the app, the log and the health check say about a herdr server from
+#: before the app was updated.
+STALE_HERDR_WARNING = (
+    "herdr, which runs your agents' terminals, was started before Mycelium was "
+    "updated. Until it restarts, macOS can refuse it and its terminals access to "
+    'folders like Documents, so commands there fail with "Operation not permitted".'
+)
+#: How often a running program that is watched (the hub) is checked.
+WATCH_S = 15.0
+#: How long it may go without answering before it counts as stopped.
+HUNG_S = 60.0
+#: How many of its last lines the question about restarting it shows.
+HUNG_LINES = 8
+
+
+def hung_warning(name: str) -> str:
+    """What the app, the log and the status say about a program that stopped answering."""
+    return (
+        f"The {name} stopped responding: it hasn't answered for over a minute, so "
+        "agents can't read or post. Restarting it usually fixes this."
+    )
+
+
+WINDOWS = sys.platform == "win32"
+#: Pi's JavaScript entry point inside the app's resources, which the hub runs
+#: on node on Windows (see ``Locator.pi``).
+PI_ENTRY = "pi/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js"
 
 
 class LocateError(Exception):
@@ -81,11 +131,34 @@ class LocateError(Exception):
 # ── finding the programs ─────────────────────────────────────────────────────
 
 
+#: The folder the app ships ``mycelium`` in, among its resources: a PyInstaller
+#: directory build, which unpacks nothing at run time (#1269).
+CLI_DIR = "cli"
+
+
 def bundle_dir() -> Path | None:
-    """The directory this binary runs from, when it is a bundled (frozen) build."""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return None
+    """Where the app's programs are, when this is a bundled (frozen) build.
+
+    A standalone binary's own folder. The app's ``mycelium`` runs from its
+    ``cli`` folder among the resources, so its programs are found from there:
+    ``Contents/MacOS`` on a Mac, ``usr/bin`` in an AppImage (resources in
+    ``usr/lib/Mycelium``), and the install folder on Windows.
+    """
+    if not getattr(sys, "frozen", False):
+        return None
+    return programs_dir(Path(sys.executable).resolve().parent)
+
+
+def programs_dir(here: Path) -> Path:
+    """The app's programs folder, for a ``mycelium`` that runs from ``here``."""
+    if here.name != CLI_DIR:
+        return here
+    resources = here.parent
+    if resources.name == "Resources" and resources.parent.name == "Contents":
+        return resources.parent / "MacOS"
+    if resources.name == "Mycelium" and resources.parent.name == "lib":
+        return resources.parent.parent / "bin"
+    return resources
 
 
 def repo_root(start: Path | None = None) -> Path | None:
@@ -113,18 +186,30 @@ class Locator:
     repo: Path | None = field(default_factory=repo_root)
 
     def _bundled(self, name: str) -> Path | None:
+        """A file the app carries. Programs sit beside this one; resources are
+        there too on Windows, in ``Contents/Resources`` on a Mac, and in
+        ``usr/lib/Mycelium`` in a Linux AppImage."""
         if self.bundle is None:
             return None
-        for place in (self.bundle, self.bundle.parent / "Resources"):
+        places = (
+            self.bundle,
+            self.bundle.parent / "Resources",
+            self.bundle.parent / "lib" / "Mycelium",
+        )
+        for place in places:
             candidate = place / name
             if candidate.exists():
                 return candidate
         return None
 
+    def _program(self, name: str) -> Path | None:
+        """A program the app carries, by the name it has on this platform."""
+        return self._bundled(f"{name}.exe" if WINDOWS else name)
+
     def slim(self) -> list[str]:
         exe = (
             os.environ.get("MYCELIUM_SLIMCTL")
-            or self._bundled("slimctl")
+            or self._program("slimctl")
             or shutil.which("slimctl")
         )
         if not exe:
@@ -138,7 +223,7 @@ class Locator:
     def hub(self) -> tuple[list[str], Path | None]:
         if cmd := os.environ.get("MYCELIUM_HUB_CMD"):
             return shlex.split(cmd), None
-        if bundled := self._bundled("hub/mycelium-hub") or self._bundled("mycelium-hub"):
+        if bundled := self._program("hub/mycelium-hub") or self._program("mycelium-hub"):
             return [str(bundled), "--host", HOST, "--port", str(HUB_PORT)], None
         if self.repo is not None and shutil.which("uv"):
             backend = self.repo / "fastapi-backend"
@@ -150,18 +235,31 @@ class Locator:
         )
 
     def herdr(self) -> list[str]:
-        exe = self._bundled("herdr") or shutil.which("herdr")
+        exe = self._program("herdr") or shutil.which("herdr")
         if not exe:
             raise LocateError(
                 "herdr isn't installed, so no agent can start here. See https://herdr.dev"
             )
         return [str(exe), "server"]
 
+    def app_herdr(self) -> Path | None:
+        """The app's own herdr, or ``None`` outside the app (a checkout)."""
+        return self._program("herdr")
+
     def pi(self) -> str | None:
-        """Pi, which the engines think with: the app's own, else one on PATH."""
+        """Pi, which the engines think with: the app's own, else one on PATH.
+
+        On Windows the app's Pi is its JavaScript entry point, which the hub
+        runs on the app's node (``pi_session.pi_argv``): a batch-file launcher
+        would pass every prompt through ``cmd.exe``, which mangles it.
+        """
         return (
             os.environ.get("ALIGNER_PI_BINARY")
-            or (str(bundled) if (bundled := self._bundled("pi/pi")) else None)
+            or (
+                str(bundled)
+                if (bundled := self._bundled(PI_ENTRY if WINDOWS else "pi/pi"))
+                else None
+            )
             or shutil.which("pi")
         )
 
@@ -173,7 +271,7 @@ class Locator:
         return self._bundled("models") or Path.home() / ".mycelium" / "models"
 
     def ui(self) -> tuple[list[str], Path | None]:
-        node = os.environ.get("MYCELIUM_NODE") or self._bundled("node") or shutil.which("node")
+        node = os.environ.get("MYCELIUM_NODE") or self._program("node") or shutil.which("node")
         ui_dir = os.environ.get("MYCELIUM_UI_DIR") or self._bundled("ui")
         if ui_dir and node and runnable_ui(Path(ui_dir)):
             return [str(node), "server.js"], Path(ui_dir)
@@ -195,6 +293,27 @@ class Locator:
 
 
 # ── one process ──────────────────────────────────────────────────────────────
+
+
+def _own_group() -> dict[str, Any]:
+    """Start a program in a group of its own, so stopping it stops what it started."""
+    if WINDOWS:
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _signal_group(proc: subprocess.Popen[str], *, force: bool) -> None:
+    """Ask a program and everything it started to stop; ``force`` kills them."""
+    if WINDOWS:
+        # Windows has no process groups to signal; taskkill walks the tree.
+        # Always /F: without it taskkill only asks a window to close, and these
+        # programs have none, so a polite ask would just wait out the timeout
+        # and push the app past its own stop grace.
+        argv = ["taskkill", "/PID", str(proc.pid), "/T", "/F"]
+        subprocess.run(argv, capture_output=True, check=False)  # noqa: S603, S607
+        return
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, 9 if force else 15)
 
 
 def port_open(port: int, host: str = HOST, timeout: float = 0.3) -> bool:
@@ -232,6 +351,19 @@ class Component:
     retry_at: float = 0.0
     #: Its last lines of output, so a crash can say why.
     tail: deque[str] = field(default_factory=lambda: deque(maxlen=TAIL_LINES))
+    #: The thread draining its output. A program whose output nobody reads
+    #: blocks on its next write once the pipe fills, so a dead one is replaced.
+    reader: threading.Thread | None = None
+    #: Checked while it runs, not only until it first answers: a program that
+    #: stops answering for :data:`HUNG_S` is reported, and restarted on a yes.
+    watch: bool = False
+    checked_at: float = 0.0
+    #: When it last stopped answering, or 0 while it answers.
+    unanswered_since: float = 0.0
+    #: The process the person was asked about, so each hang is asked once.
+    hang_asked: int | None = None
+    #: Set by a yes to restarting it; the supervisor's loop does the restart.
+    restart_now: bool = False
 
     def last_words(self) -> str:
         """The line most likely to say why it stopped: its last error-looking line, else its last."""
@@ -259,7 +391,12 @@ class Supervisor:
         env: dict[str, str] | None = None,
         start_runner: bool = True,
         share_usage: bool | None = None,
+        voice: bool | None = None,
+        voice_model: str | None = None,
         look: Callable[[], list[Any]] | None = None,
+        stale_herdr: Callable[[], Any] | None = None,
+        restart_herdr: Callable[[Any], None] | None = None,
+        requests_base: Path | None = None,
     ) -> None:
         if mode == "client" and not hub_url:
             raise ValueError("client mode needs the hub's URL")
@@ -270,10 +407,19 @@ class Supervisor:
         self.locator = locator or Locator()
         self.config = config
         self.env = env if env is not None else hub_env(config)
+        #: Whether the hub's settings came from config.toml, so a restart the
+        #: Hub page asks for reads it again (an env passed in is kept as is).
+        self._env_from_config = env is None
         self.start_runner = start_runner
-        #: The Mac app's answer to "share usage stats", which wins over
+        #: The desktop app's answer to "share usage stats", which wins over
         #: config.toml for the hub it starts. None leaves config.toml's.
         self.share_usage = share_usage
+        #: The Mac app's voice switch, which wins over config.toml's
+        #: ``voice.enabled`` for the hub it starts. None leaves config.toml's.
+        self.voice = voice
+        #: The app's choice of speech model (``fast`` or ``accurate``), which
+        #: wins over ``voice.model`` the same way. None leaves config.toml's.
+        self.voice_model = voice_model
         #: How the hubs on this machine are found (``mycelium.hubs.find_hubs``).
         self.look = look
         #: Every hub seen at start, what deserves a look about them, and the
@@ -290,6 +436,18 @@ class Supervisor:
         self.runner_id: str | None = None
         self.runner_state: State = "stopped"
         self.runner_detail: str | None = None
+        #: How a herdr server from before the app was updated is found and
+        #: restarted (``herdr_server.stale`` and ``herdr_server.restart``).
+        self.find_stale_herdr = stale_herdr
+        self.restart_herdr = restart_herdr
+        self.requests_base = requests_base or REQUESTS_BASE
+        #: The herdr server whose program was replaced after it started, as wire.
+        self.stale_herdr: dict[str, Any] | None = None
+        #: The program that stopped answering, by name, until it answers again.
+        self.hung: str | None = None
+        self._herdr_checked_at = 0.0
+        #: The servers already asked about, so each is asked once.
+        self._herdr_asked: set[int] = set()
         self.components: list[Component] = [self._herdr()]
         if mode == "hub":
             self.components += self._components()
@@ -326,7 +484,8 @@ class Supervisor:
             outlives=True,
         )
 
-    def _components(self) -> list[Component]:
+    def _hub_env_vars(self) -> dict[str, str]:
+        """The hub's environment: its settings from config.toml, then the app's own."""
         loc = self.locator
         hub_env_vars = {
             **self.env,
@@ -334,13 +493,28 @@ class Supervisor:
             "MYCELIUM_SLIM_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
             "FASTEMBED_CACHE_PATH": str(loc.models()),
             "MYCELIUM_HUB_MODE": "desktop",
+            # The CLI the hub's Hub page saves settings through
+            # (`config set`), so a change takes the one validated path.
+            "MYCELIUM_CONFIG_CLI": json.dumps(own_cli()),
+            # Files read and written as UTF-8 on Windows too (the bundled
+            # hub is built in this mode; a checkout's `uv run` needs telling).
+            "PYTHONUTF8": "1",
         }
         if self.share_usage is not None:
             hub_env_vars["TELEMETRY_SEND_PRODUCT_ANALYTICS"] = (
                 "true" if self.share_usage else "false"
             )
+        if self.voice is not None:
+            hub_env_vars["VOICE_ENABLED"] = "true" if self.voice else "false"
+        if self.voice_model is not None:
+            hub_env_vars["VOICE_MODEL"] = self.voice_model
         if pi := loc.pi():
             hub_env_vars["ALIGNER_PI_BINARY"] = pi
+        return hub_env_vars
+
+    def _components(self) -> list[Component]:
+        loc = self.locator
+        hub_env_vars = self._hub_env_vars()
         ui_env = {
             "PORT": str(UI_PORT),
             "HOSTNAME": HOST,
@@ -362,6 +536,7 @@ class Supervisor:
                 ready=lambda: http_ok(f"http://{HOST}:{HUB_PORT}/health"),
                 env=hub_env_vars,
                 external=lambda: http_ok(f"http://{HOST}:{HUB_PORT}/health"),
+                watch=True,
             ),
             Component(
                 name="ui",
@@ -388,10 +563,16 @@ class Supervisor:
             "runner_id": self.runner_id,
             "components": components,
             # More than one hub here, a hub on someone else's store, an old one.
-            "warnings": self.warnings,
+            "warnings": self.warnings
+            + ([STALE_HERDR_WARNING] if self.stale_herdr else [])
+            + ([hung_warning(self.hung)] if self.hung else []),
+            # A program the supervisor started that stopped answering.
+            "hung": self.hung,
             "hubs": self.hubs,
             # The hub on the app's port that the app is using but didn't start.
             "existing_hub": self.adopted_hub,
+            # A herdr server from before the app was updated.
+            "stale_herdr": self.stale_herdr,
         }
 
     def _publish(self) -> None:
@@ -410,11 +591,30 @@ class Supervisor:
     # ── processes ────────────────────────────────────────────────────────────
 
     def _pipe(self, c: Component, stream: Any) -> None:
-        for raw in iter(stream.readline, ""):
-            line = raw.rstrip()
-            if line:
+        """Drain ``c``'s output for as long as it has any. Nothing that happens to
+        a line stops the reading: a program whose pipe isn't drained blocks on
+        its next write, and a hub blocked there answers nothing."""
+        try:
+            for raw in iter(stream.readline, ""):
+                line = raw.rstrip()
+                if not line:
+                    continue
                 c.tail.append(line)
-                self.emit({"type": "log", "component": c.name, "line": line})
+                try:
+                    self.emit({"type": "log", "component": c.name, "line": line})
+                except Exception:  # noqa: BLE001, S112 - a lost line, never a stopped reader
+                    continue
+        except (OSError, ValueError):
+            return  # the pipe closed with the program
+
+    def _read(self, c: Component) -> None:
+        """Start a thread draining ``c``'s output."""
+        if c.proc is None or c.proc.stdout is None:
+            return
+        c.reader = threading.Thread(
+            target=self._pipe, args=(c, c.proc.stdout), name=f"read-{c.name}", daemon=True
+        )
+        c.reader.start()
 
     def _spawn(self, c: Component) -> None:
         if c.external is not None and c.restarts == 0 and c.external():
@@ -435,13 +635,17 @@ class Supervisor:
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
                 text=True,
-                start_new_session=True,
+                # Not the code page Windows would otherwise decode with.
+                encoding="utf-8",
+                errors="replace",
+                **_own_group(),
             )
         except OSError as e:
             self._set(c, "failed", f"could not start {c.name}: {e}")
             return
         c.started_at = time.monotonic()
-        threading.Thread(target=self._pipe, args=(c, c.proc.stdout), daemon=True).start()
+        c.unanswered_since = 0.0
+        self._read(c)
         self._set(c, "starting")
 
     def _tick(self, c: Component) -> bool:
@@ -457,6 +661,17 @@ class Supervisor:
             self._spawn(c)
             return c.state == "running"
         code = c.proc.poll()
+        if code is not None and c.name == "hub" and self._hub_asked_to_restart():
+            # The Hub page saved settings and asked for a restart: start it
+            # again at once with config.toml read afresh, not as a crash.
+            c.proc = None
+            c.restarts = 0
+            c.retry_at = 0.0
+            if self._env_from_config:
+                self.env = hub_env(None)
+            c.env = self._hub_env_vars()
+            self._set(c, "starting", "restarting to apply new settings")
+            return False
         if code is not None:
             c.proc = None
             c.restarts += 1
@@ -479,6 +694,17 @@ class Supervisor:
                 + f"; starting again in {wait:.0f}s",
             )
             return False
+        # Still running: its output must keep being read.
+        if c.reader is not None and not c.reader.is_alive():
+            self._read(c)
+        if c.restart_now:
+            c.restart_now = False
+            c.hang_asked = None
+            self._terminate(c)
+            c.restarts = 0
+            self.hung = None
+            self._set(c, "starting", "restarting: it stopped responding")
+            return False
         if c.state == "starting":
             if c.ready():
                 c.restarts = 0
@@ -487,20 +713,78 @@ class Supervisor:
                 self._set(c, "failed", f"{c.name} did not answer within {READY_TIMEOUT_S:.0f}s")
                 self._terminate(c)
                 return False
+        elif c.state == "running" and c.watch:
+            self._watch(c)
         return c.state == "running"
+
+    def _watch(self, c: Component, now: float | None = None) -> None:
+        """Every :data:`WATCH_S`, see that a running program still answers. One
+        that hasn't for :data:`HUNG_S` is said in the status, and the person is
+        asked, once per process, whether to restart it."""
+        now = time.monotonic() if now is None else now
+        if c.checked_at and now - c.checked_at < WATCH_S:
+            return
+        c.checked_at = now
+        if c.ready():
+            c.unanswered_since = 0.0
+            if self.hung == c.name:
+                self.hung = None
+                self._publish()
+            return
+        if not c.unanswered_since:
+            c.unanswered_since = now
+            return
+        pid = c.proc.pid if c.proc is not None else None
+        if now - c.unanswered_since < HUNG_S or pid is None or c.hang_asked == pid:
+            return
+        c.hang_asked = pid
+        self.hung = c.name
+        self.emit({"type": "warning", "message": hung_warning(c.name)})
+        self._publish()
+        self._ask_to_restart(c)
+
+    def _ask_to_restart(self, c: Component) -> None:
+        """Ask the person, through the app, whether to restart ``c``, showing its
+        last lines of output; a yes restarts it on the next tick."""
+        import secrets
+
+        from mycelium.runner import approvals
+
+        lines = "\n".join(list(c.tail)[-HUNG_LINES:]) or "(it said nothing)"
+        job = secrets.token_hex(8)
+        request = approvals.ask(
+            job,
+            {
+                "title": f"The {c.name} stopped responding",
+                "message": f"{hung_warning(c.name)}\n\nIts last lines:\n{lines}",
+                "yes": f"Restart the {c.name}",
+                "no": "Wait",
+            },
+            base=self.requests_base,
+        )
+        folder = approvals.requests_dir(self.requests_base)
+        self.emit({"type": "request", "request": request, "folder": str(folder)})
+
+        def wait() -> None:
+            try:
+                yes = approvals.wait(job, self._stop, timeout=HERDR_ASK_S, base=self.requests_base)
+            finally:
+                approvals.forget(job, base=self.requests_base)
+            if yes:
+                c.restart_now = True
+
+        threading.Thread(target=wait, name=f"{c.name}-restart", daemon=True).start()
 
     @staticmethod
     def _terminate(c: Component, grace_s: float = 5.0) -> None:
         proc, c.proc = c.proc, None
         if proc is None or proc.poll() is not None:
             return
-        with contextlib.suppress(ProcessLookupError, PermissionError):
-            os.killpg(proc.pid, 15)
+        _signal_group(proc, force=False)
         try:
             proc.wait(timeout=grace_s)
         except subprocess.TimeoutExpired:
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(proc.pid, 9)
+            _signal_group(proc, force=True)
 
     # ── the runner ───────────────────────────────────────────────────────────
 
@@ -572,11 +856,89 @@ class Supervisor:
             self.runner_state, self.runner_detail = state, detail
             self._publish()
 
+    # ── a herdr server from before the app was updated ───────────────────────
+
+    def _watch_herdr(self, *, now: float | None = None) -> None:
+        """Once a minute while herdr runs: is its server from before an update?"""
+        herdr = next((c for c in self.components if c.name == "herdr"), None)
+        if herdr is None or herdr.state != "running":
+            return
+        now = time.monotonic() if now is None else now
+        if self._herdr_checked_at and now - self._herdr_checked_at < HERDR_CHECK_S:
+            return
+        self._herdr_checked_at = now
+        from mycelium.desktop import herdr_server
+
+        find = self.find_stale_herdr or (lambda: herdr_server.stale(self.locator.app_herdr()))
+        server = find()
+        wire = server.wire() if server is not None else None
+        if wire != self.stale_herdr:
+            self.stale_herdr = wire
+            if wire is not None:
+                self.emit({"type": "warning", "message": STALE_HERDR_WARNING})
+            self._publish()
+        if server is not None and server.pid not in self._herdr_asked:
+            self._herdr_asked.add(server.pid)
+            self._ask_to_restart_herdr(server)
+
+    def _ask_to_restart_herdr(self, server: Any) -> None:
+        """Put the restart to the person through the app, and do it on a yes."""
+        import secrets
+
+        from mycelium.desktop import herdr_server
+        from mycelium.runner import approvals
+
+        job = secrets.token_hex(8)
+        request = approvals.ask(
+            job,
+            {
+                "title": "Restart herdr?",
+                "message": f"{STALE_HERDR_WARNING}\n\n{herdr_server.agents_after_restart()}",
+                "yes": "Restart herdr",
+                "no": "Not now",
+            },
+            base=self.requests_base,
+        )
+        folder = approvals.requests_dir(self.requests_base)
+        self.emit({"type": "request", "request": request, "folder": str(folder)})
+
+        def wait() -> None:
+            try:
+                yes = approvals.wait(job, self._stop, timeout=HERDR_ASK_S, base=self.requests_base)
+            finally:
+                approvals.forget(job, base=self.requests_base)
+            if yes:
+                self._restart_herdr(server)
+
+        threading.Thread(target=wait, name="herdr-restart", daemon=True).start()
+
+    def _restart_herdr(self, server: Any) -> None:
+        from mycelium.desktop import herdr_server
+
+        restart = self.restart_herdr or herdr_server.restart
+        self.emit({"type": "log", "component": "herdr", "line": "restarting herdr's server"})
+        try:
+            restart(server)
+        except herdr_server.RestartError as e:
+            self.emit({"type": "error", "component": "herdr", "message": str(e)})
+        else:
+            self.emit({"type": "log", "component": "herdr", "line": "herdr's server restarted"})
+        # Look again on the next tick, so the warning clears once it's fixed.
+        self._herdr_checked_at = 0.0
+
     # ── a hub this supervisor didn't start ───────────────────────────────────
 
     def data_dir(self) -> Path:
         """Where the hub this supervisor starts keeps its data."""
         return Path(self.env.get("MYCELIUM_DATA_DIR") or Path.home() / ".mycelium").expanduser()
+
+    def _hub_asked_to_restart(self) -> bool:
+        """Whether the hub left the restart marker before it exited; takes it away."""
+        marker = self.data_dir() / HUB_RESTART_MARKER
+        if not marker.exists():
+            return False
+        marker.unlink(missing_ok=True)
+        return True
 
     def _preflight(self) -> None:
         """Before anything starts: every hub here, and the one on our port, reported."""
@@ -628,6 +990,7 @@ class Supervisor:
                 if ready and self.start_runner and self.runner is None:
                     self._start_runner()
                 self._tick_runner()
+                self._watch_herdr()
                 self._stop.wait(TICK_S)
         finally:
             self._shutdown()
@@ -645,6 +1008,14 @@ class Supervisor:
                 self._terminate(c)
                 c.state = "stopped"
         self._publish()
+
+
+def own_cli() -> list[str]:
+    """How to run this same CLI again: the app's bundled program, or this Python
+    with the package from a checkout."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, "-m", "mycelium"]
 
 
 def hub_env(config: Any) -> dict[str, str]:

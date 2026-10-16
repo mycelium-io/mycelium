@@ -166,6 +166,10 @@ class StatusRuntime:
     def cache(self) -> StatusCache:
         return self._cache
 
+    def provider(self, name: str) -> StatusProvider | None:
+        """The registered provider called ``name``, if there is one."""
+        return self._providers.get(name)
+
     # ── the read path ────────────────────────────────────────────────────────
 
     def read(

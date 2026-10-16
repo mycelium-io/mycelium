@@ -54,6 +54,9 @@ class _Entry:
     hello: RunnerHello
     last_seen: datetime
     started_at: datetime
+    #: Hellos since the first, so a report can be told apart from a runner's
+    #: first look after the hub (or herdr) came back.
+    heartbeats: int = 0
     jobs: OrderedDict[str, RunnerJobRead] = field(default_factory=OrderedDict)
     wake: asyncio.Event = field(default_factory=asyncio.Event)
 
@@ -91,7 +94,13 @@ class RunnerRegistry:
         else:
             entry.hello = hello
             entry.last_seen = now
+            entry.heartbeats += 1
         return entry.read(now)
+
+    def heartbeats(self, runner_id: str) -> int:
+        """How many heartbeats ``runner_id`` has sent since its hello to this hub."""
+        entry = self._runners.get(runner_id)
+        return entry.heartbeats if entry is not None else 0
 
     def touch(self, runner_id: str) -> bool:
         entry = self._runners.get(runner_id)

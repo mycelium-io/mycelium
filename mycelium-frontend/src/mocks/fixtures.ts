@@ -27,12 +27,14 @@ import type {
   EpisodeDetail,
   EpisodeSummary,
   FlowStep,
-  L9Envelope,
+  MyceliumMessage,
   MemoryGraph,
   MemoryGraphEdge,
   MemoryGraphNode,
   PresenceMember,
   RoomFloor,
+  Schedule,
+  VerifierFlag,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
 import { demoCheckout, isDemoScenario } from "./demo";
@@ -53,6 +55,8 @@ export interface MockRoom {
   mas_id?: string | null;
   owner?: string | null;
   members?: string[];
+  /** The room's display title, once someone gives it one. */
+  title?: string | null;
   /** The pattern a room was loaded from, and the task its flow runs in. */
   pattern?: string | null;
   pattern_task?: string | null;
@@ -111,10 +115,10 @@ export interface RoomFixture {
   /** The room's link graph (#599/#611) — undefined means "no link index yet",
    *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
-  // Wire frames served at GET /messages/l9, feeding the Network pane's L9 feed.
+  // Wire frames served at GET /messages/wire, which the channel and Stream read.
   // Shaped like the persister's bus frames (a bare `{header, payload}` envelope
-  // under `content`, plus the flat fields the inspector reads).
-  l9?: Record<string, unknown>[];
+  // under `content`, plus the flat fields the channel and Stream read).
+  wire?: Record<string, unknown>[];
   /** The room's A2A bridge, served at GET /a2a/state. Undefined means "no
    *  bridge" — the handler answers with an empty one, like the backend. */
   a2a?: A2aBridgeState;
@@ -122,6 +126,12 @@ export interface RoomFixture {
    *  that mention each reference, exactly as the hub returns it, so the mock
    *  exercises the same attach path the real one does. */
   status?: RoomStatus;
+  /** The room's schedules, served at GET /schedules; runs and edits are
+   *  session-local, like the rest of the mock's writes. */
+  schedules?: Schedule[];
+  /** The verifier's lines, served at GET /verifier/flags; *It's fine* is
+   *  session-local. */
+  verifierFlags?: VerifierFlag[];
 }
 
 /**
@@ -157,7 +167,7 @@ const agentManifest = (description: string, adapter = "claude_code", owner?: str
   `adapter: ${adapter}\ndescription: "${description}"\n` + (owner ? `owner: ${owner}\n` : "");
 
 /** An external A2A agent's manifest: the card the hub resolved plus what it
- *  advertises, the fields the roster and the Network pane read. */
+ *  advertises, the fields the roster and the room's connection settings read. */
 const a2aManifest = (description: string, card: string, skills: string[]): string =>
   `adapter: a2a\ndescription: "${description}"\n` +
   `a2a_card: ${card}\na2a_endpoint: ${card}/a2a\n` +
@@ -176,7 +186,7 @@ const checkoutEpisode = (shortId: string): string =>
 // The launch-day call the aligner brokered. It is an *orphan* episode — no board
 // row is bound to it — because a task's thread is the task's own, not the
 // conversation that produced it. The two tasks it compiled each carry their own
-// thread below; this URN stays the negotiation's record (Episodes rail, L9 feed).
+// thread below; this URN stays the negotiation's record (Episodes rail, message feed).
 const CHECKOUT_EPISODE = checkoutEpisode("e4f1a2");
 // The room's own channel. A message with no thread lands here, and a ping about
 // a thread is raised here — which is why the ping's own episode is this one and
@@ -197,9 +207,9 @@ const APPLE_PAY_THREAD = checkoutEpisode("d6f8b0");
 // email. A short, ordinary decision, not a set piece.
 //
 // The *chat* is the source. Each reply is a channel broadcast (`say`), and the
-// aligner reads it and emits the structured L9 it implies. So one move drives
+// aligner reads it and emits the structured messages it implies. So one move drives
 // three things — the broadcast, the coordination_tick it interprets that from,
-// and the L9 envelope the Network feed shows — and they can't disagree. `ask`
+// and the raw message behind it — and they can't disagree. `ask`
 // is the aligner's prompt that precedes a reply (it addresses one at a time).
 const CHECKOUT_CONSENSUS = { launch: "friday am" };
 interface CheckoutMove {
@@ -224,7 +234,7 @@ const checkoutMoves: CheckoutMove[] = [
     say: "agreed." },
 ];
 
-const checkoutL9Chain: L9Envelope[] = [
+const checkoutMessageChain: MyceliumMessage[] = [
   ...checkoutMoves.map((m, i) => ({
     header: {
       protocol: "ioc",
@@ -261,8 +271,8 @@ const checkoutL9Chain: L9Envelope[] = [
 // The mediated negotiation as it appears on the wire: for each move, the
 // aligner's optional prompt and the agent's reply (both chat broadcasts, shown
 // in the channel), then the coordination_tick the aligner emits from that reply
-// (feeds the Network pane, filtered out of the channel). Interleaved and
-// timestamped so the transcript reads in order — the chat drives the L9.
+// (in the wire history, filtered out of the channel). Interleaved and
+// timestamped so the transcript reads in order — the chat drives the messages.
 const checkoutNegotiation: MockMessage[] = (() => {
   const out: MockMessage[] = [];
   let at = 46; // minutes ago; ticks down as the exchange proceeds
@@ -284,9 +294,9 @@ const checkoutNegotiation: MockMessage[] = (() => {
   return out;
 })();
 
-// The L9 chain as persister bus frames: bare `{header, payload}` under content,
-// with the flat sender_handle/message_type/created_at the inspector reads.
-const checkoutL9Frames: Record<string, unknown>[] = checkoutL9Chain.map((env, i) => ({
+// The message chain as persister bus frames: bare `{header, payload}` under content,
+// with the flat sender_handle/message_type/created_at the channel and Stream read.
+const checkoutWireFrames: Record<string, unknown>[] = checkoutMessageChain.map((env, i) => ({
   message_type: `l9_${env.header.kind}`,
   sender_handle: env.header.participants?.actors?.[0]?.id ?? "aligner",
   created_at: iso(44 - i),
@@ -300,7 +310,7 @@ const checkoutL9Frames: Record<string, unknown>[] = checkoutL9Chain.map((env, i)
  * envelope in `live` naming the thread that moved, who wrote and which message,
  * carrying no prose, so there is nothing here to echo even by accident.
  *
- * A ping is a control frame: it belongs to the L9 wire feed, not the message
+ * A ping is a control frame: it belongs to the wire feed, not the message
  * list. The conversational read drops it; the transcript replay is where it
  * survives a reload.
  */
@@ -723,6 +733,165 @@ function refundThread(): MockMessage[] {
   ];
 }
 
+// "Get on the same page" (accord) run on the payment-alerts task before the
+// work starts: everyone says what the alert is for, what's out of scope and
+// what done means, a second round adds nothing new, "failing" turns out to
+// mean two things and is restated, and the points are merged into a shared
+// summary saved as a memory. The counts, the summary and the close carry
+// structured lines, so the thread draws them as lines rather than prose.
+const ALERTS_THREAD = checkoutEpisode("e7a9c1");
+const ALERTS_CAST = ["builder", "reviewer", "operator"];
+const ALERTS_SUMMARY = "context/summary/payment-alerts";
+const accordSteps: FlowStep[] = [
+  { id: "frame", to: "all", collect: "pieces", require: "pieces", next: "added" },
+  { id: "added", kind: "tally", of: "points", max_rounds: 3, next: { grew: "more", settled: "ground", empty: "nothing" } },
+  { id: "more", to: "all", collect: "pieces", next: "added" },
+  { id: "ground", to: "all", collect: "pieces", next: "words" },
+  { id: "words", kind: "tally", of: "terms", max_rounds: 2, next: { contested: "restate", clear: "lock" } },
+  { id: "restate", to: "contested", collect: "pieces", next: "words" },
+  { id: "lock", kind: "lock", next: { locked: "locked", empty: "nothing" } },
+  { id: "locked", end: "resolved" },
+  { id: "nothing", end: "rejected" },
+];
+const alertsFirstCount = {
+  of: "points" as const,
+  round: 1,
+  max_rounds: 3,
+  outcome: "grew" as const,
+  added: 5,
+  points: 5,
+  capped: false,
+};
+const alertsSecondCount = { ...alertsFirstCount, round: 2, outcome: "settled" as const, added: 0 };
+const alertsWordsSplit = {
+  of: "terms" as const,
+  round: 1,
+  max_rounds: 2,
+  outcome: "contested" as const,
+  words: 2,
+  contested: ["failing"],
+  asked: ["builder", "operator"],
+};
+const alertsWordsClear = { ...alertsWordsSplit, round: 2, outcome: "clear" as const, contested: [], asked: [] };
+const alertsLock = {
+  outcome: "locked" as const,
+  memory: ALERTS_SUMMARY,
+  saved: true,
+  points: 5,
+  shared: 3,
+  contested: 0,
+  checks: 1,
+  flagged: 2,
+  quiet: [],
+};
+const checkoutAccordEpisode: EpisodeSummary = {
+  short_id: "c3e5a7",
+  episode: ALERTS_THREAD,
+  topic: "urn:concept:mycelium:checkout",
+  outcome: "resolved",
+  subkind: "resolved",
+  participants: [...ALERTS_CAST, "conductor"],
+  metrics: null,
+  assignments: null,
+  tasks: [],
+  message_count: 22,
+  updated_at: iso(3.4),
+  updated_by: "conductor",
+  within: ALERTS_THREAD,
+  current_step: null,
+  flow: {
+    name: "accord",
+    description:
+      "Get on the same page. Everyone says what the task is, what's out of scope, what done means and what the key words mean; it's merged into one shared summary, with anything that doesn't line up flagged, and saved.",
+    roles: [],
+    max_steps: 8,
+    bound: {},
+    cast: ALERTS_CAST,
+    ask: "agree what the payment alert is for before building it",
+    steps: accordSteps,
+  },
+  trace: [
+    { step: "frame", turn: 1, asked: ALERTS_CAST, stances: {}, stance: null, next: "added", at: iso(9.0) },
+    { step: "added", turn: 1, tally: alertsFirstCount, next: "more", at: iso(8.9) },
+    { step: "more", turn: 2, asked: ALERTS_CAST, stances: {}, stance: null, next: "added", at: iso(7.6) },
+    { step: "added", turn: 2, tally: alertsSecondCount, next: "ground", at: iso(7.5) },
+    { step: "ground", turn: 3, asked: ALERTS_CAST, stances: {}, stance: null, next: "words", at: iso(6.2) },
+    { step: "words", turn: 3, tally: alertsWordsSplit, next: "restate", at: iso(6.1) },
+    { step: "restate", turn: 4, asked: ["builder", "operator"], stances: {}, stance: null, next: "words", at: iso(4.4) },
+    { step: "words", turn: 4, tally: alertsWordsClear, next: "lock", at: iso(4.3) },
+    { step: "lock", turn: 4, lock: alertsLock, next: "locked", at: iso(3.5) },
+  ],
+};
+
+/** The run's posts in the payment-alerts thread, oldest first. */
+function alertsThread(): MockMessage[] {
+  let n = 0;
+  const post = (sender: string, content: string, mins: number, conductor?: Record<string, unknown>): MockMessage => ({
+    id: `ac${++n}`,
+    sender_handle: sender,
+    message_type: "broadcast",
+    content,
+    created_at: iso(mins),
+    episode: ALERTS_THREAD,
+    ...(conductor ? { metadata: { conductor } } : {}),
+  });
+  const turn = (step: string, to: string, turnNo: number, mins: number) =>
+    post("conductor", `accord · ${step} · turn ${turnNo} of 8 · ${to}`, mins, {
+      event: "turn",
+      protocol: "accord",
+      step,
+      to,
+      turn: turnNo,
+      cap: 8,
+    });
+  return [
+    post("conductor", "Running accord with builder, reviewer, operator as members.", 9.6, {
+      event: "open",
+      protocol: "accord",
+      roles: {},
+      members: ALERTS_CAST,
+      steps: accordSteps,
+    }),
+    ...ALERTS_CAST.map((h) => turn("frame", h, 1, 9.5)),
+    post("builder", "It's for hearing about broken payments before customers do. Out of scope: alerts for slow pages. Done means the alert fires in a test where I make payments fail on purpose.", 9.3),
+    post("reviewer", "It's for hearing about broken payments before customers do. Done means one message to the team channel, not one per failed payment.", 9.2),
+    post("operator", "It's for catching a broken checkout during the sale. More than 3 failing payments in 10 minutes should alert us.", 9.1),
+    post("conductor", "Round 1: 5 new points, 5 in all", 8.9, { event: "tally", step: "added", next: "more", tally: alertsFirstCount }),
+    ...ALERTS_CAST.map((h) => turn("more", h, 2, 8.8)),
+    post("builder", "Nothing to add.", 8.0),
+    post("reviewer", "Nothing new from me.", 7.9),
+    post("operator", "That covers it.", 7.8),
+    post("conductor", "Nobody added anything new: 5 points", 7.5, { event: "tally", step: "added", next: "ground", tally: alertsSecondCount }),
+    ...ALERTS_CAST.map((h) => turn("ground", h, 3, 7.4)),
+    post("builder", "\"Failing\" means Stripe returned an error. \"The team channel\" is #checkout.", 6.8),
+    post("reviewer", "\"The team channel\" is #checkout.", 6.6),
+    post("operator", "\"Failing\" means the customer didn't get through checkout, whatever the reason.", 6.4),
+    post("conductor", "Words used in different senses: failing. Asking builder, operator again", 6.1, {
+      event: "tally",
+      step: "words",
+      next: "restate",
+      tally: alertsWordsSplit,
+    }),
+    turn("restate", "builder", 4, 6.0),
+    turn("restate", "operator", 4, 6.0),
+    post("builder", "Fair: a card the bank declines is the customer's problem, not ours. \"Failing\" means Stripe returned an error.", 5.0),
+    post("operator", "Agreed, a declined card isn't a broken checkout. \"Failing\" means Stripe returned an error.", 4.6),
+    post("conductor", "No word used in different senses", 4.3, { event: "tally", step: "words", next: "lock", tally: alertsWordsClear }),
+    post("conductor", "Shared summary: 5 points, 3 stated by more than one person, 1 check, 2 open items", 3.5, {
+      event: "lock",
+      step: "lock",
+      next: "locked",
+      lock: alertsLock,
+    }),
+    post(
+      "conductor",
+      `✓ accord: resolved after 4 step(s). 5 point(s), 3 stated by more than one person, 1 check(s). The shared summary is saved as ${ALERTS_SUMMARY}.`,
+      3.4,
+      { event: "close", protocol: "accord", outcome: "resolved", steps: 4, reason: "reached `locked`", memory: ALERTS_SUMMARY },
+    ),
+  ];
+}
+
 // Coordination-state memories the board projects into rows. Every one is what
 // the docs promise a task is: a markdown file with frontmatter — prose in the
 // body (`value`), the row's typed fields in `meta`. The board reads status,
@@ -992,6 +1161,38 @@ const checkout: RoomFixture = {
       updated_at: iso(38),
       episode: checkoutEpisode("b9d1f3"),
     },
+    // The shared summary the payment-alerts run saved, as the hub writes it.
+    {
+      key: ALERTS_SUMMARY,
+      value:
+        "# Shared summary: Alert us when payments start failing\n\n" +
+        "The ask: agree what the payment alert is for before building it\n\n" +
+        "Worked out by builder, reviewer, operator.\n\n" +
+        "## What it's for\n\n" +
+        "- **p1** Hear about broken payments before customers do (stated by 3 of 3: builder, reviewer, operator)\n\n" +
+        "## Constraints\n\n" +
+        "- **p2** Alert when more than 3 payments fail in 10 minutes (stated by 1 of 3: operator)\n\n" +
+        "## Out of scope\n\n" +
+        "- **p3** Alerts for slow pages (stated by 1 of 3: builder)\n\n" +
+        "## What gets delivered\n\n" +
+        "- **p4** One message to #checkout, not one per failed payment (stated by 2 of 3: reviewer, builder)\n" +
+        "- **p5** The alert fires in a test that makes payments fail on purpose (stated by 2 of 3: builder, operator)\n\n" +
+        "## Words\n\n" +
+        "- **failing**: Stripe returned an error; a card the bank declines is not a failure (builder, operator)\n" +
+        "- **the team channel**: #checkout (builder, reviewer)\n\n" +
+        "## How we'll check\n\n" +
+        "- Make payments fail on purpose on staging and see one message in #checkout (builder; covers p4, p5)\n\n" +
+        "## Open items\n\n" +
+        "- Only one person said this: p2 (operator)\n" +
+        "- Only one person said this: p3 (builder)\n",
+      content_text: "Shared summary for the payment alert: what it's for, what's out of scope, what done means, and what failing means.",
+      meta: { "part-of": ["work/payment-alerts"] },
+      created_by: "conductor",
+      updated_by: "conductor",
+      version: 1,
+      updated_at: iso(3.5),
+      episode: checkoutEpisode("d1f3b5"),
+    },
     ...checkoutBoardRows,
   ],
   // The channel is the room's whole history, so every row on the board is a thing
@@ -1005,10 +1206,12 @@ const checkout: RoomFixture = {
     { id: "h2", sender_handle: "builder", message_type: "broadcast", content: "on it. moving card payments to stripe first, apple pay is easier on top of that.", created_at: iso(1440) },
     { id: "h3", sender_handle: "builder", message_type: "broadcast", content: "stripe payments are merged (#499). starting on apple pay.", created_at: iso(1400) },
     // ── Apple Pay gets built, and the work hanging off it ──
-    { id: "h4", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. it's up as #502 so it can go to staging.", created_at: iso(140) },
+    { id: "h4", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is approved and green, so it can go to staging.", created_at: iso(140) },
     { id: "h5", sender_handle: "reviewer", message_type: "broadcast", content: "i'll do the testing. i need it on staging to try real phones and real cards.", created_at: iso(130) },
     { id: "h6", sender_handle: "operator", message_type: "broadcast", content: "adding an alert for when payments start failing, so we hear about it before customers email us.", created_at: iso(95) },
     { id: "h7", sender_handle: "builder", message_type: "broadcast", content: "some order emails are going out twice when stripe retries a webhook. filing it, i'll fix it after apple pay.", created_at: iso(58) },
+    // Builder forgets #499 merged yesterday (h3): the verifier's darker line.
+    { id: "h7b", sender_handle: "builder", message_type: "broadcast", content: "apple pay sits on top of #499, which still needs a review before it can merge.", created_at: iso(55) },
     // ── the test-first correction ──
     { id: "q1", sender_handle: "reviewer", message_type: "broadcast", content: "can we switch apple pay on before i've tried a real iphone? it passes in the simulator.", created_at: iso(52) },
     { id: "q2", sender_handle: "operator", message_type: "broadcast", content: "no. the simulator doesn't use real cards. if it breaks on a real phone during the sale we lose orders. test first.", created_at: iso(51) },
@@ -1018,8 +1221,8 @@ const checkout: RoomFixture = {
     { id: "a2", sender_handle: "operator", message_type: "coordination_join", content: JSON.stringify({ handle: "operator", intent: "on before the sale email", episode: CHECKOUT_EPISODE }), created_at: iso(47), episode: CHECKOUT_EPISODE },
     { id: "a3", sender_handle: "builder", message_type: "coordination_join", content: JSON.stringify({ handle: "builder", intent: "a full day of test orders first", episode: CHECKOUT_EPISODE }), created_at: iso(47), episode: CHECKOUT_EPISODE },
     // The aligner brokers a couple of short rounds. Each reply is a chat
-    // broadcast; the aligner reads it and emits the coordination_tick the Network
-    // pane reconstructs. The chat is the source (see checkoutMoves).
+    // broadcast; the aligner reads it and emits a coordination_tick
+    // from it. The chat is the source (see checkoutMoves).
     ...checkoutNegotiation,
     { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { launch: "friday am" }, episode: CHECKOUT_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: CHECKOUT_EPISODE },
     // The room files the work the call breaks into. The two task-created notices
@@ -1036,11 +1239,14 @@ const checkout: RoomFixture = {
     { id: "t1", sender_handle: "builder", message_type: "broadcast", content: "apple pay is behind the `checkout.apple_pay` switch, off for now.", created_at: iso(22), episode: LAUNCH_THREAD },
     { id: "t2", sender_handle: "reviewer", message_type: "broadcast", content: "don't switch it on until i've placed test orders on a real phone. i'll post the results here.", created_at: iso(21), episode: LAUNCH_THREAD },
     { id: "t3", sender_handle: "builder", message_type: "broadcast", content: "sounds good, waiting on you.", created_at: iso(20), episode: LAUNCH_THREAD },
+    { id: "t4", sender_handle: "builder", message_type: "broadcast", content: "reviewer approved #502, so i'm putting it on staging for the test orders.", created_at: iso(19), episode: LAUNCH_THREAD },
     // The old card form's own thread: a leftover chased down.
     { id: "r1", sender_handle: "builder", message_type: "broadcast", content: "12 orders last week still used the old card form after stripe went live. all from one cached page.", created_at: iso(16), episode: OLD_FORM_THREAD },
     { id: "r2", sender_handle: "builder", message_type: "broadcast", content: "cleared the cache. every order today went through stripe.", created_at: iso(15), episode: OLD_FORM_THREAD },
     // The double-charge decision's thread: a "help them agree" run, start to finish.
     ...refundThread(),
+    // The payment-alerts thread: a "get on the same page" run before the work.
+    ...alertsThread(),
     // Two deliberately long, multi-paragraph messages — the wall-of-text case the
     // channel has to handle without swallowing everything around it.
     {
@@ -1071,13 +1277,15 @@ const checkout: RoomFixture = {
     checkoutReleaseEpisode,
     checkoutGatedEpisode,
     checkoutConcordEpisode,
+    checkoutAccordEpisode,
     checkoutFanOutEpisode,
     checkoutEpisodeSummary,
     checkoutRoundRobinEpisode,
   ],
   episodeDetails: {
     b9c1d3: { ...checkoutConcordEpisode, messages: [] },
-    e4f1a2: { ...checkoutEpisodeSummary, messages: checkoutL9Chain },
+    c3e5a7: { ...checkoutAccordEpisode, messages: [] },
+    e4f1a2: { ...checkoutEpisodeSummary, messages: checkoutMessageChain },
     f10a2c: { ...checkoutGatedEpisode, messages: [] },
     a2b3c4: { ...checkoutFanOutEpisode, messages: [] },
     c7d8e9: { ...checkoutRoundRobinEpisode, messages: [] },
@@ -1097,12 +1305,151 @@ const checkout: RoomFixture = {
     { handle: "builder", kind: "slim", last_seen: null },
     { handle: "reviewer", kind: "lease", last_seen: iso(1) },
   ],
+  // The verifier couldn't find an approval for #502, which builder called
+  // approved: nobody in the room had reviewed it yet.
+  verifierFlags: [
+    {
+      flag_id: "vf1",
+      failure: "ungranted_approval",
+      message_id: "h4",
+      key: "live",
+      about: "builder",
+      by: "verifier",
+      claim: "approval",
+      ref: "#502",
+      line: "Can't find an approval for #502.",
+      sure: false,
+      quotes: ["#502 is approved and green"],
+      sentence: "#502 is approved and green, so it can go to staging.",
+      why: "Nobody in this room has approved #502. It's still waiting for review.",
+      checked: [
+        { what: "Approvals of #502 in this room", found: "none" },
+        { what: "Pull request changes for #502", found: "opened, review requested" },
+      ],
+      state: "shown",
+      fine_by: null,
+      at: iso(139),
+    },
+    // The same claim again, inside the launch task's thread.
+    {
+      flag_id: "vf2",
+      failure: "ungranted_approval",
+      message_id: "t4",
+      key: "work/turn-on-apple-pay",
+      about: "builder",
+      by: "verifier",
+      claim: "approval",
+      ref: "#502",
+      line: "Can't find an approval for #502.",
+      sure: false,
+      quotes: ["reviewer approved #502"],
+      sentence: "reviewer approved #502, so i'm putting it on staging for the test orders.",
+      why: "Reviewer hasn't approved #502 in this room. They said they'd test it on a real phone first.",
+      checked: [
+        { what: "Approvals of #502 in this room", found: "none" },
+        { what: "Pull request changes for #502", found: "opened, review requested" },
+      ],
+      state: "shown",
+      fine_by: null,
+      at: iso(18.5),
+    },
+    // The records say the opposite: #499 merged a day ago (h3), so this line is
+    // the darker one, and it says when.
+    {
+      flag_id: "vf3",
+      failure: "stale_state",
+      message_id: "h7b",
+      key: "live",
+      about: "builder",
+      by: "verifier",
+      claim: "open",
+      ref: "#499",
+      line: `#499 was already merged, at ${new Date(iso(1400)).toISOString().slice(11, 16)}.`,
+      sure: true,
+      quotes: ["#499, which still needs a review"],
+      sentence: "apple pay sits on top of #499, which still needs a review before it can merge.",
+      why: "Builder said #499 was merged yesterday, so it doesn't need a review.",
+      checked: [
+        {
+          what: "Merges of #499 in this room",
+          found: `merged at ${new Date(iso(1400)).toISOString().slice(11, 16)} (@builder)`,
+        },
+      ],
+      state: "shown",
+      fine_by: null,
+      at: iso(54.5),
+    },
+  ],
+  // Builder looks in on its own leases twice an hour; reviewer was set to chase
+  // anyone who goes quiet on a claimed row, and is paused for the launch.
+  schedules: [
+    {
+      name: "lease-check",
+      owner: "builder",
+      every: "30m",
+      cron: null,
+      prompt: "Renew or hand back anything you hold that has gone stale.",
+      check: "stale",
+      task: null,
+      state: "active",
+      paused: false,
+      created_by: "julia",
+      created_at: iso(60 * 26),
+      updated_at: iso(60 * 26),
+      expires_at: iso(-60 * 24 * 6),
+      next_run: iso(-12),
+      last_run: iso(18),
+      last_result: "quiet",
+      runs: 52,
+      wakes: 3,
+      quiet: 49,
+      history: [
+        { at: iso(18), result: "quiet", trigger: "schedule", missed: 0, found: [], found_total: 0, detail: null },
+        { at: iso(48), result: "quiet", trigger: "schedule", missed: 0, found: [], found_total: 0, detail: null },
+        {
+          at: iso(78),
+          result: "woke",
+          trigger: "schedule",
+          missed: 0,
+          found: ['work/turn-on-apple-pay "Turn on Apple Pay for everyone": your lease is stale'],
+          found_total: 1,
+          detail: null,
+        },
+        { at: iso(108), result: "quiet", trigger: "schedule", missed: 2, found: [], found_total: 0, detail: null },
+      ],
+    },
+    {
+      name: "quiet-holders",
+      owner: "reviewer",
+      every: null,
+      cron: "0 9 * * 1-5",
+      prompt: "Someone holds a row and went quiet. Ask them in its thread, or release it.",
+      check: "silent",
+      task: null,
+      state: "paused",
+      paused: true,
+      created_by: "julia",
+      created_at: iso(60 * 72),
+      updated_by: "julia",
+      updated_at: iso(60 * 3),
+      paused_by: "julia",
+      paused_at: iso(60 * 3),
+      expires_at: iso(-60 * 24 * 4),
+      next_run: iso(-60 * 20),
+      last_run: iso(60 * 27),
+      last_result: "woke",
+      runs: 3,
+      wakes: 1,
+      quiet: 2,
+      history: [],
+    },
+  ],
   // Every board row's origin, as the notice the room filed it with — each timed
   // just after the chat line that sets it up, so the channel reads talk → filing
   // for all ten, not just the two the negotiation compiled. The episode on each
   // matches its board row, so a notice opens the same thread the row's chip does.
-  l9: [
-    ...checkoutL9Frames,
+  wire: [
+    ...checkoutWireFrames,
     // Every board row's origin — a `filed` notice — and, for two of them, the rest
     // of the lifecycle the room saw: Stripe payments resolved long ago, the
     // Apple Pay switch claimed by builder just before staging it. Read in order
@@ -1674,7 +2021,7 @@ const storefrontExtraMemories: MockMemory[] = [
   },
 ];
 
-const storefrontL9: Record<string, unknown>[] = [
+const storefrontWire: Record<string, unknown>[] = [
   storefrontNotice("filed", "work/426-show-which-coffees-are-back-in-stock", "426: show which coffees are back in stock", "task-426", 86),
   storefrontNotice("claimed", "work/426-show-which-coffees-are-back-in-stock", "426: show which coffees are back in stock", "task-426", 86),
   storefrontPing("work/426-show-which-coffees-are-back-in-stock", "task-426", "m5-0", 86),
@@ -1938,7 +2285,7 @@ const storefront: RoomFixture = {
   ),
   episodes: [],
   episodeDetails: {},
-  l9: storefrontL9,
+  wire: storefrontWire,
   // A handful live or awaiting; the rest read as idle. This is what splits the
   // roster into its lifecycle groups.
   presence: [

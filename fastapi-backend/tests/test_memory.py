@@ -173,8 +173,35 @@ async def test_memory_not_found(client: AsyncClient):
     """Test 404 for non-existent memory."""
     await client.post("/api/rooms", json={"name": "nf-test"})
 
-    resp = await client.get("/api/rooms/nf-test/memory/does-not-exist")
+    resp = await client.get("/api/rooms/nf-test/memory/agents/does-not-exist")
     assert resp.status_code == 404
+    # It says what was missing, so a client that prints it can be acted on.
+    assert resp.json()["detail"] == "No memory 'agents/does-not-exist' in room 'nf-test'"
+
+
+@pytest.mark.asyncio
+async def test_a_rewrite_that_names_no_tags_keeps_them(client: AsyncClient):
+    """Like the rest of a memory's frontmatter, its tags survive a rewrite that
+    doesn't mention them (a manifest edited without `--tags agent-manifest`
+    stays tagged). An empty list is how to clear them."""
+    await client.post("/api/rooms", json={"name": "tags-kept"})
+
+    async def write(**extra: object) -> dict:
+        resp = await client.post(
+            "/api/rooms/tags-kept/memory",
+            json={
+                "items": [
+                    {"key": "agents/scribe", "value": "v", "created_by": "a", "embed": False}
+                    | extra
+                ]
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        return (await client.get("/api/rooms/tags-kept/memory/agents/scribe")).json()
+
+    assert (await write(tags=["agent-manifest"]))["tags"] == ["agent-manifest"]
+    assert (await write())["tags"] == ["agent-manifest"]
+    assert not (await write(tags=[]))["tags"]
 
 
 @pytest.mark.asyncio

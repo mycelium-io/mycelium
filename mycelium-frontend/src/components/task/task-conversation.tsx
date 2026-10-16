@@ -3,8 +3,10 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { RoomMessage } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { usePendingMessages, type Landed } from "@/lib/pending-messages";
+import { PendingMessageRows } from "@/components/pending-message-rows";
+import { Shimmer, SporeMark } from "@/components/responding-mark";
 import {
   applyActivity,
   expireActivity,
@@ -13,17 +15,15 @@ import {
   settleActivity,
   type Responding,
 } from "@/lib/activity";
-import { useRoomAgents, useThreadMessages } from "@/lib/room-data";
+import { useThreadMessages } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf } from "@/lib/threads";
-import { conductorLineOf } from "@/lib/conductor-line";
-import { MessageBody } from "@/components/message-body";
-import { ConductorRow } from "@/components/task/conductor-row";
+import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
+import { FeedRow, lastChatSender, useFeedContext } from "@/components/messages/feed-row";
+import type { ConversationRows } from "@/components/messages/use-follow-latest";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Monogram } from "@/components/ui/monogram";
-import { agentTag } from "@/lib/agent-label";
-import { SenderName } from "@/components/sender-name";
-import { Ago, NowProvider } from "@/lib/relative-time";
+import { NowProvider } from "@/lib/relative-time";
+import { cn } from "@/lib/utils";
 
 interface Props {
   roomName: string;
@@ -38,35 +38,24 @@ interface Props {
    * duplicating the hook.
    */
   onReady?: (refresh: () => void) => void;
+  /** The surface it sits on, so the pinned "responding" line covers what
+   *  scrolls under it. */
+  surface?: "bg" | "paper";
+  /** What an empty thread shows, for a host that frames it its own way. */
+  empty?: ReactNode;
+  /** Told what the conversation draws whenever that changes, so the page it
+   *  sits in can scroll it the way every message list scrolls. */
+  onRows?: (rows: ConversationRows) => void;
 }
 
-/** The prose a thread message carries, or "" when it carries none. */
-function textOf(message: RoomMessage): string {
-  const content = message.content;
-  if (typeof content !== "string") return "";
-  if (!content.startsWith("{")) return content;
-  try {
-    const parsed = JSON.parse(content) as Record<string, unknown>;
-    return typeof parsed.content === "string"
-      ? parsed.content
-      : typeof parsed.text === "string"
-        ? parsed.text
-        : "";
-  } catch {
-    return content;
-  }
-}
-
-/** How close to the bottom you have to be for a new reply to pull you down. */
-const STICK_PX = 120;
-
-/** The scrollable ancestor an element sits in, if it has one. */
-function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
-  for (let node = el?.parentElement ?? null; node; node = node.parentElement) {
-    const overflow = getComputedStyle(node).overflowY;
-    if (overflow === "auto" || overflow === "scroll") return node;
-  }
-  return null;
+/**
+ * What a thread draws: what was said, and a conductor's lines. A thread also
+ * carries its lifecycle (joins, mediator ticks, the commit it converged on),
+ * and those are frames, not things anybody said: the row's own state, which
+ * the board draws, is where they read.
+ */
+function drawn(ev: Event): boolean {
+  return ev.conductor !== null || (CHAT_TYPES.has(ev.type) && ev.content.trim().length > 0);
 }
 
 /**
@@ -74,21 +63,29 @@ function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
  *
  * It owns no scroll. The task's body, its metadata and this conversation are
  * one column in the surface's single scroll region, so a reply flows on below
- * the task the way a comment follows an issue — rather than sitting in a
- * fixed-height box with a scrollbar of its own a few pixels inside the pane's.
+ * the task the way a comment follows an issue. The page scrolls it the way
+ * every message list scrolls, told what it draws through `onRows`.
+ *
+ * Each message is the same row the channel draws (`FeedRow`): the sender, the
+ * prose, the verifier's lines, the hover actions and the right-click menu.
  *
  * The composer stays with the parent (a task is rendered in more than one place
  * and the composer's chrome differs), so this is just the read and its
  * rendering. The read is its own SWR entry (`useThreadMessages`), so showing a
  * conversation never replaces the room's feed with a filtered slice of itself.
  */
-export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: Props) {
+export function TaskConversation({
+  roomName,
+  episode,
+  onOpenMemory,
+  onReady,
+  empty,
+  surface = "bg",
+  onRows,
+}: Props) {
   const { messages, loading, refresh, hasOlder, loadOlder, loadingOlder } =
     useThreadMessages(roomName, episode);
-  const { agents } = useRoomAgents(roomName);
-  const agentHandles = new Set(agents.map(a => a.handle));
-  const agentTags = new Map(agents.map(a => [a.handle, agentTag(a)]));
-  const endRef = useRef<HTMLDivElement>(null);
+  const feed = useFeedContext(roomName, { onOpenMemory });
 
   // Hand the parent our refresh once it is stable, so its composer's onSent can
   // re-read this episode after a send.
@@ -96,12 +93,6 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
     onReady?.(refresh);
   }, [onReady, refresh]);
 
-  // A write into this thread reaches the room's one multiplexed stream twice —
-  // as the message itself (tagged with this episode) and as the ping that
-  // announces it (tagged `live`, naming this episode in its payload). Either is
-  // reason to re-read; nothing else here is, so a busy room does not refetch a
-  // quiet thread. The refresh is a revalidation, not an append: the region stays
-  // a read of one episode rather than a second feed assembled by hand.
   // Who is mid-turn in this thread. The same signal the channel folds, scoped
   // to this episode: a turn going elsewhere is not this conversation's news.
   const [responding, setResponding] = useState<Responding[]>([]);
@@ -111,6 +102,12 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
     return () => clearInterval(tick);
   }, [responding.length]);
 
+  // A write into this thread reaches the room's one multiplexed stream twice —
+  // as the message itself (tagged with this episode) and as the ping that
+  // announces it (tagged `live`, naming this episode in its payload). Either is
+  // reason to re-read; nothing else here is, so a busy room does not refetch a
+  // quiet thread. The refresh is a revalidation, not an append: the region stays
+  // a read of one episode rather than a second feed assembled by hand.
   useRoomStream(roomName, frame => {
     const message = frame as Record<string, unknown>;
     if (isActivityFrame(message)) {
@@ -133,56 +130,52 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
     if (pingOf(content as Record<string, unknown>)?.episode === episode) refresh();
   });
 
-  // The backend answers newest-first; a conversation reads the other way.
-  //
-  // A thread carries its lifecycle as well as its argument — joins, mediator
-  // ticks, the commit it converged on — and those are frames, not things
-  // anybody said. Selecting on whether a message has prose keeps this a
-  // conversation without it having to know which types aren't one; what the
-  // lifecycle amounts to is the row's own state, which the board already draws.
-  const ordered = [...messages]
-    .reverse()
-    .map(message => ({ message, text: textOf(message), line: conductorLineOf(message) }))
-    .filter(({ text, line }) => line !== null || text.trim().length > 0);
+  // The backend answers newest-first; a conversation reads the other way. Read
+  // the way the channel reads a message, so a row here is the row there.
+  const events = useMemo(() => [...messages].reverse().map((m) => parseEvent(m)).filter(drawn), [messages]);
 
-  // A reply that lands while you are reading the bottom pulls you down with it;
-  // one that lands while you are further up does not, and opening the task lands
-  // on the task rather than on its last comment. With one scroll for the whole
-  // column, sticking unconditionally would scroll the body out of view the
-  // moment anything arrived.
-  const count = ordered.length;
-  const seen = useRef<number | null>(null);
+  // What you sent here that the read doesn't have yet, drawn under it.
+  const landed = useMemo<Landed[]>(
+    () =>
+      events
+        .filter((ev) => CHAT_TYPES.has(ev.type))
+        .map((ev) => ({ id: ev.messageId, sender: ev.sender, content: ev.content, at: ev.at })),
+    [events],
+  );
+  const pending = usePendingMessages(roomName, episode, landed);
+  const newestPending = pending[pending.length - 1]?.id ?? null;
+
+  // Reading back asks for one more page at a time: the page is wider once the
+  // answer is, not once per scroll event at the top.
+  const askedAt = useRef<number | null>(null);
+  const readBack = useCallback(() => {
+    if (askedAt.current === messages.length) return;
+    askedAt.current = messages.length;
+    loadOlder();
+  }, [loadOlder, messages.length]);
+
+  const rowIds = useMemo(() => (loading && events.length === 0 ? null : events.map((ev) => ev.id)), [loading, events]);
   useEffect(() => {
-    const first = seen.current === null;
-    seen.current = count;
-    if (first || count === 0) return;
-    const anchor = endRef.current;
-    const viewport = scrollParentOf(anchor);
-    if (!anchor || !viewport) return;
-    const fromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    if (fromBottom > STICK_PX) return;
-    anchor.scrollIntoView({ block: "end" });
-  }, [count]);
+    onRows?.({ rows: rowIds, sent: newestPending, onNearTop: hasOlder ? readBack : undefined });
+  }, [onRows, rowIds, newestPending, hasOlder, readBack]);
 
   return (
     <div data-testid="thread-conversation">
-      {loading && ordered.length === 0 ? (
+      {loading && events.length === 0 && pending.length === 0 ? (
         <div className="flex flex-col gap-4 px-5 py-4">
           <Skeleton className="h-3 w-2/5" />
           <Skeleton className="h-3 w-3/5" />
         </div>
-      ) : ordered.length === 0 ? (
+      ) : events.length === 0 && pending.length === 0 ? (
         // A quiet line, not a card: an empty thread is where every task starts.
-        <p className="px-5 py-3 text-micro text-faint">
+        empty ?? <p className="px-5 py-3 text-micro text-faint">
           No replies yet. Reply below, or @-mention an agent: it lands in this task, not in the room.
         </p>
       ) : (
         <NowProvider>
           <div className="py-3">
-            {/* A control, not a scroll trigger. This conversation owns no scroll —
-                it is the lower half of the task's own column — so "near the top"
-                is a position in the task above it, not in the thread. Asking is
-                the honest gesture here. */}
+            {/* Reading near the top of the page asks for these too; this is the
+                same thing as a control, for a page whose top is the task. */}
             {hasOlder && (
               <div className="px-5 pb-2 text-center">
                 <button
@@ -195,55 +188,15 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
                 </button>
               </div>
             )}
-            {ordered.map(({ message, text, line }, i) => {
-              const sender = message.sender_handle ?? message.updated_by ?? "?";
-              if (line) {
-                return (
-                  <ConductorRow
-                    key={message.id ?? `${sender}-${i}`}
-                    line={line}
-                    text={text}
-                    onOpenMemory={onOpenMemory}
-                  />
-                );
-              }
-              // A conductor row between two of one member's messages breaks the
-              // run, so the second one names its sender again.
-              const prev = ordered[i - 1];
-              const previous = prev && !prev.line ? prev.message : undefined;
-              const grouped = previous && (previous.sender_handle ?? previous.updated_by) === sender;
-              const isAgent = agentHandles.has(sender);
-              return (
-                <div
-                  key={message.id ?? `${sender}-${i}`}
-                  className={`flex gap-3 px-5 ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"}`}
-                >
-                  <div className="w-6 flex-shrink-0">
-                    {!grouped && (
-                      <Monogram
-                        handle={sender}
-                        color={isAgent ? undefined : "var(--avatar-neutral)"}
-                        className="size-6 text-[10px]"
-                      />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    {!grouped && (
-                      <div className="flex items-center gap-1.5">
-                        <SenderName handle={sender} tag={isAgent ? (agentTags.get(sender) ?? "agent") : undefined} />
-                        {message.created_at && (
-                          <Ago
-                            at={message.created_at}
-                            className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint"
-                          />
-                        )}
-                      </div>
-                    )}
-                    <MessageBody content={text} onOpenMemory={onOpenMemory} />
-                  </div>
-                </div>
-              );
-            })}
+            {events.map((ev, i) => (
+              <FeedRow key={ev.id} ev={ev} prev={events[i - 1]} ctx={feed} />
+            ))}
+            <PendingMessageRows
+              roomName={roomName}
+              pending={pending}
+              previousSender={lastChatSender(events)}
+              onOpenMemory={onOpenMemory}
+            />
           </div>
         </NowProvider>
       )}
@@ -252,17 +205,17 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
           role="status"
           aria-live="polite"
           data-testid="responding-line"
-          className="mt-2 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground"
+          // Sticks to the bottom of whatever scrolls this conversation, so it
+          // stays by the composer however far up the thread is scrolled.
+          className={cn(
+            "sticky bottom-0 mt-2 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground",
+            surface === "paper" ? "bg-paper" : "bg-bg",
+          )}
         >
-          <span
-            aria-hidden
-            className="inline-block size-1.5 flex-shrink-0 rounded-full motion-safe:animate-pulse"
-            style={{ background: "var(--accent)" }}
-          />
-          <span className="truncate">{respondingLabel(responding)}</span>
+          <SporeMark />
+          <Shimmer className="truncate">{respondingLabel(responding)}</Shimmer>
         </div>
       )}
-      <div ref={endRef} />
     </div>
   );
 }

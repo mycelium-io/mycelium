@@ -103,3 +103,87 @@ describe("an agreement's lines", () => {
     expect(isSuccess("rejected")).toBe(false);
   });
 });
+
+const points = {
+  of: "points" as const,
+  round: 1,
+  max_rounds: 3,
+  outcome: "grew" as const,
+  added: 4,
+  points: 4,
+  capped: false,
+};
+const terms = {
+  of: "terms" as const,
+  round: 1,
+  max_rounds: 2,
+  outcome: "contested" as const,
+  words: 2,
+  contested: ["renewal"],
+  asked: ["a", "b"],
+};
+const lock = {
+  outcome: "locked" as const,
+  memory: "context/summary/acme-renewal",
+  saved: true,
+  points: 5,
+  shared: 1,
+  contested: 0,
+  checks: 1,
+  flagged: 4,
+  quiet: ["c"],
+};
+
+describe("a shared summary's lines", () => {
+  it("reads a count and a summary line off either place a line arrives", () => {
+    const counted = { event: "tally", step: "added", next: "more", tally: points };
+    expect(conductorLineOf({ metadata: { conductor: counted } })).toEqual(counted);
+    const locked = { event: "lock", step: "lock", next: "locked", lock };
+    const content = JSON.stringify({ l9: { payload: { data: { conductor: locked } } } });
+    expect(conductorLineOf({ content })).toEqual(locked);
+  });
+
+  it("says how the points are coming in, in plain words", () => {
+    const say = (tally: object) =>
+      describeConductorLine({ event: "tally", step: "added", next: null, tally } as ConductorLine);
+    expect(say(points)).toBe("Round 1: 4 new points, 4 in all");
+    expect(say({ ...points, round: 2, outcome: "settled", added: 0, points: 5 })).toBe(
+      "Nobody added anything new: 5 points",
+    );
+    expect(say({ ...points, outcome: "empty", added: 0, points: 0 })).toBe("Nobody gave any points");
+    expect(say({ ...points, round: 3, outcome: "settled", added: 2, points: 7, capped: true })).toBe(
+      "Points were still coming when the rounds ran out: 7 in all",
+    );
+  });
+
+  it("names a word used in different senses, and who is asked again", () => {
+    const say = (tally: object) =>
+      describeConductorLine({ event: "tally", step: "words", next: null, tally } as ConductorLine);
+    expect(say(terms)).toBe("Words used in different senses: renewal. Asking a, b again");
+    expect(say({ ...terms, outcome: "clear", contested: [], asked: [] })).toBe("No word used in different senses");
+    expect(say({ ...terms, round: 2, outcome: "clear" })).toBe("Still used in different senses: renewal");
+  });
+
+  it("says what the shared summary holds, or that there was nothing to put in it", () => {
+    const say = (l: object) =>
+      describeConductorLine({ event: "lock", step: "lock", next: null, lock: l } as ConductorLine);
+    expect(say(lock)).toBe(
+      "Shared summary: 5 points, 1 stated by more than one person, 1 check, 4 open items · no answer from c",
+    );
+    expect(say({ ...lock, quiet: [], contested: 2 })).toBe(
+      "Shared summary: 5 points, 1 stated by more than one person, 2 words used in different senses, 1 check, 4 open items",
+    );
+    expect(say({ ...lock, outcome: "empty", memory: null, saved: false, points: 0 })).toBe(
+      "Nothing to put in a shared summary",
+    );
+  });
+
+  it("says where a run saved what it settled to, or that it could not", () => {
+    const close = { event: "close" as const, protocol: "accord", outcome: "resolved", steps: 4, reason: "" };
+    expect(describeConductorLine({ ...close, memory: "context/summary/acme-renewal" })).toBe(
+      "accord done · 4 steps · saved as context/summary/acme-renewal",
+    );
+    expect(describeConductorLine({ ...close, memory: null })).toBe("accord done · 4 steps · could not be saved");
+    expect(describeConductorLine(close)).toBe("accord done · 4 steps");
+  });
+});

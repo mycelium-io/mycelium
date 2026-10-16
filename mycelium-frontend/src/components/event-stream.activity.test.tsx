@@ -15,14 +15,16 @@ import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
-import { fetchL9History, fetchMessages, fetchMemories } from "@/lib/api";
+import { fetchWireHistory, fetchMessages, fetchMemories } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchUsers: vi.fn().mockResolvedValue([]),
-  fetchL9History: vi.fn().mockResolvedValue([]),
+  fetchWireHistory: vi.fn().mockResolvedValue([]),
+  fetchVerifierFlags: vi.fn().mockResolvedValue([]),
   fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
+  fetchRoomSettings: vi.fn().mockResolvedValue([]),
   logFetchError: () => () => undefined,
 }));
 
@@ -112,7 +114,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
     vi.mocked(fetchMessages).mockResolvedValue({ messages: [] });
-    vi.mocked(fetchL9History).mockResolvedValue([]);
+    vi.mocked(fetchWireHistory).mockResolvedValue([]);
     vi.mocked(fetchMemories).mockResolvedValue([
       row(TASK, TITLE, THREAD),
       row(OTHER_TASK, OTHER_TITLE, null),
@@ -379,5 +381,17 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
 
     const rows = within(rail()).getAllByRole("button", { name: /^Open task / });
     expect(rows[0]).toHaveAccessibleName(new RegExp(OTHER_TITLE));
+  });
+
+  it("pins who is responding outside the scrolling messages, by the composer", async () => {
+    await stream([
+      said("can someone look at the flag rollout?"),
+      { type: "agent_activity", handle: "aligner", state: "responding", episode: LIVE },
+    ]);
+
+    const line = await screen.findByTestId("responding-line");
+    expect(line).toHaveTextContent("aligner is responding…");
+    // Inside the viewport it would scroll away under whatever is sent next.
+    expect(line.closest('[data-slot="scroll-area-viewport"]')).toBeNull();
   });
 });

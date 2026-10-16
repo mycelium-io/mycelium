@@ -48,7 +48,7 @@ describe("device-key", () => {
   });
 
   it("signs nothing for a machine with no pairings", async () => {
-    const job = { kind: "launch" as const, job: { room: "eng", handle: "a", framework: "claude", cwd: null } };
+    const job = { kind: "launch" as const, job: { room: "eng", handle: "a", framework: "claude", cwd: null, worktree: false } };
     expect(await signFor({ id: "m", pairings: [] }, job)).toBeUndefined();
     // No device key here (no IndexedDB): a paired-looking machine still gets no signature.
     expect(await signFor({ id: "m", pairings: [pairing()] }, job)).toBeUndefined();

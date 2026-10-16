@@ -16,7 +16,7 @@ from __future__ import annotations
 import pytest
 
 from app.routes.tasks import PARENT_RELATION
-from app.services import tasks
+from app.services import links, tasks
 from app.services.filesystem import EPISODE_META, get_room_dir, read_memory_file
 
 ROOM = "atlas"
@@ -105,6 +105,35 @@ async def test_a_room_that_does_not_exist_is_a_404_not_a_new_room(client):
         "/api/rooms/nowhere/tasks", json={"title": "Ship it", "handle": "julia"}
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_task_is_filed_with_its_body_under_its_title(client):
+    await _room(client)
+    body = (
+        "Passkeys on the login page.\n\n- Keep passwords as a fallback\n- See [[context/auth-plan]]"
+    )
+    task = (await _new(client, "Ship passkey login", content=body)).json()
+    assert task["key"] == "work/ship-passkey-login"
+    assert task["value"] == {"text": f"Ship passkey login\n\n{body}"}
+    # The title is still the first line, which is what the board reads it by.
+    found = read_memory_file(get_room_dir(ROOM), task["key"])
+    assert found is not None
+    assert found[1].splitlines()[0] == "Ship passkey login"
+    assert "Keep passwords as a fallback" in found[1]
+    # Search and the link index read the body, as they do any memory's.
+    assert "Keep passwords as a fallback" in task["content_text"]
+    assert [link.target for link in links.outbound(ROOM, task["key"])] == ["context/auth-plan"]
+    # And the thread is minted as ever.
+    assert task["episode"].startswith(f"urn:ioc:mycelium:episode:{ROOM}:")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", [None, "", "   \n "])
+async def test_a_task_with_no_body_is_its_title(client, content):
+    await _room(client)
+    task = (await _new(client, "Rotate the signing key", content=content)).json()
+    assert task["value"] == {"text": "Rotate the signing key"}
 
 
 @pytest.mark.asyncio

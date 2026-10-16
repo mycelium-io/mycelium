@@ -11,7 +11,7 @@
  * (`mycelium/runner/pairing.py`).
  * The key is ECDSA P-256, made here by WebCrypto as non-extractable and kept
  * in IndexedDB: the page can sign with it but nothing, the page included, can
- * read the private half out. Inside the Mac app the same holds in its web
+ * read the private half out. Inside the desktop app the same holds in its web
  * view's storage.
  *
  * Pairing proves the code: an HMAC over this device's name and key, keyed by
@@ -188,7 +188,10 @@ export function pairingWith(runner: Pick<Runner, "pairings">, keyId: string | nu
 
 /** The fields a job is signed over, by kind: what the runner checks against the job it gets. */
 export type SignedJob =
-  | { kind: "launch"; job: { room: string; handle: string; framework: string; cwd: string | null } }
+  | {
+      kind: "launch";
+      job: { room: string; handle: string; framework: string; cwd: string | null; worktree: boolean };
+    }
   | {
       kind: "swarm";
       job: { room: string; task: string; framework: string; cwd: string | null; size: number; worktree: boolean };

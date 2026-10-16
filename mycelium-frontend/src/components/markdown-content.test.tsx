@@ -101,6 +101,16 @@ describe("<MarkdownContent /> memory links", () => {
     expect(document.querySelector("del")).toBeNull();
   });
 
+  it("draws an interrupting @!mention whole, saying what it does", () => {
+    render(<MarkdownContent>{"@!coder stop, wrong checkout"}</MarkdownContent>);
+    const coder = screen.getByText("@!coder");
+    expect(coder).toHaveClass("text-accent");
+    expect(coder).toHaveAttribute(
+      "aria-description",
+      "Interrupts the agent if it's working, so it reads this now",
+    );
+  });
+
   it("makes a markdown link with a myc:// href navigable", async () => {
     const onLinkClick = vi.fn();
     render(

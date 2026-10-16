@@ -1,90 +1,88 @@
-# Security Planes
+# Running a Shared Hub
 
-Mycelium has two separate things to secure, and it's easy to mix them up:
+Mycelium's defaults suit one person on one machine. Before other people can
+reach your hub, know what's open by default and turn on what protects it.
 
-- **The HTTP API** on port `8000`. This is what spokes, people and agents use
-  for memory, `await` and `respond`. You protect it with
-  [authentication](#auth).
-- **SLIM** on port `46357`. This carries the rooms' encrypted messages between
-  SLIM members. On a normal setup, the only member is the hub's backend. You
-  protect it with the SLIM secret.
+## What's open by default
 
-Securing one doesn't secure the other. In particular, a private SLIM secret
-does nothing to stop someone on your network from using the API.
+With the default setup:
 
-## Side by side
+- **Anyone who can reach port 8000 can read and write every room** and post as
+  any `@handle`. Names are only claims. The app's **acting as** picker lets any
+  browser choose which user it represents.
+- **Private rooms are hidden, not locked.** Anyone who knows a room's name can
+  open it.
+- **Every room is an [A2A](#a2a-bridge) endpoint.** Its card, with the room's
+  name and skills, is public. Without sign-in, anyone can post into it as
+  `@a2a-guest`.
+- **The hub reads everything.** Room messages are encrypted between the hub and
+  its SLIM node but not end to end. See [SLIM](#slim).
+- **[Workers](#worker) can reach anything the hub can**, including every room's
+  files and the model's API key.
+- **Anything that can reach the hub can ask a runner to start an agent.** The
+  runner asks on its machine before starting anything. The exception is the
+  desktop app's own hub, which only its own computer can reach. There, any
+  program on that computer can start agents without a question. See
+  [You say yes on the machine](#machines-you-say-yes-on-the-machine).
+
+## What to do about it
+
+1. **Turn on [sign-in](#auth).** Every request then needs a token from your
+   identity provider, and writes are tied to real accounts. Only an agent's
+   owner can act for it. You need an OIDC provider such as your company's SSO,
+   Keycloak, Dex, ZITADEL or Authentik. There's no lighter option yet.
+2. **Serve it over HTTPS** behind a reverse proxy. See
+   [Hub & Spoke](#hub-and-spoke-behind-an-https-proxy).
+3. **Keep workers to replies only** with `worker.tools = false`, or don't add
+   them. Leave their tools on only if everyone who can start a worker should be
+   allowed to run commands on the hub.
+4. **Keep secrets out of rooms.** The hub and everyone in the room can read
+   anything posted there.
+
+`mycelium doctor` shows whether sign-in is on. It also warns when the SLIM
+secret is missing or still the public development value.
+
+## Two separate things to secure
+
+The hub has two network-facing parts. Securing one doesn't secure the other:
 
 | | HTTP API | SLIM |
 |-------|----------------|-------------|
 | Port | 8000 | 46357 |
-| Used by | Spokes, people and agents (`memory`, `await`, `respond`) | The hub's backend; `mycelium slim send` for testing; native SLIM clients |
-| Protects | Memory, taking part in rooms, who can post as which `@handle` | Who can join a room's encrypted SLIM group |
-| Default | Open, no token needed | A shared secret, on the hub only |
-| Stronger option | [Authentication](#auth) (`auth.enabled`) | Per-member identity (`slim.identity signerjwt`) |
+| Used by | The app, the CLI and every agent | The hub's backend only (and `mycelium slim send`, a debugging tool) |
+| Decides | Who can read rooms and post as which `@handle` | Who can join a room's encrypted channel |
+| Default | Open | A shared secret |
+| Protect it with | [Sign-in](#auth) (`auth.enabled`) | The SLIM secret (`slim.master_secret`), kept on the hub |
 
-Spokes don't use SLIM for normal work. A spoke points `server.api_url` at the
-hub's API and never needs `MYCELIUM_SLIM_MASTER_SECRET`. The hub's backend is
-the room's SLIM member. It keeps spoke agents listed as present while they're
-waiting on `await`, and hands them their turns from the room's saved
-transcript. None of that involves the SLIM secret.
+The SLIM secret does nothing for the API. A private secret doesn't stop someone
+on your network from reading rooms over HTTP. Only sign-in does. Spokes never
+need the secret.
 
-## What the SLIM secret does
+### The SLIM secret
 
-The secret (`MYCELIUM_SLIM_MASTER_SECRET`) decides who can join a room's SLIM
-group. A key for each room is derived from it.
-
-- It works per room, not per agent. Everyone who has the secret looks the same
-  to SLIM.
-- It doesn't encrypt messages itself. Once members are in, SLIM's MLS
-  encryption handles that.
-- It doesn't protect the API, memory, or who can post as which `@handle`.
-
-The repository ships a public development value for the secret, which
-protects nothing. A new hub generates its own private secret
-(`slim.master_secret` in `config.toml`) the first time you run
-`mycelium config apply`, and passes it to the backend through `.env`. To
-change it, use `mycelium config set slim.master_secret …`.
-
-## What protects spokes
-
-For a hub with spokes, the setting that matters is authentication on the API:
+Each room's channel key is derived from the secret, which is
+`slim.master_secret` in the hub's `config.toml`. `mycelium install` generates a
+private one, and `mycelium config apply` generates one if it's missing. Without
+one, the hub falls back to a public development value that protects nothing.
+To change it:
 
 ```bash
-mycelium config set auth.enabled true
-mycelium config set auth.audience mycelium
-# … then set up [[auth.issuers]] …
-mycelium config apply
+mycelium config set slim.master_secret "$(openssl rand -hex 32)"
+mycelium config apply --restart
 ```
 
-See [Authentication](#auth) for setting it up for people and for agents.
+### Per-member SLIM identity
 
-Without it, anyone who can reach port `8000` can read and write memory and
-post as any `@handle`, **even if the hub has a private SLIM secret.**
+`slim.identity = signerjwt` gives each member its own key on the SLIM channel
+instead of the shared secret. Members can then be told apart on the channel,
+and one can be removed without changing the room's key. The hub keeps those
+keys on each member's behalf, so it still reads everything. The setting has no
+effect on the API. Set up sign-in for that.
 
 ## Typical setups
 
-| Setup | HTTP API | SLIM (on the hub) | Spokes |
-|---------|----------|------------|--------------|
-| **Just you, one machine** | Open | The development secret, unless one is set in config | None |
-| **A team on a LAN** | Authentication on | The hub's generated `slim.master_secret` | `server.api_url` set to the hub's port 8000, nothing else |
-| **Hosted** | Authentication required | A private secret, plus per-member identity | Same as LAN; spokes never get the SLIM secret |
-
-`mycelium doctor` shows whether authentication is on, using the hub's
-`/health` endpoint. On the hub, it also warns if `slim.master_secret` is
-missing or still the public development value.
-
-## SLIM identity options
-
-| Option | Applies to | Does a spoke need it? |
-|------|-------|-----------------|
-| `psk` (the default) | SLIM | No. Only the hub's backend uses it. |
-| `signerjwt` | SLIM | Only if the spoke runs its own SLIM client. |
-
-`mycelium config set slim.identity signerjwt` changes how machines identify
-themselves when they connect to SLIM directly. It doesn't turn on
-authentication for the API; set up `[auth]` for that separately.
-
-## Related guides
-
-- [Hub & Spoke Setup](#hub-and-spoke): setting up a hub and its spokes
-- [Authentication](#auth): turning on authentication for the API
+| Setup | HTTP API | SLIM |
+|---------|----------|------------|
+| **Just you, one machine** (the desktop app, or Docker on a laptop) | Open; only this machine can reach it | Shared secret |
+| **A team on a LAN or VPN** | Sign-in on | The hub's generated secret |
+| **Reached over the internet** | Sign-in on, behind HTTPS | A private secret; per-member identity if you need members told apart on the channel |

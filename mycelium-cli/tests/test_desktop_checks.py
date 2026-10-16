@@ -124,12 +124,14 @@ def test_a_hub_reached_at_its_ui_answers_under_api(monkeypatch: pytest.MonkeyPat
 def test_herdr_older_than_mycelium_needs_is_an_error_with_its_fix(
     monkeypatch: pytest.MonkeyPatch, server: str, client: str, status: str, fix: str | None
 ):
+    from mycelium.desktop import herdr_server
     from mycelium.integrations.herdr import HerdrBridge
 
     monkeypatch.setattr(HerdrBridge, "binary_present", lambda _self: True)
     monkeypatch.setattr(HerdrBridge, "available", lambda _self: True)
     monkeypatch.setattr(HerdrBridge, "server_version", lambda _self: server)
     monkeypatch.setattr(HerdrBridge, "version", lambda _self: client)
+    monkeypatch.setattr(herdr_server, "stale", lambda _app: None)
     result = checks.herdr()
     assert result.status == status
     if fix:
@@ -182,3 +184,25 @@ def test_a_second_stack_on_another_store_is_a_warning_that_names_it(monkeypatch,
 def test_a_client_mac_only_mentions_hubs_here(monkeypatch, tmp_path: Path):
     _hubs(monkeypatch, tmp_path, [])
     assert checks.hubs_here(client=True).status == "info"
+
+
+def test_the_way_to_start_the_hub_follows_who_runs_it(setting):
+    assert checks.start_hub() == "mycelium up"
+    setting({"mode": "client", "hubUrl": "https://hub.example.com"})
+    assert checks.start_hub() == "mycelium up"
+    setting({"mode": "hub"})
+    assert checks.start_hub() == "open the Mycelium app"
+
+
+def test_doctor_checks_what_the_app_runs_once_it_is_set_up(setting, monkeypatch):
+    from typer.testing import CliRunner
+
+    from mycelium.cli import app
+    from mycelium.commands import doctor
+
+    setting({"mode": "client", "hubUrl": "https://hub.example.com"})
+    monkeypatch.setattr(doctor, "_check_docker_containers", _ok("Docker containers"))
+    monkeypatch.setattr(checks, "pairings", lambda: None)
+    result = CliRunner().invoke(app, ["--json", "doctor"])
+    assert '"mode": "desktop"' in result.output
+    assert "Docker containers" not in result.output

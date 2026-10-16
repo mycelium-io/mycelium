@@ -6,7 +6,7 @@ import { classify, DEFAULT_SETTINGS, isAdmitted, isAlert, roomLevel, roomOfPath 
 
 const CREATED = "2026-08-15T10:00:00.000000+00:00";
 
-function l9Exchange(text: string, opts: Partial<Record<string, unknown>> = {}) {
+function exchangeMessage(text: string, opts: Partial<Record<string, unknown>> = {}) {
   return {
     id: "msg-1",
     room_name: "sprint",
@@ -20,31 +20,31 @@ function l9Exchange(text: string, opts: Partial<Record<string, unknown>> = {}) {
 
 describe("classify", () => {
   it("recognizes an @-mention addressed to the acting principal", () => {
-    const n = classify(l9Exchange("hey @bob can you take a look?"), "bob");
+    const n = classify(exchangeMessage("hey @bob can you take a look?"), "bob");
     expect(n).toMatchObject({ room: "sprint", kind: "mention", needsMe: true });
   });
 
   it("classifies a message that doesn't mention you as ambient (badge-only)", () => {
-    const n = classify(l9Exchange("hey @carol can you take a look?"), "bob");
+    const n = classify(exchangeMessage("hey @carol can you take a look?"), "bob");
     expect(n).toMatchObject({ kind: "message", needsMe: false });
   });
 
   it("lets a silent @~mention of you pass without ringing", () => {
-    const n = classify(l9Exchange("@carol please check, cc @~bob"), "bob");
+    const n = classify(exchangeMessage("@carol please check, cc @~bob"), "bob");
     expect(n).toMatchObject({ kind: "message", needsMe: false });
   });
 
   it("ignores your own post", () => {
-    const n = classify(l9Exchange("just thinking out loud"), "alice");
+    const n = classify(exchangeMessage("just thinking out loud"), "alice");
     expect(n).toBeNull();
   });
 
   it("recognizes a direct message by recipient handle, case-insensitively", () => {
-    const n = classify(l9Exchange("here's the plan", { recipient_handle: "Bob" }), "bob");
+    const n = classify(exchangeMessage("here's the plan", { recipient_handle: "Bob" }), "bob");
     expect(n).toMatchObject({ kind: "direct", needsMe: true });
   });
 
-  it("rings a converged l9_commit only for the people who were in it", () => {
+  it("rings a converged l9_commit only when its text mentions you", () => {
     const raw = {
       room_name: "sprint",
       sender_handle: "aligner",
@@ -60,8 +60,10 @@ describe("classify", () => {
         },
       }),
     };
-    expect(classify(raw, "bob")).toMatchObject({ kind: "consensus", needsMe: true, summary: "consensus reached" });
-    expect(classify(raw, "carol")).toMatchObject({ kind: "consensus", needsMe: false });
+    // bob took part, but nothing in it names him, so it only badges the room.
+    expect(classify(raw, "bob")).toMatchObject({ kind: "consensus", needsMe: false, summary: "consensus reached" });
+    const named = { ...raw, content: raw.content.replace("consensus reached", "consensus reached, @bob please ship it") };
+    expect(classify(named, "bob")).toMatchObject({ kind: "consensus", needsMe: true });
   });
 
   it("badges a room for an l9_knowledge update but never rings", () => {
@@ -109,7 +111,7 @@ describe("classify", () => {
 });
 
 describe("isAdmitted", () => {
-  const mention = classify(l9Exchange("hey @bob"), "bob")!;
+  const mention = classify(exchangeMessage("hey @bob"), "bob")!;
   const join = classify(
     {
       room_name: "sprint",
@@ -129,8 +131,8 @@ describe("isAdmitted", () => {
     expect(isAdmitted(join, DEFAULT_SETTINGS)).toBe(false);
   });
 
-  it("admits an ambient item under everything scope", () => {
-    expect(isAdmitted(join, { ...DEFAULT_SETTINGS, scope: "everything" })).toBe(true);
+  it("leaves an ambient item out even under the old everything scope", () => {
+    expect(isAdmitted(join, { ...DEFAULT_SETTINGS, scope: "everything" })).toBe(false);
   });
 
   it("rejects everything under global do-not-disturb", () => {
@@ -143,14 +145,14 @@ describe("isAdmitted", () => {
 });
 
 describe("roomLevel", () => {
-  it("defaults to mentions under needs-me scope, all under everything", () => {
+  it("defaults to mentions, whatever the old scope setting says", () => {
     expect(roomLevel(DEFAULT_SETTINGS, "sprint")).toBe("mentions");
-    expect(roomLevel({ ...DEFAULT_SETTINGS, scope: "everything" }, "sprint")).toBe("all");
+    expect(roomLevel({ ...DEFAULT_SETTINGS, scope: "everything" }, "sprint")).toBe("mentions");
   });
 
-  it("lets a per-room override win over the scope default and legacy mute", () => {
-    const s = { ...DEFAULT_SETTINGS, mutedRooms: ["sprint"], roomLevels: { sprint: "all" as const } };
-    expect(roomLevel(s, "sprint")).toBe("all");
+  it("reads a saved 'all' level as mentions", () => {
+    const s = { ...DEFAULT_SETTINGS, roomLevels: { sprint: "all" as const } };
+    expect(roomLevel(s, "sprint")).toBe("mentions");
   });
 
   it("reads a legacy muted room as muted", () => {
@@ -159,8 +161,8 @@ describe("roomLevel", () => {
 });
 
 describe("isAlert", () => {
-  const mention = classify(l9Exchange("hey @bob"), "bob")!;
-  const message = classify(l9Exchange("morning all"), "bob")!;
+  const mention = classify(exchangeMessage("hey @bob"), "bob")!;
+  const message = classify(exchangeMessage("morning all"), "bob")!;
 
   it("is loud for a mention under the default (mentions) level", () => {
     expect(isAlert(mention, DEFAULT_SETTINGS)).toBe(true);
@@ -170,9 +172,9 @@ describe("isAlert", () => {
     expect(isAlert(message, DEFAULT_SETTINGS)).toBe(false);
   });
 
-  it("is loud for ambient chatter when the room is on all", () => {
+  it("stays quiet for ambient chatter even in a room once set to all", () => {
     const s = { ...DEFAULT_SETTINGS, roomLevels: { sprint: "all" as const } };
-    expect(isAlert(message, s)).toBe(true);
+    expect(isAlert(message, s)).toBe(false);
   });
 
   it("is silent for anything in a muted room", () => {

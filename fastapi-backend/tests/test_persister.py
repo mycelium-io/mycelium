@@ -5,24 +5,24 @@
 
 Node-free: they exercise the delivery cursor, transcript persistence, and the
 trigger detection as pure logic over built envelopes. The live durable-inbox
-round trip over a real SLIM node is in ``test_l9_over_slim_roundtrip.py``
+round trip over a real SLIM node is in ``test_message_over_slim_roundtrip.py``
 (guarded on a running node).
 """
 
 import pytest
 
-from app.services import l9, memory_sync, persister
+from app.services import memory_sync, message_format, persister
 from app.services.filesystem import get_room_dir, read_memory_file
-from app.services.l9_models import Kind
+from app.services.message_models import Kind
 
 
 def _exchange(message_id: str, *, sender: str = "agent-a", text: str | None = None):
     """A minimal exchange envelope (optionally naming a human-facing text)."""
-    return l9.build_envelope(
+    return message_format.build_envelope(
         kind=Kind.exchange,
         episode="urn:ioc:mycelium:episode:r:s",
         sender=sender,
-        recipients=[l9.SYSTEM_ACTOR_ID],
+        recipients=[message_format.SYSTEM_ACTOR_ID],
         topic="urn:concept:mycelium:r",
         message_id=message_id,
         payload_type="reply",
@@ -34,7 +34,7 @@ def _record(
     message_id: str, *, sender: str = "agent-a", text: str = ""
 ) -> persister.TranscriptRecord:
     env = _exchange(message_id, sender=sender, text=text or None)
-    from app.services.l9_slim import serialize_content
+    from app.services.message_slim import serialize_content
 
     return persister.record_from(
         env, serialize_content(env, extra={"text": text} if text else None)
@@ -237,7 +237,7 @@ def test_transcript_does_not_clobber_episode_records():
     """The transcript is a distinct file from log/episodes/*."""
     room = "coexist-room"
     base = get_room_dir(room)
-    # Seed an episode record where l9_episode would write one.
+    # Seed an episode record where episode_state would write one.
     from app.services.filesystem import write_memory_file
 
     write_memory_file(base, "log/episodes/abcd1234", "# Episode\n", created_by="x")
@@ -253,34 +253,25 @@ def test_transcript_does_not_clobber_episode_records():
 # ── trigger-watcher ──────────────────────────────────────────────────────────
 
 
-def test_summon_token_is_recognized_in_content():
-    content = {"text": "hey @aligner can you check this?", "l9": {"ignored": "@notme"}}
-    assert persister.find_summons(content) == ["aligner"]
-
-
-def test_plain_message_has_no_summons():
-    assert persister.find_summons({"text": "just chatting, no mentions"}) == []
-    # An @ inside the l9 envelope key is never treated as a summon.
-    assert persister.find_summons({"l9": {"note": "@ghost"}}) == []
-
-
-def test_multiple_summons_deduped_in_order():
-    content = {"text": "@a and @b and @a again", "extra": ["also @c"]}
-    assert persister.find_summons(content) == ["a", "b", "c"]
+def test_who_is_named_in_order_however_named():
+    # What a conductor binds its roles from: loud, silent and interrupting
+    # mentions alike, once each, in the order written; code is quoted.
+    text = "@conductor gated @~coder @Planner, then @!coder and `@ghost`"
+    assert persister.parse_named(text) == ["conductor", "coder", "Planner"]
 
 
 # ── plan-compile hook ────────────────────────────────────────────────────────
 
 
 def test_is_converged_true_only_for_commit_converged():
-    converged = l9.build_envelope(
+    converged = message_format.build_envelope(
         kind=Kind.commit,
         subkind="converged",
         episode="urn:ioc:mycelium:episode:r:s",
         payload_type="consensus",
         payload_data={},
     )
-    rejected = l9.build_envelope(
+    rejected = message_format.build_envelope(
         kind=Kind.commit,
         subkind="rejected",
         episode="urn:ioc:mycelium:episode:r:s",
@@ -312,15 +303,15 @@ def test_ingest_fires_summon_hook_but_not_on_plain_message():
     converged: list = []
     p = _persister_for("ingest-room", summoned=summoned, converged=converged)
 
-    from app.services.l9_slim import serialize_content
+    from app.services.message_slim import serialize_content
 
     env = _exchange("m1", text="ping @aligner")
-    p._ingest(env, serialize_content(env, extra={"text": "ping @aligner"}))
+    p._ingest(env, serialize_content(env, extra={"content": "ping @aligner"}))
     assert summoned == ["aligner"]
     assert converged == []
 
     plain = _exchange("m2", text="no mention here")
-    p._ingest(plain, serialize_content(plain, extra={"text": "no mention here"}))
+    p._ingest(plain, serialize_content(plain, extra={"content": "no mention here"}))
     assert summoned == ["aligner"]  # unchanged
 
 
@@ -344,9 +335,9 @@ def test_ingest_fires_converged_hook_for_commit_converged_only():
     converged: list = []
     p = _persister_for("ingest-room-2", summoned=summoned, converged=converged)
 
-    from app.services.l9_slim import serialize_content
+    from app.services.message_slim import serialize_content
 
-    conv = l9.build_envelope(
+    conv = message_format.build_envelope(
         kind=Kind.commit,
         subkind="converged",
         episode="urn:ioc:mycelium:episode:r:s",
@@ -367,7 +358,7 @@ async def test_reserve_without_context_is_a_noop():
     """No cached reply context (agent never spoke) → nothing to route to."""
     p = _persister_for("reserve-room", summoned=[], converged=[])
     p.log.track("agent-a", caught_up=True)
-    from app.services.l9_slim import serialize_content
+    from app.services.message_slim import serialize_content
 
     env = _exchange("m1")
     p.log.record(persister.record_from(env, serialize_content(env)), delivered_to=set())
@@ -393,7 +384,7 @@ async def test_reserve_failure_is_counted_for_the_health_surface():
         members_provider=lambda: set(),
         feed_bus=False,
     )
-    from app.services.l9_slim import serialize_content
+    from app.services.message_slim import serialize_content
 
     p.log.track("agent-a", caught_up=True)
     env = _exchange("m1")
@@ -437,13 +428,13 @@ async def test_transient_churn_is_counted_apart_from_fatal_faults():
 
 def _msg_content(message_id: str, *, sender: str, text: str, payload_type: str):
     """An envelope + serialized content with a top-level human-facing ``content``."""
-    from app.services.l9_slim import serialize_content
+    from app.services.message_slim import serialize_content
 
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
         episode="urn:ioc:mycelium:episode:r:s",
         sender=sender,
-        recipients=[l9.SYSTEM_ACTOR_ID],
+        recipients=[message_format.SYSTEM_ACTOR_ID],
         topic="urn:concept:mycelium:r",
         message_id=message_id,
         payload_type=payload_type,
@@ -496,7 +487,7 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
 
 
 def test_list_store_message_carries_its_episode():
-    """Rung 2: a message lands in the list store tagged with the L9 episode it rode,
+    """Rung 2: a message lands in the list store tagged with the episode it rode,
     so the UI can group/fold a negotiation's turns by episode (and the messages
     route can filter by it)."""
     from app.services import in_memory_store
@@ -570,7 +561,7 @@ def test_conversational_projection_is_stable_and_dedups_against_the_list_store()
     assert disk[0].message_id == mem[0].message_id == "a-1"  # one correlation key, dedupable
 
 
-def test_raise_up_l9_frames_project_into_the_conversational_view():
+def test_raise_up_message_frames_project_into_the_conversational_view():
     """A ``knowledge`` push and a ``commit`` consensus are promoted into the chat
     feed on the cold read, carrying the whole envelope as their ``l9_<kind>`` frame
     — the exact shape the live SSE bus pushes. Without this the frontend promotes
@@ -578,12 +569,12 @@ def test_raise_up_l9_frames_project_into_the_conversational_view():
     """
     import json
 
-    from app.services.l9_slim import serialize_content
+    from app.services.message_slim import serialize_content
 
     room = "raise-up-room"
     get_room_dir(room)
 
-    know_env = l9.build_envelope(
+    know_env = message_format.build_envelope(
         kind=Kind.knowledge,
         subkind="extraction",
         episode="urn:ioc:mycelium:episode:raise-up-room:knowledge",
@@ -595,7 +586,7 @@ def test_raise_up_l9_frames_project_into_the_conversational_view():
     know_content = serialize_content(know_env, extra={"content": "memory updated → agents/x"})
     persister.append_transcript(room, persister.record_from(know_env, know_content))
 
-    commit_env = l9.build_envelope(
+    commit_env = message_format.build_envelope(
         kind=Kind.commit,
         subkind="converged",
         episode="urn:ioc:mycelium:episode:raise-up-room:neg",
@@ -718,7 +709,7 @@ def _knowledge_envelope(
 ):
     """A `knowledge` envelope; `build_knowledge_envelope` mints a fresh random
     message id per call, so distinct calls are never deduped against each other."""
-    from app.services.l9_slim import serialize_content
+    from app.services.message_slim import serialize_content
 
     write = memory_sync.KnowledgeWrite(
         key=key,

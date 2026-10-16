@@ -164,7 +164,7 @@ function baseRoom(): RoomFixture {
     episodeDetails: {},
     presence: [],
     floors: [],
-    l9: [],
+    wire: [],
   };
 }
 

@@ -10,8 +10,63 @@ import {
   missingArg,
   parseCommand,
   parseSummon,
+  scheduleDraft,
   usage,
 } from "./composer-commands";
+
+describe("/schedule", () => {
+  const draft = (text: string) => scheduleDraft(parseCommand(text)!);
+
+  it("opens the empty form with nothing typed, and needs nothing", () => {
+    expect(draft("/schedule")).toEqual({});
+    expect(missingArg(parseCommand("/schedule")!)).toBeNull();
+    expect(usage(commandNamed("schedule")!)).toBe("/schedule [agent] [when] [prompt…]");
+  });
+
+  it("reads an agent, a preset interval and what to tell it", () => {
+    expect(draft("/schedule @scout 30m check the board")).toEqual({
+      owner: "scout",
+      timing: { kind: "every", every: "30m" },
+      prompt: "check the board",
+    });
+  });
+
+  it("takes a time after daily or weekdays, and 09:00 when there isn't one", () => {
+    expect(draft("/schedule @scout weekdays 9:30 standup notes")).toEqual({
+      owner: "scout",
+      timing: { kind: "daily", weekdays: true, time: "09:30" },
+      prompt: "standup notes",
+    });
+    expect(draft("/schedule @scout daily check the board").timing).toEqual({
+      kind: "daily",
+      weekdays: false,
+      time: "09:00",
+    });
+  });
+
+  it("reads the timing first when the agent is left out", () => {
+    expect(draft("/schedule daily 08:15 check the board")).toEqual({
+      timing: { kind: "daily", weekdays: false, time: "08:15" },
+      prompt: "check the board",
+    });
+    expect(draft("/schedule 30m check")).toEqual({
+      timing: { kind: "every", every: "30m" },
+      prompt: "check",
+    });
+  });
+
+  it("opens an interval that isn't a preset as Custom, the way the form reads it", () => {
+    expect(draft("/schedule @scout 90m check").timing).toEqual({ kind: "custom", text: "90m" });
+    expect(draft("/schedule 2h").timing).toEqual({ kind: "custom", text: "2h" });
+  });
+
+  it("keeps words that aren't a timing as part of what to tell it", () => {
+    expect(draft("/schedule @scout please triage new issues")).toEqual({
+      owner: "scout",
+      prompt: "please triage new issues",
+    });
+  });
+});
 
 describe("parseCommand", () => {
   it("is null for a message, an unknown command, or a command glued to more", () => {
@@ -82,6 +137,7 @@ describe("parseSummon", () => {
   const flows = [
     { name: "gated", description: "A proposer proposes…", roles: ["proposer", "guardian"] },
     { name: "concord", description: "Help them agree…", roles: [] },
+    { name: "accord", description: "Get on the same page…", roles: [] },
   ];
   const at = (text: string, cursor = text.length) => parseSummon(text, cursor, ["conductor"], flows);
 
@@ -106,6 +162,12 @@ describe("parseSummon", () => {
   it("keeps taking members for a flow with no roles until the ask starts", () => {
     expect(at("@conductor concord @a @b @c ")).toMatchObject({ active: "member", slot: 3 });
     expect(at("@conductor concord @a pick a name ")?.active).toBe("ask");
+  });
+
+  it("gives accord no lead to name: every member is one of the cast", () => {
+    expect(at("@conductor accord ")).toMatchObject({ active: "member", slot: 0 });
+    expect(at("@conductor accord @a @b @c ")).toMatchObject({ active: "member", slot: 3 });
+    expect(at("@conductor accord @a @b what done means")?.active).toBe("ask");
   });
 
   it("reads the flow the way the conductor does: the first word that isn't a mention", () => {

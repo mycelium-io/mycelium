@@ -19,9 +19,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services import aligner, l9, task_compiler, task_sync
+from app.services import aligner, message_format, task_compiler, task_sync
 from app.services.filesystem import ensure_room_structure, get_room_dir, read_memory_file
-from app.services.l9_models import Kind
+from app.services.message_models import Kind
 from tests.fakes import (
     FakeChannel,
     FakeManaged,
@@ -57,7 +57,8 @@ async def test_core_protocol_room_to_work_over_fakes() -> None:
     )
 
     # ── converge ── a commit:converged verdict carrying the agreed issue=value map.
-    verdict = await engine.mediate(_ROOM)
+    # In the room, a run asks the members its summon named.
+    verdict = await engine.mediate(_ROOM, scoped_participants=["growth", "risk"])
     assert verdict is not None
     assert verdict["header"]["subkind"] == "converged"
     assignments = verdict["payload"]["data"]["assignments"]
@@ -65,12 +66,12 @@ async def test_core_protocol_room_to_work_over_fakes() -> None:
 
     # ── work ── the converged map compiles into the room's work. The compiler is
     # the one remaining LLM stage, faked here to deterministic tasks.
-    converged = l9.build_envelope(
+    converged = message_format.build_envelope(
         kind=Kind.commit,
         subkind="converged",
-        episode=l9.episode_urn(_ROOM, "live"),
+        episode=message_format.episode_urn(_ROOM, "live"),
         recipients=["growth", "risk"],
-        topic=l9.topic_urn(_ROOM),
+        topic=message_format.topic_urn(_ROOM),
         payload_type="consensus",
         payload_data={"assignments": assignments},
     )

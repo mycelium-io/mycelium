@@ -19,32 +19,27 @@ from typing import Any
 import pytest
 import yaml
 
-from app.services import assignments, l9, tasks, worker_engine
+from app.services import assignments, message_format, tasks, worker_engine
+from app.services.asks import asked
 from app.services.filesystem import (
     get_room_dir,
     list_memory_files,
     read_memory_file,
     write_memory_file,
 )
-from app.services.l9_models import Kind
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "worker-room"
 
 
 class _Manager(FakeManager):
-    """The fake manager plus the two calls a worker makes after it speaks."""
+    """The fake manager plus the calls a worker makes after it speaks."""
 
     def __init__(self, managed: FakeManaged) -> None:
         super().__init__(managed, [])
-        self.rung: list[str] = []
         self.pings: list[str] = []
-
-    def enqueue_herdr_wakes_for_mentions(
-        self, room: str, content: str, *, exclude: str | None = None, **_: Any
-    ) -> list[str]:
-        self.rung.append(content)
-        return []
 
     def herdr_status(self, room: str, handle: str) -> str | None:
         return None
@@ -130,13 +125,6 @@ def test_a_new_task_that_names_nobody_is_not_filed():
     assert actions == []
 
 
-def test_a_worker_may_name_a_teammate_but_never_an_engine():
-    team = ["agent-1", "agent-2", "julia"]
-    text = "@agent-2 can you review? @aligner @conductor @agent-1 @julia @nobody"
-    kept = worker_engine.keep_team_mentions(text, team, "agent-1")
-    assert kept == "@agent-2 can you review? aligner conductor agent-1 @julia nobody"
-
-
 def test_the_team_is_the_agents_and_the_workers_not_the_other_engines():
     _register("agent-1")
     _register("agent-2")
@@ -160,6 +148,21 @@ def test_the_prompt_names_the_team_the_task_and_the_thread():
     assert "work/fix-flake: Fix the flaky test" in prompt
     assert "- agent-1: I'll split it." in prompt
     assert prompt.endswith("Check in.")
+    assert "already agreed" not in prompt
+
+
+def test_the_prompt_carries_what_the_team_agreed_for_the_task():
+    prompt = worker_engine.build_prompt(
+        _ROOM,
+        "agent-2",
+        team=["agent-1", "agent-2"],
+        task=("work/fix-flake", "Fix the flaky test"),
+        thread="(nothing yet)",
+        ask="Do it.",
+        agreed="What the team already agreed for this task:\n\nFrom context/summary/x:\nNo retries.\n\n",
+    )
+    assert "From context/summary/x:\nNo retries." in prompt
+    assert prompt.index("No retries.") < prompt.index("The thread so far")
 
 
 # ── a turn ─────────────────────────────────────────────────────────────────────
@@ -209,16 +212,22 @@ async def test_done_resolves_the_row_the_thread_belongs_to(monkeypatch: pytest.M
 
 
 @pytest.mark.asyncio
-async def test_a_mention_of_a_teammate_rings_their_doorbell(monkeypatch: pytest.MonkeyPatch):
+async def test_what_a_worker_says_is_posted_as_it_said_it(monkeypatch: pytest.MonkeyPatch):
+    # Every mention stays, an engine's or an interrupt included: the room asks
+    # each by the same rule as anyone's (``asks.py``) as it records the post.
     _register("agent-1")
     _register("agent-2")
+    said = "Draft is up. @agent-2 can you check the edge cases? cc @aligner, @!agent-3"
     _key, episode = await _task("Draft it")
-    _patch_pi(monkeypatch, "Draft is up. @agent-2 can you check the edge cases?")
-    engine, _managed, manager = _engine()
+    _patch_pi(monkeypatch, said)
+    engine, managed, manager = _engine()
 
     await engine.turn(_ROOM, "agent-1", episode=episode, ask="Do it.")
 
-    assert manager.rung == ["Draft is up. @agent-2 can you check the edge cases?"]
+    ((env, text),) = _posted(managed)
+    assert text == said
+    asking = asked(serialize_content(env, extra={"content": text}))
+    assert asking == {"agent-2": "mention", "aligner": "mention", "agent-3": "interrupt"}
     assert manager.pings == ["agent-1"]
 
 
@@ -253,12 +262,12 @@ async def test_off_the_floor_a_worker_says_nothing(monkeypatch: pytest.MonkeyPat
 
 
 def _env(sender: str, episode: str, recipients: list[str] | None = None) -> Any:
-    return l9.build_envelope(
+    return message_format.build_envelope(
         kind=Kind.exchange,
         episode=episode,
         sender=sender,
         recipients=recipients,
-        topic=l9.topic_urn(_ROOM),
+        topic=message_format.topic_urn(_ROOM),
         payload_type="message",
     )
 
@@ -392,7 +401,7 @@ async def test_a_revision_that_names_nobody_goes_to_the_reviewer_who_settles_it_
 def test_the_seams_gate_on_the_worker_kind(monkeypatch: pytest.MonkeyPatch):
     _register("sec", "persona")
     engine, _managed, _manager = _engine()
-    env = _env("julia", l9.live_episode_urn(_ROOM))
+    env = _env("julia", message_format.live_episode_urn(_ROOM))
     engine.handle_addressed(_ROOM, "sec", env, "hi")
     engine.handle_summon(_ROOM, "sec", env, ["sec"], "@sec hi")
     engine.handle_notice(_ROOM, {"subkind": "filed", "key": "work/x", "episode": "e", "for": "sec"})
@@ -403,7 +412,7 @@ def test_a_role_named_beside_a_conductor_is_not_asked_anything():
     _register("agent-1")
     _register("conductor", "conductor")
     engine, _managed, _manager = _engine()
-    env = _env("julia", l9.live_episode_urn(_ROOM))
+    env = _env("julia", message_format.live_episode_urn(_ROOM))
     engine.handle_summon(
         _ROOM, "agent-1", env, ["conductor", "agent-1"], "@conductor swarm @agent-1: go"
     )

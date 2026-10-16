@@ -29,7 +29,9 @@ router = APIRouter(prefix="/rooms/{room_name}/engines", tags=["engines"])
 
 # The engine kinds the backend knows how to run. Mirrors the CLI's
 # ``mycelium.protocol.ENGINE_KINDS``; the summon seam self-selects by ``kind``.
-ENGINE_KINDS = frozenset({"aligner", "conductor", "hello", "persona", "synthesizer", "worker"})
+ENGINE_KINDS = frozenset(
+    {"aligner", "conductor", "hello", "persona", "synthesizer", "verifier", "worker"}
+)
 
 _HANDLE_RE = re.compile(HANDLE_PATTERN)
 
@@ -102,3 +104,35 @@ async def create_engine(room_name: str, payload: EngineCreate, request: Request)
         team=body["team"],
         allow_from=body["allow_from"],
     )
+
+
+class NegotiationStop(BaseModel):
+    """Request body to stop the negotiation running in a room."""
+
+    by: str | None = Field(None, description="Who is stopping it; defaults to the caller.")
+
+
+class NegotiationStopped(BaseModel):
+    """What stopping did."""
+
+    stopped: bool
+
+
+@router.post("/stop", response_model=NegotiationStopped)
+async def stop_negotiation(
+    room_name: str, payload: NegotiationStop, request: Request
+) -> NegotiationStopped:
+    """Stop the aligner's negotiation running in the room.
+
+    It ends before its next turn (a turn being waited on is cut short),
+    commits ``rejected`` with reason ``stopped``, and posts one line saying who
+    stopped it. 409 when nothing is running there.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    by = actor.bind_optional_actor(request, norm_handle(payload.by), field="by")
+    aligner = getattr(request.app.state, "aligner", None)
+    if aligner is None or not aligner.stop(room_name, by=by, reason="stopped"):
+        raise HTTPException(status_code=409, detail=f"No negotiation is running in {room_name}.")
+    logger.info("room %s: negotiation stopped by %s", room_name, by or "someone")
+    return NegotiationStopped(stopped=True)

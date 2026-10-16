@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Daemon-side SLIM fabric + L9 envelope layer.
+"""Daemon-side SLIM fabric + message layer.
 
-The backend (``fastapi-backend/app/services/{slim_client,l9,l9_slim}.py``) is the
+The backend (``fastapi-backend/app/services/{slim_client,message_format,message_slim}.py``) is the
 room **moderator**; this package is the **member** half a connector needs so a
 Claude Code agent can ride the same channel. It is a deliberately small,
 self-contained mirror of the backend's wrappers: the CLI installs as a thin
@@ -16,9 +16,9 @@ Two invariants keep the two halves interoperable and MUST match the backend:
   ``workspace/room/agent`` → SLIM ``Name`` mapping and the shared-secret
   (authentication PSK) derivation are byte-for-byte the backend's, or a member
   fails identity verification and can't join the moderator's group.
-- **L9 wire shape** (:mod:`mycelium.slim.l9`): an envelope rides under the
+- **Message shape** (:mod:`mycelium.slim.message_format`): a message rides under the
   additive ``l9`` key of a message's content JSON, in the exact shape the
-  backend's ``l9.envelope_to_dict`` emits, so ``l9.parse_envelope`` accepts a
+  backend's ``message_format.envelope_to_dict`` emits, so ``message_format.parse_envelope`` accepts a
   connector's reply.
 """
 

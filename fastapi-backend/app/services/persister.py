@@ -10,7 +10,7 @@ This module is that consumer, and it does four things as each message flows past
 1. **Persister.** Appends each message to the room's transcript
    (``log/transcript.jsonl``, one JSON record per line) so it survives, is
    git-shareable, and is written O(1) per message — a *distinct* artifact from
-   the episode-scoped ``log/episodes/*`` records ``l9_episode`` writes.
+   the episode-scoped ``log/episodes/*`` records ``episode_state`` writes.
 
 2. **Durable inbox.** SLIM keeps **no** messages for an offline member: a
    broadcast that happened while a member was gone is never replayed on rejoin.
@@ -36,7 +36,7 @@ This module is that consumer, and it does four things as each message flows past
 The pure pieces (:class:`DeliveryLog`, the transcript read/write, the trigger
 detection) carry no SLIM dependency and are unit-tested without a node;
 :class:`RoomPersister` is the thin async loop that drives them over a live
-:class:`~app.services.l9_slim.L9SlimChannel`.
+:class:`~app.services.message_slim.MessageChannel`.
 """
 
 from __future__ import annotations
@@ -54,8 +54,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.schemas import MessageType
-from app.services import l9, memory_sync
-from app.services.l9_slim import ChannelReceiveTimeout
+from app.services import memory_sync, message_format
+from app.services.message_slim import ChannelReceiveTimeout
 
 # Stable namespace so a transcript record maps to the same synthetic
 # ``StoredMessage.id`` on every read (the envelope id is the seed).
@@ -65,8 +65,8 @@ if TYPE_CHECKING:
     import slim_bindings
 
     from app.services.in_memory_store import StoredMessage
-    from app.services.l9_models import L9
-    from app.services.l9_slim import L9SlimChannel
+    from app.services.message_models import MyceliumMessage
+    from app.services.message_slim import MessageChannel
 
 logger = logging.getLogger(__name__)
 
@@ -80,73 +80,129 @@ TRANSCRIPT_FILENAME = "log/transcript.jsonl"
 # word chars or hyphens). Guarded so it doesn't fire mid-word (e.g. an email).
 # ``@~handle`` is a silent mention (``contracts/mentions.json``): the ``~`` keeps
 # it out of this pattern, so it never wakes, addresses or summons anyone.
-_SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@([A-Za-z0-9][\w-]*)")
+# ``@!handle`` is an interrupting mention: a mention like ``@handle`` that also
+# stops the agent mid-turn, so it is in this pattern and in its own.
+_SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@!?([A-Za-z0-9][\w-]*)")
 _SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~([A-Za-z0-9][\w-]*)")
+_INTERRUPT_RE = re.compile(r"(?:^|(?<=[\s(<]))@!([A-Za-z0-9][\w-]*)")
+_NAMED_RE = re.compile(r"(?:^|(?<=[\s(<]))@[~!]?([A-Za-z0-9][\w-]*)")
+
+# Code is quoted, never addressed: a handle inside a code span or a fenced block
+# is no mention of any kind (``contracts/mentions.json``). A fence opens on a
+# line of three or more backticks or tildes (any indent) and runs to a line of
+# the same character at least as long, or to the end of the text, as Markdown
+# draws it. A backtick fence's info string holds no backtick.
+_FENCE_OPEN = re.compile(r"^[ \t]*(`{3,}|~{3,})(.*)$")
+_BLANK_LINE = re.compile(r"\n[ \t]*\n")
+#: What code is replaced with before matching: no word character, no
+#: whitespace, so it neither extends a handle nor starts one.
+_CODE_MASK = "\x00"
+
+
+def _mask(text: str) -> str:
+    return "".join("\n" if c == "\n" else _CODE_MASK for c in text)
+
+
+def _blank_fences(text: str) -> str:
+    out: list[str] = []
+    fence: str | None = None
+    for line in text.split("\n"):
+        if fence is not None:
+            if re.fullmatch(rf"[ \t]*{re.escape(fence[0])}{{{len(fence)},}}[ \t]*", line):
+                fence = None
+            out.append(_mask(line))
+            continue
+        opened = _FENCE_OPEN.match(line)
+        if opened and not (opened.group(1)[0] == "`" and "`" in opened.group(2)):
+            fence = opened.group(1)
+            out.append(_mask(line))
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _backtick_run(text: str, start: int) -> int:
+    end = start
+    while end < len(text) and text[end] == "`":
+        end += 1
+    return end
+
+
+def blank_code(text: str) -> str:
+    """``text`` with its fenced blocks and code spans masked, same length.
+
+    A code span opens on a run of backticks and closes on the next run of the
+    same length within its paragraph; a run with no such close is literal
+    backticks, not code. Newlines are kept, so the start-of-line rule for a
+    mention still holds outside code.
+    """
+    text = _blank_fences(text)
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        if text[i] != "`":
+            out.append(text[i])
+            i += 1
+            continue
+        run_end = _backtick_run(text, i)
+        run = run_end - i
+        close = -1
+        k = run_end
+        while k < len(text):
+            if text[k] != "`":
+                k += 1
+                continue
+            k_end = _backtick_run(text, k)
+            if k_end - k == run:
+                close = k
+                break
+            k = k_end
+        if close == -1 or _BLANK_LINE.search(text, run_end, close):
+            out.append(text[i:run_end])
+            i = run_end
+            continue
+        out.append(_mask(text[i : close + run]))
+        i = close + run
+    return "".join(out)
 
 
 # ── Envelope helpers ─────────────────────────────────────────────────────────
 
 
-def envelope_sender(envelope: L9) -> str | None:
+def envelope_sender(envelope: MyceliumMessage) -> str | None:
     """The sending handle of an envelope (first actor), or None."""
     actors = envelope.header.participants.actors
     return actors[0].id if actors else None
 
 
-def envelope_recipients(envelope: L9) -> list[str]:
+def envelope_recipients(envelope: MyceliumMessage) -> list[str]:
     """The addressed recipients of an envelope (every actor after the sender)."""
     actors = envelope.header.participants.actors
     return [a.id for a in actors[1:]] if len(actors) > 1 else []
 
 
-def envelope_message_id(envelope: L9) -> str | None:
+def envelope_message_id(envelope: MyceliumMessage) -> str | None:
     message = envelope.header.message
     return message.id if message is not None else None
 
 
-#: Payloads an exchange carries that are signals rather than turns: nothing
-#: to answer, so the addressed hook never fires for them.
-_SIGNAL_PAYLOADS = frozenset(
-    {"presence", "keepalive", l9.PING_PAYLOAD_TYPE, l9.NOTICE_PAYLOAD_TYPE}
-)
-
-
-def is_addressed_turn(envelope: L9) -> bool:
-    """True for an ``exchange`` that puts something to its recipients."""
-    header = envelope.header
-    if header.kind.value != "exchange":
-        return False
-    return envelope.payload.type not in _SIGNAL_PAYLOADS
-
-
-def is_converged(envelope: L9) -> bool:
+def is_converged(envelope: MyceliumMessage) -> bool:
     """True for a ``commit:converged`` envelope (the plan-compile trigger)."""
     header = envelope.header
     return header.kind.value == "commit" and header.subkind == "converged"
-
-
-def _iter_text(value: Any) -> Iterable[str]:
-    """Yield every string leaf in a nested content value."""
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for v in value.values():
-            yield from _iter_text(v)
-    elif isinstance(value, list):
-        for v in value:
-            yield from _iter_text(v)
 
 
 def parse_mentions(text: str) -> list[str]:
     """Handles ``@``-mentioned in one plain-text string.
 
     The backend's ``@``-parse: map ``@agent-x`` tokens in a human's
-    message to L9 recipients. De-duplicated preserving first-seen order. A bare
+    message to message recipients. De-duplicated preserving first-seen order. A bare
     ``word@host`` is **not** a mention (the ``@`` must start the string or follow
-    whitespace / ``(`` / ``<``), so an email address never wakes an agent.
+    whitespace / ``(`` / ``<``), so an email address never wakes an agent, and
+    a handle inside code (:func:`blank_code`) is quoted, not mentioned.
     """
     seen: dict[str, None] = {}
-    for match in _SUMMON_RE.findall(text):
+    for match in _SUMMON_RE.findall(blank_code(text)):
         seen.setdefault(match, None)
     return list(seen)
 
@@ -155,29 +211,37 @@ def parse_silent_mentions(text: str) -> list[str]:
     """Handles named with a silent ``@~handle`` in one plain-text string.
 
     A silent mention refers to a member without asking anything of it: it is
-    searchable as ``mentions:`` and drawn as a member, but it is no L9 recipient,
+    searchable as ``mentions:`` and drawn as a member, but it is no message recipient,
     rings no doorbell and summons no engine. Same boundary rule and order as
     :func:`parse_mentions`.
     """
     seen: dict[str, None] = {}
-    for match in _SILENT_RE.findall(text):
+    for match in _SILENT_RE.findall(blank_code(text)):
         seen.setdefault(match, None)
     return list(seen)
 
 
-def find_summons(content: dict[str, Any]) -> list[str]:
-    """Handles ``@``-summoned in a message's human-facing content.
+def parse_named(text: str) -> list[str]:
+    """Every handle named in one plain-text string, in the order named, however
+    it was written: ``@handle``, ``@~handle`` or ``@!handle``. For reading who a
+    command names (a conductor binding its roles), not who it asks: only the
+    loud forms ask (:func:`parse_mentions`)."""
+    seen: dict[str, None] = {}
+    for match in _NAMED_RE.findall(blank_code(text)):
+        seen.setdefault(match, None)
+    return list(seen)
 
-    Scans every string in ``content`` except the additive ``l9`` envelope (which
-    agents never read), de-duplicated preserving first-seen order.
+
+def parse_interrupt_mentions(text: str) -> list[str]:
+    """Handles named with an interrupting ``@!handle`` in one plain-text string.
+
+    Each is a mention too (:func:`parse_mentions` lists it), and asks for more:
+    stop the agent mid-turn so it reads the message now rather than when its
+    turn ends. Same boundary rule and order as :func:`parse_mentions`.
     """
     seen: dict[str, None] = {}
-    for key, value in content.items():
-        if key == "l9":
-            continue
-        for text in _iter_text(value):
-            for match in parse_mentions(text):
-                seen.setdefault(match, None)
+    for match in _INTERRUPT_RE.findall(blank_code(text)):
+        seen.setdefault(match, None)
     return list(seen)
 
 
@@ -373,8 +437,13 @@ def record_episode(record: TranscriptRecord) -> str | None:
     return episode if isinstance(episode, str) and episode else None
 
 
+def read_id(record: TranscriptRecord) -> uuid.UUID:
+    """The id the room's history read gives ``record`` (``MessageRead.id``)."""
+    return uuid.uuid5(_MESSAGE_ID_NS, record.message_id or f"{record.recorded_at}:{record.sender}")
+
+
 def record_from(
-    envelope: L9, content: dict[str, Any], *, now: str | None = None
+    envelope: MyceliumMessage, content: dict[str, Any], *, now: str | None = None
 ) -> TranscriptRecord:
     """Build a :class:`TranscriptRecord` from a released envelope + its content."""
     return TranscriptRecord(
@@ -449,8 +518,8 @@ def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
         logger.exception("transcript write failed for room %s", room)
 
 
-# L9 record kinds promoted into the room chat view on a cold read, mirroring the
-# frontend's ``L9_RAISE_UP_TYPES`` (contracts/l9-surface.json): ``knowledge`` (a
+# message record kinds promoted into the room chat view on a cold read, mirroring the
+# frontend's ``L9_RAISE_UP_TYPES`` (contracts/channel-surface.json): ``knowledge`` (a
 # memory push, e.g. a distilled extraction or the synced plan) and ``commit`` (an
 # aligner consensus). Chat itself (an ``exchange`` with a ``message``/``reply``
 # payload) is projected as a plain broadcast above; these ride as their
@@ -491,7 +560,7 @@ def amended_target(subkind: str | None, parents: Any) -> str | None:
     supersede link is the existing ``message.parents`` field rather than a new
     one. Anything else (a different subkind, no parent) is not an amendment.
     """
-    if subkind != l9.AMEND_SUBKIND or not isinstance(parents, list) or not parents:
+    if subkind != message_format.AMEND_SUBKIND or not isinstance(parents, list) or not parents:
         return None
     target = parents[0]
     return target if isinstance(target, str) and target else None
@@ -570,7 +639,7 @@ def stored_message_from_record(
         message_type: str = MessageType.BROADCAST
         content = text
     elif record.kind in _RAISE_UP_KINDS:
-        # A promoted L9 system frame (memory push / consensus): carry the whole
+        # A promoted system frame (memory push / consensus): carry the whole
         # envelope as the ``l9_<kind>`` frame the live stream uses, so the cold
         # read reproduces the live view instead of dropping it on refresh.
         message_type = f"l9_{record.kind}"
@@ -579,7 +648,6 @@ def stored_message_from_record(
         return None
     header = record.content.get("l9", {}).get("header", {})
     episode = header.get("message", {}).get("episode")
-    seed = record.message_id or f"{record.recorded_at}:{record.sender}"
     # A conductor post carries a structured line beside its prose (see
     # ``conductor.LINE_KEY``). The chat projection keeps only prose, so the line
     # rides the message's metadata, and a reload draws the run as the live
@@ -588,14 +656,14 @@ def stored_message_from_record(
     line = data.get("conductor") if isinstance(data, dict) else None
     msg = StoredMessage(
         room_name=room,
-        sender_handle=record.sender or l9.SYSTEM_ACTOR_ID,
+        sender_handle=record.sender or message_format.SYSTEM_ACTOR_ID,
         message_type=message_type,
         content=content,
         event_metadata={"conductor": line} if isinstance(line, dict) else None,
         episode=episode if isinstance(episode, str) else None,
         message_id=record.message_id or None,
         amends=amended_target(record.subkind, header.get("message", {}).get("parents")),
-        id=uuid.uuid5(_MESSAGE_ID_NS, seed),
+        id=read_id(record),
     )
     recorded = parse_recorded_at(record.recorded_at) or fallback
     if recorded is not None:
@@ -705,10 +773,10 @@ def prose_messages(room: str) -> list[StoredMessage]:
     return chat
 
 
-def l9_bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
-    """Project a transcript record into the L9 wire frame the SSE bus carries.
+def bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
+    """Project a transcript record into the wire frame the SSE bus carries.
 
-    The single shape the frontend L9 inspector reads (``l9_<kind>`` + the full
+    The single shape the frontend's channel and Stream read (``l9_<kind>`` + the full
     ``content`` envelope). Shared by the live push (:meth:`Persister._publish_to_bus`)
     and the history replay (:func:`l9_wire_history`) so backfilled and live frames
     are byte-identical.
@@ -716,7 +784,7 @@ def l9_bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
     return {
         "id": record.message_id,
-        "sender_handle": record.sender or l9.SYSTEM_ACTOR_ID,
+        "sender_handle": record.sender or message_format.SYSTEM_ACTOR_ID,
         "message_type": f"l9_{record.kind}",
         "content": json.dumps(record.content),
         "created_at": record.recorded_at,
@@ -725,12 +793,12 @@ def l9_bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     }
 
 
-def l9_wire_history(
+def wire_history(
     room: str, limit: int = 200, before: datetime | None = None
 ) -> list[dict[str, Any]]:
-    """The room's L9 wire feed replayed from the durable transcript (oldest first).
+    """The room's wire feed replayed from the durable transcript (oldest first).
 
-    The live inspector is fed only by the bus (SSE, no history), so a freshly
+    The channel and Stream are fed live only by the bus (SSE, no history), so a freshly
     opened tab misses everything before it connected. This projects the transcript
     through the same frame shape so the tab can seed itself, then append live — the
     history-then-live pattern the room chat feed already uses. Returns at most the
@@ -749,7 +817,7 @@ def l9_wire_history(
         ]
     if limit and len(records) > limit:
         records = records[-limit:]
-    return [l9_bus_frame(room, r) for r in records]
+    return [bus_frame(room, r) for r in records]
 
 
 # Delivery cursors persist next to the transcript so a reconnecting agent's
@@ -823,16 +891,18 @@ def write_episode_cursors(room: str, cursors: dict[str, dict[str, int]]) -> None
 
 # ── The receive loop ─────────────────────────────────────────────────────────
 
-SummonHook = Callable[[str, "L9", list[str], str], None]
-# Called once per L9 recipient of an exchange that named nobody in its text —
-# an addressed turn, the way the aligner and the conductor put a question to
-# one member. A mention in the text is a summon and fires the summon hook
-# instead, so a handle is never told twice about one message.
-AddressedHook = Callable[[str, "L9", str], None]
-ConvergedHook = Callable[["L9"], None]
+SummonHook = Callable[[str, "MyceliumMessage", list[str], str], None]
+# Called once per handle a message asks for something, with why (``mention``,
+# ``turn`` or ``interrupt``; :mod:`app.services.asks` is the rule): what rings
+# the herdr doorbell, and how a persona or a worker hears a turn put to it.
+AskedHook = Callable[[str, str, "MyceliumMessage", str], None]
+ConvergedHook = Callable[["MyceliumMessage"], None]
 # Called with the handle of a member that dropped off the channel, so the
 # moderator can update its membership — presence, not a fatal error.
 MemberLeftHook = Callable[[str], None]
+#: Fired once per recorded message with the record as stored (the verifier reads
+#: agents' prose off it). Runs after the record is durable and on the bus.
+RecordedHook = Callable[["TranscriptRecord"], None]
 
 # Consecutive genuine transport failures before the loop gives up — keeps a
 # torn-down channel from spinning a hot loop while tolerating transient hiccups.
@@ -889,12 +959,12 @@ def _handle_from_disconnect(message: str) -> str | None:
 
 
 def _default_summon_hook(
-    handle: str, envelope: L9, co_summons: list[str], message_text: str = ""
+    handle: str, envelope: MyceliumMessage, co_summons: list[str], message_text: str = ""
 ) -> None:
     logger.info("summon hook (skeleton): @%s summoned", handle)
 
 
-def _default_converged_hook(envelope: L9) -> None:
+def _default_converged_hook(envelope: MyceliumMessage) -> None:
     # Log-only default for a persister with no plan-sync consumer wired (task
     # tests / a bare backend).
     logger.info(
@@ -916,20 +986,22 @@ class RoomPersister:
     def __init__(
         self,
         room: str,
-        channel: L9SlimChannel,
+        channel: MessageChannel,
         *,
         members_provider: Callable[[], Iterable[str]],
         on_summon: SummonHook | None = None,
         on_converged: ConvergedHook | None = None,
         on_member_left: MemberLeftHook | None = None,
-        on_addressed: AddressedHook | None = None,
+        on_asked: AskedHook | None = None,
+        on_recorded: RecordedHook | None = None,
         feed_bus: bool = True,
     ) -> None:
         self.room = room
         self._channel = channel
         self._members_provider = members_provider
         self.on_summon = on_summon or _default_summon_hook
-        self.on_addressed = on_addressed
+        self.on_asked = on_asked
+        self.on_recorded = on_recorded
         self.on_converged = on_converged or _default_converged_hook
         self.on_member_left = on_member_left
         self._feed_bus = feed_bus
@@ -1152,7 +1224,7 @@ class RoomPersister:
                 self._ingest(envelope, content)
 
     def ingest_local(
-        self, envelope: L9, content: dict[str, Any], *, list_write: bool = False
+        self, envelope: MyceliumMessage, content: dict[str, Any], *, list_write: bool = False
     ) -> None:
         """Ingest a message the moderator published itself (locally originated).
 
@@ -1177,7 +1249,9 @@ class RoomPersister:
         self._channel.note_delivered(envelope)
         self._ingest(envelope, content, list_write=list_write)
 
-    def _ingest(self, envelope: L9, content: dict[str, Any], *, list_write: bool = True) -> None:
+    def _ingest(
+        self, envelope: MyceliumMessage, content: dict[str, Any], *, list_write: bool = True
+    ) -> None:
         # Keepalive pings exist only to reset a member's SLIM liveness (which the
         # datapath already did before this message reached us), so they carry no
         # transcript value. Drop them here — otherwise a member's ~20s keepalive
@@ -1202,24 +1276,32 @@ class RoomPersister:
             self._record_to_list_store(record)
         if self._feed_bus:
             self._publish_to_bus(record)
-        # Triggers: @-summon and commit:converged (skeleton hooks). The full
-        # summon list is passed to every hook call so an engine summoned alongside
-        # other handles (``@aligner @a @b``) can scope the run to those co-mentions.
-        summons = find_summons(content)
+        if self.on_recorded is not None:
+            try:
+                self.on_recorded(record)
+            except Exception:
+                logger.exception("recorded hook failed for %s", record.message_id)
+        # Triggers: who the message asks (``asks.py``, one rule for everyone)
+        # and commit:converged. A handle it mentions is summoned: an engine
+        # self-selects by its manifest, so for anyone else that's a no-op. The
+        # full list goes to every summon so an engine summoned alongside other
+        # handles (``@aligner @a @b``) can scope the run to those co-mentions.
+        from app.services.asks import asked
+
         message_text = content.get("content", "") if isinstance(content, dict) else ""
+        asking = asked(content)
+        summons = [h for h, why in asking.items() if why != "turn"]
         for handle in summons:
             try:
                 self.on_summon(handle, envelope, summons, message_text)
             except Exception:
                 logger.exception("summon hook failed for @%s", handle)
-        if self.on_addressed is not None and is_addressed_turn(envelope):
-            for handle in envelope_recipients(envelope):
-                if handle in summons:
-                    continue
+        if self.on_asked is not None:
+            for handle, why in asking.items():
                 try:
-                    self.on_addressed(handle, envelope, message_text)
+                    self.on_asked(handle, why, envelope, message_text)
                 except Exception:
-                    logger.exception("addressed hook failed for @%s", handle)
+                    logger.exception("asked hook failed for @%s", handle)
         if is_converged(envelope):
             try:
                 self.on_converged(envelope)
@@ -1228,7 +1310,7 @@ class RoomPersister:
         if memory_sync.is_knowledge(envelope):
             self._schedule_knowledge_apply(envelope)
 
-    def _schedule_knowledge_apply(self, envelope: L9) -> None:
+    def _schedule_knowledge_apply(self, envelope: MyceliumMessage) -> None:
         """Apply an inbound ``knowledge`` write off the ingest path.
 
         Fires for a real SLIM arrival and for the sender's own
@@ -1268,7 +1350,7 @@ class RoomPersister:
         try:
             from app.bus import bus, room_channel
 
-            bus.publish(room_channel(self.room), l9_bus_frame(self.room, record))
+            bus.publish(room_channel(self.room), bus_frame(self.room, record))
         except Exception:
             logger.debug("bus publish from persister failed for room %s", self.room, exc_info=True)
 

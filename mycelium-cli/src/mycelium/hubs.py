@@ -4,7 +4,7 @@
 """Every Mycelium hub this machine can see, and what is wrong with the set.
 
 Two stacks on one machine is easy to get into (a Docker stack left over from
-an eval, the Mac app's own hub, a ``uvicorn`` from a checkout) and hard to
+an eval, the desktop app's own hub, a ``uvicorn`` from a checkout) and hard to
 notice: whichever answers the port first gets every write, and nothing else
 says so. :func:`find_hubs` looks in three places:
 

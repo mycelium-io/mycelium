@@ -16,7 +16,7 @@ Agent reply shapes (agent → server, plain JSON in room message content):
     # Reply to a "respond" tick
     { "action": "accept" }   # or "reject" or "end"
 
-    Both reply shapes accept optional epistemic fields (L9/SIEP):
+    Both reply shapes accept optional epistemic fields (from IoC SIEP):
     ``confidence`` (float 0-1), ``reasoning`` (string), and the 3-way evidence
     split from the spec's ``proposal_payload`` -- ``supporting_evidence`` /
     ``against_evidence`` (lists of non-empty strings) plus ``addresses`` (the
@@ -156,7 +156,7 @@ class TeamPrior(BaseModel):
     """Optional ``team_prior`` block on an inbound tick payload.
 
     Injected by the backend when a knowledge query returns prior agreements
-    on the room's topic (L9 knowledge path).
+    on the room's topic (knowledge message path).
     """
 
     confidence: float
@@ -183,7 +183,7 @@ class ConsensusContent(BaseModel):
     """Minimal shape of a ``coordination_consensus`` message content.
 
     The CLI passes most consensus keys through untyped; this model exists so
-    consumers that want validation of the new L9 fields have one.
+    consumers that want validation of the epistemic fields have one.
     """
 
     assignments: dict[str, Any] | None = None
@@ -304,7 +304,7 @@ AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine", "
 #: cheap proof the engine path works) today; ``bargainer`` (SAB), ``team_former``
 #: (TFP), a drift evaluator, etc. later; no new adapter per CE.
 ENGINE_KINDS: frozenset[str] = frozenset(
-    {"aligner", "conductor", "hello", "persona", "synthesizer", "worker"}
+    {"aligner", "conductor", "hello", "persona", "synthesizer", "verifier", "worker"}
 )
 
 

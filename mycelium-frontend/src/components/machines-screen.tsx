@@ -21,7 +21,7 @@ import Link from "next/link";
 import { KeyRound, Laptop, Loader2, Plus, Square, SquareTerminal } from "lucide-react";
 import { stopRunnerAgent, type Runner, type RunnerAgent, type RunnerPairing } from "@/lib/api";
 import { fingerprint, pairingWith, useDeviceKeyId } from "@/lib/device-key";
-import { terminalLink, useIsDesktop } from "@/lib/desktop";
+import { desktopMachine, terminalLink, useIsDesktop } from "@/lib/desktop";
 import {
   describeJob,
   hostOf,
@@ -45,7 +45,7 @@ const RECENT_JOBS = 8;
 
 export function MachinesScreen() {
   const { runners, loading } = useRunners();
-  // Inside the Mac app this Mac is always one of them: the app runs its
+  // Inside the desktop app this computer is always one of them: the app runs its
   // runner, so there is nothing to set up, only a moment to wait for it.
   const desktop = useIsDesktop();
   const keyId = useDeviceKeyId();
@@ -57,7 +57,7 @@ export function MachinesScreen() {
         <div className="flex flex-wrap items-center gap-3 px-1">
           <p className="min-w-0 max-w-2xl flex-1 text-micro leading-relaxed text-muted-foreground">
             {desktop ? (
-              <>This Mac, and any other computer of yours connected with </>
+              <>This {desktopMachine()}, and any other computer of yours connected with </>
             ) : (
               <>Your computers connected to this hub with </>
             )}
@@ -83,16 +83,16 @@ export function MachinesScreen() {
   );
 }
 
-/** In the Mac app before its runner has checked in: it is on its way, not missing. */
+/** In the desktop app before its runner has checked in: it is on its way, not missing. */
 function ThisMacConnecting() {
   return (
     <div className="flex items-center gap-3 px-1 py-2">
       <Loader2 className="size-4 animate-spin text-muted-foreground" />
       <div>
-        <p className="text-label font-medium text-text">This Mac is connecting</p>
+        <p className="text-label font-medium text-text">This {desktopMachine()} is connecting</p>
         <p className="text-micro text-muted-foreground">
-          Mycelium starts this Mac&apos;s runner for you. It appears here in a few seconds. If it
-          doesn&apos;t, open Health check in the menu bar.
+          Mycelium starts this {desktopMachine()}&apos;s runner for you. It appears here in a few seconds. If
+          it doesn&apos;t, open Health check in {desktopMachine() === "Mac" ? "the menu bar" : "Mycelium's tray menu"}.
         </p>
       </div>
     </div>
@@ -330,7 +330,9 @@ function AgentLine({ runner, agent }: { runner: Runner; agent: RunnerAgent }) {
         {agent.room}
       </Link>
       <span className="text-micro text-faint">{agent.framework}</span>
-      <span className={`text-micro ${STATUS_TONE[agent.status]}`}>{agent.status}</span>
+      <span className={`text-micro ${STATUS_TONE[agent.status]}`}>
+        {agent.status === "blocked" ? "waiting for input" : agent.status}
+      </span>
       {agent.pane && (
         <span className="font-mono text-micro text-faint">
           {startsInHerdr(runner) ? "pane" : "session"} {agent.pane}
@@ -362,7 +364,12 @@ function AgentLine({ runner, agent }: { runner: Runner; agent: RunnerAgent }) {
           </Button>
         )}
       </span>
-      {agent.detail && <span className="basis-full text-micro text-muted-foreground">{agent.detail}</span>}
+      {/* A waiting agent's detail is several lines: its screen, and how to get to it. */}
+      {agent.detail && (
+        <span className="basis-full whitespace-pre-line break-words text-micro text-muted-foreground">
+          {agent.detail}
+        </span>
+      )}
     </li>
   );
 }

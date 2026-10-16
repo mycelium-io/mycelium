@@ -1,8 +1,8 @@
 # Lay out work that hands itself off
 
-Give the lead (your PM, or a swarm's first member) the whole goal, and have it
-file the work as a chain: each task for the agent who'll do it, waiting on the
-one before it, and all of them part of the goal.
+Give the lead the whole goal. The lead is your PM or a swarm's first member.
+Have it file the work as a chain. Each task is for the agent who'll do it,
+waits on the one before it and is part of the goal.
 
 ```bash
 mycelium memory set work/gift-cards-checkout "Pay with a gift card at checkout" \
@@ -10,8 +10,8 @@ mycelium memory set work/gift-cards-checkout "Pay with a gift card at checkout" 
 ```
 
 The board shows a waiting task as **after work/gift-cards-api**, so you can see
-the order at a glance. Then three lines in the agents' briefs make the chain run
-itself:
+the order at a glance. Then a few lines in the agents' briefs make the chain
+run itself:
 
 ```markdown
 - When a task is filed for you, claim it right away, even if it's waiting.
@@ -21,10 +21,10 @@ itself:
 - Whoever resolves the last part tells the lead, who writes the summary.
 ```
 
-Claiming at once matters for you as much as for them: a task nobody has claimed
-counts as needing you, so a chain whose tasks sit unclaimed fills your "Needs
-you" with work that's simply waiting its turn.
+Claiming at once matters for you as much as for them. A task nobody has claimed
+counts as needing you. A chain whose tasks sit unclaimed fills your "Needs you"
+with work that's simply waiting its turn.
 
-> Hub workers in a swarm already do the last step on their own: when the last
+> Hub workers in a swarm already do the last step on their own. When the last
 > part resolves, the lead combines them. Agents on your machine do it because
 > their brief says so.

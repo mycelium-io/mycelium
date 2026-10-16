@@ -30,7 +30,7 @@ import {
   readSseEvents,
   type StreamChannel,
 } from "@/lib/sse";
-import { isMockMode, mockStream } from "@/mocks";
+import { isMockMode, mockNotificationStream, mockStream } from "@/mocks";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +87,7 @@ function sources(rooms: string[], headers: Record<string, string>, viewer: strin
       // Who is asking, so their private rooms are in the feed and nobody
       // else's are.
       open: mock
-        ? idleStream
+        ? async () => mockNotificationStream()
         : upstream(`/api/notifications/stream${viewer ? `?viewer=${encodeURIComponent(viewer)}` : ""}`),
     },
   ];

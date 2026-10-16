@@ -13,7 +13,7 @@ import os
 
 import httpx
 
-HUB = os.environ.get("HUB", "http://localhost:8000").rstrip("/") + "/api"
+HUB = os.environ.get("HUB", "http://localhost:8100").rstrip("/") + "/api"
 ROOM = os.environ.get("ROOM", "acme-renewal")
 
 #: Said before each character, so the model plays a teammate in an exercise

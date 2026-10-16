@@ -88,6 +88,34 @@ class Agent:
 
 
 @dataclass
+class Unenrolled:
+    """An agent CLI running in a herdr pane here that no room has yet: one the
+    app can bring into a room (Members → Add, the runner's ``adopt`` job)."""
+
+    pane: str
+    kind: str | None = None
+    state: State = "unknown"
+    folder: str | None = None
+    workspace: str | None = None
+    workspace_label: str | None = None
+    #: The pane's tab name, and a handle made from it.
+    tab_label: str | None = None
+    suggested_handle: str | None = None
+
+
+def _suggest_handle(tab_label: str, kind: str | None) -> str | None:
+    """A handle from a tab's name, or from the agent CLI when the tab has none."""
+    from mycelium.commands.herdr import _sanitize_handle
+
+    numbered = tab_label.strip().isdigit()
+    return (
+        _sanitize_handle("" if numbered else tab_label, "")
+        or _sanitize_handle(kind or "", "")
+        or None
+    )
+
+
+@dataclass
 class Workspace:
     """A herdr workspace, and the room it's bound to."""
 
@@ -98,7 +126,14 @@ class Workspace:
 
 
 ProblemKind = Literal[
-    "stopped", "lost", "runner_down", "wakes_stalled", "no_restore", "herdr_update", "herdr_down"
+    "stopped",
+    "lost",
+    "runner_down",
+    "wakes_stalled",
+    "binding_failing",
+    "no_restore",
+    "herdr_update",
+    "herdr_down",
 ]
 
 
@@ -126,6 +161,8 @@ class Report:
     #: herdr's integrations not current for agent CLIs with agents running here.
     missing_integrations: list[str] = field(default_factory=list)
     herdr_minimum: str = MIN_VERSION
+    #: Agents running here that aren't in any room yet.
+    unenrolled: list[Unenrolled] = field(default_factory=list)
 
     @property
     def agents(self) -> list[Agent]:
@@ -230,6 +267,16 @@ def report(
         w.agents.sort(key=lambda a: a.handle)
     agents = [a for w in ordered for a in w.agents]
     missing = _restores(bridge, agents)
+    mapped = {a.pane for a in agents}
+    tabs = bridge.tab_labels() if live else {}
+    unenrolled = sorted(
+        (
+            _unenrolled(pane, running, tabs, labels)
+            for pane, running in live.items()
+            if pane not in mapped
+        ),
+        key=lambda u: (u.workspace_label or "", u.pane),
+    )
     return Report(
         machine=machine,
         herdr=herdr_up,
@@ -241,6 +288,25 @@ def report(
             agents, ordered, herdr_up, server, client, machine, missing, runner, sync
         ),
         missing_integrations=missing,
+        unenrolled=unenrolled,
+    )
+
+
+def _unenrolled(
+    pane: str, running: dict, tabs: dict[str, str], labels: dict[str, str]
+) -> Unenrolled:
+    kind = str(running.get("agent") or "") or None
+    workspace = str(running.get("workspace_id") or "") or None
+    tab_label = tabs.get(str(running.get("tab_id") or ""), "")
+    return Unenrolled(
+        pane=pane,
+        kind=kind,
+        state=_STATES.get(str(running.get("agent_status") or ""), "unknown"),
+        folder=running.get("foreground_cwd") or running.get("cwd"),
+        workspace=workspace,
+        workspace_label=labels.get(workspace or "") or workspace,
+        tab_label=tab_label or None,
+        suggested_handle=_suggest_handle(tab_label, kind),
     )
 
 
@@ -364,9 +430,23 @@ def _problems(
                 f"Wakes have stalled on {machine}: the runner has been stuck on one sync pass "
                 f"for {stalled}, so {_names(live) if live else 'no agent here'} won't hear "
                 "mentions until it ends. Its log (~/.mycelium/runner/runner.log) says where it is stuck; restarting "
-                "the runner, or the Mac app, gets wakes going again.",
+                "the runner, or the desktop app, gets wakes going again.",
                 "mycelium runner stop && mycelium runner --detach",
                 [a.handle for a in live],
+            )
+        )
+    for bad in _failing_bindings(sync):
+        ws, room, error = bad["workspace"], bad["room"], bad["error"]
+        here = next((w for w in workspaces if w.id == ws), None)
+        problems.append(
+            Problem(
+                "binding_failing",
+                f"Workspace {here.label if here else ws} can't sync with {room}: {error}. "
+                "Agents opened there aren't added to the room, and closed ones aren't "
+                "removed, until it syncs. Unbinding stops the runner syncing it; its "
+                "agents stay in the room.",
+                f"mycelium herdr unbind {ws}",
+                [a.handle for a in here.agents] if here else [],
             )
         )
     if missing:
@@ -385,6 +465,18 @@ def _problems(
     if (update := _herdr_update(server if herdr_up else None, client)) is not None:
         problems.append(update)
     return problems
+
+
+def _failing_bindings(sync: dict[str, Any] | None) -> list[dict[str, str]]:
+    """The bound workspaces the runner's last sync pass couldn't reconcile."""
+    found = (sync or {}).get("bindings")
+    if not isinstance(found, list):
+        return []
+    return [
+        {k: str(b[k]) for k in ("workspace", "room", "error")}
+        for b in found
+        if isinstance(b, dict) and all(b.get(k) for k in ("workspace", "room", "error"))
+    ]
 
 
 def _stalled(sync: dict[str, Any] | None) -> str | None:
@@ -463,7 +555,7 @@ def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None 
     in its environment first, as a pane the runner opens would, and its
     workspace is bound to the room again, so the runner syncs it.
     """
-    from mycelium.commands.swarm import _start_when_ready
+    from mycelium.commands.swarm import _start_unblocked
 
     if not agent.restartable:
         if agent.state not in ("stopped", "gone"):
@@ -484,7 +576,7 @@ def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None 
             workspace = agent.workspace
         else:
             workspace, pane = _new_pane(bridge, agent, folder, env, config.herdr.panes_per_tab)
-        _start_when_ready(bridge, agent.handle, kind, pane)
+        _start_unblocked(bridge, agent.handle, kind, pane)
         bridge.prompt(pane, restart_prompt(agent), wait=False)
     except HerdrError as e:
         raise MachineError(f"herdr couldn't restart @{agent.handle}: {e}") from e
@@ -596,7 +688,7 @@ def _remember(answer: Literal["yes", "no"]) -> None:
 
 def _installed_kinds() -> set[str]:
     """The herdr kinds of the agent CLIs found on PATH here."""
-    from mycelium.runner.frameworks import KNOWN
+    from mycelium.integrations.agents import KNOWN
 
     return {
         k.herdr_kind for k in KNOWN if k.herdr_kind and any(shutil.which(b) for b in k.binaries)

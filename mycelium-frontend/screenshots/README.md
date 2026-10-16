@@ -27,13 +27,17 @@ the splash repo builds standalone. Re-run and commit when the UI changes.
   `@2x` retina variants. The splash path defaults to a sibling checkout; override
   with `MYCELIUM_SPLASH_DIR`.
 - **`capture.ts`** — maps each manifest entry to a `shotkit` spec, then optimizes
-  with `sharp` and fans out to targets. The browser work — booting the mock
+  with `sharp` and `optimize.ts` and fans out to targets. The browser work — booting the mock
   server, finding a usable Chromium, waiting for a *populated* frame (shell
   mounted, skeletons cleared, SSE "Live", fonts loaded), driving the page —
   belongs to `shotkit/`, the repo's screenshot utility, because it is the same
   problem whether the caller is this pipeline or an agent at a terminal. What
   stays here is publication's business: which shots exist, how they're
   optimized, and where they land.
+
+- **`optimize.ts`** — lossless oxipng (WebAssembly, no system install) over
+  every PNG written. CI fails a committed PNG oxipng could still shrink by more
+  than 10%; for an image made some other way, `npm run optimize-png -- <file>`.
 
 ## Adding a shot
 
@@ -44,6 +48,27 @@ the splash repo builds standalone. Re-run and commit when the UI changes.
    render. Interactive states (an open `@`/`[[`/`/` composer popover) are reached
    with `steps`, which become shotkit actions, not with a fixture.
 4. `pnpm screenshots <id>` and eyeball the result.
+
+## The home page's wake note
+
+One picture on the home page isn't the app: `step-wake-agent`, the note an
+agent reads when it wakes. It is a terminal card of `wake-note.txt`, a sample
+wake for `builder` in the mock's `checkout` room, written in the format
+`fastapi-backend/app/services/wake_digest.py` builds. When that format changes,
+update the text to match and remake the card from the repo root:
+
+```
+node shotkit/bin/shot.mjs term --cols 100 --backdrop none --padding 0 \
+  --title "builder · claude" --command "the wake @builder reads" \
+  -o ../mycelium-io.github.io/step-wake-agent@2x.png \
+  -- fold -s -w 100 mycelium-frontend/screenshots/wake-note.txt
+```
+
+`fold` wraps the long lines the way a terminal would; without it the card
+widens to the longest line and its text shrinks on the page. Then make
+`step-wake-agent.png` at half that width (on a Mac,
+`sips -Z <half> step-wake-agent@2x.png --out step-wake-agent.png`) and run
+`npm run optimize-png -- <file>` on both, in `mycelium-frontend`.
 
 ## Notes
 

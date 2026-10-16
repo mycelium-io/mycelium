@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright 2026 Mycelium Contributors -->
+<!--
+  The clip @builder uploads in the demo (`double-tap-one-charge.mp4`): the coffee
+  shop's checkout on a phone, Pay tapped five times on a slow connection, and the
+  payments log showing one charge. Recorded by `clip/record.mjs`.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkout</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.45 -apple-system, "Helvetica Neue", Arial, sans-serif; background: #f6f2ec; color: #2a211b; }
+  header { padding: 18px 20px 10px; font-weight: 700; font-size: 20px; letter-spacing: -0.01em; }
+  header small { display: block; font-weight: 400; font-size: 13px; color: #8a7b6e; }
+  .card { margin: 10px 16px; background: #fff; border-radius: 14px; padding: 14px 16px; box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); }
+  .line { display: flex; justify-content: space-between; padding: 6px 0; }
+  .line.total { border-top: 1px solid #eee5da; margin-top: 6px; padding-top: 10px; font-weight: 700; }
+  .net { margin: 4px 16px 0; font-size: 12px; color: #a0522d; display: flex; gap: 6px; align-items: center; }
+  .net::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #e0a050; }
+  #pay { display: block; width: calc(100% - 32px); margin: 14px 16px; height: 54px; border: 0; border-radius: 14px;
+    background: #2a211b; color: #fff; font: 600 18px/1 -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  #pay.busy { background: #6b5e53; }
+  #pay.paid { background: #2f7d4f; }
+  .log h2 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: #8a7b6e; }
+  .log .row { display: flex; justify-content: space-between; font: 14px/1.6 ui-monospace, Menlo, monospace; }
+  .log .tap { color: #8a7b6e; }
+  .log .charge { color: #2f7d4f; font-weight: 600; }
+  #count { font-weight: 700; }
+</style>
+</head>
+<body>
+  <header>Bean &amp; Leaf <small>Checkout · fix/double-charge</small></header>
+  <div class="card">
+    <div class="line"><span>Oat flat white ×2</span><span>$11.00</span></div>
+    <div class="line"><span>Almond croissant</span><span>$4.50</span></div>
+    <div class="line"><span>Delivery</span><span>$3.00</span></div>
+    <div class="line total"><span>Total</span><span>$18.50</span></div>
+  </div>
+  <div class="net">Slow 3G (throttled)</div>
+  <button id="pay" type="button">Pay $18.50</button>
+  <div class="card log">
+    <h2>Stripe · charges: <span id="count">0</span></h2>
+    <div id="rows"></div>
+  </div>
+<script>
+  const pay = document.getElementById("pay");
+  const rows = document.getElementById("rows");
+  const count = document.getElementById("count");
+  const id = "pi_3QxK7c";
+  let taps = 0;
+  const add = (cls, left, right) => {
+    const row = document.createElement("div");
+    row.className = `row ${cls}`;
+    row.innerHTML = `<span>${left}</span><span>${right}</span>`;
+    rows.appendChild(row);
+  };
+  // Every tap is logged, but one checkout has one payment ID, so a second tap
+  // reuses it and Stripe charges once. The button locks after the first.
+  document.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest("#pay")) return;
+    taps += 1;
+    add("tap", `tap ${taps}`, taps === 1 ? `${id} sent` : `${id} reused`);
+    if (taps === 1) {
+      pay.textContent = "Paying…";
+      pay.classList.add("busy");
+      setTimeout(() => {
+        count.textContent = "1";
+        add("charge", `charged ${id}`, "$18.50");
+        pay.classList.replace("busy", "paid");
+        pay.textContent = "Paid ✓";
+      }, 2600);
+    }
+  });
+</script>
+</body>
+</html>

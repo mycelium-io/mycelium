@@ -1,0 +1,6 @@
+{
+  "description": "A task with replies open as a tab in the mock checkout room: its body, Discussion and composer",
+  "uses": ["signed-in"],
+  "route": "/room/checkout?focus=memory:work/turn-on-apple-pay",
+  "do": ["wait:[data-testid=task-discussion]"]
+}

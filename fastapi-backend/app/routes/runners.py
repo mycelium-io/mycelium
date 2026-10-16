@@ -33,6 +33,7 @@ from app.schemas import (
     MachineRestart,
     MemoryBatchCreate,
     MemoryCreate,
+    RunnerAgentAdopt,
     RunnerAgentLaunch,
     RunnerHello,
     RunnerJobRead,
@@ -85,7 +86,8 @@ def adapter_for(framework: str) -> str:
 
     Every resident agent participates the same way (``await``/``respond``), so
     the adapter only matters where a family has install-time assets; the
-    framework itself is recorded beside it.
+    framework itself is recorded beside it. The CLI's
+    ``integrations.agents.adapter_for`` answers the same from each CLI's kind.
     """
     return "cursor" if framework == "cursor" else "claude_code"
 
@@ -163,9 +165,34 @@ async def next_job(
 async def report_job(runner_id: str, job_id: str, payload: RunnerJobReport) -> RunnerJobRead:
     """The runner saying how a job went."""
     try:
-        return registry.report(runner_id, job_id, payload)
+        job = registry.report(runner_id, job_id, payload)
     except RunnerError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if job.kind == "adopt" and job.status == "failed":
+        await _forget_unadopted(runner_id, job.spec)
+    return job
+
+
+async def _forget_unadopted(runner_id: str, spec: dict) -> None:
+    """Take back the member an ``adopt`` wrote when the machine didn't map its pane.
+
+    The member is written before the machine is asked, as a launch's is, but a
+    declined launch can be started again and a declined adopt leaves a member
+    with no pane. Every way an adopt fails is before the mapping, so the member
+    goes, unless it has since become some other runner's.
+    """
+    from app.routes.memory import delete_memory  # lazy: routes import each other
+
+    room, handle = str(spec.get("room") or ""), str(spec.get("handle") or "")
+    if not room or not handle or not room_exists(room):
+        return
+    exists, owner = existing_runner_of(room, handle)
+    if not exists or owner != runner_id:
+        return
+    try:
+        await delete_memory(room, f"agents/{handle}")
+    except HTTPException:
+        logger.debug("adopt: @%s in %s was already gone", handle, room)
 
 
 # ── the app's side ───────────────────────────────────────────────────────────
@@ -322,12 +349,76 @@ async def launch_agent(
         "handle": handle,
         "framework": payload.framework,
         "cwd": cwd,
+        "worktree": payload.worktree,
     }
     job = registry.enqueue(runner_id, "launch", spec, created_by=me, signature=payload.signature)
     logger.info(
         "runner %s: launch @%s (%s) in %s", runner_id, handle, payload.framework, payload.room
     )
     return job
+
+
+@router.post("/{runner_id}/adopt", response_model=RunnerJobRead, status_code=201)
+async def adopt_agent(runner_id: str, payload: RunnerAgentAdopt, request: Request) -> RunnerJobRead:
+    """Bring an agent already running on this runner's machine into a room.
+
+    The agent is one the machine reports as running in herdr and in no room
+    (its report's ``unenrolled``). The member is written here first, owned by
+    whoever asked, so it shows in the room at once; the runner then asks the
+    person at the machine, maps the pane to the handle and introduces the
+    agent once it's idle.
+    """
+    runner = _runner_or_404(runner_id, request)
+    if not room_exists(payload.room):
+        raise HTTPException(status_code=404, detail="Room not found")
+    handle = norm_handle(payload.handle)
+    if not handle or not _HANDLE_RE.match(handle):
+        raise HTTPException(
+            status_code=422,
+            detail="Handle must be a lowercase slug (a-z, 0-9, '-', '_') starting alphanumeric.",
+        )
+    try:
+        check_ready(runner)
+    except RunnerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    unenrolled = runner.machine.unenrolled if runner.machine else []
+    agent = next((a for a in unenrolled if a.pane == payload.pane), None)
+    if agent is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{runner.label} doesn't report an agent in pane {payload.pane} that's "
+            "outside every room. It may have joined one, or closed.",
+        )
+    exists, _ = existing_runner_of(payload.room, handle)
+    if exists:
+        raise HTTPException(
+            status_code=409,
+            detail=f"@{handle} is already a member of {payload.room}. Pick another handle.",
+        )
+
+    framework = agent.kind or "claude"
+    me = actor.bind_optional_actor(request, payload.created_by, field="created_by")
+    await write_agent_manifest(
+        payload.room,
+        handle,
+        runner_manifest(
+            framework=framework,
+            runner=runner_id,
+            cwd=agent.folder,
+            description=f"Already running on {runner.label}, brought into the room",
+            owner=me or runner.owner,
+        ),
+        created_by=me or "web-ui",
+    )
+    spec = {
+        "room": payload.room,
+        "handle": handle,
+        "pane": payload.pane,
+        "framework": framework,
+        "cwd": agent.folder,
+    }
+    logger.info("runner %s: adopt %s as @%s in %s", runner_id, payload.pane, handle, payload.room)
+    return registry.enqueue(runner_id, "adopt", spec, created_by=me)
 
 
 @router.post(

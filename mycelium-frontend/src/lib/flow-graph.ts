@@ -23,8 +23,9 @@ export interface FlowNode {
   /** The member bound to the step's role, when the flow says who. */
   who: string | null;
   end: "resolved" | "rejected" | "converged" | null;
-  /** A pick made in code, which asks nobody. */
-  select: boolean;
+  /** A step the conductor takes in code, which asks nobody: a pick, a
+   *  count, or writing the shared summary. */
+  code: boolean;
   x: number;
   y: number;
   w: number;
@@ -83,17 +84,27 @@ export function stepWho(step: FlowStep, flow: EpisodeFlow): string | null {
     const workers = cast.filter((h) => !named.has(h));
     return workers.length ? workers.join(", ") : "the workers";
   }
-  // Who the least happy member is is only known at run time; the step says so.
-  if (to === "bottleneck") return null;
+  // Who the least happy member is, or who used a word in a different sense,
+  // is only known at run time; the step says so.
+  if (to === "bottleneck" || to === "contested") return null;
   return to;
 }
+
+const CODE_KINDS = new Set(["select", "tally", "lock"]);
 
 function stepWhat(step: FlowStep): string {
   if (step.end) return `ends ${step.end}`;
   if (step.kind === "select") return `picks · bar ${Math.round((step.threshold ?? 0.7) * 100)}`;
+  if (step.kind === "tally") {
+    if (step.of === "terms") return "checks the words";
+    const rounds = step.max_rounds ? ` · up to ${step.max_rounds} rounds` : "";
+    return `counts new points${rounds}`;
+  }
+  if (step.kind === "lock") return "saves the shared summary";
   const verb = step.wait === "none" ? "tells" : "asks";
   const rounds = step.rounds && step.rounds > 1 ? ` ×${step.rounds}` : "";
-  const to = step.to === "bottleneck" ? "the least happy" : (step.to ?? "?");
+  const to =
+    step.to === "bottleneck" ? "the least happy" : step.to === "contested" ? "those who differ" : (step.to ?? "?");
   return `${verb} ${to}${rounds}`;
 }
 
@@ -135,7 +146,7 @@ export function layoutFlow(flow: EpisodeFlow, direction_?: FlowDirection): FlowL
     what: stepWhat(step),
     who: stepWho(step, flow),
     end: step.end ?? null,
-    select: step.kind === "select",
+    code: CODE_KINDS.has(step.kind ?? "ask"),
   });
 
   if (direction === "row") {

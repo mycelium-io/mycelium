@@ -12,7 +12,7 @@ against the room roster JWKS (``DECODING`` + ``JWKS``).
 
 Keep the wire constants (mode names, issuer/audience labels, algorithm/curve, the
 ``kid = @handle`` convention) identical to the backend copy; they are frozen in
-``contracts/slim-l9-wire.json`` and asserted by both ``test_slim_l9_wire.py``
+``contracts/slim-wire.json`` and asserted by both ``test_slim_wire.py``
 copies. A member deriving a different issuer/audience or JWK shape silently fails
 peer verification against the moderator, exactly the failure the contract test
 guards. ``psk`` stays the default (#567); ``MYCELIUM_SLIM_IDENTITY=signerjwt`` opts

@@ -22,7 +22,7 @@ def _resolve_asset(subpath: str, family: str) -> Path:
 
     Assets are colocated with the family that owns them
     (``mycelium.integrations.<family>.assets``). *family* is the canonical
-    underscore id (``claude_code``/``cursor``). For non-editable installs
+    package below ``mycelium.integrations`` (``agents.cursor``). For non-editable installs
     where the package lives inside a zip, extract the tree to a temp dir.
     """
     pkg = importlib.resources.files(f"mycelium.integrations.{family}.assets")

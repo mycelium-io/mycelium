@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Engines · mycelium</title>
-<meta name="description" content="The engines a room runs itself: the aligner, the synthesizer, hello, personas, the conductor and workers.">
+<meta name="description" content="The engines a room runs on the hub: the conductor, the aligner, the synthesizer, personas, workers, the verifier and hello.">
 <meta property="og:title" content="Engines · mycelium">
-<meta property="og:description" content="The engines a room runs itself: the aligner, the synthesizer, hello, personas, the conductor and workers.">
+<meta property="og:description" content="The engines a room runs on the hub: the conductor, the aligner, the synthesizer, personas, workers, the verifier and hello.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/engines.html">
 <meta property="og:type" content="website">
@@ -82,6 +82,7 @@
       <div class="nav-page-items">
         <a href="index.html#overview" class="nav-link sub">Overview</a>
         <a href="index.html#quickstart" class="nav-link sub">Quick Start</a>
+        <a href="index.html#how-it-works" class="nav-link sub">How It Works</a>
       </div>
     </div>
     <div class="nav-page-group">
@@ -91,35 +92,37 @@
         <a href="walkthrough.html#walk-app" class="nav-link sub">1. Get the app</a>
         <a href="walkthrough.html#walk-room" class="nav-link sub">2. Create a room</a>
         <a href="walkthrough.html#walk-agents" class="nav-link sub">3. Add your agents</a>
-        <a href="walkthrough.html#walk-task" class="nav-link sub">4. Hand it a task</a>
-        <a href="walkthrough.html#walk-thread" class="nav-link sub">5. Watch it work</a>
-        <a href="walkthrough.html#walk-aligner" class="nav-link sub">6. When agents disagree</a>
+        <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
+        <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
+        <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
+        <a href="walkthrough.html#walk-aligner" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
-      </div>
-    </div>
-    <div class="nav-page-group">
-      <a href="engines.html" class="nav-page-link active">Engines</a>
-      <div class="nav-page-items">
-        <a href="#engines" class="nav-link sub">Overview</a>
-        <a href="#aligner" class="nav-link sub">Aligner</a>
-        <a href="#synthesizer" class="nav-link sub">Synthesizer</a>
-        <a href="#hello" class="nav-link sub">Hello</a>
-        <a href="#persona" class="nav-link sub">Persona</a>
-        <a href="#conductor" class="nav-link sub">Conductor</a>
-        <a href="#worker" class="nav-link sub">Worker</a>
       </div>
     </div>
     <div class="nav-page-group">
       <a href="concepts.html" class="nav-page-link">Concepts</a>
       <div class="nav-page-items">
         <a href="concepts.html#rooms" class="nav-link sub">Rooms</a>
-        <a href="concepts.html#slim" class="nav-link sub">SLIM</a>
         <a href="concepts.html#board" class="nav-link sub">Board</a>
+        <a href="concepts.html#memory" class="nav-link sub">Memory</a>
         <a href="concepts.html#episodes" class="nav-link sub">Episodes</a>
         <a href="concepts.html#swarm" class="nav-link sub">Swarm</a>
-        <a href="concepts.html#memory" class="nav-link sub">Memory</a>
-        <a href="concepts.html#users" class="nav-link sub">Users &amp; Teams</a>
-        <a href="concepts.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
+        <a href="concepts.html#users" class="nav-link sub">Users &amp; Identity</a>
+        <a href="concepts.html#slim" class="nav-link sub">SLIM</a>
+      </div>
+    </div>
+    <div class="nav-page-group">
+      <a href="engines.html" class="nav-page-link active">Engines</a>
+      <div class="nav-page-items">
+        <a href="#engines" class="nav-link sub">Overview</a>
+        <a href="#conductor" class="nav-link sub">Conductor</a>
+        <a href="#aligner" class="nav-link sub">Aligner</a>
+        <a href="#synthesizer" class="nav-link sub">Synthesizer</a>
+        <a href="#persona" class="nav-link sub">Persona</a>
+        <a href="#worker" class="nav-link sub">Worker</a>
+        <a href="#verifier" class="nav-link sub">Verifier</a>
+        <a href="verifier.html" class="nav-link sub">Verifier, in depth</a>
+        <a href="#hello" class="nav-link sub">Hello</a>
       </div>
     </div>
     <div class="nav-page-group">
@@ -128,7 +131,7 @@
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Setup</span></button>
         <div class="nav-group-items">
           <a href="guides.html#on-a-server" class="nav-link sub">Run It on a Server</a>
-          <a href="guides.html#desktop" class="nav-link sub">The Mac App</a>
+          <a href="guides.html#desktop" class="nav-link sub">The Desktop App</a>
           <a href="guides.html#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
           <a href="guides.html#models" class="nav-link sub">Models</a>
         </div>
@@ -137,24 +140,28 @@
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Agents</span></button>
         <div class="nav-group-items">
           <a href="guides.html#machines" class="nav-link sub">Start Agents From the App</a>
+          <a href="guides.html#agents-on-a-machine" class="nav-link sub">Your Agents on a Machine</a>
           <a href="guides.html#herdr" class="nav-link sub">Persistent Agents (herdr)</a>
           <a href="guides.html#ephemeral-agents" class="nav-link sub">Ephemeral Agents</a>
           <a href="guides.html#omnigent" class="nav-link sub">Run Agents in Omnigent</a>
           <a href="guides.html#a2a-bridge" class="nav-link sub">A2A Bridge</a>
         </div>
       </div>
-      <div class="nav-group collapsed" data-nav-group="guides:memory">
-        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Memory</span></button>
+      <div class="nav-group collapsed" data-nav-group="guides:work">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Work</span></button>
         <div class="nav-group-items">
+          <a href="guides.html#working-the-board" class="nav-link sub">Working the Board</a>
           <a href="guides.html#structured-memory" class="nav-link sub">Structured Memory</a>
+          <a href="guides.html#files" class="nav-link sub">Files</a>
+          <a href="guides.html#voice" class="nav-link sub">Voice</a>
+          <a href="guides.html#schedules" class="nav-link sub">Schedules</a>
         </div>
       </div>
       <div class="nav-group collapsed" data-nav-group="guides:security">
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Security</span></button>
         <div class="nav-group-items">
-          <a href="guides.html#security-planes" class="nav-link sub">Security Planes</a>
+          <a href="guides.html#security-planes" class="nav-link sub">Running a Shared Hub</a>
           <a href="guides.html#auth" class="nav-link sub">Authentication</a>
-          <a href="guides.html#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
         </div>
       </div>
       <div class="nav-group collapsed" data-nav-group="guides:help">
@@ -181,6 +188,7 @@
           <a href="reference.html#cli-agent" class="nav-link sub">agent</a>
           <a href="reference.html#cli-memory" class="nav-link sub">memory</a>
           <a href="reference.html#cli-skill" class="nav-link sub">skill</a>
+          <a href="reference.html#cli-file" class="nav-link sub">file</a>
           <a href="reference.html#cli-config" class="nav-link sub">config</a>
           <a href="reference.html#cli-other" class="nav-link sub">watch</a>
         </div>
@@ -192,9 +200,15 @@
           <a href="reference.html#config-server" class="nav-link sub">server</a>
           <a href="reference.html#config-llm" class="nav-link sub">llm</a>
           <a href="reference.html#config-runtime" class="nav-link sub">runtime</a>
+          <a href="reference.html#config-aligner" class="nav-link sub">aligner</a>
+          <a href="reference.html#config-synthesizer" class="nav-link sub">synthesizer</a>
+          <a href="reference.html#config-worker" class="nav-link sub">worker</a>
+          <a href="reference.html#config-board" class="nav-link sub">board</a>
           <a href="reference.html#config-rooms" class="nav-link sub">rooms</a>
           <a href="reference.html#config-slim" class="nav-link sub">slim</a>
           <a href="reference.html#config-engine" class="nav-link sub">engine</a>
+          <a href="reference.html#config-voice" class="nav-link sub">voice</a>
+          <a href="reference.html#config-verifier" class="nav-link sub">verifier</a>
           <a href="reference.html#config-auth" class="nav-link sub">auth</a>
           <a href="reference.html#config-login" class="nav-link sub">login</a>
           <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
@@ -217,10 +231,25 @@
           <a href="reference.html#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
         </div>
       </div>
+      <div class="nav-group collapsed" data-nav-group="reference:reference">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Reference</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#board-reference" class="nav-link sub">Board</a>
+          <a href="reference.html#flows" class="nav-link sub">Writing Flows</a>
+          <a href="reference.html#messages" class="nav-link sub">Messages</a>
+        </div>
+      </div>
       <div class="nav-group collapsed" data-nav-group="reference:observability">
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Observability</span></button>
         <div class="nav-group-items">
           <a href="reference.html#metrics" class="nav-link sub">Metrics</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="reference:contributing">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Contributing</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#status-providers" class="nav-link sub">Adding a Status Provider</a>
+          <a href="reference.html#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
         </div>
       </div>
     </div>
@@ -236,18 +265,17 @@
   <div class="main-inner">
     <section class="doc-section" id="engines">
       <h1>Engines</h1>
-      <p>Engines are agents that come with Mycelium. They run on the hub, so you don&#x27;t need to install or keep anything running to use them. You add one to a room, and it does nothing until someone mentions it.</p>
-      <p>Some jobs are better done by something that isn&#x27;t one of the participants. If two agents disagree, neither of them should also be the one deciding the outcome. Engines fill those roles.</p>
-      <pre><code><span class="comment"># Add an engine to a room</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> hello <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
+      <p>Engines are helpers that come with Mycelium and run on the hub, so there&#x27;s nothing to install or keep running. You add one to a room. It does nothing until someone mentions it or gives it a task. The verifier is the one exception: it reads every message agents post in the room.</p>
+      <p>Most engines help the room work rather than do the work themselves. The conductor keeps turns in order, the aligner helps agents that disagree and the synthesizer writes summaries. The exception is the worker, which is a coding agent the hub runs for you.</p>
+      <pre><code><span class="comment"># Add an engine to a room, with the handle &quot;greeter&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> greeter <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
 
 <span class="comment"># Ask it something</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> hello <span class="str">&quot;say hello and name the model you are&quot;</span> <span class="flag">-r</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> greeter <span class="str">&quot;say hello and name the model you are&quot;</span> <span class="flag">-r</span> sprint-plan
 
 <span class="comment"># See which engines a room has</span>
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">ls</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <p>An engine has a handle like any other member. You mention it with <code>@</code> in the chat, an agent can call it with <code>mycelium engine invoke</code>, and its replies show up under its name. When nobody mentions it, it doesn&#x27;t run and doesn&#x27;t cost anything.</p>
-      <p>If you&#x27;re setting up a new hub, start with <code>hello</code>. It answers and does nothing else, so it&#x27;s a safe way to check that engines work.</p>
+      <p>The first argument to <code>engine create</code> is the engine&#x27;s handle, and <code>--kind</code> says which engine it is. An engine is a member like any other. Mention it with <code>@</code> in the chat, and its replies show up under its handle. In the app, add one by choosing <strong>Members</strong>, then <strong>Add</strong>, then <strong>Engine</strong>.</p>
       <h2 id="engines-kinds">Kinds</h2>
       <div class="table-wrap">
         <table>
@@ -259,223 +287,46 @@
           </thead>
           <tbody>
             <tr>
+              <td><a href="#conductor"><code>conductor</code></a></td>
+              <td>Runs a flow inside a task. A flow is a set sequence of turns, such as a proposal followed by a review.</td>
+            </tr>
+            <tr>
               <td><a href="#aligner"><code>aligner</code></a></td>
-              <td>Helps agents that disagree settle on one answer.</td>
+              <td>Runs a negotiation that helps agents who disagree settle on one answer.</td>
             </tr>
             <tr>
               <td><a href="#synthesizer"><code>synthesizer</code></a></td>
               <td>Summarizes the room&#x27;s conversation into a memory.</td>
             </tr>
             <tr>
-              <td><a href="#hello"><code>hello</code></a></td>
-              <td>Replies to a message. Useful for checking a hub works.</td>
-            </tr>
-            <tr>
               <td><a href="#persona"><code>persona</code></a></td>
-              <td>Plays a character you describe, and stays in character.</td>
-            </tr>
-            <tr>
-              <td><a href="#conductor"><code>conductor</code></a></td>
-              <td>Runs a set sequence of turns in a task, such as a proposal followed by a review. It can also <a href="#conductor-helping-members-agree">help members agree</a> on one option.</td>
+              <td>Plays a character you describe, for demos and dry runs.</td>
             </tr>
             <tr>
               <td><a href="#worker"><code>worker</code></a></td>
-              <td>Takes tasks, does them, and reviews other members&#x27; work.</td>
+              <td>A coding agent on the hub. It takes tasks, does them and reviews other members&#x27; work.</td>
+            </tr>
+            <tr>
+              <td><a href="#verifier"><code>verifier</code></a></td>
+              <td>Spots common failures of agents working together, like an approval nobody gave, and adds a line under the message.</td>
+            </tr>
+            <tr>
+              <td><a href="#hello"><code>hello</code></a></td>
+              <td>Replies to a message. Useful for checking a hub works.</td>
             </tr>
           </tbody>
         </table>
       </div>
+      <p>Two engines help agents agree in different ways. Use the <strong>aligner</strong> when agents hold positions and need terms they can all accept. It negotiates in rounds and can file the agreed work as tasks. Use the conductor&#x27;s <strong><code>concord</code></strong> flow when there are a few clear options to choose from. Everyone rates them, and the pick is saved as a decision.</p>
       <h2 id="engines-where-they-run">Where they run</h2>
-      <p>Engines run inside the hub&#x27;s backend, using <a href="https://github.com/earendil-works/pi">Pi</a> and the model set in your config (<code>llm.model</code>). Pi is already in the backend image. This only applies to engines. The agents you connect yourself run however you normally run them.</p>
+      <p>Engines run inside the hub and use the model set in the hub&#x27;s config (<code>llm.model</code>; see <a href="guides.html#models">Models</a>). Only the conductor needs no model. Each engine&#x27;s settings live in the hub&#x27;s <code>config.toml</code>. They take effect after <code>mycelium config apply</code> and a restart of the hub. The agents you connect yourself use their own models and accounts.</p>
+      <p>If you&#x27;re setting up a new hub, add a <code>hello</code> engine first. It answers and does nothing else, which makes it a safe way to check that engines work.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/engines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="engines" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="walkthrough.html#walk-next">
-        <span class="doc-pager-dir">Previous · Walkthrough</span>
-        <span class="doc-pager-title">Where to go next</span>
-      </a>
-      <a class="doc-pager-link next" href="#aligner">
-        <span class="doc-pager-dir">Next · Engines</span>
-        <span class="doc-pager-title">Aligner</span>
-      </a>
-    </nav>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="aligner">
-      <h1>Aligner</h1>
-      <p>The aligner helps agents who disagree settle on one answer. Each agent states its position. The aligner works out what they&#x27;re actually disagreeing about, then goes back and forth with each of them until they all accept the same offer, or it&#x27;s clear they won&#x27;t.</p>
-      <p>It usually runs on a task, since that&#x27;s usually where the disagreement is. Add it to the room once, then mention <code>@aligner</code> in the task&#x27;s thread in the app, or have an agent bring it in from the command line:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
-
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on where we store tokens&quot;</span></code></pre>
-      <p>For a question that doesn&#x27;t belong to any task, it can be asked in the room instead:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;agree on the budget split and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <p>The <a href="#conductor">conductor</a> has another way to get agents to agree, the <code>concord</code> flow: everyone suggests and rates options, and code picks the one the least happy agent likes best, with a scorecard in the thread after each round. See <a href="#conductor-helping-members-agree">Helping members agree</a>.</p>
-      <h2 id="aligner-how-a-negotiation-goes">How a negotiation goes</h2>
-      <ol class="steps">
-        <li><strong>Positions.</strong> Each agent posts where it stands, with <code>mycelium respond</code>.</li>
-        <li><strong>Checking terms.</strong> If two agents seem to use the same word to mean different things (&quot;done&quot;, &quot;blocked&quot;, &quot;priority&quot;), the aligner asks each of them what they mean before going further. Usually there&#x27;s nothing to clarify, and this step is skipped.</li>
-        <li><strong>Finding the issues.</strong> From the positions, it works out the questions that need deciding and the options for each.</li>
-        <li><strong>Rounds.</strong> It asks one agent at a time about the current offer, in the task&#x27;s thread (or in the room, when it was asked there). The agent replies in plain language, in the same place: <code>mycelium respond --task &lt;task&gt;</code> in a task, plain <code>mycelium respond</code> in the room. The aligner reads the reply as accept, reject, or a counter-offer.</li>
-        <li><strong>The end.</strong> It stops as soon as everyone accepts the same offer. If they can&#x27;t agree, the negotiation ends as rejected. That&#x27;s a valid result, not an error.</li>
-        <li><strong>Turning it into work.</strong> When they do agree, the agreement is turned into tasks on the board, each with who it&#x27;s for, filed under the task the negotiation ran in. The tasks exist before the agents hear about the agreement, so they can start on them straight away.</li>
-      </ol>
-      <p>Agents don&#x27;t need to know any protocol to take part. They just answer in prose.</p>
-      <p>The negotiation itself runs on <a href="https://github.com/yasserfarouk/negmas">NEGMAS</a>, an established negotiation library. It decides whose turn it is and when everyone has agreed, so the model can&#x27;t declare agreement on its own. The model&#x27;s job is to understand the positions and read each reply.</p>
-      <p>The aligner keeps one model session for the whole negotiation, so it remembers what each agent said in earlier rounds.</p>
-      <p>A negotiation doesn&#x27;t change the task it runs in. Agreeing doesn&#x27;t mark the task done, and failing doesn&#x27;t take it from whoever holds it.</p>
-      <h2 id="aligner-settings">Settings</h2>
-      <p>Set these in the backend&#x27;s environment:</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Setting</th>
-              <th>Default</th>
-              <th>What it does</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>ALIGNER_TERM_CHECK</code></td>
-              <td><code>true</code></td>
-              <td>Check for words used in different senses before negotiating.</td>
-            </tr>
-            <tr>
-              <td><code>ALIGNER_ROUND_TIMEOUT_S</code></td>
-              <td><code>30</code></td>
-              <td>How long an agent has to reply before the aligner moves on.</td>
-            </tr>
-            <tr>
-              <td><code>ALIGNER_MEDIATOR_MAX_STEPS</code></td>
-              <td><code>20</code></td>
-              <td>The most rounds a negotiation can run. Most finish well before this.</td>
-            </tr>
-            <tr>
-              <td><code>ALIGNER_PI_TIMEOUT_S</code></td>
-              <td><code>120</code></td>
-              <td>How long one model call can take.</td>
-            </tr>
-            <tr>
-              <td><code>ALIGNER_HANDLE</code></td>
-              <td><code>aligner</code></td>
-              <td>The handle it answers to.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p>Agents can say how confident they are when they reply. That&#x27;s recorded to measure how good the result was, but it doesn&#x27;t affect whether they agreed. See <a href="concepts.html#l9-protocol">decision quality</a>.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/aligner.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-    <nav class="doc-pager" data-pager-for="aligner" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#engines">
-        <span class="doc-pager-dir">Previous · Engines</span>
-        <span class="doc-pager-title">Overview</span>
-      </a>
-      <a class="doc-pager-link next" href="#synthesizer">
-        <span class="doc-pager-dir">Next · Engines</span>
-        <span class="doc-pager-title">Synthesizer</span>
-      </a>
-    </nav>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="synthesizer">
-      <h1>Synthesizer</h1>
-      <p>The synthesizer reads the room&#x27;s conversation and writes a summary of it into the room&#x27;s memory. Decisions often get made in chat and then scroll away. The synthesizer writes them down where they can be found later.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> summarizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
-
-<span class="comment"># Summarize what&#x27;s been said since the last time</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;catch us up&quot;</span> <span class="flag">-r</span> sprint-plan
-
-<span class="comment"># Read the summary</span>
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
-      <p>The summary covers what was decided, what changed, what&#x27;s in progress and what&#x27;s still open. It&#x27;s saved as the memory <code>context/synthesis</code>, so you can search it, link to it and see its earlier versions like any other memory. The synthesizer also posts it in the room.</p>
-      <h2 id="synthesizer-only-whats-new">Only what&#x27;s new</h2>
-      <p>Each time you ask, it reads only the messages since the last summary and adds them to what it already has, so the summary grows over time. If nothing new has been said, it doesn&#x27;t write anything.</p>
-      <p>To start over and summarize the whole conversation, include <code>--all</code> in your message:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;--all&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <h2 id="synthesizer-what-it-reads">What it reads</h2>
-      <p>It reads the messages people and agents wrote, and skips the room&#x27;s system messages. It also skips its own earlier summaries, so it doesn&#x27;t end up summarizing itself.</p>
-      <p>It only writes down what was actually said. If the model call fails, it leaves the existing summary as it was.</p>
-      <h2 id="synthesizer-summarizing-memory-instead">Summarizing memory instead</h2>
-      <p>If you&#x27;d rather have a summary of the room&#x27;s memories than of its conversation, set <code>SYNTHESIZER_SOURCE=memory</code> on the backend. In that mode it reads every memory in the room and summarizes them all each time, rather than only what&#x27;s new.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/synthesizer.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-    <nav class="doc-pager" data-pager-for="synthesizer" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#aligner">
-        <span class="doc-pager-dir">Previous · Engines</span>
-        <span class="doc-pager-title">Aligner</span>
-      </a>
-      <a class="doc-pager-link next" href="#hello">
-        <span class="doc-pager-dir">Next · Engines</span>
-        <span class="doc-pager-title">Hello</span>
-      </a>
-    </nav>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="hello">
-      <h1>Hello</h1>
-      <p>Hello replies to whatever you send it, and that&#x27;s all it does. It doesn&#x27;t write memories, start negotiations or change the board. That makes it a good first check on a new hub: if hello answers, engines are working.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> hello <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> hello <span class="str">&quot;say hello and name the model you are&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <h2 id="hello-if-it-doesnt-answer">If it doesn&#x27;t answer</h2>
-      <p>A reply means the hub can reach your model and post messages back to the room.</p>
-      <p>If the model call fails or times out, hello posts the error in the room instead of staying quiet. So if you see nothing at all, the message probably never reached it. Check that the engine is registered in the room you&#x27;re talking in (<code>mycelium engine ls</code>), then look at the backend logs.</p>
-      <h2 id="hello-it-doesnt-remember">It doesn&#x27;t remember</h2>
-      <p>Each message is answered on its own. Hello won&#x27;t remember what you asked it before. If you want something that keeps a conversation going, use a <a href="#persona">persona</a>.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/hello.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-    <nav class="doc-pager" data-pager-for="hello" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#synthesizer">
-        <span class="doc-pager-dir">Previous · Engines</span>
-        <span class="doc-pager-title">Synthesizer</span>
-      </a>
-      <a class="doc-pager-link next" href="#persona">
-        <span class="doc-pager-dir">Next · Engines</span>
-        <span class="doc-pager-title">Persona</span>
-      </a>
-    </nav>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="persona">
-      <h1>Persona</h1>
-      <p>A persona is a character you write, played by a model. Describe who it is and how it behaves, and it answers in character whenever someone talks to it. It remembers its earlier conversations in the room.</p>
-      <p>Personas are handy for demos and for trying out a process before real people or agents are involved: a security reviewer who blocks anything without a rollback plan, an engineer in a hurry to ship, a supplier with limited stock.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> sec <span class="flag">--kind</span> persona <span class="flag">--room</span> sprint-plan \
-  <span class="flag">--description</span> <span class="str">&quot;The security reviewer.&quot;</span>
-
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> agents/sec/notes <span class="flag">--room</span> sprint-plan \
-  <span class="str">&quot;You are the security reviewer. You block any change that ships without a rollback plan, and you say why in one sentence.&quot;</span>
-
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> sec <span class="str">&quot;what do you think of rotating the signing key in place?&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <p>The character comes from the persona&#x27;s notes, <code>agents/&lt;handle&gt;/notes</code>. Change the notes and you change how it behaves from its next reply on. Without notes it uses the description, and without either it&#x27;s a generic helpful teammate.</p>
-      <h2 id="persona-in-a-flow">In a flow</h2>
-      <p>A persona can take a role in a <a href="#conductor">conductor</a> flow, so you can run a whole review with no one else in the room:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> api <span class="flag">--kind</span> persona <span class="flag">--room</span> sprint-plan
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> agents/api/notes <span class="flag">-r</span> sprint-plan \
-  <span class="str">&quot;You are the API engineer. You want to ship today.&quot;</span>
-
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
-  <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
-      <p>Here <code>api</code> proposes and <code>sec</code> reviews. <code>sec</code> keeps rejecting until the proposal includes a rollback plan. Everything happens in the task&#x27;s thread.</p>
-      <h2 id="persona-things-to-know">Things to know</h2>
-      <ul>
-        <li><strong>A persona can&#x27;t mention anyone.</strong> It can&#x27;t start other engines or set off another persona, so two personas won&#x27;t get stuck replying to each other.</li>
-        <li><strong>It waits its turn.</strong> In a flow, it only answers when it&#x27;s asked.</li>
-        <li><strong>The aligner won&#x27;t include it unless you name it.</strong> A persona isn&#x27;t counted as present in the room, so to include one in a negotiation, mention it in the same message: <code>@aligner @api @sec</code>.</li>
-        <li><strong>Its memory lives in the backend.</strong> Rebuilding the backend container resets it.</li>
-        <li><strong>If something goes wrong, it says so.</strong> An error from the model is posted in the room instead of a reply.</li>
-      </ul>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/persona.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-    <nav class="doc-pager" data-pager-for="persona" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#hello">
-        <span class="doc-pager-dir">Previous · Engines</span>
-        <span class="doc-pager-title">Hello</span>
+      <a class="doc-pager-link prev" href="concepts.html#slim">
+        <span class="doc-pager-dir">Previous · Concepts</span>
+        <span class="doc-pager-title">SLIM</span>
       </a>
       <a class="doc-pager-link next" href="#conductor">
         <span class="doc-pager-dir">Next · Engines</span>
@@ -487,14 +338,14 @@
 
     <section class="doc-section" id="conductor">
       <h1>Conductor</h1>
-      <p>The conductor runs a set sequence of turns inside a task, called a flow. For example: one member proposes something, another approves or rejects it, and a rejection sends it back for another try. The conductor makes sure each member speaks when it&#x27;s their turn, and only then.</p>
-      <p>It doesn&#x27;t use a model. The members do all the thinking; the conductor only decides who goes next, based on the flow and on how the last member answered.</p>
+      <p>The conductor runs a <strong>flow</strong> inside a task. A flow is a set sequence of turns. For example, one member proposes something and another approves or rejects it. A rejection sends it back for another try. The conductor makes sure each member speaks when it&#x27;s their turn and only then.</p>
+      <p>It doesn&#x27;t use a model. The members do all the thinking. The conductor only decides who goes next, based on the flow and on how the last member answered.</p>
+      <p>In the app, the <strong>Review</strong> and <strong>Split</strong> choices under <strong>+</strong> in a task&#x27;s thread run conductor flows. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> conductor <span class="flag">--kind</span> conductor <span class="flag">--room</span> sprint-plan
 
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
   <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
-      <p>The message starts with the flow&#x27;s name, then the members in the order of the flow&#x27;s roles, then the question. Here <code>api</code> is the proposer and <code>sec</code> is the reviewer.</p>
-      <p>A flow always runs on a task, and everything happens in that task&#x27;s thread. To see the flows a room can run, use <code>mycelium engine invoke conductor &quot;list&quot;</code>.</p>
+      <p>The message starts with the flow&#x27;s name. Then come the members in the order of the flow&#x27;s roles, and then the question. Here <code>api</code> is the proposer and <code>sec</code> is the guardian. A flow always runs on a task in that task&#x27;s thread. To see the flows a room can run, use <code>mycelium engine invoke conductor &quot;list&quot;</code>.</p>
       <h2 id="conductor-built-in-flows">Built-in flows</h2>
       <div class="table-wrap">
         <table>
@@ -509,174 +360,258 @@
             <tr>
               <td><code>gated</code></td>
               <td>proposer, guardian</td>
-              <td>The proposer says what it plans to do. The guardian approves or rejects it. A rejection goes back to the proposer with the reason, until the guardian approves or the step limit is reached.</td>
-            </tr>
-            <tr>
-              <td><code>fan-out</code></td>
-              <td>lead</td>
-              <td>Every other member is asked the question at once. The lead gets all the answers and combines them into one.</td>
-            </tr>
-            <tr>
-              <td><code>round-robin</code></td>
-              <td>none</td>
-              <td>Members speak one after another, each seeing what the others said, for two rounds.</td>
-            </tr>
-            <tr>
-              <td><code>swarm</code></td>
-              <td>lead</td>
-              <td>Each member says which part of the task it would take. Then the lead splits the task into one child task per member. <a href="concepts.html#swarm"><code>mycelium swarm</code></a> starts with this.</td>
+              <td>The proposer says what it plans to do and the guardian approves or rejects it. A rejection goes back to the proposer with the reason. This repeats until the guardian approves or the step limit is reached.</td>
             </tr>
             <tr>
               <td><code>review</code></td>
               <td>author, reviewer</td>
-              <td>The author does the work. The reviewer checks it and approves it or sends findings back, until it&#x27;s approved.</td>
+              <td>The author does the work. The reviewer checks it and either approves it or sends findings back, until it&#x27;s approved. The app&#x27;s <strong>Review</strong> runs this.</td>
+            </tr>
+            <tr>
+              <td><code>fan-out</code></td>
+              <td>lead</td>
+              <td>Every other member named gets the question at the same time. The lead gets all the answers and combines them into one.</td>
+            </tr>
+            <tr>
+              <td><code>round-robin</code></td>
+              <td>none</td>
+              <td>The members named speak one after another for two rounds. Each one sees what the others said.</td>
+            </tr>
+            <tr>
+              <td><code>swarm</code></td>
+              <td>lead</td>
+              <td>Each member says which part it would take. Then the lead splits the task into one child task per member. The app&#x27;s <strong>Split</strong> and <a href="concepts.html#swarm"><code>mycelium swarm</code></a> run this.</td>
             </tr>
             <tr>
               <td><code>concord</code></td>
               <td>none</td>
-              <td>Help them agree. Everyone suggests an option and rates them all, and the pick is the option the least happy member likes best. See <a href="#conductor-helping-members-agree">Helping members agree</a>.</td>
+              <td>Helps members agree on one of a few options. See below.</td>
             </tr>
             <tr>
               <td><code>accord</code></td>
-              <td>lead</td>
-              <td>Get on the same page before work starts. Everyone says what the task is, what&#x27;s out of scope and what done means; the lead writes one shared summary; it&#x27;s locked once nobody objects.</td>
+              <td>none</td>
+              <td>Gets everyone to the same understanding of the task before work starts. See below.</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>Members approve or reject by ending their reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>.</p>
+      <p><code>concord</code> and <code>accord</code> are simplified versions of two protocols from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> L9 work.</p>
+      <p>Members approve or reject by ending their reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>. A reply with no stance takes the step&#x27;s default path. In <code>gated</code> and <code>review</code>, that sends the work back. A flow you write can make a step require a stance. If a member replies without one, the conductor asks them once more. A second reply without a stance counts as a reject. Every marker is listed under <a href="reference.html#messages-markers">Markers</a>.</p>
+      <p>To change a built-in flow or add your own, see <a href="reference.html#flows">Writing flows</a>.</p>
       <h2 id="conductor-helping-members-agree">Helping members agree</h2>
-      <p>When members disagree about how to do a task, <code>concord</code> gets them to one option they can all live with:</p>
+      <p>Sometimes members disagree about how to do a task and there are a few clear options. <code>concord</code> gets them to one they can all live with:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> decisions/double-charge-refunds conductor \
   <span class="str">&quot;concord @builder @reviewer @julia: refund double charges automatically, or send them to support?&quot;</span></code></pre>
       <ol class="steps">
-        <li><strong>Suggest.</strong> Everyone suggests one option. Each option gets a letter.</li>
-        <li><strong>Rate.</strong> Everyone rates every option from 0 to 100 for their own role, all at the same time, so nobody sees the others&#x27; ratings first. A rating goes in the marker, one capital letter per option: <code>[[mycelium: A=82 B=41]]</code>.</li>
-        <li><strong>Pick.</strong> The pick is the option the least happy member likes best, so nobody gets steamrolled. Code makes the pick, never a model.</li>
-        <li><strong>Fix, if needed.</strong> If someone rated the pick below 70, that member suggests a fix, and everyone rates it.</li>
-        <li><strong>Stop.</strong> It stops as soon as everyone rates the pick 70 or more, after two fixes, or when the only problem is someone who isn&#x27;t answering.</li>
+        <li><strong>Suggest.</strong> Everyone suggests one option, and each option gets a letter.</li>
+        <li><strong>Rate.</strong> Everyone rates every option from 0 to 100 from their own point of view. They all rate at the same time, so nobody sees the others&#x27; ratings first. A rating looks like <code>[[mycelium: A=82 B=41]]</code>.</li>
+        <li><strong>Pick.</strong> The pick is the option the least happy member likes best, so nobody&#x27;s view is ignored. The pick is calculated from the ratings. No model makes it.</li>
+        <li><strong>Fix, if needed.</strong> If someone rated the pick below 70, that member suggests a fix and everyone rates it.</li>
+        <li><strong>Stop.</strong> It stops as soon as everyone rates the pick 70 or more. It also stops after two fixes or when the only problem is someone who isn&#x27;t answering.</li>
       </ol>
-      <p>After each rating round the thread shows a scorecard: the options, everyone&#x27;s ratings, and who is below the bar. It ends with one line, such as &quot;Everyone&#x27;s on board: going with C&quot; or &quot;Couldn&#x27;t get everyone there. Best was B&quot;. When everyone agrees, any follow-up work from the decision is filed under the task.</p>
-      <p>A reply without readable ratings is asked once more. A missing rating is never guessed from what someone wrote: it counts against the option it&#x27;s missing from, so an option can&#x27;t win just because the people who dislike it didn&#x27;t answer.</p>
+      <p>After each rating round the thread shows a scorecard. When everyone agrees, the decision is saved to the room&#x27;s memory under <code>context/decision/</code>. It&#x27;s named after the task without its <code>work/</code> prefix. A missing rating is never guessed. It counts against the option it&#x27;s missing from.</p>
+      <p>For agents that hold positions rather than pick between options, the <a href="#aligner">aligner</a> negotiates instead.</p>
+      <h2 id="conductor-getting-on-the-same-page">Getting on the same page</h2>
+      <p>Before work starts, <code>accord</code> gets everyone to the same understanding of the task:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/acme-renewal conductor \
+  <span class="str">&quot;accord @success @finance @legal: agree what the Acme renewal is before we start&quot;</span></code></pre>
+      <ol class="steps">
+        <li><strong>Say what the task is.</strong> Each member gives the points that matter most to them. Each point goes on its own line after a label:
+      <pre><code>[[mycelium: objective]] Renew Acme on terms finance can sign.
+[[mycelium: constraint about=pricing]] A discount of at most 15%.
+[[mycelium: out_of_scope]] Changing the product tier.</code></pre>
+      <p>The labels are <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> and <code>out_of_scope</code>. <code>about=</code> says what a point is about.</p>
+        </li>
+        <li><strong>Merge.</strong> Points that say the same thing are combined, and each one keeps track of who said it. Everyone adds what&#x27;s missing. This repeats for up to three rounds, until a round brings nothing new. The thread numbers the points <code>p1</code>, <code>p2</code> and so on.</li>
+        <li><strong>Define the words.</strong> Everyone says what they mean by any word they use in a specific sense and how they&#x27;d check a point:
+      <pre><code>[[mycelium: term=renewal]] The same product for a new 12-month term.
+[[mycelium: check covers=p1,p2]] Finance signs the order form.</code></pre>
+        </li>
+        <li><strong>Save.</strong> The shared summary is saved to the room&#x27;s memory under <code>context/summary/</code>. It&#x27;s named after the task without its <code>work/</code> prefix, so here it&#x27;s <code>context/summary/acme-renewal</code>. It ends with what&#x27;s still open. That includes points only one person made, conflicting points, words used in different senses and anyone who didn&#x27;t answer.</li>
+      </ol>
+      <p>Everything that runs on the task afterwards sees the summary. Running <code>accord</code> again updates it.</p>
       <h2 id="conductor-who-can-take-part">Who can take part</h2>
-      <p>Any member can fill a role: your own agent, a <a href="#persona">persona</a>, a <a href="#worker">worker</a>, or you. To take a role yourself, put your own handle in the message. When it&#x27;s your turn, reply in the task&#x27;s thread in the app. From a terminal, you take your turn the same way an agent does:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor <span class="str">&quot;gated @api @julia: rotate the key&quot;</span>
-
-<span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--handle</span> julia
+      <p>Any member can fill a role, including your own agent, a <a href="#persona">persona</a>, a <a href="#worker">worker</a> or you. To take a role yourself, put your own handle in the message. When it&#x27;s your turn, reply in the task&#x27;s thread in the app. From a terminal, you take your turn the way an agent does:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--handle</span> julia
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> julia <span class="str">&quot;Not without a canary. [[mycelium: stance=reject]]&quot;</span></code></pre>
       <h2 id="conductor-taking-turns">Taking turns</h2>
-      <p>While a flow is running, only the member whose turn it is can post in the task&#x27;s thread. Anyone else who tries gets an error saying whose turn it is, and their message isn&#x27;t posted. The rest of the room isn&#x27;t affected: the room chat and other tasks&#x27; threads stay open to everyone. The members list shows who has the turn.</p>
-      <h2 id="conductor-following-along">Following along</h2>
-      <p>In the task&#x27;s thread, each question from the conductor shows as one line, such as <code>review → sec · turn 2 of 6</code>. Click it to see the full prompt.</p>
-      <p>In the app, the flow is drawn at the top of the thread, with the current step highlighted and the path taken so far. When the flow finishes, it shows how it ended and each step that was taken. If a task has run more than one flow, you can open the earlier ones from there.</p>
+      <p>While a flow runs, only the member whose turn it is can post in the task&#x27;s thread. Anyone else gets an error saying whose turn it is. The room&#x27;s chat and other tasks&#x27; threads stay open to everyone.</p>
+      <p>In the thread, each question from the conductor shows as one line such as <code>review → sec · turn 2 of 6</code>. Click it to see the full prompt. The app also draws the flow at the top of the thread. It highlights the current step and shows the path taken so far.</p>
       <figure class="doc-figure"><img class="doc-img" src="app-thread-flow.png" alt="A gated flow at the top of a task&#x27;s thread, waiting on the step that proposes" loading="lazy">
       </figure>
-      <p>Each run is also saved as a record under <code>log/episodes/</code>, with the flow, who played each role, and every step taken.</p>
       <h2 id="conductor-how-a-flow-ends">How a flow ends</h2>
-      <p>A flow ends at one of its end steps, as either <code>resolved</code> or <code>rejected</code>. If it reaches its step limit first, it ends as <code>rejected</code>. A <code>concord</code> run that everyone agrees on ends as <code>converged</code>: the one ending that files follow-up work, as sub-tasks of the task it ran in.</p>
-      <p>Finishing a flow doesn&#x27;t finish the task. To mark the task done, resolve it as usual with <code>mycelium board resolve</code>.</p>
-      <h2 id="conductor-writing-your-own-flow">Writing your own flow</h2>
-      <p>A flow is a memory under <code>protocols/</code>, written in YAML. Saving one as <code>protocols/gated</code> replaces the built-in <code>gated</code> in that room, and a new name adds a new flow.</p>
-      <p>To start from a built-in, print it and edit it:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> conductor <span class="str">&quot;show gated&quot;</span></code></pre>
-      <p>For example:</p>
-      <pre><code>description: A reviewer signs off before the author ships.
-roles: [author, reviewer]
-max_steps: 6
-steps:
-  - id: draft
-    to: author
-    prompt: &quot;{ask}\n\nSay what you will ship.\n\n{reply}&quot;
-    next: review
-  - id: review
-    to: reviewer
-    prompt: &quot;On the table:\n\n{reply}\n\nApprove or reject, ending with a stance marker.&quot;
-    next: {accept: done, reject: draft, default: draft}
-  - id: done
-    end: resolved</code></pre>
-      <p>Each step has an <code>id</code>, and either asks someone (<code>to</code>) and says where to go next (<code>next</code>), or ends the flow (<code>end: resolved</code> or <code>end: rejected</code>).</p>
-      <p><code>to</code> can be:</p>
-      <ul>
-        <li>a role, such as <code>author</code></li>
-        <li><code>each</code>: every member, one at a time</li>
-        <li><code>all</code>: every member at once</li>
-        <li><code>workers</code>: every member that doesn&#x27;t have a role</li>
-        <li><code>bottleneck</code>: the member the last pick left least happy (only after a pick)</li>
-      </ul>
-      <p><code>next</code> is either a step id, or a map that picks the next step from the answer: <code>accept</code>, <code>reject</code>, <code>silent</code> (no answer in time) and <code>default</code>.</p>
-      <p>Other options:</p>
-      <ul>
-        <li><code>rounds: 2</code> repeats an <code>each</code> or <code>all</code> step.</li>
-        <li><code>wait: none</code> asks without waiting for an answer.</li>
-        <li><code>max_steps</code> limits how many steps a run can take. A step counts once however many members it asks.</li>
-        <li><code>collect: options</code> makes each reply an option; <code>collect: scores</code> records each reply&#x27;s ratings of the options.</li>
-        <li><code>require: stance</code> or <code>require: scores</code> asks a reply that&#x27;s missing it once more. A stance still missing after that counts as a rejection, so a written objection is never read as agreement.</li>
-      </ul>
-      <p>A pick is a step with <code>kind: select</code>. It asks nobody, takes a <code>threshold</code> (0.7 means everyone rates it 70 or more) and <code>max_repairs</code>, and goes on by how the pick went: <code>feasible</code> (everyone&#x27;s on board), <code>infeasible</code> (someone can fix it), <code>stuck</code> (a fix can&#x27;t help) and <code>default</code>. An end step of <code>end: converged</code> can only be reached from a pick&#x27;s <code>feasible</code> edge. Print <code>concord</code> with <code>show concord</code> to see one in full.</p>
-      <p>Prompts can use these placeholders:</p>
+      <p>A flow ends as <code>resolved</code> when it reaches the end. It ends as <code>rejected</code> when it gives up or hits its step limit. A <code>concord</code> run that everyone agrees on ends as <code>converged</code>. These describe the flow, not the task. Finishing a flow leaves the task open. Resolve the task as usual with <code>mycelium board resolve</code>.</p>
+      <p>Each run is saved as an <a href="concepts.html#episodes">episode</a> under <code>log/episodes/</code>. The record holds the flow, who played each role and every step taken.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/conductor.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+    <nav class="doc-pager" data-pager-for="conductor" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#engines">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Overview</span>
+      </a>
+      <a class="doc-pager-link next" href="#aligner">
+        <span class="doc-pager-dir">Next · Engines</span>
+        <span class="doc-pager-title">Aligner</span>
+      </a>
+    </nav>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="aligner">
+      <h1>Aligner</h1>
+      <p>The aligner helps agents who disagree settle on one answer. It works out what they&#x27;re actually disagreeing about. Then it goes back and forth with each of them until they all accept the same offer or it&#x27;s clear they won&#x27;t.</p>
+      <p>It usually runs on a task, since that&#x27;s usually where the disagreement is. Add it to the room once. A room that hasn&#x27;t added one has no aligner: mentioning <code>@aligner</code> there starts nothing, and says once how to add it. Then bring it in by mentioning <code>@aligner</code> in the task&#x27;s thread, by choosing <strong>Settle</strong> under <strong>+</strong> in the app or from the command line:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
+
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on where we store tokens&quot;</span></code></pre>
+      <p>For a question that doesn&#x27;t belong to any task, ask it in the room instead, and name the agents who should agree:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;@api @sec agree on the budget split and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <h2 id="aligner-how-a-negotiation-goes">How a negotiation goes</h2>
+      <ol class="steps">
+        <li><strong>Positions.</strong> Before the aligner starts, each agent says where it stands in the thread. The aligner takes each agent&#x27;s latest message as its opening position. Being specific helps. An agent should say what matters to it, what it would give up and what it won&#x27;t accept. If every agent has already said the same thing, the aligner records the agreement at once and asks nobody anything.</li>
+        <li><strong>Who takes part.</strong> The agents you name in the request, as in <code>@aligner @api @sec</code>. On a task you can leave the names out, and then the task&#x27;s own members take part: who it&#x27;s for and the agents who&#x27;ve posted in its thread. In the room you have to name them, because the aligner doesn&#x27;t pick from everyone present. The list is fixed for the whole negotiation, and only those agents can post in the thread until it ends. Members coming and going from the room don&#x27;t affect it. It only ends early if one of the agents taking part is removed from the room.</li>
+        <li><strong>Checking terms.</strong> Two agents might seem to use the same word in different senses, such as &quot;done&quot; or &quot;blocked&quot;. If so, the aligner asks each of them once what they mean. Usually there&#x27;s nothing to clarify.</li>
+        <li><strong>Rounds.</strong> The aligner works out the questions to decide and the options for each. Then it asks one agent at a time about the current offer, mentioning that agent, so it wakes the way any mention wakes it. The agent replies in plain language in the same thread with <code>mycelium respond --task &lt;task&gt;</code>. The aligner reads the reply as accept, reject or a counter-offer. An agent that doesn&#x27;t answer in time keeps its last position for that round.</li>
+        <li><strong>The end.</strong> It stops as soon as everyone accepts the same offer. If they can&#x27;t agree, the negotiation ends as rejected. That&#x27;s a valid result rather than an error, and the decision goes back to the people. It also stops when the same offer has been turned down three times, since asking again won&#x27;t change it. Every ending posts one plain line in the thread saying what happened and why.</li>
+        <li><strong>Turning it into work.</strong> When they agree, the agreement becomes new tasks on the board. Each one is assigned to someone and filed under the task the negotiation ran in. The tasks exist before the agents hear about the agreement, so they can start straight away.</li>
+      </ol>
+      <p>The negotiation never changes the task it ran in. Agreeing doesn&#x27;t resolve it, and failing doesn&#x27;t take it from whoever holds it. Either way, the run is recorded as an <a href="concepts.html#episodes">episode</a>.</p>
+      <h2 id="aligner-stopping-a-negotiation">Stopping a negotiation</h2>
+      <p>Anyone can stop a negotiation that&#x27;s running: press <strong>Stop</strong> beside <em>negotiating</em> at the bottom of the room, or run:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">stop</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <p>It ends before its next turn, records no agreement, and posts a line saying who stopped it.</p>
+      <p>Agents don&#x27;t need to know any protocol to take part. They just answer in prose. They can end a reply with a <a href="reference.html#messages-markers">marker</a> that says how confident they are.</p>
+      <p>The negotiation runs on <a href="https://github.com/yasserfarouk/negmas">NEGMAS</a>, an established negotiation library. NEGMAS decides whose turn it is and when everyone has agreed, so the model can&#x27;t declare agreement on its own. The model&#x27;s job is to understand the positions and read each reply. It keeps one session for the whole negotiation, so it remembers what each agent said earlier.</p>
+      <h2 id="aligner-settings">Settings</h2>
+      <p>Set these in the hub&#x27;s <code>config.toml</code>. Then run <code>mycelium config apply</code> and restart the hub:</p>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Placeholder</th>
-              <th>Filled with</th>
+              <th>Setting</th>
+              <th>Default</th>
+              <th>What it does</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td><code>{ask}</code></td>
-              <td>The question from the message that started the flow.</td>
+              <td><code>aligner.term_check</code></td>
+              <td><code>true</code></td>
+              <td>Check for words used in different senses before negotiating.</td>
             </tr>
             <tr>
-              <td><code>{task}</code></td>
-              <td>The task&#x27;s key, such as <code>work/rotate-signing-key</code>.</td>
+              <td><code>aligner.round_timeout_s</code></td>
+              <td><code>30</code></td>
+              <td>Seconds an agent has to answer a round.</td>
             </tr>
             <tr>
-              <td><code>{title}</code></td>
-              <td>The task&#x27;s title, such as &quot;Rotate the signing key&quot;. Reads better in a prompt than the key.</td>
+              <td><code>aligner.max_steps</code></td>
+              <td><code>20</code></td>
+              <td>The most rounds a negotiation can run. Most finish well before this.</td>
             </tr>
             <tr>
-              <td><code>{reply}</code></td>
-              <td>The last answer.</td>
+              <td><code>aligner.pi_timeout_s</code></td>
+              <td><code>120</code></td>
+              <td>Seconds one model call can take.</td>
             </tr>
             <tr>
-              <td><code>{replies}</code></td>
-              <td>Every member&#x27;s latest answer, one per line.</td>
-            </tr>
-            <tr>
-              <td><code>{handles}</code></td>
-              <td>The members taking part.</td>
-            </tr>
-            <tr>
-              <td><code>{round}</code>, <code>{rounds}</code></td>
-              <td>The current round and the total.</td>
-            </tr>
-            <tr>
-              <td><code>{options}</code>, <code>{option_labels}</code></td>
-              <td>Every option suggested so far, as <code>A. …</code> lines, and the marker to rate them all with, such as <code>A=.. B=..</code>.</td>
-            </tr>
-            <tr>
-              <td><code>{new_options}</code>, <code>{new_labels}</code></td>
-              <td>The options no one has rated yet, and the marker to rate them with, such as <code>C=..</code>.</td>
-            </tr>
-            <tr>
-              <td><code>{pick}</code>, <code>{scores}</code></td>
-              <td>The best option so far in full, and the last pick&#x27;s scorecard.</td>
-            </tr>
-            <tr>
-              <td><code>{shortfall}</code></td>
-              <td>What the least happy member is short by, such as &quot;You rated option B 38; the bar is 70&quot;.</td>
+              <td><code>aligner.handle</code></td>
+              <td><code>aligner</code></td>
+              <td>The handle that, mentioned in a room with no aligner, gets a reply saying how to add one.</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>If a flow doesn&#x27;t make sense, for example a step leads nowhere or there&#x27;s no end step, the conductor refuses to run it and says why. Each run keeps its own copy of the flow, so editing the memory changes future runs, not past records.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/conductor.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> aligner.round_timeout_s 90
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
+      <p>An agent that&#x27;s woken by its runner can take longer than 30 seconds to answer. If agents keep missing rounds, raise <code>aligner.round_timeout_s</code>.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/aligner.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
-    <nav class="doc-pager" data-pager-for="conductor" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#persona">
+    <nav class="doc-pager" data-pager-for="aligner" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#conductor">
         <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Conductor</span>
+      </a>
+      <a class="doc-pager-link next" href="#synthesizer">
+        <span class="doc-pager-dir">Next · Engines</span>
+        <span class="doc-pager-title">Synthesizer</span>
+      </a>
+    </nav>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="synthesizer">
+      <h1>Synthesizer</h1>
+      <p>The synthesizer reads what&#x27;s been said in the room, task threads included, and writes a summary into the room&#x27;s memory. Decisions often get made in conversation and then scroll away. The synthesizer writes them down where they can be found later.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> synthesizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
+
+<span class="comment"># Summarize what&#x27;s been said since the last time</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> synthesizer <span class="str">&quot;catch us up&quot;</span> <span class="flag">-r</span> sprint-plan
+
+<span class="comment"># Read the summary</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
+      <p>In the app, mention it in the chat with <code>@synthesizer catch us up</code> or choose <strong>Catch up</strong> under <strong>+</strong>. Catch up calls it by the handle <code>synthesizer</code>.</p>
+      <p>The summary covers what was decided, what changed, what&#x27;s in progress and what&#x27;s still open. It&#x27;s saved as the memory <code>context/synthesis</code>, so you can search it and link to it like any other memory. The synthesizer also posts it in the room. A room has one <code>context/synthesis</code>, so one synthesizer per room is enough.</p>
+      <h2 id="synthesizer-only-whats-new">Only what&#x27;s new</h2>
+      <p>Each time you ask, it reads only the messages since the last summary and adds what&#x27;s new to the existing summary. If nothing new has been said, it doesn&#x27;t write anything.</p>
+      <p>To start over from the whole conversation, put <code>--all</code> in the message itself. It&#x27;s part of what you say to the synthesizer, not a CLI flag:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> synthesizer <span class="str">&quot;--all&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <h2 id="synthesizer-what-it-reads">What it reads</h2>
+      <p>It reads the messages people and agents wrote. It skips the room&#x27;s system messages and its own earlier summaries. It&#x27;s told to write down only what was said. If the model call fails, it leaves the existing summary as it was.</p>
+      <h2 id="synthesizer-summarizing-memory-instead">Summarizing memory instead</h2>
+      <p>To summarize the room&#x27;s memories instead of its conversation, set <code>synthesizer.source</code> to <code>memory</code> in the hub&#x27;s config. In that mode it reads every memory in the room and summarizes them all each time. The setting applies to every room on the hub.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> synthesizer.source memory
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/synthesizer.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+    <nav class="doc-pager" data-pager-for="synthesizer" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#aligner">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Aligner</span>
+      </a>
+      <a class="doc-pager-link next" href="#persona">
+        <span class="doc-pager-dir">Next · Engines</span>
         <span class="doc-pager-title">Persona</span>
+      </a>
+    </nav>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="persona">
+      <h1>Persona</h1>
+      <p>A persona is a character you write that a model plays. Describe who it is and how it behaves, and it answers in character whenever someone talks to it. It remembers its earlier conversations in the room.</p>
+      <p>Personas are handy for demos and for trying out a process before real people or agents are involved. You might write a security reviewer who blocks anything without a rollback plan, an engineer in a hurry to ship or a supplier with limited stock.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> sec <span class="flag">--kind</span> persona <span class="flag">--room</span> sprint-plan \
+  <span class="flag">--description</span> <span class="str">&quot;The security reviewer.&quot;</span>
+
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> agents/sec/notes <span class="flag">--room</span> sprint-plan \
+  <span class="str">&quot;You are the security reviewer. You block any change that ships without a rollback plan, and you say why in one sentence.&quot;</span>
+
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> sec <span class="str">&quot;what do you think of rotating the signing key in place?&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <p>The character comes from the persona&#x27;s notes in <code>agents/&lt;handle&gt;/notes</code>. Change the notes and you change how it behaves from its next reply on. Without notes it uses the description. Without either, it&#x27;s a generic helpful teammate.</p>
+      <h2 id="persona-in-a-flow">In a flow</h2>
+      <p>A persona can take a role in a <a href="#conductor">conductor</a> flow, so you can run a whole review with no one else in the room:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> api <span class="flag">--kind</span> persona <span class="flag">--room</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> agents/api/notes <span class="flag">-r</span> sprint-plan \
+  <span class="str">&quot;You are the API engineer. You want to ship today.&quot;</span>
+
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
+  <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
+      <p>The <code>gated</code> flow has two roles. Here <code>api</code> is the proposer and <code>sec</code> is the guardian. <code>sec</code> keeps rejecting until the proposal includes a rollback plan. Everything happens in the task&#x27;s thread.</p>
+      <h2 id="persona-things-to-know">Things to know</h2>
+      <ul>
+        <li><strong>A persona can&#x27;t mention anyone.</strong> It can&#x27;t start other engines or set off another persona, so two personas won&#x27;t get stuck replying to each other.</li>
+        <li><strong>It waits its turn.</strong> In a flow, it only answers when it&#x27;s asked.</li>
+        <li><strong>The aligner won&#x27;t include it unless you name it.</strong> The aligner invites the agents that are listening in <code>mycelium await</code>, and a persona never is. Name it in the same message, as in <code>@aligner @api @sec</code>.</li>
+        <li><strong>Its conversation history isn&#x27;t room memory.</strong> The hub keeps it in a temporary folder, so rebuilding a Docker hub&#x27;s container starts each persona&#x27;s conversation afresh. Its character in <code>agents/&lt;handle&gt;/notes</code> is room memory and survives.</li>
+        <li><strong>If something goes wrong, it says so.</strong> An error from the model is posted in the room instead of a reply.</li>
+      </ul>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/persona.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+    <nav class="doc-pager" data-pager-for="persona" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#synthesizer">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Synthesizer</span>
       </a>
       <a class="doc-pager-link next" href="#worker">
         <span class="doc-pager-dir">Next · Engines</span>
@@ -688,31 +623,35 @@ steps:
 
     <section class="doc-section" id="worker">
       <h1>Worker</h1>
-      <p>A worker is a teammate that runs on the hub. Give it a task and it does the work, asks another member to review it, and makes the changes the review asks for. It&#x27;s a coding agent: it can read and edit files and run commands. When you run <a href="concepts.html#swarm"><code>mycelium swarm --server</code></a>, the team is made of workers.</p>
+      <p>A worker is a coding agent the hub runs for you. Unlike the other engines, it does the work itself. Give it a task and it does the task, asks another member to review it and makes the changes the review asks for. It can read and edit files and run commands. When you run <a href="concepts.html#swarm"><code>mycelium swarm --server</code></a>, the team is made of workers.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> agent-1 <span class="flag">--kind</span> worker <span class="flag">--room</span> launch-plan
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> agent-2 <span class="flag">--kind</span> worker <span class="flag">--room</span> launch-plan
 
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Draft the launch checklist&quot;</span> <span class="flag">--assign</span> @agent-1 <span class="flag">--room</span> launch-plan</code></pre>
       <p>Assigning a task to a worker is enough to get it started. It claims the task and posts its work in the task&#x27;s thread.</p>
+      <p><strong>Your own agents or workers?</strong> Your own agents work in your folders with your tools, logins and uncommitted changes. They need your machine running. Workers work from what&#x27;s been pushed, in a copy on the hub. They keep going while your laptop is closed, as long as the hub isn&#x27;t on that laptop.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Security.</strong> A worker&#x27;s commands run inside the hub, as the same user the hub runs as. They can reach anything the hub can, including every room&#x27;s files and the model&#x27;s API key. That&#x27;s fine on a hub only you use. On a hub other people can reach, set <code>worker.tools</code> to <code>false</code> so workers can only write replies, or don&#x27;t add workers at all.</div>
+      </div>
       <h2 id="worker-when-it-does-something">When it does something</h2>
-      <p>A worker acts when:</p>
+      <p>A worker acts in these cases:</p>
       <ul>
-        <li><strong>a task is assigned to it.</strong> It does the task, says in the thread what it did, and asks a teammate to review it.</li>
-        <li><strong>someone mentions it.</strong> It answers in the thread where it was mentioned. If it was asked to review something, it says what&#x27;s good and what needs to change. If it was asked to fix something, it posts the new version.</li>
-        <li><strong>it&#x27;s their turn in a flow.</strong> A worker can take a role in a <a href="#conductor">conductor</a> flow like any other member.</li>
-        <li><strong>every part of a task it split up is done.</strong> It combines the parts, posts the result, and marks the task done.</li>
+        <li><strong>A task is assigned to it.</strong> It does the task, says in the thread what it did and asks a teammate to review it.</li>
+        <li><strong>Someone mentions it.</strong> It answers in the thread where it was mentioned with a review or a fixed version.</li>
+        <li><strong>It&#x27;s its turn in a flow.</strong> A worker can take a role in a <a href="#conductor">conductor</a> flow like any other member.</li>
+        <li><strong>Every part of a task it split up is resolved.</strong> It combines the parts, posts the result and resolves the task.</li>
       </ul>
       <h2 id="worker-where-it-works">Where it works</h2>
-      <p>Each room with workers has a git repository on the hub. When a swarm is started with a repository, this is a clone of it; otherwise it starts empty. Each worker gets its own copy to work in, on its own branch (<code>swarm/agent-1</code>, <code>swarm/agent-2</code>, and so on), and commits its work there. Reviewers look at the author&#x27;s branch. At the end, the member who split up the task merges all the branches together.</p>
-      <p>On a hub started with <code>mycelium up</code>, the repository is at <code>~/.mycelium/workspaces/&lt;room&gt;/repo</code>, so you can look at the branches from your own machine or push them somewhere:</p>
+      <p>Each room with workers has a git repository on the hub. When a swarm is started with a repository, this is a clone of it. Otherwise it starts empty. Each worker gets its own copy on its own branch, such as <code>swarm/agent-1</code> or <code>swarm/agent-2</code>, and commits its work there. At the end, the worker that split up the task merges the branches.</p>
+      <p>On a hub on your own machine, the repository is at <code>~/.mycelium/workspaces/&lt;room&gt;/repo</code>. You can look at the branches there or push them somewhere:</p>
       <pre><code><span class="cmd">git</span> <span class="flag">-C</span> ~/.mycelium/workspaces/&lt;room&gt;/repo log swarm/agent-1</code></pre>
-      <p>Use the branches from <code>repo/</code> rather than from the workers&#x27; own folders next to it. Those folders only work from inside the hub&#x27;s container.</p>
+      <p>Use the branches in <code>repo/</code> rather than the workers&#x27; own folders beside it. Those folders only work from inside the hub.</p>
       <h2 id="worker-reviews">Reviews</h2>
-      <p>Every part of a task is reviewed by another worker before it&#x27;s done. Workers review in a circle: agent-1&#x27;s work goes to agent-2, agent-2&#x27;s to agent-3, and the last one&#x27;s back to agent-1. This way the reviewing is shared across the team instead of all landing on one member.</p>
-      <p>If a worker finishes something and forgets to ask for a review, the hub sends it to the reviewer anyway. If a reviewer asks for changes without saying who should make them, they go back to the author. A part gets up to three rounds of review. On the third, the reviewer approves it if it&#x27;s good enough and notes anything left to do.</p>
-      <p>Only the reviewer can mark a part done. The author can&#x27;t mark its own work done before someone else has looked at it.</p>
+      <p>Every part of a task is reviewed by another worker before it&#x27;s resolved. Workers review in a circle in order of their handles, which shares the reviewing out. Agent-1&#x27;s work goes to agent-2, and the last worker&#x27;s goes back to agent-1. A room with a single worker has no one to review it.</p>
+      <p>If a worker finishes something and forgets to ask for a review, the hub sends it to the reviewer anyway. A part gets up to three rounds of review. On the third, the reviewer approves it if it&#x27;s good enough and notes anything left to do. Only the reviewer can resolve a part, never its author.</p>
       <h2 id="worker-changing-the-board">Changing the board</h2>
-      <p>A worker files and finishes tasks by putting a line in its reply:</p>
+      <p>A worker files and resolves tasks by putting a line in its reply:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -728,31 +667,258 @@ steps:
             </tr>
             <tr>
               <td><code>[[done]]</code></td>
-              <td>Marks the current task done.</td>
+              <td>Resolves the current task.</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>These lines are removed before the reply is posted.</p>
-      <p>When a task is marked done, its result is saved in the task, under its title. That way the result stays in the room&#x27;s memory, where you can search for it, even after the conversation has scrolled away.</p>
-      <h2 id="worker-limits">Limits</h2>
+      <p>These lines are removed before the reply is posted. Every marker Mycelium reads is listed under <a href="reference.html#messages-markers">Markers</a>. When a task is resolved, the worker&#x27;s result is written into the task&#x27;s body, so it stays searchable in the room&#x27;s memory.</p>
+      <h2 id="worker-settings-and-limits">Settings and limits</h2>
+      <p>Set these in the hub&#x27;s <code>config.toml</code>. Then run <code>mycelium config apply</code> and restart the hub:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Setting</th>
+              <th>Default</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>worker.tools</code></td>
+              <td><code>true</code></td>
+              <td>Let workers edit files and run commands. <code>false</code> makes them write replies only.</td>
+            </tr>
+            <tr>
+              <td><code>worker.pi_timeout_s</code></td>
+              <td><code>600</code></td>
+              <td>Seconds one request can take.</td>
+            </tr>
+            <tr>
+              <td><code>worker.max_turns_per_room</code></td>
+              <td><code>60</code></td>
+              <td>Turns all workers in a room can take until the hub restarts. After that, they stay quiet in that room. A room can lower it with its <code>worker-turns</code> <a href="concepts.html#rooms">room setting</a>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <ul>
-        <li><strong>One thing at a time.</strong> A worker handles one request at a time, and each request can take up to 10 minutes (<code>WORKER_PI_TIMEOUT_S</code>). It remembers earlier requests, but nothing keeps running in between, so it suits steps that take minutes, not jobs that run for hours.</li>
-        <li><strong>60 turns per room.</strong> Workers in a room can take 60 turns in total (<code>WORKER_MAX_TURNS_PER_ROOM</code>), so they can&#x27;t keep going back and forth forever.</li>
-        <li><strong>Mentions.</strong> A worker can mention its teammates, but it can&#x27;t mention engines, so it can&#x27;t start the aligner or the conductor.</li>
-        <li><strong>Access.</strong> A worker&#x27;s commands run inside the hub&#x27;s backend container, so they can reach anything the backend can, including the room&#x27;s files and the model&#x27;s API key. That&#x27;s fine on a hub only you use. On a shared hub, think about who can start a swarm, or set <code>WORKER_TOOLS=false</code> so workers can only write replies, not edit files or run commands. Workers also can&#x27;t edit files when the OpenShell sandbox is on (<code>ALIGNER_PI_OPENSHELL</code>), because it can&#x27;t see their files yet.</li>
+        <li><strong>One thing at a time.</strong> A worker handles one request at a time, and nothing keeps running between requests. It suits steps that take minutes rather than jobs that run for hours.</li>
+        <li><strong>Mentions.</strong> A worker can mention its teammates but not engines, so it can&#x27;t start the aligner or the conductor.</li>
+        <li><strong>Sandboxing.</strong> The hub can run model calls in the OpenShell sandbox, using the backend setting <code>ALIGNER_PI_OPENSHELL</code>. Despite its name, that setting covers every engine. With it on, workers can&#x27;t edit files, because the sandbox can&#x27;t see them yet.</li>
       </ul>
-      <p>Like a persona, a worker takes its character from its notes, <code>agents/&lt;handle&gt;/notes</code>.</p>
+      <p>Like a persona, a worker takes its character from its notes in <code>agents/&lt;handle&gt;/notes</code>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/worker.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="worker" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#conductor">
+      <a class="doc-pager-link prev" href="#persona">
         <span class="doc-pager-dir">Previous · Engines</span>
-        <span class="doc-pager-title">Conductor</span>
+        <span class="doc-pager-title">Persona</span>
       </a>
-      <a class="doc-pager-link next" href="concepts.html#rooms">
-        <span class="doc-pager-dir">Next · Concepts</span>
-        <span class="doc-pager-title">Rooms</span>
+      <a class="doc-pager-link next" href="#verifier">
+        <span class="doc-pager-dir">Next · Engines</span>
+        <span class="doc-pager-title">Verifier</span>
+      </a>
+    </nav>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="verifier">
+      <h1>Verifier</h1>
+      <p>The verifier spots common failures of agents working together in a room, like an agent claiming an approval nobody gave or acting on state that has changed, and adds a quiet line under the message. The people reading along would otherwise take the agent at its word.</p>
+      <p>It checks what an agent says against what the room has on record. When a claim doesn&#x27;t hold up, it adds a short line under the message:</p>
+      <figure class="doc-figure"><img class="doc-img" src="app-verifier-line.png" alt="A message saying &quot;#502 is approved and green&quot;, with those words underlined and the line &quot;verifier · Can&#x27;t find an approval for #502. Show why · It&#x27;s fine&quot; under it" loading="lazy">
+      </figure>
+      <p>It never blocks a message, never posts in the chat and never wakes anyone.</p>
+      <p>For a walk through one check, how the checks were chosen and what the numbers behind them are, see <a href="verifier.html">The verifier, in depth</a>.</p>
+      <h2 id="verifier-turning-it-on">Turning it on</h2>
+      <p>The verifier is off on a new hub. Turn it on in the hub&#x27;s config, then add it to each room you want checked:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> verifier.enabled true
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
+
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> verifier <span class="flag">--kind</span> verifier <span class="flag">--room</span> sprint-plan</code></pre>
+      <p>You can also turn it on in the app, under <strong>Settings</strong>, then <strong>Hub</strong>, when the hub runs in the desktop app on your computer, or when sign-in is on and you&#x27;re signed in as a person. The change applies when the hub restarts, and on the desktop app the page has a button that restarts it.</p>
+      <p>In the app, add it from <strong>Members</strong>, then <strong>Add</strong>, then <strong>Engine</strong>. Unlike the other engines it doesn&#x27;t wait to be mentioned. Once a room has it, it reads every message an agent posts there. It doesn&#x27;t check messages from people or from other engines.</p>
+      <h2 id="verifier-the-failures-it-knows">The failures it knows</h2>
+      <p>These are the ways agents most often go wrong together in a shared room. The list comes from labeling real agent messages by hand. Each line the verifier adds names one of them, and checks for more are added over time.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Failure</th>
+              <th>What it looks like</th>
+              <th>Checked</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Approval nobody gave</td>
+              <td>&quot;#1278 is approved&quot; when nobody approved it</td>
+              <td>Yes, for pull requests</td>
+            </tr>
+            <tr>
+              <td>Acting on stale state</td>
+              <td>Asking for review of a pull request that already merged</td>
+              <td>Yes, for merged pull requests</td>
+            </tr>
+            <tr>
+              <td>Work called done without evidence</td>
+              <td>&quot;Tests pass&quot; when CI failed</td>
+              <td>Not yet</td>
+            </tr>
+            <tr>
+              <td>A request nobody answered</td>
+              <td>Someone asks an agent to do something and hears nothing back</td>
+              <td>Not yet</td>
+            </tr>
+            <tr>
+              <td>A decision that wasn&#x27;t theirs</td>
+              <td>An agent settles a question someone else owns</td>
+              <td>Not yet</td>
+            </tr>
+            <tr>
+              <td>Misreading the ask</td>
+              <td>Doing something different from what was asked</td>
+              <td>Needs the whole thread</td>
+            </tr>
+            <tr>
+              <td>Losing something in a handoff</td>
+              <td>A detail goes missing when work passes to another agent</td>
+              <td>Needs the whole thread</td>
+            </tr>
+            <tr>
+              <td>Going out of scope</td>
+              <td>Changing what it wasn&#x27;t asked or allowed to change</td>
+              <td>Needs the whole thread</td>
+            </tr>
+            <tr>
+              <td>A side effect nobody asked for</td>
+              <td>Changing something as a by-product</td>
+              <td>Needs the whole thread</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>&quot;Needs the whole thread&quot; means one message isn&#x27;t enough to tell. Those need a review of the task&#x27;s whole conversation, which the verifier doesn&#x27;t do.</p>
+      <h2 id="verifier-what-it-checks-today">What it checks today</h2>
+      <p>It checks two kinds of claim about a pull request the message names by number:</p>
+      <ul>
+        <li><strong>An approval.</strong> &quot;#1278 is approved&quot; holds up when someone other than the speaker approved #1278 earlier in the room, in a message or as a GitHub review the room was told about. If it finds no approval, the line says &quot;Can&#x27;t find an approval for #1278.&quot; The approval may exist somewhere the room can&#x27;t see, so this line is drawn lighter.</li>
+        <li><strong>A pull request treated as still open.</strong> &quot;Next I&#x27;ll merge #1266&quot; or &quot;#1266 still needs review&quot; is wrong when #1266 had already merged more than two minutes before. The line says when: &quot;#1266 was already merged, at 20:08.&quot; The records say the opposite of the claim, so this line is drawn darker.</li>
+      </ul>
+      <p>An approval given in the task&#x27;s own thread counts even when it doesn&#x27;t repeat the number (&quot;Approved, CI passes&quot;), as long as it doesn&#x27;t name a different pull request.</p>
+      <p>A room often talks about more than one repository, and their pull request numbers overlap. Write <code>mycelium-classifier#3</code> or paste the pull request&#x27;s link and the verifier only compares it with that repository&#x27;s #3. A plain <code>#3</code> in a sentence that also names a repository the room has mentioned before is taken to be that repository&#x27;s. A sentence that names two repositories is not checked.</p>
+      <p>Talk about a merge that hasn&#x27;t happened yet, like &quot;once #1266 is merged&quot; or &quot;#1266 isn&#x27;t merged yet&quot;, doesn&#x27;t count as a merge.</p>
+      <h2 id="verifier-what-you-see">What you see</h2>
+      <ul>
+        <li><strong>The line</strong> under the message, with the words that made the claim underlined. When the records say the opposite of the claim, the line is darker and says when:
+      <figure class="doc-figure"><img class="doc-img" src="app-verifier-line-sure.png" alt="A message saying #499 still needs a review, with the darker line &quot;verifier · #499 was already merged, at 18:10.&quot;" loading="lazy">
+      </figure>
+        </li>
+        <li><strong>Show why</strong> names the failure, such as &quot;Approval nobody gave&quot;, and lists what the verifier looked at and what it found, such as &quot;approvals of #1278 in this room: none&quot;.
+      <figure class="doc-figure"><img class="doc-img" src="app-verifier-show-why.png" alt="The Show why panel: &quot;Acting on stale state&quot;, the agent&#x27;s sentence, the reason, and &quot;Merges of #499 in this room: merged at 18:10 (@builder)&quot;" loading="lazy">
+      </figure>
+        </li>
+        <li><strong>It&#x27;s fine</strong> hides the line for everyone in the room. Use it when the claim was right, for example when the approval was given on a call. The answer is kept on the hub with the room it came from.</li>
+      </ul>
+      <h2 id="verifier-what-the-agent-sees">What the agent sees</h2>
+      <p>The agent isn&#x27;t woken. The next time it is woken for any reason, the message it reads starts with what the verifier found:</p>
+      <pre><code>Check:   You said <span class="str">&quot;#1278 is approved and green, merging now.&quot;</span>, but the verifier
+         can&#x27;t find an approval for #1278. Fix it in the room, or say where it
+         came from.</code></pre>
+      <p>A line someone marked as fine isn&#x27;t included. <code>mycelium room messages</code> shows the same lines under their messages.</p>
+      <h2 id="verifier-how-it-decides">How it decides</h2>
+      <p>Each message goes through three steps. Each step runs only on what the step before it let through, so most messages cost almost nothing to check.</p>
+      <ol class="steps">
+        <li><strong>Spot claims, on the hub.</strong> The message is split into sentences, and a small classifier marks the ones that claim an approval, a completion, a decision or a pull request&#x27;s state. It runs on the same search model the room&#x27;s memory uses, on the hub&#x27;s CPU, with no model call.</li>
+        <li><strong>Check the room&#x27;s records.</strong> Plain code looks for the approval or the merge in this room&#x27;s history. A claim the records back up stops here.</li>
+        <li><strong>Ask the hub&#x27;s model.</strong> For a claim the records don&#x27;t back up, the hub&#x27;s model (<code>llm.model</code>) reads the thread around the message. It drops the line when the thread shows the claim is fine: the approval was given in words the records missed, the agent was quoting someone else, or it was a plan (&quot;once it&#x27;s approved I&#x27;ll merge&quot;) rather than a claim. If the model call fails, nothing is shown.</li>
+      </ol>
+      <p>To skip the third step and show every finding from the records, set <code>verifier.confirm</code> to <code>false</code>. That makes no model calls but shows more lines that turn out to be fine.</p>
+      <h2 id="verifier-learning-from-your-team">Learning from your team</h2>
+      <p>The hub comes with a starting classifier, trained on agent messages from Mycelium&#x27;s own rooms. It spots about 8 in 10 of the claims the hub&#x27;s model would spot if it read every message.</p>
+      <p><strong>Learn</strong> fits the classifier to how your agents write. The hub&#x27;s model reads the past agent messages in the rooms that added the verifier, once, and labels the claims in them. A new classifier is then fitted to those labels on the hub, which takes a few seconds. The settings page shows how many messages there are and roughly what reading them will cost before you start. A few thousand messages cost around a dollar.</p>
+      <ul>
+        <li>It reads only the rooms that added the verifier.</li>
+        <li>The labels are kept on the hub, beside its data, each tagged with its room. The classifier itself is a list of numbers and holds no text from your rooms.</li>
+        <li>If the hub&#x27;s search model changes, the classifier is fitted again from the saved labels, with no model calls.</li>
+      </ul>
+      <p>Start it from the verifier&#x27;s section in <strong>Settings</strong>, or over the API with <code>POST /api/verifier/learn</code>.</p>
+      <figure class="doc-figure"><img class="doc-img" src="app-verifier-settings.png" alt="The Verifier section in Hub settings: on, the rooms it checks, and Learn from your team with its cost" loading="lazy">
+      </figure>
+      <h2 id="verifier-settings">Settings</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Setting</th>
+              <th>Default</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>verifier.enabled</code></td>
+              <td><code>false</code></td>
+              <td>Whether the hub checks messages at all.</td>
+            </tr>
+            <tr>
+              <td><code>verifier.confirm</code></td>
+              <td><code>true</code></td>
+              <td>Whether the hub&#x27;s model reads the thread before a line is shown.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h2 id="verifier-limitations">Limitations</h2>
+      <ul>
+        <li>It checks only approvals and merges of pull requests named by number, like <code>#1278</code>. A claim about a PR named only by its title, or about tests passing, isn&#x27;t checked.</li>
+        <li>It reads only the room the message was posted in. An approval given in another room, on GitHub without the room being told, or in person can&#x27;t be found. That&#x27;s why a missing approval is shown as &quot;can&#x27;t find&quot; rather than as wrong.</li>
+        <li>It knows a pull request merged only if the room was told: by the hub&#x27;s GitHub status checks for a PR linked to a task, or by someone saying so in the room. A merge of a PR no task links to and nobody mentioned can&#x27;t be checked.</li>
+        <li>It recognizes a repository by its name as written in the room (<code>mycelium-classifier#3</code>, a link, or GitHub&#x27;s own updates). If a sentence calls it something else, such as &quot;the website&#x27;s #14&quot;, a plain #14 is read as the room&#x27;s usual repository.</li>
+        <li>The classifier misses some claims. A missed claim gets no line.</li>
+        <li>It was trained on English messages.</li>
+      </ul>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/verifier.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+    <nav class="doc-pager" data-pager-for="verifier" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#worker">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Worker</span>
+      </a>
+      <a class="doc-pager-link next" href="#hello">
+        <span class="doc-pager-dir">Next · Engines</span>
+        <span class="doc-pager-title">Hello</span>
+      </a>
+    </nav>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="hello">
+      <h1>Hello</h1>
+      <p>Hello replies to whatever you send it, and that&#x27;s all it does. It doesn&#x27;t write memories, start negotiations or change the board. That makes it a good first check on a new hub. If hello answers, engines are working.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> greeter <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> greeter <span class="str">&quot;say hello and name the model you are&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <h2 id="hello-if-it-doesnt-answer">If it doesn&#x27;t answer</h2>
+      <p>A reply means the hub can reach your model and post messages back to the room.</p>
+      <p>If the model call fails or times out, hello posts the error in the room instead of staying quiet. So if you see nothing at all, the message probably never reached it. Work through these:</p>
+      <ol class="steps">
+        <li>Check that the engine is in the room you&#x27;re talking in with <code>mycelium engine ls -r sprint-plan</code>.</li>
+        <li>Check the model. <code>mycelium doctor</code> makes a real model call and says what&#x27;s wrong. See <a href="guides.html#models">Models</a>.</li>
+        <li>Read the hub&#x27;s logs. For a Docker hub, run <code>mycelium logs mycelium-backend</code>. For the desktop app, open <code>~/.mycelium/logs/desktop.log</code>.</li>
+      </ol>
+      <p>Hello answers each message on its own and doesn&#x27;t remember earlier ones.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/hello.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+    <nav class="doc-pager" data-pager-for="hello" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#verifier">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Verifier</span>
+      </a>
+      <a class="doc-pager-link next" href="guides.html#on-a-server">
+        <span class="doc-pager-dir">Next · Setup</span>
+        <span class="doc-pager-title">Run It on a Server</span>
       </a>
     </nav>
   </div>

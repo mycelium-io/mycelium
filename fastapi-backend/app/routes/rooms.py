@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.bus import app_channel, bus
 from app.schemas import RoomCreate, RoomRead
-from app.services import actor, room_access, room_channels
+from app.services import actor, room_access, room_channels, room_people
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import (
     ensure_room_structure,
@@ -108,6 +108,7 @@ async def make_room(room: RoomCreate, owner: str | None, members: list[str]) -> 
         },
     )
     logger.info("Created room directory: %s", room_dir)
+    room_people.start(room.name, owner, members)
 
     # Room = SLIM channel: provision the group channel with the backend
     # as moderator. Best-effort — a missing/unreachable node leaves the room a
@@ -211,12 +212,21 @@ async def update_room(room_name: str, payload: RoomUpdate, request: Request):
                 )
             stored["owner"] = by
         stored["is_public"] = payload.is_public
+    dropped: set[str] = set()
     if payload.members is not None:
         owner = stored.get("owner")
+        before = set(stored.get("members") or [])
         stored["members"] = sorted(
             {h for h in (norm_handle(m) for m in payload.members) if h and h != owner}
         )
+        dropped = before - set(stored["members"])
     write_room_meta(room_name, stored)
+    # A private room's members are among its people: named here joins them,
+    # and taken off this list takes them out.
+    for handle in stored["members"] if payload.members is not None else []:
+        room_people.add(room_name, handle, "added")
+    for handle in dropped:
+        room_people.remove(room_name, handle)
     result = _room_read(room_name)
     if result is None:
         raise HTTPException(status_code=404, detail="Room not found")

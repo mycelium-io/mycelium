@@ -6,10 +6,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import {
+  ApiError,
   createEngine,
   createMemories,
   launchRunnerAgent,
-  sendRoomMessage,
   type EngineKind,
   type Memory,
   type Runner,
@@ -26,6 +26,7 @@ import {
 } from "@/lib/room-data";
 import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
+import { useClientSetting } from "@/lib/client-settings";
 import { Kbd, KbdChord } from "@/components/ui/kbd";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { IntentDialog } from "@/components/intent-dialog";
@@ -33,10 +34,26 @@ import { NewMemoryDialog } from "@/components/new-memory-dialog";
 import { AddMemberDialog, ENGINE_KINDS } from "@/components/add-member-dialog";
 import { expandPath, handleValid, normHandle, tildePath } from "@/components/launch-agent-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
+import {
+  INTERRUPT_MENTION_SIGIL,
+  MENTION_SIGIL,
+  NOT_INTERRUPTIBLE,
+  mentionMode,
+  parseMentions,
+  parseSilentMentions,
+} from "@/lib/mentions";
+import { RECENT_MENTIONS_CHANGED, readRecentMentions, recordMentions } from "@/lib/recent-mentions";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
-import { FileText, ListTodo, Plus, UserPlus, X } from "lucide-react";
+import { sendPending } from "@/lib/pending-messages";
+import { Clock, FileText, ListTodo, Paperclip, Plus, UserPlus, X } from "lucide-react";
+import { NewScheduleDialog } from "@/components/schedules/new-schedule-dialog";
+import type { View } from "@/lib/room-dock";
+import { PendingAttachments, usePendingUploads } from "@/components/uploads/composer-attachments";
+import { acceptAttribute } from "@/lib/uploads";
+import { MicToggle } from "@/components/voice/mic-toggle";
+import { useVoiceInput } from "@/components/voice/use-voice-input";
+import { appendHeard } from "@/lib/voice";
 import { parseCapture } from "@/lib/board/capture";
 import { fileCapture } from "@/lib/board/file-capture";
 import {
@@ -47,6 +64,9 @@ import {
   missingArg,
   parseCommand,
   parseSummon,
+  SCHEDULE_TIMINGS,
+  scheduleDraft,
+  type ScheduleDraft,
   type ParsedSummon,
   type Choice,
   type ChoiceSource,
@@ -58,16 +78,32 @@ import {
   hostOf,
   launchable,
   runnerName,
+  startHelp,
+  startReport,
+  startsInHerdr,
   useRunnerJob,
   useRunners,
 } from "@/lib/runners";
-import { STANDARD_FOLDERS, keyProblem } from "@/lib/memory-location";
+import { terminalLink, useIsDesktop } from "@/lib/desktop";
+import { STANDARD_FOLDERS, keyProblem, threadKey } from "@/lib/memory-location";
 import { agentLabel } from "@/lib/agent-label";
+import {
+  closedShortcode,
+  emojiNow,
+  loadEmoji,
+  readRecentEmoji,
+  recordEmoji,
+  searchEmoji,
+  shortcodeAt,
+  withEmoji,
+  type EmojiTable,
+} from "@/lib/emoji";
+import { COMPOSER_INSERT_EVENT, appendToDraft, type ComposerInsert } from "@/lib/message-actions";
 import { cn } from "@/lib/utils";
 
 interface Props {
   roomName: string;
-  /** Fired after a successful POST so the parent can refresh the event stream. */
+  /** Fired once the hub has a sent message, so the parent can re-read its conversation. */
   onSent?: () => void;
   className?: string;
   /**
@@ -80,34 +116,63 @@ interface Props {
   threadLabel?: string | null;
   /** Opens a memory by key, e.g. the one the + or `/memory` just wrote. */
   onOpenMemory?: (key: string) => void;
+  /** Opens one of the room's views, e.g. Schedules after `/schedule` saves one. */
+  onOpenView?: (view: View) => void;
+  /** Set inside a column of content (a task's Discussion) rather than at the
+   *  foot of a pane: no rule above it and no inset of its own, so its box lines
+   *  up with the text above it. */
+  inline?: boolean;
+  /** Takes what a channel message's Reply and Quote add (`lib/message-actions.ts`).
+   *  Only the channel's own composer does, so one click writes into one box. */
+  receivesInserts?: boolean;
 }
 
-/** What the composer's + adds to the room. */
+/** What the composer says once a schedule is saved; it links to the Schedules tab. */
+const SCHEDULED = "Scheduled.";
+
+/** The hint row under the composer: what each typed sigil does. The sigils
+ *  are drawn as keycaps, since they're what you type. */
+const COMPOSER_SIGILS = [
+  ["@", "mention"],
+  ["@~", "silent"],
+  ["@!", "interrupt"],
+  ["[[", "memory"],
+  ["/", "command"],
+  [":", "emoji"],
+] as const;
+
+/** What the composer's + adds. Files ride on the message, so they're offered
+ *  in a thread too; the rest add to the room, so only its own composer has them. */
 const ADD_ITEMS = [
+  { kind: "files", label: "Files…", about: "attach to this message", icon: Paperclip },
   { kind: "task", label: "Task or flow…", about: "work for someone to pick up", icon: ListTodo },
   { kind: "memory", label: "Memory…", about: "something the room should keep", icon: FileText },
+  { kind: "schedule", label: "Schedule…", about: "wake an agent on a timer", icon: Clock },
   { kind: "member", label: "Agent…", about: "bring an agent or a person in", icon: UserPlus },
 ] as const;
 
-// Three sigils, three vocabularies, one composer:
+// Four sigils, four vocabularies, one composer:
 //   @   → agents        → inserts `@handle`
 //   [[  → memories      → inserts `[[key]]` (resolves to myc://, clickable in chat)
 //   /   → skills        → inserts `/name`
+//   :   → emoji         → inserts the emoji itself (🎉 for `:tada`), per `lib/emoji.ts`
 // Each detects an in-flight token by the cursor's prefix, offers a candidate
 // popover, and inserts on select — the same machinery the `@` mention always had.
 // A command's argument with a known set of values (`arg`) completes the same way.
 // A conductor summon's flow name (`flow`) completes the same way again.
-type TriggerKind = "agent" | "memory" | "skill" | "arg" | "flow";
+type TriggerKind = "agent" | "memory" | "skill" | "emoji" | "arg" | "flow";
 
 interface Trigger {
   kind: TriggerKind;
-  /** Index where the sigil begins (`@`, `[[`, or `/`) — the start of the replaced span. */
+  /** Index where the sigil begins (`@`, `[[`, `/` or `:`) — the start of the replaced span. */
   start: number;
-  /** Cursor position (the end of the replaced span). */
+  /** The end of the replaced span: the cursor, or past it to the end of the
+   *  word the cursor is in (`wholeToken`). */
   end: number;
   query: string;
-  /** An `@~` trigger: the member is named silently (`lib/mentions.ts`). */
-  silent?: boolean;
+  /** The sigil an agent trigger was typed with: `@`, `@~` (named silently) or
+   *  `@!` (interrupts it), per `lib/mentions.ts`. The pick keeps it. */
+  sigil?: string;
 }
 
 
@@ -118,16 +183,19 @@ function detectTrigger(prefix: string, cursor: number): Trigger | null {
   if (mem) {
     return { kind: "memory", start: cursor - mem[1].length - 2, end: cursor, query: mem[1] };
   }
-  const agent = prefix.match(/(?:^|\s)(@~?)([a-z0-9._-]*)$/i);
+  const agent = prefix.match(/(?:^|\s)(@[~!]?)([a-z0-9._-]*)$/i);
   if (agent) {
     const [, sigil, query] = agent;
     const start = cursor - query.length - sigil.length;
-    return { kind: "agent", start, end: cursor, query: query.toLowerCase(), silent: sigil === SILENT_MENTION_SIGIL };
+    return { kind: "agent", start, end: cursor, query: query.toLowerCase(), sigil };
   }
   const skill = prefix.match(/(?:^|\s)\/([a-z0-9._-]*)$/i);
   if (skill) {
     return { kind: "skill", start: cursor - skill[1].length - 1, end: cursor, query: skill[1].toLowerCase() };
   }
+  // Last: a `:` only starts one after whitespace and outside code (`lib/emoji.ts`).
+  const emoji = shortcodeAt(prefix);
+  if (emoji) return { kind: "emoji", start: emoji.start, end: cursor, query: emoji.query };
   return null;
 }
 
@@ -157,7 +225,28 @@ function triggerAt(text: string, cursor: number, conductors: readonly string[]):
     // A new handle is a name being made up, not a member to mention.
     if (arg.names) return null;
   }
-  return detectTrigger(text.slice(0, cursor), cursor);
+  const found = detectTrigger(text.slice(0, cursor), cursor);
+  return found && wholeToken(found, text);
+}
+
+/** What still belongs to a trigger's word after the cursor, by kind. A handle
+ *  has the mention parser's characters (`lib/mentions.ts`). A skill name can
+ *  hold a dot but never ends on one, so a sentence's full stop stays put. */
+const TOKEN_TAIL: Partial<Record<TriggerKind, RegExp>> = {
+  agent: /^[\w-]+/,
+  skill: /^[a-z0-9._-]*[a-z0-9_-]/i,
+  memory: /^[^\]\n]*\]\]/,
+};
+
+/** Widen a trigger to the whole word the cursor is in. Going back into
+ *  `@mycelium-chat-buddy` to type `!` after the `@` puts the cursor before the
+ *  handle: the list filters by all of it and a pick replaces all of it, rather
+ *  than completing from the cursor and leaving the old handle behind it. */
+function wholeToken(trigger: Trigger, text: string): Trigger {
+  const tail = TOKEN_TAIL[trigger.kind]?.exec(text.slice(trigger.end))?.[0];
+  if (!tail) return trigger;
+  const rest = trigger.kind === "memory" ? tail.slice(0, -2) : tail.toLowerCase();
+  return { ...trigger, end: trigger.end + tail.length, query: trigger.query + rest };
 }
 
 /** Which row a new list opens on. An optional argument not yet started opens
@@ -188,6 +277,11 @@ interface Launch {
   runner: string;
   job: string;
   handle: string;
+  /** The machine's name and the agent CLI's, as a failure says them. */
+  machine: string;
+  cli: string;
+  /** Whether it starts in herdr, whose terminal the app can open. */
+  herdr: boolean;
 }
 
 export function RoomChatBox({
@@ -197,6 +291,9 @@ export function RoomChatBox({
   episode = null,
   threadLabel = null,
   onOpenMemory,
+  onOpenView,
+  inline = false,
+  receivesInserts = false,
 }: Props) {
   const [content, setContent] = useState("");
   // What's typed is kept per room (and per thread) until it's sent, so moving
@@ -217,12 +314,15 @@ export function RoomChatBox({
   // "who am I" (the account menu), not a per-composer handle. Anonymous falls
   // back to "user" so the room still has a sender to attribute the message to.
   const { principal } = useCurrentUser();
+  const [sendKey] = useClientSetting("general.send");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trigger, setTrigger] = useState<Trigger | null>(null);
   const [highlight, setHighlight] = useState(0);
   // The task a `/swarm` is being started on, while its dialog is open.
   const [swarmTask, setSwarmTask] = useState<string | null>(null);
+  // A schedule being made, as `/schedule` or the + filled it in, while its dialog is open.
+  const [scheduling, setScheduling] = useState<ScheduleDraft | null>(null);
   const [starting, setStarting] = useState(false);
   // What the + offers, and the title a `/memory` opened the memory dialog with.
   const [adding, setAdding] = useState(false);
@@ -234,6 +334,25 @@ export function RoomChatBox({
   // Where the cursor is, so a command being typed knows which argument it is on.
   const [cursor, setCursor] = useState(0);
   const parsed = useMemo(() => parseCommand(content, cursor), [content, cursor]);
+  // A message's Reply or Quote adds to the end of the draft, and the cursor
+  // goes to the end, after it, once the box has drawn it.
+  useEffect(() => {
+    if (!receivesInserts) return;
+    const onInsert = (e: Event) => {
+      const { room, text } = (e as CustomEvent<ComposerInsert>).detail;
+      if (room !== roomName) return;
+      setContent((draft) => appendToDraft(draft, text));
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+        setCursor(el.value.length);
+      });
+    };
+    window.addEventListener(COMPOSER_INSERT_EVENT, onInsert);
+    return () => window.removeEventListener(COMPOSER_INSERT_EVENT, onInsert);
+  }, [receivesInserts, roomName]);
   // What a command that ran says afterwards (an engine added), and an agent
   // being started on a machine, followed until it is in the room.
   const [notice, setNotice] = useState<string | null>(null);
@@ -241,6 +360,15 @@ export function RoomChatBox({
   const [noticeKey, setNoticeKey] = useState<string | null>(null);
   const [launch, setLaunch] = useState<Launch | null>(null);
   const dismissLaunch = useCallback(() => setLaunch(null), []);
+  // Files the next message carries: picked, dropped on the box or pasted.
+  const attachments = usePendingUploads(roomName, principal.trim() || "user");
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  // The mic: on until it's turned off, adding what's said to the draft.
+  const mic = useVoiceInput(
+    useCallback((text: string) => setContent((draft) => appendHeard(draft, text)), []),
+    setError,
+  );
   const revalidateRoom = useRoomRevalidate(roomName);
   // Your machines are read only while an `/agent` is being typed.
   const { connected: machines, loading: machinesLoading } = useRunners({
@@ -251,7 +379,7 @@ export function RoomChatBox({
   // renders; `[[` reads the room's memory keys and `/` its skills. All three
   // are shared reads — opening a room fetches each of them once, however many
   // panels are looking.
-  const { agents, people } = useRoomRoster(roomName);
+  const { agents, people, others } = useRoomRoster(roomName);
   const { memories } = useRoomMemories(roomName);
   const memoryKeys = useMemo(() => memories.map(memoryKey), [memories]);
   const { skills } = useRoomSkills(roomName);
@@ -276,10 +404,55 @@ export function RoomChatBox({
     requestAnimationFrame(() => inputRef.current?.focus());
   });
 
+  // Every message box on screen hears the mic's key, so only one acts: the box
+  // you're in, or the room's own box when you aren't in any.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useKeyAction(
+    "composer.mic",
+    () => {
+      const active = document.activeElement;
+      const inThisBox = Boolean(active && rootRef.current?.contains(active));
+      const inAnyBox = Boolean(active?.closest("[data-tour='composer']"));
+      if (inThisBox || (!inAnyBox && !episode)) void mic.toggle();
+    },
+    { enabled: mic.available },
+  );
+
+  // `:` names come from a list loaded the first time one is typed.
+  const [emojiTable, setEmojiTable] = useState<EmojiTable | null>(emojiNow);
+  const wantsEmoji = emojiTable === null && content.includes(":");
+  const emojiStart = trigger?.kind === "emoji" ? trigger.start : -1;
+  useEffect(() => {
+    // A failed load leaves `:` plain for now; the next shortcode started tries again.
+    if (wantsEmoji) loadEmoji().then(setEmojiTable, () => {});
+  }, [wantsEmoji, emojiStart]);
+  const [recentEmoji, setRecentEmoji] = useState<string[]>([]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser storage, read after mount
+    setRecentEmoji(readRecentEmoji());
+  }, []);
+  const usedEmoji = useCallback((emoji: string) => {
+    recordEmoji(emoji);
+    setRecentEmoji(readRecentEmoji());
+  }, []);
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const next = e.target.value;
+    let next = e.target.value;
+    let at = e.target.selectionStart ?? next.length;
+    // A space (or a new line) typed after a whole `:name:` turns it into its emoji.
+    const typed = next.length === content.length + 1 ? next[at - 1] : "";
+    const closed = emojiTable && /\s/.test(typed) ? closedShortcode(next.slice(0, at - 1), emojiTable) : null;
+    if (closed) {
+      const before = next.slice(0, closed.start) + closed.emoji;
+      next = before + next.slice(at - 1);
+      at = before.length + 1;
+      usedEmoji(closed.emoji);
+      requestAnimationFrame(() => {
+        const node = inputRef.current;
+        if (node && node.value === next) node.setSelectionRange(at, at);
+      });
+    }
     setContent(next);
-    const at = e.target.selectionStart ?? next.length;
     setCursor(at);
     const found = triggerAt(next, at, conductors);
     setTrigger(found);
@@ -320,14 +493,29 @@ export function RoomChatBox({
           const r = pickMachine(machines, argValue(p, "machine"), argValue(p, "harness"));
           return (r?.roots ?? []).map((root) => ({ value: tildePath(root), about: runnerName(r) }));
         }
+        case "agent":
+          // The agents a schedule can wake: the room's members, not its engines.
+          return agents
+            .filter((a) => a.adapter !== "engine")
+            .map((a) => ({ value: `@${a.handle}`, about: agentLabel(a) }));
+        case "timing":
+          return [...SCHEDULE_TIMINGS];
       }
     },
-    [machines, memoryKeys],
+    [agents, machines, memoryKeys],
   );
 
   // Agents first, then people — the roster's order, labeled for the popover.
   // A person who gave a name is found by it and shown by it.
   const names = useNames();
+  // Who you mentioned last, newest first among equally good matches.
+  const [recent, setRecent] = useState(() => readRecentMentions(roomName));
+  useEffect(() => {
+    const read = () => setRecent(readRecentMentions(roomName));
+    read();
+    window.addEventListener(RECENT_MENTIONS_CHANGED, read);
+    return () => window.removeEventListener(RECENT_MENTIONS_CHANGED, read);
+  }, [roomName]);
   const mentionRoster = useMemo(
     () => [
       ...agents.map((a) => ({
@@ -335,15 +523,26 @@ export function RoomChatBox({
         name: undefined as string | undefined,
         secondary: agentLabel(a),
         tertiary: a.description as string | undefined,
+        engine: a.adapter === "engine",
       })),
       ...people.map((p) => ({
         handle: p.handle,
         name: nameOf(names, p.handle),
         secondary: p.you ? "you" : p.presence?.kind === "slim" ? "person · here" : "person",
         tertiary: undefined as string | undefined,
+        engine: false,
+      })),
+      // Present or holding a task, but neither a person nor an agent here:
+      // still someone a message can reach.
+      ...others.map((o) => ({
+        handle: o.handle,
+        name: undefined as string | undefined,
+        secondary: o.present ? "here" : "holds a task",
+        tertiary: undefined as string | undefined,
+        engine: false,
       })),
     ],
-    [agents, people, names],
+    [agents, people, others, names],
   );
 
   const candidates = useMemo<Candidate[]>(() => {
@@ -383,19 +582,32 @@ export function RoomChatBox({
         }));
     }
     if (trigger.kind === "agent") {
-      // Best match first; the roster's own order breaks ties.
+      // Best match first; among equal matches whoever you mentioned last,
+      // then the roster's own order.
+      const last = (h: string) => recent[h.toLowerCase()] ?? 0;
       const pool = mentionRoster
         .map((r, i) => ({ r, i, rank: mentionRank(trigger.query, r.handle, r.name) }))
         .filter((x): x is typeof x & { rank: number } => x.rank !== null)
-        .sort((a, b) => a.rank - b.rank || a.i - b.i)
+        .sort((a, b) => a.rank - b.rank || last(b.r.handle) - last(a.r.handle) || a.i - b.i)
         .map((x) => x.r);
       return pool.slice(0, 8).map((r) => ({
         id: r.handle,
-        insert: `${trigger.silent ? SILENT_MENTION_SIGIL : MENTION_SIGIL}${r.handle}`,
+        insert: `${trigger.sigil ?? MENTION_SIGIL}${r.handle}`,
         primary: r.name ?? `@${r.handle}`,
         named: Boolean(r.name),
         secondary: r.name ? `@${r.handle} · ${r.secondary}` : r.secondary,
-        tertiary: r.tertiary,
+        // An engine works only when mentioned, so there's nothing to stop.
+        tertiary: trigger.sigil === INTERRUPT_MENTION_SIGIL && r.engine ? NOT_INTERRUPTIBLE : r.tertiary,
+      }));
+    }
+    if (trigger.kind === "emoji") {
+      if (!emojiTable) return [];
+      return searchEmoji(emojiTable, trigger.query, recentEmoji).map((m) => ({
+        id: `emoji:${m.name}`,
+        insert: m.emoji,
+        primary: `${m.emoji}  :${m.name}:`,
+        secondary: "emoji",
+        tertiary: m.description,
       }));
     }
     if (trigger.kind === "memory") {
@@ -432,16 +644,21 @@ export function RoomChatBox({
         tertiary: s.description || undefined,
       })),
     ];
-  }, [choicesFor, mentionRoster, memories, parsed, protocols, skills, summon, trigger]);
+  }, [choicesFor, emojiTable, mentionRoster, memories, parsed, protocols, recent, recentEmoji, skills, summon, trigger]);
 
   const accept = useCallback(
     (candidate: Candidate) => {
       if (trigger === null) return;
+      if (trigger.kind === "emoji") usedEmoji(candidate.insert);
       const before = content.slice(0, trigger.start);
       const after = content.slice(trigger.end);
-      const insertion = candidate.open ? candidate.insert : `${candidate.insert} `;
+      // A word picked in the middle of the text keeps the space already after
+      // it, and adds none before punctuation that ends it.
+      const spaced = !candidate.open && /^\s/.test(after);
+      const punctuated = /^[.,;:!?)\]]/.test(after);
+      const insertion = candidate.open || spaced || punctuated ? candidate.insert : `${candidate.insert} `;
       const next = `${before}${insertion}${after}`;
-      const pos = before.length + insertion.length;
+      const pos = before.length + insertion.length + (spaced ? 1 : 0);
       setContent(next);
       setCursor(pos);
       // A command's next argument offers its values straight away.
@@ -457,7 +674,7 @@ export function RoomChatBox({
         node.setSelectionRange(pos, pos);
       });
     },
-    [conductors, content, trigger],
+    [conductors, content, trigger, usedEmoji],
   );
 
   // `/agent <handle> <harness> [folder] [machine]`: the same launch the Add
@@ -500,7 +717,7 @@ export function RoomChatBox({
       const cwd = folder ? expandPath(folder, runner.roots) : undefined;
       const signature = await signFor(runner, {
         kind: "launch",
-        job: { room: roomName, handle, framework: framework.id, cwd: cwd ?? null },
+        job: { room: roomName, handle, framework: framework.id, cwd: cwd ?? null, worktree: false },
       });
       const job = await launchRunnerAgent(runner.id, {
         room: roomName,
@@ -510,16 +727,25 @@ export function RoomChatBox({
         created_by: me,
         ...(signature ? { signature } : {}),
       });
-      return { runner: runner.id, job: job.id, handle };
+      return {
+        runner: runner.id,
+        job: job.id,
+        handle,
+        machine: runnerName(runner),
+        cli: framework.name,
+        herdr: startsInHerdr(runner),
+      };
     },
     [machines, machinesLoading, roomName],
   );
 
   const submit = useCallback(async () => {
     const body = content.trim();
-    if (!body || sending) return;
+    const files = attachments.links;
+    // A message waits for its files, so it never links one still on its way.
+    if ((!body && !files.length) || sending || attachments.busy) return;
     const handle = principal.trim() || "user";
-    const command = parseCommand(body);
+    const command = body ? parseCommand(body) : null;
     const cleared = () => {
       setContent("");
       setCursor(0);
@@ -553,6 +779,34 @@ export function RoomChatBox({
       // A swarm spends model turns, so it asks first: the dialog takes it from here.
       setSwarmTask(argValue(command, "what"));
       cleared();
+      return;
+    }
+    if (command?.command.name === "schedule") {
+      // A schedule spends model turns again and again, so `/schedule` only
+      // fills in the form: it's saved from there, once the person has looked.
+      setScheduling(scheduleDraft(command));
+      cleared();
+      return;
+    }
+    if (!command) {
+      // A message keeps the emoji, never the `:name:` typed for it, so whoever
+      // reads it (an agent through the CLI too) sees 🎉 with nothing to render.
+      const text = await withEmoji(body, emojiTable);
+      // A message is drawn in its conversation straight away and the box is
+      // free again; sending, and saying when it couldn't, is the pending row's.
+      setError(null);
+      setNotice(null);
+      cleared();
+      attachments.clear();
+      // Whoever this names goes to the top of the next `@` list.
+      recordMentions(roomName, [...parseMentions(body), ...parseSilentMentions(body)]);
+      void sendPending(roomName, {
+        sender: handle,
+        content: [text, files.join(" ")].filter(Boolean).join("\n\n"),
+        episode,
+      }).then((sent) => {
+        if (sent) onSent?.();
+      });
       return;
     }
     setSending(true);
@@ -607,8 +861,37 @@ export function RoomChatBox({
           setNoticeKey(null);
           break;
         }
-        default:
-          await sendRoomMessage(roomName, { sender_handle: handle, content: body, episode });
+        case "thread": {
+          // A conversation of its own: a context/ page, which carries a thread
+          // from the moment it exists like every memory, opened on its
+          // discussion. One that already has that name is opened, not replaced.
+          const title = argValue(command, "title").trim();
+          const key = threadKey(title);
+          if (!key) {
+            setError("Say what it's about in words, so it has a name.");
+            return;
+          }
+          // Create only: `base_version: 0` makes the hub refuse (409) a key that
+          // already exists, so a page this browser hasn't heard of yet, or one
+          // made a moment ago elsewhere, is opened rather than overwritten. The
+          // cached list only saves the round trip when it already knows.
+          if (!memories.some((m) => m.key === key)) {
+            try {
+              await createMemories(roomName, [
+                { key, value: `# ${title}`, content_text: `# ${title}`, created_by: handle, base_version: 0 },
+              ]);
+            } catch (err) {
+              if (!(err instanceof ApiError && err.status === 409)) throw err;
+            }
+            revalidateRoom();
+          }
+          if (onOpenMemory) onOpenMemory(key);
+          else {
+            setNotice(`Started ${key}.`);
+            setNoticeKey(key);
+          }
+          break;
+        }
       }
       cleared();
       onSent?.();
@@ -620,7 +903,12 @@ export function RoomChatBox({
       // render, so refocus after that commit lands to keep the user typing.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [content, episode, onSent, roomName, principal, sending, startAgent, revalidateRoom, memories]);
+  }, [content, emojiTable, episode, onSent, onOpenMemory, roomName, principal, sending, startAgent, revalidateRoom, memories, attachments]);
+
+  const attachFrom = (list: FileList | null | undefined) => {
+    if (list?.length) attachments.add(Array.from(list));
+  };
+  const carriesFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
   // Where this lands is the one thing the composer must never be coy about: the
   // same box writes to the room and into a thread, and the difference is whether
@@ -632,7 +920,7 @@ export function RoomChatBox({
 
   // The button renders without chrome at rest; it colors up and grows a
   // hover surface once there is something to send.
-  const armed = content.trim().length > 0 && !sending;
+  const armed = (content.trim().length > 0 || attachments.links.length > 0) && !sending && !attachments.busy;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (trigger !== null && candidates.length > 0) {
@@ -659,13 +947,17 @@ export function RoomChatBox({
         return;
       }
     }
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Which key sends is the person's setting; the other makes a new line.
+    const command = e.metaKey || e.ctrlKey;
+    if (e.key === "Enter" && !e.shiftKey && (sendKey === "mod-enter" ? command : !command)) {
       e.preventDefault();
       submit();
     }
   };
 
   const showCandidates = trigger !== null && candidates.length > 0;
+  // `@!` and `@~` say what they'll do, over the list and to a screen reader.
+  const mode = trigger?.kind === "agent" ? mentionMode(trigger.sigil) : null;
   const status = error ? (
     <StatusLine tone="error" onDismiss={() => setError(null)}>
       {error}
@@ -675,6 +967,22 @@ export function RoomChatBox({
   ) : notice ? (
     <StatusLine onDismiss={() => setNotice(null)}>
       {notice}
+      {notice === SCHEDULED && onOpenView && (
+        <>
+          {" "}
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onOpenView("schedules");
+              setNotice(null);
+            }}
+            className="text-accent hover:underline"
+          >
+            See it in Schedules
+          </button>
+        </>
+      )}
       {noticeKey && onOpenMemory && (
         <>
           {" "}
@@ -694,16 +1002,34 @@ export function RoomChatBox({
     </StatusLine>
   ) : null;
 
+  // The strip paints no background of its own: it sits on the channel, a
+  // thread's pane or a task's page, and should match each.
   return (
-    <div data-tour="composer" className={`@container border-t border-border bg-bg px-4 py-3 flex-shrink-0${className ? ` ${className}` : ""}`}>
+    <div
+      ref={rootRef}
+      data-tour="composer"
+      className={cn("@container flex-shrink-0", inline ? "pt-2" : "border-t border-border px-4 py-3", className)}
+    >
       <div className="relative">
+        {/* Always here, so a screen reader announces the mention mode the
+            moment `@!` or `@~` turns it on. */}
+        <span aria-live="polite" data-testid="mention-mode-announce" className="sr-only">
+          {mode ? `${mode.label} mention: ${mode.about}` : ""}
+        </span>
         {/* Over the box, nearest it last: what the word being typed can be,
             the command's signature with that argument lit, then what the
             last command said. None of it moves the box. */}
         {(showCandidates || parsed || summon || status) && (
         <div className="absolute bottom-full left-0 z-20 mb-2 flex w-full max-w-md flex-col gap-1.5">
         {showCandidates && (
-          <CandidateList candidates={candidates} highlight={highlight} onPick={accept} onHover={setHighlight} />
+          <CandidateList
+            candidates={candidates}
+            highlight={highlight}
+            onPick={accept}
+            onHover={setHighlight}
+            dense={trigger?.kind === "emoji"}
+            mode={mode}
+          />
         )}
         {parsed && <CommandSignature parsed={parsed} completes={showCandidates} />}
         {summon && <SummonSignature summon={summon} completes={showCandidates} inTask={Boolean(episode)} />}
@@ -715,18 +1041,53 @@ export function RoomChatBox({
             quiet row underneath, as a chat composer draws it rather than a
             form field: nothing beside the text, so a wrapped line starts
             where the first one did. */}
-        <div className="group/composer rounded-xl border border-border bg-surface transition-colors focus-within:border-border2 focus-within:bg-bg">
+        <div
+          className={cn(
+            "group/composer relative rounded-xl border border-border bg-surface transition-colors focus-within:border-border2 focus-within:bg-bg",
+            dragging && "border-accent bg-accent-soft/30",
+          )}
+          onDragEnter={(e) => {
+            if (carriesFiles(e)) setDragging(true);
+          }}
+          onDragOver={(e) => {
+            if (!carriesFiles(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+          }}
+          onDrop={(e) => {
+            if (!carriesFiles(e)) return;
+            e.preventDefault();
+            setDragging(false);
+            attachFrom(e.dataTransfer.files);
+          }}
+        >
+          {dragging && (
+            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl text-label font-medium text-accent">
+              Drop to attach
+            </div>
+          )}
+          <PendingAttachments items={attachments.items} onRemove={attachments.remove} />
           <TextareaAutosize
             ref={inputRef}
             value={content}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onPaste={(e) => {
+              // A pasted screenshot or copied file attaches; pasted text stays text.
+              if (e.clipboardData.files.length) {
+                e.preventDefault();
+                attachFrom(e.clipboardData.files);
+              }
+            }}
             onSelect={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
             placeholder={placeholder}
             minRows={1}
             maxRows={10}
             // Scrolls only once it's grown to its cap. Below that, WebKit (the
-            // Mac app) can measure the box a fraction short of its text and
+            // desktop app on a Mac) can measure the box a fraction short of its text and
             // draws a scrollbar for nothing.
             onHeightChange={() => {
               const el = inputRef.current;
@@ -737,56 +1098,98 @@ export function RoomChatBox({
             disabled={sending}
           />
           <div className="flex items-center gap-2 px-1.5 pb-1.5">
-            {/* In the room's own composer: add what a room holds, a task or
-                flow, a memory or a member, without knowing which verb does it. */}
-            {!episode && (
-              <Popover open={adding} onOpenChange={setAdding}>
-                <PopoverTrigger
-                  aria-label="Add to the room"
-                  title="Add to the room"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent-soft hover:text-accent data-[popup-open]:bg-accent-soft data-[popup-open]:text-accent"
-                >
-                  <Plus className="size-4" />
-                </PopoverTrigger>
-                <PopoverContent side="top" align="start" className="w-64 p-1">
-                  {ADD_ITEMS.map((item) => (
-                    <button
-                      key={item.label}
-                      type="button"
-                      onClick={() => {
-                        setAdding(false);
-                        if (item.kind === "task") setStarting(true);
-                        else if (item.kind === "memory") {
-                          setMemoryFolder("context");
-                          setMemoryTitle("");
-                        }
-                        else setAddingMember(true);
-                      }}
-                      className="flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-hairline"
-                    >
-                      <item.icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0">
-                        <span className="block text-label text-text">{item.label}</span>
-                        <span className="block text-micro text-faint">{item.about}</span>
-                      </span>
-                    </button>
-                  ))}
-                </PopoverContent>
-              </Popover>
-            )}
+            {/* Add what a message or a room holds, without knowing which verb
+                does it: files to the message, and in the room's own composer a
+                task or flow, a memory or a member. */}
+            <Popover open={adding} onOpenChange={setAdding}>
+              <PopoverTrigger
+                aria-label={episode ? "Add to this thread" : "Add to the room"}
+                title={episode ? "Add to this thread" : "Add to the room"}
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent-soft hover:text-accent data-[popup-open]:bg-accent-soft data-[popup-open]:text-accent"
+              >
+                <Plus className="size-4" />
+              </PopoverTrigger>
+              <PopoverContent side="top" align="start" className="w-64 p-1">
+                {ADD_ITEMS.filter((item) => !episode || item.kind === "files").map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => {
+                      setAdding(false);
+                      if (item.kind === "files") fileInput.current?.click();
+                      else if (item.kind === "task") setStarting(true);
+                      else if (item.kind === "memory") {
+                        setMemoryFolder("context");
+                        setMemoryTitle("");
+                      }
+                      else if (item.kind === "schedule") setScheduling({});
+                      else setAddingMember(true);
+                    }}
+                    className="flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-hairline"
+                  >
+                    <item.icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0">
+                      <span className="block text-label text-text">{item.label}</span>
+                      <span className="block text-micro text-faint">{item.about}</span>
+                    </span>
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+            <input
+              ref={fileInput}
+              type="file"
+              multiple
+              accept={acceptAttribute(attachments.accepted)}
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden
+              onChange={(e) => {
+                attachFrom(e.currentTarget.files);
+                e.currentTarget.value = "";
+              }}
+            />
             {/* What the composer answers to, said only while you're in it. The
                 sigils are typed, so they hold at every width; the keycaps name
                 keys a phone does not have, so they appear only when the box
                 is wide enough (measured against the composer, not the window:
                 it is this narrow on a phone and in a room with both rails open). */}
-            <span className="min-w-0 truncate text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100">
-              @ mention · @~ silent · [[ memory · / command
-            </span>
+            {mic.state === "off" ? (
+              <span className="min-w-0 truncate text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100">
+                {COMPOSER_SIGILS.map(([sigil, label], i) => (
+                  <span key={sigil}>
+                    {i > 0 && " · "}
+                    <Kbd size="xs" tone="muted">
+                      {sigil}
+                    </Kbd>{" "}
+                    {label}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              // While the mic is on, the row says so, whether or not the box has focus.
+              <span role="status" className="min-w-0 truncate text-micro text-accent">
+                {mic.state === "starting"
+                  ? "Starting the mic…"
+                  : mic.warming
+                    ? "Listening. The hub is getting its speech model ready, so the first words take a moment."
+                    : "Listening. What you say is added here; turn the mic off when you're done."}
+              </span>
+            )}
             <div className="ml-auto flex shrink-0 items-center gap-2">
             <span className="hidden items-center gap-1.5 text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100 @[34rem]:flex">
-              <Kbd size="xs" tone="muted">⇧↵</Kbd> newline
+              {sendKey === "mod-enter" ? (
+                <>
+                  <KbdChord size="xs" tone="muted" chord="mod+Enter" /> send
+                </>
+              ) : (
+                <>
+                  <Kbd size="xs" tone="muted">⇧↵</Kbd> newline
+                </>
+              )}
               <KbdChord size="xs" tone="muted" action="palette.open" /> commands
             </span>
+            {mic.available && <MicToggle state={mic.state} speaking={mic.speaking} onToggle={mic.toggle} />}
             <button
               type="button"
               onClick={submit}
@@ -816,6 +1219,19 @@ export function RoomChatBox({
         onCreated={onOpenMemory}
       />
       {addingMember && <AddMemberDialog open onOpenChange={setAddingMember} roomName={roomName} />}
+
+      {scheduling !== null && (
+        <NewScheduleDialog
+          roomName={roomName}
+          draft={scheduling}
+          onClose={() => setScheduling(null)}
+          onSaved={() => {
+            setScheduling(null);
+            setNoticeKey(null);
+            setNotice(SCHEDULED);
+          }}
+        />
+      )}
 
       {swarmTask !== null && (
         <StartSwarmDialog
@@ -867,8 +1283,8 @@ function SummonSignature({
   const { protocol, members, active, slot } = summon;
   const roles = protocol?.roles ?? [];
   const memberSlots: Slot[] = roles.length
-    ? roles.map((r, i) => ({ label: `@${r}`, filled: i < members.length }))
-    : [{ label: protocol ? "[@member…]" : "@member…", filled: members.length > 0 }];
+    ? roles.map((r, i) => ({ label: `@~${r}`, filled: i < members.length }))
+    : [{ label: protocol ? "[@~member…]" : "@~member…", filled: members.length > 0 }];
   const slots: Slot[] = [
     { label: summon.flow?.value.replace(/[:,;]+$/, "") || "<flow>", filled: Boolean(protocol) },
     ...memberSlots,
@@ -883,7 +1299,7 @@ function SummonSignature({
   } else if (active === "member") {
     const role = roles[slot];
     about = role
-      ? `Who plays ${role}. Type @ to pick them${roles.length > 1 ? `; members take the roles in order` : ""}.`
+      ? `Who plays ${role}. Type @~ to pick them, so they're asked in their turn rather than woken now${roles.length > 1 ? `; members take the roles in order` : ""}.`
       : roles.length
         ? "Every role has someone. Say what it's about next."
         : "Who takes part. Name nobody and everyone in the room does.";
@@ -943,6 +1359,7 @@ function StatusLine({
 function LaunchStatus({ launch, roomName, onDismiss }: { launch: Launch; roomName: string; onDismiss: () => void }) {
   const { job } = useRunnerJob(launch.runner, launch.job);
   const revalidate = useRoomRevalidate(roomName);
+  const desktop = useIsDesktop();
   const status = job?.status ?? "queued";
   useEffect(() => {
     if (status !== "done") return;
@@ -951,9 +1368,24 @@ function LaunchStatus({ launch, roomName, onDismiss }: { launch: Launch; roomNam
     return () => clearTimeout(t);
   }, [status, revalidate, onDismiss]);
   if (status === "failed") {
+    const report = startReport(job);
+    // The whole account (what happened, what to do, what the terminal shows)
+    // is the Add member dialog's; the line names the cause and the way to it.
+    const short = report.why ? startHelp(report.why, launch).short : null;
     return (
       <StatusLine tone="error" onDismiss={onDismiss}>
-        @{launch.handle} didn&apos;t start: {job?.error ?? "the machine said no more"}
+        @{launch.handle} didn&apos;t start:{" "}
+        {short
+          ? `${short}. It's still in the room, so you can try again from Add member.`
+          : (job?.error ?? "the machine said no more")}
+        {short && desktop && launch.herdr && report.pane && (
+          <>
+            {" "}
+            <a href={terminalLink(report.pane)} className="underline underline-offset-2 hover:text-text">
+              Open its terminal
+            </a>
+          </>
+        )}
       </StatusLine>
     );
   }

@@ -93,7 +93,7 @@ mycelium = [
     "data/*.json",
     "docs/**/*.md",
     "skills/**/*",
-    "integrations/cursor/assets/**/*",
+    "integrations/agents/cursor/assets/**/*",
     "daemon/service/*",
     "docker/*",
     "docker/env.defaults",
@@ -146,7 +146,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 # Integration contract methods: base/no-op implementations legitimately don't
-# use every parameter the contract defines (e.g. ClaudeCodeIntegration.register
+# use every parameter the contract defines (e.g. ResidentIntegration.register
 # ignores opts because the manifest IS the registration).
 "src/mycelium/integrations/**/*.py" = ["ARG002"]
 "tests/**/*.py" = ["ARG001", "ARG002", "ARG005"]

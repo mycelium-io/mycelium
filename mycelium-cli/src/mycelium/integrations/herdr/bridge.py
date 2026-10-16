@@ -104,6 +104,26 @@ class HerdrUnavailableError(HerdrError):
     """
 
 
+class ShellNotReadyError(HerdrError):
+    """A new pane's shell never reached its prompt, so nothing could start in it.
+
+    herdr starts an agent only in a pane sitting at a shell prompt, and a login
+    shell with a heavy profile can take a while to get there.
+    """
+
+
+class AgentNotReadyError(HerdrError):
+    """herdr started the agent CLI in its pane, but it never came up as an agent.
+
+    Most often the CLI is showing something of its own first: an update, a
+    sign-in or a first-run question, which the person at the machine answers.
+    """
+
+
+#: herdr's word for a pane with no shell prompt to start an agent at.
+NOT_A_SHELL = "not an available shell"
+
+
 @dataclass(frozen=True)
 class HerdrPaneMapping:
     """A durable binding of a mycelium ``handle`` (in a ``room``) to a herdr pane.
@@ -186,8 +206,8 @@ def build_mention_prompt(room: str, handle: str) -> str:
         f"Run `mycelium await --room {room} --handle {h} --json --timeout 5` to read it "
         f"with everything said since your last turn, then reply with "
         f'`mycelium respond --room {room} --handle {h} --body "..."`. '
-        f"That lands in the room; if the turn names a task, add `--task <task>` "
-        f"to answer in its thread."
+        f"Reply where you were asked: if the turn names a task, add `--task <task>` "
+        f"so it lands in that task's thread; without it, it lands in the room."
     )
 
 
@@ -453,6 +473,37 @@ class HerdrBridge:
         agent = result.get("agent", result)
         return agent if isinstance(agent, dict) and agent.get("pane_id") else None
 
+    def read_pane(self, pane: str, *, lines: int = 6) -> str | None:
+        """The last non-blank lines on ``pane``'s screen, to show a person; ``None`` if unread.
+
+        Never parsed for meaning: what an agent's prompt says is the agent's own
+        and changes with its version.
+        """
+        if not self.binary_present():
+            return None
+        args = ["pane", "read", pane, "--source", "visible", "--lines", str(lines)]
+        try:
+            proc = self._invoke(args)
+        except OSError:
+            return None
+        if proc.returncode != 0:
+            return None
+        text = proc.stdout or ""
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            pass
+        else:
+            result = parsed.get("result", parsed) if isinstance(parsed, dict) else None
+            found = (
+                next((result[k] for k in ("text", "content", "lines") if k in result), None)
+                if isinstance(result, dict)
+                else None
+            )
+            text = "\n".join(map(str, found)) if isinstance(found, list) else str(found or "")
+        kept = [line.rstrip() for line in text.splitlines() if line.strip()]
+        return "\n".join(kept[-lines:]) or None
+
     def prompt(
         self,
         target: str,
@@ -643,6 +694,10 @@ class HerdrBridge:
     def close_pane(self, pane: str) -> None:
         """Close ``pane``, ending whatever runs in it."""
         self._run_json(["pane", "close", pane])
+
+    def send_keys(self, pane: str, *keys: str) -> None:
+        """Press ``keys`` in ``pane`` (herdr's names: ``esc``, ``enter``...)."""
+        self._run_quiet(["pane", "send-keys", pane, *keys])
 
     def _run_quiet(self, args: list[str]) -> None:
         """Run a herdr command that prints nothing when it works."""

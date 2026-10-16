@@ -21,13 +21,17 @@ would.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import re
 import time
+from collections.abc import Callable
+from typing import NamedTuple
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from mycelium.cli_options import emits_json, in_room
@@ -143,6 +147,177 @@ def herdr_unmap(
     except Exception as e:
         print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
         raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage=(
+        "mycelium herdr enroll [handle] [--room <room>] [--pane <id>] "
+        "[--description <text>] [--owner <handle>]"
+    ),
+    desc="Join a room as the herdr agent in this pane, so mentions of it wake it.",
+    group="agent",
+)
+@app.command("enroll")
+@in_room("room")
+def herdr_enroll(
+    ctx: typer.Context,
+    handle: str | None = typer.Argument(
+        None, help="The handle to join as (default: from the pane's tab name)."
+    ),
+    room: str | None = None,
+    pane: str | None = typer.Option(
+        None, "--pane", help="herdr pane id (default: this pane, $HERDR_PANE_ID)."
+    ),
+    description: str | None = typer.Option(
+        None, "--description", help="What this agent does, shown in the room's member list."
+    ),
+    owner: str | None = typer.Option(
+        None, "--owner", help="Who it belongs to (default: this machine's person)."
+    ),
+) -> None:
+    """Make the agent in this herdr pane a member of a room.
+
+    For an agent running in a herdr pane that no workspace binding or runner
+    enrolled: it registers the agent in the room and maps the pane, so a mention
+    of it rings this pane. The mapping is a plain one, so no sync pass retires
+    it. Its owner is this machine's person (`mycelium iam`), not the agent.
+    Running it again in a pane that's already a member says so and changes
+    nothing, unless --description or --owner is given, which updates just those.
+    """
+    import os
+
+    from mycelium.client import typed_client
+    from mycelium.commands.agent import (
+        _load_manifest_remote,
+        _remote_memory_text,
+        _write_manifest,
+    )
+
+    def member(name: str) -> bool:
+        """Whether the hub has anything at ``agents/<name>``, readable or not.
+
+        A hub that can't be asked raises, so enroll says so rather than taking
+        the handle as free or as taken.
+        """
+        with typed_client(config, timeout=HUB_TIMEOUT_S) as client:
+            return _remote_memory_text(client, room_name, f"agents/{name}") is not None
+
+    try:
+        room_name = str(room)
+        pane_id = pane or os.environ.get("HERDR_PANE_ID", "").strip()
+        if not pane_id:
+            console.print(
+                "[red]Not in a herdr pane[/red] ($HERDR_PANE_ID isn't set). "
+                "Run this inside the pane, or name it with --pane."
+            )
+            raise typer.Exit(1)
+        bridge = _bridge()
+        if not bridge.available():
+            console.print("[red]herdr isn't reachable[/red], so the pane can't be checked.")
+            raise typer.Exit(1)
+        agent = bridge.get_agent(pane_id)
+        if agent is None:
+            console.print(f"[red]No agent is running in pane {escape(pane_id)}.[/red]")
+            raise typer.Exit(1)
+
+        config = MyceliumConfig.load()
+        # The person whose machine this is owns the agent and is the one
+        # registering it, whichever agent typed the command.
+        whose = owner.lstrip("@") if owner else _owner(config)
+        mappings = [m for m in bridge.registry.all() if m.room == room_name]
+        here = next((m for m in mappings if m.pane == pane_id), None)
+        if here is not None:
+            if not member(here.handle):
+                manifest = _member_manifest(here.handle, room_name, agent, whose, description)
+                _write_manifest(config, room_name, manifest, created_by=whose)
+            elif description or owner:
+                with typed_client(config, timeout=HUB_TIMEOUT_S) as client:
+                    current = _load_manifest_remote(client, room_name, here.handle)
+                if current is None:
+                    console.print(
+                        f"[red]agents/{escape(here.handle)} in {escape(room_name)} isn't a "
+                        "manifest enroll can read[/red] (see `mycelium memory get "
+                        f"agents/{escape(here.handle)} --room {escape(room_name)}`), so it's "
+                        "left as it is."
+                    )
+                    raise typer.Exit(1)
+                changes: dict[str, str] = {}
+                if description:
+                    changes["description"] = description
+                if owner:
+                    changes["owner"] = whose
+                _write_manifest(
+                    config, room_name, current.model_copy(update=changes), created_by=whose
+                )
+                console.print(
+                    f"Updated @{escape(here.handle)}'s {' and '.join(changes)} in "
+                    f"{escape(room_name)}."
+                )
+                return
+            console.print(
+                f"Already a member: [cyan]@{escape(here.handle)}[/cyan] in "
+                f"{escape(room_name)}, pane {escape(pane_id)}."
+            )
+            console.print(_next_step(room_name))
+            return
+
+        taken = {m.handle for m in mappings}
+        if handle:
+            wanted = _sanitize_handle(handle.lstrip("@"), "")
+            if not wanted:
+                console.print(
+                    f"[red]@{escape(handle)} can't be a handle:[/red] use lowercase "
+                    "letters, digits, '.', '-' and '_'."
+                )
+                raise typer.Exit(1)
+            if wanted in taken or member(wanted):
+                console.print(
+                    f"[red]@{wanted} is already a member of {escape(room_name)}.[/red] "
+                    "Pick another handle."
+                )
+                raise typer.Exit(1)
+        else:
+            workspace = str(agent.get("workspace_id") or "")
+            labels = bridge.tab_labels(workspace or None)
+            wanted = _derive_handle(
+                tab_label=labels.get(str(agent.get("tab_id") or ""), ""),
+                pane_id=pane_id,
+                prefix="",
+                name_from="tab",
+                taken=taken,
+            )
+            while member(wanted):
+                wanted = _sanitize_handle(f"{wanted}-{_pane_suffix(pane_id)}", "") or (
+                    f"agent-{_pane_suffix(pane_id)}"
+                )
+
+        manifest = _member_manifest(wanted, room_name, agent, whose, description)
+        _write_manifest(config, room_name, manifest, created_by=whose)
+        bridge.registry.set(
+            HerdrPaneMapping(
+                room=room_name,
+                handle=wanted,
+                pane=pane_id,
+                kind=agent.get("agent"),
+                cwd=agent.get("foreground_cwd") or agent.get("cwd"),
+            )
+        )
+        console.print(
+            f"[green]Joined[/green] {escape(room_name)} as [cyan]@{wanted}[/cyan]. "
+            f"Mentions of @{wanted} now wake pane {escape(pane_id)}."
+        )
+        console.print(_next_step(room_name))
+    except typer.Exit:
+        raise
+    except Exception as e:
+        print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
+        raise typer.Exit(1) from None
+
+
+def _next_step(room: str) -> str:
+    """What an agent that just joined does next. The app's introduction to an
+    adopted agent names the same two commands, so both ways in say one thing."""
+    return f"Next: run `mycelium skill print`, then `mycelium board --room {escape(room)}`."
 
 
 def _room_members(config: MyceliumConfig, room_name: str) -> dict[str, str] | None:
@@ -349,27 +524,33 @@ def _enroll_one(
     name_from: str,
     prefix: str,
     tab_labels: dict[str, str],
-    sender: str,
+    owner: Callable[[], str],
 ) -> str | None:
     """Ensure one live herdr agent is a member of ``room``; return its handle if
-    this call newly enrolled it (``None`` if it was already bound).
+    this call newly enrolled it (``None`` if it was already bound). ``owner`` is
+    asked only when a manifest is written, so a quiet pass costs no lookup.
 
     Idempotency is keyed on the **pane**, not the derived handle: if any mapping
     in the room already points at this pane, the agent is already a member (we
     just re-materialize its manifest if it went missing). Only a genuinely new
     pane derives a fresh handle — collision-checked against the room's existing
     handles — and gets a manifest + a ``managed`` mapping.
+
+    A member's manifest is the person's and the agent's to edit (its
+    description, its owner), so a pass writes one only when the hub has none at
+    all. One the hub has but can't parse is still theirs: rewriting it would
+    throw away what they wrote.
     """
-    from mycelium.commands.agent import _load_manifest, _write_manifest
+    from mycelium.commands.agent import _write_manifest
 
     pane = str(agent["pane_id"])
     existing = next((m for m in bridge.registry.all() if m.room == room and m.pane == pane), None)
     if existing is not None:
         # Already bound to this pane — heal a manifest that was deleted out from
         # under us so the member doesn't silently drop off the roster.
-        if _load_manifest(room, existing.handle) is None:
-            manifest = _member_manifest(existing.handle, room, agent, sender)
-            _write_manifest(config, room, manifest, created_by=sender, timeout=HUB_TIMEOUT_S)
+        if _manifest_on_hub(config, room, existing.handle) is False:
+            manifest = _member_manifest(existing.handle, room, agent, owner())
+            _write_manifest(config, room, manifest, created_by=owner(), timeout=HUB_TIMEOUT_S)
         return None
 
     handle = _derive_handle(
@@ -380,8 +561,8 @@ def _enroll_one(
         taken=taken,
     )
     taken.add(handle)
-    manifest = _member_manifest(handle, room, agent, sender)
-    _write_manifest(config, room, manifest, created_by=sender, timeout=HUB_TIMEOUT_S)
+    manifest = _member_manifest(handle, room, agent, owner())
+    _write_manifest(config, room, manifest, created_by=owner(), timeout=HUB_TIMEOUT_S)
     bridge.registry.set(
         HerdrPaneMapping(
             room=room,
@@ -395,7 +576,28 @@ def _enroll_one(
     return handle
 
 
-def _member_manifest(handle: str, room: str, agent: dict, sender: str) -> AgentManifest:
+def _manifest_on_hub(config: MyceliumConfig, room: str, handle: str) -> bool | None:
+    """Whether the hub holds anything at ``agents/<handle>``, readable or not.
+
+    ``None`` when the hub couldn't be asked, which a caller must not read as
+    "missing".
+    """
+    import httpx
+
+    from mycelium.client import typed_client
+    from mycelium.commands.agent import _remote_memory_text
+    from mycelium_backend_client.errors import UnexpectedStatus
+
+    try:
+        with typed_client(config, timeout=HUB_TIMEOUT_S) as client:
+            return _remote_memory_text(client, room, f"agents/{handle}") is not None
+    except (httpx.HTTPError, UnexpectedStatus):
+        return None
+
+
+def _member_manifest(
+    handle: str, room: str, agent: dict, owner: str, description: str | None = None
+) -> AgentManifest:
     """The manifest for a herdr agent enrolled as ``handle``, saying which agent CLI it is."""
     from mycelium.integrations import AddOptions, adapter_for, get_integration
 
@@ -403,11 +605,18 @@ def _member_manifest(handle: str, room: str, agent: dict, sender: str) -> AgentM
     manifest = get_integration(adapter_for(kind), cwd=agent.get("cwd")).build_manifest(
         handle=handle,
         opts=AddOptions(room=room),
-        description=f"herdr-enrolled from {agent['pane_id']} ({kind})",
+        description=description or f"herdr-enrolled from {agent['pane_id']} ({kind})",
         allow_from=[],
-        owner=sender,
+        owner=owner,
     )
     return manifest.model_copy(update={"framework": kind})
+
+
+def _owner(config: MyceliumConfig) -> str:
+    """Who owns an agent this machine registers: its person, never the agent asking."""
+    from mycelium import caller
+
+    return caller.person(config) or config.get_current_identity()
 
 
 def _retire_one(config: MyceliumConfig, bridge: HerdrBridge, mapping: HerdrPaneMapping) -> None:
@@ -448,7 +657,8 @@ def _reconcile_workspace(
     ]
     live_panes = {str(a["pane_id"]) for a in agents}
     tab_labels = bridge.tab_labels(workspace) if name_from == "tab" else {}
-    sender = config.get_current_identity()
+    # Looked up once, and only if this pass writes a manifest.
+    owner = functools.cache(lambda: _owner(config))
     # Seed with the room's existing handles so a new pane never collides with one.
     taken = {m.handle for m in bridge.registry.all() if m.room == room}
 
@@ -465,7 +675,7 @@ def _reconcile_workspace(
                 name_from=name_from,
                 prefix=prefix,
                 tab_labels=tab_labels,
-                sender=sender,
+                owner=owner,
             )
         )
         is not None
@@ -473,12 +683,12 @@ def _reconcile_workspace(
     # Retire on the pane closing, not on its agent stopping. After herdr's server
     # restarts, every pane comes back at a bare shell: those agents stopped, they
     # didn't leave, and retiring them would delete them from the room.
+    # A pane is closed only when no workspace has it open: a room can be bound
+    # to several workspaces, and each one's pass sees the others' members in the
+    # registry. Counting only this workspace's panes, two bindings retired and
+    # re-enrolled each other's members on every pass.
     try:
-        open_panes = {
-            str(p["pane_id"])
-            for p in bridge.list_panes()
-            if p.get("workspace_id") == workspace and p.get("pane_id")
-        }
+        open_panes = {str(p["pane_id"]) for p in bridge.list_panes() if p.get("pane_id")}
     except HerdrError:
         return enrolled, []  # can't tell which panes are open: retire nothing
     retired: list[str] = []
@@ -696,6 +906,41 @@ def fetch_wakes(config: MyceliumConfig, room: str) -> list[dict]:
     return [w for w in wakes if isinstance(w, dict)]
 
 
+def outcome(wake: dict, *, delivered: bool, why: str | None = None) -> dict | None:
+    """What became of ``wake``, for :func:`report_wakes`; None for one with no id
+    (from a hub that keeps no wake log)."""
+    if not wake.get("id"):
+        return None
+    said: dict = {"id": str(wake["id"]), "delivered": delivered}
+    if why:
+        said["why"] = why[:300]
+    return said
+
+
+def report_wakes(config: MyceliumConfig, room: str, outcomes: list[dict | None]) -> None:
+    """Tell the hub what became of the wakes this pass drained, for its wake log.
+
+    Best-effort: a hub that can't be reached, or is from before the log, just
+    records them as handed without a word from here.
+    """
+    said = [o for o in outcomes if o]
+    if not said:
+        return
+    import httpx
+
+    from mycelium.client import auth_headers
+
+    try:
+        httpx.post(
+            f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-wakes/outcomes",
+            json={"outcomes": said},
+            timeout=5.0,
+            headers=auth_headers(config),
+        )
+    except Exception as e:  # noqa: BLE001 - the log says "handed" without it
+        _sync.info("couldn't report %d wake outcome(s) in %s: %s", len(said), room, e)
+
+
 def _drain_wakes(
     config: MyceliumConfig,
     bridge: HerdrBridge,
@@ -715,12 +960,14 @@ def _drain_wakes(
     """
     out = log if log is not None else console
     woke = 0
+    outcomes: list[dict | None] = []
     for w in fetch_wakes(config, room):
         handle = str(w.get("handle") or "")
         reason = w.get("reason") or "mention"
         mapping = bridge.registry.get(room, handle)
         if mapping is None:
             _sync.warning("wake @%s (%s) in %s: no pane here is bound to it", handle, reason, room)
+            outcomes.append(outcome(w, delivered=False, why="no herdr pane here is bound to it"))
             continue
         prompt = wake_prompt_for(room, w)
         line = f"wake @{handle} ({reason}) -> {mapping.pane}"
@@ -731,15 +978,52 @@ def _drain_wakes(
             )
         except HerdrError as e:
             _sync.warning("%s failed %dms: %s", line, ms(started), e)
+            outcomes.append(outcome(w, delivered=False, why=f"herdr refused it: {e}"))
             continue
         if result.ok:
             woke += 1
             _sync.info("%s ok %dms", line, ms(started))
             out.print(f"[green]↯ woke[/green] @{handle} [dim]on {reason} → {mapping.pane}[/dim]")
+            outcomes.append(outcome(w, delivered=True))
         else:
             _sync.info("%s skipped %dms: %s", line, ms(started), result.detail)
             out.print(f"[yellow]↯ skip[/yellow] @{handle} [dim]{result.detail}[/dim]")
+            outcomes.append(outcome(w, delivered=False, why=result.detail))
+    report_wakes(config, room, outcomes)
     return woke
+
+
+def _reason(err: Exception) -> str:
+    """One line saying why a binding failed: the hub's own message when it answered."""
+    from mycelium.client import hub_error_detail
+    from mycelium_backend_client.errors import UnexpectedStatus
+
+    if isinstance(err, UnexpectedStatus):
+        return f"the hub answered {err.status_code}: {hub_error_detail(err.content)}"
+    return " ".join(str(err).split()) or type(err).__name__
+
+
+class SyncResult(NamedTuple):
+    """What one :func:`sync_pass` did, and the bindings it couldn't reconcile."""
+
+    enrolled: int
+    retired: int
+    states: int
+    #: ``{workspace: (room, error)}`` for each binding whose reconcile raised.
+    failed: dict[str, tuple[str, str]]
+
+
+class BindingSyncError(Exception):
+    """Some bound workspaces couldn't be reconciled; the rest of the pass still ran.
+
+    Raised by the runner's herdr host after the pass, so the runner reports
+    which bindings fail (``Runner.sync_health``) and ``mycelium machine`` can
+    name them.
+    """
+
+    def __init__(self, failed: dict[str, tuple[str, str]]) -> None:
+        self.failed = failed
+        super().__init__("; ".join(f"{ws} → {r}: {err}" for ws, (r, err) in failed.items()))
 
 
 def sync_pass(
@@ -754,19 +1038,30 @@ def sync_pass(
     kind: str | None = None,
     log: Console | None = None,
     wait: bool = True,
-) -> tuple[int, int, int]:
+) -> SyncResult:
     """One reconcile of the bound workspaces: membership, liveness up, wakes down.
 
-    Returns ``(enrolled, retired, states pushed)``. Shared by ``herdr sync``
-    and ``swarm``, which runs it on a background thread while it shows the room
-    and does not wait on a woken agent (``wait``), since its members work at once.
+    A binding that fails to reconcile is logged and reported in ``failed``; the
+    other bindings, presence and wakes still go ahead, so one bad binding can't
+    leave every agent on the machine unwoken. Shared by ``herdr sync`` and
+    ``swarm``, which runs it on a background thread while it shows the room and
+    does not wait on a woken agent (``wait``), since its members work at once.
     """
     out = log if log is not None else console
     enrolled = retired = 0
+    failed: dict[str, tuple[str, str]] = {}
     for ws, r in targets:
-        e, x = _reconcile_workspace(
-            config, bridge, ws, r, name_from=name_from, prefix=prefix, kind=kind
-        )
+        what = f"binding {ws} -> {r}"
+        try:
+            e, x = _reconcile_workspace(
+                config, bridge, ws, r, name_from=name_from, prefix=prefix, kind=kind
+            )
+        except Exception as err:  # noqa: BLE001 - one binding must not stop the others
+            failed[ws] = (r, _reason(err))
+            failing(_sync, what, f"{what} failed: {err!r}")
+            out.print(f"[red]✗ {escape(ws)} → {escape(r)}[/red] [dim]{escape(failed[ws][1])}[/dim]")
+            continue
+        recovered(_sync, what)
         for h in e:
             _sync.info("enrolled @%s (%s -> %s)", h, ws, r)
             out.print(f"[green]＋ enrolled[/green] @{h} [dim]({ws} → {r})[/dim]")
@@ -780,7 +1075,7 @@ def sync_pass(
         _push_presence(config, r, statuses, ttl_s)
     for r in {r for _, r in targets} | set(view):
         _drain_wakes(config, bridge, r, log=out, wait=wait)
-    return enrolled, retired, sum(len(v) for v in view.values())
+    return SyncResult(enrolled, retired, sum(len(v) for v in view.values()), failed)
 
 
 #: How long one pass's liveness stands on the hub; the runner's next pass renews it.
@@ -861,7 +1156,7 @@ def herdr_sync(
             )
             raise typer.Exit(1)
 
-        enrolled, retired, states = sync_pass(
+        enrolled, retired, states, failed = sync_pass(
             config,
             bridge,
             targets,
@@ -875,6 +1170,11 @@ def herdr_sync(
             f"[green]Synced[/green] {states} live state(s) across {len(targets)} binding(s) "
             f"[dim](+{enrolled} enrolled, -{retired} retired)[/dim]"
         )
+        if failed:
+            console.print(
+                f"[red]{len(failed)} binding(s) failed to sync[/red] (listed above). "
+                "Unbind one with [cyan]mycelium herdr unbind <workspace>[/cyan]."
+            )
         if running_pid():
             console.print("[dim]This machine's runner keeps them synced from here.[/dim]")
         else:
@@ -883,6 +1183,38 @@ def herdr_sync(
                 "mentions until the runner is running. Start it with "
                 "[cyan]mycelium runner --detach[/cyan]."
             )
+        if failed:
+            raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
+        raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage="mycelium herdr unbind <workspace>",
+    desc="Stop syncing a herdr workspace with its room; its agents stay in the room.",
+    group="agent",
+)
+@app.command("unbind")
+def herdr_unbind(
+    ctx: typer.Context,
+    workspace: str = typer.Argument(..., help="herdr workspace id to unbind (e.g. w2)."),
+) -> None:
+    """Forget a ``workspace -> room`` binding, so the runner stops syncing it.
+
+    Its members stay in the room and their handle↔pane mappings stay; nothing
+    enrolls or retires them until the workspace is bound again.
+    """
+    try:
+        bridge = _bridge()
+        room = bridge.registry.bindings().get(workspace)
+        if room is None:
+            console.print(f"[yellow]No binding[/yellow] for workspace {escape(workspace)}")
+            raise typer.Exit(1)
+        bridge.registry.unbind(workspace)
+        console.print(f"[green]Unbound[/green] {escape(workspace)} [dim]from {escape(room)}[/dim]")
     except typer.Exit:
         raise
     except Exception as e:

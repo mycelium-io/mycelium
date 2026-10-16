@@ -377,7 +377,7 @@ function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number
 
           <Note>
             Quality ratios are averaged over the {rollup.scored}{" "}
-            {rollup.scored === 1 ? "episode" : "episodes"} that committed with L9 metrics; an
+            {rollup.scored === 1 ? "episode" : "episodes"} that committed with IoC metrics; an
             episode still in progress contributes to the counts above but not to the ratios.
           </Note>
         </>
@@ -567,8 +567,9 @@ function BackendDown() {
       <div className="max-w-lg">
         <Label className="text-yellow">Backend unreachable</Label>
         <p className="mt-2 text-label leading-relaxed text-muted-foreground">
-          Nothing answered <span className="font-mono text-text">GET /api/observability</span>. Bring
-          the stack up with <span className="font-mono text-text">mycelium up</span>, or run{" "}
+          Nothing answered <span className="font-mono text-text">GET /api/observability</span>. Open the
+          Mycelium app (or run <span className="font-mono text-text">mycelium up</span> for the
+          Docker stack), or run{" "}
           <span className="font-mono text-text">mycelium doctor</span> to find out what is holding it
           down.
         </p>

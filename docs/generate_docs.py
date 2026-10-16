@@ -35,23 +35,23 @@ from pathlib import Path
 # (page_id, file_name, page_title, top_nav_label, sheet_no, plate_title, meta_description)
 PAGES: list[tuple[str, str, str, str, str, str, str]] = [
     ("start", "index.html", "mycelium Docs", "Get Started",
-     "GET-001", "OVERVIEW · QUICK START",
-     "A shared space for humans and agents. What Mycelium is, and how to install it."),
+     "GET-001", "OVERVIEW · QUICK START · HOW IT WORKS",
+     "A shared space for humans and agents. What Mycelium is, how to install it, and how the pieces fit together."),
     ("walkthrough", "walkthrough.html", "Your First Room · mycelium", "Walkthrough",
      "WLK-001", "YOUR FIRST ROOM · STEP BY STEP",
-     "Set up Mycelium from nothing, one step at a time with screenshots: the Mac app, a room, two coding agents, and a task they work on together."),
-    ("engines", "engines.html", "Engines · mycelium", "Engines",
-     "ENG-001", "ENGINES · ALIGNER · SYNTHESIZER · PERSONA · CONDUCTOR · WORKER",
-     "The engines a room runs itself: the aligner, the synthesizer, hello, personas, the conductor and workers."),
+     "Set up Mycelium from nothing, one step at a time with screenshots: the desktop app, a room, two coding agents, the room's engines, and a task they work on together."),
     ("concepts", "concepts.html", "Concepts · mycelium", "Concepts",
-     "CON-001", "CONCEPTS · ROOMS · BOARD · EPISODES · MEMORY · L9",
-     "How Mycelium works: rooms, SLIM, the board, episodes, swarms, memory, users and teams, and the L9 protocol."),
+     "CON-001", "CONCEPTS · ROOMS · BOARD · MEMORY · EPISODES",
+     "How Mycelium works: rooms, the board, memory, episodes, swarms, users and identity, and SLIM."),
+    ("engines", "engines.html", "Engines · mycelium", "Engines",
+     "ENG-001", "ENGINES · CONDUCTOR · ALIGNER · SYNTHESIZER · PERSONA · WORKER",
+     "The engines a room runs on the hub: the conductor, the aligner, the synthesizer, personas, workers, the verifier and hello."),
     ("guides", "guides.html", "Guides · mycelium", "Guides",
-     "GDE-001", "GUIDES · SETUP · AGENTS · SECURITY · HELP",
-     "Step-by-step guides: running Mycelium on a server, the Mac app, connecting agents and A2A agents, models, authentication, and troubleshooting."),
+     "GDE-001", "GUIDES · SETUP · AGENTS · WORK · SECURITY · HELP",
+     "Step-by-step guides: running Mycelium on a server, the desktop app, sharing a hub, starting and managing agents, the board, sign-in, and troubleshooting."),
     ("reference", "reference.html", "Reference · mycelium", "Reference",
-     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · DEPENDENCIES",
-     "Architecture, CLI reference, configuration, and dependencies and compatibility for Mycelium."),
+     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · FLOWS · MESSAGES",
+     "Architecture, CLI and configuration reference, board commands, writing flows, messages, metrics, and notes for contributors."),
 ]
 
 # Sections, in render order per page.
@@ -62,51 +62,62 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # ── start (index.html) ──
     ("overview.md",                   "overview",           "start",       "Get Started",  "Overview"),
     ("guides/quickstart.md",          "quickstart",         "start",       "Get Started",  "Quick Start"),
+    ("concepts/how-it-works.md",      "how-it-works",       "start",       "Get Started",  "How It Works"),
     # ── walkthrough (walkthrough.html), setup from nothing, one step each ──
     ("walkthrough/intro.md",          "walkthrough",        "walkthrough", "Walkthrough",  "Your First Room"),
     ("walkthrough/app.md",            "walk-app",           "walkthrough", "Walkthrough",  "1. Get the app"),
     ("walkthrough/room.md",           "walk-room",          "walkthrough", "Walkthrough",  "2. Create a room"),
     ("walkthrough/agents.md",         "walk-agents",        "walkthrough", "Walkthrough",  "3. Add your agents"),
-    ("walkthrough/task.md",           "walk-task",          "walkthrough", "Walkthrough",  "4. Hand it a task"),
-    ("walkthrough/thread.md",         "walk-thread",        "walkthrough", "Walkthrough",  "5. Watch it work"),
-    ("walkthrough/aligner.md",        "walk-aligner",       "walkthrough", "Walkthrough",  "6. When agents disagree"),
+    ("walkthrough/add-engines.md",    "walk-engines",       "walkthrough", "Walkthrough",  "4. Add the room's engines"),
+    ("walkthrough/task.md",           "walk-task",          "walkthrough", "Walkthrough",  "5. Hand it a task"),
+    ("walkthrough/thread.md",         "walk-thread",        "walkthrough", "Walkthrough",  "6. Watch it work"),
+    ("walkthrough/aligner.md",        "walk-aligner",       "walkthrough", "Walkthrough",  "7. When agents disagree"),
     ("walkthrough/next.md",           "walk-next",          "walkthrough", "Walkthrough",  "Where to go next"),
-    # ── engines (engines.html), the overview, then one section per kind ──
-    ("engines/engines.md",            "engines",            "engines",     "Engines",      "Overview"),
-    ("engines/aligner.md",            "aligner",            "engines",     "Engines",      "Aligner"),
-    ("engines/synthesizer.md",        "synthesizer",        "engines",     "Engines",      "Synthesizer"),
-    ("engines/hello.md",              "hello",              "engines",     "Engines",      "Hello"),
-    ("engines/persona.md",            "persona",            "engines",     "Engines",      "Persona"),
-    ("engines/conductor.md",          "conductor",          "engines",     "Engines",      "Conductor"),
-    ("engines/worker.md",             "worker",             "engines",     "Engines",      "Worker"),
-    # ── concepts (concepts.html) ──
+    # ── concepts (concepts.html): what everything else is built on ──
     ("concepts/rooms.md",             "rooms",              "concepts",    "Concepts",     "Rooms"),
-    ("concepts/slim.md",              "slim",               "concepts",    "Concepts",     "SLIM"),
     ("concepts/board.md",             "board",              "concepts",    "Concepts",     "Board"),
+    ("concepts/memory.md",            "memory",             "concepts",    "Concepts",     "Memory"),
     ("concepts/episodes.md",          "episodes",           "concepts",    "Concepts",     "Episodes"),
     ("concepts/swarm.md",             "swarm",              "concepts",    "Concepts",     "Swarm"),
-    ("concepts/memory.md",            "memory",             "concepts",    "Concepts",     "Memory"),
-    ("concepts/principals.md",        "users",              "concepts",    "Concepts",     "Users & Teams"),
-    ("concepts/l9-protocol.md",       "l9-protocol",        "concepts",    "Concepts",     "L9 Protocol"),
+    ("concepts/principals.md",        "users",              "concepts",    "Concepts",     "Users & Identity"),
+    ("concepts/slim.md",              "slim",               "concepts",    "Concepts",     "SLIM"),
+    # ── engines (engines.html), the overview, then one section per kind ──
+    ("engines/engines.md",            "engines",            "engines",     "Engines",      "Overview"),
+    ("engines/conductor.md",          "conductor",          "engines",     "Engines",      "Conductor"),
+    ("engines/aligner.md",            "aligner",            "engines",     "Engines",      "Aligner"),
+    ("engines/synthesizer.md",        "synthesizer",        "engines",     "Engines",      "Synthesizer"),
+    ("engines/persona.md",            "persona",            "engines",     "Engines",      "Persona"),
+    ("engines/worker.md",             "worker",             "engines",     "Engines",      "Worker"),
+    ("engines/verifier.md",           "verifier",           "engines",     "Engines",      "Verifier"),
+    ("engines/hello.md",              "hello",              "engines",     "Engines",      "Hello"),
     # ── guides (guides.html) ──
     ("guides/server.md",              "on-a-server",        "guides",      "Setup",        "Run It on a Server"),
-    ("guides/desktop.md",             "desktop",            "guides",      "Setup",        "The Mac App"),
+    ("guides/desktop.md",             "desktop",            "guides",      "Setup",        "The Desktop App"),
     ("guides/hub-and-spoke.md",       "hub-and-spoke",      "guides",      "Setup",        "Hub & Spoke"),
     ("guides/models.md",              "models",             "guides",      "Setup",        "Models"),
     ("guides/machines.md",            "machines",           "guides",      "Agents",       "Start Agents From the App"),
+    ("guides/agents-on-a-machine.md", "agents-on-a-machine", "guides",     "Agents",       "Your Agents on a Machine"),
     ("guides/herdr.md",               "herdr",              "guides",      "Agents",       "Persistent Agents (herdr)"),
     ("guides/ephemeral-agents.md",    "ephemeral-agents",   "guides",      "Agents",       "Ephemeral Agents"),
     ("guides/omnigent.md",            "omnigent",           "guides",      "Agents",       "Run Agents in Omnigent"),
     ("guides/a2a-bridge.md",          "a2a-bridge",         "guides",      "Agents",       "A2A Bridge"),
-    ("guides/structured-memory.md",   "structured-memory",  "guides",      "Memory",       "Structured Memory"),
-    ("guides/security-planes.md",     "security-planes",    "guides",      "Security",     "Security Planes"),
+    ("guides/working-the-board.md",   "working-the-board",  "guides",      "Work",         "Working the Board"),
+    ("guides/structured-memory.md",   "structured-memory",  "guides",      "Work",         "Structured Memory"),
+    ("guides/files.md",               "files",              "guides",      "Work",         "Files"),
+    ("guides/voice.md",               "voice",              "guides",      "Work",         "Voice"),
+    ("guides/schedules.md",           "schedules",          "guides",      "Work",         "Schedules"),
+    ("guides/security-planes.md",     "security-planes",    "guides",      "Security",     "Running a Shared Hub"),
     ("guides/auth.md",                "auth",               "guides",      "Security",     "Authentication"),
-    ("guides/keycloak-oidc.md",       "keycloak-oidc",      "guides",      "Security",     "Keycloak / OIDC Setup"),
     ("guides/troubleshooting.md",     "troubleshooting",    "guides",      "Help",         "Troubleshooting"),
     # ── reference (reference.html) ──
     ("reference/architecture.md",     "architecture",       "reference",   "Architecture", "Architecture"),
-    ("reference/metrics.md",          "metrics",            "reference",   "Observability", "Metrics"),
     # CLI, config and dependency blocks are injected after architecture.
+    ("reference/board-reference.md",  "board-reference",    "reference",   "Reference",    "Board"),
+    ("reference/flows.md",            "flows",              "reference",   "Reference",    "Writing Flows"),
+    ("reference/messages.md",         "messages",           "reference",   "Reference",    "Messages"),
+    ("reference/metrics.md",          "metrics",            "reference",   "Observability", "Metrics"),
+    ("reference/status-providers.md", "status-providers",   "reference",   "Contributing", "Adding a Status Provider"),
+    ("reference/keycloak-oidc.md",    "keycloak-oidc",      "reference",   "Contributing", "Keycloak / OIDC Setup"),
 ]
 
 # The CLI/config/dependency blocks are generated rather than listed in
@@ -122,6 +133,28 @@ GENERATED_SECTION_LABELS: dict[str, tuple[str, str]] = {
 # (page_id, file_name, top_nav_label, [(group_label, [(anchor, label), ...]), ...])
 NavPage = tuple[str, str, str, list[tuple[str, list[tuple[str, str]]]]]
 
+# Hand-written pages the nav lists inside a generated group, right after the
+# section they go deeper on. The generator never writes these files; it only
+# links them. (page_id, group_label, after_anchor, file_name, label)
+HANDWRITTEN_NAV: list[tuple[str, str, str, str, str]] = [
+    ("engines", "Engines", "verifier", "verifier.html", "Verifier, in depth"),
+]
+
+
+def _with_handwritten(
+    page_id: str, groups: list[tuple[str, list[tuple[str, str]]]]
+) -> list[tuple[str, list[tuple[str, str]]]]:
+    """``groups`` with this page's hand-written links slotted in (nav only)."""
+    out = []
+    for group_label, items in groups:
+        items = list(items)
+        for pid, glabel, after, file_name, label in HANDWRITTEN_NAV:
+            if pid == page_id and glabel == group_label:
+                at = next((i + 1 for i, (a, _) in enumerate(items) if a == after), len(items))
+                items.insert(at, (file_name, label))
+        out.append((group_label, items))
+    return out
+
 # IDs that should be looked up in kept HTML (have <!-- keep --> markers, or rescued by id).
 _KEPT_IDS: set[str] = {"overview"}
 
@@ -134,6 +167,8 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("agent", "agent", "agent"),
     ("memory", "memory", "memory"),
     ("skill", "skill", "skill"),
+    ("schedule", "schedule", "schedule"),
+    ("file", "file", "file"),
     ("negotiate", "negotiate", "negotiate"),
     ("cfn", "cfn", "cfn"),
     ("config", "config", "config"),
@@ -142,7 +177,8 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
 
 # Configuration namespace order.
 CONFIG_NAMESPACE_ORDER: list[str] = [
-    "identity", "server", "llm", "runtime", "negotiation", "rooms", "knowledge_ingest",
+    "identity", "server", "llm", "runtime", "aligner", "synthesizer", "worker", "board",
+    "negotiation", "rooms", "knowledge_ingest",
 ]
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -578,6 +614,7 @@ def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     import mycelium.commands.board  # noqa: F401
     import mycelium.commands.config  # noqa: F401
     import mycelium.commands.doctor  # noqa: F401
+    import mycelium.commands.file  # noqa: F401
     import mycelium.commands.hub  # noqa: F401
     import mycelium.commands.install  # noqa: F401
     import mycelium.commands.instance  # noqa: F401
@@ -1185,6 +1222,13 @@ def _topnav() -> str:
 """
 
 
+def _nav_href(anchor: str, file_name: str, *, current: bool) -> str:
+    """A nav item's link: a section anchor, or a hand-written page as is."""
+    if anchor.endswith(".html"):
+        return anchor
+    return f"#{anchor}" if current else f"{file_name}#{anchor}"
+
+
 def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
     """Render the persistent nav: every page's groups, on every page.
 
@@ -1206,7 +1250,7 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
         if len(groups) == 1 and groups[0][0] == label:
             out.append('      <div class="nav-page-items">')
             for anchor, item_label in groups[0][1]:
-                href = f"#{anchor}" if current else f"{file_name}#{anchor}"
+                href = _nav_href(anchor, file_name, current=current)
                 out.append(
                     f'        <a href="{href}" class="nav-link sub">'
                     f"{html.escape(item_label)}</a>"
@@ -1227,7 +1271,7 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
             )
             out.append('        <div class="nav-group-items">')
             for anchor, item_label in items:
-                href = f"#{anchor}" if current else f"{file_name}#{anchor}"
+                href = _nav_href(anchor, file_name, current=current)
                 out.append(
                     f'          <a href="{href}" class="nav-link sub">'
                     f"{html.escape(item_label)}</a>"
@@ -1732,7 +1776,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--page",
-        help="Write a single page by id (start|walkthrough|engines|concepts|guides|"
+        help="Write a single page by id (start|walkthrough|concepts|engines|guides|"
              "reference). Every page is "
              "still assembled, since the persistent nav lists them all.",
     )
@@ -1768,7 +1812,7 @@ def main() -> None:
             page_id, kept, cli_block, config_block, deps_block
         )
         built.append((page, content, sidebar_groups))
-        nav.append((page_id, file_name, label, sidebar_groups))
+        nav.append((page_id, file_name, label, _with_handwritten(page_id, sidebar_groups)))
         n = sum(len(items) for _, items in sidebar_groups)
         print(f"  {file_name}: {n} subsections in {len(sidebar_groups)} groups")
 

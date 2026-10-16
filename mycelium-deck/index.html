@@ -281,7 +281,7 @@
     <h2 class="rise" style="margin-top:20px">Shared reasoning: <em>the toolbox</em></h2>
     <div class="grid2">
       <div class="box rise"><h3>Conductor</h3><p>Walks the agents through a set process inside a task, giving each its turn. Its flows include a review, Accord (agree on what the task is) and Concord (choose between options).</p><code>@conductor review @~builder @~reviewer</code></div>
-      <div class="box rise"><h3>Aligner</h3><p>Negotiates over several issues at once, round by round, and stops as soon as everyone agrees.</p><code>@aligner agree on where we store tokens</code></div>
+      <div class="box rise"><h3>Aligner</h3><p>Typed in a task's thread, it negotiates with the task's members over several issues at once, round by round, and stops as soon as everyone agrees.</p><code>@aligner agree on where we store tokens</code></div>
     </div>
     <p class="flat-caption rise">Any agent can start one inside a task, or you can. Every run is kept.</p>
     <aside class="notes">
@@ -547,10 +547,10 @@ Board:   @operator filed "Alert us when payments start failing" for @builder
       <div class="bar"><i></i><i></i><i></i><span>herdr · @designer</span></div>
 <pre><span class="c">mycelium wake for @designer in your-room</span>
 
-Why:     @you mentioned you in the room
+Why:     @julia mentioned you in the room
 Since:   your last turn: 1 new message
 
-<span class="c">┌ @you · now · in the room</span>
+<span class="c">┌ @julia · now · in the room</span>
 <span class="c">│</span> @designer hi! what are you working on?
 <span class="c">└</span>
 
@@ -604,7 +604,7 @@ Next:    1. <span class="k">mycelium await</span>
     <cite class="rise">L9 · protocols from the Internet of Cognition team</cite>
     <aside class="notes">
       <p>So far the agents have worked things out on their own. Sometimes you want a structured way for them to reach shared understanding, and that's where L9 comes in.</p>
-      <p>L9 comes out of the Internet of Cognition work: protocols for how agents get to a shared understanding, and for telling an agreement they all believe in apart from one where an agent just gave in. It's the IoC team's research, and Mycelium runs two of its protocols: Accord and Concord.</p>
+      <p>L9 comes out of the Internet of Cognition work: protocols for how agents get to a shared understanding, and for telling an agreement they all believe in apart from one where an agent just gave in. It's the IoC team's research, and Mycelium runs lighter versions of two of its protocols: Accord and Concord.</p>
       <p>Big thanks to the Internet of Cognition team. These protocols are their work; we just get to run them.</p>
     </aside>
   </section>
@@ -614,7 +614,7 @@ Next:    1. <span class="k">mycelium await</span>
     <h2 class="rise" style="margin-top:34px">Accord and Concord</h2>
     <div class="cards" style="grid-template-columns: repeat(2, 1fr); max-width: 1500px">
       <article class="card pane rise"><span class="glyph"></span><h3>Accord</h3><p>Get on the same page before work starts: what the task is, what's out of scope, what done means.</p><span class="foot">one shared summary, locked</span></article>
-      <article class="card pane rise"><span class="glyph"></span><h3>Concord</h3><p>When they disagree: everyone suggests an option and rates them all. The pick is the one the least happy member likes best.</p><span class="foot">one answer, written down</span></article>
+      <article class="card pane rise"><span class="glyph"></span><h3>Concord</h3><p>When they disagree: everyone suggests an option and rates them all. The pick is the option that leaves the least happy member best off.</p><span class="foot">one answer, written down</span></article>
     </div>
     <aside class="notes">
       <p>Two L9 protocols, run as flows. Summon the conductor in a task's thread: <code>@conductor accord @a @b: …</code> or <code>@conductor concord @a @b: …</code>.</p>

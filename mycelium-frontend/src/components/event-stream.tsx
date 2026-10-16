@@ -5,12 +5,20 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  fetchL9History,
+  fetchWireHistory,
   fetchMessages,
   logFetchError,
 } from "@/lib/api";
-import { useMessageSearch, useRoomAgents, useRoomRowNames, useRoomThreads, type RowNaming, type ThreadOwner } from "@/lib/room-data";
-import { NOTICE_TYPE, PING_TYPE, isLiveEpisode, noticeLabel, threadShortId } from "@/lib/threads";
+import { useMessageSearch, useRoomSettings, type ThreadOwner } from "@/lib/room-data";
+import { boardMovesInChat } from "@/lib/room-settings";
+import {
+  NOTICE_TYPE,
+  PING_TYPE,
+  isLiveEpisode,
+  noticeLabel,
+  threadShortId,
+  upstreamInChat,
+} from "@/lib/threads";
 import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
 import {
   applyActivity,
@@ -22,33 +30,31 @@ import {
   type Responding,
 } from "@/lib/activity";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
-import { MessageBody } from "@/components/message-body";
-import { ConductorRow } from "@/components/task/conductor-row";
+import { usePendingMessages, type Landed } from "@/lib/pending-messages";
+import { PendingMessageRows } from "@/components/pending-message-rows";
 import { ChatFindBar } from "@/components/chat-find-bar";
 import { ChatSearchResults } from "@/components/chat-search-results";
 import { freeText, hasScope, type MessageSearchHit } from "@/lib/message-search";
 import { ChatMinimap, type MinimapTick } from "@/components/chat-minimap";
-import { SenderName } from "@/components/sender-name";
 import { hasMatch, stepIndex } from "@/lib/chat-search";
-import { RoomBoard } from "@/components/board/room-board";
 import { ActivityRail, type ActivityItem } from "@/components/activity-rail";
-import { Ago, NowProvider } from "@/lib/relative-time";
-import { EpisodeTag } from "@/components/episode-tag";
-import { L9Inspector } from "@/components/l9-inspector";
-import { RoomA2aView } from "@/components/room-a2a";
-import { RoomSlimView } from "@/components/room-slim";
+import { NowProvider } from "@/lib/relative-time";
 import { EmptyState } from "@/components/empty-state";
 import { RoomStarters } from "@/components/room-starters";
-import { KeyBadge } from "@/components/key-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Monogram } from "@/components/ui/monogram";
-import { Tooltip } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
-import { ArrowDown, AtSign, Copy, Link2, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
-import { absoluteUrl, copyText } from "@/lib/clipboard";
-import { agentTag } from "@/lib/agent-label";
+import { JumpToLatest } from "@/components/jump-to-latest";
+import { useFollowLatest } from "@/components/messages/use-follow-latest";
+import {
+  FeedRow,
+  RAISE_UP_TYPES,
+  SYSTEM_TYPES,
+  lastChatSender,
+  nameActivity,
+  useFeedContext,
+} from "@/components/messages/feed-row";
+import { Loader2, MessageSquare, MessagesSquare } from "lucide-react";
+import { Shimmer, SporeMark } from "@/components/responding-mark";
 
 /** Stable empties: find writes these back on every close, and a fresh array
  *  each time would re-run the effects that read them. */
@@ -61,6 +67,10 @@ const NO_TICKS: MinimapTick[] = [];
  *  nodes. */
 /** How long typing in the find bar pauses before the room-wide search runs. */
 const SEARCH_SETTLE_MS = 200;
+/** How long typing pauses before the loaded messages are marked and counted.
+ *  Short enough to feel immediate, long enough that a word typed at speed is
+ *  matched once rather than once per letter. */
+const FIND_SETTLE_MS = 120;
 
 function rowNode(root: HTMLElement | null, id: string): HTMLElement | null {
   if (!root) return null;
@@ -70,52 +80,31 @@ function rowNode(root: HTMLElement | null, id: string): HTMLElement | null {
   return null;
 }
 
-// The L9 "raise-up" whitelist: message types promoted from the L9 inspector
-// into the primary channel/chat surface. This must mirror
-// contracts/l9-surface.json's `raise_up_types` byte-for-byte — the CLI
-// (mycelium-cli/src/mycelium/commands/room.py) carries an independent copy,
-// and event-stream.contract.test.ts asserts both stay in sync with the
-// contract so the two surfaces can't silently drift apart.
-export const L9_RAISE_UP_TYPES = [
-  "coordination_join",
-  "coordination_consensus",
-  "l9_knowledge",
-];
+// The raise-up list lives with the rows that draw it; the contract test reads
+// it from here.
+export { RAISE_UP_TYPES };
 
 // Event types that appear in the chat-channel view alongside real chat.
 // Joins + consensus belong here so the room's chat surface narrates the
 // negotiation lifecycle ("alice joined session X", "CONSENSUS in session X
 // → 4 work rows", "TIMEOUT in session X, no agreement") instead of
 // burying it all under the EVENTS tab.
-const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
-
-// Lifecycle events that render as slim system notices (not chat rows). Used to
-// decide message grouping: a chat message only groups under the sender above it
-// when no system notice interrupts the run.
-/**
- * A ping is a system notice too, but is not on the shared raise-up list: it
- * is an `l9_exchange` already on the chat path, renamed here — the same
- * branch the CLI takes inside `chat_line`.
- */
-const SYSTEM_TYPES = new Set([...L9_RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
+const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
 
 /** One line of "who is responding": the system-notice scale the channel already
- *  speaks in, with the dot breathing for a turn in flight. */
-function RespondingRow({ children }: { children: React.ReactNode }) {
+ *  speaks in, with a spore growing for a turn in flight. `offset` staggers the
+ *  spores of several rows. */
+function RespondingRow({ children, offset = 0 }: { children: React.ReactNode; offset?: number }) {
   return (
     <div className="flex items-center gap-2 py-0.5 text-micro text-muted-foreground">
-      <span
-        aria-hidden
-        className="inline-block size-1.5 flex-shrink-0 rounded-full motion-safe:animate-pulse"
-        style={{ background: "var(--accent)" }}
-      />
+      <SporeMark offset={offset} />
       <span className="flex min-w-0 items-center gap-1.5 truncate">{children}</span>
     </div>
   );
 }
 
-/** "@aligner is responding…" under the last message, gone the moment the reply
- *  lands. A turn going into a task's thread does not land here — the channel
+/** "@aligner is responding…" pinned over the composer, gone the moment the
+ *  reply lands. A turn going into a task's thread does not land here — the channel
  *  never shows a thread's prose — so that line says where instead, and opens
  *  it, the way the ping for the reply will: "@aligner is responding in <task>". */
 function RespondingLine({
@@ -135,15 +124,19 @@ function RespondingLine({
       role="status"
       aria-live="polite"
       data-testid="responding-line"
-      className="mt-3 flex flex-col px-5 py-1 motion-safe:animate-in motion-safe:fade-in-0"
+      className="flex flex-shrink-0 flex-col px-5 py-1 motion-safe:animate-in motion-safe:fade-in-0"
     >
-      {here.length > 0 && <RespondingRow>{respondingLabel(here)}</RespondingRow>}
-      {[...elsewhere.entries()].map(([thread, group]) => {
+      {here.length > 0 && (
+        <RespondingRow>
+          <Shimmer className="truncate">{respondingLabel(here)}</Shimmer>
+        </RespondingRow>
+      )}
+      {[...elsewhere.entries()].map(([thread, group], i) => {
         const shortId = threadShortId(thread) ?? "thread";
         const title = threads.get(thread)?.title ?? shortId;
         return (
-          <RespondingRow key={thread}>
-            <span className="truncate">{respondingLabel(group, "elsewhere")}</span>
+          <RespondingRow key={thread} offset={(i + 1) * 4}>
+            <Shimmer className="truncate">{respondingLabel(group, "elsewhere")}</Shimmer>
             <button
               type="button"
               onClick={() => onOpenThread?.(thread)}
@@ -176,62 +169,6 @@ function ChannelSkeleton() {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-/** A quiet, centered lifecycle line woven into the conversation. */
-function SystemNotice({
-  time,
-  at,
-  prevAt,
-  dot,
-  label,
-  labelColor,
-  strong,
-  children,
-  trailing,
-}: {
-  time: string;
-  /** When it landed, as an ISO stamp: shown as "2m ago", the exact time on hover. */
-  at?: string;
-  /** When the notice above it landed, so a run doesn't repeat one age down the column. */
-  prevAt?: string;
-  dot: string;
-  label?: string;
-  labelColor?: string;
-  strong?: boolean;
-  children: React.ReactNode;
-  /** Held out of the truncating run, so a control here survives a long title. */
-  trailing?: React.ReactNode;
-}) {
-  // A run of notices reads as one block: space above the first, none between
-  // them, so six tasks filed in a row take six lines rather than a screen.
-  return (
-    <div
-      data-system-notice=""
-      className="group mt-3 flex items-center gap-2 px-5 py-0.5 text-micro text-muted-foreground first:mt-0 [[data-system-notice]+&]:mt-0"
-    >
-      <span aria-hidden className="inline-block size-1.5 flex-shrink-0 rounded-full" style={{ background: dot }} />
-      {label && (
-        <span
-          className={`flex-shrink-0 whitespace-nowrap ${strong ? "font-semibold" : "font-medium"}`}
-          style={{ color: labelColor ?? "var(--muted-foreground)" }}
-        >
-          {label}
-        </span>
-      )}
-      <span className="flex min-w-0 items-center gap-1.5 truncate">{children}</span>
-      {trailing}
-      {at ? (
-        <Ago
-          at={at}
-          unlessSameAs={prevAt}
-          className="ml-auto flex-shrink-0 whitespace-nowrap pl-2 tabular text-faint"
-        />
-      ) : (
-        <span className="ml-auto flex-shrink-0 tabular text-faint">{time.slice(0, 5)}</span>
-      )}
     </div>
   );
 }
@@ -269,18 +206,27 @@ function isActivity(event: Event): boolean {
 }
 
 /**
- * Activity the chat shows as well: a task's arrival and its finish, and what its
- * thread said (a ping, drawn as a quoted line when there is one to quote). Those
- * are the room's news, so they get a line where people are reading; each stays
- * on the rail too, where the task's whole life collects. Every other board event
- * (claimed, released, expired, blocked, the floor moving on each step of a flow)
- * stays on the rail alone.
+ * Activity the chat shows as well: what a task's thread said (a ping, drawn as a
+ * quoted line when there is one to quote), and the board moves the room picked
+ * in its "Board moves shown in the chat" setting (by default a task's arrival
+ * and its finish). Those are the room's news, so they get a line where people
+ * are reading; each stays on the rail too, where the task's whole life
+ * collects. Every other board event (the floor moving on each step of a flow,
+ * and the moves the room left out) stays on the rail alone. A task's pull
+ * request is the same: its merge and its CI going red are news, and the rest
+ * of what GitHub says (a review asked for, CI green again) is the task's own.
  */
-function isAlsoInChat(event: Event): boolean {
+/** The verifier's notice about a message: drawn under that message, never as a row. */
+function isVerifierCheck(event: Event): boolean {
+  return event.type === NOTICE_TYPE && event.raw.subkind === "check";
+}
+
+function isAlsoInChat(event: Event, boardMoves: ReadonlySet<string>): boolean {
   if (event.type === PING_TYPE) return true;
   if (event.type !== NOTICE_TYPE) return false;
   const subkind = (event.raw.subkind as string) || "filed";
-  return subkind === "filed" || subkind === "resolved";
+  if (subkind === "upstream") return upstreamInChat(event.raw.change as string | undefined);
+  return boardMoves.has(subkind);
 }
 
 /**
@@ -306,35 +252,6 @@ function subjectOf(event: Event, threads: Map<string, ThreadOwner>): string | nu
     return key && !key.startsWith("agents/") ? key : null;
   }
   return null;
-}
-
-/**
- * What to call a subject, and the thread that opens it.
- *
- * Read off the room's own rows, so a task reads in the feed as the name it
- * carries on the board rather than as its `work/…` slug. A notice carries its
- * own copy of both, which is what answers for a subject the room's memories do
- * not have — one filed a moment ago, or one since removed.
- */
-function nameActivity(
-  subject: string,
-  members: Event[],
-  threads: Map<string, ThreadOwner>,
-  rows: Map<string, RowNaming>,
-): { title: string; episode: string | null } {
-  const noticed = members.find((m) => m.type === NOTICE_TYPE)?.content;
-  if (subject.startsWith("urn:")) {
-    const owner = threads.get(subject);
-    return {
-      title: owner?.title ?? noticed ?? threadShortId(subject) ?? "thread",
-      episode: subject,
-    };
-  }
-  const row = rows.get(subject);
-  return {
-    title: row?.title ?? noticed ?? subject,
-    episode: row?.episode ?? members.find((m) => m.thread)?.thread ?? null,
-  };
 }
 
 /** Who made one event: a notice's mover, a ping's last writer, a memory's
@@ -377,7 +294,16 @@ function activityLine(ev: Event): { label: string; detail: string } {
   }
   if (ev.type === NOTICE_TYPE) {
     const by = ev.raw.by as string | undefined;
-    const label = noticeLabel((ev.raw.subkind as string) || "filed", ev.raw.kind as string | undefined);
+    const label = noticeLabel(
+      (ev.raw.subkind as string) || "filed",
+      ev.raw.kind as string | undefined,
+      ev.raw.change as string | undefined,
+    );
+    if (ev.raw.subkind === "upstream") {
+      // Which pull request, and who a review was asked of. Nobody moved it here.
+      const who = ((ev.raw.who as string[] | undefined) ?? []).map((h) => `@${h}`).join(", ");
+      return { label, detail: [ev.raw.ref as string | undefined, who].filter(Boolean).join(" · ") };
+    }
     if (ev.raw.subkind === "floor") {
       // Whose turn it is in a thread: the task the thread belongs to (its id
       // only when no row carries it), then the handles it was given to, the
@@ -408,10 +334,6 @@ function activityLine(ev: Event): { label: string; detail: string } {
   return { label: ev.type, detail: ev.sender };
 }
 
-/** A reader a couple of lines off the bottom still counts as reading the tail,
- *  so a stray wheel tick doesn't detach them. */
-const PIN_TOLERANCE_PX = 64;
-
 /** One page of the channel, on both of its reads.
  *
  *  The two used to disagree: the prose took the backend's default (50) while the
@@ -421,12 +343,9 @@ const PIN_TOLERANCE_PX = 64;
  *  size on both reads, and every older page is fetched the same way. */
 const CHANNEL_PAGE = 200;
 
-/** How close to the top of the viewport counts as asking for the page before. */
-const LOAD_OLDER_MARGIN_PX = 240;
-
 /** The two reads the channel is assembled from, as one page of it.
  *
- *  `/messages` is what the room *said*; the L9 replay is where a ping and a
+ *  `/messages` is what the room *said*; the wire replay is where a ping and a
  *  board notice survive, and neither reaches the conversational read. So a page
  *  is both, merged by time — the initial window and every older one land here.
  *
@@ -472,8 +391,6 @@ function foldAmendment(events: Event[], amendment: Event): Event[] {
   );
 }
 
-export type View = "channel" | "board" | "network";
-
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
@@ -485,9 +402,6 @@ interface Props {
    *  board row the thread belongs to, or from an episode tag on a coordination
    *  notice. */
   onOpenThread?: (episode: string) => void;
-  /** Optional controlled tab (e.g. driven by the onboarding tour). */
-  view?: View;
-  onViewChange?: (view: View) => void;
   /** A message to reveal in the channel, arrived at from search. */
   focusMessageId?: string | null;
   onFocusConsumed?: () => void;
@@ -495,59 +409,11 @@ interface Props {
    *  page owns the key because it owns the pane switch that has to happen
    *  first; the channel owns the search itself. */
   openFind?: number;
-  /** More tabs after Channel, Board and Network (the memories open in the room). */
-  extraTabs?: React.ReactNode;
-  /** What one of those tabs shows, in front of the room's own views. While
-   *  it is set, none of Channel, Board or Network reads as the open tab. */
-  override?: React.ReactNode;
+  /** How many rows the channel draws, for its tab. */
+  onCountChange?: (count: number) => void;
 }
 
-/**
- * A message's right-click menu: copy what it says, or a link that opens the
- * room scrolled to it (the same `focus` link search results use). Selected
- * text inside it keeps the browser's own menu.
- */
-function MessageMenu({
-  roomName,
-  messageId,
-  content,
-  sender,
-  children,
-}: {
-  roomName: string;
-  messageId?: string | null;
-  content: string;
-  sender: string;
-  children: React.ReactElement;
-}) {
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger>{children}</ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem icon={Copy} onClick={() => void copyText(content)}>
-          Copy text
-        </ContextMenuItem>
-        {messageId && (
-          <ContextMenuItem
-            icon={Link2}
-            onClick={() =>
-              void copyText(
-                absoluteUrl(`/room/${encodeURIComponent(roomName)}?focus=${encodeURIComponent(`message:${messageId}`)}`),
-              )
-            }
-          >
-            Copy link to message
-          </ContextMenuItem>
-        )}
-        <ContextMenuItem icon={AtSign} onClick={() => void copyText(`@${sender}`)}>
-          Copy @{sender}
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
-  );
-}
-
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, focusMessageId = null, onFocusConsumed, openFind = 0, extraTabs, override }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, focusMessageId = null, onFocusConsumed, openFind = 0, onCountChange }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const connected = useRoomConnected(roomName);
@@ -556,32 +422,25 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   useEffect(() => {
     onConnectionChange?.(connected);
   }, [connected, onConnectionChange]);
-  const [viewInternal, setViewInternal] = useState<View>("channel");
-  const view = viewProp ?? viewInternal;
-  const setView = (v: View) => { if (viewProp === undefined) setViewInternal(v); onViewChange?.(v); };
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // The scrolling viewport: a ref for find and its minimap, and state for the
+  // scroll behavior, which attaches once the element exists.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const attachScroller = useCallback((el: HTMLDivElement | null) => {
+    scrollRef.current = el;
+    setScroller(el);
+  }, []);
 
-  // Know which senders are registered agents (to badge their replies) and whom
-  // each belongs to (to attribute them inline). Off the room's shared agent
-  // read, so this costs no request of its own; owner is resolved at render time
-  // so it always reflects the current manifest, never a stale stamp.
-  const { agents } = useRoomAgents(roomName);
-  // Which task each thread belongs to, so a ping can name the row rather than
-  // six characters of URN. Off the room's shared memory read, so it costs
-  // nothing; a thread no row is bound to simply has no name to give.
-  const threads = useRoomThreads(roomName);
-  // And what each row is called, so a notice, a ping and a memory push about one
-  // task all print its name rather than three shapes of its key.
-  const rowNames = useRoomRowNames(roomName);
-  // What each agent is, said beside its name (`agentTag`): its CLI, an engine's
-  // kind, or a bridged service as a2a.
-  const agentTags = useMemo(() => new Map(agents.map((a) => [a.handle, agentTag(a)])), [agents]);
-  const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
-  const searchHandles = useMemo(() => [...agentHandles], [agentHandles]);
-  const agentOwners = useMemo(
-    () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
-    [agents],
-  );
+  // What every row needs about the room: who is an agent (to badge their
+  // replies) and whose, what each thread and row is called (so a ping or a
+  // notice names the task rather than its URN), and the verifier's lines. All
+  // off the room's shared reads, so none of it costs a request of its own.
+  const feed = useFeedContext(roomName, { onOpenThread, onOpenMemory });
+  const { threads, rowNames, refreshFlags } = feed;
+  // Which board moves the room shows in its chat (a room setting).
+  const { settings: roomSettings } = useRoomSettings(roomName);
+  const boardMoves = useMemo(() => boardMovesInChat(roomSettings), [roomSettings]);
+  const searchHandles = useMemo(() => [...feed.agentHandles], [feed.agentHandles]);
 
   // Where reading back has got to: the cursor the next older page is asked for,
   // whether both reads have run out, and whether one is in flight. Refs rather
@@ -590,17 +449,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   const older = useRef({ cursor: null as string | null, exhausted: false, loading: false });
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [reachedStart, setReachedStart] = useState(false);
-  // Distance from the bottom, captured before a prepend and restored after it.
-  // The distance from the *top* is what the new page changes, which is why the
-  // view would otherwise jump the moment older messages landed above it.
-  const anchor = useRef<number | null>(null);
 
   // Two reads, one feed.
   //
   // The room's messages are what was *said*; a ping is a control frame and the
   // conversational read leaves it out by construction — which would mean the
   // channel's account of a busy thread survived only as long as the tab that
-  // watched it land. The transcript's L9 replay is where a ping does survive, so
+  // watched it land. The transcript's wire replay is where a ping does survive, so
   // the pings are lifted out of it and merged back in by time. Everything else
   // in that replay already reaches the feed as a message, so only pings are
   // taken; reading both is what makes a reload say what the room said.
@@ -611,7 +466,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     async (before: string | null) => {
       const [data, frames] = await Promise.all([
         fetchMessages(roomName, CHANNEL_PAGE, { before }),
-        fetchL9History(roomName, CHANNEL_PAGE, before),
+        fetchWireHistory(roomName, CHANNEL_PAGE, before),
       ]);
       const said = (data.messages || []).map((m) => parseEvent(m));
       const notices = frames
@@ -652,17 +507,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   //
   // Keyed off the oldest message loaded rather than an offset: the live stream
   // never stops, and every offset in the room shifts under a message arriving
-  // while you read back. A page lands prepended, with the scroll position
-  // anchored to what was already there, so reaching the top reveals history
+  // while you read back. A page lands prepended, and the scroll behavior keeps
+  // the reader on what was already there, so reaching the top reveals history
   // instead of moving it.
   const loadOlder = useCallback(() => {
     const state = older.current;
     if (state.loading || state.exhausted || !state.cursor) return;
-    const el = scrollRef.current;
-    if (!el) return;
     state.loading = true;
     setLoadingOlder(true);
-    const from = el.scrollHeight - el.scrollTop;
     readPage(state.cursor)
       .then(({ page, more }) => {
         const cursor = oldestAt(page);
@@ -671,7 +523,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         state.exhausted = !more || cursor === null;
         if (cursor) state.cursor = cursor;
         if (state.exhausted) setReachedStart(true);
-        anchor.current = from;
         setEvents((prev) => mergePage(prev, page));
       })
       .catch(logFetchError("fetchMessages"))
@@ -699,7 +550,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       setResponding((prev) => applyActivity(prev, msg, Date.now()));
       return;
     }
+    // A schedule ran or changed: the Schedules tab's business, never a line here.
+    if (msg.type === "schedule_changed") return;
     const event = parseEvent(msg);
+    // The verifier raised a line or someone dismissed one: re-read the flags.
+    if (isVerifierCheck(event)) {
+      refreshFlags();
+      return;
+    }
     setResponding((prev) => settleActivity(prev, event.sender));
     setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));
     if (event.type === "memory_changed") onMemoryChanged?.();
@@ -717,16 +575,31 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // The room's own timeline, split by what it is: a thread's prose is dropped
   // (it is not lost, it is placed, and the pane the ping opens is where it
   // reads), everything the room raised about a task goes up to that task's rail
-  // row, and what is left in the feed is what people actually said.
+  // row, and what is left in the feed is what people actually said. The
+  // verifier's `check` notice is drawn under the message it is about, so it
+  // is neither a row nor rail activity of its own.
   const inChannel = useMemo(
-    () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type) && !inAThread(e, roomName)),
+    () =>
+      events.filter(
+        (e) => CHANNEL_VIEW_TYPES.has(e.type) && !inAThread(e, roomName) && !isVerifierCheck(e),
+      ),
     [events, roomName],
   );
 
   const candidates = useMemo(
-    () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e)),
+    () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e, boardMoves)),
+    [inChannel, boardMoves],
+  );
+
+  // What you sent to the room that the feed doesn't have yet, drawn under it.
+  const saidHere = useMemo<Landed[]>(
+    () =>
+      inChannel
+        .filter((e) => CHAT_TYPES.has(e.type))
+        .map((e) => ({ id: e.messageId, sender: e.sender, content: e.content, at: e.at })),
     [inChannel],
   );
+  const pending = usePendingMessages(roomName, null, saidHere);
 
   const saidById = useMemo(() => {
     const said = new Map<string, Event>();
@@ -885,7 +758,17 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // marks a loaded message is its words and phrases; the fields narrow the
   // room-wide search behind the bar, and a query that is all fields steps
   // through the loaded messages that search returned.
-  const needles = useMemo(() => freeText(query), [query]);
+  //
+  // The input shows every keystroke at once; what it marks and counts follows
+  // once typing pauses (`applied`), so a word typed at speed re-marks the
+  // channel once rather than per letter. Clearing it applies at once.
+  const [applied, setApplied] = useState("");
+  useEffect(() => {
+    const next = findOpen ? query : "";
+    const timer = setTimeout(() => setApplied(next), next.trim() ? FIND_SETTLE_MS : 0);
+    return () => clearTimeout(timer);
+  }, [findOpen, query]);
+  const needles = useMemo(() => freeText(applied), [applied]);
   const needle = needles.length > 0 ? needles : null;
   // The hub is asked once typing pauses, not per keystroke: a half-typed
   // `fr` on its way to `from:` is not a query worth a round trip.
@@ -902,18 +785,18 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     [search.result],
   );
   const matches = useMemo(() => {
-    if (!findOpen || !query.trim()) return NO_MATCHES;
+    if (!findOpen || !applied.trim()) return NO_MATCHES;
     // System notices are the feed's own narration, not what anyone said, and
     // several carry an envelope rather than prose. Find searches messages.
     const said = visible.filter(e => !SYSTEM_TYPES.has(e.type));
     // Words alone are matched here, at once. Once a field narrows the query,
     // only the hub can say which messages pass it, so stepping walks the
     // loaded messages its answer named.
-    if (!needle || hasScope(query)) {
+    if (!needle || hasScope(applied)) {
       return said.filter(e => e.messageId !== null && serverHits.has(e.messageId)).map(e => e.id);
     }
     return said.filter(e => hasMatch(e.content, needle) || hasMatch(e.sender, needle)).map(e => e.id);
-  }, [findOpen, query, needle, serverHits, visible]);
+  }, [findOpen, applied, needle, serverHits, visible]);
 
   const matchSet = useMemo(() => new Set(matches), [matches]);
   // Resolved at read time rather than corrected in an effect, so a message
@@ -942,6 +825,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   const closeFind = useCallback(() => setFindOpen(false), []);
 
   const stepMatch = (delta: 1 | -1) => {
+    // A step taken before typing has paused applies what was typed and lands
+    // on its newest hit, rather than stepping through the previous query's.
+    if (applied !== query) {
+      setApplied(query);
+      setStanding(null);
+      return;
+    }
     if (matches.length === 0) return;
     setStanding(matches[stepIndex(position ?? 0, matches.length, delta)]);
   };
@@ -964,9 +854,15 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     const measure = () => {
       const base = el.getBoundingClientRect().top;
       const height = el.scrollHeight || 1;
+      // One walk over the rows for all the hits, not one per hit: a common
+      // word hits hundreds of messages, and a scan for each was quadratic.
+      const rows = new Map<string, HTMLElement>();
+      for (const node of el.querySelectorAll<HTMLElement>("[data-event-id]")) {
+        if (node.dataset.eventId) rows.set(node.dataset.eventId, node);
+      }
       const next: MinimapTick[] = [];
       for (const id of matches) {
-        const row = rowNode(el, id);
+        const row = rows.get(id);
         if (!row) continue;
         const top = row.getBoundingClientRect().top - base + el.scrollTop;
         next.push({ id, top: Math.min(1, Math.max(0, top / height)) });
@@ -982,155 +878,34 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     return () => observer.disconnect();
   }, [findOpen, matches, visible]);
 
-  // The feed follows new messages only while the reader is on the tail; scroll
-  // up and it holds still. A jump-back button carries the count of what landed
-  // meanwhile, so leaving the tail doesn't read as a quiet room.
-  const [atBottom, setAtBottom] = useState(true);
-  const atBottomRef = useRef(true);
-  // The last row the reader had reached when they left the tail — the row
-  // itself, not how many there were. A count is wrong the moment a page of
-  // older messages is prepended: every one of them lands *above* the mark, and
-  // none of it is news.
-  const [detachedAt, setDetachedAt] = useState<string | null>(null);
-  const lastVisible = useRef<string | null>(null);
+  // The scroll behavior every message list shares: open at the newest message,
+  // follow it while the reader is there, hold still when they've scrolled up
+  // and say how much landed meanwhile, read back a page near the top (and
+  // until the view is full: a page of the room can leave a handful of rows
+  // here once its thread prose and churn are placed elsewhere). A live message
+  // must not pull the view off a hit the reader stepped to, or off a message
+  // they arrived at from search; what they just sent takes them back down.
+  const newestPending = pending[pending.length - 1]?.id ?? null;
+  const rowIds = useMemo(() => (historyLoaded ? visible.map((e) => e.id) : null), [historyLoaded, visible]);
+  const follow = useFollowLatest(scroller, {
+    rows: rowIds,
+    holding: Boolean(highlight || activeId),
+    onNearTop: loadOlder,
+    sent: newestPending,
+    resetKey: roomName,
+  });
 
   useEffect(() => {
-    // Only the channel renders this viewport; the other views replace it, so
-    // the ref is null for them and the pin is left as they found it.
-    const el = scrollRef.current;
-    if (!el) return;
-    // A view switch unmounts the viewport, and a remount starts at the top;
-    // put a pinned reader back on the tail rather than in the archive.
-    if (atBottomRef.current) el.scrollTop = el.scrollHeight;
-    const measure = () => {
-      if (el.scrollTop <= LOAD_OLDER_MARGIN_PX) loadOlder();
-      const pinned = el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_TOLERANCE_PX;
-      if (pinned === atBottomRef.current) return;
-      atBottomRef.current = pinned;
-      if (!pinned) setDetachedAt(lastVisible.current);
-      setAtBottom(pinned);
-    };
-    el.addEventListener("scroll", measure, { passive: true });
-    return () => el.removeEventListener("scroll", measure);
-  }, [view, loadOlder]);
-
-  // Put the reader back where they were reading. Before paint, and before the
-  // follow-the-tail effect below runs — which it won't, since anyone reading
-  // back is by definition off the tail.
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    const from = anchor.current;
-    if (!el || from === null) return;
-    anchor.current = null;
-    el.scrollTop = el.scrollHeight - from;
-  }, [visible]);
-
-  // A page of the room is not a page of the channel: the thread prose in it is
-  // placed rather than shown, and the churn goes up to the rail, so two hundred
-  // messages can leave a handful of rows and nothing to scroll. Keep pulling
-  // until the viewport actually overflows — otherwise the one gesture that
-  // reaches the older pages is a gesture the reader has no way to make.
-  useEffect(() => {
-    if (!historyLoaded) return;
-    const el = scrollRef.current;
-    if (!el) return;
-    if (el.scrollHeight <= el.clientHeight + LOAD_OLDER_MARGIN_PX) loadOlder();
-  }, [historyLoaded, visible, loadOlder]);
-
-  const jumpToLatest = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    atBottomRef.current = true;
-    setAtBottom(true);
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  };
-
-  const unread = useMemo(() => {
-    if (atBottom || detachedAt === null) return 0;
-    const mark = visible.findIndex((e) => e.id === detachedAt);
-    return mark === -1 ? 0 : visible.length - 1 - mark;
-  }, [atBottom, detachedAt, visible]);
-
-  // Auto-scroll when new events arrive — but not over a message the user was
-  // just sent to, which is the one place in the feed they're looking, and not
-  // over history they scrolled up to read.
-  useEffect(() => {
-    lastVisible.current = visible[visible.length - 1]?.id ?? null;
-    // A live message must not pull the view off the hit the reader stepped to,
-    // any more than it may off a message they arrived at from search.
-    if (highlight || activeId || !atBottomRef.current) return;
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [visible, highlight, activeId]);
+    onCountChange?.(visible.length);
+  }, [visible.length, onCountChange]);
 
   useEffect(() => {
     if (!highlight) return;
     highlightRow.current?.scrollIntoView({ block: "center" });
   }, [highlight, historyLoaded, visible]);
 
-  const channelCount = visible.length;
-
   return (
     <div className="flex flex-col h-full">
-      {/* An editor's tab strip: flat tabs flush to the edges, the open one in
-          the pane's own color so it reads as attached to what it shows.
-          Connection state lives in the shell status bar. */}
-      <div className="flex h-8 shrink-0 items-stretch overflow-x-auto border-b border-border bg-surface [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="flex flex-shrink-0 items-stretch">
-          {([
-            { id: "channel" as const, label: "Channel", count: channelCount as number | null },
-            { id: "board" as const,   label: "Board",   count: null },
-            { id: "network" as const, label: "Network", count: null },
-          ]).map(t => {
-            // Hold the reveal modifier and each tab wears the key that selects it.
-            const active = view === t.id && !override;
-            return (
-              <button
-                key={t.id}
-                data-tour={`tab-${t.id}`}
-                onClick={() => setView(t.id)}
-                className={`relative -mb-px flex items-center gap-1.5 border-r border-border px-3 text-label transition-colors ${
-                  active
-                    ? "bg-paper text-text"
-                    : "text-muted-foreground hover:bg-hairline hover:text-text"
-                }`}
-              >
-                {t.label}
-                <KeyBadge action={`pane.${t.id}`} />
-                {t.count !== null && (
-                  <span className={`text-micro tabular ${active ? "text-accent" : "text-muted-foreground"}`}>
-                    {t.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        {extraTabs}
-      </div>
-      {/* Another tab (an open memory) in front: the room's own views stay
-          mounted behind it, so the channel keeps its place and its stream. */}
-      {override && <div className="flex min-h-0 flex-1 flex-col">{override}</div>}
-      <div className={override ? "hidden" : "contents"}>
-      {view === "board" ? (
-        <div className="flex-1 min-h-0">
-          <RoomBoard roomName={roomName} onOpenThread={onOpenThread} />
-        </div>
-      ) : view === "network" ? (
-        // Unified Network pane: SLIM channel diagnostics as a rail on top, the
-        // A2A bridge (the room's off-channel traffic) beneath it when there is
-        // one, and the live L9 protocol feed filling the rest.
-        <div className="flex flex-1 min-h-0 flex-col">
-          <div className="shrink-0 border-b border-border bg-surface/40">
-            <RoomSlimView roomName={roomName} layout="rail" />
-          </div>
-          <div className="shrink-0">
-            <RoomA2aView roomName={roomName} />
-          </div>
-          <div className="flex-1 min-h-0">
-            <L9Inspector roomName={roomName} />
-          </div>
-        </div>
-      ) : (
       <div className="relative flex flex-1 min-h-0 flex-col">
       {findOpen && (
         <ChatFindBar
@@ -1143,6 +918,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
           }}
           count={matches.length}
           position={position}
+          settling={applied !== query}
           onStep={stepMatch}
           onClose={closeFind}
           inputRef={findInput}
@@ -1176,10 +952,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         <ActivityRail items={activity} onOpenThread={onOpenThread} onOpenMemory={onOpenMemory} />
       )}
       <div className="relative flex-1 min-h-0">
-      <ScrollArea className="h-full" viewportRef={scrollRef}>
+      <ScrollArea className="h-full" viewportRef={attachScroller}>
         {!historyLoaded ? (
           <ChannelSkeleton />
-        ) : visible.length === 0 ? (
+        ) : visible.length === 0 && pending.length === 0 ? (
           // A room whose every message is task-scoped has a full rail and an
           // empty feed, and "no messages yet" is then a false statement about a
           // room with hundreds of them. Say where the talking went instead.
@@ -1209,298 +985,29 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         ) : null}
         <NowProvider>
         {visible.map((ev, idx) => {
-              // A notice under another says its age only when it differs.
-              const prevAt = idx > 0 && SYSTEM_TYPES.has(visible[idx - 1].type) ? visible[idx - 1].at : undefined;
-              // Coordination + plan lifecycle events render as slim, centered
-              // system notices — quiet dividers woven into the conversation,
-              // not loud rows. Chat messages group under one sender header.
-              if (ev.type === PING_TYPE && ev.thread) {
-                // Only a run's last ping with something to quote is in `visible`.
-                const line = pingLines.get(ev.id);
-                if (!line) return null;
-                const { said, quote, count: n } = line;
-                const thread = ev.thread;
-                const shortId = threadShortId(thread) ?? "thread";
-                const owner = threads.get(thread);
-                // One line from the thread: who, where, and the first line of
-                // what they said. The argument stays in the thread.
-                return (
-                  <SystemNotice
-                    key={ev.id}
-                    time={ev.time}
-                    at={ev.at}
-                    prevAt={prevAt}
-                    dot="var(--accent)"
-                    label={`@${said.sender || ev.pingSenders[0] || "someone"}`}
-                    labelColor="var(--text)"
-                  >
-                    <span>in</span>
-                    <button
-                      type="button"
-                      onClick={() => onOpenThread?.(thread)}
-                      disabled={!onOpenThread}
-                      title={thread}
-                      aria-label={`Open thread ${shortId}`}
-                      className="inline-flex max-w-[16rem] flex-shrink-0 items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default"
-                    >
-                      <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
-                      <span className="truncate">{owner?.title ?? shortId}</span>
-                    </button>
-                    <span className="truncate text-text">{quote}</span>
-                    {n > 1 && <span className="flex-shrink-0 text-faint">· {n} messages</span>}
-                  </SystemNotice>
-                );
-              }
-              if (ev.type === NOTICE_TYPE) {
-                const episode = ev.thread;
-                const by = ev.raw.by as string | undefined;
-                const subkind = (ev.raw.subkind as string) || "filed";
-                // Green when work lands, closes or clears; red when it stalls on a
-                // blocker; yellow when it comes back up for grabs, handed back or
-                // drained; accent in hand.
-                const dot =
-                  subkind === "resolved" || subkind === "filed" || subkind === "unblocked"
-                    ? "var(--green)"
-                    : subkind === "blocked"
-                      ? "var(--red)"
-                      : subkind === "released" || subkind === "expired"
-                        ? "var(--yellow)"
-                        : "var(--accent)";
-                return (
-                  <SystemNotice
-                    key={ev.id}
-                    time={ev.time} at={ev.at} prevAt={prevAt}
-                    dot={dot}
-                    label={noticeLabel(subkind, ev.raw.kind as string | undefined)}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => episode && onOpenThread?.(episode)}
-                      disabled={!episode || !onOpenThread}
-                      className="inline-flex max-w-[20rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
-                    >
-                      <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
-                      <span className="truncate">{ev.content}</span>
-                    </button>
-                    {/* A filed task reads by who it is for; a lease event by who
-                        moved it; an expired one by who let it drain. Fall back to
-                        the filer when a task is for no one. */}
-                    {subkind === "filed" && ev.raw.for ? (
-                      <span>· for @{String(ev.raw.for).replace(/^@/, "")}</span>
-                    ) : by ? (
-                      <span>
-                        · {subkind === "filed" ? "by " : subkind === "expired" ? "held by " : ""}@{by}
-                      </span>
-                    ) : null}
-                  </SystemNotice>
-                );
-              }
-              if (ev.type === "l9_knowledge") {
-                const key = ev.raw.key as string | undefined;
-                const updatedBy = ev.raw.updated_by as string | undefined;
-                const version = ev.raw.version;
-                // The key printed once, as the name the room calls it — the
-                // content line already said it, in slug form, and said it again
-                // in the mono span beside it.
-                const named = key ? nameActivity(key, [ev], threads, rowNames) : null;
-                return (
-                  <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} dot="var(--yellow)" label="Knowledge">
-                    <span>updated</span>
-                    {named ? (
-                      <button
-                        type="button"
-                        onClick={() => named.episode && onOpenThread?.(named.episode)}
-                        disabled={!named.episode || !onOpenThread}
-                        title={key}
-                        className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
-                      >
-                        <span className="truncate">{named.title}</span>
-                      </button>
-                    ) : (
-                      <span className="truncate">{ev.content}</span>
-                    )}
-                    {typeof version === "number" && <span>· v{version}</span>}
-                    {updatedBy ? <span>· by @{updatedBy}</span> : null}
-                  </SystemNotice>
-                );
-              }
-              if (ev.type === "coordination_consensus") {
-                const broken = ev.raw.broken === true;
-                const episodeUrn = (ev.raw.episode as string | undefined) ?? (ev.raw.session as string | undefined);
-                const shortId = episodeUrn ? episodeUrn.split(":").pop() : undefined;
-                const planFile = ev.raw.plan_file as string | undefined;
-                const assignments = ev.raw.assignments as Record<string, string> | undefined;
-                const issueCount = assignments ? Object.keys(assignments).length : 0;
-                const metrics = ev.raw.metrics && typeof ev.raw.metrics === "object"
-                  ? (ev.raw.metrics as Record<string, unknown>)
-                  : undefined;
-                const garRaw = metrics ? metrics.gar : undefined;
-                const gar = typeof garRaw === "number" && Number.isFinite(garRaw) ? garRaw : undefined;
-                const tone = broken ? "var(--yellow)" : "var(--green)";
-                // A conductor run ends `resolved`, or `converged` when a pick
-                // certified an agreement: a flow walked to its end, so it says
-                // which flow and how far (and what it agreed on).
-                const flowDone = ev.raw.outcome === "resolved" || ev.raw.outcome === "converged";
-                const flow = flowDone ? (ev.raw.protocol as string | undefined) : undefined;
-                if (flow) {
-                  const steps = typeof ev.raw.steps === "number" ? ev.raw.steps : undefined;
-                  const agreed = ev.raw.outcome === "converged"
-                    ? ((ev.raw.select as { pick?: string } | undefined)?.pick ?? null)
-                    : null;
-                  return (
-                    <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} dot={tone} label={agreed ? "Agreed" : "Done"} labelColor={tone} strong>
-                      <span>in</span>
-                      {shortId ? (
-                        <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
-                      ) : (
-                        <span className="font-mono">episode</span>
-                      )}
-                      <span>
-                        · {flow} flow
-                        {steps !== undefined ? `, ${steps} step${steps === 1 ? "" : "s"}` : ""}
-                        {agreed ? `, going with ${agreed}` : ""}
-                      </span>
-                    </SystemNotice>
-                  );
-                }
-                return (
-                  <SystemNotice
-                    key={ev.id}
-                    time={ev.time} at={ev.at} prevAt={prevAt}
-                    dot={tone}
-                    label={broken ? "Timeout" : "Consensus"}
-                    labelColor={tone}
-                    strong
-                  >
-                    <span>in</span>
-                    {shortId ? (
-                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
-                    ) : (
-                      <span className="font-mono">episode</span>
-                    )}
-                    {broken ? (
-                      <span>· no agreement</span>
-                    ) : (
-                      <>
-                        <span>· {issueCount} issue{issueCount === 1 ? "" : "s"} agreed</span>
-                        {gar !== undefined ? (
-                          <Tooltip content="Genuine agreement ratio: how many agents actually moved toward the outcome">
-                            <span
-                              className="font-mono"
-                              aria-description="Genuine agreement ratio: how many agents actually moved toward the outcome"
-                            >
-                              · GAR {gar.toFixed(2)}
-                            </span>
-                          </Tooltip>
-                        ) : null}
-                        {planFile ? (
-                          <span>→ <span className="font-mono text-accent">{planFile}</span></span>
-                        ) : null}
-                      </>
-                    )}
-                  </SystemNotice>
-                );
-              }
-              if (ev.type === "coordination_join") {
-                const handle = (ev.raw.handle as string | undefined) ?? ev.sender;
-                const intent = (ev.raw.intent as string | undefined) ?? "";
-                const episodeUrn = (ev.raw.episode as string | undefined) ?? (ev.raw.session as string | undefined);
-                const shortId = episodeUrn ? episodeUrn.split(":").pop() : undefined;
-                return (
-                  <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} dot="var(--muted-foreground)">
-                    <span className="font-medium text-muted-foreground">@{handle}</span>
-                    <span>joined</span>
-                    {shortId ? (
-                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
-                    ) : null}
-                    {intent ? <span>· &ldquo;{intent}&rdquo;</span> : null}
-                  </SystemNotice>
-                );
-              }
-              // A conductor post is drawn from its structured line: one row
-              // naming the step and who it went to, the prompt behind a toggle.
-              if (ev.conductor) {
-                return (
-                  <div key={ev.id} data-event-id={ev.id}>
-                    <ConductorRow line={ev.conductor} text={ev.content} onOpenMemory={onOpenMemory} />
-                  </div>
-                );
-              }
-              // A chat message groups with the one above it when the same
-              // sender speaks consecutively (no intervening system notice).
-              const prev = visible[idx - 1];
-              const grouped =
-                prev &&
-                !SYSTEM_TYPES.has(prev.type) &&
-                !prev.conductor &&
-                prev.sender === ev.sender;
-              const isAgent = agentHandles.has(ev.sender);
-              // Match the members panel so one sender isn't two colors in two
-              // places: an agent wears its own stable tint (Monogram's default),
-              // a human the neutral seat.
-              const color = isAgent ? undefined : "var(--avatar-neutral)";
               const marked = highlight !== null && ev.messageId === highlight;
-              const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
-              // The row's own share of the open find: whether to mark its prose
-              // at all, and whether it is the hit being stood on.
-              const hit = matchSet.has(ev.id) ? { query: needles, active: ev.id === activeId } : undefined;
               return (
-                <MessageMenu key={ev.id} roomName={roomName} messageId={ev.messageId} content={ev.content} sender={ev.sender}>
-                <div
-                  data-event-id={ev.id}
-                  ref={marked ? highlightRow : undefined}
-                  className={`group relative flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"} ${
-                    marked ? "bg-accent/15" : ""
-                  } ${hit?.active ? "bg-yellow/10 ring-1 ring-inset ring-yellow/40" : ""}`}
-                >
-                  {/* A follow-up line keeps its clock time in the gutter, on
-                      hover; the group's header already says how long ago. */}
-                  {grouped && (
-                    <span className="pointer-events-none absolute right-5 top-1.5 text-micro tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
-                      {ev.time.slice(0, 5)}
-                    </span>
-                  )}
-
-                  <div className="w-6 flex-shrink-0">
-                    {!grouped && (
-                      <Tooltip content={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
-                        <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
-                          <Monogram handle={ev.sender} color={color} className="size-6 text-[10px]" />
-                        </span>
-                      </Tooltip>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    {!grouped && (
-                      <div className="flex items-center gap-1.5 pr-12">
-                        <SenderName
-                          handle={ev.sender}
-                          highlight={hit}
-                          tag={isAgent ? (agentTags.get(ev.sender) ?? "agent") : undefined}
-                        />
-                        {ev.recipient && (
-                          <span className="flex-shrink-0 rounded bg-hairline px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
-                            → {ev.recipient}
-                          </span>
-                        )}
-                        <Ago at={ev.at} className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint" />
-                      </div>
-                    )}
-                    <MessageBody content={ev.content} hit={hit} onOpenMemory={onOpenMemory} />
-                    {ev.edited && (
-                      <span className="text-micro text-faint" title="revised by a later message">
-                        (edited)
-                      </span>
-                    )}
-                  </div>
-                </div>
-                </MessageMenu>
+                <FeedRow
+                  key={ev.id}
+                  ev={ev}
+                  prev={visible[idx - 1]}
+                  ctx={feed}
+                  pingLine={pingLines.get(ev.id)}
+                  marked={marked}
+                  rowRef={marked ? highlightRow : undefined}
+                  // The row's own share of the open find: whether to mark its
+                  // prose at all, and whether it is the hit being stood on.
+                  hit={matchSet.has(ev.id) ? { query: needles, active: ev.id === activeId } : undefined}
+                />
               );
             })}
         </NowProvider>
-          {responding.length > 0 && (
-            <RespondingLine entries={responding} room={roomName} threads={threads} onOpenThread={onOpenThread} />
-          )}
+          <PendingMessageRows
+            roomName={roomName}
+            pending={pending}
+            previousSender={lastChatSender(visible)}
+            onOpenMemory={onOpenMemory}
+          />
         </div>
         )}
       </ScrollArea>
@@ -1508,23 +1015,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         <ChatMinimap viewportRef={scrollRef} ticks={ticks} activeId={activeId} onJump={setStanding} />
       )}
       </div>
-      {!atBottom && visible.length > 0 && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={jumpToLatest}
-            aria-label={unread > 0 ? `Jump to latest, ${unread} new` : "Jump to latest"}
-            className="pointer-events-auto rounded-full border-border bg-elevated shadow-lg motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1"
-          >
-            <ArrowDown className="size-3.5" />
-            {unread > 0 ? `${unread} new ${unread === 1 ? "message" : "messages"}` : "Jump to latest"}
-          </Button>
-        </div>
-      )}
+      {!follow.atBottom && visible.length > 0 && <JumpToLatest unread={follow.unread} onClick={follow.jump} />}
       </div>
+      {/* Outside the scroll, so it stays over the composer wherever the
+          channel is scrolled to, and sending a message can't push it away. */}
+      {responding.length > 0 && (
+        <RespondingLine entries={responding} room={roomName} threads={threads} onOpenThread={onOpenThread} />
       )}
-      </div>
     </div>
   );
 }

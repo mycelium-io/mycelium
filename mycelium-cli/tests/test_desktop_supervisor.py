@@ -12,6 +12,7 @@ runs, where programs are found, and that stopping stops the children.
 
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
@@ -272,6 +273,73 @@ def test_programs_are_found_in_the_bundle_before_the_path(
     assert loc.hub() == (["my-hub", "--port", "9"], None)
 
 
+@pytest.mark.parametrize(
+    ("windows", "programs", "resources"),
+    [
+        # An AppImage: programs in usr/bin, resources in usr/lib/Mycelium.
+        (False, ("usr", "bin"), ("usr", "lib", "Mycelium")),
+        # Windows: everything in the install folder, programs named .exe.
+        (True, ("Mycelium",), ("Mycelium",)),
+    ],
+)
+def test_programs_are_found_in_each_platforms_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    windows: bool,  # noqa: FBT001
+    programs: tuple[str, ...],
+    resources: tuple[str, ...],
+):
+    monkeypatch.setattr(sv, "WINDOWS", windows)
+    for var in ("MYCELIUM_SLIMCTL", "MYCELIUM_HUB_CMD", "MYCELIUM_UI_DIR", "MYCELIUM_NODE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv("ALIGNER_PI_BINARY", raising=False)
+    exe = ".exe" if windows else ""
+    bin_dir, res = tmp_path.joinpath(*programs), tmp_path.joinpath(*resources)
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("slimctl", "node", "herdr"):
+        (bin_dir / f"{name}{exe}").write_text("")
+    (res / "hub").mkdir(parents=True)
+    (res / "hub" / f"mycelium-hub{exe}").write_text("")
+    (res / "ui" / ".next" / "static").mkdir(parents=True)
+    (res / "ui" / "server.js").write_text("")
+    # On Windows the hub runs Pi's entry point on node; a batch launcher would
+    # mangle every prompt on its way through cmd.exe.
+    pi = res / sv.PI_ENTRY if windows else res / "pi" / "pi"
+    pi.parent.mkdir(parents=True)
+    pi.write_text("")
+    (res / "models").mkdir()
+    loc = Locator(bundle=bin_dir, repo=None)
+
+    assert loc.slim()[0] == str(bin_dir / f"slimctl{exe}")
+    assert loc.herdr() == [str(bin_dir / f"herdr{exe}"), "server"]
+    assert loc.hub()[0][0] == str(res / "hub" / f"mycelium-hub{exe}")
+    assert loc.ui() == ([str(bin_dir / f"node{exe}"), "server.js"], res / "ui")
+    assert loc.pi() == str(pi)
+    assert loc.models() == res / "models"
+
+
+@pytest.mark.parametrize(
+    ("cli", "programs"),
+    [
+        # The app's mycelium is a directory build among its resources (#1269).
+        (
+            "/Applications/Mycelium.app/Contents/Resources/cli",
+            "/Applications/Mycelium.app/Contents/MacOS",
+        ),
+        ("/tmp/.mount_Myc/usr/lib/Mycelium/cli", "/tmp/.mount_Myc/usr/bin"),
+        ("C:/Users/me/AppData/Local/Mycelium/cli", "C:/Users/me/AppData/Local/Mycelium"),
+        # A standalone binary, or an app from before, is its own programs folder.
+        ("/usr/local/bin", "/usr/local/bin"),
+        (
+            "/Applications/Mycelium.app/Contents/MacOS",
+            "/Applications/Mycelium.app/Contents/MacOS",
+        ),
+    ],
+)
+def test_the_apps_programs_are_found_from_its_cli_folder(cli: str, programs: str):
+    assert sv.programs_dir(Path(cli)) == Path(programs)
+
+
 def test_a_ui_build_without_its_static_files_is_not_used(tmp_path: Path):
     # `next build` puts the static files beside the standalone server; a
     # server without them renders every page blank.
@@ -306,6 +374,40 @@ def test_the_apps_answer_on_usage_stats_reaches_the_hub(share: bool | None, sent
     assert hub_component.env.get("TELEMETRY_SEND_PRODUCT_ANALYTICS") == sent
 
 
+@pytest.mark.parametrize(("voice", "sent"), [(True, "true"), (False, "false"), (None, None)])
+def test_the_apps_voice_switch_reaches_the_hub(voice: bool | None, sent: str | None):
+    sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None), voice=voice)
+    [hub_component] = [c for c in sup._components() if c.name == "hub"]
+    assert hub_component.env.get("VOICE_ENABLED") == sent
+
+
+def test_voice_is_off_in_config_unless_turned_on():
+    from mycelium.config import MyceliumConfig
+
+    assert sv.hub_env(MyceliumConfig())["VOICE_ENABLED"] == "false"
+    config = MyceliumConfig()
+    config.voice.enabled = True
+    assert sv.hub_env(config)["VOICE_ENABLED"] == "true"
+
+
+def test_the_speech_model_is_fast_unless_chosen():
+    from mycelium.config import MyceliumConfig
+
+    assert sv.hub_env(MyceliumConfig())["VOICE_MODEL"] == "fast"
+    config = MyceliumConfig()
+    config.voice.model = "accurate"
+    assert sv.hub_env(config)["VOICE_MODEL"] == "accurate"
+
+
+@pytest.mark.parametrize("model", ["accurate", "fast", None])
+def test_the_apps_speech_model_reaches_the_hub(model: str | None):
+    sup = Supervisor(
+        "hub", emit=Events(), env={}, locator=Locator(None, None), voice=True, voice_model=model
+    )
+    [hub_component] = [c for c in sup._components() if c.name == "hub"]
+    assert hub_component.env.get("VOICE_MODEL") == model
+
+
 def test_the_hubs_settings_come_from_config():
     from mycelium.config import MyceliumConfig
 
@@ -314,3 +416,60 @@ def test_the_hubs_settings_come_from_config():
     env = sv.hub_env(config)
     assert env["LLM_MODEL"] == "anthropic/claude-sonnet-4-6"
     assert "LLM_API_KEY" not in env  # empty values are left to the hub's defaults
+
+
+def test_the_hub_is_told_which_cli_saves_its_settings():
+    sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None))
+    [hub_component] = [c for c in sup._components() if c.name == "hub"]
+    assert json.loads(hub_component.env["MYCELIUM_CONFIG_CLI"]) == sv.own_cli()
+    assert sv.own_cli()[0] == sys.executable
+
+
+def test_a_hub_that_asks_to_restart_is_started_again_at_once_with_config_read_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # The hub's Hub page saved a setting: the hub leaves the marker and exits
+    # cleanly. Its second run stays up.
+    marker = tmp_path / sv.HUB_RESTART_MARKER
+    once = tmp_path / "ran-once"
+    script = (
+        "import pathlib, time\n"
+        f"once = pathlib.Path({str(once)!r})\n"
+        "if not once.exists():\n"
+        "    once.write_text('1')\n"
+        f"    pathlib.Path({str(marker)!r}).write_text('restart')\n"
+        "    raise SystemExit(0)\n"
+        "time.sleep(60)\n"
+    )
+    events = Events()
+    restarting = comp("hub", [sys.executable, "-c", script])
+    sup = hub(events, [restarting])
+    sup.env = {"MYCELIUM_DATA_DIR": str(tmp_path)}
+    sup._env_from_config = True
+    monkeypatch.setattr(
+        sv,
+        "hub_env",
+        lambda _config: {"MYCELIUM_DATA_DIR": str(tmp_path), "LLM_MODEL": "new/model"},
+    )
+
+    def restarted() -> bool:
+        # The first run is up too before it exits, so wait for the restart
+        # itself, then for the second run.
+        details = [s["components"]["hub"]["detail"] or "" for s in events.statuses()]
+        asked = any("restarting to apply new settings" in d for d in details)
+        return asked and restarting.state == "running" and restarting.proc is not None
+
+    run_until(sup, restarted)
+    assert restarting.restarts == 0  # not counted as a crash
+    assert not marker.exists()
+    assert restarting.env["LLM_MODEL"] == "new/model"
+
+
+def test_a_hub_that_exits_without_the_marker_is_a_crash(tmp_path: Path):
+    events = Events()
+    crashing = comp("hub", EXIT, ready=lambda: False)
+    sup = hub(events, [crashing])
+    sup.env = {"MYCELIUM_DATA_DIR": str(tmp_path)}
+    run_until(sup, lambda: crashing.state == "failed")
+    details = [s["components"]["hub"]["detail"] or "" for s in events.statuses()]
+    assert not any("restarting to apply" in d for d in details)

@@ -156,7 +156,7 @@ def skill_ls(room: str | None = None, as_json: bool = False) -> None:
             f"[cyan]/{skill.name}[/cyan]  [dim]v{skill.version}  {skill.created_by}[/dim]"
         )
         if desc:
-            console.print(f"  {desc}")
+            console.print(f"  {desc}", markup=False)
 
 
 @doc_ref(
@@ -199,8 +199,10 @@ def skill_get(
     desc = skill.description or ""
     console.print(f"[cyan]/{skill.name}[/cyan]  [dim]v{skill.version}  {skill.created_by}[/dim]")
     if desc:
-        console.print(f"[dim]{desc}[/dim]")
-    console.print(skill.body or "")
+        console.print(desc, style="dim", markup=False)
+    # The body is the author's text, not Rich markup: `[[key]]` links would vanish,
+    # and Rich's wrapping would add line breaks the skill doesn't have.
+    console.print(skill.body or "", markup=False, soft_wrap=True)
 
 
 @doc_ref(
@@ -239,7 +241,7 @@ def skill_print() -> None:
 
     This is Mycelium's own SKILL.md (the protocol an agent follows in a room),
     not an entry in a room's skills store above. Agents the runner, swarm or
-    the Mac app start don't need it: their notes and wake prompts carry the
+    the desktop app start don't need it: their notes and wake prompts carry the
     commands. It is for an agent CLI you start yourself, e.g.:
 
         mycelium skill print > ~/.claude/skills/mycelium/SKILL.md

@@ -1,25 +1,25 @@
 {
   "order": 3,
   "title": "Pair across teams, agents included",
-  "tagline": "You bring your agent, they bring theirs: work one problem in one thread, and keep what you decide.",
+  "tagline": "You bring your agent and they bring theirs. Work one problem in one thread and keep what you decide.",
   "track": "Collaboration",
   "thumb": "app-room-channel.png",
   "needs": [
-    "A teammate with their own coding agent, on a hub you can both reach",
+    "A teammate with their own coding agent and a hub you can both reach",
     "A problem that touches both your parts of the code"
   ],
   "takeaway": "A way to work across a team boundary where the agents carry each side's context.",
   "outcomes": [
     "Put both people and both agents on one problem",
     "Steer while the agents do the legwork across both codebases",
-    "Settle a disagreement once, and keep the decision"
+    "Settle a disagreement once and keep the decision"
   ],
   "modules": [
     {
       "title": "Work it together",
       "video": {
         "take": "pairing-work",
-        "about": "Inviting a teammate, and asking their agent directly in one task's thread."
+        "about": "Inviting a teammate and asking their agent directly in one task's thread."
       },
       "lessons": [
         {
@@ -38,7 +38,7 @@
       "title": "When you disagree",
       "video": {
         "take": "pairing-disagree",
-        "about": "Two agents stuck on an approach, the aligner brokering an agreement, and the decision kept."
+        "about": "Two agents stuck on an approach. The aligner brokers an agreement, and the decision is kept."
       },
       "lessons": [
         {
@@ -49,7 +49,7 @@
             "question": "The aligner got @web and @api to agree. What's left to do?",
             "options": [
               "Nothing: the agreement is in the thread",
-              "Keep it as a decision, so nobody argues it again next week",
+              "Keep it as a decision so nobody argues it again next week",
               "Ask the aligner to check again tomorrow"
             ],
             "answer": 1,

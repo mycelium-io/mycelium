@@ -17,7 +17,7 @@
 import { readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { Engine, pngSize, writeShot } from "./engine.mjs";
-import { PROJECT_ROOT } from "./project.mjs";
+import { APP_STORAGE, PROJECT_ROOT } from "./project.mjs";
 import { codeDocument } from "./code.mjs";
 import { terminalDocument } from "./terminal.mjs";
 import { cardDocument, imageCardDocument } from "./card.mjs";
@@ -26,7 +26,7 @@ import { canvasArt } from "./canvas.mjs";
 import { addSound, soundOptions } from "./audio/soundtrack.mjs";
 import { soundFfmpeg } from "./audio/io.mjs";
 import { GLASS_VIDEO_SCALE, glassArt, glassMarkup, glassSource } from "./glass.mjs";
-import { resolveBaseUrl } from "./app.mjs";
+import { findApp } from "./app.mjs";
 import { runCommand } from "./run.mjs";
 import { stripAnsi } from "./ansi.mjs";
 import { viewportList } from "./viewports.mjs";
@@ -166,7 +166,7 @@ export async function capture(spec, ctx = {}) {
   }
 
   if (spec.op === "video") {
-    const { url, baseUrl } = await resolvePageUrl({ ...spec, op: spec.url ? "url" : "app" }, log);
+    const { url, baseUrl, app, hint } = await resolvePageUrl({ ...spec, op: spec.url ? "url" : "app" }, log);
     const { format } = await resolveFormat(spec);
     const frame = viewportList(spec)[0];
     const isApp = Boolean(spec.route);
@@ -205,7 +205,7 @@ export async function capture(spec, ctx = {}) {
       ...base,
       ...rest,
       ...(sound ? { sound } : {}),
-      meta: { url, baseUrl, viewport: frame?.name, capture: source, encoder, truncated },
+      meta: { url, baseUrl, app, hint, viewport: frame?.name, capture: source, encoder, truncated },
       ms: { total: Date.now() - t0, ...take.ms, ...(sound ? { sound: Date.now() - tSound } : {}) },
     };
     if (!spec.stdout) return result;
@@ -214,7 +214,7 @@ export async function capture(spec, ctx = {}) {
   }
 
   if (spec.op === "url" || spec.op === "app") {
-    const { url, baseUrl } = await resolvePageUrl(spec, log);
+    const { url, baseUrl, app, hint } = await resolvePageUrl(spec, log);
     const fallbackName = spec.op === "app" ? `app-${slug(spec.route ?? "home")}` : `url-${slug(new URL(url).pathname)}`;
     const pageSpec = {
       ...spec,
@@ -234,11 +234,12 @@ export async function capture(spec, ctx = {}) {
       const meta = {
         url,
         baseUrl,
+        app,
         viewport: frames[0]?.name,
         trace: raw.trace,
         chrome: Boolean(spec.chrome),
         ...(isStaged(spec) ? { tilt: pickStage(spec).tilt } : {}),
-        hint: slowCaptureHint(spec, captureMs),
+        hint: hints(hint, slowCaptureHint(spec, captureMs)),
       };
       return finish(
         { ...base, meta, ms: { total: Date.now() - t0, capture: Date.now() - tCap } },
@@ -247,7 +248,7 @@ export async function capture(spec, ctx = {}) {
         fallbackName,
       );
     }
-    return captureResponsive({ base, spec, pageSpec, frames, fallbackName, eng, t0, url, baseUrl });
+    return captureResponsive({ base, spec, pageSpec, frames, fallbackName, eng, t0, url, baseUrl, app, hint });
   }
 
   throw new Error(`unknown op: ${spec.op}`);
@@ -261,10 +262,14 @@ export async function capture(spec, ctx = {}) {
  * before first paint and wins. So `--theme light` has to write that key too,
  * or it produces a light frame around an unchanged dark app. An explicit
  * `--storage theme=…` still takes precedence.
+ *
+ * The project's `app.storage` goes in between: what a "ready" first load looks
+ * like (a first-run dialog already dismissed, say) is decided once in
+ * shotkit.config.json, and `--storage` still overrides it per shot.
  */
 function themedStorage(spec, isApp = spec.op === "app") {
   if (!isApp) return spec.storage;
-  return { theme: spec.theme ?? "dark", ...(spec.storage ?? {}) };
+  return { theme: spec.theme ?? "dark", ...APP_STORAGE, ...(spec.storage ?? {}) };
 }
 
 /**
@@ -351,13 +356,23 @@ function slowCaptureHint(spec, ms) {
 /** app/url/session ops all need to know where the app is. */
 async function resolvePageUrl(spec, log) {
   if (spec.op === "url" || spec.url?.startsWith("http")) return { url: spec.url, baseUrl: undefined };
-  const baseUrl = await resolveBaseUrl({ baseUrl: spec.baseUrl, mock: spec.mock, log });
+  const app = await findApp({ baseUrl: spec.baseUrl, mock: spec.mock, log });
   const route = spec.route ?? "/";
-  return { url: `${baseUrl}${route.startsWith("/") ? route : `/${route}`}`, baseUrl };
+  return {
+    url: `${app.url}${route.startsWith("/") ? route : `/${route}`}`,
+    baseUrl: app.url,
+    // Which checkout is on camera, when known: two of them can each serve
+    // the app, and the timing line is where a wrong one gets noticed.
+    ...(app.dir ? { app: app.dir } : {}),
+    ...(app.hint ? { hint: app.hint } : {}),
+  };
 }
 
+/** Two hints in one line, either one possibly absent. */
+const hints = (...h) => h.filter(Boolean).join(" · ") || undefined;
+
 /** One page, every requested breakpoint, optionally composed into a sheet. */
-async function captureResponsive({ base, spec, pageSpec, frames, fallbackName, eng, t0, url, baseUrl }) {
+async function captureResponsive({ base, spec, pageSpec, frames, fallbackName, eng, t0, url, baseUrl, app, hint }) {
   const shots = [];
   const composed = [];
   for (const { name, viewport } of frames) {
@@ -376,7 +391,7 @@ async function captureResponsive({ base, spec, pageSpec, frames, fallbackName, e
 
   const result = {
     ...base,
-    meta: { url, baseUrl, viewports: frames.map((f) => f.name) },
+    meta: { url, baseUrl, app, hint, viewports: frames.map((f) => f.name) },
     shots,
     ms: { total: Date.now() - t0 },
   };
@@ -506,10 +521,17 @@ export async function session(spec, ctx = {}) {
   const t0 = Date.now();
 
   if (spec.op === "open") {
-    const { url, baseUrl } = await resolvePageUrl({ ...spec, op: spec.url ? "url" : "app" }, log);
+    const { url, baseUrl, app, hint } = await resolvePageUrl({ ...spec, op: spec.url ? "url" : "app" }, log);
     const frame = viewportList(spec)[0]?.viewport;
-    const meta = await eng.openSession(name, { ...spec, ...(frame ?? {}), url, baseUrl, settle: spec.settle ?? "fast" });
-    return { ok: true, op: "open", session: meta, ms: { total: Date.now() - t0 } };
+    const meta = await eng.openSession(name, {
+      ...spec,
+      ...(frame ?? {}),
+      url,
+      baseUrl,
+      settle: spec.settle ?? "fast",
+      storage: themedStorage(spec, !spec.url),
+    });
+    return { ok: true, op: "open", session: meta, meta: { app, hint }, ms: { total: Date.now() - t0 } };
   }
   if (spec.op === "act") {
     const { trace, meta } = await eng.actOnSession(name, spec);

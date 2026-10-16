@@ -73,7 +73,7 @@ The release pipeline's "promote to latest" steps (Docker `:latest` tags, GH "Lat
 
    Test on a fresh server:
    ```bash
-   MYCELIUM_VERSION=<tag-without-v> curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+   MYCELIUM_VERSION=<tag-without-v> curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --docker
    mycelium pull --version <tag-without-v>
    ```
 

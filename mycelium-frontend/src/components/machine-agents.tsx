@@ -42,6 +42,7 @@ const PROBLEM_TONE: Record<MachineProblem["kind"], string> = {
   stopped: "var(--red)",
   runner_down: "var(--red)",
   wakes_stalled: "var(--red)",
+  binding_failing: "var(--red)",
   herdr_down: "var(--red)",
   herdr_update: "var(--red)",
   no_restore: "var(--yellow)",

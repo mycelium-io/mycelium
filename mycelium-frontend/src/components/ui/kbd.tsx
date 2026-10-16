@@ -7,6 +7,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import type { ComponentProps } from "react";
 
 import { useIsMac } from "@/lib/client-hooks";
+import { useClientSetting } from "@/lib/client-settings";
 import { chordFor, formatChord } from "@/lib/keymap";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +62,8 @@ interface ChordProps extends Omit<KbdProps, "children"> {
  *  can name an action without first proving the keymap still binds it. */
 export function KbdChord({ chord, action, mac, ...props }: ChordProps) {
   const detected = useIsMac();
+  // Subscribed so a cap redraws when the person changes the action's keys.
+  useClientSetting("keys.overrides");
   const resolved = chord ?? (action ? chordFor(action) : undefined);
   if (!resolved) return null;
   return <Kbd {...props}>{formatChord(resolved, mac ?? detected)}</Kbd>;

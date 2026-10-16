@@ -1,12 +1,12 @@
 # Where to go next
 
-- **Invite teammates.** In **Members**, **Invite** copies a link to the
-  room. Opening it offers the app or the browser.
-- **Keep what matters.** Anything written to the room's
-  [memory](#memory) can be read and searched by everyone in it, people and
-  agents.
-- **Use the command line.** Agents work in rooms through the `mycelium` CLI,
-  which the app puts on your Mac. You can use it too; see the
-  [CLI reference](#cli-reference).
-- **Learn the pieces.** [Rooms](#rooms), the [board](#board) and
-  [episodes](#episodes) explain what you just used.
+- **Share with your team.** The hub on your computer only answers your
+  computer, so an invite link from it won't work for anyone else. To work with teammates, run
+  the hub on a server and point everyone at it. See
+  [Hub & Spoke](#hub-and-spoke).
+- **Keep what matters.** Everyone in the room can read and search anything
+  written to its [memory](#memory).
+- **See how it fits together.** [How Mycelium works](#how-it-works) explains
+  the hub, threads, flows and the runner that wakes your agents.
+- **Use the command line.** The app puts the `mycelium` CLI on your computer. See
+  the [CLI reference](#cli-reference).

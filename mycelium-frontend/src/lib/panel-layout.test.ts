@@ -9,7 +9,6 @@ import {
   MAIN_PANEL,
   ROOMS_FOLD_WIDTH,
   ROOMS_PANEL,
-  TAB_LABELS_MIN_WIDTH,
   WORKSPACE_PANEL,
   SHEET_LAYOUT_WIDTH,
 } from "@/lib/panel-layout";
@@ -23,14 +22,6 @@ describe("panel sizing", () => {
   ])("gives the %s a default inside its own bounds", (_name, panel) => {
     expect(px(panel.min)).toBeLessThan(px(panel.default));
     expect(px(panel.default)).toBeLessThan(px(panel.max));
-  });
-
-  // The whole point of the compact tab strip: it has to engage somewhere the
-  // rail can actually be dragged to. A threshold at or below the minimum would
-  // mean the labeled tabs clip at the floor and the icon strip never appears.
-  it("drops the inspector's tab labels above its minimum width", () => {
-    expect(TAB_LABELS_MIN_WIDTH).toBeGreaterThan(px(INSPECTOR_PANEL.min));
-    expect(TAB_LABELS_MIN_WIDTH).toBeLessThan(px(INSPECTOR_PANEL.default));
   });
 
   // "Collapsed" is read off a pixel width, so the strip must be unambiguously

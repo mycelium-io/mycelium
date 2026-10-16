@@ -169,7 +169,8 @@ async def test_loading_makes_a_room_ready_and_paused(client, pack):
     room = body["room"]
     assert room == "approval-gate-agent"
     assert body["ran"] is False
-    assert body["summon"] == "@conductor gated @ops @julia: Refund them."
+    # The cast is named silently: bound to roles, asked in turn, woken by nobody.
+    assert body["summon"] == "@conductor gated @~ops @~julia: Refund them."
     assert body["members"] == ["conductor", "ops"]
 
     info = (await client.get(f"/api/rooms/{room}")).json()
@@ -216,7 +217,7 @@ async def test_run_posts_the_summon_in_the_tasks_thread(client, pack):
         m["content"]
         for m in (await client.get(f"/api/rooms/{body['room']}/messages")).json()["messages"]
     ]
-    assert "@conductor gated @ops @julia: Refund them." in sent
+    assert "@conductor gated @~ops @~julia: Refund them." in sent
 
 
 @pytest.mark.asyncio
@@ -449,7 +450,7 @@ async def test_a_scenario_in_the_request_is_checked_like_any_other(client, pack)
                 ],
                 "summon": {"flow": "gated", "members": ["ops", "judge"], "ask": "x"},
             },
-            "cannot ask",
+            "'judge' is an aligner, which a flow cannot ask",
         ),
         ({"members": [{"handle": "conductor", "kind": "hello"}]}, "not 'conductor'"),
         (

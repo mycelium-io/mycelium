@@ -8,18 +8,18 @@ import Link from "next/link";
 import { Download, PanelLeft, Terminal } from "lucide-react";
 import { TitleBar } from "@/components/title-bar";
 import { Tooltip } from "@/components/ui/tooltip";
-import { KbdChord } from "@/components/ui/kbd";
 import { useDefaultLayout } from "react-resizable-panels";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
 import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
+import { SettingsCommands } from "@/components/settings/settings-commands";
 import { CommandPaletteButton, KeymapHelpButton } from "@/components/keymap-provider";
 import { InstallModalProvider, useOpenInstallModal } from "@/components/install-modal";
 import { DocsLink } from "@/components/docs-link";
-import { DMG_URL, useIsDesktop } from "@/lib/desktop";
-import { useIsMac } from "@/lib/client-hooks";
-import { HubStatus, MachinesStatusLink, MetricsStatusLink } from "@/components/status-items";
+import { updateLink, useAppDownload, useDesktopUpdate, useIsDesktop } from "@/lib/desktop";
+import { HubStatus, MachinesStatusLink, MetricsStatusLink, TerminalStatusLink } from "@/components/status-items";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -56,28 +56,48 @@ interface Props {
 }
 
 /**
- * In a browser on a Mac, says the app exists: someone sent a link lands here
- * with no idea there is more, and the app is what starts agents on their own
- * machine. Hidden inside the app, and on other systems, which it doesn't run on.
+ * In a browser on a Mac, Windows or Linux, says the app exists: someone sent
+ * a link lands here with no idea there is more, and the app is what starts
+ * agents on their own machine. Hidden inside the app, and on phones and
+ * tablets, which it doesn't run on.
  */
-function GetMacAppButton() {
+function GetAppButton() {
   const desktop = useIsDesktop();
-  const mac = useIsMac();
-  if (desktop || !mac) return null;
+  const download = useAppDownload();
+  if (desktop || !download) return null;
   return (
-    <Tooltip content="Mycelium for Mac starts your coding agents on this computer and adds them to a room">
-      <a
-        href={DMG_URL}
-        className="flex h-7 items-center gap-1.5 rounded-md px-2 text-label text-accent transition-colors hover:bg-accent-soft"
-      >
+    <Tooltip content={`Mycelium for ${download.platform} starts your coding agents on this computer and adds them to a room`}>
+      {/* A header action like Install CLI beside it: same height, same quiet
+          color. The title bar spends no color on a promotion. */}
+      <a href={download.url} className={buttonVariants({ variant: "ghost", size: "sm", className: "gap-1.5" })}>
         <Download className="size-3.5" />
-        <span className="hidden sm:inline">Get the Mac app</span>
+        <span className="hidden sm:inline">Get the {download.platform} app</span>
       </a>
     </Tooltip>
   );
 }
 
-/** Hidden inside the Mac app, which puts the CLI on this Mac's PATH itself. */
+/**
+ * Inside the app, once it has found a newer version it hasn't installed: the
+ * one header action with a dot, since an app left open for days would
+ * otherwise only ever say so on its next launch. Opens the app's own
+ * question about updating, never the download itself.
+ */
+function UpdateAppButton() {
+  const version = useDesktopUpdate();
+  if (!version) return null;
+  return (
+    <Tooltip content={`Mycelium ${version} is available. It restarts to finish; agents keep running.`}>
+      <a href={updateLink()} className={buttonVariants({ variant: "ghost", size: "sm", className: "gap-1.5" })}>
+        <span aria-hidden className="inline-block size-1.5 rounded-full bg-accent" />
+        <span className="hidden sm:inline">Update available</span>
+        <span className="sm:hidden">Update</span>
+      </a>
+    </Tooltip>
+  );
+}
+
+/** Hidden inside the app, which puts the CLI on this computer's PATH itself. */
 function InstallCliButton() {
   const openInstallModal = useOpenInstallModal();
   if (useIsDesktop()) return null;
@@ -115,17 +135,9 @@ function DockToggle({
   children: ReactNode;
 }) {
   return (
-    <Tooltip content={<>{label} <KbdChord size="xs" tone="muted" action={action} /></>} side="top">
-      <button
-        type="button"
-        aria-label={label}
-        aria-pressed={active}
-        onClick={onClick}
-        className={`flex size-5 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-hairline hover:text-text ${active ? "text-text" : ""}`}
-      >
-        {children}
-      </button>
-    </Tooltip>
+    <IconButton label={label} action={action} size="xs" side="top" pressed={active} onClick={onClick}>
+      {children}
+    </IconButton>
   );
 }
 
@@ -175,6 +187,7 @@ export function AppShell({
   return (
     <GlobalSearch>
       <InstallModalProvider>
+        <SettingsCommands room={activeRoom} />
         <div
           className="flex h-screen flex-col overflow-hidden bg-bg text-text"
           data-app-shell="ready"
@@ -184,7 +197,8 @@ export function AppShell({
             right={
               <>
                 {headerRight}
-                <GetMacAppButton />
+                <UpdateAppButton />
+                <GetAppButton />
                 <InstallCliButton />
                 <DocsLink />
                 <ThemeToggle />
@@ -270,7 +284,7 @@ export function AppShell({
               then what the page is showing (`statusLeft`, e.g. the room's
               connection and counts), then metrics and the keys. Every value
               carries a word saying what it is. */}
-          <footer className="flex h-6 flex-shrink-0 items-center gap-3 overflow-x-auto border-t border-border bg-surface px-2 text-micro whitespace-nowrap text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <footer data-tour="status-bar" className="flex h-6 flex-shrink-0 items-center gap-3 overflow-x-auto border-t border-border bg-surface px-2 text-micro whitespace-nowrap text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <DockToggle
               label={roomsOpen ? "Hide rooms" : "Show rooms"}
               action="rooms.toggle"
@@ -281,6 +295,7 @@ export function AppShell({
             </DockToggle>
             <HubStatus />
             <MachinesStatusLink />
+            <TerminalStatusLink />
             {statusLeft && (
               <>
                 <span aria-hidden className="h-3 w-px flex-shrink-0 bg-border" />

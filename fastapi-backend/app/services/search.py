@@ -339,7 +339,7 @@ def _memory_hits(query: ParsedQuery, rooms: list[str]) -> list[tuple[Hit, dict]]
             if not _matches_actor(query, str(author) if author else None):
                 continue
             # A memory's kind is its namespace, so `kind:decisions` reads as the
-            # `decisions/` folder rather than as an L9 subkind.
+            # `decisions/` folder rather than as a message subkind.
             namespace = key.rsplit("/", 1)[0] if "/" in key else ""
             if not _matches_kind(query, namespace or None):
                 continue

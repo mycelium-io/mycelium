@@ -18,7 +18,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { assignmentNote, assignmentOf, remainingMinutes } from "@/lib/board/assignment";
+import { assignmentNote, assignmentOf, holderOf, remainingMinutes } from "@/lib/board/assignment";
 import { EPISODE_FIELD } from "@/lib/board/projection";
 import { threadShortId } from "@/lib/threads";
 import {
@@ -306,7 +306,8 @@ const TTL_VISIBLE_FROM = 0.4;
  */
 export function AssignmentChip({ item, now }: { item: LiveItem; now: number }) {
   const state = assignmentOf(item, now);
-  const holder = fieldAsString(item, "owner");
+  // A row given to someone is held by them before anyone claims it (#1136).
+  const holder = state === "held" ? `@${holderOf(item, now)}` : fieldAsString(item, "owner");
 
   if (state === null || state === "unclaimed") {
     return <OwnerChip handle={state === null ? holder : null} live={fieldAsBool(item, "live")} />;

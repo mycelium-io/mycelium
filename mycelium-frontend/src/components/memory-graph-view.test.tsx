@@ -12,6 +12,12 @@ vi.mock("@/lib/api", () => ({
   fetchMemoryExpanded: vi.fn().mockResolvedValue({ found: false, rendered: "", expansions: [], key: "" }),
   // MemoryDetail loads the selected memory's links on mount.
   fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
+  // The memory view follows the room's memories, to show a new version as it lands.
+  fetchMemories: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/components/current-user", () => ({
+  useCurrentUser: () => ({ principal: "alice" }),
 }));
 
 import { MemoryGraphView } from "@/components/memory-graph-view";
@@ -70,8 +76,9 @@ describe("<MemoryGraphView />", () => {
     await userEvent.click(node);
 
     expect(mockMemory).toHaveBeenCalledWith("atlas", "decisions/cutover");
-    // The drawer's own header carries the key and the version/author subtitle.
-    expect(await screen.findByText("v3 · alice")).toBeInTheDocument();
+    // The memory is drawn by the same view as everywhere else: its meta line
+    // carries the version and who wrote it.
+    expect(await screen.findByText(/^v3 · alice/)).toBeInTheDocument();
     // ...and the graph is still mounted underneath, so pan/zoom and any
     // hand-arranged layout survive reading a memory.
     expect(screen.getByRole("group", { name: /memory link graph/i })).toBeInTheDocument();
@@ -83,10 +90,10 @@ describe("<MemoryGraphView />", () => {
     render(<MemoryGraphView roomName="atlas" />);
 
     await userEvent.click(await screen.findByRole("button", { name: "Open decisions/cutover" }));
-    await screen.findByText("v3 · alice");
+    await screen.findByText(/^v3 · alice/);
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
 
-    await waitFor(() => expect(screen.queryByText("v3 · alice")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/^v3 · alice/)).not.toBeInTheDocument());
     expect(screen.getByRole("group", { name: /memory link graph/i })).toBeInTheDocument();
   });
 
@@ -118,7 +125,9 @@ describe("<MemoryGraphView />", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Open decisions/cutover" }));
 
     expect(mockExpanded).toHaveBeenCalledWith("atlas", "decisions/cutover");
-    expect(await screen.findByText(/THE EMBEDDED GOAL/)).toBeInTheDocument();
+    // Queried afresh each time: the memory view re-renders its body as its
+    // reads land, so a node found once may be replaced by the time it's checked.
+    await waitFor(() => expect(screen.getByText(/THE EMBEDDED GOAL/)).toBeInTheDocument());
   });
 
   it("ignores a slow first request when a second memory has been opened", async () => {
@@ -137,7 +146,7 @@ describe("<MemoryGraphView />", () => {
     render(<MemoryGraphView roomName="atlas" />);
     await userEvent.click(await screen.findByRole("button", { name: "Open decisions/cutover" }));
     await userEvent.click(screen.getByRole("button", { name: "Open context/goal" }));
-    expect(await screen.findByText(/SECOND BODY/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/SECOND BODY/)).toBeInTheDocument());
 
     // The abandoned first request finally answers.
     await act(async () => {

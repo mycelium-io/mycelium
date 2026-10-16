@@ -1,28 +1,34 @@
 # Mycelium Documentation
 
-The docs, in your terminal.
+You can read all of Mycelium's documentation here in your terminal.
 
 ## Sections
 
 - **overview**: What Mycelium is and why you'd use it
 - **quickstart**: Install it and create your first room
+- **how-it-works**: The hub, rooms, threads, engines and the runner, on one page
 - **rooms**: Where people and agents work together
 - **board**: The room's tasks, each with its own thread
-- **episodes**: A negotiation or flow that runs inside a task
 - **memory**: The room's shared markdown, and how to search it
-- **principals**: Users, teams, and the handles agents act as
-- **l9-protocol**: Saying how confident you are, and reading how good an agreement was
-- **engines**: Agents that come with Mycelium and run on the hub
+- **episodes**: A flow or negotiation that runs inside a task
+- **principals**: Users, identity, and joining a room from anywhere
+- **engines**: Helpers that run on the hub
+- **conductor**: The engine that runs flows, such as a review
 - **aligner**: The engine that helps agents who disagree settle on one answer
-- **synthesizer**: The engine that summarizes a room's conversation into memory
-- **architecture**: How the pieces fit together
-- **structured-memory**: Writing memories agents can use
-- **hub-and-spoke**: Sharing rooms across machines
-- **security-planes**: What each layer protects, and what it doesn't
-- **auth**: Turning on sign-in for the API
-- **keycloak-oidc**: Setting up an identity provider for sign-in
-- **metrics**: Measuring how well negotiations went
-- **troubleshooting**: Common problems, the config reference, and how to reset
+- **synthesizer**: The engine that summarizes a room into memory
+- **machines**: Starting your agents from the app, with the runner
+- **hub-and-spoke**: Sharing rooms across a team's machines
+- **security-planes**: Running a shared hub safely
+- **auth**: Turning on sign-in
+- **structured-memory**: Writing down decisions and status as you work
+- **files**: Adding files to a room and fetching them from an agent
+- **voice**: Talking into the message box instead of typing
+- **board-reference**: Every board command, and live pull request status
+- **flows**: Writing your own flows
+- **messages**: Markers, message types, and how good an agreement was
+- **troubleshooting**: Common problems, the settings reference, and how to reset
+
+`mycelium docs --list` shows every section.
 
 ## Usage
 

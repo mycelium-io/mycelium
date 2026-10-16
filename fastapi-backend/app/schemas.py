@@ -239,7 +239,7 @@ class MessageRead(BaseModel):
     content: str
     metadata: dict | None = Field(None, validation_alias="event_metadata")
     episode: str | None = Field(
-        None, description="L9 episode URN this message belongs to, if any (for grouping/folding)"
+        None, description="episode URN this message belongs to, if any (for grouping/folding)"
     )
     edited_at: datetime | None = Field(
         None,
@@ -600,6 +600,89 @@ class SkillListResponse(BaseModel):
     total: int
 
 
+class UploadOrigin(BaseModel):
+    """The message an upload was posted with."""
+
+    message_id: str = Field(..., description="The message's id, as the room's history reads it")
+    sender: str
+    at: datetime
+    episode: str | None = Field(
+        None, description="The task thread it was said in; none when it was said in the channel"
+    )
+    task: str | None = Field(None, description="That thread's board row key, when a row carries it")
+    task_title: str | None = None
+
+
+class UploadRead(BaseModel):
+    """A file the room keeps: an ``uploads/<name>`` memory and the bytes it names."""
+
+    name: str = Field(
+        ..., description="The upload's name in the room, unique there; its URL segment"
+    )
+    key: str = Field(..., description="The memory key, `uploads/<name>`; link it as [[key]]")
+    filename: str = Field(..., description="The name the file had when it was added, for download")
+    kind: Literal["image", "pdf", "text", "audio", "video"]
+    content_type: str = Field(..., description="The type the file is served as")
+    size: int = Field(..., description="Size in bytes, after cleaning")
+    sha256: str
+    created_by: str
+    created_at: datetime
+    episode: str | None = Field(None, description="The upload's own thread, as every memory has")
+    url: str = Field(..., description="Path of the file's bytes on this hub, under /api")
+    thumb_url: str | None = Field(
+        None, description="Path of a small WebP of an image, for a gallery; none for other kinds"
+    )
+    posted_in: UploadOrigin | None = Field(
+        None,
+        description="The first message that linked this upload; none when no message does",
+    )
+
+
+class UploadListResponse(BaseModel):
+    uploads: list[UploadRead]
+    total: int
+    accepted: list[str] = Field(
+        default_factory=list, description="The file extensions this hub takes, lowercase, no dot"
+    )
+    max_bytes: int = Field(0, description="The largest file this hub takes, in bytes")
+
+
+class VoiceStatus(BaseModel):
+    """Whether this hub can transcribe a mic, and what it hears."""
+
+    state: Literal["ready", "not_downloaded", "unavailable"] = Field(
+        ...,
+        description=(
+            "`ready`: the model is loaded or on disk. `not_downloaded`: it will be "
+            "fetched the first time a mic is turned on. `unavailable`: it can't run here."
+        ),
+    )
+    detail: str = Field("", description="Why, when it isn't ready")
+    language: str = Field("en", description="The language it transcribes")
+    sample_rate: int = Field(16000, description="The rate audio is sent at, in Hz")
+    model: str = Field("", description="The speech model's name")
+    choice: str = Field(
+        "fast",
+        description="`voice.model` on this hub: `fast` (Moonshine) or `accurate` (Parakeet)",
+    )
+
+
+class VoiceHeard(BaseModel):
+    """What one chunk of a mic's audio finished: text for the draft, if any."""
+
+    texts: list[str] = Field(
+        default_factory=list, description="Each piece of speech the chunk ended, in order"
+    )
+    speaking: bool = Field(False, description="Whether speech is still under way")
+    ready: bool = Field(
+        True,
+        description=(
+            "False while the hub loads (or downloads) its speech model: the chunk "
+            "wasn't read, so send the same audio again"
+        ),
+    )
+
+
 class ProtocolSummary(BaseModel):
     """A flow the room's conductor can run, as a summon needs to know it."""
 
@@ -721,7 +804,7 @@ class AgentRead(BaseModel):
 RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
-RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart", "pair"]
+RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt"]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
@@ -777,6 +860,22 @@ class MachineAgentRead(BaseModel):
     )
 
 
+class MachineUnenrolledRead(BaseModel):
+    """An agent CLI running in a herdr pane on a machine that no room has yet,
+    which Members → Add can bring into a room (an ``adopt`` job)."""
+
+    pane: str
+    kind: str | None = Field(None, description="The agent CLI, as herdr names its kind")
+    state: Literal["working", "idle", "blocked", "unknown"] = "unknown"
+    folder: str | None = None
+    workspace: str | None = None
+    workspace_label: str | None = None
+    tab_label: str | None = Field(
+        None, description="The pane's tab name, where a handle comes from"
+    )
+    suggested_handle: str | None = Field(None, description="A handle made from the tab name")
+
+
 class MachineWorkspaceRead(BaseModel):
     """A herdr workspace on a machine, and the room it's bound to."""
 
@@ -794,6 +893,7 @@ class MachineProblemRead(BaseModel):
         "lost",
         "runner_down",
         "wakes_stalled",
+        "binding_failing",
         "no_restore",
         "herdr_update",
         "herdr_down",
@@ -817,6 +917,9 @@ class MachineReportRead(BaseModel):
     )
     workspaces: list[MachineWorkspaceRead] = Field(default_factory=list)
     problems: list[MachineProblemRead] = Field(default_factory=list)
+    #: Agents running here that aren't in any room yet. Empty from a runner
+    #: from before it sent them.
+    unenrolled: list[MachineUnenrolledRead] = Field(default_factory=list)
 
 
 class DeviceSignature(BaseModel):
@@ -973,10 +1076,24 @@ class RunnerAgentLaunch(BaseModel):
     )
     description: str = ""
     cwd: str | None = Field(None, description="Folder to start it in; inside one of the roots")
+    worktree: bool = Field(False, description="Start it in its own git worktree of cwd")
     created_by: str | None = None
     signature: DeviceSignature | None = Field(
         None, description="From a device paired with the machine: starts without asking there"
     )
+
+
+class RunnerAgentAdopt(BaseModel):
+    """Bring an agent already running in a herdr pane on a runner's machine into
+    a room, as ``handle``. The runner asks the person there first, since it
+    types the agent's introduction into their terminal."""
+
+    room: str = Field(..., min_length=1)
+    pane: str = Field(
+        ..., min_length=1, description="The pane, from the machine's unenrolled agents"
+    )
+    handle: str = Field(..., min_length=1, max_length=64)
+    created_by: str | None = None
 
 
 # ── Join codes ───────────────────────────────────────────────────────────────
@@ -1010,6 +1127,53 @@ class MembershipRead(BaseModel):
         None, description="A token the hub signed for this member; null when the hub's auth is off"
     )
     token_expires_at: datetime | None = None
+
+
+# ── A room's members ─────────────────────────────────────────────────────────
+
+
+class RoomPerson(BaseModel):
+    """One of a room's people, as recorded when they joined."""
+
+    handle: str
+    joined_at: datetime
+    via: Literal["created", "added", "message", "seeded"] = Field(
+        ...,
+        description=(
+            "How they joined: made the room, were added, posted in it, or were there "
+            "before rooms kept a list"
+        ),
+    )
+
+
+class RoomAgentEntry(BaseModel):
+    """An agent or engine, from its manifest."""
+
+    handle: str
+    owner: str | None = None
+
+
+class RoomOther(BaseModel):
+    """A handle that holds a task or is present, but is neither a person nor an agent here."""
+
+    handle: str
+    holds_task: bool = False
+    present: bool = False
+
+
+class RoomMembers(BaseModel):
+    """Everyone in a room, from records rather than from who has posted."""
+
+    people: list[RoomPerson]
+    agents: list[RoomAgentEntry]
+    engines: list[RoomAgentEntry]
+    others: list[RoomOther]
+
+
+class RoomPersonAdd(BaseModel):
+    """Add a person (someone with a user record) to a room."""
+
+    handle: str = Field(..., min_length=1, max_length=64)
 
 
 # ── A2A bridge state (the Network views) ─────────────────────────────────────
@@ -1093,64 +1257,64 @@ class SubscriptionRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── L9 episodes (protocol inspector) ─────────────────────────────────────────
+# ── episodes ──────────────────────────────────────────────────────────────
 #
-# The episode read API projects persisted L9 episode records into JSON the UI
-# inspector renders. These models are the typed seam: the backend routes declare
+# The episode read API projects persisted episode records into JSON the UI's
+# episode views render. These models are the typed seam: the backend routes declare
 # them as `response_model`, so FastAPI validates + filters the raw parsed dicts
-# into exactly this shape. They mirror the frontend `L9Envelope` / `EpisodeDetail`
+# into exactly this shape. They mirror the frontend `MyceliumMessage` / `EpisodeDetail`
 # TypeScript interfaces 1:1, so neither side can silently read a field the other
 # doesn't send. Fields are permissive (most optional) because these records are
 # historical markdown files, not freshly minted objects — a single odd envelope
-# must not 500 the whole inspector. The one invariant: every envelope has a kind.
+# must not 500 the whole read. The one invariant: every envelope has a kind.
 
 
-class L9ActorRead(BaseModel):
+class EnvelopeActorRead(BaseModel):
     id: str
     role: str
 
 
-class L9ParticipantsRead(BaseModel):
-    actors: list[L9ActorRead] = Field(default_factory=list)
+class EnvelopeParticipantsRead(BaseModel):
+    actors: list[EnvelopeActorRead] = Field(default_factory=list)
     groups: dict | None = None
 
 
-class L9MessageRef(BaseModel):
+class EnvelopeMessageRef(BaseModel):
     id: str = ""
     parents: list[str] = Field(default_factory=list)
     episode: str | None = None
 
 
-class L9ContextRead(BaseModel):
+class EnvelopeContextRead(BaseModel):
     topic: str | None = None
 
 
-class L9HeaderRead(BaseModel):
+class EnvelopeHeaderRead(BaseModel):
     protocol: str | None = None
     subprotocol: str | None = None
     version: str | None = None
     kind: str
     subkind: str | None = None
-    participants: L9ParticipantsRead | None = None
-    message: L9MessageRef | None = None
-    context: L9ContextRead | None = None
+    participants: EnvelopeParticipantsRead | None = None
+    message: EnvelopeMessageRef | None = None
+    context: EnvelopeContextRead | None = None
 
 
-class L9PayloadRead(BaseModel):
+class EnvelopePayloadRead(BaseModel):
     type: str | None = None
     data: dict | None = None
 
 
-class L9EnvelopeRead(BaseModel):
-    """One faithful L9 envelope in an episode's causal chain.
+class EnvelopeRead(BaseModel):
+    """One faithful message in an episode's causal chain.
 
     The sender is the first actor (`header.participants.actors[0].id`) by the
-    bus convention in `app.services.l9`; there is deliberately no flattened
+    bus convention in `app.services.message_format`; there is deliberately no flattened
     `sender_handle` on the wire envelope — the frontend derives it from actors.
     """
 
-    header: L9HeaderRead
-    payload: L9PayloadRead | None = None
+    header: EnvelopeHeaderRead
+    payload: EnvelopePayloadRead | None = None
 
 
 class EpisodeMetricsRead(BaseModel):
@@ -1191,7 +1355,7 @@ class EpisodeListResponse(BaseModel):
 
 
 class EpisodeDetailRead(EpisodeSummaryRead):
-    messages: list[L9EnvelopeRead] = Field(default_factory=list)
+    messages: list[EnvelopeRead] = Field(default_factory=list)
 
 
 # ── Cross-entity search ───────────────────────────────────────────────────────
@@ -1240,3 +1404,175 @@ class SearchResponse(BaseModel):
         default_factory=dict,
         description="Matches per type before the result list was trimmed",
     )
+
+
+# ── Schedules ─────────────────────────────────────────────────────────────────
+
+ScheduleResult = Literal["woke", "quiet", "held", "busy", "error"]
+
+
+class ScheduleCreate(BaseModel):
+    name: str = Field(
+        ..., min_length=1, max_length=64, pattern=SLUG_PATTERN, description="Schedule slug"
+    )
+    owner: str = Field(..., description="The agent the schedule wakes")
+    every: str | None = Field(None, description="An interval like 30m, 2h or 1d")
+    cron: str | None = Field(None, description="A five-field cron line, read in UTC")
+    prompt: str = Field("", max_length=4000, description="What the owner is told when it wakes")
+    check: str | None = Field(
+        None,
+        description=(
+            "The pre-check that decides whether the owner wakes: always, mentions, "
+            "assigned, stale, silent, task, or search:<query>"
+        ),
+    )
+    task: str | None = Field(None, description="A board row the schedule is bound to")
+    expires_in_days: float | None = Field(
+        None, description="How long until it has to be renewed (hub default when omitted)"
+    )
+    created_by: str | None = Field(None, description="Who is setting it up")
+
+
+class ScheduleUpdate(BaseModel):
+    every: str | None = None
+    cron: str | None = None
+    prompt: str | None = None
+    check: str | None = None
+    task: str | None = Field(None, description="A row key, or an empty string to unbind")
+    paused: bool | None = None
+    renew: bool = Field(False, description="Start its expiry again from now")
+    renew_days: float | None = Field(None, description="Renew for this many days")
+    updated_by: str | None = Field(None, description="Who is making the change")
+
+
+class ScheduleRunRequest(BaseModel):
+    wake: bool = Field(False, description="Skip the pre-check and wake the owner")
+
+
+class ScheduleRunRead(BaseModel):
+    at: datetime
+    result: ScheduleResult
+    trigger: Literal["schedule", "manual"]
+    missed: int = 0
+    found: list[str] = []
+    found_total: int = 0
+    detail: str | None = None
+
+
+class ScheduleRead(BaseModel):
+    name: str
+    owner: str
+    every: str | None = None
+    cron: str | None = None
+    prompt: str = ""
+    check: str
+    task: str | None = None
+    state: Literal["active", "paused", "expired"]
+    paused: bool
+    created_by: str
+    created_at: datetime
+    updated_by: str = Field("", description="Who made the last change")
+    updated_at: datetime
+    paused_by: str | None = Field(None, description="Who paused it, while it is paused")
+    paused_at: datetime | None = None
+    expires_at: datetime
+    next_run: datetime | None = None
+    last_run: datetime | None = None
+    last_result: ScheduleResult | None = None
+    runs: int = 0
+    wakes: int = Field(0, description="Runs that woke the owner: each one is a model turn")
+    quiet: int = Field(0, description="Runs whose pre-check found nothing, costing no turn")
+    history: list[ScheduleRunRead] = []
+
+
+class ScheduleListResponse(BaseModel):
+    schedules: list[ScheduleRead]
+    total: int
+    checks: dict[str, str] = Field(
+        default_factory=dict, description="The pre-checks the hub runs, and what each finds"
+    )
+
+
+# --- Verifier ---------------------------------------------------------------
+
+
+class VerifierCheckedRead(BaseModel):
+    """One record the verifier looked at, for *Show why*."""
+
+    what: str = Field(..., description="What was looked at: 'approvals of #1278 in this room'")
+    found: str = Field(..., description="What it found: 'none', 'approved', 'merged at 20:08'")
+    id: str | None = Field(None, description="The message or notice it found, when there is one")
+    at: str | None = None
+
+
+class VerifierFlagRead(BaseModel):
+    """A multi-agent failure the verifier found, drawn as a line under its message."""
+
+    flag_id: str
+    failure: str = Field(
+        "",
+        description=(
+            "Which failure it is: ungranted_approval, unsupported_completion, "
+            "decision_taken, dropped_directive, misread_intent, stale_state, "
+            "handoff_loss, scope_violation or unasked_side_effect. The checks so far "
+            "find ungranted_approval and stale_state."
+        ),
+    )
+    message_id: str = Field(
+        ..., description="The message the line goes under: its id in the room's history read"
+    )
+    envelope_id: str = Field(
+        "",
+        description=(
+            "The same message's envelope id: the id it carries when it arrives live "
+            "over the room's stream, before a reload reads it from history"
+        ),
+    )
+    key: str = Field(..., description="The thread's short id, or 'live'")
+    about: str = Field(..., description="The agent that made the claim")
+    by: str = Field(..., description="The verifier engine's handle")
+    claim: Literal["approval", "open"]
+    ref: str = Field(..., description="The pull request it is about: '#1278'")
+    line: str = Field(..., description="The line to show, written by the verifier")
+    sure: bool = Field(
+        ..., description="True when the records say the opposite, false when nothing was found"
+    )
+    quotes: list[str] = Field(default_factory=list, description="The exact words to underline")
+    sentence: str
+    why: str = ""
+    checked: list[VerifierCheckedRead] = []
+    state: Literal["shown", "fine"]
+    fine_by: str | None = None
+    at: str
+
+
+class VerifierFineRequest(BaseModel):
+    by: str | None = Field(
+        None, description="Who says it's fine (bound to the caller when sign-in is on)"
+    )
+
+
+class VerifierEstimateRead(BaseModel):
+    messages: int
+    approx_tokens: int
+    approx_usd: float
+
+
+class VerifierLearningRead(BaseModel):
+    state: Literal["idle", "running", "done", "failed"]
+    done: int = 0
+    total: int = 0
+    error: str | None = None
+
+
+class VerifierSettingsRead(BaseModel):
+    enabled: bool
+    rooms: list[str] = Field(default_factory=list, description="The rooms that added the verifier")
+    model: str = Field(..., description="The search model its claim spotter runs on")
+    using: Literal["starting", "learned", "none"]
+    learned: int | None = Field(
+        None, description="Messages it learned from, or null on the starting model"
+    )
+    answers_since_learned: int = 0
+    estimate: VerifierEstimateRead
+    learning: VerifierLearningRead

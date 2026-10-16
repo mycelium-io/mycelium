@@ -109,14 +109,27 @@ def read(room: str, key: str) -> dict:
     return {"key": key, "fields": unmanaged_meta(meta), "version": meta.get("version")}
 
 
-async def write(room: str, key: str, patch: dict, handle: str) -> dict:
-    """Put ``patch`` on the row's frontmatter, refusing what a lease owns."""
+async def write(room: str, key: str, patch: dict, handle: str, *, reassign: bool = False) -> dict:
+    """Put ``patch`` on the row's frontmatter, refusing what a lease owns.
+
+    Giving a row to someone is holding it for them (#1136), so an ``assignee``
+    on a board row moves through :func:`app.services.assignments.reassign`,
+    which says who it was taken from. Taking a row someone else holds is
+    refused (409, naming them) unless ``reassign`` says it's meant.
+    """
     if not patch:
         raise FieldError("no fields to write", status=422, key=key)
     clashes = reserved_in(patch)
     if clashes:
         raise FieldError(RESERVED_REASON, status=422, key=key, reserved=clashes)
     meta, content = _load(room, key)
+    to = _new_assignee(key, meta, patch)
+    if to is not None:
+        await _give(room, key, meta, to, handle, reassign=reassign)
+        patch = {k: v for k, v in patch.items() if k != "assignee"}
+        if not patch:
+            return read(room, key)
+        meta, content = _load(room, key)
     fresh = await upsert_patch(room, key, meta, content, patch, handle)
     await _maybe_raise_block_notice(room, key, meta, content, patch, handle)
     return {
@@ -124,6 +137,52 @@ async def write(room: str, key: str, patch: dict, handle: str) -> dict:
         "fields": {k: v for k, v in fresh.items() if k != "version"},
         "version": fresh.get("version"),
     }
+
+
+def _new_assignee(key: str, meta: dict, patch: dict) -> str | None:
+    """The handle ``patch`` gives an assignable row to, when it changes who the
+    row is for. Naming the person it's already for counts only when their hold
+    ended without them choosing it (it expired, or the hub released it), so the
+    write takes it back. A re-save of a finished row, or of one someone handed
+    back, with its own assignee changes nothing."""
+    from datetime import UTC, datetime
+
+    from app.services import assignments
+
+    if "assignee" not in patch or not assignments.assignable(key):
+        return None
+    to = str(patch.get("assignee") or "").lstrip("@").strip()
+    if not to:
+        return None
+    if to != str(meta.get("assignee") or "").lstrip("@"):
+        return to
+    now = datetime.now(UTC)
+    if assignments.settled(meta, now):
+        return None
+    state = assignments.state_of(meta, now)
+    # The hub signs the hold it ends; a hand-back is signed by whoever chose it.
+    released_by_hub = (
+        state == "released" and meta.get("assignment_note_by") == assignments.RUNTIME_AUTHOR
+    )
+    return to if state == "expired" or released_by_hub else None
+
+
+async def _give(room: str, key: str, meta: dict, to: str, by: str, *, reassign: bool) -> None:
+    """Give the row to ``to``, refusing to take it from someone else unasked."""
+    from datetime import UTC, datetime
+
+    from app.services import assignments
+
+    now = datetime.now(UTC)
+    held_by = assignments.holder(meta, now)
+    if held_by and held_by != to and not reassign:
+        raise FieldError(
+            f"'{key}' is held by @{held_by}; reassign it to give it to @{to}",
+            status=409,
+            key=key,
+            owner=held_by,
+        )
+    await assignments.reassign(room, key, to, by, now)
 
 
 async def _maybe_raise_block_notice(

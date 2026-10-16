@@ -1,0 +1,345 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Mycelium Contributors
+
+"""
+Messages over SLIM — the seam between :mod:`app.services.message_format` (envelope
+construction) and :mod:`app.services.slim_client` (transport).
+
+The room bus is **messages straight over SLIM group sessions — no A2A**.
+This module owns three things the *app* must, not SLIM:
+
+1. **Serialize / deserialize.** An envelope rides under the additive ``l9``
+   key of a message's content JSON, invisible to anything that ignores it.
+   :func:`serialize_envelope` writes that content to bytes for :meth:`SlimClient.publish`; :func:`deserialize_envelope`
+   parses inbound bytes back to an :class:`MyceliumMessage` (validating the subkind table).
+
+2. **Causal ordering by ``message.parents``.** SLIM group delivery is not
+   causally ordered, so :class:`CausalOrderBuffer` holds back an envelope until
+   every id in its ``message.parents`` has been delivered, then releases it (and
+   any dependents it unblocks) in causal order.
+
+3. **Episode ↔ channel lifecycle.** The channel is durable for the room's life;
+   an *episode* is one tagged thread inside it — a task, or a negotiation
+   within a task. :class:`EpisodeLifecycle` enforces the stable-membership rule
+   where it means something: a membership change aborts an active *negotiation*
+   (emitted as ``commit:rejected``), without tearing down the channel or the task
+   the negotiation was happening inside.
+
+:class:`MessageChannel` composes 1-2 over a single SLIM group session: one call
+to :meth:`send` publishes an envelope; :meth:`receive` pulls one broadcast and
+returns the envelopes it makes deliverable (usually one, more when a held-back
+arrival unblocks).
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+from app.services import message_format
+from app.services.message_models import Kind
+
+if TYPE_CHECKING:
+    import slim_bindings
+
+    from app.services.message_models import MyceliumMessage
+    from app.services.slim_client import SlimClient
+
+# The additive key a message rides under inside a message's content JSON.
+CONTENT_ENVELOPE_KEY = "l9"
+
+
+class MessageChannelError(RuntimeError):
+    """A message on the room channel could not be bound to/from a message."""
+
+
+class ChannelReceiveTimeout(MessageChannelError):
+    """A receive timed out with no message — a benign idle tick, not a failure.
+
+    The SLIM binding raises a generic ``SessionError`` both for a real transport
+    fault and for a plain "no message arrived within the window" timeout. On an
+    idle room the latter is the norm, so the persister must treat it as "keep
+    waiting" rather than counting it toward the give-up budget (a room that goes
+    quiet for a few windows must not have its channel silently die).
+    """
+
+
+# Substring the SLIM binding puts in a timeout ``SessionError`` message. Matched
+# because the binding exposes no distinct timeout exception type (all session
+# faults are ``SessionError``); a real transport fault carries a different text.
+_RECEIVE_TIMEOUT_MARKER = "receive timeout"
+
+
+def serialize_envelope(envelope: MyceliumMessage, *, extra: dict[str, Any] | None = None) -> bytes:
+    """Serialize ``envelope`` (plus any ``extra`` content) to publishable bytes.
+
+    The envelope goes under the ``l9`` key so the wire shape matches every other
+    coordination message; ``extra`` carries the human-facing payload agents read.
+    """
+    return json.dumps(serialize_content(envelope, extra=extra)).encode("utf-8")
+
+
+def serialize_content(
+    envelope: MyceliumMessage, *, extra: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """The content dict an envelope rides in (``{**extra, "l9": <envelope>}``).
+
+    :func:`serialize_envelope` is this plus a JSON encode; the persister keeps
+    the dict form to record and re-serve.
+    """
+    content: dict[str, Any] = dict(extra or {})
+    content[CONTENT_ENVELOPE_KEY] = message_format.envelope_to_dict(envelope)
+    return content
+
+
+def deserialize_envelope(data: bytes) -> tuple[MyceliumMessage, dict[str, Any]]:
+    """Parse published bytes back into ``(envelope, full_content_dict)``.
+
+    Raises :class:`MessageChannelError` if the bytes aren't JSON or carry no ``l9`` key;
+    re-raises :class:`message_format.MessageValidationError` for a structurally-invalid envelope.
+    """
+    try:
+        content = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MessageChannelError("channel message is not JSON") from exc
+    if not isinstance(content, dict) or CONTENT_ENVELOPE_KEY not in content:
+        raise MessageChannelError("channel message carries no message")
+    envelope = message_format.parse_envelope(content[CONTENT_ENVELOPE_KEY])
+    return envelope, content
+
+
+class CausalOrderBuffer:
+    """Reorders envelopes into causal order by ``message.parents``.
+
+    :meth:`add` takes one arrived envelope and returns the list (possibly empty)
+    now deliverable in causal order: an envelope is released only once every id
+    in its parents has been released. Out-of-order and duplicate arrivals are
+    handled; an envelope whose parent never arrives stays held (correct — it has
+    no causal predecessor to follow).
+    """
+
+    def __init__(self) -> None:
+        self._delivered: set[str] = set()
+        self._pending: list[MyceliumMessage] = []
+
+    def _ready(self, envelope: MyceliumMessage) -> bool:
+        message = envelope.header.message
+        parents = message.parents if message is not None else []
+        return all(parent in self._delivered for parent in parents)
+
+    @staticmethod
+    def _message_id(envelope: MyceliumMessage) -> str | None:
+        message = envelope.header.message
+        return message.id if message is not None else None
+
+    def add(self, envelope: MyceliumMessage) -> list[MyceliumMessage]:
+        """Buffer ``envelope`` and return everything it makes deliverable."""
+        self._pending.append(envelope)
+        released: list[MyceliumMessage] = []
+        progressed = True
+        while progressed:
+            progressed = False
+            for pending in list(self._pending):
+                mid = self._message_id(pending)
+                if mid is not None and mid in self._delivered:
+                    self._pending.remove(pending)  # duplicate id already released
+                    continue
+                if self._ready(pending):
+                    self._pending.remove(pending)
+                    if mid is not None:
+                        self._delivered.add(mid)
+                    released.append(pending)
+                    progressed = True
+        return released
+
+    def mark_delivered(self, message_id: str) -> None:
+        """Record ``message_id`` as already delivered, out of band.
+
+        Used for messages the moderator ingests locally (the human proxy — see
+        :meth:`RoomPersister.ingest_local`) that never pass through :meth:`add`.
+        Without this, a reply causally parented on such a message can never
+        satisfy :meth:`_ready` and would be held in ``_pending`` forever.
+        """
+        self._delivered.add(message_id)
+
+    @property
+    def pending_count(self) -> int:
+        """Envelopes held back awaiting an undelivered parent."""
+        return len(self._pending)
+
+
+@dataclass
+class EpisodeLifecycle:
+    """Tracks one episode within a durable room channel.
+
+    **Freezing membership is a negotiation's policy, not an episode's.** The
+    stable-membership rule exists because an offer/counter exchange scored across
+    a changing set of parties means nothing — so a negotiation freezes its own
+    parties (:attr:`members`: the handles it was asked to broker between, not
+    everyone present) and **aborts** only when one of them is removed from the
+    room. Presence coming and going is not that: in a busy room someone's lease
+    starts or lapses every minute, and an agent between turns isn't connected at
+    all, so aborting on presence ended runs for nothing.
+
+    A task is an episode too, and nothing about it wants that rule: it is
+    a container that outlives what happens inside it, so someone joining the room
+    must not end the thread a board row's history lives in. Such an episode opens
+    with ``negotiation=False``, and :attr:`frozen` — not :attr:`active` — is what
+    callers gate the freeze on.
+    """
+
+    episode: str | None = None
+    members: frozenset[str] = field(default_factory=frozenset)
+    active: bool = False
+    negotiation: bool = True
+
+    @property
+    def frozen(self) -> bool:
+        """Whether membership is frozen right now: an active *negotiation*.
+
+        The gate for anything a membership change would break — aborting, and
+        deferring an invite until the episode closes.
+        """
+        return self.active and self.negotiation
+
+    def open(
+        self, episode: str, members: set[str] | frozenset[str], *, negotiation: bool = True
+    ) -> None:
+        """Begin an episode; a negotiation's ``members`` are its parties.
+
+        ``negotiation=False`` opens a container (a task's thread) that a
+        later join or leave leaves running.
+        """
+        self.episode = episode
+        self.members = frozenset(members)
+        self.active = True
+        self.negotiation = negotiation
+
+    def on_member_removed(self, handle: str) -> bool:
+        """Record ``handle`` leaving the room; True if that aborts a negotiation,
+        which it does only when ``handle`` is one of the negotiation's parties."""
+        if self.frozen and handle in self.members:
+            self.active = False
+            return True
+        return False
+
+    def close(self) -> None:
+        """Close the episode normally (converged/rejected reached)."""
+        self.active = False
+        self.episode = None
+        self.negotiation = True
+
+
+def build_episode_abort_envelope(
+    episode: str,
+    *,
+    recipients: list[str],
+    topic: str | None = None,
+    reason: str = "membership_change",
+) -> MyceliumMessage:
+    """The ``commit:rejected`` envelope that closes an aborted episode."""
+    return message_format.build_envelope(
+        kind=Kind.commit,
+        subkind="rejected",
+        episode=episode,
+        recipients=recipients,
+        topic=topic,
+        payload_type="consensus",
+        payload_data={"aborted": True, "reason": reason},
+    )
+
+
+class MessageChannel:
+    """A message pipe over one SLIM group session.
+
+    Composes serialization + causal ordering: :meth:`send` publishes an envelope
+    to the group; :meth:`receive` pulls one broadcast and returns the envelopes
+    it makes deliverable in causal order. Non-message broadcasts on the channel raise
+    :class:`MessageChannelError` so callers can log and skip rather than crash.
+    """
+
+    def __init__(self, client: SlimClient, session: slim_bindings.Session) -> None:
+        self._client = client
+        self._session = session
+        self._buffer = CausalOrderBuffer()
+        # message id -> full inbound content dict, so a released envelope can be
+        # paired back with the human-facing payload it arrived with (the buffer
+        # itself only holds envelopes). Popped as envelopes release.
+        self._content_by_id: dict[str, dict[str, Any]] = {}
+
+    @property
+    def session(self) -> slim_bindings.Session:
+        return self._session
+
+    def note_delivered(self, envelope: MyceliumMessage) -> None:
+        """Mark ``envelope`` delivered in the causal buffer without receiving it.
+
+        For messages the moderator ingests locally (never arriving via
+        :meth:`receive_with_context`), so a later reply parented on them can be
+        released rather than held forever.
+        """
+        message = envelope.header.message
+        if message is not None and message.id is not None:
+            self._buffer.mark_delivered(message.id)
+
+    async def send(self, envelope: MyceliumMessage, *, extra: dict[str, Any] | None = None) -> None:
+        """Serialize ``envelope`` and broadcast it to the group."""
+        from app.services.slim_client import SlimClient
+
+        await SlimClient.publish(self._session, serialize_envelope(envelope, extra=extra))
+
+    async def send_content_to(
+        self, context: slim_bindings.MessageContext, content: dict[str, Any]
+    ) -> None:
+        """Point-to-point re-send of a whole ``content`` dict to one member.
+
+        Used by the durable-inbox persister to re-serve a missed message: the
+        stored ``content`` already carries its ``l9`` envelope, so it is
+        republished verbatim (the receiver's own :class:`CausalOrderBuffer`
+        re-orders and de-duplicates it). ``context`` targets the reconnecting
+        member (see :meth:`SlimClient.publish_to`).
+        """
+        from app.services.slim_client import SlimClient
+
+        await SlimClient.publish_to(self._session, context, json.dumps(content).encode("utf-8"))
+
+    async def receive(self, *, timeout_s: float = 30.0) -> list[MyceliumMessage]:
+        """Pull one broadcast; return the envelopes it makes causally deliverable."""
+        released, _arrived, _ctx = await self.receive_with_context(timeout_s=timeout_s)
+        return [env for env, _content in released]
+
+    async def receive_with_context(
+        self, *, timeout_s: float = 30.0
+    ) -> tuple[
+        list[tuple[MyceliumMessage, dict[str, Any]]], MyceliumMessage, slim_bindings.MessageContext
+    ]:
+        """Pull one message; return ``(released, arrived, context)``.
+
+        ``released`` is the list of ``(envelope, content)`` pairs the arrival
+        makes causally deliverable (each content is the full inbound dict,
+        including its ``l9`` key — what the persister records and re-serves).
+        ``arrived`` is the envelope that just arrived (whose sender the persister
+        keys the reply ``context`` by, so it can later re-serve to that member).
+        ``context`` is the raw ``MessageContext`` for point-to-point replies.
+        """
+        from app.services.slim_client import SlimClient
+
+        try:
+            message = await SlimClient.receive_message(self._session, timeout_s=timeout_s)
+        except Exception as exc:
+            if _RECEIVE_TIMEOUT_MARKER in str(exc).lower():
+                raise ChannelReceiveTimeout(str(exc)) from exc
+            raise
+        arrived, content = deserialize_envelope(message.payload)
+        mid = arrived.header.message.id if arrived.header.message is not None else None
+        if mid is not None:
+            self._content_by_id[mid] = content
+        released: list[tuple[MyceliumMessage, dict[str, Any]]] = []
+        for env in self._buffer.add(arrived):
+            rid = env.header.message.id if env.header.message is not None else None
+            paired = self._content_by_id.pop(rid, None) if rid is not None else None
+            if paired is None:
+                paired = serialize_content(env)
+            released.append((env, paired))
+        return released, arrived, message.context

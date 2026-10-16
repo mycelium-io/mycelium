@@ -19,7 +19,23 @@ def format_error(error: Exception, verbose: bool = False) -> str:
         return _format_connect_error(error, verbose)
     if isinstance(error, httpx.TimeoutException):
         return _format_timeout_error(error, verbose)
+    from mycelium_backend_client.errors import UnexpectedStatus  # noqa: PLC0415
+
+    if isinstance(error, UnexpectedStatus):
+        return _format_unexpected_status(error, verbose)
     return _format_generic_error(error, verbose)
+
+
+def _format_unexpected_status(error: Exception, verbose: bool) -> str:
+    """The hub's own message (``{"detail": ...}``), not the raw response."""
+    from mycelium.client import hub_error_detail  # noqa: PLC0415 - avoids an import cycle
+
+    status = getattr(error, "status_code", None)
+    detail = hub_error_detail(getattr(error, "content", b"") or b"")
+    lines = [f"Error: {detail or f'the hub answered {status}'}"]
+    if verbose:
+        lines.append(f"Status Code: {status}")
+    return "\n".join(lines)
 
 
 def _format_mycelium_error(error: MyceliumError, verbose: bool) -> str:
