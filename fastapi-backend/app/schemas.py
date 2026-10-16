@@ -804,7 +804,9 @@ class AgentRead(BaseModel):
 RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
-RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt"]
+RunnerJobKind = Literal[
+    "launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt", "folders"
+]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
@@ -1063,6 +1065,21 @@ class RunnerJobReport(BaseModel):
     result: dict[str, Any] | None = None
     error: str | None = None
     pairing: PairingOutcome | None = None
+
+
+class RunnerFolders(BaseModel):
+    """Which folder on a runner's machine to list; its first root when unset."""
+
+    path: str | None = None
+
+
+class RunnerFoldersRead(BaseModel):
+    """The folders directly inside one folder on a runner's machine. Never files."""
+
+    path: str = Field(..., description="The folder listed, as an absolute path on the machine")
+    root: str = Field(..., description="The root it is inside, which a picker can't go above")
+    folders: list[str] = Field(default_factory=list, description="Names, not paths, sorted")
+    truncated: bool = Field(False, description="More folders are there than were listed")
 
 
 class RunnerAgentLaunch(BaseModel):

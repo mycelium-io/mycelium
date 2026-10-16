@@ -678,6 +678,7 @@
       <p>The app can only start agents inside the folders the runner was given and only with an agent CLI the scan found. A request from the hub names an agent CLI and a folder, never a command to run. By default the allowed folder is the one you ran <code>mycelium runner</code> from. Name others with <code>--root</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--root</span> ~/code <span class="flag">--root</span> ~/work/api</code></pre>
       <p>In the desktop app, it&#x27;s the working folder you chose at first run. Change it in Settings.</p>
+      <p>In the app&#x27;s Add member window, the folder button beside <strong>Folder</strong> browses these folders on the machine, so you can click down to the one an agent should work in instead of typing it. The runner lists folders only, never files, and nothing outside the folders it was given. It answers without asking you, the way a scan does, since listing a folder starts nothing.</p>
       <h2 id="machines-you-say-yes-on-the-machine">You say yes on the machine</h2>
       <p>Anyone who can reach a hub can ask it to start an agent on any machine connected to it, and the hub can&#x27;t prove who asked. So before it starts or restarts anything, the runner asks you on the machine. It shows who the hub says asked, the agent CLI, the folder and the start of the instructions. You answer in one of two ways:</p>
       <ul>

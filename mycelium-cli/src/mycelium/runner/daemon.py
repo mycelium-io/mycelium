@@ -9,7 +9,8 @@ Three loops, each on its own thread:
   folders agents may be started in), the agents it is running, and every agent
   on the machine (``mycelium.machine``'s report), re-sent as a heartbeat.
 - **jobs**: a long-poll for what the app asked for (``launch``, ``stop``,
-  ``scan``, ``swarm``, ``restart``), done one at a time and reported back.
+  ``scan``, ``swarm``, ``restart``, ``folders``), done one at a time and
+  reported back.
 - **sync**: presence up and doorbells down for every agent in a workspace
   bound to a room on this machine, so they hear their turns.
 
@@ -32,8 +33,9 @@ queue a job for any runner on it, so a launch, swarm or restart waits for a yes 
 this machine (``approvals``) unless a device paired here signed it, within
 what the pairing allows (``pairing``), or the runner trusts its hub: the
 desktop app's own hub, which only this machine can reach, or one the person said to
-trust with ``--trust-hub``. Scans and stops don't ask: a scan changes nothing,
-and a stop only ends an agent this machine already agreed to start. A ``pair``
+trust with ``--trust-hub``. Scans, stops and folder listings don't ask: a scan
+changes nothing, a listing names only folders inside the roots, and a stop only
+ends an agent this machine already agreed to start. A ``pair``
 job doesn't ask either: it carries proof of a code only this machine printed.
 """
 
@@ -87,6 +89,11 @@ from mycelium.utils.process import pid_alive
 ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
+#: Jobs the app waits on in the same request (listing a folder for a picker):
+#: answered on the spot, without the pane lock or a hello after.
+QUICK = frozenset({"folders"})
+#: The most folders one listing returns.
+MAX_FOLDERS = 500
 
 #: How often the runner says hello when nothing else has.
 HEARTBEAT_S = 10.0
@@ -667,6 +674,37 @@ class Runner:
             raise JobError(f"{cwd} is not a folder on {self.label}.")
         return path
 
+    def folders(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """The folders directly inside ``spec['path']``, for the app's folder picker.
+
+        Held to the roots the way a launch is (:meth:`folder`): a link that
+        leads outside them is left out, and so are files and hidden folders.
+        Names only, sorted, at most :data:`MAX_FOLDERS`.
+        """
+        path = self.folder(spec.get("path"))
+        root = next(r for r in self.roots if _inside(path, r))
+        names: list[str] = []
+        try:
+            entries = list(path.iterdir())
+        except OSError as e:
+            raise JobError(f"{_tilde(path)} can't be read on {self.label}: {e.strerror}.") from e
+        for entry in entries:
+            if entry.name.startswith("."):
+                continue
+            try:
+                if not entry.is_dir() or not any(_inside(entry.resolve(), r) for r in self.roots):
+                    continue
+            except OSError:
+                continue
+            names.append(entry.name)
+        names.sort(key=str.casefold)
+        return {
+            "path": str(path),
+            "root": str(root),
+            "folders": names[:MAX_FOLDERS],
+            "truncated": len(names) > MAX_FOLDERS,
+        }
+
     def pane_env(self, room: str, handle: str) -> dict[str, str]:
         return {
             "MYCELIUM_API_URL": self.config.server.api_url,
@@ -1126,6 +1164,8 @@ class Runner:
             return self.restart_agents(spec)
         if kind == "pair":
             return self.pair(spec)
+        if kind == "folders":
+            return self.folders(spec)
         raise JobError(f"this runner doesn't know how to do '{kind}'; update mycelium here.")
 
     def question(self, job: dict[str, Any]) -> dict[str, Any]:
@@ -1201,6 +1241,9 @@ class Runner:
         so a stop or a scan isn't held up behind a question nobody has seen.
         """
         job_id = str(job["id"])
+        if job.get("kind") in QUICK:
+            self._answer(job)
+            return
         said = {k: v for k, v in (job.get("spec") or {}).items() if k != "proof"}
         spec = json.dumps(said)
         log.info("job %s %s from %s: %s", job_id, job.get("kind"), job.get("created_by"), spec)
@@ -1214,6 +1257,25 @@ class Runner:
             ).start()
             return
         self._do_and_report(job)
+
+    def _answer(self, job: dict[str, Any]) -> None:
+        """A :data:`QUICK` job: done and reported at once, logged quietly.
+
+        Someone is waiting on it in the app, so it doesn't queue behind the
+        pane lock or say hello after; it changes nothing here to say hello about.
+        """
+        job_id = str(job["id"])
+        try:
+            result = self.do(job)
+        except JobError as e:
+            log.info("job %s %s failed: %s", job_id, job.get("kind"), e)
+            self._report(job_id, "failed", None, str(e))
+        except Exception as e:  # noqa: BLE001 - a job must always be reported
+            log.exception("job %s %s failed", job_id, job.get("kind"))
+            self._report(job_id, "failed", None, f"the runner hit an error: {e}")
+        else:
+            log.debug("job %s %s done", job_id, job.get("kind"))
+            self._report(job_id, "done", result, None)
 
     def _take_once_approved(self, job: dict[str, Any]) -> None:
         job_id = str(job["id"])

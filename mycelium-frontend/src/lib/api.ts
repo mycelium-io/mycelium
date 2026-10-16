@@ -1436,7 +1436,8 @@ export type RunnerJobKind =
   | "restart"
   | "pair"
   | "interrupt"
-  | "adopt";
+  | "adopt"
+  | "folders";
 /** `waiting`: the machine's runner is asking the person there before it starts anything. */
 export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
 
@@ -1491,6 +1492,26 @@ export async function fetchRunnerJob(id: string, jobId: string): Promise<RunnerJ
 /** Ask the machine to look for agent CLIs again. */
 export async function rescanRunner(id: string): Promise<RunnerJob> {
   return apiFetch<RunnerJob>(`${runnerApiPath(id)}/scan`, { method: "POST" });
+}
+
+/** The folders directly inside one folder on a machine, never files. */
+export interface RunnerFolders {
+  /** The folder listed, as an absolute path on the machine. */
+  path: string;
+  /** The root it is inside, which a picker can't go above. */
+  root: string;
+  /** Names, sorted. */
+  folders: string[];
+  truncated: boolean;
+}
+
+/** List a folder on a machine, inside its roots (its first root when `path` is unset). */
+export async function listRunnerFolders(id: string, path?: string): Promise<RunnerFolders> {
+  return apiFetch<RunnerFolders>(`${runnerApiPath(id)}/folders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: path ?? null }),
+  });
 }
 
 export interface RunnerAgentLaunch {

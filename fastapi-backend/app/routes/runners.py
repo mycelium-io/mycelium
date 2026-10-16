@@ -35,6 +35,8 @@ from app.schemas import (
     MemoryCreate,
     RunnerAgentAdopt,
     RunnerAgentLaunch,
+    RunnerFolders,
+    RunnerFoldersRead,
     RunnerHello,
     RunnerJobRead,
     RunnerJobReport,
@@ -59,6 +61,8 @@ router = APIRouter(prefix="/runners", tags=["runners"])
 _HANDLE_RE = re.compile(HANDLE_PATTERN)
 #: The longest a runner's long-poll for its next job is held.
 MAX_POLL_S = 30.0
+#: How long listing a folder waits for the machine's answer.
+FOLDERS_WAIT_S = 10.0
 
 
 def _yours(runner: RunnerRead, request: Request | None) -> bool:
@@ -264,6 +268,41 @@ async def rescan(runner_id: str, request: Request) -> RunnerJobRead:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     me = actor.bind_optional_actor(request, None, field="created_by")
     return registry.enqueue(runner_id, "scan", {}, created_by=me)
+
+
+@router.post("/{runner_id}/folders", response_model=RunnerFoldersRead)
+async def list_folders(
+    runner_id: str, payload: RunnerFolders, request: Request
+) -> RunnerFoldersRead:
+    """The folders inside one of a runner's folders, for picking where an agent works.
+
+    Only inside the runner's roots, the same boundary a launch is held to, and
+    only folders, never files. The machine answers without asking anyone, as it
+    does a scan: it reveals folder names under roots its owner chose, and
+    starts nothing. The job is waited on here and then dropped from the
+    runner's history, so browsing doesn't push out its launches.
+    """
+    runner = _runner_or_404(runner_id, request)
+    try:
+        check_ready(runner)
+        path = check_cwd(runner, payload.path)
+    except RunnerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if path is None:
+        raise HTTPException(
+            status_code=422, detail=f"{runner.label} has no folders agents may work in."
+        )
+    me = actor.bind_optional_actor(request, None, field="created_by")
+    job = registry.enqueue(runner_id, "folders", {"path": path}, created_by=me)
+    done = await registry.settled(runner_id, job.id, FOLDERS_WAIT_S)
+    registry.forget(runner_id, job.id)
+    if done is None:
+        raise HTTPException(status_code=504, detail=f"{runner.label} didn't answer in time.")
+    if done.status == "failed":
+        raise HTTPException(
+            status_code=422, detail=done.error or f"{runner.label} couldn't list it."
+        )
+    return RunnerFoldersRead.model_validate(done.result or {})
 
 
 @router.post("/{runner_id}/restart", response_model=RunnerJobRead, status_code=201)

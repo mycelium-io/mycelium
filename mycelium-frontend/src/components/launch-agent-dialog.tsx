@@ -39,6 +39,7 @@ import { useCurrentUser } from "@/components/current-user";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Monogram } from "@/components/ui/monogram";
+import { FolderPicker } from "@/components/folder-picker";
 import {
   ConnectMachine,
   HostMissing,
@@ -686,6 +687,11 @@ function RunsOn({
           <option key={r} value={r} />
         ))}
       </datalist>
+      <FolderPicker
+        runner={runner}
+        value={expandPath(folder, runner.roots)}
+        onPick={(path) => onFolder(tildePath(path))}
+      />
       {startsInHerdr(runner) && (
         <label
           className="flex flex-shrink-0 items-center gap-1.5 text-micro text-muted-foreground"

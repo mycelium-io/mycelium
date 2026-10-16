@@ -467,6 +467,27 @@ export async function pairDevice(body: Record<string, unknown>): Promise<RunnerJ
   return queueJob(MOCK_MINI_ID, "pair", spec, null, null, { label: "studio-mini", ...pairing });
 }
 
+/** A made-up folder tree under each root: a few projects, each with a few folders. */
+const MOCK_TREE: string[][] = [
+  ["api", "checkout-web", "design", "infra", "mobile"],
+  ["docs", "scripts", "src", "tests"],
+  ["components", "lib"],
+];
+
+/** What a runner's folder listing would say, or why it refuses (outside its roots). */
+export function mockFolders(
+  runner: Runner,
+  path: string | null,
+): { path: string; root: string; folders: string[]; truncated: boolean } | { detail: string } {
+  const at = path || runner.roots[0];
+  const root = runner.roots.find((r) => at === r || at.startsWith(`${r}/`));
+  if (!at || !root || at.split("/").includes("..")) {
+    return { detail: `${at} is outside the folders ${runner.label} may start agents in.` };
+  }
+  const depth = at === root ? 0 : at.slice(root.length + 1).split("/").length;
+  return { path: at, root, folders: MOCK_TREE[depth] ?? [], truncated: false };
+}
+
 export function getRunner(id: string): Runner | undefined {
   return listRunners().find((r) => r.id === id);
 }
