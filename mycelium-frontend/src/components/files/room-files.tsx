@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select } from "@/components/ui/select";
 import { KIND_ICON, UploadPreviewDialog } from "@/components/uploads/upload-preview";
 import { CopyNotice, FileMenu, downloadFile, useFileCopy } from "@/components/uploads/image-menu";
 import { deleteUpload, type Upload } from "@/lib/api";
@@ -34,9 +35,6 @@ interface Props {
   onOpenMessage: (id: string) => void;
   onOpenMemory: (key: string) => void;
 }
-
-const SELECT =
-  "h-7 rounded-md border border-border bg-transparent px-1.5 text-label text-muted-foreground hover:bg-hairline focus:text-text focus:outline-none";
 
 /** `Where` as a select's value, and back. */
 function whereValue(where: Where): string {
@@ -115,21 +113,21 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
             className="min-w-0 flex-1 bg-transparent text-text outline-none placeholder:text-faint"
           />
         </label>
-        <select
+        <Select
           aria-label="Kind of file"
           value={filter.kind}
           onChange={(e) => setFilter({ ...filter, kind: e.target.value as FileFilter["kind"] })}
-          className={SELECT}
+          size="xs"
         >
           <option value="all">All files</option>
           <option value="images">Images</option>
           <option value="other">Other files</option>
-        </select>
-        <select
+        </Select>
+        <Select
           aria-label="Posted by"
           value={filter.by ?? ""}
           onChange={(e) => setFilter({ ...filter, by: e.target.value || null })}
-          className={SELECT}
+          size="xs"
         >
           <option value="">Anyone</option>
           {posters.map((p) => (
@@ -137,12 +135,13 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
               {p}
             </option>
           ))}
-        </select>
-        <select
+        </Select>
+        <Select
           aria-label="Posted in"
           value={whereValue(filter.where)}
           onChange={(e) => setFilter({ ...filter, where: whereFrom(e.target.value) })}
-          className={cn(SELECT, "max-w-56")}
+          size="xs"
+          className="max-w-56"
         >
           <option value="any">Anywhere</option>
           <option value="channel">The channel</option>
@@ -152,7 +151,7 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
             </option>
           ))}
           <option value="memory">Saved to memory</option>
-        </select>
+        </Select>
         <CopyNotice notice={copy.notice} className="ml-auto" />
         <span className={cn("tabular text-micro text-muted-foreground", !copy.notice && "ml-auto")}>
           {shown.length === uploads.length ? `${uploads.length} files` : `${shown.length} of ${uploads.length}`}

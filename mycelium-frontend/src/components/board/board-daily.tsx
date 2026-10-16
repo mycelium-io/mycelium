@@ -5,6 +5,7 @@
 
 import { useMemo, useState } from "react";
 import { Bot, Cpu, Globe, UserRound } from "lucide-react";
+import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
   COMMON_ZONES,
@@ -89,19 +90,22 @@ export function BoardDaily({ events, tz, onTz, now }: Props) {
           </p>
         </div>
 
-        <label className="ml-auto flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-micro text-muted-foreground">
+        <label className="ml-auto flex items-center gap-1.5 text-micro text-muted-foreground">
           <Globe className="size-3 shrink-0 text-faint" />
-          <select
+          <Select
+            aria-label="Time zone"
             value={tz}
             onChange={e => onTz(e.target.value)}
-            className="max-w-[190px] bg-transparent font-mono text-micro text-text outline-none"
+            size="xs"
+            className="max-w-[190px]"
+            selectClassName="font-mono text-micro"
           >
             {[...new Set([tz, ...COMMON_ZONES])].map(zone => (
               <option key={zone} value={zone} className="bg-paper text-text">
                 {zone}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       </header>
 

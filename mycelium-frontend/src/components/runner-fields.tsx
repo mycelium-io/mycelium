@@ -19,6 +19,7 @@ import {
 import { addMachine } from "@/lib/my-machines";
 import { CopyField } from "@/components/ui/copy-field";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 
 /** The one command that puts a machine on this page. */
 export const CONNECT_COMMAND = "mycelium runner";
@@ -125,18 +126,19 @@ export function MachinePicker({
       <label htmlFor="runner-machine" className="block text-micro font-medium text-muted-foreground">
         {label}
       </label>
-      <select
+      <Select
         id="runner-machine"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-label text-text outline-none hover:border-border2 focus:border-accent"
+        size="md"
+        className="w-full"
       >
         {runners.map((r) => (
           <option key={r.id} value={r.id}>
             {r.label || r.id}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }

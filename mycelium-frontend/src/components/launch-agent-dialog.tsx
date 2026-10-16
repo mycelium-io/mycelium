@@ -39,6 +39,7 @@ import { useCurrentUser } from "@/components/current-user";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Monogram } from "@/components/ui/monogram";
+import { Select } from "@/components/ui/select";
 import {
   ConnectMachine,
   HostMissing,
@@ -582,7 +583,7 @@ export function InstructionsEditor({
   );
 }
 
-const selectClass =
+const fieldClass =
   "rounded-md border border-border bg-bg px-2 py-1 text-label text-text outline-none hover:border-border2 focus:border-accent";
 
 /** Where the agent runs: machine, agent CLI and folder, in one strip beside the button. */
@@ -627,18 +628,18 @@ function RunsOn({
           <div className="flex min-w-0 items-center gap-2 text-label text-muted-foreground">
             <Laptop className="size-4 flex-shrink-0" aria-hidden />
             {runners.length > 1 ? (
-              <select
+              <Select
                 aria-label="Machine"
                 value={runner.id}
                 onChange={(e) => onRunner(e.target.value)}
-                className={cn(selectClass, "max-w-48")}
+                className="max-w-48"
               >
                 {runners.map((r) => (
                   <option key={r.id} value={r.id}>
                     {runnerName(r)}
                   </option>
                 ))}
-              </select>
+              </Select>
             ) : (
               <span className="max-w-48 truncate text-text" title={runnerName(runner)}>
                 {runnerName(runner)}
@@ -647,11 +648,11 @@ function RunsOn({
             {startable.length > 0 && (
               <>
                 <span className="flex-shrink-0 text-micro text-faint">with</span>
-                <select
+                <Select
                   aria-label="Agent CLI"
                   value={frameworkId ?? ""}
                   onChange={(e) => onFramework(e.target.value)}
-                  className={cn(selectClass, "flex-shrink-0")}
+                  className="flex-shrink-0"
                 >
                   {startable.map((f) => (
                     <option key={f.id} value={f.id}>
@@ -659,7 +660,7 @@ function RunsOn({
                       {shortVersion(f.version) ? ` ${shortVersion(f.version)}` : ""}
                     </option>
                   ))}
-                </select>
+                </Select>
               </>
             )}
             <RescanButton runner={runner} iconOnly />
@@ -679,7 +680,7 @@ function RunsOn({
         spellCheck={false}
         placeholder={roots[0] ?? "~/code/project"}
         title={roots.length ? `Inside ${roots.join(" or ")}` : undefined}
-        className={cn(selectClass, "min-w-0 flex-1 py-1.5 font-mono")}
+        className={cn(fieldClass, "min-w-0 flex-1 py-1.5 font-mono")}
       />
       <datalist id="launch-folder-roots">
         {roots.map((r) => (
