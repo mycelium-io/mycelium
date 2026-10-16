@@ -4,11 +4,13 @@
 # mycelium-deck: the slide template
 
 A slide deck in plain HTML, for talks and workshops. It uses the docs' palette
-and type (Cormorant Garamond italic for display, IBM Plex Sans, Geist Mono).
-The background is a dark field of drifting motes (the docs' spores) with one
-glass lens over it. The lens magnifies whatever is under it, and shows only
-on a slide marked `data-logo`, holding the Mycelium mark; on every other
-slide it shrinks away.
+and type: IBM Plex Sans for headings and text, Cormorant Garamond italic only
+as an accent (one phrase in a heading, marked `<em>`), and Geist Mono.
+Most slides are flat: a plain dark background with diagrams of outlined boxes
+and thin arrows. A slide marked `data-glass` shows the glass instead: a field
+of drifting motes (the docs' spores) with a lens over it, used for the title,
+section openers and the close. On a slide that is also `data-logo`, the lens
+holds the Mycelium mark, seen undistorted in its flat middle.
 
 ## Presenting
 
@@ -156,7 +158,10 @@ The scenes, in `scenes.js`:
 
 | | stages |
 |---|---|
-| `coworkers` | one agent making tool calls → an orchestrator handing work to subagents that send summaries up and go → agents that each own a piece of the codebase, keep their context and talk to each other |
+| `coworkers` | one agent making tool calls → an orchestrator handing work to subagents that send summaries up and go → one bad instruction going wrong all the way down → agents that each own a piece of the codebase, keep their context and talk to each other |
+| `lifecycle` | one agent that keeps everything and swells → workers that finish and leave notes in the room's memory → new workers that read the notes first |
+| `threeways` | five agents in one group chat → around a room's board, each message going to its task's row → one task running a flow that gives each agent a turn |
+| `asking` | `@builder` mentions `@reviewer` in a task's thread → `@reviewer` wakes, answers in the thread and goes back to waiting |
 | `scale` | you and one agent → three in parallel → three repeatable chains → a swarm (with `.stages` words as its steps) |
 | `lanes` | everything in one conversation → the chat apart, each task's thread in its own lane |
 | `trust` | a swarm behind frosted glass (`.veil`) with outcomes coming out → the glass clears to show the agent pane |
@@ -169,11 +174,28 @@ The URL hash is the slide number (`index.html#7`). To make a PDF, print from
 Chrome with background graphics on. Each slide prints as one 1920×1080 page
 with a still lens drawn in CSS.
 
-## Photos
+Beads are flat discs, and messages travel along the hyphae as plain dots, to
+match the flat diagrams.
 
-The "Who we are" slide reads `people/julia.jpg` and `people/jodee.jpg`. That
-folder is kept out of git (a public repo), so on a fresh clone those two
-images are missing until you drop your own in.
+## Flat diagrams
+
+Lay a diagram's boxes out with HTML and CSS (`.box`, `.box.hi`, `.box.warn`,
+and layouts such as `.stair`, `.rows`, `.funnel`, `.triad`, `.grid2`), name
+the boxes a wire joins with `data-node`, and add an `<svg class="wires">` with
+one `<path data-from="a" data-to="b">` per wire. `flat.js` draws each wire from
+the side of one box that faces the other; `data-route="elbow"` bends it at a
+right angle and `data-axis="h"` or `"v"` picks the direction. A wire can be a
+`.step`. A `.callout[data-part]` beside a terminal pane is placed next to the
+`.part` it names, the same way.
+
+## Photos and media
+
+The "Who we are" slide reads `people/julia.jpg` and `people/jodee.jpg`.
+Third-party images (screenshots of posts and announcements, other companies'
+logos, other people's slides) go in `media/`, shown with
+`<figure class="media" data-media="name.png" data-alt="…">`. Both folders are
+in this folder's `.gitignore`, since the repo is public, so on a fresh clone
+those slides show a placeholder naming the missing file until you drop it in.
 
 ## Writing slides
 
@@ -188,9 +210,11 @@ out in stage pixels and the deck scales them to fit the screen.
 </section>
 ```
 
-- `data-lens="x y r"` is where the lens sits and how big it is, in stage
-  pixels. Give up to three, separated by commas (`"1520 470 330, 1130 860 54"`
-  is a lens with a bead beside it), or `none`.
+- `data-glass` shows the glass background on this slide; without it the slide
+  is flat.
+- `data-lens="x y r"` is where the lens sits on a glass slide and how big it
+  is, in stage pixels. Give up to three, separated by commas
+  (`"1520 470 330, 1130 860 54"` is a lens with a bead beside it), or `none`.
 - `data-title` names the slide in the tab and the speaker view.
 - `data-logo` puts the Mycelium mark inside the slide's first lens.
 - `data-bare` hides the footer. On the `.deck` itself, `data-talk` names the
@@ -227,6 +251,8 @@ Copy the one closest to what you need.
 | `app.js` | live app panes: the Mycelium app in a frame, its screenshot until it answers, with smooth zoom |
 | `ink.js` | drawing over the deck: pen, highlighter and laser ink, kept per slide |
 | `scenes.js` | the living diagrams: one canvas per scene slide, moved on by the slide's steps |
+| `flat.js` | the wires between a flat diagram's boxes, and callouts beside a terminal pane |
+| `board-rows.png` | the board slide's still, until the live app answers |
 | `serve.py` | serves the deck on 127.0.0.1 and runs a shell on a pseudo-terminal per pane |
 
 With `prefers-reduced-motion`, the motes hold still and the lens jumps
