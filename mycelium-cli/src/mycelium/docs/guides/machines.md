@@ -97,7 +97,8 @@ mycelium runner --root ~/code --root ~/work/api
 ```
 
 In the desktop app, it's the working folder you chose at first run. Change it in
-Settings.
+Settings. When you add an agent that runs on that Mac, **Choose…** beside
+**Folder** opens the Mac's folder dialog. Anywhere else, type the folder's path.
 
 ## You say yes on the machine
 

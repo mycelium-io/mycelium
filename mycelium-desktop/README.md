@@ -34,8 +34,12 @@ The shell adds:
   Windows nothing is linked: the app's folder goes first on the PATH of
   everything it starts.
 
-The hub's UI, once loaded, gets no IPC: the capability lists only the app's
-own pages, and every command also checks the calling page's origin.
+The hub's UI, once loaded, can call two commands and nothing else: which
+machine this is, and a folder dialog for where a new agent works. Only this
+Mac's own hub UI gets them (`capabilities/own-hub-ui.json`, and the commands
+check the page is the hub this app started). Every other command refuses any
+page but the app's own, and another hub's pages, which client mode shows, get
+nothing.
 
 ## Run it in development
 
