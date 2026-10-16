@@ -39,6 +39,8 @@ STALE_AFTER = timedelta(seconds=45)
 FORGET_AFTER = timedelta(hours=6)
 #: How many jobs each runner's history keeps.
 JOB_HISTORY = 50
+#: How often :meth:`RunnerRegistry.settled` looks at a job it is waiting on.
+SETTLE_POLL_S = 0.05
 
 
 class RunnerError(Exception):
@@ -216,6 +218,30 @@ class RunnerRegistry:
     def job(self, runner_id: str, job_id: str) -> RunnerJobRead | None:
         entry = self._runners.get(runner_id)
         return entry.jobs.get(job_id) if entry is not None else None
+
+    async def settled(self, runner_id: str, job_id: str, timeout: float) -> RunnerJobRead | None:
+        """``job_id`` once the runner reports it done or failed; ``None`` past ``timeout``.
+
+        For a job the app waits on in the same request, like listing a folder,
+        rather than following it the way it follows a launch.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while True:
+            job = self.job(runner_id, job_id)
+            if job is None:
+                return None
+            if job.status in ("done", "failed"):
+                return job
+            if loop.time() >= deadline:
+                return None
+            await asyncio.sleep(SETTLE_POLL_S)
+
+    def forget(self, runner_id: str, job_id: str) -> None:
+        """Drop one job from a runner's history, so quick lookups don't push out its launches."""
+        entry = self._runners.get(runner_id)
+        if entry is not None:
+            entry.jobs.pop(job_id, None)
 
 
 registry = RunnerRegistry()

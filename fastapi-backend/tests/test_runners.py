@@ -664,3 +664,69 @@ async def test_an_adopted_member_stays_once_the_job_is_done(
         json={"status": "done", "result": {"pane": "w3:p1", "introduced": True}},
     )
     assert _manifest(room, "kept")["runner"] == RUNNER
+
+
+# ── folders, for the app's folder picker ─────────────────────────────────────
+
+
+async def _answer_next(client, status: str, **body) -> dict:
+    """Play the runner: take the next job and report it."""
+    for _ in range(100):
+        resp = await client.get(f"/api/runners/{RUNNER}/jobs/next?timeout=0")
+        if resp.status_code == 200:
+            job = resp.json()
+            await client.patch(
+                f"/api/runners/{RUNNER}/jobs/{job['id']}", json={"status": status, **body}
+            )
+            return job
+        await asyncio.sleep(0.02)
+    raise AssertionError("no job was queued")
+
+
+@pytest.mark.asyncio
+async def test_listing_a_folder_returns_the_machines_answer(client, runner):
+    asked = asyncio.create_task(client.post(f"/api/runners/{RUNNER}/folders", json={}))
+    listing = {
+        "path": "/Users/julia/code",
+        "root": "/Users/julia/code",
+        "folders": ["mycelium", "shop"],
+        "truncated": False,
+    }
+    job = await _answer_next(client, "done", result=listing)
+    # No path: the first root, as a launch's folder defaults to.
+    assert job["kind"] == "folders"
+    assert job["spec"] == {"path": "/Users/julia/code"}
+
+    resp = await asyncio.wait_for(asked, timeout=2)
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == listing
+    # Browsing leaves the machine's job history to its launches.
+    assert (await client.get(f"/api/runners/{RUNNER}/jobs")).json() == []
+
+
+@pytest.mark.asyncio
+async def test_a_folder_outside_the_roots_is_refused_before_the_machine_is_asked(client, runner):
+    for path in ("/etc", "/Users/julia/code/../secrets"):
+        resp = await client.post(f"/api/runners/{RUNNER}/folders", json={"path": path})
+        assert resp.status_code == 422
+    assert (await client.get(f"/api/runners/{RUNNER}/jobs/next?timeout=0")).status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_a_folder_the_machine_cant_list_says_why(client, runner):
+    asked = asyncio.create_task(
+        client.post(f"/api/runners/{RUNNER}/folders", json={"path": "/Users/julia/code/gone"})
+    )
+    await _answer_next(client, "failed", error="/Users/julia/code/gone is not a folder on it.")
+    resp = await asyncio.wait_for(asked, timeout=2)
+    assert resp.status_code == 422
+    assert "not a folder" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_a_machine_that_doesnt_answer_is_said_to_have_not(client, runner, monkeypatch):
+    monkeypatch.setattr("app.routes.runners.FOLDERS_WAIT_S", 0.1)
+    resp = await client.post(f"/api/runners/{RUNNER}/folders", json={})
+    assert resp.status_code == 504
+    assert "didn't answer" in resp.json()["detail"]
+    assert (await client.get(f"/api/runners/{RUNNER}/jobs")).json() == []

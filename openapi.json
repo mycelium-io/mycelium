@@ -2401,6 +2401,59 @@
         }
       }
     },
+    "/api/runners/{runner_id}/folders": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "List Folders",
+        "description": "The folders inside one of a runner's folders, for picking where an agent works.\n\nOnly inside the runner's roots, the same boundary a launch is held to, and\nonly folders, never files. The machine answers without asking anyone, as it\ndoes a scan: it reveals folder names under roots its owner chose, and\nstarts nothing. The job is waited on here and then dropped from the\nrunner's history, so browsing doesn't push out its launches.",
+        "operationId": "list_folders_api_runners__runner_id__folders_post",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerFolders"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerFoldersRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runners/{runner_id}/restart": {
       "post": {
         "tags": [
@@ -11545,6 +11598,59 @@
         ],
         "title": "RunnerAgentRef"
       },
+      "RunnerFolders": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "title": "RunnerFolders",
+        "description": "Which folder on a runner's machine to list; its first root when unset."
+      },
+      "RunnerFoldersRead": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "The folder listed, as an absolute path on the machine"
+          },
+          "root": {
+            "type": "string",
+            "title": "Root",
+            "description": "The root it is inside, which a picker can't go above"
+          },
+          "folders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Folders",
+            "description": "Names, not paths, sorted"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "More folders are there than were listed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "root"
+        ],
+        "title": "RunnerFoldersRead",
+        "description": "The folders directly inside one folder on a runner's machine. Never files."
+      },
       "RunnerHello": {
         "properties": {
           "id": {
@@ -11676,7 +11782,8 @@
               "restart",
               "pair",
               "interrupt",
-              "adopt"
+              "adopt",
+              "folders"
             ],
             "title": "Kind"
           },

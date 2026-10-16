@@ -99,6 +99,12 @@ mycelium runner --root ~/code --root ~/work/api
 In the desktop app, it's the working folder you chose at first run. Change it in
 Settings.
 
+In the app's Add member window, the folder button beside **Folder** browses
+these folders on the machine, so you can click down to the one an agent should
+work in instead of typing it. The runner lists folders only, never files, and
+nothing outside the folders it was given. It answers without asking you, the way
+a scan does, since listing a folder starts nothing.
+
 ## You say yes on the machine
 
 Anyone who can reach a hub can ask it to start an agent on any machine

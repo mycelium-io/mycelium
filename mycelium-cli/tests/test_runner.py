@@ -1572,3 +1572,60 @@ def test_the_machine_reports_agents_no_room_has(make_runner, herdr: Herdr, hub: 
     [unenrolled] = r.hello_body()["machine"]["unenrolled"]
     assert (unenrolled["pane"], unenrolled["kind"], unenrolled["state"]) == (pane, "claude", "idle")
     assert unenrolled["suggested_handle"] == "claude"
+
+
+# ── folders, for the app's folder picker ─────────────────────────────────────
+
+
+def test_folders_lists_only_folders_inside_the_roots(make_runner, hub: Hub, tmp_path: Path):
+    root = tmp_path / "code"
+    for name in ("shop", "Mycelium", ".git", "api"):
+        (root / name).mkdir(parents=True)
+    (root / "notes.txt").write_text("not a folder")
+    outside = tmp_path / "secrets"
+    outside.mkdir()
+    (root / "escape").symlink_to(outside)
+    (root / "linked-api").symlink_to(root / "api")
+    r = make_runner([root])
+
+    listed = r.folders({})
+    assert listed == {
+        "path": str(root.resolve()),
+        "root": str(root.resolve()),
+        # Sorted without regard to case; no file, no hidden folder, and no
+        # link that leads out of the roots.
+        "folders": ["api", "linked-api", "Mycelium", "shop"],
+        "truncated": False,
+    }
+    assert r.folders({"path": str(root / "shop")})["folders"] == []
+    with pytest.raises(daemon.JobError, match="outside the folders"):
+        r.folders({"path": str(outside)})
+    with pytest.raises(daemon.JobError, match="not a folder"):
+        r.folders({"path": str(root / "notes.txt")})
+
+
+def test_a_folders_job_is_answered_at_once_without_a_hello(make_runner, hub: Hub, tmp_path: Path):
+    (tmp_path / "shop").mkdir()
+    r = make_runner(trust_hub=False)
+    hub.seen.clear()
+
+    r.take({"id": "f1", "kind": "folders", "spec": {}})
+    assert hub.of("PATCH", "/jobs/f1") == [
+        {
+            "status": "done",
+            "result": {
+                "path": str(tmp_path.resolve()),
+                "root": str(tmp_path.resolve()),
+                "folders": ["shop"],
+                "truncated": False,
+            },
+            "error": None,
+        }
+    ]
+    # Nothing on the machine changed, so it doesn't say hello about it.
+    assert hub.of("POST", "/api/runners") == []
+
+    r.take({"id": "f2", "kind": "folders", "spec": {"path": "/etc"}})
+    (failed,) = hub.of("PATCH", "/jobs/f2")
+    assert failed["status"] == "failed"
+    assert "outside the folders" in failed["error"]

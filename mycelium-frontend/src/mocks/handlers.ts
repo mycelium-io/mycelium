@@ -24,6 +24,7 @@ import {
   launchedHandles,
   listJobs,
   listRunners,
+  mockFolders,
   mockStartOutcome,
   pairDevice,
   queueJob,
@@ -263,6 +264,11 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
     if (a === undefined) return json(listJobs(runner.id));
     const job = getJob(runner.id, decodeURIComponent(a));
     return job ? json(job) : notFound("Job not found");
+  }
+  if (sub === "folders" && method === "POST") {
+    const body = await readJson(req);
+    const listed = mockFolders(runner, typeof body.path === "string" ? body.path : null);
+    return "detail" in listed ? json(listed, 422) : json(listed);
   }
   if (sub === "scan" && method === "POST") return json(queueJob(runner.id, "scan", {}), 201);
   if (sub === "restart" && method === "POST") {
