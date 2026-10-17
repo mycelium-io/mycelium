@@ -542,18 +542,38 @@ def restart_prompt(agent: Agent) -> str:
     )
 
 
+def rename_prompt(agent: Agent, old: str) -> str:
+    """What an agent restarted under a new handle is told: its new name, then catch up."""
+    h, room = agent.handle, agent.room
+    return (
+        f"[mycelium] You are @{h}, a member of the Mycelium room '{room}'. You were @{old}; "
+        f"you were renamed and restarted, so you don't remember what you were doing. Your "
+        f"notes and tasks moved with you: `mycelium memory get agents/{h}/notes` says how to "
+        f"work. Then run `mycelium await --room {room} --handle {h} --json --timeout 5` to "
+        f"catch up, and `mycelium board --room {room}` for your tasks. When a line starting "
+        "with [mycelium] appears here later, do what it says."
+    )
+
+
 def restart_command(agent: Agent) -> str:
     """What restarting ``agent`` does, said for a person to read before saying yes."""
     where = f"pane {agent.pane}" if agent.state == "stopped" else "a new pane beside its room's"
     return f"{agent.kind} in {_tilde(agent.folder or '.')}, {where}, as @{agent.handle} in {agent.room}"
 
 
-def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None = None) -> str:
+def restart(
+    config: MyceliumConfig,
+    agent: Agent,
+    *,
+    bridge: HerdrBridge | None = None,
+    prompt: str | None = None,
+) -> str:
     """Start ``agent`` again in its pane (or a new one beside it), in its folder, as itself.
 
     Returns the pane it runs in. The pane gets the agent's handle, room and hub
     in its environment first, as a pane the runner opens would, and its
-    workspace is bound to the room again, so the runner syncs it.
+    workspace is bound to the room again, so the runner syncs it. ``prompt`` is
+    what it is told once it's up (:func:`restart_prompt` when not given).
     """
     from mycelium.commands.swarm import _start_unblocked
 
@@ -577,7 +597,7 @@ def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None 
         else:
             workspace, pane = _new_pane(bridge, agent, folder, env, config.herdr.panes_per_tab)
         _start_unblocked(bridge, agent.handle, kind, pane)
-        bridge.prompt(pane, restart_prompt(agent), wait=False)
+        bridge.prompt(pane, prompt or restart_prompt(agent), wait=False)
     except HerdrError as e:
         raise MachineError(f"herdr couldn't restart @{agent.handle}: {e}") from e
     before = bridge.registry.get(agent.room, agent.handle)

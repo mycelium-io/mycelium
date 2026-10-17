@@ -59,6 +59,7 @@ from app.services.persister import (
     envelope_sender,
     parse_mentions,
     record_from,
+    rename_cursors_on_disk,
 )
 from app.services.slim_client import (
     SlimClient,
@@ -1520,6 +1521,47 @@ class RoomChannelManager:
             _save_announced(room, announced)
         await self._abort_if_party_left(managed, agent)
         return True
+
+    def rename_member(self, room: str, old: str, new: str) -> None:
+        """Carry what the room holds for ``old`` over to ``new``.
+
+        Its presence (lease, last seen, herdr status), its pending doorbell, the
+        floors it was given, whether it was announced, and its read positions, so
+        the renamed agent is the same member under its new name: present if it
+        was, woken by a mention of ``new`` before its machine's next sync pass,
+        and not handed the room again from the start. A SLIM member or custodial
+        session can't be renamed in place; it joins again under ``new`` the next
+        time it is invited.
+        """
+        for times in (self._leases.get(room), self._last_seen.get(room)):
+            if times and old in times:
+                times[new] = times.pop(old)
+        herdr = self._herdr.get(room)
+        if herdr and old in herdr:
+            herdr[new] = herdr.pop(old)
+        for wake in self._herdr_wakes.get(room, []):
+            if wake.get("handle") == old:
+                wake["handle"] = new
+        announced = self._announced_in(room)
+        if old in announced:
+            announced.discard(old)
+            announced.add(new)
+            _save_announced(room, announced)
+        managed = self._channels.get(room)
+        if managed is None:
+            rename_cursors_on_disk(room, old, new)
+            return
+        if old in managed.members:
+            managed.members.discard(old)
+        for episode, floor in list(managed.floors.items()):
+            holder = new if floor.holder == old else floor.holder
+            speakers = frozenset(new if s == old else s for s in floor.speakers)
+            if (holder, speakers) != (floor.holder, floor.speakers):
+                managed.floors[episode] = Floor(episode, holder, speakers)
+        if managed.persister is not None:
+            managed.persister.rename_handle(old, new)
+        else:
+            rename_cursors_on_disk(room, old, new)
 
     def open_episode(
         self,

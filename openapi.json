@@ -105,6 +105,68 @@
         }
       }
     },
+    "/api/rooms/{room_name}/agents/{handle}/rename": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Rename Agent",
+        "description": "Give an agent a new handle; for one a machine is running, once that machine says yes.\n\nIts manifest and notes, the open rows it's meant for or holding, the\nschedules it owns, its presence and read positions move to the new handle\n(``agent_rename``), nothing keeps the old one, and whoever renamed it says\nso in the room. A running agent can't take a new name from its\nenvironment, so when a connected machine has it in a herdr pane, this only\nchecks the rename and queues a ``rename`` job there, writing nothing: the\nperson at the machine is asked first, and the hub applies the rename when\nthe runner, after the yes, reports the job running (``routes/runners``).\nDeclined or failed, nothing changed. An agent no connected machine has is\nrenamed at once. Under a verified token, only someone who may act as the\nagent (its owner) may rename it.",
+        "operationId": "rename_agent_api_rooms__room_name__agents__handle__rename_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRename"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRenameRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/a2a-agents": {
       "post": {
         "tags": [
@@ -2164,7 +2226,7 @@
           "runners"
         ],
         "summary": "Report Job",
-        "description": "The runner saying how a job went.",
+        "description": "The runner saying how a job went.\n\nA ``rename`` reported running is the machine's yes: the hub renames the\nagent then, before the runner restarts it, so its first read under the new\nhandle finds everything there. A rename the room no longer allows (the name\nwas taken while it waited) answers ``failed``, and the runner restarts nothing.",
         "operationId": "report_job_api_runners__runner_id__jobs__job_id__patch",
         "parameters": [
           {
@@ -7000,6 +7062,97 @@
         "title": "AgentRead",
         "description": "Structured view of an agent's manifest, as returned by GET /rooms/{room}/agents."
       },
+      "AgentRename": {
+        "properties": {
+          "to": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "To",
+            "description": "The new handle"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who is renaming it; the verified caller wins"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to"
+        ],
+        "title": "AgentRename",
+        "description": "Give an agent a new handle in a room."
+      },
+      "AgentRenameRead": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "was": {
+            "type": "string",
+            "title": "Was"
+          },
+          "pending": {
+            "type": "boolean",
+            "title": "Pending",
+            "default": false
+          },
+          "memories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Memories",
+            "description": "Keys moved to the new handle"
+          },
+          "rows": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rows",
+            "description": "Board rows now naming the new handle"
+          },
+          "restart_runner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restart Runner"
+          },
+          "restart_job": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restart Job"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "was"
+        ],
+        "title": "AgentRenameRead",
+        "description": "What a rename moved, or that it waits for a yes on the machine running the agent."
+      },
       "Body_create_upload_api_rooms__room_name__uploads_post": {
         "properties": {
           "file": {
@@ -11676,7 +11829,8 @@
               "restart",
               "pair",
               "interrupt",
-              "adopt"
+              "adopt",
+              "rename"
             ],
             "title": "Kind"
           },

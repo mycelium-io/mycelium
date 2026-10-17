@@ -163,7 +163,21 @@ async def next_job(
 
 @router.patch("/{runner_id}/jobs/{job_id}", response_model=RunnerJobRead)
 async def report_job(runner_id: str, job_id: str, payload: RunnerJobReport) -> RunnerJobRead:
-    """The runner saying how a job went."""
+    """The runner saying how a job went.
+
+    A ``rename`` reported running is the machine's yes: the hub renames the
+    agent then, before the runner restarts it, so its first read under the new
+    handle finds everything there. A rename the room no longer allows (the name
+    was taken while it waited) answers ``failed``, and the runner restarts nothing.
+    """
+    queued = registry.job(runner_id, job_id)
+    if (
+        queued is not None
+        and queued.kind == "rename"
+        and payload.status == "running"
+        and not queued.spec.get("applied")
+    ):
+        payload = await _apply_rename(queued, payload)
     try:
         job = registry.report(runner_id, job_id, payload)
     except RunnerError as exc:
@@ -171,6 +185,24 @@ async def report_job(runner_id: str, job_id: str, payload: RunnerJobReport) -> R
     if job.kind == "adopt" and job.status == "failed":
         await _forget_unadopted(runner_id, job.spec)
     return job
+
+
+async def _apply_rename(job: RunnerJobRead, payload: RunnerJobReport) -> RunnerJobReport:
+    """Rename the agent a ``rename`` job is for, now its machine said yes."""
+    from app.services import agent_rename  # lazy: it reaches the room manager
+
+    spec = job.spec
+    try:
+        await agent_rename.apply(
+            str(spec.get("room")),
+            str(spec.get("handle")),
+            str(spec.get("to")),
+            by=str(spec.get("by") or job.created_by or "unknown"),
+        )
+    except agent_rename.RenameError as exc:
+        return RunnerJobReport(status="failed", error=f"Not renamed: {exc}")
+    spec["applied"] = True
+    return payload
 
 
 async def _forget_unadopted(runner_id: str, spec: dict) -> None:

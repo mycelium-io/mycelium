@@ -1378,6 +1378,80 @@ def agent_rm(
         raise typer.Exit(1) from None
 
 
+@doc_ref(
+    usage="mycelium agent rename <handle> <new-handle> [--room <room>] [--as <you>]",
+    desc=(
+        "Give an agent a new handle. Its notes, the tasks it holds and its place in the "
+        "room move with it, the machine running it restarts it under the new name (asking "
+        "there first), and the room is told."
+    ),
+    group="agent",
+)
+@app.command("rename")
+@in_room()
+@acts_as("by", fallback=None)
+@emits_json()
+def agent_rename(
+    ctx: typer.Context,
+    handle: str = typer.Argument(..., help="The agent's handle now"),
+    new_handle: str = typer.Argument(..., help="Its new handle"),
+    room: str | None = None,
+    by: str | None = None,
+) -> None:
+    """Give an agent a new handle.
+
+    The hub moves its manifest and notes, the open tasks it's meant for or
+    holding, its presence and where it has read to, and keeps nothing under the
+    old name. A running agent can't take a new name, so the machine running it
+    in herdr restarts it under the new one, asking there first; it catches up
+    from the room. You say so in the room. Past messages keep the name they
+    were signed with.
+    """
+    import httpx
+
+    old, new = handle.lstrip("@"), new_handle.lstrip("@")
+    try:
+        config = MyceliumConfig.load()
+        with hub_client(config) as client:
+            resp = client.post(f"/api/rooms/{room}/agents/{old}/rename", json={"to": new, "by": by})
+        if resp.status_code >= 400:
+            try:
+                detail = resp.json().get("detail")
+            except ValueError:
+                detail = resp.text
+            console.print(f"[red]Couldn't rename @{old}:[/red] {detail}")
+            raise typer.Exit(1)
+        moved = resp.json()
+        if ctx.obj and ctx.obj.get("json"):
+            print(json_module.dumps(moved))
+            return
+        if moved.get("pending"):
+            console.print(
+                f"Waiting for approval on {moved['restart_runner']}. @{old} is renamed to "
+                f"@{new} and restarted once it's approved there; nothing changes until then."
+            )
+            return
+        rows = moved.get("rows") or []
+        console.print(f"[green]Renamed @{old} to @{new}[/green] in {room}.")
+        if rows:
+            console.print(
+                "1 task moved with it." if len(rows) == 1 else f"{len(rows)} tasks moved with it."
+            )
+        console.print(
+            "It isn't running on any of your machines. Restart it with "
+            f"MYCELIUM_AGENT_HANDLE={new} to use the new name."
+        )
+    except typer.Exit:
+        raise
+    except httpx.HTTPError as e:
+        console.print(f"[red]Couldn't reach the hub:[/red] {e}")
+        raise typer.Exit(1) from None
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
 # ── credential ───────────────────────────────────────────────────────────────
 #
 # An agent's own credential, so its writes carry *its* identity rather than

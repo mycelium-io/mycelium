@@ -388,6 +388,13 @@ class DeliveryLog:
         """Advance ``handle`` to the transcript end (after a re-serve)."""
         self._cursors[handle] = len(self._records)
 
+    def rename(self, old: str, new: str) -> None:
+        """Carry ``old``'s position to ``new`` (the further one wins), so a
+        renamed agent doesn't read the room again from where ``new`` stood."""
+        cursors = rename_positions(self._cursors, old, new)
+        self._cursors.clear()
+        self._cursors.update(cursors)
+
 
 class EpisodeCursors:
     """Per-``(handle, episode)`` delivery positions over the same transcript.
@@ -429,6 +436,22 @@ class EpisodeCursors:
         positions = self._by_episode.setdefault(episode, {})
         if clamped > positions.get(handle, -1):
             positions[handle] = clamped
+
+    def rename(self, old: str, new: str) -> None:
+        """Carry ``old``'s position on every thread to ``new``."""
+        self._by_episode = {
+            episode: rename_positions(positions, old, new)
+            for episode, positions in self._by_episode.items()
+        }
+
+
+def rename_positions(positions: dict[str, int], old: str, new: str) -> dict[str, int]:
+    """``positions`` with ``old``'s entry under ``new``; the further of the two wins."""
+    if old not in positions:
+        return dict(positions)
+    out = {h: pos for h, pos in positions.items() if h != old}
+    out[new] = max(positions[old], out.get(new, 0))
+    return out
 
 
 def record_episode(record: TranscriptRecord) -> str | None:
@@ -889,6 +912,15 @@ def write_episode_cursors(room: str, cursors: dict[str, dict[str, int]]) -> None
         logger.exception("thread-cursor write failed for room %s", room)
 
 
+def rename_cursors_on_disk(room: str, old: str, new: str) -> None:
+    """:meth:`RoomPersister.rename_handle` for a room with no live persister."""
+    write_cursors(room, rename_positions(load_cursors(room), old, new))
+    write_episode_cursors(
+        room,
+        {ep: rename_positions(p, old, new) for ep, p in load_episode_cursors(room).items()},
+    )
+
+
 # ── The receive loop ─────────────────────────────────────────────────────────
 
 SummonHook = Callable[[str, "MyceliumMessage", list[str], str], None]
@@ -1067,6 +1099,15 @@ class RoomPersister:
         """
         self.log.advance(handle, pos)
         self._persist_cursors()
+
+    def rename_handle(self, old: str, new: str) -> None:
+        """Move ``old``'s room and thread positions, and its reply context, to ``new``."""
+        self.log.rename(old, new)
+        self.episode_cursors.rename(old, new)
+        if old in self._contexts:
+            self._contexts[new] = self._contexts.pop(old)
+        self._persist_cursors()
+        self._persist_episode_cursors()
 
     # -- membership signals (driven by RoomChannelManager) --
 
