@@ -48,9 +48,9 @@
   --border: rgba(17, 20, 24, 0.10);
   --border2: rgba(17, 20, 24, 0.17);
   /* accent (one job) */
-  --accent: #0a7183;
+  --accent: #096a7b;
   --accent-fg: #ffffff;
-  --accent-soft: rgba(10, 113, 131, 0.10);
+  --accent-soft: rgba(9, 106, 123, 0.10);
   /* semantic state */
   --green: #0b7a56;
   --yellow: #8a6410;
