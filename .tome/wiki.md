@@ -25,7 +25,7 @@ Mycelium is a monorepo with several parts. When you describe "the architecture",
 - [`mycelium-frontend/`](mycelium-frontend/): the app (Next.js and Tailwind). The board, the channel, task threads, memory, Stream, Files, schedules and settings.
 - [`mycelium-client/`](mycelium-client/): the generated OpenAPI client. Build output; don't document its internals.
 - [`docs/`](docs/): the docs site, generated from `mycelium-cli/src/mycelium/docs/`, plus the agent setup runbook (`docs/agents.md`).
-- [`mycelium-deck/`](mycelium-deck/), [`mycelium-promo/`](mycelium-promo/), [`shotkit/`](shotkit/): the talk template, the product demo recording, and the repo's screenshot tool. Out of scope for the wiki.
+- [`mycelium-promo/`](mycelium-promo/), [`shotkit/`](shotkit/): the product demo recording and the repo's screenshot tool. Out of scope for the wiki.
 
 ## Where the logic lives
 
@@ -76,7 +76,7 @@ Ground every claim in one of these:
 
 ## Out of scope for the wiki
 
-- The product demo (`mycelium-promo/`), the talk template (`mycelium-deck/`) and the screenshot tool (`shotkit/`).
+- The product demo (`mycelium-promo/`) and the screenshot tool (`shotkit/`).
 - Generated client internals (`mycelium-client/`).
 - Docs site rendering (`docs/generate_docs.py`, CSS).
 - Step-by-step install, which the README covers.

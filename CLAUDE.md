@@ -31,8 +31,10 @@ docs/               The published docs site (mostly generated) and runbooks.
 shotkit/            Screenshots and short videos of the app and the CLI, for
                     agents. Vendored; see its README and the screenshot skill.
 mycelium-promo/     The product demo and the Learn videos. See its README.
-mycelium-deck/      The slide template for talks. See its README.
 ```
+
+Talk and workshop slides live in their own repo, `mycelium-io/slides`
+(published at mycelium-io.github.io/slides).
 
 ## Development
 
