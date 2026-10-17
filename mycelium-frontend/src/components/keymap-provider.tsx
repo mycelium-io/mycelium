@@ -32,7 +32,9 @@ import {
   type KeyScope,
 } from "@/lib/keymap";
 
-type Handler = (chord: string) => void;
+/** Returning `false` says it had nothing to do, and leaves the key to whatever
+ *  holds the page: in the desktop app, ⌘W with no tab to close closes the window. */
+type Handler = (chord: string) => void | boolean;
 
 interface KeymapApi {
   /** Handle an action from the keymap while mounted. */
@@ -198,8 +200,9 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
     // Every registrant runs: focusing the composer, for instance, is one
     // action the room page (switch to the channel pane) and the chat box
     // (focus the textarea) each own a half of.
-    for (const handler of [...list]) handler(chord);
-    return true;
+    let handled = false;
+    for (const handler of [...list]) if (handler(chord) !== false) handled = true;
+    return handled;
   }, []);
 
   /** What the palette can run right now. Registered commands come first, so a
@@ -315,10 +318,10 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
       // whoever registered it, and an unclaimed binding leaves the key alone.
       const surface = { "help.keys": setHelpOpen, "palette.open": setPaletteOpen }[binding.id];
       if (!surface && !handlers.current.has(binding.id)) return;
-      e.preventDefault();
       setRevealed(false);
       if (surface) surface(true);
-      else dispatch(binding.id, chord);
+      else if (!dispatch(binding.id, chord)) return;
+      e.preventDefault();
     };
 
     const onKeyUp = (e: KeyboardEvent) => {

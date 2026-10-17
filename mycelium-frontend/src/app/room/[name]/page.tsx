@@ -204,7 +204,9 @@ function RoomWorkspace() {
   useKeyAction("pane.board", () => showView("board"));
   useKeyAction("pane.files", () => showView("files"));
   useKeyAction("pane.schedules", () => showView("schedules"));
-  useKeyAction("tab.close", () => withDock(d => d.closeActive()));
+  // False with no tab to close (only the Channel is left), so in the desktop
+  // app ⌘W goes on to close the window.
+  useKeyAction("tab.close", () => (dock.current?.room === roomName ? dock.current.closeActive() : false));
   useKeyAction("tab.reopen", () => withDock(d => d.reopenClosed()));
   useKeyAction("tab.split", () => withDock(d => d.splitActive()));
   useKeyAction("group.next", () => withDock(d => d.focusGroup(1)));

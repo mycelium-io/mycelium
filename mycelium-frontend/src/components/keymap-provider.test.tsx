@@ -137,6 +137,26 @@ describe("<KeymapProvider />", () => {
     expect(find).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves the key alone when the action says it had nothing to do", () => {
+    let tabs = 1;
+    function Dock() {
+      useKeyScope("room");
+      useKeyAction("tab.close", () => (tabs > 0 ? (tabs -= 1, true) : false));
+      return null;
+    }
+    render(
+      <KeymapProvider>
+        <Dock />
+      </KeymapProvider>,
+    );
+    const press = () => fireEvent.keyDown(document.body, { key: "w", altKey: true });
+
+    // A tab closed: the key was taken.
+    expect(press()).toBe(false);
+    // Nothing left to close: the key goes on (in the desktop app, to the window).
+    expect(press()).toBe(true);
+  });
+
   it("reveals each target's key while the modifier is held, and hides it on release", async () => {
     const user = userEvent.setup();
     render(

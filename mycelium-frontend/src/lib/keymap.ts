@@ -31,6 +31,9 @@ export interface Binding {
   group: string;
   /** Where the binding is live — "global" everywhere, "room" inside a room. */
   scope: KeyScope;
+  /** Chords it also answers to inside the desktop app, ahead of `keys`: ones a
+   *  browser keeps for itself (`BROWSER_KEPT`) that the app's window passes on. */
+  desktopKeys?: string[];
   /** List the chords as a first…last range; for runs like ⌥1 through ⌥9. */
   abbreviate?: boolean;
   /** Set false to keep the binding out of the command palette: a key that holds
@@ -106,7 +109,15 @@ export const KEYMAP: Binding[] = [
   // U for uploads: alt+F opens the browser's own menu on Windows and Linux.
   { id: "pane.files", keys: ["alt+u"], label: "Files", group: "Panes", scope: "room" },
   { id: "pane.schedules", keys: ["alt+k"], label: "Schedules", group: "Panes", scope: "room" },
-  { id: "tab.close", keys: ["alt+w"], label: "Close the tab", group: "Panes", scope: "room" },
+  {
+    id: "tab.close",
+    keys: ["alt+w"],
+    // ⌘W, as in an editor: a browser closes its own tab on it, the app's window doesn't.
+    desktopKeys: ["mod+w"],
+    label: "Close the tab",
+    group: "Panes",
+    scope: "room",
+  },
   { id: "tab.reopen", keys: ["alt+r"], label: "Reopen the last closed tab", group: "Panes", scope: "room" },
   { id: "tab.split", keys: ["alt+s"], label: "Split the tab to the right", group: "Panes", scope: "room" },
   { id: "group.next", keys: ["alt+BracketRight"], label: "Next group of tabs", group: "Panes", scope: "room" },
@@ -226,13 +237,31 @@ export function isBrowserKept(chord: string): boolean {
 }
 
 let overrides: Readonly<Record<string, readonly string[]>> = {};
+let inDesktopApp = false;
 let active: Binding[] = KEYMAP;
+
+/** The table as the desktop app has it: each binding's `desktopKeys` first. */
+export function withDesktopKeys(table: readonly Binding[]): Binding[] {
+  return table.map(b => (b.desktopKeys ? { ...b, keys: [...b.desktopKeys, ...b.keys] } : b));
+}
+
+/** The defaults where the page is: the desktop app's, or a browser's. */
+function defaults(): readonly Binding[] {
+  return inDesktopApp ? withDesktopKeys(KEYMAP) : KEYMAP;
+}
+
+/** Say whether the page is inside the desktop app, which adds its keys. Set
+ *  on the client once it can tell, so the server's render is a browser's. */
+export function setDesktopApp(on: boolean): void {
+  inDesktopApp = on;
+  active = applyOverrides(defaults(), overrides);
+}
 
 /** Replace the person's changed shortcuts (from their client settings). An
  *  override for an unknown or fixed action is ignored. */
 export function setKeyOverrides(next: Readonly<Record<string, readonly string[]>>): void {
   overrides = next;
-  active = applyOverrides(KEYMAP, next);
+  active = applyOverrides(defaults(), next);
 }
 
 /** The table with a set of overrides applied. */
@@ -252,7 +281,7 @@ export function activeKeymap(): readonly Binding[] {
 
 /** The keys an action has by default, before anyone changed them. */
 export function defaultKeys(id: string): string[] {
-  return KEYMAP.find(b => b.id === id)?.keys ?? [];
+  return defaults().find(b => b.id === id)?.keys ?? [];
 }
 
 /** Whether the person changed an action's keys. */
