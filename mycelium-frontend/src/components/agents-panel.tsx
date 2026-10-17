@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, Check, Clock, FileText, Plus, UserMinus, UserPlus, Users } from "lucide-react";
+import { AtSign, Check, Clock, FileText, Pencil, Plus, UserMinus, UserPlus, Users } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -27,6 +27,7 @@ import { useRoom, useRoomRoster, useScheduledHandles } from "@/lib/room-data";
 import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
+import { RenameAgentDialog } from "@/components/rename-agent-dialog";
 import { Button } from "@/components/ui/button";
 import { Monogram, type AvatarKind } from "@/components/ui/monogram";
 import { HerdrRam } from "@/components/ui/herdr-ram";
@@ -59,6 +60,7 @@ function MemberMenu({
   handle,
   agent,
   onOpenMemory,
+  onRename,
   onUnregister,
   onRemove,
   removeLabel = "Remove from room",
@@ -67,6 +69,8 @@ function MemberMenu({
   handle: string;
   agent: boolean;
   onOpenMemory?: (key: string) => void;
+  /** Agents an engine isn't: opens the form for `agent rename`. */
+  onRename?: () => void;
   /** Agents only: opens the confirmation for `agent rm`. */
   onUnregister?: () => void;
   /** People only: takes them out of the room until they join again. */
@@ -89,6 +93,11 @@ function MemberMenu({
         <ContextMenuItem icon={AtSign} onClick={() => void copyText(`@${handle}`)}>
           Copy @{handle}
         </ContextMenuItem>
+        {agent && onRename && (
+          <ContextMenuItem icon={Pencil} onClick={onRename}>
+            Rename…
+          </ContextMenuItem>
+        )}
         {agent && onUnregister && (
           <>
             <ContextMenuSeparator />
@@ -253,6 +262,7 @@ export function AgentsPanel({
   const [addOpen, setAddOpen] = useState(false);
   const [addKind, setAddKind] = useState<MemberKind>("machine");
   const [unregistering, setUnregistering] = useState<UnregisterTarget | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
   // manifests, people from the hub's record of who joined, others who hold a
@@ -363,6 +373,12 @@ export function AgentsPanel({
           onClose={() => setUnregistering(null)}
           onUnregistered={refresh}
         />
+        <RenameAgentDialog
+          roomName={roomName}
+          handle={renaming}
+          onClose={() => setRenaming(null)}
+          onRenamed={refresh}
+        />
       </div>
 
       <FadeScroll className="flex-1">
@@ -445,6 +461,7 @@ export function AgentsPanel({
                       handle={a.handle}
                       agent
                       onOpenMemory={onOpenMemory}
+                      onRename={a.adapter === "engine" ? undefined : () => setRenaming(a.handle)}
                       onUnregister={() =>
                         setUnregistering({
                           handle: a.handle,

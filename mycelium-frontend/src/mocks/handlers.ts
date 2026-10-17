@@ -942,6 +942,36 @@ export async function handleMock(req: Request): Promise<Response | null> {
         if (!brief) return json({ detail: "Say what the agent is for first." }, 422);
         return json({ notes: mockNotesDraft(brief, fx) });
       }
+      // POST /agents/{handle}/rename — the agent's memories move to the new
+      // handle, as the hub does, and a machine running it is asked to restart
+      // it under that handle.
+      if (sub.length === 3 && sub[2] === "rename" && method === "POST") {
+        const old = decodeURIComponent(sub[1]);
+        const to = String((await readJson(req)).to ?? "").replace(/^@/, "");
+        const base = `agents/${old}`;
+        if (!fx.memories.some((m) => m.key === base)) return json({ detail: `No agent @${old} in ${roomName}.` }, 404);
+        if (!/^[a-z0-9][a-z0-9._@-]*$/.test(to)) return json({ detail: "That isn't a handle." }, 422);
+        if (fx.memories.some((m) => m.key === `agents/${to}`)) {
+          return json({ detail: `@${to} is already a member of ${roomName}.` }, 409);
+        }
+        const moved: string[] = [];
+        for (const m of fx.memories) {
+          if (m.key === base || m.key.startsWith(`${base}/`)) {
+            m.key = `agents/${to}${m.key.slice(base.length)}`;
+            moved.push(m.key);
+          }
+        }
+        const on = runnerAgentOf(roomName, old)?.runner ?? null;
+        const job = on ? queueJob(on, "rename", { room: roomName, handle: old, to }) : null;
+        return json({
+          handle: to,
+          was: old,
+          memories: moved,
+          rows: [],
+          restart_runner: job ? on : null,
+          restart_job: job?.id ?? null,
+        });
+      }
       // Agents are `agents/<handle>` memories whose body is a YAML manifest —
       // the same projection the backend's agents route does.
       if (method !== "GET") return null;

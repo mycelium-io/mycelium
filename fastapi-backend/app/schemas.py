@@ -793,6 +793,28 @@ class AgentRead(BaseModel):
     framework: str | None = None
 
 
+class AgentRename(BaseModel):
+    """Give an agent a new handle in a room."""
+
+    to: str = Field(..., min_length=1, max_length=64, description="The new handle")
+    by: str | None = Field(None, description="Who is renaming it; the verified caller wins")
+
+
+class AgentRenameRead(BaseModel):
+    """What a rename moved."""
+
+    handle: str
+    was: str
+    memories: list[str] = Field(default_factory=list, description="Keys moved to the new handle")
+    rows: list[str] = Field(
+        default_factory=list, description="Board rows now naming the new handle"
+    )
+    #: Where it is being restarted under the new handle: the runner and its job,
+    #: to follow like a launch. Both ``None`` when no connected machine has it.
+    restart_runner: str | None = None
+    restart_job: str | None = None
+
+
 # ── Runners (a user's machine, dialed in) ────────────────────────────────────
 #
 # A runner is `mycelium runner` on someone's computer. It dials out to the hub,
@@ -804,7 +826,9 @@ class AgentRead(BaseModel):
 RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
-RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt"]
+RunnerJobKind = Literal[
+    "launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt", "rename"
+]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 

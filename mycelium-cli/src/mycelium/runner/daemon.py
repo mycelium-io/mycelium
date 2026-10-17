@@ -9,7 +9,8 @@ Three loops, each on its own thread:
   folders agents may be started in), the agents it is running, and every agent
   on the machine (``mycelium.machine``'s report), re-sent as a heartbeat.
 - **jobs**: a long-poll for what the app asked for (``launch``, ``stop``,
-  ``scan``, ``swarm``, ``restart``), done one at a time and reported back.
+  ``scan``, ``swarm``, ``restart``, ``rename``), done one at a time and
+  reported back.
 - **sync**: presence up and doorbells down for every agent in a workspace
   bound to a room on this machine, so they hear their turns.
 
@@ -51,7 +52,7 @@ import threading
 import time
 import traceback
 from collections.abc import Callable, Iterator
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -82,9 +83,9 @@ from mycelium.runner.log import failing, log, ms, open_log, recovered
 from mycelium.utils.process import pid_alive
 
 #: Jobs that start something on this machine, or type into a terminal on it
-#: (``adopt`` introduces an agent someone already has running), and so wait
-#: for a yes here.
-ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt"})
+#: (``adopt`` introduces an agent someone already has running; ``rename`` ends
+#: one and starts it again under a new handle), and so wait for a yes here.
+ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt", "rename"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
 
@@ -537,6 +538,60 @@ class Runner:
             raise JobError("; ".join(failed.values()))
         self.log.print(f"[green]restarted[/green] {', '.join('@' + h for h in restarted)}")
         return {"restarted": restarted, "failed": failed}
+
+    def _renamable(self, spec: dict[str, Any]) -> this_machine.Agent:
+        """The agent a ``rename`` job names, read now, with what it takes to start it again."""
+        r = this_machine.report(bridge=self.bridge, machine=self.label, runner=True)
+        try:
+            agent = r.find(str(spec.get("handle")), spec.get("room"))
+        except this_machine.MachineError as e:
+            raise JobError(str(e)) from e
+        if not agent.folder or not agent.kind:
+            raise JobError(
+                f"@{agent.handle} can't be restarted here: no folder or agent CLI on record."
+            )
+        return agent
+
+    def rename_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Start an agent the room renamed again, under its new handle.
+
+        A running agent's environment says its old handle and can't be changed,
+        so it is ended (its pane closed) and started again, in its folder, in a
+        pane beside its room's, with the new handle in that pane's environment.
+        Its mapping and its record here move to the new handle; the hub already
+        moved everything the room keeps.
+        """
+        agent = self._renamable(spec)
+        room, old, new = agent.room, agent.handle, str(spec.get("to"))
+        # Its tab is named after its agents: say the new name there first, so the
+        # pane it starts in beside them doesn't leave the old one behind.
+        if agent.state != "gone":
+            self.bridge.rename_in_tab(agent.pane, old, new)
+        if agent.state not in ("stopped", "gone"):
+            try:
+                self.bridge.close_pane(agent.pane)
+            except HerdrError as e:
+                raise JobError(f"herdr couldn't end @{old} to restart it: {e}") from e
+            agent = replace(agent, state="gone")
+        self.bridge.registry.remove(room, old)
+        renamed = replace(agent, handle=new)
+        try:
+            pane = this_machine.restart(
+                self.config,
+                renamed,
+                bridge=self.bridge,
+                prompt=this_machine.rename_prompt(renamed, old),
+            )
+        except this_machine.MachineError as e:
+            raise JobError(str(e)) from e
+        with self._lock:
+            tracked = self.state.agents.pop(f"{room}/{old}", None)
+            if tracked is not None:
+                tracked.handle, tracked.pane, tracked.status = new, pane, "starting"
+                self.state.agents[tracked.key] = tracked
+                self.state.save(self._state_path)
+        self.log.print(f"[green]restarted[/green] @{old} as @{new} in {room}")
+        return {"handle": new, "pane": pane}
 
     def owner(self) -> str | None:
         """Whose agents these are: this machine's identity when it reads as a handle.
@@ -1124,6 +1179,8 @@ class Runner:
             return self.swarm(spec, job.get("created_by"))
         if kind == "restart":
             return self.restart_agents(spec)
+        if kind == "rename":
+            return self.rename_agent(spec)
         if kind == "pair":
             return self.pair(spec)
         raise JobError(f"this runner doesn't know how to do '{kind}'; update mycelium here.")
@@ -1138,6 +1195,23 @@ class Runner:
         kind, spec = job.get("kind"), job.get("spec") or {}
         hub = urlparse(self.config.server.api_url).netloc or self.config.server.api_url
         asked_by = job.get("created_by")
+        if kind == "rename":
+            agent = self._renamable(spec)
+            old, new = agent.handle, str(spec.get("to"))
+            running = agent.state not in ("stopped", "gone")
+            return {
+                "kind": kind,
+                "title": f"Restart @{old} as @{new} on {self.label}?",
+                "message": (
+                    f"@{old} was renamed @{new} in {agent.room}. "
+                    + ("Its pane closes, ending what it's doing, and " if running else "")
+                    + f"{agent.kind} starts again in {_tilde(Path(str(agent.folder)))} as @{new} "
+                    "and catches up from the room.\n\n"
+                    f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
+                ),
+                "hub": hub,
+                "asked_by": asked_by,
+            }
         if kind == "restart":
             agents = self._restartable(spec)
             lines = "\n".join(this_machine.restart_command(a) for a in agents)

@@ -1572,3 +1572,40 @@ def test_the_machine_reports_agents_no_room_has(make_runner, herdr: Herdr, hub: 
     [unenrolled] = r.hello_body()["machine"]["unenrolled"]
     assert (unenrolled["pane"], unenrolled["kind"], unenrolled["state"]) == (pane, "claude", "idle")
     assert unenrolled["suggested_handle"] == "claude"
+
+
+# ── rename ────────────────────────────────────────────────────────────────────
+
+
+def test_a_renamed_agent_starts_again_under_its_new_handle(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    old_pane = r.state.agents["eng/scout"].pane
+
+    question = r.question(
+        {"kind": "rename", "spec": {"room": "eng", "handle": "scout", "to": "lookout"}}
+    )
+    assert question["title"] == f"Restart @scout as @lookout on {r.label}?"
+    assert "Its pane closes, ending what it's doing" in question["message"]
+
+    done = r.rename_agent({"room": "eng", "handle": "scout", "to": "lookout"})
+    # Its old process can't take a new name, so its pane closed and a new one opened.
+    assert old_pane not in herdr.panes
+    assert done == {"handle": "lookout", "pane": done["pane"]}
+    assert done["pane"] in herdr.panes
+    assert herdr.of("agent start")[-1][2] == "lookout"
+    assert any("MYCELIUM_AGENT_HANDLE=lookout" in " ".join(c) for c in herdr.calls)
+    told = herdr.of("agent prompt")[-1][3]
+    assert told.startswith("[mycelium] You are @lookout") and "You were @scout" in told
+
+    assert r.bridge.registry.get("eng", "scout") is None
+    moved = r.bridge.registry.get("eng", "lookout")
+    assert moved is not None and moved.pane == done["pane"]
+    assert list(r.state.agents) == ["eng/lookout"]
+    assert daemon.State.load(r._state_path).agents["eng/lookout"].pane == done["pane"]
+
+
+def test_a_rename_for_an_agent_this_machine_doesnt_have_fails(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="No agent @nobody"):
+        r.rename_agent({"room": "eng", "handle": "nobody", "to": "lookout"})

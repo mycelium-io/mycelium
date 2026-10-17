@@ -1199,6 +1199,31 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
   });
 }
 
+/** What renaming an agent moved. */
+export interface AgentRenamed {
+  handle: string;
+  was: string;
+  memories: string[];
+  rows: string[];
+  /** The machine restarting it under the new handle, and that job; null when none has it. */
+  restart_runner: string | null;
+  restart_job: string | null;
+}
+
+/** Give an agent a new handle; the room is told, by `by`, in the same call. */
+export async function renameAgent(
+  roomName: string,
+  handle: string,
+  to: string,
+  by: string | null,
+): Promise<AgentRenamed> {
+  return apiFetch<AgentRenamed>(`${roomApiPath(roomName)}/agents/${encodeURIComponent(handle)}/rename`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to, by }),
+  });
+}
+
 export type EngineKind =
   | "aligner"
   | "synthesizer"
@@ -1436,7 +1461,8 @@ export type RunnerJobKind =
   | "restart"
   | "pair"
   | "interrupt"
-  | "adopt";
+  | "adopt"
+  | "rename";
 /** `waiting`: the machine's runner is asking the person there before it starts anything. */
 export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
 
