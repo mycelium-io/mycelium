@@ -7,22 +7,25 @@ Voice API: a mic's audio in, text for the composer's draft out.
 GET    /voice                     whether this hub can transcribe, and at what rate
 POST   /voice/sessions/{id}       a chunk of one open mic's audio; ``?final=true`` closes it
 DELETE /voice/sessions/{id}       close a mic without transcribing what's left
+POST   /voice/speech              text in, audio out, from the hub's speech server
 
 The app sends raw 16 kHz mono 16-bit little-endian PCM a fraction of a second
 at a time while the mic is on, and appends each text it gets back to the draft.
 The id is the app's own random one per open mic. Plain HTTP rather than a
 socket, so it goes through the same proxy and sign-in as every other route.
-See ``app/services/voice.py``.
+See ``app/services/voice.py``. Speech goes the other way, for reading
+notifications aloud: the hub relays text to the speech server its operator set
+(``app/services/speech.py``) and hands back the audio.
 """
 
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Query, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 
 from app.config import settings
-from app.schemas import VoiceHeard, VoiceStatus
-from app.services import actor, voice, voice_worker
+from app.schemas import SpeechRequest, VoiceHeard, VoiceStatus
+from app.services import actor, speech, voice, voice_worker
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 
@@ -52,7 +55,26 @@ async def voice_status() -> VoiceStatus:
         sample_rate=voice.SAMPLE_RATE,
         model=name,
         choice=choice,
+        speech=speech.configured(),
     )
+
+
+@router.post(
+    "/speech",
+    response_class=Response,
+    responses={
+        200: {"content": {"audio/mpeg": {"schema": {"type": "string", "format": "binary"}}}}
+    },
+)
+async def say(payload: SpeechRequest) -> Response:
+    """Say ``text`` with the hub's speech server, for reading a notification aloud."""
+    try:
+        audio, media = await speech.speak(payload.text)
+    except speech.SpeechUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except speech.SpeechFailed as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return Response(content=audio, media_type=media, headers={"Cache-Control": "no-store"})
 
 
 @router.post(

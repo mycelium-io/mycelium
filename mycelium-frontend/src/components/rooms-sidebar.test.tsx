@@ -19,6 +19,8 @@ vi.mock("@/lib/api", () => ({
   fetchRooms: vi.fn(),
   fetchRoomFolders: vi.fn(),
   saveRoomFolders: vi.fn(),
+  fetchVoiceStatus: vi.fn(async () => null),
+  fetchSpeech: vi.fn(),
   logFetchError: () => () => undefined,
 }));
 

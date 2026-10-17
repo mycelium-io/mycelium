@@ -626,7 +626,7 @@ class BoardConfig(BaseModel):
 
 
 class VoiceConfig(BaseModel):
-    """The message box's mic, transcribed on the hub."""
+    """The message box's mic, transcribed on the hub, and notifications read aloud."""
 
     enabled: bool = Field(
         default=False,
@@ -653,6 +653,38 @@ class VoiceConfig(BaseModel):
             "there. Off, put the files in the hub's data folder under models/voice yourself."
         ),
     )
+    speech_url: str = Field(
+        default="",
+        description=(
+            "A speech server for reading notifications aloud: an OpenAI-style text-to-speech "
+            "endpoint you run, such as http://127.0.0.1:8880/v1 (/audio/speech is added unless "
+            "the address ends with it). The app asks the hub, and the hub asks this server, so "
+            "it works from any page. Empty, the app doesn't offer to read notifications aloud. "
+            "Mycelium ships no speech model. Independent of enabled, which is the mic."
+        ),
+    )
+    speech_model: str = Field(
+        default="",
+        description="The model name the speech server expects. Empty sends none.",
+    )
+    speech_voice: str = Field(
+        default="",
+        description="The voice the speech server reads with. Empty sends none.",
+    )
+    speech_api_key: str = Field(
+        default="",
+        description="A key the speech server asks for, sent as a bearer token. Empty sends none.",
+    )
+
+    @field_validator("speech_url")
+    @classmethod
+    def validate_speech_url(cls, v: str) -> str:
+        """An http(s) address or nothing, without a trailing slash."""
+        v = v.strip().rstrip("/")
+        if v and not v.lower().startswith(("http://", "https://")):
+            msg = "voice.speech_url is an http:// or https:// address"
+            raise ValueError(msg)
+        return v
 
 
 class PatternsConfig(BaseModel):

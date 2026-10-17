@@ -5,6 +5,7 @@
 
 import { X } from "lucide-react";
 import { useNotifications } from "@/components/notifications-provider";
+import { Button } from "@/components/ui/button";
 import { DEFAULT_SETTINGS, roomLevel } from "@/lib/notifications";
 import { useIsDesktop } from "@/lib/desktop";
 import { Note, Row, Section, SettingsPage, Toggle } from "./settings-ui";
@@ -12,7 +13,8 @@ import { Note, Row, Section, SettingsPage, Toggle } from "./settings-ui";
 /** How the bell tells you you've been mentioned, and which rooms are muted.
  *  The bell's gear opens this page, so there is one place to change them. */
 export function NotificationsPage() {
-  const { settings, setSettings, desktopPermission, requestDesktopPermission, unmuteRoom } = useNotifications();
+  const { settings, setSettings, desktopPermission, requestDesktopPermission, unmuteRoom, readAloud } =
+    useNotifications();
   const desktop = useIsDesktop();
   const rooms = [...new Set([...settings.mutedRooms, ...Object.keys(settings.roomLevels ?? {})])]
     .filter((room) => roomLevel(settings, room) === "muted")
@@ -92,6 +94,25 @@ export function NotificationsPage() {
             }}
           />
         </Row>
+        {readAloud.available && (
+          <Row
+            id="notifications.read-aloud"
+            label="Read aloud"
+            help="Say who mentioned you and where, then the start of the message, with the words shown on the bell. Not while your mic is on, and not while Mycelium is hidden."
+            changed={settings.readAloud !== DEFAULT_SETTINGS.readAloud}
+            onReset={() => setSettings({ ...settings, readAloud: DEFAULT_SETTINGS.readAloud })}
+            defaultLabel="off"
+          >
+            <Button size="sm" variant="outline" onClick={readAloud.tryIt} disabled={readAloud.state.item !== null}>
+              Try it
+            </Button>
+            <Toggle
+              label="Read aloud"
+              checked={settings.readAloud}
+              onChange={(readAloudOn) => setSettings({ ...settings, readAloud: readAloudOn })}
+            />
+          </Row>
+        )}
       </Section>
 
       <Section

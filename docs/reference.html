@@ -1212,7 +1212,7 @@
 <span class="comment"># Where registered engines run their drive (backend-only).</span>
 <span class="arg">runtime</span> = <span class="str">&quot;backend&quot;</span>
 
-<span class="comment"># The message box&#x27;s mic, transcribed on the hub.</span>
+<span class="comment"># The message box&#x27;s mic, transcribed on the hub, and notifications read aloud.</span>
 <span class="cmd" id="config-voice">[voice]</span>
 
 <span class="comment"># Let people talk into the message box. The hub transcribes on its own CPU, with a speech model of about 150 MB on disk, in a separate process that uses about 500 MB of memory while anyone is talking and exits a few minutes after. Off, the mic isn&#x27;t offered and nothing is downloaded.</span>
@@ -1223,6 +1223,18 @@
 
 <span class="comment"># Let the hub download the speech model when voice is on and the model isn&#x27;t there. Off, put the files in the hub&#x27;s data folder under models/voice yourself.</span>
 <span class="arg">download</span> = <span class="flag">true</span>
+
+<span class="comment"># A speech server for reading notifications aloud: an OpenAI-style text-to-speech endpoint you run, such as http://127.0.0.1:8880/v1 (/audio/speech is added unless the address ends with it). The app asks the hub, and the hub asks this server, so it works from any page. Empty, the app doesn&#x27;t offer to read notifications aloud. Mycelium ships no speech model. Independent of enabled, which is the mic.</span>
+<span class="arg">speech_url</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># The model name the speech server expects. Empty sends none.</span>
+<span class="arg">speech_model</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># The voice the speech server reads with. Empty sends none.</span>
+<span class="arg">speech_voice</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># A key the speech server asks for, sent as a bearer token. Empty sends none.</span>
+<span class="arg">speech_api_key</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># The verifier: checks what agents say about approvals and merges against the</span>
 <span class="cmd" id="config-verifier">[verifier]</span>
