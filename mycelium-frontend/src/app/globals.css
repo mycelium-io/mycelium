@@ -96,6 +96,10 @@
 }
 
 .dark {
+  /* Native pieces the browser draws (a select's option list, scrollbars)
+     follow the theme rather than the system, so a dark list never carries
+     our light text on a light background. */
+  color-scheme: dark;
   /* surfaces */
   --bg: #0c0e11;
   --surface: #14171c;

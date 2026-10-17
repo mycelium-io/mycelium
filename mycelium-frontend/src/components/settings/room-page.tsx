@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { useCurrentUser } from "@/components/current-user";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import {
   resetRoomSetting,
   setRoomPrivate,
@@ -211,11 +212,12 @@ export function RoomSettingsPage({ room: asked }: { room: string | null }) {
       title={
         <span className="flex items-center gap-1.5">
           Room ·
-          <select
+          <Select
             aria-label="Which room"
             value={room}
             onChange={(e) => router.push(settingHref("room", undefined, e.target.value))}
-            className="rounded-md bg-transparent pr-1 font-medium text-text [field-sizing:content] hover:bg-surface"
+            variant="ghost"
+            selectClassName="font-medium text-[length:inherit] [field-sizing:content]"
           >
             {rooms.map((r) => (
               <option key={r.name} value={r.name}>
@@ -223,7 +225,7 @@ export function RoomSettingsPage({ room: asked }: { room: string | null }) {
               </option>
             ))}
             {!rooms.some((r) => r.name === room) && <option value={room}>{room}</option>}
-          </select>
+          </Select>
         </span>
       }
       scope="Shared with everyone in this room, and kept in the room as memories under settings/."

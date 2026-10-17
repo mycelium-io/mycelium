@@ -17,6 +17,7 @@ import {
   type SendKey,
 } from "@/lib/client-settings";
 import { Monogram } from "@/components/ui/monogram";
+import { Select } from "@/components/ui/select";
 import { useIsClient } from "@/lib/client-hooks";
 import { useIsDesktop } from "@/lib/desktop";
 import { Note, Row, Section, Segmented, SettingsPage } from "./settings-ui";
@@ -157,18 +158,17 @@ export function GeneralPage() {
           onReset={() => resetClientSetting("general.time-zone")}
           defaultLabel={here ? `this computer's, ${here}` : "this computer's"}
         >
-          <select
+          <Select
             aria-label="Time zone"
             value={zone || here}
             onChange={(e) => setZone(e.target.value === here ? "" : e.target.value)}
-            className="h-8 rounded-md border border-border bg-bg px-2 text-label text-text"
           >
             {[...new Set([here, zone, ...COMMON_ZONES].filter(Boolean))].map((z) => (
               <option key={z} value={z}>
                 {z === here ? `${z} (this computer)` : z}
               </option>
             ))}
-          </select>
+          </Select>
         </Row>
       </Section>
     </SettingsPage>

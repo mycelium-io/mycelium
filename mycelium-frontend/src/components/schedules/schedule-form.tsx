@@ -20,6 +20,7 @@ import { useCurrentUser } from "@/components/current-user";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Monogram } from "@/components/ui/monogram";
+import { Select } from "@/components/ui/select";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { ScheduleDraft } from "@/lib/composer-commands";
@@ -519,11 +520,11 @@ function TaskPicker({
   // A schedule made on the CLI may name a task this room's list doesn't hold.
   const known = !task || tasks.some((t) => t.key === task);
   return (
-    <select
+    <Select
       value={task}
       onChange={(e) => onChange(e.target.value)}
       aria-label="Task"
-      className={cn("h-8 w-full rounded-md border border-border bg-bg px-2 text-label text-text", className)}
+      className={cn("w-full", className)}
     >
       <option value="">{optional ? "None" : "Pick a task…"}</option>
       {!known && <option value={task}>{task}</option>}
@@ -532,6 +533,6 @@ function TaskPicker({
           {t.title}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
