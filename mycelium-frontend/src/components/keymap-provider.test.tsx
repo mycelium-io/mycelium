@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { KeyBadge } from "@/components/key-badge";
 import { KeymapProvider, useKeyAction, useKeyScope } from "@/components/keymap-provider";
+import { setDesktopApp } from "@/lib/keymap";
 
 function Room({ onPane }: { onPane: (id: string) => void }) {
   useKeyScope("room");
@@ -253,6 +254,41 @@ describe("<KeymapProvider />", () => {
     // Focus is on document.body — a backdrop click, not a dismissal.
     await user.keyboard("{Alt>}c{/Alt}");
     expect(onPane).not.toHaveBeenCalled();
+  });
+
+  it("keeps the app's ⌘W from the window under a dialog and mid-composition", () => {
+    const close = vi.fn();
+    function Dock() {
+      useKeyScope("room");
+      useKeyAction("tab.close", close);
+      return null;
+    }
+    setDesktopApp(true);
+    try {
+      const { rerender } = render(
+        <KeymapProvider>
+          <Dock />
+        </KeymapProvider>,
+      );
+      // jsdom is not a Mac, so `mod` is Ctrl. False: the default was prevented.
+      const press = (init: KeyboardEventInit = {}) =>
+        fireEvent.keyDown(document.body, { key: "w", ctrlKey: true, ...init });
+
+      expect(press({ isComposing: true })).toBe(false);
+      expect(close).not.toHaveBeenCalled();
+
+      rerender(
+        <KeymapProvider>
+          <Dock />
+          <div role="dialog" aria-label="Add a member" />
+        </KeymapProvider>,
+      );
+      // Half way through a dialog: neither the tab nor the window closes.
+      expect(press()).toBe(false);
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      setDesktopApp(false);
+    }
   });
 
   it("refuses to register outside a provider, rather than silently doing nothing", () => {

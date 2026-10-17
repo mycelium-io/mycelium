@@ -22,8 +22,10 @@ import { KeymapCheatsheet } from "@/components/keymap-cheatsheet";
 import { useClientSetting } from "@/lib/client-settings";
 import { loadRecent, pushRecent, saveRecent, type PaletteCommand } from "@/lib/commands";
 import {
+  activeKeymap,
   chordFor,
   eventToChord,
+  isBrowserKept,
   isCommandChord,
   isModifierKey,
   matchBinding,
@@ -279,15 +281,30 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
       // A component that already acted on the key owns it (the chat box's
       // Escape dismissing its mention popover, say) — the first Escape closes
       // the popover, a second one blurs.
-      if (e.defaultPrevented || e.isComposing) return;
+      if (e.defaultPrevented) return;
+      // In the desktop app a ⌘W nothing takes closes the window, so one the
+      // keymap passes over here (mid-composition, under a dialog, while hint
+      // mode holds the keys) is still kept from it: the person meant a tab.
+      const keepFromWindow = () => {
+        const chord = eventToChord(e, macRef.current);
+        if (isBrowserKept(chord) && activeKeymap().some(b => b.keys.includes(chord))) e.preventDefault();
+      };
+      if (e.isComposing) {
+        keepFromWindow();
+        return;
+      }
 
       const held = capture.current;
       if (held) {
         held(e);
+        if (!e.defaultPrevented) keepFromWindow();
         return;
       }
 
-      if (modalIsOpen()) return;
+      if (modalIsOpen()) {
+        keepFromWindow();
+        return;
+      }
       const target = document.activeElement;
 
       // Holding the reveal modifier over the app draws every navigation key on
