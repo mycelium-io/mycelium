@@ -111,7 +111,7 @@
           "agents"
         ],
         "summary": "Rename Agent",
-        "description": "Give an agent a new handle, restart it under that handle, and tell the room.\n\nIts manifest and notes, the open rows it's meant for or holding, its\npresence and read positions move to the new handle (``agent_rename``), and\nnothing keeps the old one. A running agent can't take a new name from its\nenvironment, so when a connected machine has it in a herdr pane, that\nmachine is asked to restart it there under the new handle (a ``rename``\njob, which asks the person at the machine the way a restart does). Then\nwhoever renamed it says so in the room; everyone reads the same line. Past\nmessages keep the handle they were signed with. Under a verified token,\nonly someone who may act as the agent (its owner) may rename it.",
+        "description": "Give an agent a new handle; for one a machine is running, once that machine says yes.\n\nIts manifest and notes, the open rows it's meant for or holding, the\nschedules it owns, its presence and read positions move to the new handle\n(``agent_rename``), nothing keeps the old one, and whoever renamed it says\nso in the room. A running agent can't take a new name from its\nenvironment, so when a connected machine has it in a herdr pane, this only\nchecks the rename and queues a ``rename`` job there, writing nothing: the\nperson at the machine is asked first, and the hub applies the rename when\nthe runner, after the yes, reports the job running (``routes/runners``).\nDeclined or failed, nothing changed. An agent no connected machine has is\nrenamed at once. Under a verified token, only someone who may act as the\nagent (its owner) may rename it.",
         "operationId": "rename_agent_api_rooms__room_name__agents__handle__rename_post",
         "parameters": [
           {
@@ -2226,7 +2226,7 @@
           "runners"
         ],
         "summary": "Report Job",
-        "description": "The runner saying how a job went.",
+        "description": "The runner saying how a job went.\n\nA ``rename`` reported running is the machine's yes: the hub renames the\nagent then, before the runner restarts it, so its first read under the new\nhandle finds everything there. A rename the room no longer allows (the name\nwas taken while it waited) answers ``failed``, and the runner restarts nothing.",
         "operationId": "report_job_api_runners__runner_id__jobs__job_id__patch",
         "parameters": [
           {
@@ -7101,6 +7101,11 @@
             "type": "string",
             "title": "Was"
           },
+          "pending": {
+            "type": "boolean",
+            "title": "Pending",
+            "default": false
+          },
           "memories": {
             "items": {
               "type": "string"
@@ -7146,7 +7151,7 @@
           "was"
         ],
         "title": "AgentRenameRead",
-        "description": "What a rename moved."
+        "description": "What a rename moved, or that it waits for a yes on the machine running the agent."
       },
       "Body_create_upload_api_rooms__room_name__uploads_post": {
         "properties": {

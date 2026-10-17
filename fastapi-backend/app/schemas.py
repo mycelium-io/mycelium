@@ -801,16 +801,19 @@ class AgentRename(BaseModel):
 
 
 class AgentRenameRead(BaseModel):
-    """What a rename moved."""
+    """What a rename moved, or that it waits for a yes on the machine running the agent."""
 
     handle: str
     was: str
+    #: True when nothing has changed yet: the machine running it asks first, and
+    #: the rename happens with the restart (follow ``restart_job``).
+    pending: bool = False
     memories: list[str] = Field(default_factory=list, description="Keys moved to the new handle")
     rows: list[str] = Field(
         default_factory=list, description="Board rows now naming the new handle"
     )
-    #: Where it is being restarted under the new handle: the runner and its job,
-    #: to follow like a launch. Both ``None`` when no connected machine has it.
+    #: The machine restarting it under the new handle and that job, to follow
+    #: like a launch. Both ``None`` when no connected machine has it.
     restart_runner: str | None = None
     restart_job: str | None = None
 

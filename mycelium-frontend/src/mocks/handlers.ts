@@ -942,9 +942,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
         if (!brief) return json({ detail: "Say what the agent is for first." }, 422);
         return json({ notes: mockNotesDraft(brief, fx) });
       }
-      // POST /agents/{handle}/rename — the agent's memories move to the new
-      // handle, as the hub does, and a machine running it is asked to restart
-      // it under that handle.
+      // POST /agents/{handle}/rename — one a machine runs waits for a yes
+      // there (the job is queued, nothing moves); any other is renamed at once,
+      // its memories moving to the new handle as the hub does.
       if (sub.length === 3 && sub[2] === "rename" && method === "POST") {
         const old = decodeURIComponent(sub[1]);
         const to = String((await readJson(req)).to ?? "").replace(/^@/, "");
@@ -954,6 +954,11 @@ export async function handleMock(req: Request): Promise<Response | null> {
         if (fx.memories.some((m) => m.key === `agents/${to}`)) {
           return json({ detail: `@${to} is already a member of ${roomName}.` }, 409);
         }
+        const on = runnerAgentOf(roomName, old)?.runner ?? null;
+        if (on) {
+          const job = queueJob(on, "rename", { room: roomName, handle: old, to });
+          return json({ handle: to, was: old, pending: true, memories: [], rows: [], restart_runner: on, restart_job: job.id });
+        }
         const moved: string[] = [];
         for (const m of fx.memories) {
           if (m.key === base || m.key.startsWith(`${base}/`)) {
@@ -961,16 +966,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
             moved.push(m.key);
           }
         }
-        const on = runnerAgentOf(roomName, old)?.runner ?? null;
-        const job = on ? queueJob(on, "rename", { room: roomName, handle: old, to }) : null;
-        return json({
-          handle: to,
-          was: old,
-          memories: moved,
-          rows: [],
-          restart_runner: job ? on : null,
-          restart_job: job?.id ?? null,
-        });
+        return json({ handle: to, was: old, pending: false, memories: moved, rows: [], restart_runner: null, restart_job: null });
       }
       // Agents are `agents/<handle>` memories whose body is a YAML manifest —
       // the same projection the backend's agents route does.

@@ -76,8 +76,9 @@ def _renamed(**over: Any) -> dict:
     body = {
         "handle": "docs-writer",
         "was": "voice-model",
+        "pending": True,
         "memories": [],
-        "rows": ["work/a"],
+        "rows": [],
         "restart_runner": "julias-mbp",
         "restart_job": "a1b2c3",
     }
@@ -95,20 +96,21 @@ def test_agent_rename_asks_the_hub(monkeypatch: pytest.MonkeyPatch) -> None:
     assert seen == [
         ("/api/rooms/general/agents/voice-model/rename", {"to": "docs-writer", "by": "julia"})
     ]
-    assert "Renamed @voice-model to @docs-writer in general." in result.output
-    assert "1 task moved with it." in result.output
-    assert "Restarting on julias-mbp. Approve it there." in result.output
+    assert "Waiting for approval on julias-mbp." in result.output
+    assert "nothing changes until then" in result.output
 
 
-def test_agent_rename_says_when_nothing_restarts_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    _hub(
-        monkeypatch,
-        httpx.Response(200, json=_renamed(rows=[], restart_runner=None, restart_job=None)),
-    )
+def test_agent_rename_renames_at_once_when_no_machine_runs_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    done = _renamed(pending=False, rows=["work/a"], restart_runner=None, restart_job=None)
+    _hub(monkeypatch, httpx.Response(200, json=done))
     result = runner.invoke(
         app, ["agent", "rename", "voice-model", "docs-writer", "--room", "general", "--as", "julia"]
     )
     assert result.exit_code == 0, result.output
+    assert "Renamed @voice-model to @docs-writer in general." in result.output
+    assert "1 task moved with it." in result.output
     assert "It isn't running on any of your machines." in result.output
 
 

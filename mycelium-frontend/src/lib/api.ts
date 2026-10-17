@@ -1199,10 +1199,12 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
   });
 }
 
-/** What renaming an agent moved. */
+/** What renaming an agent moved, or that it waits for a yes on the machine running it. */
 export interface AgentRenamed {
   handle: string;
   was: string;
+  /** Nothing has changed yet: the machine running it asks first (follow `restart_job`). */
+  pending: boolean;
   memories: string[];
   rows: string[];
   /** The machine restarting it under the new handle, and that job; null when none has it. */

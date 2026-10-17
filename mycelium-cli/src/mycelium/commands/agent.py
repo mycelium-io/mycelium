@@ -1425,19 +1425,22 @@ def agent_rename(
         if ctx.obj and ctx.obj.get("json"):
             print(json_module.dumps(moved))
             return
+        if moved.get("pending"):
+            console.print(
+                f"Waiting for approval on {moved['restart_runner']}. @{old} is renamed to "
+                f"@{new} and restarted once it's approved there; nothing changes until then."
+            )
+            return
         rows = moved.get("rows") or []
         console.print(f"[green]Renamed @{old} to @{new}[/green] in {room}.")
         if rows:
             console.print(
                 "1 task moved with it." if len(rows) == 1 else f"{len(rows)} tasks moved with it."
             )
-        if moved.get("restart_runner"):
-            console.print(f"Restarting on {moved['restart_runner']}. Approve it there.")
-        else:
-            console.print(
-                "It isn't running on any of your machines. Restart it with "
-                f"MYCELIUM_AGENT_HANDLE={new} to use the new name."
-            )
+        console.print(
+            "It isn't running on any of your machines. Restart it with "
+            f"MYCELIUM_AGENT_HANDLE={new} to use the new name."
+        )
     except typer.Exit:
         raise
     except httpx.HTTPError as e:

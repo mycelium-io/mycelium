@@ -552,17 +552,40 @@ class Runner:
             )
         return agent
 
-    def rename_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
-        """Start an agent the room renamed again, under its new handle.
+    def _go_ahead(self, job_id: str) -> None:
+        """Report a ``rename`` running, which is when the hub renames the agent.
 
-        A running agent's environment says its old handle and can't be changed,
-        so it is ended (its pane closed) and started again, in its folder, in a
-        pane beside its room's, with the new handle in that pane's environment.
-        Its mapping and its record here move to the new handle; the hub already
-        moved everything the room keeps.
+        Raises ``JobError`` when the hub didn't (the name was taken meanwhile, or
+        it can't be reached), so nothing here changes.
+        """
+        try:
+            with hub_client(self.config, timeout=15) as client:
+                resp = client.patch(
+                    f"/api/runners/{self.id}/jobs/{job_id}",
+                    json={"status": "running", "result": None, "error": None},
+                )
+            resp.raise_for_status()
+            job = resp.json()
+        except (httpx.HTTPError, ValueError) as e:
+            raise JobError(f"Not renamed: the hub couldn't be reached ({e}).") from e
+        if job.get("status") == "failed":
+            raise JobError(str(job.get("error") or "Not renamed."))
+
+    def rename_agent(self, spec: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
+        """Rename an agent this machine runs: the hub first, then a restart here.
+
+        Called once the person here said yes. The hub renames the agent in the
+        room when this job is reported running (:meth:`_go_ahead`), and only
+        then is the agent touched, so a name taken while it waited leaves it
+        running as it was. A running agent's environment says its old handle
+        and can't be changed, so it is ended (its pane closed) and started
+        again, in its folder, in a pane beside its room's, with the new handle
+        in that pane's environment. Its mapping and its record here move too.
         """
         agent = self._renamable(spec)
         room, old, new = agent.room, agent.handle, str(spec.get("to"))
+        if job_id is not None:
+            self._go_ahead(job_id)
         # Its tab is named after its agents: say the new name there first, so the
         # pane it starts in beside them doesn't leave the old one behind.
         if agent.state != "gone":
@@ -1180,7 +1203,7 @@ class Runner:
         if kind == "restart":
             return self.restart_agents(spec)
         if kind == "rename":
-            return self.rename_agent(spec)
+            return self.rename_agent(spec, job_id=str(job["id"]) if job.get("id") else None)
         if kind == "pair":
             return self.pair(spec)
         raise JobError(f"this runner doesn't know how to do '{kind}'; update mycelium here.")

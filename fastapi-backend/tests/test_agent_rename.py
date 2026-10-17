@@ -172,20 +172,121 @@ def _machine_with(handle: str) -> dict:
     }
 
 
-@pytest.mark.asyncio
-async def test_the_machine_running_it_is_asked_to_restart_it_under_the_new_name(client, room):
+@pytest.fixture
+async def machine(client):
+    """A connected machine running @voice-model in a herdr pane."""
     from app.services import runners
 
     runners.registry.clear()
     assert (await client.post("/api/runners", json=_machine_with("voice-model"))).status_code == 200
-
-    body = (await _rename(client, "docs-writer")).json()
-    assert body["restart_runner"] == "julias-mbp"
-    job = (await client.get(f"/api/runners/julias-mbp/jobs/{body['restart_job']}")).json()
-    assert job["kind"] == "rename"
-    assert job["spec"] == {"room": ROOM, "handle": "voice-model", "to": "docs-writer"}
-    assert job["created_by"] == "julia"
+    yield "julias-mbp"
     runners.registry.clear()
+
+
+async def _told(client) -> list[dict]:
+    messages = (await client.get(f"/api/rooms/{ROOM}/messages")).json()
+    said = messages["messages"] if isinstance(messages, dict) else messages
+    return [m for m in said if "you're @docs-writer now" in (m.get("content") or "")]
+
+
+async def _report(client, job: str, status: str, **body) -> dict:
+    resp = await client.patch(
+        f"/api/runners/julias-mbp/jobs/{job}", json={"status": status, **body}
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+@pytest.mark.asyncio
+async def test_nothing_changes_until_the_machine_running_it_says_yes(client, room, machine):
+    body = (await _rename(client, "docs-writer")).json()
+    assert body["pending"] is True
+    assert body["memories"] == []
+    assert body["restart_runner"] == machine
+    job = (await client.get(f"/api/runners/{machine}/jobs/{body['restart_job']}")).json()
+    assert job["kind"] == "rename"
+    assert job["spec"] == {
+        "room": ROOM,
+        "handle": "voice-model",
+        "to": "docs-writer",
+        "by": "julia",
+    }
+
+    # Queued and asked: still @voice-model, and the room hasn't been told.
+    await _report(client, job["id"], "waiting")
+    assert _memory("agents/voice-model") is not None
+    assert _memory("agents/docs-writer") is None
+    assert await _told(client) == []
+
+    # The yes: the runner reports it running, and the hub renames it before the restart.
+    answered = await _report(client, job["id"], "running")
+    assert answered["status"] == "running"
+    assert _memory("agents/voice-model") is None
+    assert _memory("agents/docs-writer") is not None
+    assert len(await _told(client)) == 1
+
+    # Reported again (the restart done), it isn't renamed twice.
+    await _report(client, job["id"], "done", result={"handle": "docs-writer"})
+    assert len(await _told(client)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_declined_rename_changes_nothing(client, room, machine):
+    body = (await _rename(client, "docs-writer")).json()
+    await _report(client, body["restart_job"], "waiting")
+    await _report(client, body["restart_job"], "failed", error="Declined on julias-mbp.")
+    assert _memory("agents/voice-model") is not None
+    assert _memory("agents/docs-writer") is None
+    assert await _told(client) == []
+
+
+@pytest.mark.asyncio
+async def test_a_name_taken_while_it_waited_fails_the_rename(client, room, machine):
+    body = (await _rename(client, "docs-writer")).json()
+    other = yaml.safe_dump({"adapter": "claude_code"})
+    await client.post(
+        f"/api/rooms/{ROOM}/memory",
+        json={
+            "items": [
+                {"key": "agents/docs-writer", "value": other, "created_by": "hay", "embed": False}
+            ]
+        },
+    )
+    answered = await _report(client, body["restart_job"], "running")
+    # Failed, so the runner restarts nothing, and @voice-model is as it was.
+    assert answered["status"] == "failed"
+    assert answered["error"] == "Not renamed: @docs-writer is already a member of rename-room."
+    assert _memory("agents/voice-model") is not None
+    assert await _told(client) == []
+
+
+@pytest.mark.asyncio
+async def test_the_schedules_it_owns_move_to_the_new_name(client, room):
+    from app.services import schedules
+
+    await schedules.create(
+        ROOM,
+        name="morning",
+        owner="voice-model",
+        every="1d",
+        cron=None,
+        prompt="Check the board.",
+        check=None,
+        task=None,
+        expires_in_days=None,
+        created_by="julia",
+    )
+    await _rename(client, "docs-writer")
+    assert schedules.load(ROOM)["morning"].owner == "docs-writer"
+
+
+@pytest.mark.asyncio
+async def test_a_persons_handle_is_refused(client, room):
+    await client.post("/api/users", json={"handle": "avery"})
+    resp = await _rename(client, "avery")
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "@avery is a person's name."
+    assert _memory("agents/voice-model") is not None
 
 
 @pytest.mark.asyncio

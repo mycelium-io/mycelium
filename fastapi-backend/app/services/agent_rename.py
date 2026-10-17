@@ -7,10 +7,16 @@ An agent's name stops fitting as its work changes. A rename moves everything
 the room keeps under the old handle to the new one: its manifest and notes
 (``agents/<handle>`` and everything under it), the open board rows it is meant
 for or holding, its presence, pending doorbell, floors and read positions, and
-the room's member list. Nothing keeps the old handle: it is free the moment the
-rename is done. A running agent can't learn a new name from its environment, so
-an agent on a connected machine is restarted there under the new one (the
-route queues that; :func:`restart_target` says where).
+the schedules it owns, and the room's member list. Nothing keeps the old handle:
+it is free the moment the rename is done.
+
+A running agent can't learn a new name from its environment, so an agent on a
+connected machine is restarted there under the new one, and nothing changes
+until the person at that machine says yes: the route only checks and queues the
+``rename`` job (:func:`restart_target` says where), and the hub applies the
+rename (:func:`apply`) when the runner, after the yes, asks to go ahead. A
+declined or failed job leaves the room exactly as it was. An agent no connected
+machine has is renamed at once.
 
 What was said stays as it was said: past messages keep the handle they were
 signed with.
@@ -20,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import TYPE_CHECKING, cast
 
 import yaml
 
@@ -36,6 +43,9 @@ from app.services.filesystem import (
     write_room_meta,
 )
 from app.services.room_channels import manager
+
+if TYPE_CHECKING:
+    from fastapi import Request
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +94,11 @@ def check(room: str, old: str, new: str) -> None:
         raise RenameError(f"@{old} is already called that.")
     if _manifest(room, new) is not None:
         raise RenameError(f"@{new} is already a member of {room}.", status=409)
+    from app.services.principals import classify_sender
+
+    # A person's handle: the agent would post as them and wake on every mention of them.
+    if classify_sender(room, new) == "user":
+        raise RenameError(f"@{new} is a person's name.", status=409)
 
 
 def _renamed_value(value: object, old: str, new: str) -> object:
@@ -192,19 +207,45 @@ async def rename(room: str, old: str, new: str, *, by: str) -> tuple[list[str], 
     """Rename ``old`` to ``new`` in ``room``; the memories and rows it moved.
 
     Checked first (:func:`check`), so a refused rename writes nothing. The room
-    is told by whoever renamed it, which the route posts after this returns.
+    isn't told here: :func:`apply` does both.
     """
+    from app.routes.memory import delete_memory  # lazy: routes import services
+    from app.services import schedules
+
     old, new = norm_handle(old) or "", norm_handle(new) or ""
     check(room, old, new)
-    from app.routes.memory import delete_memory  # lazy: routes import services
-
     memories, old_keys = await _copy_memories(room, old, new, by)
     # The rows first: removing the old manifest hands back every row it still
     # holds, as it does when an agent leaves the room.
     rows = await _move_rows(room, old, new, by)
     for key in old_keys:
         await delete_memory(room, key)
+    await schedules.rename_owner(room, old, new)
     _move_room_member(room, old, new)
     manager.rename_member(room, old, new)
     logger.info("room %s: @%s renamed to @%s by %s", room, old, new, by)
     return memories, rows
+
+
+async def apply(room: str, old: str, new: str, *, by: str) -> tuple[list[str], list[str]]:
+    """Rename ``old`` to ``new`` and tell the room, as whoever renamed it.
+
+    What the route does for an agent no machine is running, and what the hub
+    does for one that is, once its machine said yes.
+    """
+    from app.routes.messages import send_message  # lazy: routes import services
+    from app.schemas import MessageCreate, MessageType
+
+    moved = await rename(room, old, new, by=by)
+    # No request: who says it is the person who asked for the rename, recorded
+    # when they did.
+    await send_message(
+        room,
+        MessageCreate(
+            sender_handle=by,
+            message_type=MessageType.BROADCAST,
+            content=announcement(old, new),
+        ),
+        cast("Request", None),
+    )
+    return moved

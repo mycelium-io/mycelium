@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { renameAgent, type AgentRenamed } from "@/lib/api";
 import { runnerName, useRunnerJob, useRunners } from "@/lib/runners";
 import { useCurrentUser } from "@/components/current-user";
@@ -87,7 +87,7 @@ function RenameForm({
     setError(null);
     try {
       const renamed = await renameAgent(roomName, handle, next, principal.trim() || null);
-      onRenamed(renamed.handle);
+      if (!renamed.pending) onRenamed(renamed.handle);
       setDone(renamed);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't rename the agent");
@@ -96,7 +96,7 @@ function RenameForm({
     }
   };
 
-  if (done) return <Renamed done={done} roomName={roomName} onClose={onClose} />;
+  if (done) return <Renamed done={done} roomName={roomName} onClose={onClose} onRenamed={onRenamed} />;
 
   return (
     <form
@@ -130,8 +130,22 @@ function RenameForm({
   );
 }
 
-/** After the rename: where it is being restarted under its new name, followed like a launch. */
-function Renamed({ done, roomName, onClose }: { done: AgentRenamed; roomName: string; onClose: () => void }) {
+/**
+ * After asking: renamed at once when no machine runs it, or, when one does,
+ * followed on that machine. Nothing changes until it's approved there, so the
+ * title says renamed only once it is.
+ */
+function Renamed({
+  done,
+  roomName,
+  onClose,
+  onRenamed,
+}: {
+  done: AgentRenamed;
+  roomName: string;
+  onClose: () => void;
+  onRenamed: (handle: string) => void;
+}) {
   const { runners } = useRunners();
   const { job } = useRunnerJob(done.restart_runner, done.restart_job);
   const machine = runnerName(
@@ -139,25 +153,41 @@ function Renamed({ done, roomName, onClose }: { done: AgentRenamed; roomName: st
     done.restart_runner,
   );
   const status = job?.status ?? "queued";
-  const line = !done.restart_runner
+  // The hub renames it when the machine goes ahead; a restart can still fail after that.
+  const applied = !done.pending || Boolean(job?.spec?.applied);
+  const told = useRef(!done.pending);
+  useEffect(() => {
+    if (applied && !told.current) {
+      told.current = true;
+      onRenamed(done.handle);
+    }
+  }, [applied, done.handle, onRenamed]);
+
+  const failed = status === "failed";
+  const title = applied ? `Renamed to @${done.handle}` : failed ? "Not renamed" : `Rename @${done.was}`;
+  const line = !done.pending
     ? "It isn't running on any of your machines. Restart it with the new name to use it."
-    : status === "done"
-      ? `Restarted on ${machine}.`
-      : status === "failed"
-        ? `Couldn't restart on ${machine}: ${job?.error ?? "no reason given"}`
-        : status === "waiting"
-          ? `Waiting for approval on ${machine}.`
-          : `Restarting on ${machine}…`;
+    : failed && applied
+      ? `Couldn't restart on ${machine}: ${job?.error ?? "no reason given"}. Restart it with the new name.`
+      : failed
+        ? `${job?.error ?? "No reason given."} @${done.was} is unchanged.`
+        : status === "done"
+          ? `Restarted on ${machine}.`
+          : status === "running"
+            ? `Restarting on ${machine}…`
+            : `Waiting for approval on ${machine}. Nothing changes until then.`;
   const tasks = done.rows.length === 1 ? "1 task moved with it." : `${done.rows.length} tasks moved with it.`;
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Renamed to @{done.handle}</DialogTitle>
-        <DialogDescription>
-          We let {roomName} know.{done.rows.length > 0 && ` ${tasks}`}
-        </DialogDescription>
+        <DialogTitle>{title}</DialogTitle>
+        {applied && (
+          <DialogDescription>
+            We let {roomName} know.{done.rows.length > 0 && ` ${tasks}`}
+          </DialogDescription>
+        )}
       </DialogHeader>
-      <p role={status === "failed" ? "alert" : "status"} className={status === "failed" ? "text-label text-red" : "text-label text-text"}>
+      <p role={failed ? "alert" : "status"} className={failed ? "text-label text-red" : "text-label text-text"}>
         {line}
       </p>
       <DialogFooter>

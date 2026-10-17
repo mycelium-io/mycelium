@@ -1609,3 +1609,35 @@ def test_a_rename_for_an_agent_this_machine_doesnt_have_fails(make_runner, herdr
     r = make_runner()
     with pytest.raises(daemon.JobError, match="No agent @nobody"):
         r.rename_agent({"room": "eng", "handle": "nobody", "to": "lookout"})
+
+
+def test_the_hub_renames_before_the_agent_is_touched(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    pane = r.state.agents["eng/scout"].pane
+    starts = len(herdr.of("agent start"))
+
+    r.rename_agent({"room": "eng", "handle": "scout", "to": "lookout"}, job_id="j1")
+    # The go-ahead (the job reported running) went to the hub before the pane closed.
+    reports = [(p, b) for m, p, b in hub.seen if m == "PATCH" and p.endswith("/jobs/j1")]
+    assert reports[0][1]["status"] == "running"
+    assert pane not in herdr.panes
+    assert len(herdr.of("agent start")) == starts + 1
+
+
+def test_a_rename_the_hub_refuses_leaves_the_agent_running(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    pane = r.state.agents["eng/scout"].pane
+
+    def refused(_job_id: str) -> None:
+        raise daemon.JobError("Not renamed: @lookout is already a member of eng.")
+
+    monkeypatch.setattr(r, "_go_ahead", refused)
+    with pytest.raises(daemon.JobError, match="already a member"):
+        r.rename_agent({"room": "eng", "handle": "scout", "to": "lookout"}, job_id="j1")
+    assert pane in herdr.panes
+    assert list(r.state.agents) == ["eng/scout"]
+    assert r.bridge.registry.get("eng", "scout") is not None

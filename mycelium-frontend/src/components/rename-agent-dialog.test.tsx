@@ -15,17 +15,20 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 vi.mock("@/components/current-user", () => ({
   useCurrentUser: () => ({ principal: "julia" }),
 }));
-const jobStatus = { status: "waiting" as string, error: null as string | null };
+/** The restart job as the machine last reported it. */
+const job = { status: "waiting", error: null as string | null, spec: {} as Record<string, unknown> };
 vi.mock("@/lib/runners", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/runners")>()),
   useRunners: () => ({ runners: [{ id: "mbp", label: "morgans-mbp" }], connected: [], loading: false }),
-  useRunnerJob: (runner: string | null) => ({ job: runner ? { ...jobStatus } : undefined }),
+  useRunnerJob: (runner: string | null) => ({ job: runner ? { ...job } : undefined }),
 }));
 
-function renamed(over: Partial<AgentRenamed> = {}): AgentRenamed {
+/** What the hub answers for an agent a machine runs: nothing changed yet. */
+function waiting(over: Partial<AgentRenamed> = {}): AgentRenamed {
   return {
     handle: "docs-writer",
     was: "voice-model",
+    pending: true,
     memories: [],
     rows: [],
     restart_runner: "mbp",
@@ -53,12 +56,11 @@ async function renameTo(name: string) {
 describe("<RenameAgentDialog />", () => {
   beforeEach(() => {
     vi.mocked(renameAgent).mockReset();
-    jobStatus.status = "waiting";
-    jobStatus.error = null;
+    Object.assign(job, { status: "waiting", error: null, spec: {} });
   });
 
-  it("renames the agent as the person using the app and follows its restart", async () => {
-    vi.mocked(renameAgent).mockImplementation(async () => renamed({ rows: ["work/a"] }));
+  it("asks the machine running it, and changes nothing until it's approved", async () => {
+    vi.mocked(renameAgent).mockImplementation(async () => waiting());
     const { onRenamed, onClose } = open();
 
     // Starts at its current name, which isn't a rename yet.
@@ -67,32 +69,60 @@ describe("<RenameAgentDialog />", () => {
 
     const user = await renameTo("Docs-Writer");
     expect(renameAgent).toHaveBeenCalledWith("checkout", "voice-model", "docs-writer", "julia");
-    expect(onRenamed).toHaveBeenCalledWith("docs-writer");
-    expect(await screen.findByText("Renamed to @docs-writer")).toBeInTheDocument();
-    expect(screen.getByText("We let checkout know. 1 task moved with it.")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Waiting for approval on morgans-mbp.");
+    expect(await screen.findByText("Rename @voice-model")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Waiting for approval on morgans-mbp. Nothing changes until then.",
+    );
+    expect(onRenamed).not.toHaveBeenCalled();
 
-    expect(onClose).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("says to restart it by hand when no machine has it", async () => {
-    vi.mocked(renameAgent).mockImplementation(async () => renamed({ restart_runner: null, restart_job: null }));
+  it("says renamed once the machine approved and restarted it", async () => {
+    Object.assign(job, { status: "done", spec: { applied: true } });
+    vi.mocked(renameAgent).mockImplementation(async () => waiting());
+    const { onRenamed } = open();
+    await renameTo("docs-writer");
+    expect(await screen.findByText("Renamed to @docs-writer")).toBeInTheDocument();
+    expect(screen.getByText("We let checkout know.")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Restarted on morgans-mbp.");
+    expect(onRenamed).toHaveBeenCalledWith("docs-writer");
+  });
+
+  it("says not renamed when the machine said no", async () => {
+    Object.assign(job, { status: "failed", error: "Declined on morgans-mbp." });
+    vi.mocked(renameAgent).mockImplementation(async () => waiting());
+    const { onRenamed } = open();
+    await renameTo("docs-writer");
+    expect(await screen.findByText("Not renamed")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Declined on morgans-mbp. @voice-model is unchanged.");
+    expect(onRenamed).not.toHaveBeenCalled();
+  });
+
+  it("says when it was renamed but couldn't restart", async () => {
+    Object.assign(job, { status: "failed", error: "herdr couldn't end @voice-model", spec: { applied: true } });
+    vi.mocked(renameAgent).mockImplementation(async () => waiting());
     open();
     await renameTo("docs-writer");
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "It isn't running on any of your machines. Restart it with the new name to use it.",
+    expect(await screen.findByText("Renamed to @docs-writer")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't restart on morgans-mbp: herdr couldn't end @voice-model. Restart it with the new name.",
     );
   });
 
-  it("says why the machine couldn't restart it", async () => {
-    jobStatus.status = "failed";
-    jobStatus.error = "Declined on morgans-mbp.";
-    vi.mocked(renameAgent).mockImplementation(async () => renamed());
-    open();
+  it("renames at once when no machine runs it", async () => {
+    vi.mocked(renameAgent).mockImplementation(async () =>
+      waiting({ pending: false, rows: ["work/a"], restart_runner: null, restart_job: null }),
+    );
+    const { onRenamed } = open();
     await renameTo("docs-writer");
-    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't restart on morgans-mbp: Declined on morgans-mbp.");
+    expect(await screen.findByText("Renamed to @docs-writer")).toBeInTheDocument();
+    expect(screen.getByText("We let checkout know. 1 task moved with it.")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "It isn't running on any of your machines. Restart it with the new name to use it.",
+    );
+    expect(onRenamed).toHaveBeenCalledWith("docs-writer");
   });
 
   it("shows why the hub refused and stays open", async () => {
