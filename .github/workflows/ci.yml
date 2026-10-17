@@ -71,9 +71,9 @@ jobs:
             exit 0
           fi
           # Folders neither side's tests read: the CLI, the desktop app and the
-          # repo's own tooling (shotkit, the promo, the deck), plus docs. The
-          # CLI job runs on every PR anyway.
-          elsewhere='^(mycelium-cli/|mycelium-desktop/|shotkit/|mycelium-promo/|mycelium-deck/)'
+          # repo's own tooling (shotkit, the promo), plus docs. The CLI job
+          # runs on every PR anyway.
+          elsewhere='^(mycelium-cli/|mycelium-desktop/|shotkit/|mycelium-promo/)'
           side() {
             local name=$1 own=$2
             if echo "$changed" | grep -vE "$docs" | grep -vE "$elsewhere" | grep -vE "$own" > /dev/null; then
