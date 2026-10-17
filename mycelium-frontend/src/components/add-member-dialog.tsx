@@ -174,7 +174,10 @@ function KindPicker({ value, onChange }: { value: MemberKind; onChange: (k: Memb
               >
                 {label}
               </span>
-              <span className="block truncate text-micro text-faint">{hint}</span>
+              {/* The chosen card's tint lifts its ground, so its hint steps up a level to stay legible. */}
+              <span className={cn("block truncate text-micro", active ? "text-muted-foreground" : "text-faint")}>
+                {hint}
+              </span>
             </span>
           </button>
         );
