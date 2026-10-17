@@ -17,3 +17,4 @@ Next:    1. mycelium await --room checkout --handle builder --json --timeout 5
 Tasks:   yours "Turn on Apple Pay for everyone" (40m ago)
 Board:   @operator filed "Alert us when payments start failing" for @builder
          open now: 3 held, 5 new
+Find:    mycelium room search "<words> from:<handle> task:<row> after:1d" --room checkout   (any message, any field; --facets for counts)

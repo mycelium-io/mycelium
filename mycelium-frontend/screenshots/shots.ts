@@ -94,7 +94,9 @@ const BASE: Shot[] = [
     viewport: "desktop",
     steps: ["Board"],
     // The pull requests' states arrive after the rows; shoot them answered.
-    actions: ["wait-text:changes requested"],
+    // "Needs you" leaves out rows waiting on other work, so wait on a state
+    // one of its own rows shows.
+    actions: ["wait-text:CI running"],
     caption: "The board is the surface: task rows grouped by attention, each a row and a thread, with owners, CI and thread activity.",
   },
   {
