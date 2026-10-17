@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { ApiError, closeVoiceSession, fetchVoiceStatus, sendVoiceChunk } from "@/lib/api";
 import { isDesktop } from "@/lib/desktop";
+import { holdMic } from "@/lib/mic-activity";
 import {
   appRefusesMic,
   CAPTURE_WORKLET,
@@ -49,6 +50,8 @@ interface Rig {
   /** Until the hub says its model is ready, it's only asked (an empty chunk)
    *  while the audio waits here, so a slow first load isn't re-sent each tick. */
   loading: boolean;
+  /** Lets notifications be read aloud again, which wait while a mic is open. */
+  releaseMic: () => void;
 }
 
 /**
@@ -73,6 +76,7 @@ export function useVoiceInput(onText: (text: string) => void, onError: (message:
   });
 
   const release = useCallback((r: Rig) => {
+    r.releaseMic();
     clearInterval(r.timer);
     r.node.port.onmessage = null;
     r.node.disconnect();
@@ -164,6 +168,7 @@ export function useVoiceInput(onText: (text: string) => void, onError: (message:
         buffered: 0,
         inflight: null,
         loading: true,
+        releaseMic: holdMic(),
         timer: setInterval(() => {
           if (rig.current === r && !r.inflight && (r.loading || r.buffered > 0)) void send(r, false);
         }, CHUNK_MS),

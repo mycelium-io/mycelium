@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, Check, Settings, VolumeX, X } from "lucide-react";
@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Tooltip } from "@/components/ui/tooltip";
 import { iconButtonClass } from "@/components/ui/icon-button";
 import { useNotifications } from "@/components/notifications-provider";
+import { ReadAloudPopover } from "@/components/read-aloud-popover";
 import { settingHref } from "@/lib/client-settings";
 import { mentionHref, OPEN_MENTION_EVENT } from "@/lib/notifications";
 
@@ -34,6 +35,7 @@ export function NotificationBell() {
   const { notifications, unreadCount, settings, markRead, markAllRead, dismiss, clearAll } = useNotifications();
   const [open, setOpen] = useState(false);
   const router = useRouter();
+  const anchor = useRef<HTMLSpanElement>(null);
 
   // A system notification for a mention, clicked from another app, opens the
   // message the same way its entry here does.
@@ -62,7 +64,8 @@ export function NotificationBell() {
     .join(" · ");
 
   return (
-    <>
+    <span ref={anchor} className="inline-flex">
+      <ReadAloudPopover anchor={anchor} hidden={open} onOpen={markRead} />
       <Popover open={open} onOpenChange={setOpen}>
         <Tooltip content={bellLabel}>
           <PopoverTrigger
@@ -179,6 +182,6 @@ export function NotificationBell() {
           )}
         </PopoverContent>
       </Popover>
-    </>
+    </span>
   );
 }

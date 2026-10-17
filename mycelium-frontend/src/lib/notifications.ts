@@ -25,6 +25,9 @@ export interface ClassifiedNotification {
   needsMe: boolean;
   /** The task thread it was said in, or null for the room's channel. */
   episode?: string | null;
+  /** The whole message, for reading it aloud. Only on a message as it
+   *  arrives: it's never stored with the bell's list. */
+  text?: string;
 }
 
 export interface StoredNotification extends ClassifiedNotification {
@@ -49,6 +52,8 @@ export interface NotificationSettings {
   soundEnabled: boolean;
   soundVolume: number;
   desktopEnabled: boolean;
+  /** Read a mention aloud through the hub's speech server, when it has one. */
+  readAloud: boolean;
   dnd: boolean;
   mutedRooms: string[];
   /** Per-room overrides of the scope-derived default. */
@@ -60,6 +65,7 @@ export const DEFAULT_SETTINGS: NotificationSettings = {
   soundEnabled: true,
   soundVolume: 0.5,
   desktopEnabled: false,
+  readAloud: false,
   dnd: false,
   mutedRooms: [],
   roomLevels: {},
@@ -149,6 +155,7 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
         summary: text.slice(0, 160),
         needsMe: directed || mentioned,
         episode: isLiveEpisode(room, episode) ? null : episode,
+        text,
       };
     }
     case "l9_commit": {
@@ -159,7 +166,16 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
       const text = (content.content as string) || fallback;
       // A negotiation ending badges its room. It rings only when its text
       // mentions you, like any other message.
-      return { id, room, sender, time, kind: "consensus", summary: text.slice(0, 160), needsMe: mentionsHandle(text, handle) };
+      return {
+        id,
+        room,
+        sender,
+        time,
+        kind: "consensus",
+        summary: text.slice(0, 160),
+        needsMe: mentionsHandle(text, handle),
+        text,
+      };
     }
     case "l9_knowledge": {
       // Memory changes all the time; it badges its room and never rings.
@@ -202,7 +218,12 @@ export function loadNotifications(): StoredNotification[] {
 export function saveNotifications(list: StoredNotification[]): void {
   if (typeof window === "undefined") return;
   try {
-    const trimmed = list.slice(-MAX_STORED);
+    // The whole message is read aloud from memory and never kept.
+    const trimmed = list.slice(-MAX_STORED).map((n) => {
+      const kept = { ...n };
+      delete kept.text;
+      return kept;
+    });
     window.localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(trimmed));
   } catch {
     // Storage quota/private-mode failures are non-fatal — in-memory state carries on.
@@ -242,7 +263,10 @@ export type CrossTabMessage =
   | { type: "room-read"; room: string }
   | { type: "dismiss"; id: string }
   | { type: "clear" }
-  | { type: "settings"; settings: NotificationSettings };
+  | { type: "settings"; settings: NotificationSettings }
+  /** The room the focused window shows, or null when it lost focus: a mention
+   *  there is on someone's screen, so no other window reads it aloud. */
+  | { type: "viewing"; room: string | null };
 
 const CHANNEL_NAME = "mycelium-notifications";
 

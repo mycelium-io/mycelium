@@ -5,7 +5,8 @@
 // Audio API. No asset to ship, no license to track. Browsers block audio
 // until a user gesture unlocks the page's AudioContext, so `primeAudio()`
 // should be wired to the first click/keydown the app sees; `ping()` before
-// that is a silent no-op (caught, never throws into a render path).
+// that is a silent no-op (caught, never throws into a render path). A
+// notification read aloud plays on the same context (`playAudio`).
 
 let ctx: AudioContext | null = null;
 
@@ -21,6 +22,45 @@ function getContext(): AudioContext | null {
 export function primeAudio(): void {
   const c = getContext();
   if (c && c.state === "suspended") void c.resume();
+}
+
+/** Whether sound can play now: the page has had its first click or key. */
+export function audioReady(): boolean {
+  return getContext()?.state === "running";
+}
+
+/**
+ * Play encoded audio (a notification read aloud) on the same context as the
+ * chime, so the one unlock covers both. Resolves when it ends; rejects when
+ * `signal` aborts, stopping it at once.
+ */
+export async function playAudio(encoded: ArrayBuffer, signal: AbortSignal): Promise<void> {
+  const c = getContext();
+  if (!c) throw new Error("This browser can't play sound.");
+  const buffer = await c.decodeAudioData(encoded.slice(0));
+  if (signal.aborted) throw new DOMException("Stopped", "AbortError");
+  await new Promise<void>((resolve, reject) => {
+    const source = c.createBufferSource();
+    source.buffer = buffer;
+    source.connect(c.destination);
+    const stop = () => {
+      source.onended = null;
+      try {
+        source.stop();
+      } catch {
+        // Already stopped.
+      }
+      source.disconnect();
+      reject(new DOMException("Stopped", "AbortError"));
+    };
+    signal.addEventListener("abort", stop, { once: true });
+    source.onended = () => {
+      signal.removeEventListener("abort", stop);
+      source.disconnect();
+      resolve();
+    };
+    source.start();
+  });
 }
 
 /** One note in a motif: a frequency, an offset from the motif's start, a length. */

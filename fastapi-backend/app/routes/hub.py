@@ -25,7 +25,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.services import hub_config, patterns
+from app.services import hub_config, patterns, speech
 
 router = APIRouter(prefix="/hub", tags=["hub"])
 
@@ -55,6 +55,8 @@ class HubWorkers(BaseModel):
 class HubVoice(BaseModel):
     enabled: bool = Field(description="The hub transcribes the message box's mic")
     model: str = Field(description="fast or accurate")
+    speech: bool = Field(False, description="A speech server is set, to read notifications aloud")
+    speech_has_key: bool = Field(False, description="The speech server's key is set")
 
 
 class HubEditing(BaseModel):
@@ -141,6 +143,10 @@ def _values() -> dict[str, Any]:
         "verifier.enabled": settings.VERIFIER_ENABLED,
         "voice.enabled": settings.VOICE_ENABLED,
         "voice.model": settings.VOICE_MODEL,
+        "voice.speech_url": settings.VOICE_SPEECH_URL or "",
+        "voice.speech_model": settings.VOICE_SPEECH_MODEL or "",
+        "voice.speech_voice": settings.VOICE_SPEECH_VOICE or "",
+        "voice.speech_api_key": bool((settings.VOICE_SPEECH_API_KEY or "").strip()),
         "telemetry.send_product_analytics": settings.TELEMETRY_SEND_PRODUCT_ANALYTICS,
         "worker.tools": settings.WORKER_TOOLS,
         "worker.pi_timeout_s": settings.WORKER_PI_TIMEOUT_S,
@@ -222,7 +228,12 @@ async def hub_settings(request: Request) -> HubSettings:
         dependency_gate=settings.BOARD_DEPENDENCY_GATE,
         patterns_inline=settings.PATTERNS_ALLOW_INLINE,
         sign_in=settings.AUTH_ENABLED,
-        voice=HubVoice(enabled=settings.VOICE_ENABLED, model=settings.VOICE_MODEL),
+        voice=HubVoice(
+            enabled=settings.VOICE_ENABLED,
+            model=settings.VOICE_MODEL,
+            speech=speech.configured(),
+            speech_has_key=bool((settings.VOICE_SPEECH_API_KEY or "").strip()),
+        ),
         verifier=settings.VERIFIER_ENABLED,
         editing=_editing(request),
     )

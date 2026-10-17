@@ -104,6 +104,14 @@ class Settings(BaseSettings):
     VOICE_MODEL_DIR: str = ""
     VOICE_DOWNLOAD: bool = True
     VOICE_THREADS: int = 2
+    # Reading notifications aloud (services/speech.py): the app asks the hub,
+    # and the hub asks this OpenAI-style speech server, which the operator
+    # runs. Empty, the app doesn't offer it. MODEL, VOICE and API_KEY are sent
+    # only when set.
+    VOICE_SPEECH_URL: str = ""
+    VOICE_SPEECH_MODEL: str = ""
+    VOICE_SPEECH_VOICE: str = ""
+    VOICE_SPEECH_API_KEY: str = ""
 
     # Metrics collector (for proxying /api/observability/collector and /traces)
     COLLECTOR_URL: str = "http://mycelium-collector:4318"

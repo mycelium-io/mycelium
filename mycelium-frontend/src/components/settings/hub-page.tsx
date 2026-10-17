@@ -295,6 +295,49 @@ export function HubPage() {
               />
             )}
             <HubSettingRow
+              id="hub.speech"
+              label="Speech server"
+              help={help(
+                "Reads mentions aloud for anyone who turns it on in their notification settings. An OpenAI-style text-to-speech address you run; the hub asks it, so the app never needs to reach it.",
+                "voice.speech_url",
+              )}
+              configKey="voice.speech_url"
+              display={<Value>{hub.voice.speech ? "set" : "not set"}</Value>}
+              {...field}
+            />
+            {mayEdit && (
+              <>
+                <HubSettingRow
+                  id="hub.speech-model"
+                  label="Speech model"
+                  help={help("The model name the speech server expects. Empty sends none.", "voice.speech_model")}
+                  configKey="voice.speech_model"
+                  display={null}
+                  {...field}
+                />
+                <HubSettingRow
+                  id="hub.speech-voice"
+                  label="Speech voice"
+                  help={help("The voice it reads with. Empty sends none.", "voice.speech_voice")}
+                  configKey="voice.speech_voice"
+                  display={null}
+                  {...field}
+                />
+              </>
+            )}
+            {(mayEdit || hub.voice.speech) && (
+              <>
+                <HubSettingRow
+                  id="hub.speech-key"
+                  label="Speech server key"
+                  help={help("Sent as a bearer token. The key itself never leaves the hub.", "voice.speech_api_key")}
+                  configKey="voice.speech_api_key"
+                  display={<Value>{hub.voice.speech_has_key ? "set" : "not set"}</Value>}
+                  {...field}
+                />
+              </>
+            )}
+            <HubSettingRow
               id="hub.share-usage"
               label="Share anonymous usage counts"
               help={help("Counts of tasks and runs, never names, rooms or text.", "telemetry.send_product_analytics")}
