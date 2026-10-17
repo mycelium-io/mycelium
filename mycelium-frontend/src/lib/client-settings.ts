@@ -13,7 +13,8 @@
  *  this tab or another one. */
 
 import { useCallback, useSyncExternalStore } from "react";
-import { setKeyOverrides } from "@/lib/keymap";
+import { isDesktop } from "@/lib/desktop";
+import { setDesktopApp, setKeyOverrides } from "@/lib/keymap";
 
 const STORAGE_KEY = "mycelium.settings";
 
@@ -133,6 +134,7 @@ function load(): ClientSettings {
   if (cache) return cache;
   if (typeof window === "undefined") return CLIENT_DEFAULTS;
   cache = sanitize(migrate(readStored()));
+  setDesktopApp(isDesktop());
   setKeyOverrides(cache["keys.overrides"]);
   return cache;
 }

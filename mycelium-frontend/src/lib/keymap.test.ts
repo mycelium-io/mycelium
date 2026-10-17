@@ -13,6 +13,8 @@ import {
   isRevealChord,
   KEYMAP,
   matchBinding,
+  setDesktopApp,
+  withDesktopKeys,
   type Binding,
 } from "@/lib/keymap";
 
@@ -23,6 +25,23 @@ function chord(init: Partial<KeyboardEvent> & { key: string }): KeyboardEvent {
 describe("keymap", () => {
   it("declares no conflicting bindings", () => {
     expect(findConflicts()).toEqual([]);
+  });
+
+  it("declares no conflicting bindings in the desktop app either", () => {
+    expect(findConflicts(withDesktopKeys(KEYMAP))).toEqual([]);
+  });
+
+  it("closes a tab on ⌘W in the desktop app, and only there", () => {
+    expect(matchBinding("mod+w", ["global", "room"])).toBeUndefined();
+    setDesktopApp(true);
+    try {
+      expect(matchBinding("mod+w", ["global", "room"])?.id).toBe("tab.close");
+      expect(chordFor("tab.close")).toBe("mod+w");
+      expect(matchBinding("alt+w", ["global", "room"])?.id).toBe("tab.close");
+    } finally {
+      setDesktopApp(false);
+    }
+    expect(chordFor("tab.close")).toBe("alt+w");
   });
 
   it("catches a duplicate chord and a reused id", () => {
