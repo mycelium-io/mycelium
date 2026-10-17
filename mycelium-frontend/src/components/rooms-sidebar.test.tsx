@@ -11,7 +11,7 @@ import { resetStreamHub } from "@/lib/stream-hub";
 
 const push = vi.fn();
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }), usePathname: () => "/" }));
 
 vi.mock("@/lib/api", () => ({
   createRoom: vi.fn(),

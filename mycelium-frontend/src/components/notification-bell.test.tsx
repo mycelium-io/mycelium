@@ -27,7 +27,8 @@ vi.mock("@/lib/api", () => ({
   }),
 }));
 const push = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+const path = { current: "/" };
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }), usePathname: () => path.current }));
 const ping = vi.fn();
 /** Playing a sentence waits until the test ends it. */
 const playing: (() => void)[] = [];
@@ -286,6 +287,31 @@ describe("<NotificationBell />", () => {
       await emit(message("@bob now it's yours"));
       await screen.findByRole("region", { name: "Reading aloud: alice" }, { timeout: 2000 });
       other.close();
+    });
+
+    it("tells the other windows when the focused one leaves a room for another page", async () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const heard: unknown[] = [];
+      const other = new BroadcastChannel("mycelium-notifications");
+      other.onmessage = (e) => heard.push(e.data);
+      path.current = "/room/sprint";
+      const { rerender } = renderBell();
+      await act(async () => new Promise((r) => setTimeout(r, 20)));
+      path.current = "/settings/notifications";
+      rerender(
+        <SWRConfig value={{ provider: () => new Map() }}>
+          <CurrentUserProvider>
+            <NotificationsProvider>
+              <NotificationBell />
+            </NotificationsProvider>
+          </CurrentUserProvider>
+        </SWRConfig>,
+      );
+      await act(async () => new Promise((r) => setTimeout(r, 20)));
+      expect(heard).toContainEqual({ type: "viewing", room: "sprint" });
+      expect(heard.at(-1)).toEqual({ type: "viewing", room: null });
+      other.close();
+      path.current = "/";
     });
 
     it("keeps the whole message out of what the bell stores", async () => {

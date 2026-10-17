@@ -14,6 +14,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import useSWR from "swr";
 import { setStreamViewer, useNotificationStream, useNotificationsConnected } from "@/lib/stream-hub";
 import { useCurrentUser } from "@/components/current-user";
@@ -398,6 +399,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("blur", onBlur);
     };
   }, [markRoomRead]);
+
+  // Moving to another page without leaving the window: the room it showed is
+  // off screen, so the other windows may read its mentions again.
+  const pathname = usePathname();
+  useEffect(() => {
+    if (document.hasFocus()) channelRef.current?.post({ type: "viewing", room: roomOfPath(pathname ?? "") });
+  }, [pathname]);
 
   const requestDesktopPermission = useCallback(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
