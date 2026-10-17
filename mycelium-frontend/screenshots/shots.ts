@@ -373,7 +373,8 @@ export const SHOTS: Shot[] = [
       ["home-add-agent", "walk-add-agent", { x: 383, y: 284, width: 674, height: 489 }],
       ["home-room", "room-channel", { x: 237, y: 425, width: 863, height: 445 }],
       // Ends before the thread's last message, which carries a verifier line.
-      ["home-thread", "walk-thread", { x: 668, y: 66, width: 432, height: 540 }],
+      // Starts just inside the pane, past its accent edge and the tab's underline.
+      ["home-thread", "walk-thread", { x: 670, y: 68, width: 430, height: 538 }],
       // The @ list and the message under it, short of the channel behind.
       ["home-mention", "mention", { x: 245, y: 647, width: 458, height: 183 }],
     ] as const
