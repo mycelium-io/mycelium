@@ -157,6 +157,11 @@ class AgentHost(Protocol):
         screen shows and how to get to it. ``None`` when the host can't say."""
         ...
 
+    def screen(self, ref: str) -> str | None:
+        """What the agent at ``ref`` shows now, with its colors (ANSI escapes), for a
+        person watching it; ``None`` when the host can't show it."""
+        ...
+
     def wake(self, ref: str, text: str) -> None:
         """Hand the agent at ``ref`` a message. Raises :class:`HostError`."""
         ...
@@ -344,6 +349,9 @@ class HerdrHost:
         parts = [self.bridge.read_pane(ref, lines=_BLOCKER_LINES), of_kind(kind).blocked_hint()]
         parts.append(f"Answer it in its pane: herdr agent focus {ref}")
         return "\n".join(p for p in parts if p)
+
+    def screen(self, ref: str) -> str | None:
+        return self.bridge.read_screen(ref)
 
     def wake(self, ref: str, text: str) -> None:
         try:
@@ -587,6 +595,9 @@ class OmnigentHost:
         return out
 
     def blocker(self, ref: str, kind: str) -> str | None:  # noqa: ARG002
+        return None
+
+    def screen(self, ref: str) -> str | None:  # noqa: ARG002 - a session has no terminal to show
         return None
 
     def wake(self, ref: str, text: str) -> None:

@@ -67,6 +67,19 @@ tells it to read the skill and the board. The agent keeps its own session.
 Pressing **Stop** for it later takes it out of the room's sync but leaves its
 terminal open.
 
+## Watching an agent's terminal
+
+To see what an agent is doing on its machine, right-click it under **Members**
+and choose **Watch terminal…**. This works for an agent one of your machines
+started. Its terminal shows in the app live, and you can only read it, not type
+into it.
+
+Before anything leaves the machine, the runner there asks whether to share the
+terminal, the same way it asks before starting an agent. Nothing is sent until
+someone says yes, and a pairing doesn't skip this question. Sharing stops when
+you close the window, when nobody has looked at it for 30 seconds, when the
+agent's terminal closes, or after 30 minutes.
+
 ## Other kinds of member
 
 The same dialog has three other kinds of member. An **Engine** is a member the
@@ -103,7 +116,8 @@ Settings.
 
 Anyone who can reach a hub can ask it to start an agent on any machine
 connected to it, and the hub can't prove who asked. So before it starts or
-restarts anything, the runner asks you on the machine. It shows who the hub
+restarts anything, or shares an agent's terminal, the runner asks you on the
+machine. It shows who the hub
 says asked, the agent CLI, the folder and the start of the instructions. You
 answer in one of two ways:
 

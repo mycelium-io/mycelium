@@ -918,6 +918,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#machines-watching-an-agents-terminal",
+    "t": "Watching an agent's terminal",
+    "s": "Agents › Start Agents From the App",
+    "x": "To see what an agent is doing on its machine, right-click it under Members and choose Watch terminal…. This works for an agent one of your machines started. Its terminal shows in the app live, and you can only read it, not type into it. Before anything leaves the machine, the runner there asks whether to share the terminal, the same way it asks before starting an agent. Nothing is sent until someone says yes, and a p",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#machines-other-kinds-of-member",
     "t": "Other kinds of member",
     "s": "Agents › Start Agents From the App",
@@ -942,7 +949,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines-you-say-yes-on-the-machine",
     "t": "You say yes on the machine",
     "s": "Agents › Start Agents From the App",
-    "x": "Anyone who can reach a hub can ask it to start an agent on any machine connected to it, and the hub can't prove who asked. So before it starts or restarts anything, the runner asks you on the machine. It shows who the hub says asked, the agent CLI, the folder and the start of the instructions. You answer in one of two ways: In the desktop app, a dialog offers Start and Decline. From a terminal: mycelium runner reques",
+    "x": "Anyone who can reach a hub can ask it to start an agent on any machine connected to it, and the hub can't prove who asked. So before it starts or restarts anything, or shares an agent's terminal, the runner asks you on the machine. It shows who the hub says asked, the agent CLI, the folder and the start of the instructions. You answer in one of two ways: In the desktop app, a dialog offers Start and Decline. From a t",
     "p": "Guides"
   },
   {

@@ -27,7 +27,9 @@ import {
   mockStartOutcome,
   pairDevice,
   queueJob,
+  readMockWatch,
   runnerAgentOf,
+  closeMockWatch,
 } from "./runners";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
 import { demoBusy, demoOnLaunch, demoOnMessage, demoOnTask, isDemoScenario } from "./demo";
@@ -279,10 +281,18 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
     const by = typeof body.created_by === "string" ? body.created_by : null;
     return json(queueJob(runner.id, "adopt", spec, by), 201);
   }
+  if (sub === "watches" && a !== undefined) {
+    const id = decodeURIComponent(a);
+    if (method === "DELETE") return closeMockWatch(runner.id, id) ? new Response(null, { status: 204 }) : notFound("Watch not found");
+    if (method !== "GET") return null;
+    const after = Number(new URL(req.url).searchParams.get("after") ?? 0);
+    const read = readMockWatch(runner.id, id, after);
+    return read ? json(read) : notFound("Watch not found");
+  }
   if (sub === "agents" && method === "POST") {
-    if (a !== undefined && b !== undefined && c === "stop") {
+    if (a !== undefined && b !== undefined && (c === "stop" || c === "watch")) {
       const spec = { room: decodeURIComponent(a), handle: decodeURIComponent(b) };
-      return json(queueJob(runner.id, "stop", spec), 201);
+      return json(queueJob(runner.id, c, spec), 201);
     }
     if (a !== undefined) return null;
     const body = await readJson(req);

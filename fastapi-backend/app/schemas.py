@@ -804,7 +804,9 @@ class AgentRead(BaseModel):
 RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
-RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt"]
+RunnerJobKind = Literal[
+    "launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt", "watch"
+]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
@@ -1063,6 +1065,39 @@ class RunnerJobReport(BaseModel):
     result: dict[str, Any] | None = None
     error: str | None = None
     pairing: PairingOutcome | None = None
+
+
+class TerminalScreen(BaseModel):
+    """What an agent's terminal showed, with its colors (ANSI escapes)."""
+
+    #: Counts up with each screen, so a viewer asks only for newer ones.
+    seq: int
+    text: str
+    at: datetime
+
+
+class WatchSend(BaseModel):
+    """A runner sending the screen of an agent it was agreed to share."""
+
+    text: str
+    #: Set on the last screen it sends, saying why it stopped.
+    ended: str | None = None
+
+
+class WatchSent(BaseModel):
+    #: False once the watch is over; the runner stops sending.
+    keep: bool
+
+
+class WatchRead(BaseModel):
+    """A watched terminal: its newest screen, or why the watch is over.
+
+    The job (``kind: watch``) says whether the machine has agreed yet.
+    """
+
+    id: str
+    screen: TerminalScreen | None = None
+    ended: str | None = None
 
 
 class RunnerAgentLaunch(BaseModel):

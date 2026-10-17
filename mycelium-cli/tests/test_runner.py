@@ -116,6 +116,8 @@ class Herdr:
             ]
             return _proc(_ok({"agents": agents}))
         if head == "pane read":
+            if "ansi" in args:
+                return _proc(self.screen) if args[2] in self.live else _proc(returncode=1)
             return _proc(_ok({"text": self.screen}))
         if head in ("pane run", "pane send-keys"):
             return _proc("")
@@ -1458,6 +1460,98 @@ def _already_running(herdr: Herdr, status: str = "idle") -> str:
     pane = herdr._pane("w5")  # noqa: SLF001 - the fake's own pane maker
     herdr.live[pane] = status
     return pane
+
+
+def test_sharing_a_terminal_asks_on_the_machine_and_says_what_leaves_it(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    assert "watch" in daemon.ASK_FIRST
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    question = r.question(
+        {"kind": "watch", "spec": {"room": "eng", "handle": "scout"}, "created_by": "julia"}
+    )
+    assert question["title"].startswith("Share @scout's terminal from ")
+    assert "would be sent to hub:8000, live" in question["message"]
+    assert "Nothing can be typed into it" in question["message"]
+    assert "@julia" in question["message"]
+
+
+def test_a_terminal_the_runner_cant_show_fails_without_asking(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="isn't running @nobody"):
+        r.question({"kind": "watch", "spec": {"room": "eng", "handle": "nobody"}})
+
+
+def test_a_signed_watch_still_asks(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, quick: None
+):
+    from mycelium.runner import pairing
+
+    r = make_runner(trust_hub=False)
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    key, x, y = _device()
+    _pair(r, x, y, pairing.Limits.make(swarms=True))
+    spec = {"room": "eng", "handle": "scout"}
+    r.take({"id": "e1e1e1", "kind": "watch", "spec": spec, "signature": _sign(key, "watch", spec)})
+
+    waiting = _until(lambda: _report(hub, "e1e1e1", "waiting"))
+    assert waiting["pairing"] == {
+        "accepted": False,
+        "reason": "sharing an agent's terminal is always asked",
+    }
+    assert len(approvals.pending(base=tmp_path)) == 1
+
+
+def test_a_shared_terminal_sends_each_new_screen_until_the_hub_says_stop(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    import time
+
+    monkeypatch.setattr(daemon, "WATCH_EVERY_S", 0.01)
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    herdr.screen = "\x1b[1mthinking\x1b[0m"
+    sends: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "PUT" and "/watches/" in request.url.path:
+            sends.append(json.loads(request.content))
+            if len(sends) == 1:
+                herdr.screen = "done"
+            # The viewer closes it after the second screen.
+            return httpx.Response(200, json={"keep": len(sends) < 2})
+        return Hub.handler(hub, request)
+
+    monkeypatch.setattr(hub, "handler", handler)
+    assert r.do({"id": "w1", "kind": "watch", "spec": {"room": "eng", "handle": "scout"}}) == {
+        "pane": "w9:p1"
+    }
+    _until(lambda: len(sends) >= 2)
+    time.sleep(0.1)
+    # The same screen isn't sent twice in a row, and nothing after the hub said stop.
+    assert [s["text"] for s in sends] == ["\x1b[1mthinking\x1b[0m", "done"]
+
+
+def test_a_shared_terminal_says_when_its_pane_closed(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(daemon, "WATCH_EVERY_S", 0.01)
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    sends: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "PUT" and "/watches/" in request.url.path:
+            sends.append(json.loads(request.content))
+            herdr.live.clear()
+            return httpx.Response(200, json={"keep": True})
+        return Hub.handler(hub, request)
+
+    monkeypatch.setattr(hub, "handler", handler)
+    r.do({"id": "w2", "kind": "watch", "spec": {"room": "eng", "handle": "scout"}})
+    _until(lambda: len(sends) >= 2)
+    assert sends[-1]["ended"] == "@scout's terminal closed."
 
 
 def test_adopt_asks_on_the_machine_first(make_runner, herdr: Herdr, hub: Hub):

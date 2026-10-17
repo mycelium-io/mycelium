@@ -2269,6 +2269,184 @@
         }
       }
     },
+    "/api/runners/{runner_id}/watches/{job_id}": {
+      "put": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Send Screen",
+        "description": "The runner sending the screen of an agent its machine agreed to share.\n\n``keep: false`` says the watch is over (closed, unread, or past its time),\nand the runner stops.",
+        "operationId": "send_screen_api_runners__runner_id__watches__job_id__put",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchSend"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchSent"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Read Screen",
+        "description": "The watched terminal's next screen after ``after``, or why it ended; waits up to ``timeout``.",
+        "operationId": "read_screen_api_runners__runner_id__watches__job_id__get",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "After"
+            }
+          },
+          {
+            "name": "timeout",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 30.0,
+              "minimum": 0.0,
+              "default": 20.0,
+              "title": "Timeout"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Close Watch",
+        "description": "Stop watching; the runner stops sending on its next screen.",
+        "operationId": "close_watch_api_runners__runner_id__watches__job_id__delete",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runners/pair": {
       "post": {
         "tags": [
@@ -2568,6 +2746,67 @@
         "summary": "Stop Agent",
         "description": "Stop an agent this runner started. It stays defined in the room, to start again.",
         "operationId": "stop_agent_api_runners__runner_id__agents__room_name___handle__stop_post",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          },
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runners/{runner_id}/agents/{room_name}/{handle}/watch": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Watch Agent",
+        "description": "Ask to watch an agent's terminal live.\n\nThe runner asks the person at its machine first, and sends nothing until\nthey say yes. Read the screens with ``GET /watches/{job}``; the job says\nwhether the machine has answered.",
+        "operationId": "watch_agent_api_runners__runner_id__agents__room_name___handle__watch_post",
         "parameters": [
           {
             "name": "runner_id",
@@ -11676,7 +11915,8 @@
               "restart",
               "pair",
               "interrupt",
-              "adopt"
+              "adopt",
+              "watch"
             ],
             "title": "Kind"
           },
@@ -13234,6 +13474,31 @@
         "title": "TeamRead",
         "description": "A team, rolled up from the agents fielded under it and its member users."
       },
+      "TerminalScreen": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seq",
+          "text",
+          "at"
+        ],
+        "title": "TerminalScreen",
+        "description": "What an agent's terminal showed, with its colors (ANSI escapes)."
+      },
       "UploadListResponse": {
         "properties": {
           "uploads": {
@@ -14277,6 +14542,79 @@
         ],
         "title": "WakeRecord",
         "description": "One wake the hub raised for an agent, and what became of it."
+      },
+      "WatchRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "screen": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TerminalScreen"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ended": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "WatchRead",
+        "description": "A watched terminal: its newest screen, or why the watch is over.\n\nThe job (``kind: watch``) says whether the machine has agreed yet."
+      },
+      "WatchSend": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "ended": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "WatchSend",
+        "description": "A runner sending the screen of an agent it was agreed to share."
+      },
+      "WatchSent": {
+        "properties": {
+          "keep": {
+            "type": "boolean",
+            "title": "Keep"
+          }
+        },
+        "type": "object",
+        "required": [
+          "keep"
+        ],
+        "title": "WatchSent"
       },
       "WriteBody": {
         "properties": {

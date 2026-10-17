@@ -81,10 +81,17 @@ from mycelium.runner.hosts import (
 from mycelium.runner.log import failing, log, ms, open_log, recovered
 from mycelium.utils.process import pid_alive
 
-#: Jobs that start something on this machine, or type into a terminal on it
-#: (``adopt`` introduces an agent someone already has running), and so wait
-#: for a yes here.
-ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt"})
+#: Jobs that start something on this machine, type into a terminal on it
+#: (``adopt`` introduces an agent someone already has running), or send what
+#: one shows off it (``watch``), and so wait for a yes here.
+ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt", "watch"})
+#: How often a watched agent's screen is looked at, and sent when it changed.
+WATCH_EVERY_S = 0.5
+#: A screen that hasn't changed is sent again this often, so the hub can say
+#: the watch is over (closed, or nobody reading) to a runner with nothing new.
+WATCH_KEEPALIVE_S = 5.0
+#: The longest one watch sends for; the hub ends it then too.
+WATCH_MAX = timedelta(minutes=30)
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
 
@@ -961,6 +968,52 @@ class Runner:
         self.log.print(f"[yellow]{said}[/yellow] @{handle} in {room}")
         return {"pane": ref, "interrupted": sent}
 
+    def _watched(self, room: str, handle: str) -> tuple[AgentHost, str]:
+        """The host and pane of an agent whose terminal can be shown, or ``JobError``."""
+        tracked = self.state.agents.get(f"{room}/{handle}")
+        if tracked is None or not tracked.live:
+            raise JobError(f"{self.label} isn't running @{handle} in {room}.")
+        if self.host.screen(tracked.pane) is None:
+            raise JobError(f"@{handle}'s terminal on {self.label} can't be read to show it.")
+        return self.host, tracked.pane
+
+    def watch_agent(self, job_id: str, spec: dict[str, Any]) -> dict[str, Any]:
+        """Start sending an agent's screen, after the yes; the job is done once it starts."""
+        room, handle = str(spec["room"]), str(spec["handle"])
+        host, ref = self._watched(room, handle)
+        threading.Thread(
+            target=self._send_screens,
+            args=(job_id, host, ref, handle),
+            name=f"runner-watch-{job_id}",
+            daemon=True,
+        ).start()
+        self.log.print(f"[yellow]sharing[/yellow] @{handle}'s terminal in {room}")
+        return {"pane": ref}
+
+    def _send_screens(self, job_id: str, host: AgentHost, ref: str, handle: str) -> None:
+        """Send each new screen until the hub says the watch is over, or it can't be read."""
+        url = f"/api/runners/{self.id}/watches/{job_id}"
+        until = time.monotonic() + WATCH_MAX.total_seconds()
+        last, sent_at = None, 0.0
+        with hub_client(self.config, timeout=10) as client:
+            while not self._stop.is_set() and time.monotonic() < until:
+                text = host.screen(ref)
+                ended = None if text is not None else f"@{handle}'s terminal closed."
+                fresh = text != last or time.monotonic() - sent_at >= WATCH_KEEPALIVE_S
+                if fresh or ended:
+                    try:
+                        resp = client.put(url, json={"text": text or last or "", "ended": ended})
+                        keep = resp.is_success and bool(resp.json().get("keep"))
+                    except (httpx.HTTPError, ValueError) as e:
+                        log.warning("watch %s: couldn't send a screen: %s", job_id, e)
+                        keep = True
+                    if not keep or ended:
+                        break
+                    last, sent_at = text, time.monotonic()
+                self._stop.wait(WATCH_EVERY_S)
+        log.info("watch %s: stopped sharing @%s's terminal", job_id, handle)
+        self.log.print(f"[dim]stopped sharing @{handle}'s terminal[/dim]")
+
     def swarm(self, spec: dict[str, Any], created_by: str | None) -> dict[str, Any]:
         """Open a herdr workspace for a team the hub set up, brief it, and start the kickoff.
 
@@ -1063,6 +1116,8 @@ class Runner:
         if kind == "adopt":
             # Nothing here checks its pane or handle: always ask.
             raise pairing.Refused("bringing in a running agent is always asked")
+        if kind == "watch":
+            raise pairing.Refused("sharing an agent's terminal is always asked")
         different = pairing.Refused("the signed request doesn't match the job")
         if kind == "restart":
             agents = [
@@ -1126,6 +1181,8 @@ class Runner:
             return self.restart_agents(spec)
         if kind == "pair":
             return self.pair(spec)
+        if kind == "watch":
+            return self.watch_agent(str(job["id"]), spec)
         raise JobError(f"this runner doesn't know how to do '{kind}'; update mycelium here.")
 
     def question(self, job: dict[str, Any]) -> dict[str, Any]:
@@ -1148,6 +1205,23 @@ class Runner:
                 "message": (
                     f"Each starts again as itself and catches up from the room:\n{lines}\n\n"
                     f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
+                ),
+                "hub": hub,
+                "asked_by": asked_by,
+            }
+        if kind == "watch":
+            room, handle = str(spec.get("room")), str(spec.get("handle"))
+            self._watched(room, handle)
+            minutes = int(WATCH_MAX.total_seconds() // 60)
+            return {
+                "kind": kind,
+                "title": f"Share @{handle}'s terminal from {self.label}?",
+                "message": (
+                    f"Everything @{handle}'s terminal shows would be sent to {hub}, live, "
+                    f"for whoever asked to watch it, until they close it (at most {minutes} "
+                    "minutes). Nothing can be typed into it from there.\n\n"
+                    f"Room {room} on {hub}. Asked for by "
+                    f"{'@' + asked_by if asked_by else 'someone on that hub'}."
                 ),
                 "hub": hub,
                 "asked_by": asked_by,

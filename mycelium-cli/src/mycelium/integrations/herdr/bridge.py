@@ -473,6 +473,19 @@ class HerdrBridge:
         agent = result.get("agent", result)
         return agent if isinstance(agent, dict) and agent.get("pane_id") else None
 
+    def read_screen(self, pane: str) -> str | None:
+        """What ``pane`` shows now, with its colors (ANSI escapes); ``None`` if unread.
+
+        For a person watching the agent, shared only after a yes on this machine.
+        """
+        if not self.binary_present():
+            return None
+        try:
+            proc = self._invoke(["pane", "read", pane, "--source", "visible", "--format", "ansi"])
+        except OSError:
+            return None
+        return proc.stdout if proc.returncode == 0 else None
+
     def read_pane(self, pane: str, *, lines: int = 6) -> str | None:
         """The last non-blank lines on ``pane``'s screen, to show a person; ``None`` if unread.
 

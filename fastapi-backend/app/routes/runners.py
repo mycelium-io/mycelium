@@ -5,7 +5,7 @@
 
 A runner (``mycelium runner``) dials out: it says hello, heartbeats, and
 long-polls ``jobs/next``. The app reads the runners and queues jobs: start an
-agent, stop one, scan again. The hub never calls into a machine, so a laptop
+agent, stop one, scan again, watch one's terminal. The hub never calls into a machine, so a laptop
 behind NAT, or a hub on another continent, works the same as one on localhost.
 
 Starting an agent is written here, not on the runner: the manifest and its
@@ -40,6 +40,9 @@ from app.schemas import (
     RunnerJobReport,
     RunnerPair,
     RunnerRead,
+    WatchRead,
+    WatchSend,
+    WatchSent,
 )
 from app.services import actor
 from app.services.agent_registry import norm_handle, write_agent_manifest
@@ -51,6 +54,7 @@ from app.services.runners import (
     check_ready,
     registry,
 )
+from app.services.watches import watches
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +174,19 @@ async def report_job(runner_id: str, job_id: str, payload: RunnerJobReport) -> R
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if job.kind == "adopt" and job.status == "failed":
         await _forget_unadopted(runner_id, job.spec)
+    if job.kind == "watch" and job.status == "failed":
+        watches.failed(job_id, job.error or "The machine didn't share it.")
     return job
+
+
+@router.put("/{runner_id}/watches/{job_id}", response_model=WatchSent)
+async def send_screen(runner_id: str, job_id: str, payload: WatchSend) -> WatchSent:
+    """The runner sending the screen of an agent its machine agreed to share.
+
+    ``keep: false`` says the watch is over (closed, unread, or past its time),
+    and the runner stops.
+    """
+    return WatchSent(keep=watches.send(runner_id, job_id, payload.text, payload.ended))
 
 
 async def _forget_unadopted(runner_id: str, spec: dict) -> None:
@@ -440,3 +456,57 @@ async def stop_agent(
         )
     me = actor.bind_optional_actor(request, None, field="created_by")
     return registry.enqueue(runner_id, "stop", {"room": room_name, "handle": h}, created_by=me)
+
+
+@router.post(
+    "/{runner_id}/agents/{room_name}/{handle}/watch", response_model=RunnerJobRead, status_code=201
+)
+async def watch_agent(
+    runner_id: str, room_name: str, handle: str, request: Request
+) -> RunnerJobRead:
+    """Ask to watch an agent's terminal live.
+
+    The runner asks the person at its machine first, and sends nothing until
+    they say yes. Read the screens with ``GET /watches/{job}``; the job says
+    whether the machine has answered.
+    """
+    runner = _runner_or_404(runner_id, request)
+    try:
+        check_ready(runner)
+    except RunnerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    h = norm_handle(handle) or ""
+    if not any(a.room == room_name and a.handle == h for a in runner.agents):
+        raise HTTPException(
+            status_code=404, detail=f"{runner.label} isn't running @{h} in {room_name}"
+        )
+    me = actor.bind_optional_actor(request, None, field="created_by")
+    job = registry.enqueue(runner_id, "watch", {"room": room_name, "handle": h}, created_by=me)
+    watches.open(job.id, runner_id)
+    logger.info("runner %s: watch @%s in %s", runner_id, h, room_name)
+    return job
+
+
+@router.get("/{runner_id}/watches/{job_id}", response_model=WatchRead)
+async def read_screen(
+    runner_id: str,
+    job_id: str,
+    request: Request,
+    after: int = Query(0, ge=0),
+    timeout: float = Query(20.0, ge=0.0, le=MAX_POLL_S),
+) -> WatchRead:
+    """The watched terminal's next screen after ``after``, or why it ended; waits up to ``timeout``."""
+    _runner_or_404(runner_id, request)
+    read = await watches.read(runner_id, job_id, after, timeout)
+    if read is None:
+        raise HTTPException(status_code=404, detail="Watch not found")
+    return read
+
+
+@router.delete("/{runner_id}/watches/{job_id}", status_code=204)
+async def close_watch(runner_id: str, job_id: str, request: Request) -> Response:
+    """Stop watching; the runner stops sending on its next screen."""
+    _runner_or_404(runner_id, request)
+    if not watches.close(runner_id, job_id):
+        raise HTTPException(status_code=404, detail="Watch not found")
+    return Response(status_code=204)

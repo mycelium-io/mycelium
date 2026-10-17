@@ -319,9 +319,72 @@ function statusOf(job: StoredJob): RunnerJob["status"] {
     if (age < 4_600) return "running";
     return job.failWith ? "failed" : "done";
   }
+  // A watch waits on the person at the machine, then shares.
+  if (job.kind === "watch") {
+    if (age < 600) return "queued";
+    if (age < 2_400) return "waiting";
+    return job.failWith ? "failed" : "done";
+  }
   if (age < 1_000) return "queued";
   if (age < 2_500) return "running";
   return job.failWith ? "failed" : "done";
+}
+
+const closedWatches = new Set<string>();
+
+/** A watched terminal: an agent at work, a new screen every 800ms once the machine said yes. */
+export function readMockWatch(
+  runner: string,
+  id: string,
+  after: number,
+): { id: string; screen: { seq: number; text: string; at: string } | null; ended: string | null } | null {
+  const job = jobs.find((j) => j.runner === runner && j.id === id && j.kind === "watch");
+  if (!job) return null;
+  if (closedWatches.has(id)) return { id, screen: null, ended: "Closed." };
+  const status = statusOf(job);
+  if (status === "failed") return { id, screen: null, ended: job.failWith };
+  if (status !== "done") return { id, screen: null, ended: null };
+  const seq = Math.floor((Date.now() - Date.parse(job.created_at) - 2_400) / 800) + 1;
+  if (seq <= after) return { id, screen: null, ended: null };
+  return { id, screen: { seq, text: mockScreen(String(job.spec.handle), seq), at: new Date().toISOString() }, ended: null };
+}
+
+export function closeMockWatch(runner: string, id: string): boolean {
+  if (!jobs.some((j) => j.runner === runner && j.id === id && j.kind === "watch")) return false;
+  closedWatches.add(id);
+  return true;
+}
+
+const ESC = "\x1b";
+const STEPS = [
+  "Read src/checkout/pay-button.tsx",
+  "Read src/checkout/stripe.ts",
+  "Edit src/checkout/stripe.ts (+14 -3)",
+  "Bash npm test -- checkout",
+  "Edit src/checkout/pay-button.tsx (+6 -1)",
+];
+
+/** What an agent's terminal looks like while it works, `seq` frames in. */
+function mockScreen(handle: string, seq: number): string {
+  const done = Math.min(STEPS.length, Math.floor(seq / 3));
+  const spinner = ["✻", "✶", "✳", "✢"][seq % 4];
+  const where = `~/code/shop · @${handle}`;
+  const width = 16 + where.length + 4;
+  const lines = [
+    `${ESC}[38;5;174m╭${"─".repeat(width)}╮${ESC}[0m`,
+    `${ESC}[38;5;174m│${ESC}[0m ${ESC}[1m✻ Claude Code${ESC}[0m  ${ESC}[2m${where}${ESC}[0m    ${ESC}[38;5;174m│${ESC}[0m`,
+    `${ESC}[38;5;174m╰${"─".repeat(width)}╯${ESC}[0m`,
+    "",
+    `${ESC}[2m> mycelium await --room checkout --handle ${handle}${ESC}[0m`,
+    "",
+    "Customers are charged twice when they double-click Pay. One payment ID",
+    "per checkout, reused on a second tap.",
+    "",
+    ...STEPS.slice(0, done).map((s) => `${ESC}[32m●${ESC}[0m ${s}`),
+    "",
+    `${ESC}[38;5;174m${spinner}${ESC}[0m ${ESC}[1mWorking…${ESC}[0m ${ESC}[2m(${seq}s · esc to interrupt)${ESC}[0m`,
+  ];
+  return lines.join("\r\n");
 }
 
 /** Carry out what a settled job did to its machine, once. */

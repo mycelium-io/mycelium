@@ -174,6 +174,8 @@ export function describeJob(job: RunnerJob): string {
       return typeof spec.name === "string" ? `Pair “${spec.name}”` : "Pair a device";
     case "adopt":
       return `Bring ${handle ?? "an agent"} into ${typeof spec.room === "string" ? spec.room : "a room"}`;
+    case "watch":
+      return `Share ${handle ? `${handle}'s` : "an agent's"} terminal`;
   }
 }
 

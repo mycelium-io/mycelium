@@ -1436,7 +1436,8 @@ export type RunnerJobKind =
   | "restart"
   | "pair"
   | "interrupt"
-  | "adopt";
+  | "adopt"
+  | "watch";
 /** `waiting`: the machine's runner is asking the person there before it starts anything. */
 export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
 
@@ -1563,6 +1564,41 @@ export async function stopRunnerAgent(id: string, room: string, handle: string):
     `${runnerApiPath(id)}/agents/${encodeURIComponent(room)}/${encodeURIComponent(handle)}/stop`,
     { method: "POST" },
   );
+}
+
+/** What an agent's terminal showed, with its colors (ANSI escapes). */
+export interface TerminalScreen {
+  seq: number;
+  text: string;
+  at: string;
+}
+
+/** A watched terminal: its newest screen, or why the watch is over. */
+export interface WatchRead {
+  id: string;
+  screen: TerminalScreen | null;
+  ended: string | null;
+}
+
+/** Ask to watch an agent's terminal; its machine asks the person there first. */
+export async function watchRunnerAgent(id: string, room: string, handle: string): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(
+    `${runnerApiPath(id)}/agents/${encodeURIComponent(room)}/${encodeURIComponent(handle)}/watch`,
+    { method: "POST" },
+  );
+}
+
+/** The watched terminal's next screen after `after`; the hub holds the read until one comes. */
+export async function readWatch(id: string, watch: string, after: number, signal?: AbortSignal): Promise<WatchRead> {
+  return apiFetch<WatchRead>(
+    `${runnerApiPath(id)}/watches/${encodeURIComponent(watch)}?after=${after}&timeout=20`,
+    { signal },
+  );
+}
+
+/** Stop watching; the machine stops sending. */
+export async function closeWatch(id: string, watch: string): Promise<void> {
+  await apiFetch<void>(`${runnerApiPath(id)}/watches/${encodeURIComponent(watch)}`, { method: "DELETE" });
 }
 
 // ── A2A bridge (the room's off-channel traffic) ──────────────────────────────

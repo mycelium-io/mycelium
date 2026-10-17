@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, Check, Clock, FileText, Plus, UserMinus, UserPlus, Users } from "lucide-react";
+import { AtSign, Check, Clock, FileText, Plus, SquareTerminal, UserMinus, UserPlus, Users } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -27,6 +27,7 @@ import { useRoom, useRoomRoster, useScheduledHandles } from "@/lib/room-data";
 import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
+import { WatchTerminalDialog, type WatchTarget } from "@/components/watch-terminal-dialog";
 import { Button } from "@/components/ui/button";
 import { Monogram, type AvatarKind } from "@/components/ui/monogram";
 import { HerdrRam } from "@/components/ui/herdr-ram";
@@ -59,6 +60,7 @@ function MemberMenu({
   handle,
   agent,
   onOpenMemory,
+  onWatch,
   onUnregister,
   onRemove,
   removeLabel = "Remove from room",
@@ -67,6 +69,8 @@ function MemberMenu({
   handle: string;
   agent: boolean;
   onOpenMemory?: (key: string) => void;
+  /** Agents running on one of your machines: watch its terminal, once the machine agrees. */
+  onWatch?: () => void;
   /** Agents only: opens the confirmation for `agent rm`. */
   onUnregister?: () => void;
   /** People only: takes them out of the room until they join again. */
@@ -84,6 +88,11 @@ function MemberMenu({
         {agent && onOpenMemory && (
           <ContextMenuItem icon={FileText} onClick={() => onOpenMemory(`agents/${handle}`)}>
             Open profile
+          </ContextMenuItem>
+        )}
+        {agent && onWatch && (
+          <ContextMenuItem icon={SquareTerminal} onClick={onWatch}>
+            Watch terminal…
           </ContextMenuItem>
         )}
         <ContextMenuItem icon={AtSign} onClick={() => void copyText(`@${handle}`)}>
@@ -253,6 +262,7 @@ export function AgentsPanel({
   const [addOpen, setAddOpen] = useState(false);
   const [addKind, setAddKind] = useState<MemberKind>("machine");
   const [unregistering, setUnregistering] = useState<UnregisterTarget | null>(null);
+  const [watching, setWatching] = useState<WatchTarget | null>(null);
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
   // manifests, people from the hub's record of who joined, others who hold a
@@ -363,6 +373,7 @@ export function AgentsPanel({
           onClose={() => setUnregistering(null)}
           onUnregistered={refresh}
         />
+        <WatchTerminalDialog target={watching} onClose={() => setWatching(null)} />
       </div>
 
       <FadeScroll className="flex-1">
@@ -439,12 +450,28 @@ export function AgentsPanel({
                     a.runner && runnersById.has(a.runner)
                       ? runnerName(runnersById.get(a.runner), a.runner)
                       : null;
+                  // Its terminal can be watched while that machine runs it.
+                  const running =
+                    machine && a.runner
+                      ? runnersById
+                          .get(a.runner)
+                          ?.agents.some(
+                            (r) =>
+                              r.room === roomName && r.handle === a.handle && !["stopped", "failed"].includes(r.status),
+                          )
+                      : false;
                   return (
                     <MemberMenu
                       key={`agent-${a.handle}`}
                       handle={a.handle}
                       agent
                       onOpenMemory={onOpenMemory}
+                      onWatch={
+                        running && a.runner && machine
+                          ? () =>
+                              setWatching({ room: roomName, handle: a.handle, runner: { id: a.runner!, name: machine } })
+                          : undefined
+                      }
                       onUnregister={() =>
                         setUnregistering({
                           handle: a.handle,
