@@ -68,11 +68,9 @@ describe("<RenameAgentDialog />", () => {
     const user = await renameTo("Docs-Writer");
     expect(renameAgent).toHaveBeenCalledWith("checkout", "voice-model", "docs-writer", "julia");
     expect(onRenamed).toHaveBeenCalledWith("docs-writer");
-    expect(await screen.findByText("@voice-model is @docs-writer")).toBeInTheDocument();
-    expect(screen.getByText(/1 task now names it/)).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Waiting for someone on morgans-mbp to approve restarting it as @docs-writer.",
-    );
+    expect(await screen.findByText("Renamed to @docs-writer")).toBeInTheDocument();
+    expect(screen.getByText("We let checkout know. 1 task moved with it.")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Waiting for approval on morgans-mbp.");
 
     expect(onClose).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Done" }));
@@ -84,7 +82,7 @@ describe("<RenameAgentDialog />", () => {
     open();
     await renameTo("docs-writer");
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "No connected machine is running it, so restart it yourself with its new name",
+      "It isn't running on any of your machines. Restart it with the new name to use it.",
     );
   });
 
@@ -94,7 +92,7 @@ describe("<RenameAgentDialog />", () => {
     vi.mocked(renameAgent).mockImplementation(async () => renamed());
     open();
     await renameTo("docs-writer");
-    expect(await screen.findByRole("alert")).toHaveTextContent("morgans-mbp couldn't restart it: Declined on morgans-mbp.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't restart on morgans-mbp: Declined on morgans-mbp.");
   });
 
   it("shows why the hub refused and stays open", async () => {

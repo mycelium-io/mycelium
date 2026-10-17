@@ -1426,20 +1426,17 @@ def agent_rename(
             print(json_module.dumps(moved))
             return
         rows = moved.get("rows") or []
-        console.print(f"[green]Renamed:[/green] @{old} is @{new} in {room}. The room was told.")
+        console.print(f"[green]Renamed @{old} to @{new}[/green] in {room}.")
         if rows:
             console.print(
-                "1 task now names it." if len(rows) == 1 else f"{len(rows)} tasks now name it."
+                "1 task moved with it." if len(rows) == 1 else f"{len(rows)} tasks moved with it."
             )
         if moved.get("restart_runner"):
-            console.print(
-                f"It's being restarted under its new name on {moved['restart_runner']}, "
-                "which asks there first."
-            )
+            console.print(f"Restarting on {moved['restart_runner']}. Approve it there.")
         else:
             console.print(
-                "[yellow]No connected machine is running it.[/yellow] Restart it yourself "
-                f"with the new name (MYCELIUM_AGENT_HANDLE={new}) before it answers to it."
+                "It isn't running on any of your machines. Restart it with "
+                f"MYCELIUM_AGENT_HANDLE={new} to use the new name."
             )
     except typer.Exit:
         raise

@@ -95,9 +95,9 @@ def test_agent_rename_asks_the_hub(monkeypatch: pytest.MonkeyPatch) -> None:
     assert seen == [
         ("/api/rooms/general/agents/voice-model/rename", {"to": "docs-writer", "by": "julia"})
     ]
-    assert "@voice-model is @docs-writer in general" in result.output
-    assert "1 task now names it" in result.output
-    assert "restarted under its new name on julias-mbp" in result.output
+    assert "Renamed @voice-model to @docs-writer in general." in result.output
+    assert "1 task moved with it." in result.output
+    assert "Restarting on julias-mbp. Approve it there." in result.output
 
 
 def test_agent_rename_says_when_nothing_restarts_it(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -109,7 +109,7 @@ def test_agent_rename_says_when_nothing_restarts_it(monkeypatch: pytest.MonkeyPa
         app, ["agent", "rename", "voice-model", "docs-writer", "--room", "general", "--as", "julia"]
     )
     assert result.exit_code == 0, result.output
-    assert "Restart it yourself" in result.output
+    assert "It isn't running on any of your machines." in result.output
 
 
 def test_agent_rename_says_why_the_hub_refused(monkeypatch: pytest.MonkeyPatch) -> None:

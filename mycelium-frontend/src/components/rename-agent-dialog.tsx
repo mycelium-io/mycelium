@@ -109,11 +109,10 @@ function RenameForm({
       <DialogHeader>
         <DialogTitle>Rename @{handle}</DialogTitle>
         <DialogDescription>
-          Its notes, its tasks and its place in {roomName} move to the new name. The machine running it restarts
-          it under that name, asking there first, and it catches up from the room.
+          Its notes and tasks move to the new name. The agent restarts to use it.
         </DialogDescription>
       </DialogHeader>
-      <IdentityRow value={value} onChange={setValue} hint="Its new handle: how the room addresses it from now on." />
+      <IdentityRow value={value} onChange={setValue} hint="The name people use to mention it." />
       {error && (
         <p role="alert" className="break-words text-label text-red">
           {error}
@@ -141,24 +140,21 @@ function Renamed({ done, roomName, onClose }: { done: AgentRenamed; roomName: st
   );
   const status = job?.status ?? "queued";
   const line = !done.restart_runner
-    ? `No connected machine is running it, so restart it yourself with its new name before it answers to @${done.handle}.`
+    ? "It isn't running on any of your machines. Restart it with the new name to use it."
     : status === "done"
-      ? `@${done.handle} started again on ${machine} and is catching up from the room.`
+      ? `Restarted on ${machine}.`
       : status === "failed"
-        ? `${machine} couldn't restart it: ${job?.error ?? "it didn't say why"}. It's still @${done.handle} in ${roomName}; restart it there with its new name.`
+        ? `Couldn't restart on ${machine}: ${job?.error ?? "no reason given"}`
         : status === "waiting"
-          ? `Waiting for someone on ${machine} to approve restarting it as @${done.handle}.`
-          : `Asking ${machine} to restart it as @${done.handle}.`;
+          ? `Waiting for approval on ${machine}.`
+          : `Restarting on ${machine}…`;
+  const tasks = done.rows.length === 1 ? "1 task moved with it." : `${done.rows.length} tasks moved with it.`;
   return (
     <>
       <DialogHeader>
-        <DialogTitle>
-          @{done.was} is @{done.handle}
-        </DialogTitle>
+        <DialogTitle>Renamed to @{done.handle}</DialogTitle>
         <DialogDescription>
-          {roomName} was told.
-          {done.rows.length > 0 &&
-            ` ${done.rows.length === 1 ? "1 task now names it" : `${done.rows.length} tasks now name it`}.`}
+          We let {roomName} know.{done.rows.length > 0 && ` ${tasks}`}
         </DialogDescription>
       </DialogHeader>
       <p role={status === "failed" ? "alert" : "status"} className={status === "failed" ? "text-label text-red" : "text-label text-text"}>
