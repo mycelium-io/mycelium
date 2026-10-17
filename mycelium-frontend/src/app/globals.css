@@ -19,13 +19,14 @@
  *                          — the legible  bg-paper     card / header band
  *                            FLOOR for    bg-elevated  popovers, dialogs
  *                            any text     bg-muted     quiet fill (hover, chip)
- *   text-faint  DECORATION ONLY —         bg-accent-soft  tinted accent wash
- *               rules, disabled glyphs,
- *               separators. NEVER body.
+ *   text-faint  tertiary — counts,        bg-accent-soft  tinted accent wash
+ *               dates, placeholders,
+ *               subtitles. Still legible.
  *
- * Two legible text levels + one decoration level. There is deliberately no
- * "quiet but still readable text" tier to misuse — if it holds words, it is
- * text or muted-foreground, both audited legible on every surface, both themes.
+ * Three text levels, each at least 4.5:1 (WCAG AA) on bg, surface, paper and
+ * elevated in both themes. Faint was once decoration only, but the app puts
+ * words in it (placeholders, dates, counts, card subtitles), so it is held to
+ * the same floor as the rest: the quietest level, never an unreadable one.
  * Design intent: cool neutral grays, one accent doing one job, desaturated
  * semantics reserved for true state — not general emphasis.
  * ──────────────────────────────────────────────────────────────────────── */
@@ -41,17 +42,17 @@
   --text: #14171b;
   /* conversation prose: a step under --text, so names, bold and mentions stand on it */
   --prose: #2a3037;
-  --muted-foreground: #545c65;
-  --faint: #9198a0;
+  --muted-foreground: #464d55;
+  --faint: #656c74;
   /* lines */
   --border: rgba(17, 20, 24, 0.10);
   --border2: rgba(17, 20, 24, 0.17);
   /* accent (one job) */
-  --accent: #0c7d8f;
+  --accent: #096a7b;
   --accent-fg: #ffffff;
-  --accent-soft: rgba(12, 125, 143, 0.10);
+  --accent-soft: rgba(9, 106, 123, 0.10);
   /* semantic state */
-  --green: #0d8a63;
+  --green: #0b7a56;
   --yellow: #8a6410;
   --red: #bd3f3a;
   /* categorical palette — memory-graph namespaces, carrying no semantics
@@ -106,7 +107,7 @@
   --text: #e8ebee;
   --prose: #c4cad1;
   --muted-foreground: #a7adb5;
-  --faint: #565d65;
+  --faint: #888f97;
   /* lines */
   --border: rgba(255, 255, 255, 0.08);
   --border2: rgba(255, 255, 255, 0.16);
