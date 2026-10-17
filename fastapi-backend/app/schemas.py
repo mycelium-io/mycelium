@@ -665,6 +665,20 @@ class VoiceStatus(BaseModel):
         "fast",
         description="`voice.model` on this hub: `fast` (Moonshine) or `accurate` (Parakeet)",
     )
+    speech: bool = Field(
+        False,
+        description=(
+            "A speech server is set on this hub (`voice.speech_url`), so the app can "
+            "read notifications aloud. Independent of the mic."
+        ),
+    )
+
+
+class SpeechRequest(BaseModel):
+    """Text to say. The hub sends it to its own speech server; there is no
+    address to give, by design."""
+
+    text: str = Field(..., min_length=1, max_length=1000, description="What to say")
 
 
 class VoiceHeard(BaseModel):

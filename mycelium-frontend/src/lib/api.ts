@@ -243,7 +243,7 @@ export interface HubSettings {
   dependency_gate: boolean;
   patterns_inline: boolean;
   sign_in: boolean;
-  voice: { enabled: boolean; model: string };
+  voice: { enabled: boolean; model: string; speech?: boolean; speech_has_key?: boolean };
   verifier: boolean;
   editing: HubEditing;
 }
@@ -993,6 +993,8 @@ export interface VoiceStatus {
   language: string;
   sample_rate: number;
   model: string;
+  /** The hub has a speech server, so notifications can be read aloud. */
+  speech?: boolean;
 }
 
 export interface VoiceHeard {
@@ -1018,6 +1020,19 @@ export async function sendVoiceChunk(sessionId: string, pcm: Int16Array, final =
 
 export async function closeVoiceSession(sessionId: string): Promise<void> {
   await apiFetch(`/api/voice/sessions/${sessionId}`, { method: "DELETE", fallback: undefined });
+}
+
+/** `text` said by the hub's speech server, as audio to play. Reading a
+ *  notification aloud asks for a sentence at a time. */
+export async function fetchSpeech(text: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  const res = await fetch("/api/voice/speech", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+    signal,
+  });
+  if (!res.ok) throw new ApiError(await errorDetail(res), res.status);
+  return res.arrayBuffer();
 }
 
 /** A flow the room's conductor can run: `@conductor <name> @a @b: …`. */

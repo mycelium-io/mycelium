@@ -11,7 +11,7 @@ import { resetStreamHub } from "@/lib/stream-hub";
 
 const push = vi.fn();
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }), usePathname: () => "/" }));
 
 vi.mock("@/lib/api", () => ({
   createRoom: vi.fn(),
@@ -19,6 +19,8 @@ vi.mock("@/lib/api", () => ({
   fetchRooms: vi.fn(),
   fetchRoomFolders: vi.fn(),
   saveRoomFolders: vi.fn(),
+  fetchVoiceStatus: vi.fn(async () => null),
+  fetchSpeech: vi.fn(),
   logFetchError: () => () => undefined,
 }));
 

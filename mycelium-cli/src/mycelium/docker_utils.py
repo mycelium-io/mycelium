@@ -323,6 +323,11 @@ def generate_env_file(
         f"VOICE_ENABLED={str(config.voice.enabled).lower()}",
         f"VOICE_MODEL={config.voice.model}",
         f"VOICE_DOWNLOAD={str(config.voice.download).lower()}",
+        # The speech server notifications are read aloud with; empty, none is offered.
+        f"VOICE_SPEECH_URL={config.voice.speech_url}",
+        f"VOICE_SPEECH_MODEL={config.voice.speech_model}",
+        f"VOICE_SPEECH_VOICE={config.voice.speech_voice}",
+        f"VOICE_SPEECH_API_KEY={config.voice.speech_api_key}",
         # The verifier; off unless turned on, then only in rooms that add it.
         f"VERIFIER_ENABLED={str(config.verifier.enabled).lower()}",
         f"VERIFIER_CONFIRM={str(config.verifier.confirm).lower()}",

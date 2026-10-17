@@ -27,7 +27,7 @@ export const HUB_SETTINGS: HubSettings = {
   dependency_gate: false,
   patterns_inline: true,
   sign_in: false,
-  voice: { enabled: true, model: "fast" },
+  voice: { enabled: true, model: "fast", speech: true, speech_has_key: false },
   verifier: true,
   // A desktop hub: whoever reaches it may change it, and the app sets voice
   // and usage counts itself.
@@ -49,6 +49,10 @@ const HUB_VALUES: Record<string, unknown> = {
   "verifier.enabled": HUB_SETTINGS.verifier,
   "voice.enabled": HUB_SETTINGS.voice.enabled,
   "voice.model": HUB_SETTINGS.voice.model,
+  "voice.speech_url": "http://127.0.0.1:8880/v1",
+  "voice.speech_model": "",
+  "voice.speech_voice": "",
+  "voice.speech_api_key": false,
   "telemetry.send_product_analytics": HUB_SETTINGS.share_usage,
   "worker.tools": HUB_SETTINGS.workers.tools,
   "worker.pi_timeout_s": HUB_SETTINGS.workers.turn_timeout_s,

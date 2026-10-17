@@ -1352,6 +1352,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#voice-reading-mentions-aloud",
+    "t": "Reading mentions aloud",
+    "s": "Work › Voice",
+    "x": "The app can also read your mentions to you. When the bell rings for a message, it says who sent it and where, then the start of the message, while a popover on the bell shows the words with the sentence being said lit. Click the popover to open the message, press Read all for the rest, or press ✕ (or Esc, when you aren't typing) to stop it. It needs a speech server on the hub. Mycelium ships no speech model: whoever ",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#schedules",
     "t": "Schedules",
     "s": "Work",
