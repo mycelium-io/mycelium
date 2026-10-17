@@ -4,7 +4,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useNotifications } from "@/components/notifications-provider";
+import { useNotifications, useReadAloud } from "@/components/notifications-provider";
 import { Button } from "@/components/ui/button";
 import { DEFAULT_SETTINGS, roomLevel } from "@/lib/notifications";
 import { useIsDesktop } from "@/lib/desktop";
@@ -13,8 +13,8 @@ import { Note, Row, Section, SettingsPage, Toggle } from "./settings-ui";
 /** How the bell tells you you've been mentioned, and which rooms are muted.
  *  The bell's gear opens this page, so there is one place to change them. */
 export function NotificationsPage() {
-  const { settings, setSettings, desktopPermission, requestDesktopPermission, unmuteRoom, readAloud } =
-    useNotifications();
+  const { settings, setSettings, desktopPermission, requestDesktopPermission, unmuteRoom } = useNotifications();
+  const readAloud = useReadAloud();
   const desktop = useIsDesktop();
   const rooms = [...new Set([...settings.mutedRooms, ...Object.keys(settings.roomLevels ?? {})])]
     .filter((room) => roomLevel(settings, room) === "muted")

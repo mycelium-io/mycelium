@@ -32,8 +32,7 @@ function timeAgo(iso: string): string {
 }
 
 export function NotificationBell() {
-  const { notifications, unreadCount, settings, markRead, markAllRead, dismiss, clearAll, readAloud } =
-    useNotifications();
+  const { notifications, unreadCount, settings, markRead, markAllRead, dismiss, clearAll } = useNotifications();
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const anchor = useRef<HTMLSpanElement>(null);
@@ -66,7 +65,7 @@ export function NotificationBell() {
 
   return (
     <span ref={anchor} className="inline-flex">
-      <ReadAloudPopover readAloud={readAloud} anchor={anchor} hidden={open} onOpen={markRead} />
+      <ReadAloudPopover anchor={anchor} hidden={open} onOpen={markRead} />
       <Popover open={open} onOpenChange={setOpen}>
         <Tooltip content={bellLabel}>
           <PopoverTrigger

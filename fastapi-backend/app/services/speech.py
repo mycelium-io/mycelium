@@ -14,6 +14,9 @@ at anything else. Mycelium ships no speech model.
 
 from __future__ import annotations
 
+import time
+from collections import deque
+
 import httpx
 
 from app.config import settings
@@ -34,6 +37,14 @@ SPEECH_PATH = "/audio/speech"
 #: How the hub reaches the server; tests replace it with a mock transport.
 _transport: httpx.AsyncBaseTransport | None = None
 
+#: Requests the whole hub may send the speech server in `RATE_WINDOW_S`. Each
+#: one can spend the operator's key, and with sign-in off anyone who reaches
+#: the hub can call the route, so a loop is refused rather than billed. Reading
+#: aloud asks for about one sentence every two seconds, far under it.
+RATE_LIMIT = 10
+RATE_WINDOW_S = 2.0
+_recent: deque[float] = deque()
+
 
 class SpeechUnavailable(RuntimeError):
     """No speech server is set on this hub, or its address isn't one."""
@@ -41,6 +52,21 @@ class SpeechUnavailable(RuntimeError):
 
 class SpeechFailed(RuntimeError):
     """The speech server didn't give back audio, with the reason the app shows."""
+
+
+class SpeechBusy(RuntimeError):
+    """Too many requests in a moment: the caller waits and asks again."""
+
+
+def _admit(now: float | None = None) -> None:
+    """Count a request against the hub's limit, or refuse it."""
+    now = time.monotonic() if now is None else now
+    while _recent and now - _recent[0] >= RATE_WINDOW_S:
+        _recent.popleft()
+    if len(_recent) >= RATE_LIMIT:
+        msg = "Too many speech requests at once. Try again in a moment."
+        raise SpeechBusy(msg)
+    _recent.append(now)
 
 
 def configured() -> bool:
@@ -90,6 +116,7 @@ def _reason(response: httpx.Response) -> str:
 async def speak(text: str) -> tuple[bytes, str]:
     """Ask the speech server to say ``text``; returns its audio and media type."""
     url = endpoint()
+    _admit()
     headers = {"Accept": "audio/*"}
     if key := (settings.VOICE_SPEECH_API_KEY or "").strip():
         headers["Authorization"] = f"Bearer {key}"

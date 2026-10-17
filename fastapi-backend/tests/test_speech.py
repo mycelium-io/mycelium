@@ -7,6 +7,7 @@ The speech server is a mock transport, so nothing leaves the test.
 """
 
 import json
+from collections import deque
 
 import httpx
 import pytest
@@ -15,6 +16,12 @@ from app.config import settings
 from app.services import speech
 
 MP3 = b"ID3\x04fake-mp3-bytes"
+
+
+@pytest.fixture(autouse=True)
+def _fresh_limit(monkeypatch):
+    """Each test starts with the hub's speech limit unspent."""
+    monkeypatch.setattr(speech, "_recent", deque())
 
 
 @pytest.fixture
@@ -142,6 +149,27 @@ async def test_a_redirect_is_not_followed(client, server):
     response = await client.post("/api/voice/speech", json={"text": "hi"})
     assert response.status_code == 502
     assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_loop_is_refused_before_it_reaches_the_server(client, server):
+    seen, _ = server
+    codes = [
+        (await client.post("/api/voice/speech", json={"text": f"line {i}"})).status_code
+        for i in range(speech.RATE_LIMIT + 3)
+    ]
+    assert codes == [200] * speech.RATE_LIMIT + [429] * 3
+    assert len(seen) == speech.RATE_LIMIT
+    refused = await client.post("/api/voice/speech", json={"text": "again"})
+    assert refused.headers["retry-after"] == "2"
+
+
+def test_the_limit_frees_up_as_the_window_passes():
+    for i in range(speech.RATE_LIMIT):
+        speech._admit(now=100.0 + i * 0.01)
+    with pytest.raises(speech.SpeechBusy):
+        speech._admit(now=100.5)
+    speech._admit(now=100.0 + speech.RATE_WINDOW_S)
 
 
 def test_an_address_that_isnt_http_is_refused(monkeypatch):

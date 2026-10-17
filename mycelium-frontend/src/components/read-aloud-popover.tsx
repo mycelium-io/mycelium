@@ -8,12 +8,14 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Volume2, X } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { ReadAloud } from "@/components/notifications-provider";
+import { useReadAloud } from "@/components/notifications-provider";
 import type { ReaderState } from "@/lib/read-aloud";
 import type { Block } from "@/lib/speakable";
 
-/** Focus in a text field keeps Esc for the field: the composer, a dialog's input. */
-function typing(el: Element | null): boolean {
+/** Esc belongs to something else: a text field with focus (the composer), or
+ *  an open dialog or menu, which closes on it without saying it took it. */
+function escTaken(el: Element | null): boolean {
+  if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]')) return true;
   if (!(el instanceof HTMLElement)) return false;
   return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT";
 }
@@ -92,18 +94,16 @@ function Words({ blocks, state }: { blocks: Block[]; state: ReaderState }) {
  * focus isn't in a text field.
  */
 export function ReadAloudPopover({
-  readAloud,
   anchor,
   hidden,
   onOpen,
 }: {
-  readAloud: ReadAloud;
   anchor: RefObject<HTMLElement | null>;
   /** The bell's own list is open over it. */
   hidden: boolean;
   onOpen: (id: string) => void;
 }) {
-  const { state, stop, readAll, keepOpen } = readAloud;
+  const { state, stop, readAll, keepOpen } = useReadAloud();
   const router = useRouter();
   const words = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<{ top: number; right: number } | null>(null);
@@ -131,7 +131,7 @@ export function ReadAloudPopover({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || typing(document.activeElement) || e.defaultPrevented) return;
+      if (e.key !== "Escape" || escTaken(document.activeElement) || e.defaultPrevented) return;
       stop();
     };
     window.addEventListener("keydown", onKey);
@@ -150,8 +150,7 @@ export function ReadAloudPopover({
 
   return createPortal(
     <div
-      role="status"
-      aria-live="polite"
+      role="region"
       aria-label={`Reading aloud: ${title(state)}`}
       onMouseEnter={() => keepOpen(true)}
       onMouseLeave={() => keepOpen(false)}
@@ -165,7 +164,14 @@ export function ReadAloudPopover({
           aria-hidden
           className={`size-3.5 flex-shrink-0 ${state.status === "speaking" ? "animate-pulse text-accent" : "text-muted-foreground"}`}
         />
-        <span className="flex-shrink-0 text-micro font-semibold text-text">{title(state)}</span>
+        {/* Only this is announced: the voice is already saying the message,
+            and a screen reader reading it too would talk over it. */}
+        <span role="status" aria-live="polite" className="sr-only">
+          {item.sender ? `Reading a mention from ${item.sender}` : "Reading aloud"}
+        </span>
+        <span aria-hidden className="flex-shrink-0 text-micro font-semibold text-text">
+          {title(state)}
+        </span>
         {item.where && <span className="truncate text-micro text-muted-foreground">{item.where}</span>}
         <Tooltip content="Stop reading (Esc)">
           <button

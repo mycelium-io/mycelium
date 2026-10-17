@@ -72,6 +72,8 @@ async def say(payload: SpeechRequest) -> Response:
         audio, media = await speech.speak(payload.text)
     except speech.SpeechUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except speech.SpeechBusy as exc:
+        raise HTTPException(status_code=429, detail=str(exc), headers={"Retry-After": "2"}) from exc
     except speech.SpeechFailed as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return Response(content=audio, media_type=media, headers={"Cache-Control": "no-store"})

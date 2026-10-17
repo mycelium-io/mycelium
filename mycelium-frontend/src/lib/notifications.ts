@@ -263,7 +263,10 @@ export type CrossTabMessage =
   | { type: "room-read"; room: string }
   | { type: "dismiss"; id: string }
   | { type: "clear" }
-  | { type: "settings"; settings: NotificationSettings };
+  | { type: "settings"; settings: NotificationSettings }
+  /** The room the focused window shows, or null when it lost focus: a mention
+   *  there is on someone's screen, so no other window reads it aloud. */
+  | { type: "viewing"; room: string | null };
 
 const CHANNEL_NAME = "mycelium-notifications";
 

@@ -57,7 +57,6 @@ interface NotificationsContextValue {
   setRoomLevel: (room: string, level: RoomLevel) => void;
   desktopPermission: NotificationPermission | "unsupported";
   requestDesktopPermission: () => void;
-  readAloud: ReadAloud;
 }
 
 /** Reading mentions aloud, as the bell's popover and the settings page use it. */
@@ -73,6 +72,10 @@ export interface ReadAloud {
 }
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
+
+/** Its own context, since it changes with every sentence: only the bell's
+ *  popover and the settings page re-render as it reads. */
+const ReadAloudContext = createContext<ReadAloud | null>(null);
 
 const BASE_TITLE = "mycelium";
 
@@ -97,6 +100,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => { principalRef.current = principal; }, [principal]);
   const seenIds = useRef<Set<string>>(new Set());
   const isLeader = useRef(false);
+  /** The room another, focused window shows, from its "viewing" posts. */
+  const viewedElsewhere = useRef<string | null>(null);
   const channelRef = useRef<ReturnType<typeof openCrossTabChannel> | null>(null);
 
   // Load from localStorage once the DOM is there to read it: on the server
@@ -183,6 +188,9 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         case "settings":
           setSettingsState(msg.settings);
           break;
+        case "viewing":
+          viewedElsewhere.current = msg.room;
+          break;
       }
     });
     channelRef.current = channel;
@@ -233,6 +241,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
    *  see, never a hidden one, and only one of several. */
   const readMention = useCallback(
     async (n: { id: string; room: string; sender: string; episode?: string | null; text: string }) => {
+      // Shown in the window you're working in: you can read it there.
+      if (!document.hasFocus() && viewedElsewhere.current === n.room) return;
       if (!(await claimToSpeak(n.id))) return;
       let where = n.room;
       if (n.episode) {
@@ -368,17 +378,25 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       prev.map((n) => (n.room === room && !n.read ? { ...n, read: true } : n)),
     );
     channelRef.current?.post({ type: "room-read", room });
+    if (document.hasFocus()) channelRef.current?.post({ type: "viewing", room });
   }, []);
 
   // Coming back to the window reads the room it's showing: what arrived while
-  // you were away is on screen now.
+  // you were away is on screen now. Leaving it tells the other windows nothing
+  // is on screen here any more.
   useEffect(() => {
     const onFocus = () => {
       const room = roomOfPath(window.location.pathname);
       if (room) markRoomRead(room);
+      else channelRef.current?.post({ type: "viewing", room: null });
     };
+    const onBlur = () => channelRef.current?.post({ type: "viewing", room: null });
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+    };
   }, [markRoomRead]);
 
   const requestDesktopPermission = useCallback(() => {
@@ -431,7 +449,6 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       setRoomLevel,
       desktopPermission,
       requestDesktopPermission,
-      readAloud,
     }),
     [
       notifications,
@@ -449,11 +466,20 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       setRoomLevel,
       desktopPermission,
       requestDesktopPermission,
-      readAloud,
     ],
   );
 
-  return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
+  return (
+    <NotificationsContext.Provider value={value}>
+      <ReadAloudContext.Provider value={readAloud}>{children}</ReadAloudContext.Provider>
+    </NotificationsContext.Provider>
+  );
+}
+
+export function useReadAloud(): ReadAloud {
+  const ctx = useContext(ReadAloudContext);
+  if (!ctx) throw new Error("useReadAloud must be used within a NotificationsProvider");
+  return ctx;
 }
 
 export function useNotifications(): NotificationsContextValue {

@@ -26,7 +26,9 @@ export interface TabEnv {
 export const browserTab: TabEnv = {
   visible: () => typeof document !== "undefined" && document.visibilityState === "visible",
   focused: () => typeof document !== "undefined" && document.hasFocus(),
-  locks: typeof navigator !== "undefined" && "locks" in navigator ? navigator.locks : null,
+  get locks() {
+    return typeof navigator !== "undefined" && "locks" in navigator ? navigator.locks : null;
+  },
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
 

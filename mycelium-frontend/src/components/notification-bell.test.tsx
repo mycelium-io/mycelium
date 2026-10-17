@@ -183,7 +183,10 @@ describe("<NotificationBell />", () => {
       vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     }
 
-    afterEach(() => vi.restoreAllMocks());
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    });
 
     it("reads a mention aloud with its words on the bell, and stops on Esc", async () => {
       turnOn();
@@ -191,7 +194,7 @@ describe("<NotificationBell />", () => {
       await start();
       await emit(message("@bob can you check? It's **slow** today.\n\nMore detail here."));
 
-      const popover = await screen.findByRole("status", { name: "Reading aloud: alice" });
+      const popover = await screen.findByRole("region", { name: "Reading aloud: alice" });
       expect(spoken[0]).toBe("alice, in sprint.");
       // The message as written, markup aside, and only its start until Read all.
       expect(within(popover).getByText("@bob can you check?")).toBeInTheDocument();
@@ -199,14 +202,14 @@ describe("<NotificationBell />", () => {
       expect(within(popover).getByRole("button", { name: "Read all" })).toBeInTheDocument();
 
       await user.keyboard("{Escape}");
-      expect(screen.queryByRole("status", { name: /Reading aloud/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: /Reading aloud/ })).not.toBeInTheDocument();
     });
 
     it("lights the sentence being said", async () => {
       turnOn();
       await start();
       await emit(message("@bob first. Second."));
-      const popover = await screen.findByRole("status", { name: "Reading aloud: alice" });
+      const popover = await screen.findByRole("region", { name: "Reading aloud: alice" });
       await act(async () => playing.shift()?.());
       expect(within(popover).getByText("@bob first.")).toHaveAttribute("data-lit", "true");
       expect(within(popover).getByText("Second.")).not.toHaveAttribute("data-lit");
@@ -219,7 +222,7 @@ describe("<NotificationBell />", () => {
       await start();
       await emit(message("@bob are you there?"));
       expect(spoken).toEqual([]);
-      expect(screen.queryByRole("status", { name: /Reading aloud/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: /Reading aloud/ })).not.toBeInTheDocument();
     });
 
     it("says nothing from a hidden tab", async () => {
@@ -231,12 +234,66 @@ describe("<NotificationBell />", () => {
       expect(spoken).toEqual([]);
     });
 
+    it("announces who is being read, not the message the voice is saying", async () => {
+      turnOn();
+      await start();
+      await emit(message("@bob can you check?"));
+      const popover = await screen.findByRole("region", { name: "Reading aloud: alice" });
+      const live = within(popover).getByRole("status");
+      expect(live).toHaveTextContent("Reading a mention from alice");
+      expect(live).not.toHaveTextContent("check");
+    });
+
+    it("leaves Esc to an open dialog", async () => {
+      turnOn();
+      const user = userEvent.setup();
+      await start();
+      await emit(message("@bob can you check?"));
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
+      const dialog = document.body.appendChild(document.createElement("div"));
+      dialog.setAttribute("role", "dialog");
+      await user.keyboard("{Escape}");
+      expect(screen.getByRole("region", { name: "Reading aloud: alice" })).toBeInTheDocument();
+      dialog.remove();
+    });
+
+    it("doesn't read a mention in the room another focused window shows", async () => {
+      turnOn();
+      // This window is beside the one being worked in, and agrees with the
+      // other windows through Web Locks (which jsdom doesn't have).
+      vi.spyOn(document, "hasFocus").mockReturnValue(false);
+      const held = new Set<string>();
+      vi.stubGlobal("navigator", {
+        ...navigator,
+        locks: {
+          request: async (name: string, _opts: unknown, cb: (lock: unknown) => Promise<unknown>) => {
+            if (held.has(name)) return cb(null);
+            held.add(name);
+            return cb({ name });
+          },
+        },
+      });
+      await start();
+      const other = new BroadcastChannel("mycelium-notifications");
+      other.postMessage({ type: "viewing", room: "sprint" });
+      await act(async () => new Promise((r) => setTimeout(r, 20)));
+      await emit(message("@bob in the room you're looking at"));
+      await act(async () => new Promise((r) => setTimeout(r, 400)));
+      expect(spoken).toEqual([]);
+      // Once that window shows something else, this one reads it.
+      other.postMessage({ type: "viewing", room: null });
+      await act(async () => new Promise((r) => setTimeout(r, 20)));
+      await emit(message("@bob now it's yours"));
+      await screen.findByRole("region", { name: "Reading aloud: alice" }, { timeout: 2000 });
+      other.close();
+    });
+
     it("keeps the whole message out of what the bell stores", async () => {
       turnOn();
       await start();
       const long = `@bob ${"word ".repeat(60)}end.`;
       await emit(message(long));
-      await screen.findByRole("status", { name: "Reading aloud: alice" });
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
       const stored = window.localStorage.getItem("mycelium.notifications") ?? "";
       expect(stored).not.toContain("end.");
       expect(stored).not.toContain('"text"');
