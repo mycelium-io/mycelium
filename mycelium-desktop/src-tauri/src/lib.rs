@@ -9,6 +9,7 @@
 //! links, and a window with the agents' terminals. The hub's UI, once loaded,
 //! gets no IPC: every command here refuses a page that isn't the app's own.
 
+mod close;
 mod download;
 mod paths;
 mod settings;
@@ -614,6 +615,13 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             }
         }
         "quit" => quit(app),
+        #[cfg(target_os = "macos")]
+        "close:tab" => close_tab(app),
+        "close:window" => {
+            if let Some(window) = focused_window(app) {
+                let _ = window.close();
+            }
+        }
         // An experience's item carries the path it opens on.
         id => {
             if let Some(step) = zoom::Step::from_id(id) {
@@ -622,6 +630,26 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                 show_page(app, path);
             }
         }
+    }
+}
+
+/// The window in front, if one of the app's is.
+fn focused_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    app.webview_windows().into_values().find(|w| w.is_focused().unwrap_or(false))
+}
+
+/// Close Tab (⌘W): in the main window, the page's front tab, or the window
+/// when there's none left (`close.rs`); any other window just closes.
+#[cfg(target_os = "macos")]
+fn close_tab(app: &AppHandle) {
+    match focused_window(app) {
+        Some(window) if window.label() == "main" => {
+            let _ = window.eval(close::menu_script());
+        }
+        Some(window) => {
+            let _ = window.close();
+        }
+        None => {}
     }
 }
 
@@ -662,6 +690,25 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         None => {
             let view = Submenu::with_items(app, "View", true, &[&actual, &zoom_in, &zoom_out])?;
             menu.append(&view)?;
+        }
+    }
+    // ⌘W closes the room's front tab (`close.rs`): the first Close Window
+    // becomes Close Tab with the key, and any other keeps its name without it.
+    let mut tab_placed = false;
+    for sub in menu.items()?.into_iter().filter_map(|item| item.as_submenu().cloned()) {
+        for (at, item) in sub.items()?.iter().enumerate() {
+            let closes = item.as_predefined_menuitem().is_some_and(|p| p.text().is_ok_and(|t| t == "Close Window"));
+            if !closes {
+                continue;
+            }
+            sub.remove(item)?;
+            let replacement = if tab_placed {
+                MenuItem::with_id(app, "close:window", "Close Window", true, None::<&str>)?
+            } else {
+                tab_placed = true;
+                MenuItem::with_id(app, "close:tab", "Close Tab", true, Some("CmdOrCtrl+W"))?
+            };
+            sub.insert(&replacement, at)?;
         }
     }
     Ok(menu)
@@ -1120,9 +1167,11 @@ const WEBVIEW_UA: &str =
 fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
     let ua = format!("{WEBVIEW_UA} MyceliumDesktop/{}", app.package_info().version);
     let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()));
-    // A Mac has the View menu's shortcuts; elsewhere a script catches the keys.
+    // A Mac has the menu bar's shortcuts; elsewhere scripts catch the keys.
     #[cfg(not(target_os = "macos"))]
-    let builder = builder.initialization_script(zoom::keys_script());
+    let builder = builder
+        .initialization_script(zoom::keys_script())
+        .initialization_script(close::keys_script());
     builder
         .title("Mycelium")
         .inner_size(1320.0, 860.0)
@@ -1148,11 +1197,21 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
                 zoom::restore(window.app_handle());
             }
         })
-        // The keyboard script's zoom steps arrive as navigations to an address
-        // that never resolves; each is carried out and cancelled.
+        // The keyboard scripts' zoom steps, and ⌘W with no tab left to close,
+        // arrive as navigations to an address that never resolves; each is
+        // carried out and cancelled.
         .on_navigation({
             let app = app.clone();
             move |url| {
+                if close::is_close_address(url) {
+                    let app = app.clone();
+                    let _ = app.clone().run_on_main_thread(move || {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.close();
+                        }
+                    });
+                    return false;
+                }
                 if !zoom::is_zoom_address(url) {
                     return true;
                 }

@@ -536,8 +536,8 @@ export interface RoomDockHandle {
   showView: (view: View) => void;
   openMemory: (key: string) => void;
   openThread: (episode: string) => void;
-  /** Close the tab in front of the active group, if it closes. */
-  closeActive: () => void;
+  /** Close the tab in front of the active group, if it closes; false when it doesn't. */
+  closeActive: () => boolean;
   /** Reopen the tab closed most recently. */
   reopenClosed: () => void;
   splitActive: () => void;
@@ -665,7 +665,9 @@ export function RoomDock({
       },
       closeActive: () => {
         const id = api()?.activePanel?.id;
-        if (id) requestClose(id);
+        if (!id || !api()?.getPanel(id) || !isClosable(id)) return false;
+        requestClose(id);
+        return true;
       },
       reopenClosed: () => {
         const id = closed.current.pop();
