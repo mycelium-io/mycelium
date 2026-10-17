@@ -553,6 +553,20 @@ async def remove(room: str, name: str) -> None:
     _changed(room, name, removed=True)
 
 
+async def rename_owner(room: str, old: str, new: str) -> list[str]:
+    """Give every schedule ``old`` owns to ``new`` (an agent renamed); their names."""
+    async with _lock(room):
+        schedules = load(room)
+        moved = [name for name, s in schedules.items() if s.owner == old]
+        for name in moved:
+            schedules[name] = schedules[name].model_copy(update={"owner": new})
+        if moved:
+            _save(room, schedules)
+    for name in moved:
+        _changed(room, name)
+    return moved
+
+
 # ── pre-checks ───────────────────────────────────────────────────────────────
 
 

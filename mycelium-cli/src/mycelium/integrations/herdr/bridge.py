@@ -691,6 +691,29 @@ class HerdrBridge:
         except HerdrError as e:
             _log.info("couldn't name the herdr tab of @%s: %s", handle, e)
 
+    def rename_in_tab(self, pane: str, old: str, new: str) -> None:
+        """Swap ``@old`` for ``@new`` in the name of ``pane``'s tab.
+
+        Only a tab Mycelium named (every word an ``@handle``); one a person
+        named keeps their name. Best-effort, as a name is cosmetic.
+        """
+        try:
+            row = next((p for p in self.list_panes() if str(p.get("pane_id")) == pane), None)
+            if row is None or row.get("tab_id") is None or row.get("workspace_id") is None:
+                return
+            tab_id = row["tab_id"]
+            tab = next(
+                (t for t in self._tabs(str(row["workspace_id"])) if t["tab_id"] == tab_id), None
+            )
+            words = str((tab or {}).get("label") or "").split()
+            if not words or not all(w.startswith("@") for w in words) or f"@{old}" not in words:
+                return
+            self.rename_tab(
+                str(tab_id), " ".join(f"@{new}" if w == f"@{old}" else w for w in words)
+            )
+        except HerdrError as e:
+            _log.info("couldn't rename @%s in its herdr tab: %s", old, e)
+
     def close_pane(self, pane: str) -> None:
         """Close ``pane``, ending whatever runs in it."""
         self._run_json(["pane", "close", pane])

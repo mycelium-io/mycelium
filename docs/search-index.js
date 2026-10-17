@@ -2215,6 +2215,14 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-agent",
+    "t": "mycelium agent rename <handle> <new-handle> [--room <room>] [--as <you>]",
+    "s": "CLI Reference",
+    "x": "Give an agent a new handle. Its notes, the tasks it holds and its place in the room move with it, the machine running it restarts it under the new name (asking there first), and the room is told.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
     "t": "mycelium agent credential set <handle> [--client-id ID] [--secret-stdin] [--issuer URL]",
     "s": "CLI Reference",
     "x": "Give an agent its own service-account credential, stored 0600 outside config.toml. Only meaningful once a hub enables auth.",
