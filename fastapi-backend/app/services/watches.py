@@ -16,6 +16,7 @@ A watch ends when the viewer closes it, when nobody has read it for a while
 from __future__ import annotations
 
 import asyncio
+import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -36,6 +37,9 @@ def _now() -> datetime:
 @dataclass
 class _Watch:
     runner: str
+    #: Handed only to whoever asked to watch: reading and closing need it, so
+    #: the job's id (which the jobs list shows) is not enough to read the screen.
+    token: str
     started_at: datetime
     viewer_seen: datetime
     #: When the first screen came, after the yes; the time limit counts from here.
@@ -54,10 +58,22 @@ class WatchRegistry:
     def clear(self) -> None:
         self._watches.clear()
 
-    def open(self, job_id: str, runner_id: str) -> None:
+    def open(self, job_id: str, runner_id: str) -> str:
+        """Start carrying a watch; returns the token its viewer reads it with."""
         self._forget_old()
         now = _now()
-        self._watches[job_id] = _Watch(runner=runner_id, started_at=now, viewer_seen=now)
+        token = secrets.token_urlsafe(24)
+        self._watches[job_id] = _Watch(
+            runner=runner_id, token=token, started_at=now, viewer_seen=now
+        )
+        return token
+
+    def _viewed(self, job_id: str, runner_id: str, token: str | None) -> _Watch | None:
+        """The watch, for the viewer holding its token; ``None`` for anyone else."""
+        watch = self._live(job_id, runner_id)
+        if watch is None or not token or not secrets.compare_digest(token, watch.token):
+            return None
+        return watch
 
     def _live(self, job_id: str, runner_id: str) -> _Watch | None:
         watch = self._watches.get(job_id)
@@ -94,13 +110,16 @@ class WatchRegistry:
     # ── the viewer's side ────────────────────────────────────────────────────
 
     async def read(
-        self, runner_id: str, job_id: str, after: int, timeout: float
+        self, runner_id: str, job_id: str, token: str | None, after: int, timeout: float
     ) -> WatchRead | None:
-        """The screen after ``after``, waiting up to ``timeout`` for one; ``None`` if unknown."""
+        """The screen after ``after``, waiting up to ``timeout`` for one.
+
+        ``None`` for a watch that isn't there or a ``token`` that isn't its own.
+        """
         loop = asyncio.get_running_loop()
         deadline = loop.time() + max(0.0, timeout)
         while True:
-            watch = self._live(job_id, runner_id)
+            watch = self._viewed(job_id, runner_id, token)
             if watch is None:
                 return None
             watch.viewer_seen = _now()
@@ -122,8 +141,8 @@ class WatchRegistry:
         if watch is not None and watch.ended is None:
             self._end(watch, why)
 
-    def close(self, runner_id: str, job_id: str) -> bool:
-        watch = self._live(job_id, runner_id)
+    def close(self, runner_id: str, job_id: str, token: str | None) -> bool:
+        watch = self._viewed(job_id, runner_id, token)
         if watch is None:
             return False
         if watch.ended is None:

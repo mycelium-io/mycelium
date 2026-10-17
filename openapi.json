@@ -2335,7 +2335,7 @@
           "runners"
         ],
         "summary": "Read Screen",
-        "description": "The watched terminal's next screen after ``after``, or why it ended; waits up to ``timeout``.",
+        "description": "The watched terminal's next screen after ``after``, or why it ended; waits up to ``timeout``.\n\nOnly for whoever asked to watch it (``X-Watch-Token``); anyone else gets 404.",
         "operationId": "read_screen_api_runners__runner_id__watches__job_id__get",
         "parameters": [
           {
@@ -2377,6 +2377,22 @@
               "minimum": 0.0,
               "default": 20.0,
               "title": "Timeout"
+            }
+          },
+          {
+            "name": "X-Watch-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Watch-Token"
             }
           }
         ],
@@ -2427,6 +2443,22 @@
             "schema": {
               "type": "string",
               "title": "Job Id"
+            }
+          },
+          {
+            "name": "X-Watch-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Watch-Token"
             }
           }
         ],
@@ -2805,7 +2837,7 @@
           "runners"
         ],
         "summary": "Watch Agent",
-        "description": "Ask to watch an agent's terminal live.\n\nThe runner asks the person at its machine first, and sends nothing until\nthey say yes. Read the screens with ``GET /watches/{job}``; the job says\nwhether the machine has answered.",
+        "description": "Ask to watch an agent's terminal live.\n\nThe runner asks the person at its machine first, and sends nothing until\nthey say yes. Read the screens with ``GET /watches/{job}``, sending the\n``token`` returned here (and only here) as ``X-Watch-Token``: the question\non the machine promises the screen to whoever asked, and the job's id is\nin the jobs list for anyone who can see the machine. The job says whether\nthe machine has answered.",
         "operationId": "watch_agent_api_runners__runner_id__agents__room_name___handle__watch_post",
         "parameters": [
           {
@@ -2842,7 +2874,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunnerJobRead"
+                  "$ref": "#/components/schemas/WatchStarted"
                 }
               }
             }
@@ -14615,6 +14647,24 @@
           "keep"
         ],
         "title": "WatchSent"
+      },
+      "WatchStarted": {
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/RunnerJobRead"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job",
+          "token"
+        ],
+        "title": "WatchStarted",
+        "description": "A watch asked for: its job, and the token only its asker reads it with."
       },
       "WriteBody": {
         "properties": {

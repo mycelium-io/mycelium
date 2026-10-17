@@ -26,7 +26,7 @@ import logging
 import re
 
 import yaml
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 
 from app.schemas import (
     HANDLE_PATTERN,
@@ -43,6 +43,7 @@ from app.schemas import (
     WatchRead,
     WatchSend,
     WatchSent,
+    WatchStarted,
 )
 from app.services import actor
 from app.services.agent_registry import norm_handle, write_agent_manifest
@@ -459,16 +460,19 @@ async def stop_agent(
 
 
 @router.post(
-    "/{runner_id}/agents/{room_name}/{handle}/watch", response_model=RunnerJobRead, status_code=201
+    "/{runner_id}/agents/{room_name}/{handle}/watch", response_model=WatchStarted, status_code=201
 )
 async def watch_agent(
     runner_id: str, room_name: str, handle: str, request: Request
-) -> RunnerJobRead:
+) -> WatchStarted:
     """Ask to watch an agent's terminal live.
 
     The runner asks the person at its machine first, and sends nothing until
-    they say yes. Read the screens with ``GET /watches/{job}``; the job says
-    whether the machine has answered.
+    they say yes. Read the screens with ``GET /watches/{job}``, sending the
+    ``token`` returned here (and only here) as ``X-Watch-Token``: the question
+    on the machine promises the screen to whoever asked, and the job's id is
+    in the jobs list for anyone who can see the machine. The job says whether
+    the machine has answered.
     """
     runner = _runner_or_404(runner_id, request)
     try:
@@ -482,9 +486,9 @@ async def watch_agent(
         )
     me = actor.bind_optional_actor(request, None, field="created_by")
     job = registry.enqueue(runner_id, "watch", {"room": room_name, "handle": h}, created_by=me)
-    watches.open(job.id, runner_id)
+    token = watches.open(job.id, runner_id)
     logger.info("runner %s: watch @%s in %s", runner_id, h, room_name)
-    return job
+    return WatchStarted(job=job, token=token)
 
 
 @router.get("/{runner_id}/watches/{job_id}", response_model=WatchRead)
@@ -494,19 +498,28 @@ async def read_screen(
     request: Request,
     after: int = Query(0, ge=0),
     timeout: float = Query(20.0, ge=0.0, le=MAX_POLL_S),
+    token: str | None = Header(None, alias="X-Watch-Token"),
 ) -> WatchRead:
-    """The watched terminal's next screen after ``after``, or why it ended; waits up to ``timeout``."""
+    """The watched terminal's next screen after ``after``, or why it ended; waits up to ``timeout``.
+
+    Only for whoever asked to watch it (``X-Watch-Token``); anyone else gets 404.
+    """
     _runner_or_404(runner_id, request)
-    read = await watches.read(runner_id, job_id, after, timeout)
+    read = await watches.read(runner_id, job_id, token, after, timeout)
     if read is None:
         raise HTTPException(status_code=404, detail="Watch not found")
     return read
 
 
 @router.delete("/{runner_id}/watches/{job_id}", status_code=204)
-async def close_watch(runner_id: str, job_id: str, request: Request) -> Response:
+async def close_watch(
+    runner_id: str,
+    job_id: str,
+    request: Request,
+    token: str | None = Header(None, alias="X-Watch-Token"),
+) -> Response:
     """Stop watching; the runner stops sending on its next screen."""
     _runner_or_404(runner_id, request)
-    if not watches.close(runner_id, job_id):
+    if not watches.close(runner_id, job_id, token):
         raise HTTPException(status_code=404, detail="Watch not found")
     return Response(status_code=204)

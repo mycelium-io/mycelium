@@ -30,6 +30,7 @@ import {
   readMockWatch,
   runnerAgentOf,
   closeMockWatch,
+  openMockWatch,
 } from "./runners";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
 import { demoBusy, demoOnLaunch, demoOnMessage, demoOnTask, isDemoScenario } from "./demo";
@@ -283,16 +284,23 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
   }
   if (sub === "watches" && a !== undefined) {
     const id = decodeURIComponent(a);
-    if (method === "DELETE") return closeMockWatch(runner.id, id) ? new Response(null, { status: 204 }) : notFound("Watch not found");
+    const token = req.headers.get("X-Watch-Token");
+    if (method === "DELETE") {
+      return closeMockWatch(runner.id, id, token) ? new Response(null, { status: 204 }) : notFound("Watch not found");
+    }
     if (method !== "GET") return null;
     const after = Number(new URL(req.url).searchParams.get("after") ?? 0);
-    const read = readMockWatch(runner.id, id, after);
+    const read = readMockWatch(runner.id, id, token, after);
     return read ? json(read) : notFound("Watch not found");
   }
   if (sub === "agents" && method === "POST") {
-    if (a !== undefined && b !== undefined && (c === "stop" || c === "watch")) {
+    if (a !== undefined && b !== undefined && c === "watch") {
+      const job = queueJob(runner.id, "watch", { room: decodeURIComponent(a), handle: decodeURIComponent(b) });
+      return json({ job, token: openMockWatch(job.id) }, 201);
+    }
+    if (a !== undefined && b !== undefined && c === "stop") {
       const spec = { room: decodeURIComponent(a), handle: decodeURIComponent(b) };
-      return json(queueJob(runner.id, c, spec), 201);
+      return json(queueJob(runner.id, "stop", spec), 201);
     }
     if (a !== undefined) return null;
     const body = await readJson(req);

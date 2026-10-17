@@ -331,15 +331,24 @@ function statusOf(job: StoredJob): RunnerJob["status"] {
 }
 
 const closedWatches = new Set<string>();
+/** Each watch's read token, which only its asker is handed. */
+const watchTokens = new Map<string, string>();
+
+export function openMockWatch(id: string): string {
+  const token = `watch-${Math.random().toString(36).slice(2)}`;
+  watchTokens.set(id, token);
+  return token;
+}
 
 /** A watched terminal: an agent at work, a new screen every 800ms once the machine said yes. */
 export function readMockWatch(
   runner: string,
   id: string,
+  token: string | null,
   after: number,
 ): { id: string; screen: { seq: number; text: string; at: string } | null; ended: string | null } | null {
   const job = jobs.find((j) => j.runner === runner && j.id === id && j.kind === "watch");
-  if (!job) return null;
+  if (!job || !token || watchTokens.get(id) !== token) return null;
   if (closedWatches.has(id)) return { id, screen: null, ended: "Closed." };
   const status = statusOf(job);
   if (status === "failed") return { id, screen: null, ended: job.failWith };
@@ -349,8 +358,9 @@ export function readMockWatch(
   return { id, screen: { seq, text: mockScreen(String(job.spec.handle), seq), at: new Date().toISOString() }, ended: null };
 }
 
-export function closeMockWatch(runner: string, id: string): boolean {
+export function closeMockWatch(runner: string, id: string, token: string | null): boolean {
   if (!jobs.some((j) => j.runner === runner && j.id === id && j.kind === "watch")) return false;
+  if (!token || watchTokens.get(id) !== token) return false;
   closedWatches.add(id);
   return true;
 }

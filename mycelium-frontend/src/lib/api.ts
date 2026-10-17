@@ -1580,25 +1580,39 @@ export interface WatchRead {
   ended: string | null;
 }
 
+/** A watch asked for: its job, and the token only its asker reads it with. */
+export interface WatchStarted {
+  job: RunnerJob;
+  token: string;
+}
+
 /** Ask to watch an agent's terminal; its machine asks the person there first. */
-export async function watchRunnerAgent(id: string, room: string, handle: string): Promise<RunnerJob> {
-  return apiFetch<RunnerJob>(
+export async function watchRunnerAgent(id: string, room: string, handle: string): Promise<WatchStarted> {
+  return apiFetch<WatchStarted>(
     `${runnerApiPath(id)}/agents/${encodeURIComponent(room)}/${encodeURIComponent(handle)}/watch`,
     { method: "POST" },
   );
 }
 
 /** The watched terminal's next screen after `after`; the hub holds the read until one comes. */
-export async function readWatch(id: string, watch: string, after: number, signal?: AbortSignal): Promise<WatchRead> {
+export async function readWatch(
+  id: string,
+  watch: WatchStarted,
+  after: number,
+  signal?: AbortSignal,
+): Promise<WatchRead> {
   return apiFetch<WatchRead>(
-    `${runnerApiPath(id)}/watches/${encodeURIComponent(watch)}?after=${after}&timeout=20`,
-    { signal },
+    `${runnerApiPath(id)}/watches/${encodeURIComponent(watch.job.id)}?after=${after}&timeout=20`,
+    { signal, headers: { "X-Watch-Token": watch.token } },
   );
 }
 
 /** Stop watching; the machine stops sending. */
-export async function closeWatch(id: string, watch: string): Promise<void> {
-  await apiFetch<void>(`${runnerApiPath(id)}/watches/${encodeURIComponent(watch)}`, { method: "DELETE" });
+export async function closeWatch(id: string, watch: WatchStarted): Promise<void> {
+  await apiFetch<void>(`${runnerApiPath(id)}/watches/${encodeURIComponent(watch.job.id)}`, {
+    method: "DELETE",
+    headers: { "X-Watch-Token": watch.token },
+  });
 }
 
 // ── A2A bridge (the room's off-channel traffic) ──────────────────────────────

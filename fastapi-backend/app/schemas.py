@@ -1089,6 +1089,14 @@ class WatchSent(BaseModel):
     keep: bool
 
 
+class WatchStarted(BaseModel):
+    """A watch asked for: its job, and the token only its asker reads it with."""
+
+    job: RunnerJobRead
+    #: Sent as ``X-Watch-Token`` to read or close the watch; never in the job.
+    token: str
+
+
 class WatchRead(BaseModel):
     """A watched terminal: its newest screen, or why the watch is over.
 

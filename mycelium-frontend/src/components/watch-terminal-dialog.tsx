@@ -11,6 +11,7 @@ import {
   readWatch,
   watchRunnerAgent,
   type TerminalScreen,
+  type WatchStarted,
 } from "@/lib/api";
 import { parseAnsi, type AnsiStyle } from "@/lib/ansi";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -62,7 +63,7 @@ export function Watching({ target }: { target: WatchTarget }) {
 
   useEffect(() => {
     const abort = new AbortController();
-    let watchId: string | null = null;
+    let watching: WatchStarted | null = null;
     const over = (why: string) => {
       if (!abort.signal.aborted) setPhase({ kind: "ended", why });
     };
@@ -80,11 +81,11 @@ export function Watching({ target }: { target: WatchTarget }) {
     };
 
     // Each newer screen, held by the hub until one comes.
-    const followScreens = async (id: string) => {
+    const followScreens = async (watch: WatchStarted) => {
       let after = 0;
       while (!abort.signal.aborted) {
         try {
-          const read = await readWatch(runner.id, id, after, abort.signal);
+          const read = await readWatch(runner.id, watch, after, abort.signal);
           if (read.screen) {
             after = read.screen.seq;
             setScreen(read.screen);
@@ -104,14 +105,14 @@ export function Watching({ target }: { target: WatchTarget }) {
     const start = setTimeout(() => {
       void (async () => {
         try {
-          const job = await watchRunnerAgent(runner.id, room, handle);
-          watchId = job.id;
+          const started = await watchRunnerAgent(runner.id, room, handle);
+          watching = started;
           if (abort.signal.aborted) {
-            void closeWatch(runner.id, job.id).catch(() => {});
+            void closeWatch(runner.id, started).catch(() => {});
             return;
           }
-          void followJob(job.id);
-          void followScreens(job.id);
+          void followJob(started.job.id);
+          void followScreens(started);
         } catch (err) {
           over(err instanceof Error ? err.message : "Couldn't ask to watch it.");
         }
@@ -121,7 +122,7 @@ export function Watching({ target }: { target: WatchTarget }) {
     return () => {
       clearTimeout(start);
       abort.abort();
-      if (watchId) void closeWatch(runner.id, watchId).catch(() => {});
+      if (watching) void closeWatch(runner.id, watching).catch(() => {});
     };
   }, [room, handle, runner.id, runner.name]);
 

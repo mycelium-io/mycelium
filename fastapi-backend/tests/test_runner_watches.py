@@ -55,18 +55,30 @@ async def runner(client) -> str:
     return RUNNER
 
 
+#: Each watch's read token, as only its asker holds it.
+_tokens: dict[str, str] = {}
+
+
 async def _watch(client) -> str:
     resp = await client.post(f"/api/runners/{RUNNER}/agents/{ROOM}/scout/watch")
     assert resp.status_code == 201, resp.text
-    job = resp.json()
+    started = resp.json()
+    job = started["job"]
     assert job["kind"] == "watch"
     assert job["spec"] == {"room": ROOM, "handle": "scout"}
+    _tokens[job["id"]] = started["token"]
     return job["id"]
+
+
+def _as_asker(job_id: str) -> dict:
+    return {"X-Watch-Token": _tokens[job_id]}
 
 
 async def _read(client, job_id: str, after: int = 0) -> dict:
     resp = await client.get(
-        f"/api/runners/{RUNNER}/watches/{job_id}", params={"after": after, "timeout": 0}
+        f"/api/runners/{RUNNER}/watches/{job_id}",
+        params={"after": after, "timeout": 0},
+        headers=_as_asker(job_id),
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -88,6 +100,24 @@ async def test_watching_is_a_job_for_the_machine_and_shows_nothing_before_a_yes(
 
     # Asked on the machine; nothing has been sent.
     assert await _read(client, job_id) == {"id": job_id, "screen": None, "ended": None}
+
+
+@pytest.mark.asyncio
+async def test_only_whoever_asked_can_read_or_close_it(client, runner):
+    job_id = await _watch(client)
+    assert await _send(client, job_id, "a token on screen")
+    # The job's id is in the jobs list for anyone who can see the machine,
+    # and the token is not.
+    listed = (await client.get(f"/api/runners/{RUNNER}/jobs")).json()
+    assert job_id in [j["id"] for j in listed]
+    assert _tokens[job_id] not in str(listed)
+
+    url = f"/api/runners/{RUNNER}/watches/{job_id}"
+    for headers in ({}, {"X-Watch-Token": "guessed"}):
+        assert (await client.get(url, params={"timeout": 0}, headers=headers)).status_code == 404
+        assert (await client.delete(url, headers=headers)).status_code == 404
+    # Still open for the one who asked.
+    assert (await _read(client, job_id))["screen"]["text"] == "a token on screen"
 
 
 @pytest.mark.asyncio
@@ -113,7 +143,10 @@ async def test_the_viewer_reads_each_newer_screen_and_only_the_newest(client, ru
 async def test_closing_a_watch_stops_the_runner_on_its_next_send(client, runner):
     job_id = await _watch(client)
     assert await _send(client, job_id, "one")
-    assert (await client.delete(f"/api/runners/{RUNNER}/watches/{job_id}")).status_code == 204
+    closed = await client.delete(
+        f"/api/runners/{RUNNER}/watches/{job_id}", headers=_as_asker(job_id)
+    )
+    assert closed.status_code == 204
 
     assert await _send(client, job_id, "two") is False
     assert (await _read(client, job_id, after=1))["ended"] == "Closed."
