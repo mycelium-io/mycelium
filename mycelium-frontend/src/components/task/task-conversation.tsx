@@ -132,7 +132,22 @@ export function TaskConversation({
 
   // The backend answers newest-first; a conversation reads the other way. Read
   // the way the channel reads a message, so a row here is the row there.
-  const events = useMemo(() => [...messages].reverse().map((m) => parseEvent(m)).filter(drawn), [messages]);
+  // Every refresh re-reads the whole thread, and `parseEvent` gives each event
+  // a fresh id, so a row keeps its message's own id instead (each is unique
+  // in one read). Otherwise every poll remounts every row: an expanded Show
+  // more closes, the page's height jumps, and following the latest sees every
+  // row as new.
+  const events = useMemo(
+    () =>
+      [...messages]
+        .reverse()
+        .map((m) => {
+          const ev = parseEvent(m);
+          return ev.messageId ? { ...ev, id: ev.messageId } : ev;
+        })
+        .filter(drawn),
+    [messages],
+  );
 
   // What you sent here that the read doesn't have yet, drawn under it.
   const landed = useMemo<Landed[]>(
