@@ -974,10 +974,17 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#agents-on-a-machine-pausing-your-agents",
+    "t": "Pausing your agents",
+    "s": "Agents › Your Agents on a Machine",
+    "x": "Pausing an agent stops it where it is without closing it. Nothing wakes it until you resume it, and messages for it still arrive. When it's resumed, it's told what came in while it was paused and carries on where it stopped. A working agent is interrupted, and told the pause came from Mycelium and isn't a correction of its work. mycelium agent pause --all # every agent you own, in every room mycelium agent resume --a",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#agents-on-a-machine-restarting-agents",
     "t": "Restarting agents",
     "s": "Agents › Your Agents on a Machine",
-    "x": "An agent that stopped and didn't come back can be restarted. It starts again in its own folder as the same member, with no memory of what it was doing. It reads its notes and then catches up from the room. mycelium machine restart --all # every stopped agent mycelium machine restart reviewer # one On the Machines page, Restart shows where each agent will start before it starts any of them. The runner then asks you on",
+    "x": "An agent that stopped and didn't come back can be restarted. It starts again in its own folder as the same member. Claude Code comes back in its own conversation. Other agent CLIs start a new one, read their notes and catch up from the room. mycelium machine restart --all # every stopped agent mycelium machine restart reviewer # one On the Machines page, Restart shows where each agent will start before it starts any ",
     "p": "Guides"
   },
   {

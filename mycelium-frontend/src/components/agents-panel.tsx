@@ -4,7 +4,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, Check, Clock, Eye, FileText, Pencil, Plus, UserMinus, UserPlus, Users } from "lucide-react";
+import {
+  AtSign,
+  Check,
+  Clock,
+  Eye,
+  FileText,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Square,
+  UserMinus,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -15,8 +29,11 @@ import {
 import { copyText } from "@/lib/clipboard";
 import { inviteLink } from "@/lib/desktop";
 import {
+  controlAgent,
   logFetchError,
   removeRoomPerson,
+  type AgentControlVerb,
+  type AgentPause,
   type JoinedVia,
   type PresenceMember,
   type RoomFloor,
@@ -37,6 +54,7 @@ import { FadeScroll } from "@/components/ui/fade-scroll";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { nameOf, useNames } from "@/lib/people";
+import { usePrincipal } from "@/components/current-user";
 
 interface Props {
   roomName: string;
@@ -62,6 +80,8 @@ function MemberMenu({
   agent,
   onOpenMemory,
   onRename,
+  onControl,
+  paused = false,
   onUnregister,
   onRemove,
   removeLabel = "Remove from room",
@@ -72,6 +92,10 @@ function MemberMenu({
   onOpenMemory?: (key: string) => void;
   /** Agents an engine isn't: opens the form for `agent rename`. */
   onRename?: () => void;
+  /** Your own agents only: pause, resume or stop it. */
+  onControl?: (verb: AgentControlVerb) => void;
+  /** It's paused now, so the menu offers Resume rather than Pause. */
+  paused?: boolean;
   /** Agents only: opens the confirmation for `agent rm`. */
   onUnregister?: () => void;
   /** People only: takes them out of the room until they join again. */
@@ -98,6 +122,23 @@ function MemberMenu({
           <ContextMenuItem icon={Pencil} onClick={onRename}>
             Rename…
           </ContextMenuItem>
+        )}
+        {agent && onControl && (
+          <>
+            <ContextMenuSeparator />
+            {paused ? (
+              <ContextMenuItem icon={Play} onClick={() => onControl("resume")}>
+                Resume
+              </ContextMenuItem>
+            ) : (
+              <ContextMenuItem icon={Pause} onClick={() => onControl("pause")}>
+                Pause
+              </ContextMenuItem>
+            )}
+            <ContextMenuItem icon={Square} onClick={() => onControl("stop")}>
+              Stop…
+            </ContextMenuItem>
+          </>
         )}
         {agent && onUnregister && (
           <>
@@ -269,8 +310,20 @@ export function AgentsPanel({
   // manifests, people from the hub's record of who joined, others who hold a
   // task or are present, and a presence entry for whoever holds a SLIM socket
   // or an `await` lease.
-  const { agents, people, others, presence, floors, subscriptions, loading, refresh } = useRoomRoster(roomName);
+  const { agents, people, others, presence, floors, subscriptions, paused, loading, refresh } =
+    useRoomRoster(roomName);
   const { room } = useRoom(roomName);
+  const me = usePrincipal();
+  // Pause, resume and stop are the owner's alone (the hub refuses anyone
+  // else); one with no owner on record has nobody to protect it.
+  const mine = (a: AgentSummary) =>
+    a.adapter !== "engine" && !!me && (!a.owner || a.owner.toLowerCase() === me);
+  const control = (handle: string, verb: AgentControlVerb) => {
+    if (verb === "stop" && !window.confirm(`Stop @${handle} and close its pane? It stays in the room.`)) return;
+    controlAgent(roomName, handle, verb, me)
+      .catch(logFetchError(`controlAgent(${roomName}, ${handle}, ${verb})`))
+      .finally(refresh);
+  };
   const removePerson = (handle: string) => {
     removeRoomPerson(roomName, handle)
       .catch(logFetchError(`removeRoomPerson(${roomName}, ${handle})`))
@@ -463,6 +516,8 @@ export function AgentsPanel({
                       agent
                       onOpenMemory={onOpenMemory}
                       onRename={a.adapter === "engine" ? undefined : () => setRenaming(a.handle)}
+                      onControl={mine(a) ? (verb) => control(a.handle, verb) : undefined}
+                      paused={paused.has(a.handle.toLowerCase())}
                       onUnregister={() =>
                         setUnregistering({
                           handle: a.handle,
@@ -477,6 +532,7 @@ export function AgentsPanel({
                       memberPresence={presence.get(a.handle.toLowerCase())}
                       floor={floors.get(a.handle.toLowerCase())}
                       subscriptions={subscriptions.get(a.handle.toLowerCase())}
+                      paused={paused.get(a.handle.toLowerCase())}
                       schedules={scheduled.get(a.handle.toLowerCase()) ?? 0}
                       marked={marked}
                       rowRef={marked ? highlightRow : undefined}
@@ -715,6 +771,7 @@ function AgentRow({
   memberPresence,
   floor,
   subscriptions,
+  paused,
   schedules = 0,
   marked,
   rowRef,
@@ -727,6 +784,8 @@ function AgentRow({
   floor?: RoomFloor;
   /** What it subscribed to: woken when these happen, without anyone asking it. */
   subscriptions?: RoomSubscription[];
+  /** Its pause, while it's paused: nothing wakes it until it's resumed. */
+  paused?: AgentPause;
   /** How many live schedules wake this agent; a clock shows when there is one. */
   schedules?: number;
   marked: boolean;
@@ -734,7 +793,8 @@ function AgentRow({
   /** The machine the app started this agent on, by name. */
   machine?: string | null;
 }) {
-  const meta = rowMeta(a, memberPresence, floor, machine);
+  // A pause says why it isn't answering, which beats what it was doing.
+  const meta = paused ? "paused" : rowMeta(a, memberPresence, floor, machine);
   const oddOwner = a.owner && a.owner !== groupOwner ? a.owner : null;
   const adapter = a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter;
   const cli = a.adapter === "engine" || a.adapter === "a2a" ? undefined : (a.framework ?? undefined);
@@ -744,6 +804,11 @@ function AgentRow({
       className="w-72 max-w-72 p-3"
       content={
         <MemberTooltipCard handle={a.handle} kind={a.adapter === "engine" ? "engine" : "agent"} presence={memberPresence}>
+          <DetailRow
+            label="paused"
+            value={paused ? `by @${paused.by}; its wakes wait for a resume` : undefined}
+            color="var(--yellow)"
+          />
           <DetailRow label="floor" value={floor ? floorLabel(a.handle, floor) : undefined} color="var(--accent)" />
           <DetailRow label="owner" value={a.owner ? `@${a.owner}` : undefined} />
           <DetailRow label="team" value={a.team ?? undefined} />

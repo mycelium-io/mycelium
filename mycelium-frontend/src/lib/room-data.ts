@@ -25,6 +25,7 @@ import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
 import {
   fetchA2aBridge,
   fetchEpisodes,
+  fetchMyPaused,
   fetchMemories,
   fetchMessages,
   fetchNetworkStatus,
@@ -47,6 +48,7 @@ import {
   saveRoomFolders,
   searchMessages,
   type A2aBridgeState,
+  type AgentPause,
   type AgentSummary,
   type BoardRead,
   type EpisodeSummary,
@@ -150,7 +152,7 @@ const NO_STATUS: RoomStatus = {
 };
 const NO_ROOMS: Room[] = [];
 const NO_AGENTS: AgentSummary[] = [];
-const NO_PRESENCE: RoomPresence = { members: [], floors: [], subscriptions: [] };
+const NO_PRESENCE: RoomPresence = { members: [], floors: [], subscriptions: [], paused: [] };
 const NO_MESSAGES: RoomMessage[] = [];
 const NO_PEOPLE: RoomPeople = { people: [], agents: [], engines: [], others: [] };
 const NO_MEMORIES: Memory[] = [];
@@ -281,6 +283,16 @@ export function useRoomFolders() {
   return { layout, update };
 }
 
+/** Every agent you own that is paused, across rooms, for the status rail. */
+export function useMyPaused() {
+  const handle = usePrincipal();
+  const { data, mutate } = useSWR(["my-paused", handle], () => fetchMyPaused(handle), {
+    refreshInterval: POLL.members,
+  });
+  const refresh = useCallback(() => void mutate(), [mutate]);
+  return { paused: data ?? [], refresh };
+}
+
 /** fetchRoom failure logged; returns null for caller to render. */
 export function useRoom(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, error, refresh } = useRoomQuery(
@@ -315,6 +327,8 @@ export function useRoomMembers(room: string, opts: RoomQueryOptions = {}) {
     floors: data.floors,
     // Absent from a members read older than subscriptions.
     subscriptions: data.subscriptions ?? [],
+    // Absent from a hub older than pausing.
+    paused: data.paused ?? [],
     loading,
     refresh,
   };
@@ -694,6 +708,8 @@ export interface RoomRoster {
   floors: Map<string, RoomFloor>;
   /** handle (lowercased) → what it subscribed to, for its hover card. */
   subscriptions: Map<string, RoomSubscription[]>;
+  /** handle (lowercased) → its pause, for a paused agent. */
+  paused: Map<string, AgentPause>;
   loading: boolean;
   refresh: () => void;
 }
@@ -710,6 +726,7 @@ export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRo
     members,
     floors: floorList,
     subscriptions: subscriptionList,
+    paused: pausedList,
     refresh: refreshMembers,
   } = useRoomMembers(room, opts);
   const { people: joined, others, refresh: refreshPeople } = useRoomPeople(room, opts);
@@ -729,6 +746,10 @@ export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRo
     }
     return byHandle;
   }, [subscriptionList]);
+  const paused = useMemo(
+    () => new Map(pausedList.map((p) => [p.handle.toLowerCase(), p])),
+    [pausedList],
+  );
 
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle.toLowerCase())), [agents]);
 
@@ -765,5 +786,15 @@ export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRo
     refreshPeople();
   }, [refreshAgents, refreshMembers, refreshPeople]);
 
-  return { agents, people, others: otherHandles, presence, floors, subscriptions, loading, refresh };
+  return {
+    agents,
+    people,
+    others: otherHandles,
+    presence,
+    floors,
+    subscriptions,
+    paused,
+    loading,
+    refresh,
+  };
 }

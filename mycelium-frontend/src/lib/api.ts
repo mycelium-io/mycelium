@@ -1826,25 +1826,86 @@ export interface RoomSubscription {
   until: string | null;
 }
 
+/** A paused agent: who paused it and when. Its wakes are held until it's resumed. */
+export interface AgentPause {
+  handle: string;
+  by: string;
+  at: string;
+}
+
 export interface RoomPresence {
   members: PresenceMember[];
   floors: RoomFloor[];
   subscriptions: RoomSubscription[];
+  /** Absent from a hub older than pausing. */
+  paused?: AgentPause[];
 }
 
 /** Live presence set for a room: SLIM-connected + server-held lease members,
- *  the floors held in its threads right now, and what its agents subscribed to. */
+ *  the floors held in its threads right now, what its agents subscribed to,
+ *  and who is paused. */
 export async function fetchRoomMembers(roomName: string): Promise<RoomPresence> {
   const data = await apiFetch<{
     members?: PresenceMember[];
     floors?: RoomFloor[];
     subscriptions?: RoomSubscription[];
+    paused?: AgentPause[];
   }>(`${roomApiPath(roomName)}/sessions/members`, { cache: "no-store", fallback: {} });
   return {
     members: Array.isArray(data.members) ? data.members : [],
     floors: Array.isArray(data.floors) ? data.floors : [],
     subscriptions: Array.isArray(data.subscriptions) ? data.subscriptions : [],
+    paused: Array.isArray(data.paused) ? data.paused : [],
   };
+}
+
+/** What happened to one agent you paused, resumed or stopped. */
+export interface AgentControlResult {
+  room: string;
+  handle: string;
+  paused: (AgentPause & { room: string }) | null;
+  runner: string | null;
+  job: string | null;
+}
+
+export type AgentControlVerb = "pause" | "resume" | "stop";
+
+/** Pause, resume or stop one agent you own. */
+export async function controlAgent(
+  roomName: string,
+  handle: string,
+  verb: AgentControlVerb,
+  by: string,
+): Promise<AgentControlResult> {
+  return apiFetch<AgentControlResult>(
+    `${roomApiPath(roomName)}/agents/${encodeURIComponent(handle)}/${verb}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ by: by || null }),
+    },
+  );
+}
+
+/** Pause or resume every agent `by` owns, in every room. */
+export async function controlMyAgents(
+  verb: "pause" | "resume",
+  by: string,
+): Promise<{ agents: AgentControlResult[] }> {
+  return apiFetch<{ agents: AgentControlResult[] }>(`/api/agents/${verb}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ by }),
+  });
+}
+
+/** Every paused agent `owner` owns, across rooms. */
+export async function fetchMyPaused(owner: string): Promise<(AgentPause & { room: string })[]> {
+  if (!owner) return [];
+  return apiFetch<(AgentPause & { room: string })[]>(
+    `/api/agents/paused?owner=${encodeURIComponent(owner)}`,
+    { cache: "no-store", fallback: [] },
+  );
 }
 
 /** How a person joined a room: made it, was added, posted in it, or was there

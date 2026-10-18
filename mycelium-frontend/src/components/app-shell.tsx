@@ -17,6 +17,7 @@ import { InstallModalProvider, useOpenInstallModal } from "@/components/install-
 import { DocsLink } from "@/components/docs-link";
 import { updateLink, useAppDownload, useDesktopUpdate, useIsDesktop } from "@/lib/desktop";
 import { HubStatus, MachinesStatusLink, MetricsStatusLink, TerminalStatusLink } from "@/components/status-items";
+import { MyAgentsPause } from "@/components/my-agents-pause";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -315,6 +316,7 @@ export function AppShell({
             <HubStatus />
             <MachinesStatusLink />
             <TerminalStatusLink />
+            <MyAgentsPause />
             {statusLeft && (
               <>
                 <span aria-hidden className="h-3 w-px flex-shrink-0 bg-border" />
