@@ -40,7 +40,11 @@ const say = (id: string, who: string, text: string): StreamStep["message"] => ({
 // The "is responding…" signal the backend raises when a participant starts
 // generating: a presence-style frame, never a message (see `lib/activity.ts`).
 // Each agent line below is preceded by one, and the line itself settles it.
-const responding = (who: string, episode: string | null = null): StreamStep["message"] => ({
+const responding = (
+  who: string,
+  episode: string | null = null,
+  watching: string | null = null,
+): StreamStep["message"] => ({
   type: "agent_activity",
   message_type: "agent_activity",
   handle: who,
@@ -48,7 +52,20 @@ const responding = (who: string, episode: string | null = null): StreamStep["mes
   state: "responding",
   episode,
   ttl_s: 90,
+  ...(watching ? { watching } : {}),
 });
+// The room under load: an agent nobody asked starts on a task it subscribed
+// to, and the line says which subscription woke it.
+const storefrontTimeline: StreamStep[] = [
+  {
+    delayMs: 1200,
+    message: responding(
+      "newsletter-copy",
+      "urn:ioc:mycelium:episode:storefront:t427",
+      "work/427-search-doesnt-find-decaf",
+    ),
+  },
+];
 const pricingTimeline: StreamStep[] = [
   // Round 1
   { delayMs: 1500, message: say("s1", "growth", "Start at $18 a month for two bags. People need to try it before they commit. @finance") },
@@ -76,6 +93,7 @@ const pricingTimeline: StreamStep[] = [
 
 const TIMELINES: Record<string, StreamStep[]> = {
   "subscription-pricing": pricingTimeline,
+  storefront: storefrontTimeline,
 };
 
 export function mockStream(roomName: string): Response {

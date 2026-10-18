@@ -65,8 +65,19 @@ def is_responding(room: str, handle: str) -> bool:
     return raised is not None and time.monotonic() - raised < TTL_S
 
 
-def signal(room: str, handle: str, state: State, *, episode: str | None = None) -> dict[str, Any]:
-    """Publish one activity frame on the room's bus channel. Returns the frame."""
+def signal(
+    room: str,
+    handle: str,
+    state: State,
+    *,
+    episode: str | None = None,
+    watching: str | None = None,
+) -> dict[str, Any]:
+    """Publish one activity frame on the room's bus channel. Returns the frame.
+
+    ``watching`` is the subscription that woke the handle, as a person reads it
+    (``work/x and its parts``), when nothing asked it: the app says why an
+    agent nobody asked started working."""
     if state == "responding":
         _standing[_key(room, handle)] = time.monotonic()
     else:
@@ -82,5 +93,7 @@ def signal(room: str, handle: str, state: State, *, episode: str | None = None) 
         "ttl_s": TTL_S,
         "created_at": datetime.now(UTC).isoformat(),
     }
+    if watching and state == "responding":
+        frame["watching"] = watching
     bus.publish(room_channel(room), frame)
     return frame

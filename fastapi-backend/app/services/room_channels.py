@@ -573,6 +573,7 @@ class RoomChannelManager:
         sender: str | None = None,
         episode: str | None = None,
         why: str | None = None,
+        watching: str | None = None,
     ) -> None:
         """Ring the doorbell for a herdr-present handle in ``room``.
 
@@ -589,7 +590,7 @@ class RoomChannelManager:
         to you), ``assigned`` (the row ``key`` was given to you), or
         ``interrupt`` (an ``@!`` stopped your turn to say this), or
         ``subscribed`` (something it subscribed to happened; ``why`` says which
-        subscription and what). The most specific reason pending wins over a
+        subscription and what, ``watching`` names the subscription). The most specific reason pending wins over a
         mention, and an interrupt over the rest, since the agent's turn was
         stopped to deliver it; a subscription never replaces any of them.
 
@@ -609,6 +610,8 @@ class RoomChannelManager:
             entry["episode"] = episode
         if why:
             entry["why"] = why
+        if watching:
+            entry["watching"] = watching
         for w in queue:
             if w["handle"] == handle:
                 w["ts"] = entry["ts"]  # fresh activity refreshes the hold timer
@@ -621,6 +624,7 @@ class RoomChannelManager:
                     # A subscription's why belongs to it alone; an ask that
                     # replaces it doesn't carry it on.
                     w.pop("why", None)
+                    w.pop("watching", None)
                     w.update({k: v for k, v in entry.items() if k != "handle"})
                 return
         # Its id follows it to the runner and back, so the wake log
@@ -740,6 +744,7 @@ class RoomChannelManager:
                 sender=record.sender,
                 episode=record_episode(record),
                 why=wake.why,
+                watching=wake.watching,
             )
             rung.append(handle)
         subscriptions.end_settled(room, record)

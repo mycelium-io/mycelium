@@ -27,6 +27,7 @@ import {
   respondingLabel,
   settleActivity,
   splitActivity,
+  watchingNote,
   type Responding,
 } from "@/lib/activity";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
@@ -103,6 +104,23 @@ function RespondingRow({ children, offset = 0 }: { children: React.ReactNode; of
   );
 }
 
+/** "· watching work/x" after a responding line whose one agent was woken by
+ *  a subscription it made, not by anyone asking it: why it started. */
+function WatchingNote({ entries }: { entries: Responding[] }) {
+  const note = watchingNote(entries);
+  if (!note) return null;
+  return (
+    <span
+      // Takes only the room the line leaves: who and where matter more than why.
+      className="min-w-0 flex-1 basis-0 truncate text-muted-foreground/80"
+      title={`${entries[0].watching}: it subscribed to this, so it was woken without anyone asking it`}
+      data-testid="responding-watching"
+    >
+      · {note}
+    </span>
+  );
+}
+
 /** "@aligner is responding…" pinned over the composer, gone the moment the
  *  reply lands. A turn going into a task's thread does not land here — the channel
  *  never shows a thread's prose — so that line says where instead, and opens
@@ -129,6 +147,7 @@ function RespondingLine({
       {here.length > 0 && (
         <RespondingRow>
           <Shimmer className="truncate">{respondingLabel(here)}</Shimmer>
+          <WatchingNote entries={here} />
         </RespondingRow>
       )}
       {[...elsewhere.entries()].map(([thread, group], i) => {
@@ -148,6 +167,7 @@ function RespondingLine({
               <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
               <span className="truncate">{title}</span>
             </button>
+            <WatchingNote entries={group} />
           </RespondingRow>
         );
       })}

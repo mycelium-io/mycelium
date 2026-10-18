@@ -116,6 +116,12 @@ class Wake:
     reason: WakeReason
     why: str | None = None
     subscription: str | None = None
+    #: The subscription as a person reads it (``work/x and its parts``).
+    watching: str | None = None
+
+
+def _subscribed(match: Any) -> Wake:
+    return Wake("subscribed", match.why, match.sub.id, match.sub.describe())
 
 
 def wakes_for(room: str, record: Any, handle: str, subs: list[Any] | None = None) -> Wake | None:
@@ -135,7 +141,7 @@ def wakes_for(room: str, record: Any, handle: str, subs: list[Any] | None = None
     if not mine:
         return None
     found = subscriptions.matches(room, record, mine)
-    return Wake("subscribed", found[0].why, found[0].sub.id) if found else None
+    return _subscribed(found[0]) if found else None
 
 
 def woken_by(room: str, record: Any) -> dict[str, Wake]:
@@ -145,5 +151,5 @@ def woken_by(room: str, record: Any) -> dict[str, Wake]:
 
     found = {name: Wake(why) for name, why in asked(record.content).items()}
     for match in subscriptions.matches(room, record):
-        found.setdefault(match.sub.handle, Wake("subscribed", match.why, match.sub.id))
+        found.setdefault(match.sub.handle, _subscribed(match))
     return found
