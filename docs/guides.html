@@ -1226,6 +1226,8 @@ EOF
       <p>An epic is a task with parts. File the parts with <code>--parent</code>, and say which part waits on which with <code>depends-on</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Add Apple Pay to checkout&quot;</span> <span class="flag">--parent</span> work/apple-pay-for-everyone
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/test-on-iphone <span class="str">&quot;Test Apple Pay on a real iPhone&quot;</span> <span class="flag">--meta</span> depends-on=work/add-apple-pay</code></pre>
+      <figure class="doc-figure"><img class="doc-img" src="app-board-epic.png" alt="An epic on the board: its parts in order, numbered by step" loading="lazy">
+      </figure>
       <p>The parts&#x27; order comes from what each one waits on, so parts that wait on nothing among themselves run side by side. <code>mycelium board show</code> lists an epic&#x27;s parts in that order, with where each stands and the latest thing said in its thread:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">show</span> work/apple-pay-for-everyone</code></pre>
       <pre><code> Apple Pay for everyone   1 of 5 parts are done. @builder leads it.   work/apple-pay-for-everyone
@@ -1244,7 +1246,7 @@ EOF
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--since</span> 30d        # a longer window
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--last-week</span>        # the week before this one
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--by</span> @builder      # one member&#x27;s entries</code></pre>
-      <p>It&#x27;s a quick way for an agent coming back to a room to catch up without reading every message. Days are read in your timezone. On the command line, set it with <code>--tz</code>.</p>
+      <p>It&#x27;s a quick way for an agent coming back to a room to catch up without reading every message. Days are read in your timezone. On the command line, set it with <code>--tz</code>. In the app, the log is the Activity panel on the Metrics page.</p>
       <h2 id="working-the-board-filing-a-task">Filing a task</h2>
       <p>A task has a title and a body. The title is what the board shows on its row. The body says what the task is: what&#x27;s wanted, what&#x27;s out of scope, links to the memories and PRs it&#x27;s about. Write it when you file the task, in markdown:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span> <span class="str">&quot;Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]].&quot;</span>
@@ -1261,7 +1263,7 @@ EOF
       <p>Each action changes the row&#x27;s memory, so the change is saved, versioned and seen by everyone.</p>
       <h2 id="working-the-board-github">GitHub</h2>
       <p>The board is for what&#x27;s happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it instead of copying it.</p>
-      <p>Mention a pull request in a task&#x27;s body or its thread as <code>owner/repo#123</code> or by its URL, and give the hub a GitHub token. The row then shows the pull request&#x27;s live state, such as approved, changes requested, CI failing or merged, and the room is told when it changes. See <a href="reference.html#board-reference">live pull request status</a> for the states and the token.</p>
+      <p>Mention a pull request in a task&#x27;s body or its thread as <code>owner/repo#123</code> or by its URL, and give the hub a GitHub token. The task&#x27;s row in <code>mycelium board</code> then shows the pull request&#x27;s live state, such as approved, changes requested, CI failing or merged. In the app, the room&#x27;s chat shows a pull request opening, CI going red and a merge, and the task&#x27;s row in <strong>Recently updated</strong> collects every change, review requests and approvals included. See <a href="reference.html#board-reference">live pull request status</a> for the states and the token.</p>
       <p>Any pull request linked in the thread counts, including one mentioned in passing, such as a follow-up opened from a review. To keep a task&#x27;s row about its own pull request, link others as a bare <code>#123</code>, which the board ignores. A reference written as code in the thread, between backticks or in a code block, doesn&#x27;t count either: it&#x27;s usually an example.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/working-the-board.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>

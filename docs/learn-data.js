@@ -251,7 +251,7 @@ window.MYCELIUM_COURSES = [
   "title": "Run side work in parallel",
   "tagline": "Keep the main work moving while small fixes land as their own pull requests, each in its own worktree.",
   "track": "Parallel work",
-  "thumb": "app-board-columns.png",
+  "thumb": "app-machines.png",
   "needs": [
    "The core workflow running or any long task you don't want interrupted",
    "A repository you can add git worktrees to, inside a folder your runner allows"
@@ -385,7 +385,7 @@ window.MYCELIUM_COURSES = [
   "takeaway": "A clear line between the work in flight and the record it leaves.",
   "outcomes": [
    "Decide in a second where a piece of work belongs",
-   "See each task's pull request on the board, kept up to date",
+   "Follow each task's pull request from the room, kept up to date",
    "Work a GitHub issue through a room to a merged pull request",
    "Move a task to GitHub when it turns out to matter"
   ],
@@ -407,13 +407,13 @@ window.MYCELIUM_COURSES = [
        "answer": 1,
        "why": "GitHub is for what has to outlast the work. A ten-minute fix is work happening now, so it's a task on the board."
       },
-      "html": "      <p>Both GitHub and the board hold a list of work, but they&#x27;re for different things.</p>\n      <ul>\n        <li><strong>GitHub is for what has to outlast the work.</strong> That&#x27;s the issue someone filed, the pull request and the record of why a change was made.</li>\n        <li><strong>The board is for the work happening now.</strong> That&#x27;s what the agents are doing today, the side quests and the decisions on the way.</li>\n      </ul>\n      <p>The two meet on the row. A task that names a pull request shows that pull request&#x27;s state, so you can see the GitHub side of the work without leaving the board.</p>"
+      "html": "      <p>Both GitHub and the board hold a list of work, but they&#x27;re for different things.</p>\n      <ul>\n        <li><strong>GitHub is for what has to outlast the work.</strong> That&#x27;s the issue someone filed, the pull request and the record of why a change was made.</li>\n        <li><strong>The board is for the work happening now.</strong> That&#x27;s what the agents are doing today, the side quests and the decisions on the way.</li>\n      </ul>\n      <p>The two meet in the task. When a task names a pull request, the room follows that pull request. Its big changes show in the room&#x27;s chat, all of them collect on the task&#x27;s row in <strong>Recently updated</strong>, and its state shows on the task&#x27;s row in <code>mycelium board</code>. You see the GitHub side of the work without leaving the room.</p>"
      },
      {
       "id": "02-the-link",
       "title": "Let the board see GitHub",
       "minutes": 4,
-      "html": "      <p>The hub looks up the pull requests a room&#x27;s tasks name. It needs a GitHub token, which you give it once on the machine that runs the hub:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">credential</span> set GITHUB_TOKEN <span class=\"flag\">--stdin</span></code></pre>\n      <p>Restart the hub after setting it. From then on, a task whose text names a pull request shows that pull request&#x27;s state on its row. The text can name it as <code>coffee-shop/web#612</code> or by its full URL.</p>\n      <div class=\"table-wrap\">\n        <table>\n          <thead>\n            <tr>\n              <th>On the row</th>\n              <th>What it means</th>\n            </tr>\n          </thead>\n          <tbody>\n            <tr>\n              <td>CI running, awaiting review, draft</td>\n              <td>In progress, nobody needs to act</td>\n            </tr>\n            <tr>\n              <td>approved</td>\n              <td>Ready to merge</td>\n            </tr>\n            <tr>\n              <td>changes requested</td>\n              <td>Waiting on a person</td>\n            </tr>\n            <tr>\n              <td>CI failing</td>\n              <td>Waiting on a fix</td>\n            </tr>\n            <tr>\n              <td>merged, closed</td>\n              <td>Finished</td>\n            </tr>\n          </tbody>\n        </table>\n      </div>\n      <p>The board never waits on GitHub. It shows the last state it knows and refreshes in the background. A pull request linked in the task&#x27;s thread counts too, so an agent that posts &quot;PR is up&quot; with the link has already linked it.</p>\n      <p>When a linked pull request changes, the room is told. The pull request opening, CI going red and a merge show in the chat. A review being requested, an approval and CI going green show in the task&#x27;s activity. Agents read these the next time they wake. No change on GitHub wakes anyone.</p>"
+      "html": "      <p>The hub looks up the pull requests a room&#x27;s tasks name. It needs a GitHub token, which you give it once on the machine that runs the hub:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">credential</span> set GITHUB_TOKEN <span class=\"flag\">--stdin</span></code></pre>\n      <p>Restart the hub after setting it. From then on, the hub follows every pull request a task&#x27;s text names, as <code>coffee-shop/web#612</code> or by its full URL. <code>mycelium board</code> shows its state on the task&#x27;s row:</p>\n      <div class=\"table-wrap\">\n        <table>\n          <thead>\n            <tr>\n              <th>State</th>\n              <th>What it means</th>\n            </tr>\n          </thead>\n          <tbody>\n            <tr>\n              <td>CI running, awaiting review, draft</td>\n              <td>In progress, nobody needs to act</td>\n            </tr>\n            <tr>\n              <td>approved</td>\n              <td>Ready to merge</td>\n            </tr>\n            <tr>\n              <td>changes requested</td>\n              <td>Waiting on a person</td>\n            </tr>\n            <tr>\n              <td>CI failing</td>\n              <td>Waiting on a fix</td>\n            </tr>\n            <tr>\n              <td>merged, closed</td>\n              <td>Finished</td>\n            </tr>\n          </tbody>\n        </table>\n      </div>\n      <p>The hub never waits on GitHub. It keeps the last state it knows and refreshes it in the background. A pull request linked in the task&#x27;s thread counts too, so an agent that posts &quot;PR is up&quot; with the link has already linked it.</p>\n      <p>When a linked pull request changes, the room is told. The pull request opening, CI going red and a merge show in the chat. A review being requested, an approval and CI going green show on the task&#x27;s row in <strong>Recently updated</strong>. Agents read these the next time they wake. No change on GitHub wakes anyone.</p>"
      },
      {
       "id": "03-an-issue",
@@ -435,7 +435,7 @@ window.MYCELIUM_COURSES = [
       "id": "04-the-other-way",
       "title": "When a task should become an issue",
       "minutes": 3,
-      "html": "      <p>Most tasks never need an issue, because they&#x27;re done in an hour. Sometimes one turns out to matter beyond the room. It might be a bug you&#x27;ll want to find again or work for someone outside the room. File the issue in GitHub. Then select the row on the board and press <code>p</code> (<strong>Promote → GH</strong>). That resolves the row and marks it promoted, so the board stops showing it as work in flight.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">It doesn&#x27;t file the issue for you. You file it yourself. Link it from the task if you want the trail.</div>\n      </div>"
+      "html": "      <p>Most tasks never need an issue, because they&#x27;re done in an hour. Sometimes one turns out to matter beyond the room. It might be a bug you&#x27;ll want to find again or work for someone outside the room. File the issue in GitHub, link it in the task&#x27;s thread, and ask the agent holding the task to resolve it. The issue carries the work from there, and the task&#x27;s thread keeps the trail back to the room.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Mycelium doesn&#x27;t file the issue for you. You file it yourself.</div>\n      </div>"
      }
     ],
     "video": {

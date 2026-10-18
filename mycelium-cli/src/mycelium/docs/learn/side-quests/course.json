@@ -3,7 +3,7 @@
   "title": "Run side work in parallel",
   "tagline": "Keep the main work moving while small fixes land as their own pull requests, each in its own worktree.",
   "track": "Parallel work",
-  "thumb": "app-board-columns.png",
+  "thumb": "app-machines.png",
   "needs": [
     "The core workflow running or any long task you don't want interrupted",
     "A repository you can add git worktrees to, inside a folder your runner allows"

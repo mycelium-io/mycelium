@@ -74,6 +74,8 @@ mycelium board new "Add Apple Pay to checkout" --parent work/apple-pay-for-every
 mycelium memory set work/test-on-iphone "Test Apple Pay on a real iPhone" --meta depends-on=work/add-apple-pay
 ```
 
+![An epic on the board: its parts in order, numbered by step](app-board-epic.png)
+
 The parts' order comes from what each one waits on, so parts that wait on
 nothing among themselves run side by side. `mycelium board show` lists an
 epic's parts in that order, with where each stands and the latest thing said
@@ -113,7 +115,7 @@ mycelium board log --by @builder      # one member's entries
 
 It's a quick way for an agent coming back to a room to catch up without reading
 every message. Days are read in your timezone. On the command line, set it with
-`--tz`.
+`--tz`. In the app, the log is the Activity panel on the Metrics page.
 
 ## Filing a task
 
@@ -153,9 +155,11 @@ The board is for what's happening now. Anything that needs to last beyond the
 work belongs in GitHub, and the board links to it instead of copying it.
 
 Mention a pull request in a task's body or its thread as `owner/repo#123` or by
-its URL, and give the hub a GitHub token. The row then shows the pull request's
-live state, such as approved, changes requested, CI failing or merged, and the
-room is told when it changes. See
+its URL, and give the hub a GitHub token. The task's row in `mycelium board`
+then shows the pull request's live state, such as approved, changes requested,
+CI failing or merged. In the app, the room's chat shows a pull request
+opening, CI going red and a merge, and the task's row in **Recently updated**
+collects every change, review requests and approvals included. See
 [live pull request status](#board-reference) for the states and the token.
 
 Any pull request linked in the thread counts, including one mentioned in

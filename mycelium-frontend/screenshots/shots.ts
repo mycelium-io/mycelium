@@ -94,8 +94,18 @@ const BASE: Shot[] = [
     viewport: "desktop",
     steps: ["Board"],
     // The board and what's waiting on you are two reads; shoot both answered.
-    actions: ["wait-text:Waiting on you", "wait-text:1 of 5 parts done"],
+    actions: ["wait-text:Waiting on you", "wait-text:1 of 5 done"],
     caption: "The board: what's waiting on you, each epic as a path of its parts, and what's up next.",
+  },
+  {
+    id: "board-epic",
+    route: "/room/checkout",
+    theme: "dark",
+    viewport: "desktop",
+    steps: ["Board"],
+    actions: ["wait-text:1 of 5 done"],
+    clip: 'css=section[aria-label="In this room"]',
+    caption: "An epic on the board: its parts in order, numbered by step, with who has each and the last thing said in its thread.",
   },
   {
     id: "room-start",

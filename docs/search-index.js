@@ -192,14 +192,14 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "concepts.html#board",
     "t": "Board",
-    "x": "The board is a room's list of work. You put tasks on it and agents pick them up and do them. The board's default view shows the few things that need a person. A task is a markdown file in the room's memory under work/. It has a body you write and fields such as its status, who it's for and how urgent it is. Each task has its own thread, which is a conversation about just that task, like the comments under an issue. A",
+    "x": "The board is a room's list of work. You put tasks on it and agents pick them up and do them. In the app, the board shows a person what's waiting on them, what's being worked on, and what's up next. A task is a markdown file in the room's memory under work/. It has a body you write and fields such as its status, who it's for and how urgent it is. Each task has its own thread, which is a conversation about just that ta",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#board-add-a-task",
     "t": "Add a task",
     "s": "Board",
-    "x": "In the app, type the task into the board's capture bar or type /task and the task into the message box. From the command line: mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" Every task gets its own thread when it's created and keeps it for life. Any command that takes a task accepts its key (work/ship-pa",
+    "x": "In the app, type the task into the line at the top of the board, \"Hand something off to the room\", or type /task and the task into the message box. From the command line: mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" Every task gets its own thread when it's created and keeps it for life. Any command tha",
     "p": "Concepts"
   },
   {
@@ -234,7 +234,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#board-finish-a-task",
     "t": "Finish a task",
     "s": "Board",
-    "x": "In the app, use the task's Resolve or Block action. From the command line: mycelium board resolve work/pick-token-storage mycelium board block work/ship-passkey-login --on \"#502\" A resolved task stays under Resolved for the rest of the day and then leaves the board. Its file stays in the room's memory, where you can still search it. For the board's views, the daily log and its other actions, see Working the board. Fo",
+    "x": "The agent working a task resolves it, or marks it blocked, from the command line. In the app, say so in the task's thread and the agent does it. mycelium board resolve work/pick-token-storage mycelium board block work/ship-passkey-login --on \"#502\" A resolved task leaves the app's board. mycelium board --filter resolved lists what was resolved today, and the task's file stays in the room's memory, where you can still",
     "p": "Concepts"
   },
   {
@@ -343,7 +343,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#swarm-from-the-app",
     "t": "From the app",
     "s": "Swarm",
-    "x": "In a room, type a task into the board's capture bar and press Swarm instead of File. You can also type /swarm <task> in the room's chat. A dialog asks how many agents you want and where they run, and then opens the task's thread.",
+    "x": "In a room, type a task into the board's hand-off line and press Swarm instead of File. You can also type /swarm <task> in the room's chat. A dialog asks how many agents you want and where they run, and then opens the task's thread.",
     "p": "Concepts"
   },
   {
@@ -1264,7 +1264,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#working-the-board-github",
     "t": "GitHub",
     "s": "Work › Working the Board",
-    "x": "The board is for what's happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it instead of copying it. Mention a pull request in a task's body or its thread as owner/repo#123 or by its URL, and give the hub a GitHub token. The row then shows the pull request's live state, such as approved, changes requested, CI failing or merged, and the room is told when it changes. Se",
+    "x": "The board is for what's happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it instead of copying it. Mention a pull request in a task's body or its thread as owner/repo#123 or by its URL, and give the hub a GitHub token. The task's row in mycelium board then shows the pull request's live state, such as approved, changes requested, CI failing or merged. In the app, the",
     "p": "Guides"
   },
   {

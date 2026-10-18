@@ -53,7 +53,7 @@ agents only hear their turns while `swarm` is open.
 
 ## From the app
 
-In a room, type a task into the board's capture bar and press **Swarm**
+In a room, type a task into the board's hand-off line and press **Swarm**
 instead of **File**. You can also type `/swarm <task>` in the room's chat. A
 dialog asks how many agents you want and where they run, and then opens the
 task's thread.
