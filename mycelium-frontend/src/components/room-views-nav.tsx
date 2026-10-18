@@ -6,12 +6,7 @@
 import { Activity, CalendarClock, Folder, ListChecks, MessagesSquare, type LucideIcon } from "lucide-react";
 import { KeyBadge } from "@/components/key-badge";
 import { KbdChord } from "@/components/ui/kbd";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Tooltip } from "@/components/ui/tooltip";
 import { ROOM_VIEWS, VIEW_LABELS, type View } from "@/lib/room-dock";
 import { cn } from "@/lib/utils";
 
@@ -71,32 +66,43 @@ export function RoomViewsList({ view, onView, channelCount }: RoomViewsNav) {
 }
 
 /**
- * The folded Rooms rail's version: the view's icon under the room's monogram,
- * opening the room's views as a menu.
+ * The folded Rooms rail's version: every view as an icon under the room's
+ * monogram, the one shown marked, each one a click away like the rows they
+ * fold from.
  */
-export function RoomViewMark({ view, onView }: RoomViewsNav) {
-  const Icon = VIEW_ICONS[view];
+export function RoomViewIcons({ view, onView }: RoomViewsNav) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label={`${VIEW_LABELS[view]}. Change the view`}
-        title={`${VIEW_LABELS[view]}. Change the view`}
-        className="mt-1 flex size-6 items-center justify-center rounded text-muted-foreground outline-none transition-colors hover:bg-hairline hover:text-text focus-visible:bg-hairline data-[popup-open]:bg-hairline data-[popup-open]:text-text"
-      >
-        <Icon className="size-3.5" strokeWidth={1.8} />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-48">
-        {ROOM_VIEWS.map(v => {
-          const ItemIcon = VIEW_ICONS[v];
-          return (
-            <DropdownMenuItem key={v} onClick={() => onView(v)} aria-current={v === view || undefined}>
-              <ItemIcon className="size-3.5 text-faint" />
-              <span className={cn("min-w-0 flex-1", v === view && "font-medium")}>{VIEW_LABELS[v]}</span>
-              <KbdChord action={`pane.${v}`} size="xs" tone="muted" />
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <nav aria-label="Room views" className="mt-1 flex flex-col items-center gap-0.5">
+      {ROOM_VIEWS.map(v => {
+        const Icon = VIEW_ICONS[v];
+        const current = v === view;
+        return (
+          <Tooltip
+            key={v}
+            side="right"
+            content={
+              <span className="flex items-center gap-1.5">
+                {VIEW_LABELS[v]}
+                <KbdChord action={`pane.${v}`} size="xs" tone="muted" />
+              </span>
+            }
+          >
+            <button
+              type="button"
+              aria-label={VIEW_LABELS[v]}
+              aria-current={current ? "page" : undefined}
+              onClick={() => onView(v)}
+              className={cn(
+                "relative flex size-6 items-center justify-center rounded transition-colors hover:bg-hairline hover:text-text",
+                current ? "bg-hairline text-text" : "text-faint",
+              )}
+            >
+              <Icon className="size-3.5" strokeWidth={1.8} />
+              <KeyBadge action={`pane.${v}`} overlay />
+            </button>
+          </Tooltip>
+        );
+      })}
+    </nav>
   );
 }

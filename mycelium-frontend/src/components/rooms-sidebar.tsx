@@ -50,7 +50,7 @@ import {
   type RoomFolder,
 } from "@/lib/room-folders";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
-import { RoomViewMark, RoomViewsList, type RoomViewsNav } from "@/components/room-views-nav";
+import { RoomViewIcons, RoomViewsList, type RoomViewsNav } from "@/components/room-views-nav";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { usePrincipal } from "@/components/current-user";
 import {
@@ -490,8 +490,8 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                   </button>
                   </div>
                   </RoomContextMenu>
-                  {/* Folded, the open room's view is its icon under the monogram. */}
-                  {active && roomViews && <RoomViewMark {...roomViews} />}
+                  {/* Folded, the open room's views are icons under its monogram. */}
+                  {active && roomViews && <RoomViewIcons {...roomViews} />}
                 </div>
               );
             })}

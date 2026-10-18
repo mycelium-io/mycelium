@@ -6,7 +6,25 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { RoomViewsList } from "./room-views-nav";
+import { RoomViewIcons, RoomViewsList } from "./room-views-nav";
+
+describe("<RoomViewIcons />", () => {
+  it("folds every view to an icon under the room, marks the one shown, and picks one on a click", async () => {
+    const onView = vi.fn();
+    render(<RoomViewIcons view="board" onView={onView} channelCount={null} />);
+    const nav = screen.getByRole("navigation", { name: "Room views" });
+    expect([...nav.querySelectorAll("button")].map(b => b.getAttribute("aria-label"))).toEqual([
+      "Channel",
+      "Stream",
+      "Board",
+      "Files",
+      "Schedules",
+    ]);
+    expect(screen.getByRole("button", { name: "Board" })).toHaveAttribute("aria-current", "page");
+    await userEvent.click(screen.getByRole("button", { name: "Files" }));
+    expect(onView).toHaveBeenCalledWith("files");
+  });
+});
 
 describe("<RoomViewsList />", () => {
   it("lists the room's views in order, marks the one shown, and counts the Channel", () => {
