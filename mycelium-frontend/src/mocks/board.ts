@@ -51,8 +51,16 @@ class Rows {
         this.children.set(parent, [...(this.children.get(parent) ?? []), key]);
       }
     }
+    // An engine's post (a conductor's step, an aligner's round) is a report on
+    // the thread, not what the work is doing, so it is never a latest line.
+    const engines = new Set(
+      fx.memories
+        .filter(m => m.key.startsWith("agents/") && /adapter:\s*engine/.test(typeof m.value === "string" ? m.value : ""))
+        .map(m => m.key.slice("agents/".length)),
+    );
     const said = [...fx.messages]
       .filter(m => m.episode && m.content.trim() && ["broadcast", "direct", "reply"].includes(m.message_type))
+      .filter(m => !engines.has(m.sender_handle) && !m.metadata?.conductor && m.sender_handle !== "system")
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
     for (const m of said) {
       this.latest.set(m.episode!, { sender: m.sender_handle, text: firstLine(m.content), at: today(m.created_at) });
@@ -80,7 +88,7 @@ class Rows {
 
   state(key: string): PartState {
     if (this.settled(key)) return "done";
-    if (list(this.meta(key).blocked_by).length) return "blocked";
+    if (list(this.meta(key).blocked_by).length || key.startsWith("failed/")) return "blocked";
     if (this.waitingOn(key).length) return "waiting";
     return this.holder(key) ? "working" : "open";
   }
@@ -156,8 +164,9 @@ export function mockBoard(fx: RoomFixture): BoardRead {
   const rows = new Rows(fx);
   const read: BoardRead = { epics: [], tasks: [] };
   for (const key of rows.rows.keys()) {
-    // A status row is a report, not work: read, but not listed (services/board.py).
-    if (key.startsWith("status/") || rows.settled(key) || rows.insideOpenEpic(key)) continue;
+    // Only work is listed on its own; a decision, a failure or a report is read,
+    // and shows only as a part of an epic (services/board.py).
+    if (!key.startsWith("work/") || rows.settled(key) || rows.insideOpenEpic(key)) continue;
     if (rows.children.get(key)?.length) read.epics.push(rows.epic(key));
     else read.tasks.push(rows.part(key));
   }
@@ -207,7 +216,8 @@ export function mockWaiting(fx: RoomFixture, handle: string): WaitingItem[] {
       kind: "ask",
       ...about(thread ? byEpisode.get(thread) : undefined, thread),
       sender: newest.sender_handle,
-      text: firstLine(newest.content),
+      // The line that asks this member, else the first (services/waiting.py).
+      text: firstLine(newest.content.split("\n").find(l => mention.test(l)) ?? newest.content),
       message_id: newest.id,
       at: today(newest.created_at),
       count: found.length,

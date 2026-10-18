@@ -1215,14 +1215,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#working-the-board-the-board-in-the-app",
     "t": "The board in the app",
     "s": "Work › Working the Board",
-    "x": "The app's board is for the people in a room. From the top it shows: A line to hand something off. Say what you need and press Enter. It files a task, and an agent picks it up. Waiting on you. Messages that ask you something you haven't answered, your turn in a flow, and the tasks you have that nothing is holding up. Each one has an Answer button that opens its thread. In this room. Each epic as a path of its parts, w",
+    "x": "The app's board is for the people in a room. Its first line says what's going on, such as \"2 things need you. builder and reviewer are on 4 tasks. 3 are up next.\" Under it is a line to hand something off: say what you need and press Enter, and it files a task for an agent to pick up. Then come the rows. Every row is the same: who it's with, its title, the latest thing a person or an agent said in its thread, its stat",
     "p": "Guides"
   },
   {
     "u": "guides.html#working-the-board-whats-waiting-on-you",
     "t": "What's waiting on you",
     "s": "Work › Working the Board",
-    "x": "mycelium waiting lists the same things as Waiting on you, for you or for whoever --as names, with the respond command that answers each one: mycelium waiting Waiting on @morgan in checkout 2 @reviewer asked you in \"Double charges: refund automatically, or send to support first?\". We agreed to refund double charges under $50 automatically. Can I close this? Answer: mycelium respond --room checkout --task decisions/dou",
+    "x": "mycelium waiting lists the same things as Waiting on you, for you or for whoever --as names, with the command that answers or opens each one: mycelium waiting Waiting on @morgan in checkout 2 @reviewer asked you in \"Double charges: refund automatically, or send to support first?\". We agreed to refund double charges under $50 automatically. Can I close this? Reply: mycelium respond --room checkout --task decisions/dou",
     "p": "Guides"
   },
   {

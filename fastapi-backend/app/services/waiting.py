@@ -120,7 +120,8 @@ def waiting(room: str, handle: str, now: datetime) -> list[dict[str, Any]]:
                 "kind": "ask",
                 **where(thread),
                 "sender": newest.sender,
-                "text": _first_line(text),
+                # The line that asks this member, not whoever the message names first.
+                "text": _first_line(text, about=me),
                 "message_id": str(read_id(newest)),
                 "at": newest.recorded_at or None,
                 "count": len(found),

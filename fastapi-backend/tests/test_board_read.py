@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import yaml
 
 from app.routes.board import BoardEpic, BoardPart, WaitingItem
 from app.services import board, message_format, waiting
@@ -149,6 +150,39 @@ class TestEpics:
         assert "status/launch" not in tasks
         assert tasks["work/after"]["waiting_on"] == ["status/launch"]
 
+    def test_only_work_is_listed_on_its_own(self, apple_pay):
+        # A decision is a call to make, not work to pick up: it reaches whoever
+        # it asks through what's waiting on them, not as a task in Up next.
+        row("decisions/refunds", "Refund automatically?", minute=9)
+        row("failed/emails", "Order emails go out twice", minute=10)
+        keys = [t["key"] for t in board.board(ROOM, NOW)["tasks"]]
+        assert "decisions/refunds" not in keys
+        assert "failed/emails" not in keys
+
+    def test_a_failed_part_reads_as_blocked(self):
+        row("work/e", "Epic", minute=0)
+        row("failed/iphone", "Test on a real iPhone", minute=1, **{"part-of": "work/e"})
+        [epic] = board.board(ROOM, NOW)["epics"]
+        assert epic["path"][0]["state"] == "blocked"
+
+    def test_an_engines_report_is_never_a_parts_latest_line(self, apple_pay):
+        write_memory_file(
+            get_room_dir(ROOM),
+            "agents/conductor",
+            yaml.safe_dump({"adapter": "engine", "kind": "conductor"}),
+            created_by="conductor",
+        )
+        write_transcript(
+            ROOM,
+            [
+                said(1, "builder", "Opened #504.", 1, thread("double")),
+                said(2, "conductor", "✓ review: resolved after 2 step(s).", 2, thread("double")),
+            ],
+        )
+        [epic] = board.board(ROOM, NOW)["epics"]
+        double = next(p for p in epic["path"] if p["key"] == "work/double")
+        assert (double["latest"]["sender"], double["latest"]["text"]) == ("builder", "Opened #504.")
+
     def test_other_open_tasks_stand_alone_and_settled_ones_leave(self, apple_pay):
         read = board.board(ROOM, NOW)
         assert [t["key"] for t in read["tasks"]] == ["work/old-form", "work/alerts"]
@@ -235,6 +269,17 @@ class TestWaiting:
         assert ask["text"] == "@julia and one more thing"
         assert ask["count"] == 2
         assert (ask["epic"], ask["epic_title"]) == ("work/apple-pay", "Apple Pay for everyone")
+
+    def test_an_ask_shows_the_line_that_asks_this_member(self, apple_pay, monkeypatch):
+        # The message opens by asking someone else; julia is asked further down.
+        text = "@reviewer could you review #504?\n\nThe tests pass.\n@julia ok to ship it after?"
+        monkeypatch.setattr(
+            waiting, "_records", lambda room: [said(1, "builder", text, 1, thread("double"))]
+        )
+        [ask] = waiting.waiting(ROOM, "julia", NOW)
+        assert ask["text"] == "@julia ok to ship it after?"
+        theirs = waiting.waiting(ROOM, "reviewer", NOW)[0]
+        assert (theirs["kind"], theirs["text"]) == ("ask", "@reviewer could you review #504?")
 
     def test_a_task_waits_on_its_holder_once_nothing_is_ahead_of_it(self, apple_pay):
         # The iPhone test waits on checkout, so it isn't waiting on julia yet.

@@ -36,9 +36,14 @@ PART_STATES = ("done", "blocked", "waiting", "working", "open")
 #: How much of a thread's newest message a part carries as its latest line.
 LATEST_CHARS = 280
 
-#: Rows the board lists. ``status/`` rows are reports on how things stand, not
-#: work anyone picks up, so they are read (a task can wait on one) but not listed.
-LISTED_NAMESPACES = tasks.BOARD_NAMESPACES - {"status"}
+#: Rows the board lists on their own: work someone picks up. A decision, a
+#: failure or a status report is read (a task can wait on one, and any of them
+#: can be a part of an epic), but it isn't listed as a task of its own. An open
+#: decision that asks you reaches you through what's waiting on you.
+LISTED_NAMESPACES = frozenset(assignments.ASSIGNABLE_NAMESPACES)
+
+#: Where a row has failed: it reads as blocked, since it is what stops the work.
+FAILED_NAMESPACE = "failed"
 
 PARENT_RELATION = assignments.PARENT_RELATION
 BLOCKED_FIELD = "blocked_by"
@@ -58,8 +63,18 @@ def parent_of(meta: dict) -> str | None:
     return raw.strip() if isinstance(raw, str) and raw.strip() else None
 
 
-def _first_line(text: str) -> str:
-    line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+def _first_line(text: str, about: str | None = None) -> str:
+    """``text``'s first line, cut to :data:`LATEST_CHARS`. With ``about``, the
+    first line that mentions that handle, when one does: a message that asks
+    several people reads, to each, as the line that asks them."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if about:
+        from app.services.persister import parse_mentions
+
+        me = norm_handle(about) or ""
+        mentioning = [ln for ln in lines if me in {norm_handle(m) for m in parse_mentions(ln)}]
+        lines = mentioning or lines
+    line = lines[0] if lines else ""
     if len(line) <= LATEST_CHARS:
         return line
     head = line[:LATEST_CHARS]
@@ -68,13 +83,28 @@ def _first_line(text: str) -> str:
 
 
 def latest_lines(room: str) -> dict[str, dict[str, Any]]:
-    """The newest thing said in each thread, keyed by its episode URN."""
+    """The newest thing a person or an agent said in each thread, keyed by its
+    episode URN. An engine's post (a conductor's step, an aligner's round) and
+    the hub's own are reports on the thread, not what the work is doing."""
+    from app.services import message_format
     from app.services.persister import prose_messages
+    from app.services.principals import classify_sender
+
+    kinds: dict[str, str] = {}
+
+    def reports(sender: str) -> bool:
+        if sender not in kinds:
+            kinds[sender] = (
+                "engine"
+                if sender == message_format.SYSTEM_ACTOR_ID
+                else classify_sender(room, sender)
+            )
+        return kinds[sender] == "engine"
 
     latest: dict[str, dict[str, Any]] = {}
     for message in prose_messages(room):
         text = message.content if isinstance(message.content, str) else ""
-        if not message.episode or not text.strip():
+        if not message.episode or not text.strip() or reports(message.sender_handle):
             continue
         latest[message.episode] = {
             "sender": message.sender_handle,
@@ -130,7 +160,7 @@ class _Rows:
         meta = self.rows[key][0]
         if self.settled(key):
             return "done"
-        if meta.get(BLOCKED_FIELD):
+        if meta.get(BLOCKED_FIELD) or key.split("/", 1)[0] == FAILED_NAMESPACE:
             return "blocked"
         if self.waiting_on(key):
             return "waiting"
@@ -228,9 +258,10 @@ class _Rows:
 def board(room: str, now: datetime) -> dict[str, Any]:
     """The room's open epics, and its open tasks that are part of none.
 
-    ``status/`` rows are left out (:data:`LISTED_NAMESPACES`). An epic nested in another open epic is drawn as a part of it, not again at
-    the top. A settled epic, or a settled task, leaves the board; both stay in
-    the room's memory.
+    Only work is listed on its own (:data:`LISTED_NAMESPACES`); a decision or
+    a failure shows as a part of an epic, or not at all. An epic nested in
+    another open epic is drawn as a part of it, not again at the top. A settled
+    epic, or a settled task, leaves the board; both stay in the room's memory.
     """
     rows = _Rows(room, now)
     epics: list[dict[str, Any]] = []

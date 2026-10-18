@@ -99,28 +99,41 @@ describe("<RoomBoard />", () => {
       ],
     };
     const onOpenThread = vi.fn();
-    renderWithSWR(<RoomBoard roomName="checkout" onOpenThread={onOpenThread} />);
+    const { container } = renderWithSWR(<RoomBoard roomName="checkout" onOpenThread={onOpenThread} />);
+    const row = (key: string) => container.querySelector<HTMLElement>(`[data-board-row="${key}"]`)!;
+
+    // The line that says what's going on, before any of the rows.
+    expect(await screen.findByText("1 thing needs you. builder is on 3 tasks. 1 is up next.")).toBeInTheDocument();
 
     const asks = await screen.findByRole("region", { name: "Waiting on you" });
     expect(within(asks).getByText(/refund automatically/)).toBeInTheDocument();
-    expect(within(asks).getByText("Part of Apple Pay for everyone")).toBeInTheDocument();
-    await userEvent.click(within(asks).getByRole("button", { name: "Answer" }));
+    expect(within(asks).getByText("In Fix the double charges (part of Apple Pay for everyone)")).toBeInTheDocument();
+    expect(within(asks).getByText("Asks you")).toBeInTheDocument();
+    // The row is what opens it: there is no button to press on it.
+    expect(within(asks).queryByRole("button", { name: "Answer" })).not.toBeInTheDocument();
+    await userEvent.click(within(asks).getByText(/refund automatically/));
     expect(onOpenThread).toHaveBeenCalledWith(ep("double"));
 
     const room = screen.getByRole("region", { name: "In this room" });
-    expect(within(room).getByText(/^1 of 4 parts done · led by builder$/)).toBeInTheDocument();
-    expect(within(room).getByText("These run side by side.")).toBeInTheDocument();
+    expect(within(row("work/apple-pay")).getByText("1/4")).toBeInTheDocument();
+    expect(within(row("work/apple-pay")).getByText("1 of 4 parts done")).toBeInTheDocument();
+    // Parts in path order, numbered by step: two that run side by side share one.
+    expect(within(row("work/double")).getByText("2")).toBeInTheDocument();
+    expect(within(row("work/checkout")).getByText("2")).toBeInTheDocument();
+    expect(within(row("work/iphone")).getByText("3")).toBeInTheDocument();
     // A running part says its latest line; yours says what it waits on.
-    expect(within(room).getByText("reviewer: Approved #504.")).toBeInTheDocument();
-    expect(within(room).getByText("Starts after Add Apple Pay to checkout")).toBeInTheDocument();
-    expect(within(room).getAllByText("you")).not.toHaveLength(0);
+    expect(within(row("work/double")).getByText("reviewer: Approved #504.")).toBeInTheDocument();
+    expect(within(row("work/double")).getByText("Working")).toBeInTheDocument();
+    expect(within(row("work/iphone")).getByText("Starts after Add Apple Pay to checkout")).toBeInTheDocument();
+    expect(within(row("work/iphone")).getByText("you")).toBeInTheDocument();
     // A lone task someone is on sits with the epics, and says when it went quiet.
     expect(within(room).getByText("Alert us when payments fail")).toBeInTheDocument();
-    expect(within(room).getByText("Quiet for 5 hours")).toBeInTheDocument();
+    expect(within(row("work/alerts")).getByText("quiet 5h")).toBeInTheDocument();
 
     const next = screen.getByRole("region", { name: "Up next" });
     expect(within(next).getByText("Remove the old card form")).toBeInTheDocument();
     expect(within(next).getByText("Starts after Apple Pay for everyone")).toBeInTheDocument();
+    expect(within(next).getByText("nobody yet")).toBeInTheDocument();
 
     // A person's board moves no work: nothing to claim, release or resolve.
     for (const verb of [/claim/i, /release/i, /resolve/i]) {
@@ -128,20 +141,27 @@ describe("<RoomBoard />", () => {
     }
   });
 
-  it("opens a part's thread from the path", async () => {
+  it("opens a part's thread from its row, and moves between rows with j and k", async () => {
     board = { epics: [APPLE_PAY], tasks: [] };
     waiting = { handle: "julia", items: [] };
     const onOpenThread = vi.fn();
-    renderWithSWR(<RoomBoard roomName="checkout" onOpenThread={onOpenThread} />);
-    await userEvent.click(await screen.findByRole("button", { name: /Fix the double charges/ }));
+    const { container } = renderWithSWR(<RoomBoard roomName="checkout" onOpenThread={onOpenThread} />);
+    await userEvent.click(await screen.findByText("Fix the double charges"));
     expect(onOpenThread).toHaveBeenCalledWith(ep("double"));
     expect(screen.queryByRole("region", { name: "Waiting on you" })).not.toBeInTheDocument();
+
+    await userEvent.keyboard("j");
+    expect(document.activeElement).toBe(container.querySelector('[data-board-row="work/checkout"]'));
+    await userEvent.keyboard("k");
+    expect(document.activeElement).toBe(container.querySelector('[data-board-row="work/double"]'));
   });
 
   it("says plainly when nothing is going on", async () => {
     board = { epics: [], tasks: [] };
     waiting = { handle: "julia", items: [] };
     renderWithSWR(<RoomBoard roomName="checkout" />);
-    expect(await screen.findByText("Nothing is going on in this room yet")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Nothing is going on in this room yet. Hand something off above, and an agent will pick it up."),
+    ).toBeInTheDocument();
   });
 });

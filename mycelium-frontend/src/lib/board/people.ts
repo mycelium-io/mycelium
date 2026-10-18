@@ -7,10 +7,11 @@
  * The hub works out the epics, their paths and what is waiting on whom
  * (`GET /rooms/{room}/board`, `GET /rooms/{room}/waiting`); this only says it.
  * Every label is a plain phrase or a whole sentence, and numbers stay in
- * sentences ("1 of 5 parts done").
+ * sentences ("2 things need you."). A state is a word and one color, the way
+ * the activity rail says a task's standing.
  */
 
-import type { BoardEpic, BoardPart, PartState, WaitingItem } from "@/lib/api";
+import type { BoardEpic, BoardPart, BoardRead, PartState, WaitingItem } from "@/lib/api";
 
 // Frozen in contracts/board-vocabulary.json under `epic`.
 export const PART_STATES: PartState[] = ["done", "blocked", "waiting", "working", "open"];
@@ -19,59 +20,78 @@ export const WAITING_KINDS: WaitingItem["kind"][] = ["ask", "turn", "task"];
 /** How long a thread can go without a word before a running task reads as quiet. */
 export const QUIET_AFTER_MS = 3 * 60 * 60 * 1000;
 
+export interface Standing {
+  word: string;
+  tone: string;
+}
+
+/** A part's state as a word, and the one color it wears. Finished work steps
+ *  back, so the eye goes to what's still moving. */
+export const STANDING: Record<PartState, Standing> = {
+  done: { word: "Done", tone: "var(--faint)" },
+  blocked: { word: "Blocked", tone: "var(--red)" },
+  waiting: { word: "Waiting", tone: "var(--yellow)" },
+  working: { word: "Working", tone: "var(--accent)" },
+  open: { word: "Not started", tone: "var(--muted-foreground)" },
+};
+
+/** What each kind of waiting item is, as a word in the state column. */
+export const WAITING_STANDING: Record<WaitingItem["kind"], Standing> = {
+  ask: { word: "Asks you", tone: "var(--accent)" },
+  turn: { word: "Your turn", tone: "var(--accent)" },
+  task: { word: "Yours", tone: "var(--accent)" },
+};
+
 const bare = (handle: string | null | undefined) => (handle ?? "").replace(/^@/, "");
 
-/** Who a part is with: "you", a handle, or "nobody yet". */
-export function whoHasIt(part: BoardPart, you: string): string {
+/** Who a part is with: a handle, "you", or null for nobody yet. */
+export function whoHasIt(part: BoardPart, you: string): string | null {
   const who = bare(part.holder) || bare(part.assignee);
-  if (!who) return "nobody yet";
+  if (!who) return null;
   return who === bare(you) ? "you" : who;
 }
 
-/** Every task an epic names, key to title, so a part can be named by its title. */
-export function titlesOf(epic: BoardEpic): Map<string, string> {
-  const titles = new Map<string, string>([[epic.key, epic.title]]);
-  for (const part of epic.path) titles.set(part.key, part.title);
+/** Every task the board names, key to title, so a task can be named by its title. */
+export function titlesOf(board: BoardRead): Map<string, string> {
+  const titles = new Map<string, string>();
+  for (const epic of board.epics) {
+    titles.set(epic.key, epic.title);
+    for (const part of epic.path) titles.set(part.key, part.title);
+  }
+  for (const task of board.tasks) titles.set(task.key, task.title);
   return titles;
 }
 
-/** Where a part stands, said plainly. A running part shows its latest line
- *  where it has one, which says more than any state could. */
-export function whereItStands(part: BoardPart, titles: Map<string, string> = new Map()): string {
-  switch (part.state) {
-    case "done":
-      return "Done";
-    case "blocked":
-      return part.blocked_by ? `Blocked by ${part.blocked_by}` : "Blocked";
-    case "waiting": {
-      const after = part.waiting_on.map(key => titles.get(key) ?? key);
-      return after.length ? `Starts after ${joinNames(after)}` : "Waiting";
-    }
-    case "working":
-      return part.latest ? `${part.latest.sender}: ${part.latest.text}` : "Being worked on";
-    default:
-      return "Ready for someone to pick up";
+/** What a task waits on: one by its title, more than one as a count. */
+export function startsAfter(part: BoardPart, titles: Map<string, string>): string {
+  const after = part.waiting_on;
+  if (after.length === 0) return "";
+  if (after.length === 1) return `Starts after ${titles.get(after[0]) ?? after[0]}`;
+  return `Starts after ${after.length} other tasks`;
+}
+
+/** The one human line a row carries: the latest thing said in its thread,
+ *  else why it can't go on. Never an engine's report: the hub leaves those
+ *  out of `latest`. Empty when there is nothing worth saying. */
+export function humanLine(part: BoardPart, titles: Map<string, string> = new Map()): string {
+  if (part.latest) return `${part.latest.sender}: ${part.latest.text}`;
+  if (part.state === "blocked") {
+    if (part.blocked_by) return `Blocked by ${part.blocked_by}`;
+    return part.key.startsWith("failed/") ? "It failed and needs a fix" : "";
   }
+  if (part.state === "waiting") return startsAfter(part, titles);
+  return "";
 }
 
-/** "1 of 5 parts done". */
-export function progressOf(epic: BoardEpic): string {
-  return `${epic.done} of ${epic.total} ${epic.total === 1 ? "part" : "parts"} done`;
+/** When a task last moved: its latest line, else its last write. */
+export function lastMoved(part: BoardPart): number {
+  return Date.parse(part.latest?.at ?? part.updated_at ?? "") || 0;
 }
 
-/** "Quiet for 3 hours" when nothing has been said in a running task's thread
- *  for a while, else null. A task nobody is on isn't quiet, it's waiting. */
-export function quietFor(parts: BoardPart[], now: number): string | null {
-  const running = parts.filter(p => p.state === "working");
-  if (running.length === 0 || !now) return null;
-  const last = Math.max(
-    ...running.map(p => Date.parse(p.latest?.at ?? p.updated_at ?? "") || 0),
-  );
-  if (!last || now - last < QUIET_AFTER_MS) return null;
-  const hours = Math.floor((now - last) / 3_600_000);
-  if (hours < 24) return `Quiet for ${hours} ${hours === 1 ? "hour" : "hours"}`;
-  const days = Math.floor(hours / 24);
-  return `Quiet for ${days} ${days === 1 ? "day" : "days"}`;
+/** True when a running task has had nothing said in its thread for a while. */
+export function isQuiet(part: BoardPart, now: number): boolean {
+  const at = lastMoved(part);
+  return part.state === "working" && !!at && !!now && now - at >= QUIET_AFTER_MS;
 }
 
 /** The standalone tasks split the way the board shows them: the ones someone
@@ -80,6 +100,33 @@ export function splitTasks(tasks: BoardPart[]): { running: BoardPart[]; next: Bo
   const running = tasks.filter(t => t.state === "working" || t.state === "blocked");
   const next = tasks.filter(t => t.state === "open" || t.state === "waiting");
   return { running, next };
+}
+
+/** The line that opens the board: what a person came to find out, in sentences.
+ *  "2 things need you. builder and reviewer are on 4 tasks. 3 are up next." */
+export function summary(board: BoardRead, waiting: WaitingItem[], you = ""): string {
+  const { running, next } = splitTasks(board.tasks);
+  const working = [...board.epics.flatMap(e => e.path), ...running].filter(p => p.state === "working");
+  const holders = [...new Set(working.map(p => bare(p.holder)).filter(Boolean))];
+  // You last, by name: "builder, reviewer and you".
+  const who = [...holders.filter(h => h !== bare(you)), ...(holders.includes(bare(you)) ? ["you"] : [])];
+  const said: string[] = [];
+  said.push(
+    waiting.length === 0
+      ? "Nothing needs you."
+      : `${waiting.length} ${waiting.length === 1 ? "thing needs" : "things need"} you.`,
+  );
+  if (working.length > 0) {
+    const names = who.length > 3 ? `${who.length} members` : joinNames(who);
+    said.push(`${names} ${who.length === 1 ? "is" : "are"} on ${working.length} ${working.length === 1 ? "task" : "tasks"}.`);
+  }
+  if (next.length > 0) said.push(`${next.length} ${next.length === 1 ? "is" : "are"} up next.`);
+  return said.join(" ");
+}
+
+/** An epic's progress, as the rails count: "1/5". */
+export function progressOf(epic: BoardEpic): string {
+  return `${epic.done}/${epic.total}`;
 }
 
 /** What a waiting item says on its row. An ask is its own words, less the
@@ -91,7 +138,19 @@ export function waitingText(item: WaitingItem, you = ""): string {
     return you && text !== item.text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
   }
   if (item.kind === "turn") return `It's your turn in ${item.title ?? "a flow"}`;
-  return `${item.title ?? "A task"} is yours to do`;
+  return item.title ?? "A task";
+}
+
+/** Where a waiting item is: its task, and the epic that task is part of. */
+export function waitingWhere(item: WaitingItem): string {
+  if (item.kind === "turn") {
+    return item.epic_title ? `Part of ${item.epic_title}` : `${item.sender ?? "A flow"} is waiting on you`;
+  }
+  if (item.kind === "task") {
+    return item.epic_title ? `Part of ${item.epic_title}` : (item.text ?? "");
+  }
+  if (!item.title) return "In the room";
+  return item.epic_title ? `In ${item.title} (part of ${item.epic_title})` : `In ${item.title}`;
 }
 
 function escape(text: string): string {

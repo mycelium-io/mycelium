@@ -3,29 +3,36 @@
 
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { Check, ChevronDown, ChevronRight, ListChecks } from "lucide-react";
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/components/current-user";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { EmptyState } from "@/components/empty-state";
+import { Kbd } from "@/components/ui/kbd";
 import { Monogram } from "@/components/ui/monogram";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
+import { shortAge } from "@/components/activity-rail";
 import { NowProvider, useNow } from "@/lib/relative-time";
-import { useRoomBoard, useRoomRoster, useRoomWaiting } from "@/lib/room-data";
+import { useRoomAgents, useRoomBoard, useRoomWaiting } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { noticeOf, pingOf } from "@/lib/threads";
 import type { BoardEpic, BoardPart, WaitingItem } from "@/lib/api";
 import type { ParsedCapture } from "@/lib/board/capture";
 import { fileCapture } from "@/lib/board/file-capture";
 import {
+  STANDING,
+  WAITING_STANDING,
+  humanLine,
+  isQuiet,
+  lastMoved,
   progressOf,
-  quietFor,
   splitTasks,
+  summary,
   titlesOf,
   waitingText,
-  whereItStands,
+  waitingWhere,
   whoHasIt,
+  type Standing,
 } from "@/lib/board/people";
 import { BoardCapture } from "./board-capture";
 
@@ -40,24 +47,28 @@ interface Props {
 /**
  * The board, for people.
  *
- * From the top: a line to hand something off, what is waiting on you, what is
- * going on in the room (each epic as a path of its parts, then the tasks
- * someone is on that stand alone), and what is up next. The hub works all of
- * it out (`GET /rooms/{room}/board` and `/waiting`); this draws it.
+ * It reads like the app's rails, not a dashboard: a line that says what is
+ * going on, a quiet line to hand something off, then the rows, edge to edge.
+ * What is waiting on you comes first, then what is going on in the room (each
+ * epic as a row with its parts indented under it, then the tasks someone is on
+ * that stand alone), then what is up next. Every row is the same shape: who,
+ * the title, one human line, its state as a dot and a word, and how long ago it
+ * moved. A row opens its thread; j and k move between rows.
  *
- * There are no row actions here. Claiming, releasing and resolving are how
- * agents move work, and they do it from the CLI; a person hands work off and
- * answers what is asked of them.
+ * The hub works all of it out (`GET /rooms/{room}/board` and `/waiting`). There
+ * are no row actions: claiming, releasing and resolving are how agents move
+ * work, from the CLI. A person hands work off and answers what they're asked.
  */
 export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
   const { board, loading, refresh: refreshBoard } = useRoomBoard(roomName);
   const { principal } = useCurrentUser();
   const you = principal.replace(/^@/, "");
   const { items: waiting, refresh: refreshWaiting } = useRoomWaiting(roomName, you);
-  const { agents } = useRoomRoster(roomName);
+  const { agents } = useRoomAgents(roomName);
   const agentHandles = useMemo(() => new Set(agents.map(a => a.handle)), [agents]);
   const [swarmTask, setSwarmTask] = useState<string | null>(null);
   const [filing, setFiling] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   // The board moves when a task is filed, taken or finished (a notice), when a
   // thread gets a new line (a ping), or when a row is rewritten.
@@ -103,88 +114,87 @@ export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
     [onOpenThread],
   );
 
-  // What a waiting task waits on is named by its title wherever the board has one.
-  const titles = useMemo(() => {
-    const named = new Map<string, string>();
-    for (const epic of board.epics) for (const [key, title] of titlesOf(epic)) named.set(key, title);
-    for (const task of board.tasks) named.set(task.key, task.title);
-    return named;
-  }, [board]);
+  // j and k move between rows, the way the rest of the app moves through a list;
+  // Enter opens the row, since every row is a button.
+  const move = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "j" && e.key !== "k") return;
+    if ((e.target as HTMLElement).tagName === "INPUT") return;
+    const rows = Array.from(listRef.current?.querySelectorAll<HTMLElement>("[data-board-row]") ?? []);
+    if (rows.length === 0) return;
+    e.preventDefault();
+    const at = rows.indexOf(document.activeElement as HTMLElement);
+    const next = e.key === "j" ? Math.min(rows.length - 1, at + 1) : Math.max(0, at - 1);
+    rows[at === -1 ? 0 : next].focus();
+  }, []);
+
+  const titles = useMemo(() => titlesOf(board), [board]);
   const { running, next } = splitTasks(board.tasks);
-  const inRoom = board.epics.length + running.length;
-  const empty = !loading && waiting.length === 0 && inRoom === 0 && next.length === 0;
+  const quietRoom = !loading && waiting.length === 0 && board.epics.length === 0 && board.tasks.length === 0;
 
   return (
     <div data-tour="board" className="@container flex h-full min-h-0 flex-col bg-bg">
-      <ScrollArea className="h-full">
+      <div className="flex h-7 flex-shrink-0 items-center gap-3 border-b border-border bg-surface px-3 text-micro text-muted-foreground sm:px-4">
+        <span className="min-w-0 truncate" role="status">
+          {filing ?? (loading ? "" : summary(board, waiting, you))}
+        </span>
+        <span className="ml-auto hidden flex-shrink-0 items-center gap-1 text-faint @[36rem]:flex">
+          <Kbd size="xs" tone="muted">j</Kbd>
+          <Kbd size="xs" tone="muted">k</Kbd>
+          to move
+          <Kbd size="xs" tone="muted">↵</Kbd>
+          to open
+        </span>
+      </div>
+      <BoardCapture
+        actor={you || "you"}
+        now={new Date().toISOString()}
+        placeholder="Hand something off to the room…"
+        onCapture={capture}
+        onSwarm={text => setSwarmTask(text)}
+      />
+
+      <ScrollArea className="min-h-0 flex-1">
         <NowProvider>
-          <div className="mx-auto flex w-full max-w-5xl flex-col gap-7 px-4 py-5 sm:px-6">
-            <div>
-              <BoardCapture
-                actor={you || "you"}
-                now={new Date().toISOString()}
-                placeholder="Tell the room what you need and an agent will pick it up…"
-                onCapture={capture}
-                onSwarm={text => setSwarmTask(text)}
-              />
-              {filing && <p className="mt-1.5 px-1 text-micro text-muted-foreground" role="status">{filing}</p>}
-            </div>
+          <div ref={listRef} onKeyDown={move} className="pb-4">
+            {quietRoom && (
+              <p className="px-3 py-3 text-label text-muted-foreground sm:px-4">
+                Nothing is going on in this room yet. Hand something off above, and an agent will pick it up.
+              </p>
+            )}
 
-            {empty ? (
-              <EmptyState
-                icon={ListChecks}
-                title="Nothing is going on in this room yet"
-                description="Tell the room what you need above, and an agent will pick it up."
-              />
-            ) : (
-              <>
-                {waiting.length > 0 && (
-                  <Section title="Waiting on you" count={waiting.length}>
-                    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-paper">
-                      {waiting.map(item => (
-                        <WaitingRow
-                          key={`${item.kind}:${item.episode ?? item.message_id ?? item.key}`}
-                          item={item}
-                          you={you}
-                          agent={!!item.sender && agentHandles.has(item.sender)}
-                          onAnswer={() =>
-                            item.episode
-                              ? open(item.episode)
-                              : item.message_id && onOpenMessage?.(item.message_id)
-                          }
-                        />
-                      ))}
-                    </ul>
-                  </Section>
-                )}
+            {waiting.length > 0 && (
+              <Section label="Waiting on you" count={waiting.length}>
+                {waiting.map(item => (
+                  <WaitingRow
+                    key={`${item.kind}:${item.episode ?? item.message_id ?? item.key}`}
+                    item={item}
+                    you={you}
+                    agent={!!item.sender && agentHandles.has(item.sender)}
+                    onOpen={() =>
+                      item.episode ? open(item.episode) : item.message_id && onOpenMessage?.(item.message_id)
+                    }
+                  />
+                ))}
+              </Section>
+            )}
 
-                {inRoom > 0 && (
-                  <Section title="In this room" count={inRoom}>
-                    <div className="flex flex-col gap-3">
-                      {board.epics.map(epic => (
-                        <EpicPath key={epic.key} epic={epic} you={you} onOpen={open} />
-                      ))}
-                      {running.length > 0 && (
-                        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-paper">
-                          {running.map(task => (
-                            <RunningTask key={task.key} task={task} you={you} onOpen={open} />
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </Section>
-                )}
+            {(board.epics.length > 0 || running.length > 0) && (
+              <Section label="In this room">
+                {board.epics.map(epic => (
+                  <EpicRows key={epic.key} epic={epic} you={you} titles={titles} agents={agentHandles} onOpen={open} />
+                ))}
+                {running.map(task => (
+                  <TaskRow key={task.key} task={task} you={you} titles={titles} agents={agentHandles} onOpen={open} />
+                ))}
+              </Section>
+            )}
 
-                {next.length > 0 && (
-                  <Section title="Up next" count={next.length}>
-                    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-paper">
-                      {next.map(task => (
-                        <NextTask key={task.key} task={task} you={you} titles={titles} onOpen={open} />
-                      ))}
-                    </ul>
-                  </Section>
-                )}
-              </>
+            {next.length > 0 && (
+              <Section label="Up next" count={next.length}>
+                {next.map(task => (
+                  <TaskRow key={task.key} task={task} you={you} titles={titles} agents={agentHandles} onOpen={open} />
+                ))}
+              </Section>
             )}
           </div>
         </NowProvider>
@@ -198,224 +208,268 @@ export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
   );
 }
 
-function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+/** A section, labelled the way the rails label theirs, and folding to its label. */
+function Section({ label, count, children }: { label: string; count?: number; children: ReactNode }) {
+  const [folded, setFolded] = useState(false);
   return (
-    <section aria-label={title} className="flex flex-col gap-2.5">
-      <h2 className="flex items-baseline gap-2 text-ui font-medium text-text">
-        {title}
-        <span className="text-label text-muted-foreground">{count}</span>
-      </h2>
-      {children}
+    <section aria-label={label} className="border-b border-border last:border-b-0">
+      <button
+        type="button"
+        onClick={() => setFolded(f => !f)}
+        aria-expanded={!folded}
+        className="group flex h-7 w-full items-end gap-1.5 px-3 pb-1 text-micro font-medium text-faint sm:px-4"
+      >
+        {folded ? <ChevronRight className="size-3 self-center" /> : <ChevronDown className="size-3 self-center" />}
+        <span className="group-hover:text-muted-foreground">{label}</span>
+        {count !== undefined && <span className="font-normal tabular">{count}</span>}
+      </button>
+      {!folded && <ul className="flex flex-col pb-1">{children}</ul>}
     </section>
   );
+}
+
+function Dot({ tone }: { tone: string }) {
+  return <span aria-hidden className="inline-block size-1.5 flex-shrink-0 rounded-full" style={{ background: tone }} />;
+}
+
+/**
+ * The one row shape: who, the title, one human line, the state as a dot and a
+ * word, and how long ago it moved. The columns line up down the whole board,
+ * and a narrow pane keeps the title, the state's dot and the age.
+ */
+function Row({
+  who,
+  avatar,
+  agent,
+  title,
+  line,
+  standing,
+  age,
+  ageTitle,
+  quiet,
+  indent = 0,
+  lead,
+  rowKey,
+  dim,
+  onOpen,
+}: {
+  /** Who it's with, as the row says it ("you", a handle, or null for nobody). */
+  who: string | null;
+  /** The handle whose avatar the row wears, when `who` is "you". */
+  avatar?: string;
+  agent: boolean;
+  title: string;
+  line: string;
+  standing: Standing;
+  age: string;
+  ageTitle?: string;
+  quiet?: boolean;
+  indent?: number;
+  lead?: ReactNode;
+  rowKey?: string;
+  dim?: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        data-board-row={rowKey}
+        onClick={onOpen}
+        title={line ? `${title}\n${line}` : title}
+        className="flex h-[26px] w-full items-center gap-2 px-3 text-left text-micro outline-none transition-colors hover:bg-hairline focus-visible:bg-hairline sm:px-4"
+        style={indent ? { paddingLeft: `calc(${indent} * 1.25rem + 0.75rem)` } : undefined}
+      >
+        {lead ?? <span className="w-3 flex-shrink-0" />}
+        <span className="flex w-4 flex-shrink-0 justify-center">
+          {who ? (
+            <Monogram handle={avatar ?? who} className="size-4 text-[8px]" kind={agent ? "agent" : "person"} />
+          ) : (
+            <span aria-hidden className="size-3.5 rounded-full border border-dashed border-border2" />
+          )}
+        </span>
+        <span className="grid min-w-0 flex-1 items-center gap-3 @[36rem]:grid-cols-[minmax(0,min(50%,26rem))_minmax(0,1fr)]">
+          <span className={cn("min-w-0 truncate text-label", dim ? "text-muted-foreground" : "text-text")}>{title}</span>
+          {line && <span className="hidden min-w-0 truncate text-faint @[36rem]:inline">{line}</span>}
+        </span>
+        <span className="flex flex-shrink-0 items-center gap-1.5 @[30rem]:w-[5.5rem]" style={{ color: standing.tone }}>
+          <Dot tone={standing.tone} />
+          <span className="hidden truncate @[30rem]:inline">{standing.word}</span>
+        </span>
+        <span className="hidden w-20 flex-shrink-0 truncate text-muted-foreground @[30rem]:inline">
+          {who ?? "nobody yet"}
+        </span>
+        <span
+          className={cn("tabular w-14 flex-shrink-0 text-right", quiet ? "text-yellow" : "text-faint")}
+          title={ageTitle}
+        >
+          {age}
+        </span>
+      </button>
+    </li>
+  );
+}
+
+/** How long ago a task moved, and whether it has gone quiet. */
+function useAge(part: BoardPart): { age: string; ageTitle?: string; quiet: boolean } {
+  const now = useNow();
+  const at = lastMoved(part);
+  const quiet = isQuiet(part, now);
+  const age = shortAge(at, now);
+  return {
+    age: quiet ? `quiet ${age}` : age,
+    ageTitle: quiet ? `Nothing said in its thread for ${age}` : undefined,
+    quiet,
+  };
 }
 
 function WaitingRow({
   item,
   you,
   agent,
-  onAnswer,
+  onOpen,
 }: {
   item: WaitingItem;
   you: string;
   agent: boolean;
-  onAnswer: () => void;
+  onOpen: () => void;
 }) {
-  const text = waitingText(item, you);
-  return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      {item.sender ? (
-        <Monogram handle={item.sender} className="size-6 shrink-0 text-[10px]" kind={agent ? "agent" : "person"} />
-      ) : (
-        <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-full border border-border">
-          <span className="size-2 rounded-full bg-accent" />
-        </span>
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-label text-text" title={text}>
-          {text}
-        </p>
-        {item.kind === "ask" && item.count > 1 && (
-          <p className="text-micro text-muted-foreground">
-            {item.sender} asked {item.count} times in this task.
-          </p>
-        )}
-      </div>
-      {item.epic_title && (
-        <span className="hidden shrink-0 truncate text-micro text-muted-foreground @xl:block">
-          Part of {item.epic_title}
-        </span>
-      )}
-      <button
-        type="button"
-        onClick={onAnswer}
-        className="shrink-0 rounded-md border border-border bg-bg px-3 py-1 text-label text-text transition-colors hover:bg-hairline"
-      >
-        Answer
-      </button>
-    </li>
-  );
-}
-
-/** A part's mark on the path: done, someone on it, or nobody yet. */
-function Mark({ part, yours }: { part: BoardPart; yours: boolean }) {
-  if (part.state === "done") {
-    return (
-      <span className="grid size-6 place-items-center rounded-full bg-green text-bg">
-        <Check className="size-3.5" strokeWidth={3} />
-      </span>
-    );
-  }
-  const ring =
-    part.state === "blocked"
-      ? "border-red"
-      : part.state === "working"
-        ? yours
-          ? "border-accent"
-          : "border-text"
-        : "border-border";
-  return (
-    <span className={cn("grid size-6 place-items-center rounded-full border-2 bg-bg", ring)}>
-      {part.state === "working" && <span className={cn("size-2 rounded-full", yours ? "bg-accent" : "bg-text")} />}
-    </span>
-  );
-}
-
-function EpicPath({ epic, you, onOpen }: { epic: BoardEpic; you: string; onOpen: (episode?: string | null) => void }) {
-  const [open, setOpen] = useState(true);
   const now = useNow();
-  const titles = useMemo(() => titlesOf(epic), [epic]);
-  const parts = useMemo(() => new Map(epic.path.map(p => [p.key, p])), [epic.path]);
-  const quiet = quietFor(epic.path, now);
-  const Chevron = open ? ChevronDown : ChevronRight;
   return (
-    <article className="overflow-hidden rounded-lg border border-border bg-paper">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-3">
-        <button
-          type="button"
-          onClick={() => setOpen(o => !o)}
-          aria-expanded={open}
-          aria-label={open ? `Hide the parts of ${epic.title}` : `Show the parts of ${epic.title}`}
-          className="-ml-1 rounded p-0.5 text-muted-foreground hover:bg-hairline hover:text-text"
-        >
-          <Chevron className="size-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => onOpen(epic.episode)}
-          className="min-w-0 truncate text-left text-body font-medium text-text hover:underline"
-        >
-          {epic.title}
-        </button>
-        <span className="text-label text-muted-foreground">
-          {progressOf(epic)}
-          {epic.lead && <> · led by {epic.lead === you ? "you" : epic.lead}</>}
-        </span>
-        {quiet && <span className="ml-auto text-label text-yellow">{quiet}</span>}
-      </header>
-      {open && (
-        <ol aria-label={`The parts of ${epic.title}, in order`} className="flex flex-col gap-4 px-4 py-4 @3xl:flex-row @3xl:gap-0">
-          {epic.steps.map((step, n) => (
-            <li key={step.join("+")} className="relative flex flex-1 flex-col gap-4 @3xl:min-w-0 @3xl:pr-4">
-              {/* The path's line runs through each step's first mark. */}
-              {n < epic.steps.length - 1 && (
-                <span aria-hidden className="absolute left-3 top-3 hidden h-px w-full bg-border @3xl:block" />
-              )}
-              {step.length > 1 && (
-                <span className="text-micro text-muted-foreground @3xl:order-last">These run side by side.</span>
-              )}
-              {step.map(key => {
-                const part = parts.get(key);
-                if (!part) return null;
-                const who = whoHasIt(part, you);
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    data-board-row={key}
-                    onClick={() => onOpen(part.episode)}
-                    className="relative z-10 flex gap-3 rounded-md text-left @3xl:flex-col @3xl:gap-2"
-                  >
-                    <span className="shrink-0 pt-0.5">
-                      <Mark part={part} yours={who === "you"} />
-                    </span>
-                    <span className="flex min-w-0 flex-col gap-0.5">
-                      <span className={cn("text-label font-medium", part.state === "open" || part.state === "waiting" ? "text-muted-foreground" : "text-text")}>
-                        {part.title}
-                      </span>
-                      <span className="text-micro text-muted-foreground">{who}</span>
-                      <span
-                        className={cn("line-clamp-2 text-micro", who === "you" && part.state !== "done" ? "text-accent" : "text-muted-foreground")}
-                        title={whereItStands(part, titles)}
-                      >
-                        {whereItStands(part, titles)}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </li>
-          ))}
-        </ol>
-      )}
-    </article>
+    <Row
+      // A task that's yours is with you; an ask or a turn is from whoever asked.
+      who={item.kind === "task" ? "you" : (item.sender ?? null)}
+      avatar={item.kind === "task" ? you : undefined}
+      agent={item.kind !== "task" && agent}
+      title={waitingText(item, you)}
+      line={waitingWhere(item)}
+      standing={WAITING_STANDING[item.kind]}
+      age={item.at ? shortAge(Date.parse(item.at), now) : ""}
+      // Its own key: the task it's in may also have a row of its own below.
+      rowKey={`waiting:${item.kind}:${item.key ?? item.message_id ?? ""}`}
+      onOpen={onOpen}
+    />
   );
 }
 
-function RunningTask({ task, you, onOpen }: { task: BoardPart; you: string; onOpen: (episode?: string | null) => void }) {
-  const now = useNow();
-  const who = whoHasIt(task, you);
-  const quiet = quietFor([task], now);
-  return (
-    <li>
-      <button
-        type="button"
-        data-board-row={task.key}
-        onClick={() => onOpen(task.episode)}
-        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-hairline"
-      >
-        <span className="shrink-0 pt-0.5">
-          <Mark part={task} yours={who === "you"} />
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-label font-medium text-text">{task.title}</span>
-          <span className="truncate text-micro text-muted-foreground">{whereItStands(task)}</span>
-        </span>
-        <span className="flex shrink-0 flex-col items-end gap-0.5 text-micro">
-          <span className="text-muted-foreground">{who}</span>
-          {quiet && <span className="text-yellow">{quiet}</span>}
-        </span>
-      </button>
-    </li>
-  );
-}
-
-function NextTask({
+function TaskRow({
   task,
   you,
   titles,
+  agents,
+  indent,
+  lead,
   onOpen,
 }: {
   task: BoardPart;
   you: string;
   titles: Map<string, string>;
+  agents: Set<string>;
+  indent?: number;
+  lead?: ReactNode;
   onOpen: (episode?: string | null) => void;
 }) {
   const who = whoHasIt(task, you);
+  const { age, ageTitle, quiet } = useAge(task);
   return (
-    <li>
-      <button
-        type="button"
-        data-board-row={task.key}
-        onClick={() => onOpen(task.episode)}
-        className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 py-3 text-left transition-colors hover:bg-hairline"
-      >
-        <span className="min-w-0 text-label text-text">{task.title}</span>
-        {task.state === "waiting" && (
-          <span className="text-micro text-muted-foreground">{whereItStands(task, titles)}</span>
+    <Row
+      who={who}
+      avatar={who === "you" ? you : undefined}
+      agent={!!who && agents.has(who)}
+      title={task.title}
+      line={humanLine(task, titles)}
+      standing={STANDING[task.state]}
+      age={age}
+      ageTitle={ageTitle}
+      quiet={quiet}
+      indent={indent}
+      lead={lead}
+      rowKey={task.key}
+      dim={task.state === "done"}
+      onOpen={() => onOpen(task.episode)}
+    />
+  );
+}
+
+/**
+ * An epic as a tree: its own row, with how many of its parts are done, and its
+ * parts indented under it in path order. A part's number is its step, so parts
+ * that run side by side share one, the way `mycelium board show` numbers them.
+ */
+function EpicRows({
+  epic,
+  you,
+  titles,
+  agents,
+  onOpen,
+}: {
+  epic: BoardEpic;
+  you: string;
+  titles: Map<string, string>;
+  agents: Set<string>;
+  onOpen: (episode?: string | null) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const now = useNow();
+  const parts = useMemo(() => new Map(epic.path.map(p => [p.key, p])), [epic.path]);
+  const newest = Math.max(0, ...epic.path.map(lastMoved), lastMoved(epic));
+  const quiet = epic.path.some(p => isQuiet(p, now)) && !epic.path.some(p => p.state === "working" && !isQuiet(p, now));
+  const lead = epic.lead === you ? "you" : (epic.lead ?? null);
+  const Chevron = open ? ChevronDown : ChevronRight;
+  return (
+    <>
+      <Row
+        who={lead}
+        avatar={lead === "you" ? you : undefined}
+        agent={!!lead && agents.has(lead)}
+        title={epic.title}
+        line={`${epic.done} of ${epic.total} parts done`}
+        standing={{ word: progressOf(epic), tone: "var(--muted-foreground)" }}
+        age={quiet ? `quiet ${shortAge(newest, now)}` : shortAge(newest, now)}
+        quiet={quiet}
+        rowKey={epic.key}
+        lead={
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={open ? `Hide the parts of ${epic.title}` : `Show the parts of ${epic.title}`}
+            onClick={e => {
+              e.stopPropagation();
+              setOpen(o => !o);
+            }}
+            className="flex w-3 flex-shrink-0 justify-center text-faint hover:text-text"
+          >
+            <Chevron className="size-3" />
+          </span>
+        }
+        onOpen={() => onOpen(epic.episode)}
+      />
+      {open &&
+        epic.steps.flatMap((step, n) =>
+          step.map(key => {
+            const part = parts.get(key);
+            if (!part) return null;
+            return (
+              <TaskRow
+                key={key}
+                task={part}
+                you={you}
+                titles={titles}
+                agents={agents}
+                indent={1}
+                lead={
+                  <span
+                    className="w-3 flex-shrink-0 text-right font-mono text-faint"
+                    title={step.length > 1 ? "Runs side by side with the others in this step" : undefined}
+                  >
+                    {n + 1}
+                  </span>
+                }
+                onOpen={onOpen}
+              />
+            );
+          }),
         )}
-        <span className="ml-auto text-micro text-muted-foreground">{who}</span>
-      </button>
-    </li>
+    </>
   );
 }

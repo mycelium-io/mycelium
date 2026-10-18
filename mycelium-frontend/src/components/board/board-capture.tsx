@@ -4,9 +4,9 @@
 "use client";
 
 import { forwardRef, useMemo, useState } from "react";
-import { CornerDownLeft, Plus, UsersRound } from "lucide-react";
+import { Plus } from "lucide-react";
+import { Kbd } from "@/components/ui/kbd";
 import { parseCapture, type ParsedCapture } from "@/lib/board/capture";
-import { cn } from "@/lib/utils";
 
 interface Props {
   actor: string;
@@ -39,10 +39,10 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
   };
 
   return (
-    <div>
-      <div className="flex h-11 items-center gap-2 rounded-lg border border-border bg-paper px-3 transition-colors focus-within:border-accent">
+    <div className="flex-shrink-0 border-b border-border px-3 sm:px-4">
+      <div className="flex h-8 items-center gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Plus className="size-4 shrink-0 text-faint" strokeWidth={2} />
+          <Plus className="size-3.5 shrink-0 text-faint" strokeWidth={2} />
           <input
             ref={ref}
             value={text}
@@ -55,42 +55,38 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
             placeholder={placeholder}
             title="@who · !urgent · #tag · #502 for an issue · end with ? for a decision"
             aria-label="New task"
-            className="min-w-0 flex-1 bg-transparent text-body text-text outline-none placeholder:text-faint"
+            className="min-w-0 flex-1 bg-transparent text-label text-text outline-none placeholder:text-faint"
           />
         </div>
-        {/* One control, two outcomes: a row someone claims later, or a team
-            on it now. Filing is the everyday one; a swarm costs model turns,
-            so it asks first. */}
-        <div role="group" aria-label="Add the task" className="flex shrink-0 items-center gap-1 text-micro">
-          <button
-            type="button"
-            onClick={file}
-            disabled={!armed}
-            title="Add it to the board for someone to pick up (Enter)"
-            className={cn(
-              "flex h-6 items-center gap-1 rounded px-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40",
-              armed ? "text-accent hover:bg-hairline" : "text-muted-foreground",
-            )}
-          >
-            <CornerDownLeft className="size-3" />
-            File
-          </button>
-          {onSwarm && (
+        {/* One line, two outcomes: a row someone picks up later, or a team on
+            it now. The keys show once there is something to send, and each
+            is also a click. A swarm costs model turns, so it asks first. */}
+        {armed && (
+          <div role="group" aria-label="Send it" className="flex shrink-0 items-center gap-2 text-micro text-faint">
             <button
               type="button"
-              onClick={() => onSwarm(text.trim())}
-              title="Have a team of agents work on it now (⌘Enter)"
-              className="flex h-6 items-center gap-1 rounded px-1.5 text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+              onClick={file}
+              title="Add it to the board for someone to pick up"
+              className="flex items-center gap-1 rounded px-1 transition-colors hover:bg-hairline hover:text-text"
             >
-              <UsersRound className="size-3" />
-              Swarm
+              <Kbd size="xs" tone="muted">↵</Kbd> to file
             </button>
-          )}
-        </div>
+            {onSwarm && (
+              <button
+                type="button"
+                onClick={() => onSwarm(text.trim())}
+                title="Have a team of agents work on it now"
+                className="flex items-center gap-1 rounded px-1 transition-colors hover:bg-hairline hover:text-text"
+              >
+                <Kbd size="xs" tone="muted">⌘↵</Kbd> for a team
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {armed && parsed.hints.length > 0 && (
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 px-1">
+        <div className="flex flex-wrap items-center gap-1.5 pb-1.5">
           <span className="font-mono text-micro text-faint">parsed →</span>
           {parsed.hints.map(hint => (
             <span

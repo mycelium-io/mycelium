@@ -981,10 +981,11 @@ const checkoutBoardRows: MockMemory[] = [
     meta: {
       "part-of": "work/apple-pay-for-everyone",
       "depends-on": ["work/add-apple-pay"],
-      status: "open",
-      kind: "action",
-      assignee: "@operator",
+      status: "blocked",
+      kind: "blocked",
+      owner: "@operator",
       priority: "high",
+      blocked_by: ["#502"],
       issue: "#502",
     },
     content_text: "Can't test on a real phone until the Apple Pay PR is on staging (#502).",
@@ -1271,6 +1272,10 @@ const checkout: RoomFixture = {
     { id: "t2", sender_handle: "reviewer", message_type: "broadcast", content: "don't switch it on until i've placed test orders on a real phone. i'll post the results here.", created_at: iso(21), episode: LAUNCH_THREAD },
     { id: "t3", sender_handle: "builder", message_type: "broadcast", content: "sounds good, waiting on you.", created_at: iso(20), episode: LAUNCH_THREAD },
     { id: "t4", sender_handle: "builder", message_type: "broadcast", content: "reviewer approved #502, so i'm putting it on staging for the test orders.", created_at: iso(19), episode: LAUNCH_THREAD },
+    // The parts' own threads, so each running part has a latest line.
+    { id: "p1", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is up, with the button behind the switch.", created_at: iso(26), episode: APPLE_PAY_THREAD },
+    { id: "p2", sender_handle: "reviewer", message_type: "broadcast", content: "approved #502. ci is green, so it can go to staging.", created_at: iso(18), episode: APPLE_PAY_THREAD },
+    { id: "p3", sender_handle: "reviewer", message_type: "broadcast", content: "reading #504 now. the refund path looks right, checking the retry case.", created_at: iso(9), episode: checkoutEpisode("c5e7a9") },
     // The old card form's own thread: a leftover chased down.
     { id: "r1", sender_handle: "builder", message_type: "broadcast", content: "12 orders last week still used the old card form after stripe went live. all from one cached page.", created_at: iso(16), episode: OLD_FORM_THREAD },
     { id: "r2", sender_handle: "builder", message_type: "broadcast", content: "cleared the cache. every order today went through stripe.", created_at: iso(15), episode: OLD_FORM_THREAD },

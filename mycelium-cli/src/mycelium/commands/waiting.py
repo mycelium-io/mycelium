@@ -64,7 +64,10 @@ def waiting(ctx: typer.Context, room: str, handle: str) -> None:
     console.print(heading)
     for item in items:
         console.print(waiting_line(item))
-        task = f" --task {item['key']}" if item.get("key") else ""
-        console.print(
-            Text(f'    Answer: mycelium respond --room {room}{task} --body "…"', style="dim")
-        )
+        # A question or a turn wants a reply; a task that's yours wants opening.
+        if item.get("kind") == "task" and item.get("key"):
+            how = f"Open: mycelium board messages {item['key']} --room {room}"
+        else:
+            task = f" --task {item['key']}" if item.get("key") else ""
+            how = f'Reply: mycelium respond --room {room}{task} --body "…"'
+        console.print(Text(f"    {how}", style="dim"))

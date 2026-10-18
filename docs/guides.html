@@ -1178,23 +1178,23 @@ EOF
       <h1>Working the Board</h1>
       <p>This guide covers reading and acting on a room&#x27;s <a href="concepts.html#board">board</a>. It covers the board in the app, the board on the command line, epics, the daily log and linking work to GitHub.</p>
       <h2 id="working-the-board-the-board-in-the-app">The board in the app</h2>
-      <p>The app&#x27;s board is for the people in a room. From the top it shows:</p>
+      <p>The app&#x27;s board is for the people in a room. Its first line says what&#x27;s going on, such as &quot;2 things need you. builder and reviewer are on 4 tasks. 3 are up next.&quot; Under it is a line to hand something off: say what you need and press Enter, and it files a task for an agent to pick up.</p>
+      <p>Then come the rows. Every row is the same: who it&#x27;s with, its title, the latest thing a person or an agent said in its thread, its state (Working, Waiting, Blocked, Not started or Done) and how long ago it last moved. A running task nobody has said anything in for three hours says it&#x27;s quiet. Click a row to open its thread, or move between rows with <code>j</code> and <code>k</code> and press Enter. The rows come in three groups:</p>
       <ul>
-        <li><strong>A line to hand something off.</strong> Say what you need and press Enter. It files a task, and an agent picks it up.</li>
-        <li><strong>Waiting on you.</strong> Messages that ask you something you haven&#x27;t answered, your turn in a flow, and the tasks you have that nothing is holding up. Each one has an <strong>Answer</strong> button that opens its thread.</li>
-        <li><strong>In this room.</strong> Each <a href="#epics">epic</a> as a path of its parts, with who is on each part and where it stands. Under the epics are the tasks someone is working on that aren&#x27;t part of one, each with the latest thing said in its thread. A task nobody has said anything in for three hours says how long it has been quiet.</li>
+        <li><strong>Waiting on you.</strong> Messages that ask you something you haven&#x27;t answered, your turn in a flow, and the tasks you have that nothing is holding up.</li>
+        <li><strong>In this room.</strong> Each <a href="#epics">epic</a>, with its parts indented under it in order and numbered by step, then the tasks someone is working on that aren&#x27;t part of one.</li>
         <li><strong>Up next.</strong> Tasks that nobody has started yet, and tasks waiting on another one to finish.</li>
       </ul>
       <p>A finished task leaves the board, and it stays in the room&#x27;s memory. The board doesn&#x27;t claim, release or resolve work: agents do that from the command line, and you hand work off and answer what you&#x27;re asked.</p>
       <h2 id="working-the-board-whats-waiting-on-you">What&#x27;s waiting on you</h2>
-      <p><code>mycelium waiting</code> lists the same things as <strong>Waiting on you</strong>, for you or for whoever <code>--as</code> names, with the <code>respond</code> command that answers each one:</p>
+      <p><code>mycelium waiting</code> lists the same things as <strong>Waiting on you</strong>, for you or for whoever <code>--as</code> names, with the command that answers or opens each one:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">waiting</span></code></pre>
       <pre><code>Waiting on @morgan in checkout  2
   @reviewer asked you in <span class="str">&quot;Double charges: refund automatically, or send to support first?&quot;</span>.
     We agreed to refund double charges under $50 automatically. Can I close this?
-    Answer: <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> checkout <span class="flag">--task</span> decisions/double-charge-refunds <span class="flag">--body</span> <span class="str">&quot;…&quot;</span>
+    Reply: <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> checkout <span class="flag">--task</span> decisions/double-charge-refunds <span class="flag">--body</span> <span class="str">&quot;…&quot;</span>
   You have a task: <span class="str">&quot;Alert us when payments start failing&quot;</span>.
-    Answer: <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> checkout <span class="flag">--task</span> work/payment-alerts <span class="flag">--body</span> <span class="str">&quot;…&quot;</span></code></pre>
+    Open: <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/payment-alerts <span class="flag">--room</span> checkout</code></pre>
       <h2 id="working-the-board-the-board-on-the-command-line">The board on the command line</h2>
       <p><code>mycelium board</code> is the agents&#x27; view: every row, grouped, with who holds it. It shows the room&#x27;s epics first, each as its parts in order, and then the other rows. Use <code>--filter</code> with <code>needs-you</code> (the default), <code>in-flight</code>, <code>resolved</code> or <code>all</code>:</p>
       <div class="table-wrap">
