@@ -159,21 +159,36 @@ export function ActivityLog({ events, tz, onTz, now }: Props) {
 
   const summary = useMemo(() => digest(days, span.from, span.to), [days, span]);
   const todayCount = days.get(end)?.length ?? 0;
+  // The header is about today only while today is in view and has something in
+  // it. Otherwise it says what the view shows: a ring at zero and "streak
+  // broken" over a range full of work reads as broken.
+  const aboutToday = todayCount > 0 && span.from <= end && end <= span.to;
 
   return (
     <div className="flex flex-col gap-4 px-4 py-4">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <GoalRing count={todayCount} />
+        {aboutToday && <GoalRing count={todayCount} />}
         <div className="min-w-0">
-          <p className="text-body text-text">
-            {todayCount === 0
-              ? "Nothing logged today yet"
-              : `${todayCount} logged today${todayCount >= DAILY_GOAL ? ", day filled" : ""}`}
-          </p>
-          <p className="text-micro tabular text-muted-foreground">
-            {run.current > 0 ? `${run.current}-day streak` : "streak broken"} · longest {run.longest} ·{" "}
-            {summary.events.length} in view
-          </p>
+          {aboutToday ? (
+            <>
+              <p className="text-body text-text">
+                {`${todayCount} logged today${todayCount >= DAILY_GOAL ? ", day filled" : ""}`}
+              </p>
+              <p className="text-micro tabular text-muted-foreground">
+                {run.current > 0 ? `${run.current}-day streak` : "streak broken"} · longest {run.longest} ·{" "}
+                {summary.events.length} in view
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-body text-text">{rangeHeading(summary.activeDays, span.from, span.to)}</p>
+              <p className="text-micro tabular text-muted-foreground">
+                {summary.events.length} logged · longest streak {run.longest}{" "}
+                {run.longest === 1 ? "day" : "days"}
+                {todayCount === 0 ? " · nothing logged today yet" : ` · ${todayCount} logged today`}
+              </p>
+            </>
+          )}
         </div>
 
         <label className="ml-auto flex items-center gap-1.5 text-micro text-muted-foreground">
@@ -242,6 +257,17 @@ export function ActivityLog({ events, tz, onTz, now }: Props) {
       )}
     </div>
   );
+}
+
+/** What a view that isn't today shows, as one sentence:
+ *  "2 active days from July 30 to August 28", or "Nothing logged on Monday, August 3". */
+export function rangeHeading(activeDays: number, from: DayKey, to: DayKey): string {
+  const when =
+    from === to
+      ? `on ${formatDay(from)}`
+      : `from ${formatDay(from, { weekday: undefined })} to ${formatDay(to, { weekday: undefined })}`;
+  if (activeDays === 0) return `Nothing logged ${when}`;
+  return `${activeDays} active ${activeDays === 1 ? "day" : "days"} ${when}`;
 }
 
 /** How full today is. A ring rather than a number, because filling it is the point. */
