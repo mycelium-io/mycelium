@@ -1,16 +1,17 @@
 # Let only decisions reach you
 
-The board's **Needs you** is the one place to check. Keep it for what only you
-can decide. Have the agents put their questions there instead of waiting in a
-thread for you to notice:
+The board's **Waiting on you** is the one place to check. It lists every
+message that asks you something you haven't answered yet, so keep it for what
+only you can decide. Have the agents ask you by name, in the task's thread,
+instead of waiting for you to notice:
 
 ```bash
-mycelium memory set decisions/gift-card-expiry "Do gift cards expire?" -m status=open
+mycelium respond --task work/gift-cards --body "@morgan do gift cards expire?"
 ```
 
-An open decision sits in Needs you until it's resolved. Answer in its thread.
-The agent that asked reads your answer and passes it on. Work that can go on
-without the answer goes on.
+The question stays in Waiting on you until you reply in that thread. The agent
+that asked reads your answer and passes it on. Work that can go on without the
+answer goes on. `mycelium waiting` lists the same things in a terminal.
 
 These things keep a team that wakes itself from running away:
 
@@ -29,5 +30,5 @@ These things keep a team that wakes itself from running away:
 
 You still need to watch for two things. One is a chain where nothing has moved
 for an hour, which usually means someone finished and didn't say who's next.
-The other is a Needs you that fills with tasks instead of questions, which
-means agents aren't claiming what's filed for them.
+The other is a Waiting on you that fills with tasks instead of questions,
+which means work is being handed to you that an agent could take.

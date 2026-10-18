@@ -15,7 +15,8 @@
  *
  *   <MetricsScreen />
  *     ├─ <HeaderBand />       the Usage | System tabs, uptime, cadence, pause
- *     ├─ Usage tab            <UsageView />: what the hub is used for, its KPIs
+ *     ├─ Usage tab            <UsageView />: what the hub is used for, its KPIs;
+ *     │                       <ActivityPanel />: one room's days, streak and who did what
  *     └─ System tab
  *         ├─ <Kpi /> × 3          memory · fabric · cognition
  *         ├─ <FabricPanel />      SLIM node, posture, one row per live channel
@@ -31,6 +32,7 @@ import { Pause, Play } from "lucide-react";
 import type { AuthStatus, CoordinationStatus, IdentityStatus } from "@/lib/api";
 import { Dot, Figure, Figures, Label, Note, Nothing, Panel } from "@/components/metrics-parts";
 import { UsageView } from "@/components/usage-view";
+import { ActivityPanel } from "@/components/activity-log";
 import { useNetworkStatus, useRooms } from "@/lib/room-data";
 import {
   episodeState,
@@ -656,6 +658,7 @@ export function MetricsScreen() {
         {tab === "usage" ? (
           <div className="mx-auto flex max-w-5xl flex-col py-2">
             <UsageView refreshInterval={refreshInterval} />
+            <ActivityPanel rooms={roomNames} />
           </div>
         ) : (
         <div className="mx-auto flex max-w-5xl flex-col py-2">

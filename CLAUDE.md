@@ -171,6 +171,12 @@ module; read it before changing what a rule protects.
 - **A held row has no timer.** Being assigned is holding; a hold ends on real
   signals (`app/services/hold_sweep.py`). A row's dependencies are derived,
   never stored (`assignments.waiting_on`).
+- **Epics and "waiting on you" are worked out on the hub, on read**
+  (`services/board.py`, `services/waiting.py`; `GET /rooms/{room}/board`,
+  `/waiting?for=`). An epic is a row with `part-of` children, never a stored
+  kind. The app and the CLI draw what these return rather than projecting
+  them, frozen under `epic` in `contracts/board-vocabulary.json`. The app's
+  board is for people and has no row actions; agents move work from the CLI.
 - **`assignee` is who a task is for, the `assignment` field is who holds it.**
   Never write `owner`. Rows compiled from an agreement go through
   `task_compiler.py` and `task_sync.py`, and only a commit that carries

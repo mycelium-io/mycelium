@@ -1208,21 +1208,35 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#working-the-board",
     "t": "Working the Board",
     "s": "Work",
-    "x": "This guide covers reading and acting on a room's board. It covers the filters and views, the daily log and linking work to GitHub.",
+    "x": "This guide covers reading and acting on a room's board. It covers the board in the app, the board on the command line, epics, the daily log and linking work to GitHub.",
     "p": "Guides"
   },
   {
-    "u": "guides.html#working-the-board-what-needs-you",
-    "t": "What needs you",
+    "u": "guides.html#working-the-board-the-board-in-the-app",
+    "t": "The board in the app",
     "s": "Work › Working the Board",
-    "x": "Filter What's in it Needs you (default) Open decisions, blocked work, reviews waiting for someone In flight Claimed work: who has it, which branch, CI status Resolved Closed today The board opens on Needs you, so you see what's waiting on a person first. The rest is one click away. On the command line, use --filter with needs-you, in-flight, resolved or all: mycelium board checkout 3 need you · 4 in flight · 6 resolv",
+    "x": "The app's board is for the people in a room. Its first line says what's going on, such as \"2 things need you. builder and reviewer are on 4 tasks. 3 are up next.\" Under it is a line to hand something off: say what you need and press Enter, and it files a task for an agent to pick up. Then come the rows. Every row is the same: who it's with, its title, the latest thing a person or an agent said in its thread, its stat",
     "p": "Guides"
   },
   {
-    "u": "guides.html#working-the-board-views",
-    "t": "Views",
+    "u": "guides.html#working-the-board-whats-waiting-on-you",
+    "t": "What's waiting on you",
     "s": "Work › Working the Board",
-    "x": "The app has five ways to look at the same rows: Triage: the short list, grouped by kind. Board: columns grouped by any field that has a set of values, such as status, priority or a field your room made up. Table: a spreadsheet you can edit one cell at a time. Timeline: rows by when they last changed, for catching up after time away. Daily: the log, described below. On the command line, --view takes list or table, and",
+    "x": "mycelium waiting lists the same things as Waiting on you, for you or for whoever --as names, with the command that answers or opens each one: mycelium waiting Waiting on @morgan in checkout 2 @reviewer asked you in \"Double charges: refund automatically, or send to support first?\". We agreed to refund double charges under $50 automatically. Can I close this? Reply: mycelium respond --room checkout --task decisions/dou",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#working-the-board-the-board-on-the-command-line",
+    "t": "The board on the command line",
+    "s": "Work › Working the Board",
+    "x": "mycelium board is the agents' view: every row, grouped, with who holds it. It shows the room's epics first, each as its parts in order, and then the other rows. Use --filter with needs-you (the default), in-flight, resolved or all: Filter What's in it needs-you (default) Open decisions, blocked work, and work nobody holds in-flight Claimed work: who has it, which branch, CI status resolved Closed today --view takes l",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#working-the-board-epics",
+    "t": "Epics",
+    "s": "Work › Working the Board",
+    "x": "An epic is a task with parts. File the parts with --parent, and say which part waits on which with depends-on: mycelium board new \"Add Apple Pay to checkout\" --parent work/apple-pay-for-everyone mycelium memory set work/test-on-iphone \"Test Apple Pay on a real iPhone\" --meta depends-on=work/add-apple-pay The parts' order comes from what each one waits on, so parts that wait on nothing among themselves run side by sid",
     "p": "Guides"
   },
   {
@@ -1243,7 +1257,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#working-the-board-actions",
     "t": "Actions",
     "s": "Work › Working the Board",
-    "x": "claim · release · resolve · block · promote · dismiss In the app each action is one key. claim, release, resolve and block are also mycelium board commands. block records what a task is waiting on. promote resolves a row here and marks it as tracked somewhere longer-lived, such as a GitHub issue you've filed. It doesn't file the issue for you. dismiss closes a row without doing it. Each action changes the row's memor",
+    "x": "claim · release · resolve · block · promote · dismiss These are how agents move work, from the command line. claim, release, resolve and block are mycelium board commands; the others are fields an agent writes on the row. block records what a task is waiting on. promote resolves a row here and marks it as tracked somewhere longer-lived, such as a GitHub issue you've filed. It doesn't file the issue for you. dismiss c",
     "p": "Guides"
   },
   {
@@ -2066,6 +2080,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium board [--filter needs-you|in-flight|resolved|all] [--view list|table] [--watch]",
     "s": "CLI Reference",
     "x": "The room's live coordination slice: what needs you, what's in flight, what resolved.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board show <id>",
+    "s": "CLI Reference",
+    "x": "One task and its parts in path order: who is on each, where it stands, and its latest line.",
     "k": "cmd",
     "p": "Reference"
   },

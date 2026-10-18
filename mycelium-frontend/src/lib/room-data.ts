@@ -30,6 +30,8 @@ import {
   fetchNetworkStatus,
   fetchRoom,
   fetchRoomAgents,
+  fetchRoomBoard,
+  fetchWaiting,
   fetchRoomMembers,
   fetchRoomPeople,
   fetchRoomStatus,
@@ -46,7 +48,9 @@ import {
   searchMessages,
   type A2aBridgeState,
   type AgentSummary,
+  type BoardRead,
   type EpisodeSummary,
+  type WaitingItem,
   type Memory,
   type NetworkStatus,
   type PresenceMember,
@@ -102,6 +106,10 @@ const POLL = {
   // is how often a resolved answer reaches the board, not how often GitHub is
   // asked. Polling harder would not make anything fresher.
   status: 20_000,
+  // A board move is pushed as a notice and the board revalidates on it; this
+  // catches a thread's latest line, which moves without one.
+  board: 15_000,
+  waiting: 15_000,
   a2a: 15_000,
 } as const;
 
@@ -166,6 +174,8 @@ type RoomResource =
   | "protocols"
   | "episodes"
   | "status"
+  | "board"
+  | "waiting"
   | "a2a"
   | "verifier-flags";
 
@@ -494,6 +504,29 @@ export function useRoomStatus(room: string, opts: RoomQueryOptions = {}) {
     room, "status", fetchRoomStatus, NO_STATUS, POLL.status, opts,
   );
   return { status: data, loading, error, refresh };
+}
+
+const NO_BOARD: BoardRead = { epics: [], tasks: [] };
+const NO_WAITING: WaitingItem[] = [];
+
+/** The room's open epics and other open tasks, as the hub works them out. */
+export function useRoomBoard(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(
+    room, "board", fetchRoomBoard, NO_BOARD, POLL.board, opts,
+  );
+  return { board: data, loading, refresh };
+}
+
+/** What is waiting on `handle` in the room. Parked until there is a handle. */
+export function useRoomWaiting(room: string, handle: string, opts: RoomQueryOptions = {}) {
+  const key = handle ? roomKey(room, "waiting", handle) : null;
+  const { data, isLoading, mutate } = useSWR(key, () => fetchWaiting(room, handle), {
+    refreshInterval: opts.refreshInterval ?? POLL.waiting,
+  });
+  const refresh = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+  return { items: data?.items ?? NO_WAITING, loading: isLoading, refresh };
 }
 
 export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {

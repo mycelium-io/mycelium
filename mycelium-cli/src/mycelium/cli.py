@@ -42,6 +42,7 @@ from mycelium.commands import (
     ui,
     user,
     version,
+    waiting,
     wire,
 )
 from mycelium.commands import (
@@ -132,6 +133,7 @@ app.command(name="connect")(hub.connect)
 # Participation primitives: join a room's SLIM channel and reply, no daemon.
 app.command(name="await")(participate.await_room)
 app.command(name="respond")(participate.respond)
+app.command(name="waiting")(waiting.waiting)
 
 # A team on one task: the quickest way to watch agents coordinate.
 app.command(name="swarm")(swarm.swarm)

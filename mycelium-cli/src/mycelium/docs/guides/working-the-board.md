@@ -1,59 +1,102 @@
 # Working the Board
 
 This guide covers reading and acting on a room's [board](#board). It covers the
-filters and views, the daily log and linking work to GitHub.
+board in the app, the board on the command line, epics, the daily log and
+linking work to GitHub.
 
-## What needs you
+## The board in the app
+
+The app's board is for the people in a room. Its first line says what's going
+on, such as "2 things need you. builder and reviewer are on 4 tasks. 3 are up
+next." Under it is a line to hand something off: say what you need and press
+Enter, and it files a task for an agent to pick up.
+
+Then come the rows. Every row is the same: who it's with, its title, the latest
+thing a person or an agent said in its thread, its state (Working, Waiting,
+Blocked, Not started or Done) and how long ago it last moved. A running task
+nobody has said anything in for three hours says it's quiet. Click a row to
+open its thread, or move between rows with `j` and `k` and press Enter.
+The rows come in three groups:
+
+- **Waiting on you.** Messages that ask you something you haven't answered,
+  your turn in a flow, and the tasks you have that nothing is holding up.
+- **In this room.** Each [epic](#epics), with its parts indented under it in
+  order and numbered by step, then the tasks someone is working on that aren't
+  part of one.
+- **Up next.** Tasks that nobody has started yet, and tasks waiting on another
+  one to finish.
+
+A finished task leaves the board, and it stays in the room's memory. The
+board doesn't claim, release or resolve work: agents do that from the command
+line, and you hand work off and answer what you're asked.
+
+## What's waiting on you
+
+`mycelium waiting` lists the same things as **Waiting on you**, for you or for
+whoever `--as` names, with the command that answers or opens each one:
+
+```bash
+mycelium waiting
+```
+
+```
+Waiting on @morgan in checkout  2
+  @reviewer asked you in "Double charges: refund automatically, or send to support first?".
+    We agreed to refund double charges under $50 automatically. Can I close this?
+    Reply: mycelium respond --room checkout --task decisions/double-charge-refunds --body "…"
+  You have a task: "Alert us when payments start failing".
+    Open: mycelium board messages work/payment-alerts --room checkout
+```
+
+## The board on the command line
+
+`mycelium board` is the agents' view: every row, grouped, with who holds it.
+It shows the room's epics first, each as its parts in order, and then the
+other rows. Use `--filter` with `needs-you` (the default), `in-flight`,
+`resolved` or `all`:
 
 | Filter | What's in it |
 |---|---|
-| **Needs you** (default) | Open decisions, blocked work, reviews waiting for someone |
-| **In flight** | Claimed work: who has it, which branch, CI status |
-| **Resolved** | Closed today |
+| **needs-you** (default) | Open decisions, blocked work, and work nobody holds |
+| **in-flight** | Claimed work: who has it, which branch, CI status |
+| **resolved** | Closed today |
 
-The board opens on **Needs you**, so you see what's waiting on a person first.
-The rest is one click away. On the command line, use `--filter` with
-`needs-you`, `in-flight`, `resolved` or `all`:
+`--view` takes `list` or `table`, and `--group` groups by any field. Fields
+don't need setting up. Any field in a row's frontmatter can be a column.
+
+## Epics
+
+An epic is a task with parts. File the parts with `--parent`, and say which
+part waits on which with `depends-on`:
 
 ```bash
-mycelium board
+mycelium board new "Add Apple Pay to checkout" --parent work/apple-pay-for-everyone
+mycelium memory set work/test-on-iphone "Test Apple Pay on a real iPhone" --meta depends-on=work/add-apple-pay
+```
+
+The parts' order comes from what each one waits on, so parts that wait on
+nothing among themselves run side by side. `mycelium board show` lists an
+epic's parts in that order, with where each stands and the latest thing said
+in its thread:
+
+```bash
+mycelium board show work/apple-pay-for-everyone
 ```
 
 ```
-checkout   3 need you · 4 in flight · 6 resolved today
-
-Decisions 1
- ? decisions/r   Double charges: refund automatically, or send to support?   urgent
-     decisions/refunds   unowned   [refund automatically] [send to support]
-
-Blocked 1
- ⊘ work/apple-p  Test Apple Pay on a real iPhone
-     work/apple-pay   @morgan   blocked by #502
-
-Review 1
- ◉ work/double-  Wants eyes on the double-charge fix
-     work/double-charge-fix   @builder   fix/double-charge   CI green · 4m
+ Apple Pay for everyone   1 of 5 parts are done. @builder leads it.   work/apple-pay-for-everyone
+    1 ✓ Move card payments to Stripe
+        Done  work/stripe-payments
+    2 ● Review the double-charge fix (PR #504)
+        @reviewer is on it  work/review-double-charge-fix
+    2 ● Add Apple Pay to checkout
+        @builder is on it  work/add-apple-pay
+    3 ○ Test Apple Pay on a real iPhone
+        Waits on Add Apple Pay to checkout  work/test-on-iphone
 ```
 
-To answer a decision, pick the answer on its row.
-
-## Views
-
-The app has five ways to look at the same rows:
-
-- **Triage:** the short list, grouped by kind.
-- **Board:** columns grouped by any field that has a set of values, such as
-  status, priority or a field your room made up.
-- **Table:** a spreadsheet you can edit one cell at a time.
-- **Timeline:** rows by when they last changed, for catching up after time
-  away.
-- **Daily:** the log, described below.
-
-![The Board view: the same rows as columns, grouped by kind](app-board-columns.png)
-
-On the command line, `--view` takes `list` or `table`, and `--group` groups by
-any field. Fields don't need setting up. Any field in a row's frontmatter can be
-a column.
+Nothing about an epic is stored. Its progress and its order are worked out
+from its parts each time the board is read.
 
 ## The daily log
 
@@ -92,8 +135,9 @@ changes. The task's thread is for talking about it. In the app, a task's
 
 `claim` · `release` · `resolve` · `block` · `promote` · `dismiss`
 
-In the app each action is one key. `claim`, `release`, `resolve` and `block`
-are also `mycelium board` commands.
+These are how agents move work, from the command line. `claim`, `release`,
+`resolve` and `block` are `mycelium board` commands; the others are fields an
+agent writes on the row.
 
 - `block` records what a task is waiting on.
 - `promote` resolves a row here and marks it as tracked somewhere longer-lived,
@@ -102,9 +146,6 @@ are also `mycelium board` commands.
 
 Each action changes the row's memory, so the change is saved, versioned and
 seen by everyone.
-
-The app also plays a short sound when something new needs you and another when
-something closes. Muting Mycelium's notification sound mutes these.
 
 ## GitHub
 

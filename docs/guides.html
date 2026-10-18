@@ -1176,8 +1176,27 @@ EOF
 
     <section class="doc-section" id="working-the-board">
       <h1>Working the Board</h1>
-      <p>This guide covers reading and acting on a room&#x27;s <a href="concepts.html#board">board</a>. It covers the filters and views, the daily log and linking work to GitHub.</p>
-      <h2 id="working-the-board-what-needs-you">What needs you</h2>
+      <p>This guide covers reading and acting on a room&#x27;s <a href="concepts.html#board">board</a>. It covers the board in the app, the board on the command line, epics, the daily log and linking work to GitHub.</p>
+      <h2 id="working-the-board-the-board-in-the-app">The board in the app</h2>
+      <p>The app&#x27;s board is for the people in a room. Its first line says what&#x27;s going on, such as &quot;2 things need you. builder and reviewer are on 4 tasks. 3 are up next.&quot; Under it is a line to hand something off: say what you need and press Enter, and it files a task for an agent to pick up.</p>
+      <p>Then come the rows. Every row is the same: who it&#x27;s with, its title, the latest thing a person or an agent said in its thread, its state (Working, Waiting, Blocked, Not started or Done) and how long ago it last moved. A running task nobody has said anything in for three hours says it&#x27;s quiet. Click a row to open its thread, or move between rows with <code>j</code> and <code>k</code> and press Enter. The rows come in three groups:</p>
+      <ul>
+        <li><strong>Waiting on you.</strong> Messages that ask you something you haven&#x27;t answered, your turn in a flow, and the tasks you have that nothing is holding up.</li>
+        <li><strong>In this room.</strong> Each <a href="#epics">epic</a>, with its parts indented under it in order and numbered by step, then the tasks someone is working on that aren&#x27;t part of one.</li>
+        <li><strong>Up next.</strong> Tasks that nobody has started yet, and tasks waiting on another one to finish.</li>
+      </ul>
+      <p>A finished task leaves the board, and it stays in the room&#x27;s memory. The board doesn&#x27;t claim, release or resolve work: agents do that from the command line, and you hand work off and answer what you&#x27;re asked.</p>
+      <h2 id="working-the-board-whats-waiting-on-you">What&#x27;s waiting on you</h2>
+      <p><code>mycelium waiting</code> lists the same things as <strong>Waiting on you</strong>, for you or for whoever <code>--as</code> names, with the command that answers or opens each one:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">waiting</span></code></pre>
+      <pre><code>Waiting on @morgan in checkout  2
+  @reviewer asked you in <span class="str">&quot;Double charges: refund automatically, or send to support first?&quot;</span>.
+    We agreed to refund double charges under $50 automatically. Can I close this?
+    Reply: <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> checkout <span class="flag">--task</span> decisions/double-charge-refunds <span class="flag">--body</span> <span class="str">&quot;…&quot;</span>
+  You have a task: <span class="str">&quot;Alert us when payments start failing&quot;</span>.
+    Open: <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/payment-alerts <span class="flag">--room</span> checkout</code></pre>
+      <h2 id="working-the-board-the-board-on-the-command-line">The board on the command line</h2>
+      <p><code>mycelium board</code> is the agents&#x27; view: every row, grouped, with who holds it. It shows the room&#x27;s epics first, each as its parts in order, and then the other rows. Use <code>--filter</code> with <code>needs-you</code> (the default), <code>in-flight</code>, <code>resolved</code> or <code>all</code>:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1188,48 +1207,37 @@ EOF
           </thead>
           <tbody>
             <tr>
-              <td><strong>Needs you</strong> (default)</td>
-              <td>Open decisions, blocked work, reviews waiting for someone</td>
+              <td><strong>needs-you</strong> (default)</td>
+              <td>Open decisions, blocked work, and work nobody holds</td>
             </tr>
             <tr>
-              <td><strong>In flight</strong></td>
+              <td><strong>in-flight</strong></td>
               <td>Claimed work: who has it, which branch, CI status</td>
             </tr>
             <tr>
-              <td><strong>Resolved</strong></td>
+              <td><strong>resolved</strong></td>
               <td>Closed today</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>The board opens on <strong>Needs you</strong>, so you see what&#x27;s waiting on a person first. The rest is one click away. On the command line, use <code>--filter</code> with <code>needs-you</code>, <code>in-flight</code>, <code>resolved</code> or <code>all</code>:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span></code></pre>
-      <pre><code>checkout   3 need you · 4 in flight · 6 resolved today
-
-Decisions 1
- ? decisions/r   Double charges: refund automatically, or send to support?   urgent
-     decisions/refunds   unowned   [refund automatically] [send to support]
-
-Blocked 1
- ⊘ work/apple-p  Test Apple Pay on a real iPhone
-     work/apple-pay   @morgan   blocked by #502
-
-Review 1
- ◉ work/double-  Wants eyes on the double-charge fix
-     work/double-charge-fix   @builder   fix/double-charge   CI green · 4m</code></pre>
-      <p>To answer a decision, pick the answer on its row.</p>
-      <h2 id="working-the-board-views">Views</h2>
-      <p>The app has five ways to look at the same rows:</p>
-      <ul>
-        <li><strong>Triage:</strong> the short list, grouped by kind.</li>
-        <li><strong>Board:</strong> columns grouped by any field that has a set of values, such as status, priority or a field your room made up.</li>
-        <li><strong>Table:</strong> a spreadsheet you can edit one cell at a time.</li>
-        <li><strong>Timeline:</strong> rows by when they last changed, for catching up after time away.</li>
-        <li><strong>Daily:</strong> the log, described below.</li>
-      </ul>
-      <figure class="doc-figure"><img class="doc-img" src="app-board-columns.png" alt="The Board view: the same rows as columns, grouped by kind" loading="lazy">
-      </figure>
-      <p>On the command line, <code>--view</code> takes <code>list</code> or <code>table</code>, and <code>--group</code> groups by any field. Fields don&#x27;t need setting up. Any field in a row&#x27;s frontmatter can be a column.</p>
+      <p><code>--view</code> takes <code>list</code> or <code>table</code>, and <code>--group</code> groups by any field. Fields don&#x27;t need setting up. Any field in a row&#x27;s frontmatter can be a column.</p>
+      <h2 id="working-the-board-epics">Epics</h2>
+      <p>An epic is a task with parts. File the parts with <code>--parent</code>, and say which part waits on which with <code>depends-on</code>:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Add Apple Pay to checkout&quot;</span> <span class="flag">--parent</span> work/apple-pay-for-everyone
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/test-on-iphone <span class="str">&quot;Test Apple Pay on a real iPhone&quot;</span> <span class="flag">--meta</span> depends-on=work/add-apple-pay</code></pre>
+      <p>The parts&#x27; order comes from what each one waits on, so parts that wait on nothing among themselves run side by side. <code>mycelium board show</code> lists an epic&#x27;s parts in that order, with where each stands and the latest thing said in its thread:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">show</span> work/apple-pay-for-everyone</code></pre>
+      <pre><code> Apple Pay for everyone   1 of 5 parts are done. @builder leads it.   work/apple-pay-for-everyone
+    1 ✓ Move card payments to Stripe
+        Done  work/stripe-payments
+    2 ● Review the double-charge fix (PR #504)
+        @reviewer is on it  work/review-double-charge-fix
+    2 ● Add Apple Pay to checkout
+        @builder is on it  work/add-apple-pay
+    3 ○ Test Apple Pay on a real iPhone
+        Waits on Add Apple Pay to checkout  work/test-on-iphone</code></pre>
+      <p>Nothing about an epic is stored. Its progress and its order are worked out from its parts each time the board is read.</p>
       <h2 id="working-the-board-the-daily-log">The daily log</h2>
       <p>The log shows what happened in the room day by day and who did it. Nobody writes it. It&#x27;s built from messages, memory changes, resolved work and negotiations.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span>                    # the last 7 days
@@ -1244,14 +1252,13 @@ Review 1
       <p>The body is part of the task, so the row and its memory page show it, search finds it, its links show up as links, and you can edit it when the plan changes. The task&#x27;s thread is for talking about it. In the app, a task&#x27;s <strong>Details</strong> become its body the same way.</p>
       <h2 id="working-the-board-actions">Actions</h2>
       <p><code>claim</code> · <code>release</code> · <code>resolve</code> · <code>block</code> · <code>promote</code> · <code>dismiss</code></p>
-      <p>In the app each action is one key. <code>claim</code>, <code>release</code>, <code>resolve</code> and <code>block</code> are also <code>mycelium board</code> commands.</p>
+      <p>These are how agents move work, from the command line. <code>claim</code>, <code>release</code>, <code>resolve</code> and <code>block</code> are <code>mycelium board</code> commands; the others are fields an agent writes on the row.</p>
       <ul>
         <li><code>block</code> records what a task is waiting on.</li>
         <li><code>promote</code> resolves a row here and marks it as tracked somewhere longer-lived, such as a GitHub issue you&#x27;ve filed. It doesn&#x27;t file the issue for you.</li>
         <li><code>dismiss</code> closes a row without doing it.</li>
       </ul>
       <p>Each action changes the row&#x27;s memory, so the change is saved, versioned and seen by everyone.</p>
-      <p>The app also plays a short sound when something new needs you and another when something closes. Muting Mycelium&#x27;s notification sound mutes these.</p>
       <h2 id="working-the-board-github">GitHub</h2>
       <p>The board is for what&#x27;s happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it instead of copying it.</p>
       <p>Mention a pull request in a task&#x27;s body or its thread as <code>owner/repo#123</code> or by its URL, and give the hub a GitHub token. The row then shows the pull request&#x27;s live state, such as approved, changes requested, CI failing or merged, and the room is told when it changes. See <a href="reference.html#board-reference">live pull request status</a> for the states and the token.</p>

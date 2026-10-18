@@ -34,6 +34,7 @@ from app.routes.a2a_server import router as a2a_server_router
 from app.routes.a2a_state import router as a2a_state_router
 from app.routes.agents import router as agents_router
 from app.routes.assignments import router as assignments_router
+from app.routes.board import router as board_router
 from app.routes.briefing import router as briefing_router
 from app.routes.engines import router as engines_router
 from app.routes.episodes import router as episodes_router
@@ -410,6 +411,7 @@ app.include_router(members_router, prefix="/api")
 app.include_router(assignments_router, prefix="/api")
 app.include_router(fields_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
+app.include_router(board_router, prefix="/api")
 app.include_router(swarms_router, prefix="/api")
 app.include_router(runners_router, prefix="/api")
 app.include_router(joins_router, prefix="/api")

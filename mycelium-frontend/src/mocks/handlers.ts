@@ -30,6 +30,7 @@ import {
   runnerAgentOf,
 } from "./runners";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
+import { mockBoard, mockBoardRow, mockWaiting } from "./board";
 import { demoBusy, demoOnLaunch, demoOnMessage, demoOnTask, isDemoScenario } from "./demo";
 import {
   LEARN_PERSON,
@@ -717,6 +718,22 @@ export async function handleMock(req: Request): Promise<Response | null> {
       );
     }
 
+    case "board": {
+      // GET /board, GET /board/{key} — the board as people read it (services/board.py).
+      if (method !== "GET") return null;
+      if (sub.length === 1) return json(mockBoard(fx));
+      const key = sub.slice(1).map(decodeURIComponent).join("/");
+      const row = mockBoardRow(fx, key);
+      return row ? json(row) : notFound(`No board row '${key}' in this room (mock)`);
+    }
+
+    case "waiting": {
+      // GET /waiting?for=<handle> — what is waiting on a member (services/waiting.py).
+      if (method !== "GET" || sub.length !== 1) return null;
+      const handle = (searchParams.get("for") ?? "").replace(/^@/, "");
+      return json({ handle, items: mockWaiting(fx, handle) });
+    }
+
     case "status": {
       if (method !== "GET") return null;
       const resolved = fx.status ?? {
@@ -816,11 +833,15 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (fx.memories.some((m) => m.key === key)) return json({ detail: `${key} already exists` }, 409);
       const assignee = typeof body.assignee === "string" && body.assignee ? body.assignee.replace(/^@/, "") : null;
       const kind = key.startsWith("decisions/") ? "decision" : "action";
+      const parent = typeof body.parent === "string" && body.parent ? body.parent : null;
+      if (parent && !fx.memories.some((m) => m.key === parent)) {
+        return json({ detail: `No task '${parent}' to be part of.` }, 404);
+      }
       const row: MockMemory = {
         key,
         value: title,
         content_text: title,
-        meta: { kind, status: "open", ...(assignee ? { assignee } : {}) },
+        meta: { kind, status: "open", ...(assignee ? { assignee } : {}), ...(parent ? { "part-of": parent } : {}) },
         created_by: by,
         updated_by: by,
         version: 1,

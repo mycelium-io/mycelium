@@ -3,700 +3,484 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Kanban,
-  ListChecks,
-  Rows3,
-  CalendarDays,
-  Search,
-  SlidersHorizontal,
-  Table as TableIcon,
-} from "lucide-react";
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/components/current-user";
-import { useClientSetting } from "@/lib/client-settings";
-import { useNotifications } from "@/components/notifications-provider";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { EmptyState } from "@/components/empty-state";
-import {
-  useRoom,
-  useRoomEpisodes,
-  useRoomMemories,
-  useRoomMessages,
-  useRoomRevalidate,
-  useRoomRoster,
-  useRoomStatus,
-} from "@/lib/room-data";
-import { writeFields, writeAssignment } from "@/lib/api";
-import { assignmentRefusal, reservedIn } from "@/lib/board/assignment";
-import { fieldWriteRefusal, memoryKeyOf, threadRefusal } from "@/lib/board/fields";
-import { applyRowAction, ATTENTION_FILTERS, fieldAsString, type AttentionFilter, type LiveItem, type RowAction } from "@/lib/board/item";
-import { EPISODE_FIELD, projectItems } from "@/lib/board/projection";
-import { attachUpstream } from "@/lib/board/upstream";
-import { localZone, projectActivity } from "@/lib/board/activity";
-import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
-import { fileCapture } from "@/lib/board/file-capture";
-import { groupableFields, inferSchema } from "@/lib/board/schema";
-import { applyView, filterItems, attentionFilterCounts, SAVED_VIEWS, sortItems, UNGROUPED, type ViewConfig, type ViewMode } from "@/lib/board/view";
-import { BoardTriage, summarize } from "./board-triage";
-import { BoardKanban } from "./board-kanban";
-import { BoardTable } from "./board-table";
-import { BoardTimeline } from "./board-timeline";
-import { BoardCapture } from "./board-capture";
+import { Kbd } from "@/components/ui/kbd";
+import { Monogram } from "@/components/ui/monogram";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
-import { BoardDaily } from "./board-daily";
-import { BoardRowActionsProvider } from "./board-row-menu";
-import { playBoardSound, type BoardSound } from "@/lib/board/board-sounds";
-
-const MODES: { id: ViewMode; label: string; icon: typeof Rows3 }[] = [
-  { id: "triage", label: "Triage", icon: Rows3 },
-  { id: "board", label: "Board", icon: Kanban },
-  { id: "table", label: "Table", icon: TableIcon },
-  { id: "timeline", label: "Timeline", icon: ListChecks },
-  { id: "daily", label: "Daily", icon: CalendarDays },
-];
-
-/** The board's clock ticks slowly: ages and TTL bars, not a stopwatch. */
-const TICK_MS = 30_000;
-
-/** How much chat the log reads back through. */
-const MESSAGE_HISTORY = 300;
+import { shortAge } from "@/components/activity-rail";
+import { NowProvider, useNow } from "@/lib/relative-time";
+import { useRoomAgents, useRoomBoard, useRoomWaiting } from "@/lib/room-data";
+import { useRoomStream } from "@/lib/stream-hub";
+import { noticeOf, pingOf } from "@/lib/threads";
+import type { BoardEpic, BoardPart, WaitingItem } from "@/lib/api";
+import type { ParsedCapture } from "@/lib/board/capture";
+import { fileCapture } from "@/lib/board/file-capture";
+import {
+  STANDING,
+  WAITING_STANDING,
+  epicLine,
+  humanLine,
+  sideBySide,
+  isQuiet,
+  lastMoved,
+  progressOf,
+  splitTasks,
+  summary,
+  titlesOf,
+  waitingLine,
+  waitingTitle,
+  whoHasIt,
+  type Standing,
+} from "@/lib/board/people";
+import { BoardCapture } from "./board-capture";
 
 interface Props {
   roomName: string;
-  /**
-   * Open a row's thread. A row and the thread its coordination happens in are
-   * the same object, so this is the row opened rather than a second surface —
-   * and it stays a callback because the pane it opens belongs to the room's
-   * workspace, not to the board.
-   */
+  /** Open a task's thread. The pane it opens belongs to the room's workspace. */
   onOpenThread?: (episode: string) => void;
+  /** Open one message in the room, for an ask made outside any task. */
+  onOpenMessage?: (id: string) => void;
 }
 
 /**
- * The room's coordination surface.
+ * The board, for people.
  *
- * Everything on it is a projection: rows come from the episodes, the
- * memory namespaces and presence; the schema comes from the frontmatter those
- * rows already carry; and the triage, kanban and table are three configs over
- * one pipeline rather than three screens.
+ * It reads like the app's rails, not a dashboard: a line that says what is
+ * going on, a quiet line to hand something off, then the rows, edge to edge.
+ * What is waiting on you comes first, then what is going on in the room (each
+ * epic as a row with its parts indented under it, then the tasks someone is on
+ * that stand alone), then what is up next. Every row is the same shape: who,
+ * the title, one human line, its state as a dot and a word, and how long ago it
+ * moved. A row opens its thread; j and k move between rows.
+ *
+ * The hub works all of it out (`GET /rooms/{room}/board` and `/waiting`). There
+ * are no row actions: claiming, releasing and resolving are how agents move
+ * work, from the CLI. A person hands work off and answers what they're asked.
  */
-export function RoomBoard({ roomName, onOpenThread }: Props) {
-  const { room } = useRoom(roomName);
-  const { episodes } = useRoomEpisodes(roomName);
-  const { memories } = useRoomMemories(roomName);
-  const { agents, presence } = useRoomRoster(roomName);
-  const { messages } = useRoomMessages(roomName, MESSAGE_HISTORY);
-  const { status: upstream } = useRoomStatus(roomName);
-  const revalidate = useRoomRevalidate(roomName);
+export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
+  const { board, loading, refresh: refreshBoard } = useRoomBoard(roomName);
   const { principal } = useCurrentUser();
-  const actor = principal.replace(/^@/, "") || "you";
-  // The task a swarm is being started on, while its dialog is open.
+  const you = principal.replace(/^@/, "");
+  const { items: waiting, refresh: refreshWaiting } = useRoomWaiting(roomName, you);
+  const { agents } = useRoomAgents(roomName);
+  const agentHandles = useMemo(() => new Set(agents.map(a => a.handle)), [agents]);
   const [swarmTask, setSwarmTask] = useState<string | null>(null);
+  const [filing, setFiling] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  // A day boundary is only meaningful in some zone, and which one is the
-  // reader's business — so it is their time zone setting, not the room's.
-  const [savedZone, chooseTz] = useClientSetting("general.time-zone");
-  const tz = savedZone || localZone();
-
-  // The clock starts on the client. Ages and TTLs are relative to *now*, which
-  // the server render can't know without the two disagreeing on the markup.
-  const [now, setNow] = useState(0);
-  useEffect(() => {
-    const tick = () => setNow(Date.now());
-    const first = setTimeout(tick, 0);
-    const id = setInterval(tick, TICK_MS);
-    return () => {
-      clearTimeout(first);
-      clearInterval(id);
-    };
-  }, []);
-
-  const [view, setView] = useState<ViewConfig>(SAVED_VIEWS[0].config);
-  const [savedView, setSavedView] = useState(SAVED_VIEWS[0].slug);
-  const [optimisticEdits, setOptimisticEdits] = useState<Record<string, Record<string, unknown>>>({});
-  const [captured, setCaptured] = useState<LiveItem[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const captureRef = useRef<HTMLInputElement>(null);
-
-  // The board borrows the notification sound setting rather than inventing a
-  // second one: someone who silenced Mycelium silenced all of it.
-  const { settings } = useNotifications();
-  const play = useCallback(
-    (name: BoardSound) => {
-      if (settings.soundEnabled) playBoardSound(name, settings.soundVolume);
-    },
-    [settings.soundEnabled, settings.soundVolume],
-  );
-
-  // The log reads the same room, flattened into who did what and when.
-  const activity = useMemo(
-    () =>
-      projectActivity({
-        room: roomName,
-        messages,
-        memories,
-        episodes,
-        agentHandles: agents.map(a => a.handle),
-      }),
-    [roomName, messages, memories, episodes, agents],
-  );
-
-  const items = useMemo(
-    () =>
-      // The hub says which rows mention which external references, so the
-      // answer lands by row id: no view re-parses a task's text.
-      attachUpstream(
-        projectItems({
-          room: roomName,
-          episodes,
-          memories,
-          agents,
-          presence,
-          now: new Date(now).toISOString(),
-          optimisticEdits,
-          captured,
-        }),
-        upstream,
-      ),
-    [roomName, episodes, memories, agents, presence, now, optimisticEdits, captured, upstream],
-  );
-
-  // One pass over every row's frontmatter gives the columns, the kanban's
-  // groupings and the table's editors — nothing about the schema is declared.
-  const schema = useMemo(() => inferSchema(items), [items]);
-  const groupable = useMemo(() => groupableFields(schema), [schema]);
-  const counts = useMemo(() => attentionFilterCounts(items, now), [items, now]);
-
-  // Watching the board is optional; hearing it is the point. Only a *growing*
-  // steer filter speaks, and only after the first render has something to compare.
-  const lastNeedsYou = useRef<number | null>(null);
-  useEffect(() => {
-    const previous = lastNeedsYou.current;
-    lastNeedsYou.current = counts.needs_you;
-    if (previous !== null && counts.needs_you > previous) play("needs_you");
-  }, [counts.needs_you, play]);
-
-  const groups = useMemo(() => applyView(items, view, schema, now), [items, view, schema, now]);
-  const flat = useMemo(() => sortItems(filterItems(items, view, now), view, now), [items, view, now]);
-  const ordered = useMemo(
-    () => (view.mode === "triage" || view.mode === "board" ? groups.flatMap(g => g.items) : flat),
-    [view.mode, groups, flat],
-  );
-
-  // What the surface shows the instant you act, before the room has answered.
-  const applyOptimisticEdit = useCallback((id: string, fields: Record<string, unknown>) => {
-    setOptimisticEdits(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...fields } }));
-  }, []);
-
-  /**
-   * A action's write: the optimistic edit is what you see, the room is the record.
-   *
-   * A row whose fields live somewhere other than frontmatter says why instead
-   * of accepting a change that would exist in this tab and nowhere else, which
-   * is what the board did for every action but assignment.
-   */
-  const patch = useCallback(
-    (item: LiveItem, fields: Record<string, unknown>) => {
-      applyOptimisticEdit(item.id, fields);
-      const refusal = fieldWriteRefusal(item);
-      if (refusal) {
-        setStatusMessage(`${item.id} — ${refusal}`);
+  // The board moves when a task is filed, taken or finished (a notice), when a
+  // thread gets a new line (a ping), or when a row is rewritten.
+  useRoomStream(roomName, frame => {
+    const message = frame as Record<string, unknown>;
+    if (message.message_type === "memory_changed") {
+      refreshBoard();
+      refreshWaiting();
+      return;
+    }
+    let content = message.content;
+    if (typeof content === "string") {
+      try {
+        content = JSON.parse(content);
+      } catch {
         return;
       }
-      const key = memoryKeyOf(item);
-      if (!key) return;
-      // `updated` is the board's name for the store's own `updated_at`, so
-      // sending it would write a second, competing timestamp.
-      const rest = Object.fromEntries(Object.entries(fields).filter(([k]) => k !== "updated"));
-      const reserved = reservedIn(Object.keys(rest));
-      if (reserved.length) {
-        setStatusMessage(`${item.id} — ${reserved.join(", ")} moves through a lease, not a field write`);
-        return;
-      }
-      // Clearing a field is `null` on the wire: `undefined` would be dropped by
-      // JSON.stringify and the key would silently survive.
-      const writable = Object.fromEntries(
-        Object.entries(rest).map(([k, v]) => [k, v === undefined ? null : v]),
-      );
-      if (!Object.keys(writable).length) return;
-      void writeFields(roomName, { key, handle: actor, fields: writable })
-        .then(() => revalidate())
-        .catch((e: unknown) => setStatusMessage(`write ${item.id} failed — ${String(e)}`));
-    },
-    [actor, applyOptimisticEdit, revalidate, roomName],
-  );
+    }
+    const raw = content as Record<string, unknown> | null;
+    if (noticeOf(raw) || pingOf(raw)) {
+      refreshBoard();
+      refreshWaiting();
+    }
+  });
 
-  const runRowAction = useCallback(
-    (item: LiveItem, action: RowAction) => {
-      const fields = applyRowAction(item, action, { actor, now: new Date().toISOString() });
-      setSelectedId(item.id);
-      play(action);
-      // Saying it is the point: a human gesture and an agent's call are the same
-      // write, so the surface says out loud what it just put on the ledger.
-      setStatusMessage(
-        `${action} ${item.id} → ${Object.entries(fields)
-          .filter(([k]) => k !== "updated")
-          .map(([k, v]) => `${k}=${String(v)}`)
-          .join(" ")}`,
-      );
-
-      // Assignment moves under its own rules — a live claim is not stealable, and
-      // expiry is read off a clock — so it keeps its own endpoint. Every other
-      // action is a frontmatter write and goes through `patch`.
-      if (action !== "claim" && action !== "release" && action !== "resolve") {
-        patch(item, fields);
-        return;
-      }
-      applyOptimisticEdit(item.id, fields);
-      const refusal = assignmentRefusal(item);
-      if (refusal) {
-        if (action !== "resolve") setStatusMessage(`${action} ${item.id} — ${refusal}`);
-        return;
-      }
-      void writeAssignment(roomName, action, { key: item.id.replace(/^memory:/, ""), handle: actor })
-        .then(state => {
-          setStatusMessage(`${action} ${state.key} → assignment=${state.assignment} owner=${state.owner ?? "—"}`);
-          revalidate();
-        })
-        .catch((e: unknown) => setStatusMessage(`${action} ${item.id} failed — ${String(e)}`));
-    },
-    [actor, applyOptimisticEdit, patch, play, revalidate, roomName],
-  );
-
-  const answer = useCallback(
-    (item: LiveItem, choice: string) => {
-      patch(item, { status: "resolved", decision: choice, updated: new Date().toISOString() });
-      setStatusMessage(`answer ${item.id} → decision=${choice} status=resolved`);
-      play("answer");
-    },
-    [patch, play],
-  );
-
-  // What a row's right-click menu can do: the same handlers the row's own
-  // strip and the board's keys call.
-  const rowMenuActions = useMemo(
-    () => ({ roomName, now, onVerb: runRowAction, onAnswer: answer, onOpenThread }),
-    [roomName, now, runRowAction, answer, onOpenThread],
-  );
-
-  // A captured line is filed on the hub as a real task. It shows at once as a
-  // captured row, and gives way to the task itself once the board re-reads.
   const capture = useCallback(
     (parsed: ParsedCapture) => {
-      const item = captureToItem(parsed, captured.length + 1, actor);
-      setCaptured(prev => [item, ...prev]);
-      setSelectedId(item.id);
-      setStatusMessage(`filing → ${item.title}`);
-      play("capture");
-      fileCapture(roomName, parsed, actor)
-        .then(task => {
-          setStatusMessage(`filed → ${item.title}`);
-          revalidate();
-          setSelectedId(`memory:${task.key}`);
+      setFiling(`Filing "${parsed.title}"…`);
+      fileCapture(roomName, parsed, you || "you")
+        .then(() => {
+          setFiling(`Filed "${parsed.title}". An agent will pick it up.`);
+          refreshBoard();
         })
-        .catch(err => {
-          setStatusMessage(`could not file “${item.title}”: ${err instanceof Error ? err.message : err}`);
-        })
-        .finally(() => setCaptured(prev => prev.filter(c => c.id !== item.id)));
+        .catch(err => setFiling(`Couldn't file "${parsed.title}": ${err instanceof Error ? err.message : err}`));
     },
-    [actor, captured.length, play, revalidate, roomName],
+    [refreshBoard, roomName, you],
   );
 
-  const pick = useCallback(
-    (delta: number) => {
-      if (ordered.length === 0) return;
-      const index = ordered.findIndex(i => i.id === selectedId);
-      const next = index === -1 ? 0 : Math.min(ordered.length - 1, Math.max(0, index + delta));
-      setSelectedId(ordered[next].id);
+  const open = useCallback(
+    (episode?: string | null) => {
+      if (episode) onOpenThread?.(episode);
     },
-    [ordered, selectedId],
+    [onOpenThread],
   );
 
-  const setMode = useCallback((mode: ViewMode) => setView(v => ({ ...v, mode })), []);
+  // j and k move between rows, the way the rest of the app moves through a list;
+  // Enter opens the row, since every row is a button.
+  const move = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "j" && e.key !== "k") return;
+    if ((e.target as HTMLElement).tagName === "INPUT") return;
+    const rows = Array.from(listRef.current?.querySelectorAll<HTMLElement>("[data-board-row]") ?? []);
+    if (rows.length === 0) return;
+    e.preventDefault();
+    const at = rows.indexOf(document.activeElement as HTMLElement);
+    const next = e.key === "j" ? Math.min(rows.length - 1, at + 1) : Math.max(0, at - 1);
+    rows[at === -1 ? 0 : next].focus();
+  }, []);
 
-  // Keyboard-first triage: the row actions are one keystroke from wherever the caret
-  // sits, and typing anywhere with a text cursor never reaches them.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-      if (target?.isContentEditable || e.metaKey || e.ctrlKey || e.altKey) return;
-
-      const selected = ordered.find(i => i.id === selectedId) ?? null;
-      const key = e.key.toLowerCase();
-
-      if (key === "j" || e.key === "ArrowDown") return pick(1), e.preventDefault();
-      if (key === "k" || e.key === "ArrowUp") return pick(-1), e.preventDefault();
-      // `n` for a new row: `/` already belongs to the app-wide search palette.
-      if (key === "n") {
-        e.preventDefault();
-        captureRef.current?.focus();
-        return;
-      }
-      if (key === "escape") return setSelectedId(null);
-      if (key === "t") {
-        if (!selected) return;
-        e.preventDefault();
-        const episode = fieldAsString(selected, EPISODE_FIELD);
-        // A row with nothing to open says why, in the same terms `board
-        // messages` refuses in — never by opening some other conversation.
-        const refusal = threadRefusal(selected, episode);
-        if (refusal) {
-          setStatusMessage(`${selected.id} has no thread — ${refusal}`);
-          return;
-        }
-        onOpenThread?.(episode as string);
-        return;
-      }
-      if (key === "v") {
-        const index = MODES.findIndex(m => m.id === view.mode);
-        return setMode(MODES[(index + 1) % MODES.length].id);
-      }
-      if (["1", "2", "3", "4"].includes(key)) {
-        const attentionFilter = (["needs_you", "in_flight", "resolved", "all"] as const)[Number(key) - 1];
-        return setView(v => ({ ...v, attentionFilter, showResolved: attentionFilter !== "needs_you" }));
-      }
-      if (!selected) return;
-      const rowActions: Record<string, RowAction> = {
-        c: "claim",
-        e: "release",
-        r: "resolve",
-        b: "block",
-        p: "promote",
-        x: "dismiss",
-      };
-      if (rowActions[key]) {
-        e.preventDefault();
-        runRowAction(selected, rowActions[key]);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [ordered, selectedId, pick, runRowAction, view.mode, setMode, onOpenThread]);
-
-  const applySaved = (slug: string) => {
-    const saved = SAVED_VIEWS.find(s => s.slug === slug);
-    if (!saved) return;
-    setSavedView(slug);
-    setView({ ...saved.config, query: view.query });
-  };
-
-  const title = room?.title ?? roomName;
-  const groupBy = view.groupBy;
+  const titles = useMemo(() => titlesOf(board), [board]);
+  // A task that's waiting on you lives there, not again below. An epic's part
+  // stays in its epic, since the path would read wrong with a step missing.
+  const yours = useMemo(() => new Set(waiting.map(item => item.key).filter(Boolean)), [waiting]);
+  const { running, next } = splitTasks(board.tasks.filter(task => !yours.has(task.key)));
+  const quietRoom = !loading && waiting.length === 0 && board.epics.length === 0 && board.tasks.length === 0;
 
   return (
     <div data-tour="board" className="@container flex h-full min-h-0 flex-col bg-bg">
-      <BoardHeader
-        title={title}
-        summary={summarize(items)}
-        counts={counts}
-        attentionFilter={view.attentionFilter}
-        onAttentionFilter={attentionFilter => setView(v => ({ ...v, attentionFilter, showResolved: attentionFilter !== "needs_you" }))}
-        query={view.query}
-        onQuery={query => setView(v => ({ ...v, query }))}
-        mode={view.mode}
-        onMode={setMode}
-        savedView={savedView}
-        onSavedView={applySaved}
-        groupBy={groupBy}
-        groupable={groupable.map(f => f.name)}
-        onGroupBy={name => setView(v => ({ ...v, groupBy: name }))}
-        schemaSize={schema.length}
-        rowCount={items.length}
-        optionsOpen={optionsOpen}
-        onOptions={() => setOptionsOpen(o => !o)}
-      />
-
+      <div className="flex h-7 flex-shrink-0 items-center gap-3 border-b border-border bg-surface px-3 text-micro text-muted-foreground sm:px-4">
+        <span className="min-w-0 truncate" role="status">
+          {filing ?? (loading ? "" : summary(board.epics, [...running, ...next], waiting))}
+        </span>
+        <span className="ml-auto hidden flex-shrink-0 items-center gap-1 text-faint @[36rem]:flex">
+          <Kbd size="xs" tone="muted">j</Kbd>
+          <Kbd size="xs" tone="muted">k</Kbd>
+          to move
+          <Kbd size="xs" tone="muted">↵</Kbd>
+          to open
+        </span>
+      </div>
       <BoardCapture
-        ref={captureRef}
-        actor={actor}
-        now={new Date(now).toISOString()}
+        actor={you || "you"}
+        now={new Date().toISOString()}
+        placeholder="Hand something off to the room…"
         onCapture={capture}
         onSwarm={text => setSwarmTask(text)}
       />
+
+      <ScrollArea className="min-h-0 flex-1">
+        <NowProvider>
+          <div ref={listRef} onKeyDown={move} className="pb-4">
+            {quietRoom && (
+              <p className="px-3 py-3 text-label text-muted-foreground sm:px-4">
+                Nothing is going on in this room yet. Hand something off above, and an agent will pick it up.
+              </p>
+            )}
+
+            {waiting.length > 0 && (
+              <Section label="Waiting on you" count={waiting.length}>
+                {waiting.map(item => (
+                  <WaitingRow
+                    key={`${item.kind}:${item.episode ?? item.message_id ?? item.key}`}
+                    item={item}
+                    you={you}
+                    agent={!!item.sender && agentHandles.has(item.sender)}
+                    onOpen={() =>
+                      item.episode ? open(item.episode) : item.message_id && onOpenMessage?.(item.message_id)
+                    }
+                  />
+                ))}
+              </Section>
+            )}
+
+            {(board.epics.length > 0 || running.length > 0) && (
+              <Section label="In this room">
+                {board.epics.map(epic => (
+                  <EpicRows key={epic.key} epic={epic} you={you} titles={titles} agents={agentHandles} onOpen={open} />
+                ))}
+                {running.map(task => (
+                  <TaskRow key={task.key} task={task} you={you} titles={titles} agents={agentHandles} onOpen={open} />
+                ))}
+              </Section>
+            )}
+
+            {next.length > 0 && (
+              <Section label="Up next" count={next.length}>
+                {next.map(task => (
+                  <TaskRow key={task.key} task={task} you={you} titles={titles} agents={agentHandles} onOpen={open} />
+                ))}
+              </Section>
+            )}
+          </div>
+        </NowProvider>
+      </ScrollArea>
+
       {/* Mounted only while open, so each opening starts from what was typed. */}
       {swarmTask !== null && (
-        <StartSwarmDialog
-          open
-          onClose={() => setSwarmTask(null)}
-          roomName={roomName}
-          initialTask={swarmTask}
-        />
+        <StartSwarmDialog open onClose={() => setSwarmTask(null)} roomName={roomName} initialTask={swarmTask} />
       )}
-
-      <BoardRowActionsProvider value={rowMenuActions}>
-      <div className="min-h-0 flex-1">
-        {ordered.length === 0 && view.mode !== "daily" ? (
-          <EmptyState
-            className="h-full"
-            icon={ListChecks}
-            title={view.attentionFilter === "needs_you" ? "Nothing needs you" : "No rows in this view"}
-            description={
-              view.attentionFilter === "needs_you"
-                ? "The board self-populates from episodes, memories and presence. Widen the filter to see what's in flight."
-                : "Loosen the filters, or capture a concern to start one."
-            }
-          />
-        ) : view.mode === "daily" ? (
-          <ScrollArea className="h-full">
-            <BoardDaily events={activity} tz={tz} onTz={chooseTz} now={now} />
-          </ScrollArea>
-        ) : view.mode === "board" && groupBy ? (
-          <BoardKanban
-            groups={groups}
-            groupBy={groupBy}
-            now={now}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            onOpenThread={onOpenThread}
-            onMove={(item, field, value) => {
-              // The "no value" column is not a value: dropping a card there
-              // means clear the field, not write the column's own key into it.
-              const cleared = value === UNGROUPED;
-              patch(item, {
-                [field]: cleared ? undefined : value,
-                updated: new Date().toISOString(),
-              });
-              setStatusMessage(cleared ? `move ${item.id} → ${field} cleared` : `move ${item.id} → ${field}=${value}`);
-              play("move");
-            }}
-          />
-        ) : (
-          <ScrollArea className="h-full">
-            {view.mode === "triage" ? (
-              <BoardTriage
-                groups={groups}
-                now={now}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                onVerb={runRowAction}
-                onAnswer={answer}
-                onOpenThread={onOpenThread}
-              />
-            ) : view.mode === "table" ? (
-              <BoardTable
-                items={flat}
-                schema={schema}
-                now={now}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                onEdit={(item, field, value) => {
-                  patch(item, { [field]: value, updated: new Date().toISOString() });
-                  setStatusMessage(`edit ${item.id} → ${field}=${String(value)} · written to frontmatter`);
-                }}
-                sort={view.sort}
-                onSort={field =>
-                  setView(v => ({
-                    ...v,
-                    sort: { field, dir: v.sort.field === field && v.sort.dir === "asc" ? "desc" : "asc" },
-                  }))
-                }
-                onOpenThread={onOpenThread}
-              />
-            ) : (
-              <BoardTimeline items={flat} now={now} selectedId={selectedId} onSelect={setSelectedId} onOpenThread={onOpenThread} />
-            )}
-          </ScrollArea>
-        )}
-      </div>
-      </BoardRowActionsProvider>
-
-      <BoardFooter statusMessage={statusMessage} keys={selectedId !== null} />
     </div>
   );
 }
 
-function BoardHeader(props: {
-  title: string;
-  summary: string;
-  counts: Record<AttentionFilter | "all", number>;
-  attentionFilter: AttentionFilter | "all";
-  onAttentionFilter: (attentionFilter: AttentionFilter | "all") => void;
-  query: string;
-  onQuery: (q: string) => void;
-  mode: ViewMode;
-  onMode: (m: ViewMode) => void;
-  savedView: string;
-  onSavedView: (slug: string) => void;
-  groupBy: string | null;
-  groupable: string[];
-  onGroupBy: (name: string | null) => void;
-  schemaSize: number;
-  rowCount: number;
-  optionsOpen: boolean;
-  onOptions: () => void;
-}) {
-  // Grouping and the schema are what a board or a table is *for*; in the
-  // triage they are furniture, so they fold away until asked for.
-  const showOptions = props.optionsOpen || props.mode === "board" || props.mode === "table";
-  const attentionFilters: (AttentionFilter | "all")[] = [...ATTENTION_FILTERS.map(l => l.id), "all"];
-  const label: Record<string, string> = {
-    ...Object.fromEntries(ATTENTION_FILTERS.map(l => [l.id, l.label])),
-    all: "All",
-  };
-
+/** A section, labelled the way the rails label theirs, and folding to its label. */
+function Section({ label, count, children }: { label: string; count?: number; children: ReactNode }) {
+  const [folded, setFolded] = useState(false);
   return (
-    // One toolbar, as an editor draws one: the room's name is already in the
-    // title bar, so this is the board's state, its filters and its views.
-    <header className={cn("shrink-0 border-b border-border px-3 sm:px-5", showOptions ? "pb-2" : "")}>
-      <p className="sr-only">{props.title}</p>
-      <div className="flex min-h-9 flex-wrap items-center gap-x-4 gap-y-1 py-1">
-        {/* The filters scroll together rather than wrapping, so they keep
-            reading as one control ("Needs you" is two words). */}
-        <div className="flex max-w-full items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {attentionFilters.map(attentionFilter => (
-            <button
-              key={attentionFilter}
-              onClick={() => props.onAttentionFilter(attentionFilter)}
-              aria-pressed={props.attentionFilter === attentionFilter}
-              className={cn(
-                "flex shrink-0 items-center gap-1.5 whitespace-nowrap text-label transition-colors",
-                props.attentionFilter === attentionFilter ? "text-text" : "text-muted-foreground hover:text-text",
-              )}
-            >
-              {label[attentionFilter]}
-              <span
-                className={cn(
-                  "tabular text-micro",
-                  attentionFilter === "needs_you" && props.counts.needs_you > 0 ? "text-accent" : "text-faint",
-                )}
-              >
-                {props.counts[attentionFilter]}
-              </span>
-            </button>
-          ))}
-        </div>
+    <section aria-label={label} className="border-b border-border last:border-b-0">
+      <button
+        type="button"
+        onClick={() => setFolded(f => !f)}
+        aria-expanded={!folded}
+        className="group flex h-7 w-full items-end gap-1.5 px-3 pb-1 text-micro font-medium text-faint sm:px-4"
+      >
+        {folded ? <ChevronRight className="size-3 self-center" /> : <ChevronDown className="size-3 self-center" />}
+        <span className="group-hover:text-muted-foreground">{label}</span>
+        {count !== undefined && <span className="font-normal tabular">{count}</span>}
+      </button>
+      {!folded && <ul className="flex flex-col pb-1">{children}</ul>}
+    </section>
+  );
+}
 
-        <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
+function Dot({ tone }: { tone: string }) {
+  return <span aria-hidden className="inline-block size-1.5 flex-shrink-0 rounded-full" style={{ background: tone }} />;
+}
 
-        <div className="flex items-center gap-0.5">
-          {MODES.map(mode => {
-            const Icon = mode.icon;
-            return (
-              <button
-                key={mode.id}
-                onClick={() => props.onMode(mode.id)}
-                title={mode.label}
-                aria-label={mode.label}
-                aria-pressed={props.mode === mode.id}
-                className={cn(
-                  "flex h-6 items-center gap-1.5 rounded px-1.5 text-micro transition-colors",
-                  props.mode === mode.id ? "bg-hairline text-text" : "text-muted-foreground hover:bg-hairline hover:text-text",
-                )}
-              >
-                <Icon className="size-3.5" strokeWidth={1.8} />
-                <span className="hidden @[56rem]:inline">{mode.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex min-w-[140px] flex-1 items-center gap-2">
-          <div className="flex h-6 min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 transition-colors focus-within:bg-bg hover:bg-hairline">
-            <Search className="size-3 shrink-0 text-faint" />
-            <input
-              value={props.query}
-              onChange={e => props.onQuery(e.target.value)}
-              placeholder="Filter rows…"
-              className="min-w-0 flex-1 bg-transparent text-label text-text outline-none placeholder:text-faint"
-            />
-          </div>
-
-          <span className="hidden shrink-0 font-mono text-micro text-faint @[64rem]:inline">{props.summary}</span>
-          <button
-            onClick={props.onOptions}
-            title="Saved views, grouping, and the inferred schema"
-            className={cn(
-              "shrink-0 rounded-md px-2 py-1 text-micro transition-colors",
-              showOptions ? "text-accent" : "text-faint hover:text-muted-foreground",
-            )}
-          >
-            <span className="hidden @[40rem]:inline">View options</span>
-            <SlidersHorizontal className="size-3.5 @[40rem]:hidden" strokeWidth={1.9} />
-          </button>
-        </div>
-      </div>
-
-      <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", showOptions ? "" : "hidden")}>
-        <span className="font-mono text-micro text-faint">saved views</span>
-        {SAVED_VIEWS.map(saved => (
-          <button
-            key={saved.slug}
-            onClick={() => props.onSavedView(saved.slug)}
-            title={`${saved.hint} · views/${saved.slug}.md`}
-            className={cn(
-              "rounded-full border px-2 py-0.5 font-mono text-micro transition-colors",
-              props.savedView === saved.slug
-                ? "border-accent/40 bg-accent-soft text-accent"
-                : "border-border text-muted-foreground hover:text-text",
-            )}
-          >
-            {saved.slug}
-          </button>
-        ))}
-
-        <span className="ml-auto flex items-center gap-2">
-          <span className="font-mono text-micro text-faint">group by</span>
-          {props.groupable.map(name => (
-            <button
-              key={name}
-              onClick={() => props.onGroupBy(props.groupBy === name ? null : name)}
-              className={cn(
-                "rounded px-1.5 py-0.5 font-mono text-micro transition-colors",
-                props.groupBy === name ? "bg-accent-soft text-accent" : "text-muted-foreground hover:bg-surface",
-              )}
-            >
-              {name}
-            </button>
-          ))}
-          <span
-            className="rounded bg-hairline px-1.5 py-0.5 font-mono text-micro text-faint"
-            title="Inferred from the frontmatter every projected row carries. Nothing here is declared."
-          >
-            schema: {props.schemaSize} fields ← {props.rowCount} rows
-          </span>
+/**
+ * The one row shape: who, the title, one human line, the state as a dot and a
+ * word, and how long ago it moved. The columns line up down the whole board,
+ * and a narrow pane keeps the title, the state's dot and the age.
+ */
+function Row({
+  who,
+  avatar,
+  agent,
+  title,
+  line,
+  standing,
+  age,
+  ageTitle,
+  quiet,
+  indent = 0,
+  lead,
+  rowKey,
+  dim,
+  onOpen,
+}: {
+  /** Who it's with, as the row says it ("you", a handle, or null for nobody). */
+  who: string | null;
+  /** The handle whose avatar the row wears, when `who` is "you". */
+  avatar?: string;
+  agent: boolean;
+  title: string;
+  line: string;
+  standing: Standing;
+  age: string;
+  ageTitle?: string;
+  quiet?: boolean;
+  indent?: number;
+  lead?: ReactNode;
+  rowKey?: string;
+  dim?: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        data-board-row={rowKey}
+        onClick={onOpen}
+        title={line ? `${title}\n${line}` : title}
+        className="flex h-[26px] w-full items-center gap-2 px-3 text-left text-micro outline-none transition-colors hover:bg-hairline focus-visible:bg-hairline sm:px-4"
+        style={indent ? { paddingLeft: `calc(${indent} * 1.25rem + 0.75rem)` } : undefined}
+      >
+        {lead ?? <span className="w-3 flex-shrink-0" />}
+        <span className="flex w-4 flex-shrink-0 justify-center">
+          {who ? (
+            <Monogram handle={avatar ?? who} className="size-4 text-[8px]" kind={agent ? "agent" : "person"} />
+          ) : (
+            <span aria-hidden className="size-3.5 rounded-full border border-dashed border-border2" />
+          )}
         </span>
-      </div>
-    </header>
+        <span className="grid min-w-0 flex-1 items-center gap-3 @[36rem]:grid-cols-[minmax(0,min(50%,26rem))_minmax(0,1fr)]">
+          <span className={cn("min-w-0 truncate text-label", dim ? "text-muted-foreground" : "text-text")}>{title}</span>
+          {line && <span className="hidden min-w-0 truncate text-faint @[36rem]:inline">{line}</span>}
+        </span>
+        {/* A blocked row's reason rides on its state too, since a narrow pane
+            drops the line column and the reason is what you need there. */}
+        <span
+          className="flex flex-shrink-0 items-center gap-1.5 @[30rem]:w-[5.5rem]"
+          style={{ color: standing.tone }}
+          title={standing === STANDING.blocked && line ? line : undefined}
+        >
+          <Dot tone={standing.tone} />
+          <span className="hidden truncate @[30rem]:inline">{standing.word}</span>
+        </span>
+        <span className="hidden w-20 flex-shrink-0 truncate text-muted-foreground @[30rem]:inline">
+          {who ?? "nobody yet"}
+        </span>
+        <span
+          className={cn("tabular w-14 flex-shrink-0 text-right", quiet ? "text-yellow" : "text-faint")}
+          title={ageTitle}
+        >
+          {age}
+        </span>
+      </button>
+    </li>
+  );
+}
+
+/** How long ago a task moved, and whether it has gone quiet. */
+function useAge(part: BoardPart): { age: string; ageTitle?: string; quiet: boolean } {
+  const now = useNow();
+  const at = lastMoved(part);
+  const quiet = isQuiet(part, now);
+  const age = shortAge(at, now);
+  return {
+    age: quiet ? `quiet ${age}` : age,
+    ageTitle: quiet ? `Nothing said in its thread for ${age}` : undefined,
+    quiet,
+  };
+}
+
+function WaitingRow({
+  item,
+  you,
+  agent,
+  onOpen,
+}: {
+  item: WaitingItem;
+  you: string;
+  agent: boolean;
+  onOpen: () => void;
+}) {
+  const now = useNow();
+  return (
+    <Row
+      // A task that's yours is with you; an ask or a turn is from whoever asked.
+      who={item.kind === "task" ? "you" : (item.sender ?? null)}
+      avatar={item.kind === "task" ? you : undefined}
+      agent={item.kind !== "task" && agent}
+      title={waitingTitle(item)}
+      line={waitingLine(item, you)}
+      standing={WAITING_STANDING[item.kind]}
+      age={item.at ? shortAge(Date.parse(item.at), now) : ""}
+      // Its own key: the task it's in may also have a row of its own below.
+      rowKey={`waiting:${item.kind}:${item.key ?? item.message_id ?? ""}`}
+      onOpen={onOpen}
+    />
+  );
+}
+
+function TaskRow({
+  task,
+  you,
+  titles,
+  agents,
+  indent,
+  lead,
+  onOpen,
+}: {
+  task: BoardPart;
+  you: string;
+  titles: Map<string, string>;
+  agents: Set<string>;
+  indent?: number;
+  lead?: ReactNode;
+  onOpen: (episode?: string | null) => void;
+}) {
+  const who = whoHasIt(task, you);
+  const { age, ageTitle, quiet } = useAge(task);
+  return (
+    <Row
+      who={who}
+      avatar={who === "you" ? you : undefined}
+      agent={!!who && agents.has(who)}
+      title={task.title}
+      line={humanLine(task, titles)}
+      standing={STANDING[task.state]}
+      age={age}
+      ageTitle={ageTitle}
+      quiet={quiet}
+      indent={indent}
+      lead={lead}
+      rowKey={task.key}
+      dim={task.state === "done"}
+      onOpen={() => onOpen(task.episode)}
+    />
   );
 }
 
 /**
- * The board's keys, shown once a row is selected (you are using the keyboard,
- * so they are worth the line), and what the last action did. Otherwise
- * nothing: the tabs already count the rows.
+ * An epic as a tree: its own row, with how many of its parts are done, and its
+ * parts indented under it in path order. A part's number is its step, so parts
+ * that run side by side share one, the way `mycelium board show` numbers them.
  */
-function BoardFooter({ statusMessage, keys }: { statusMessage: string | null; keys: boolean }) {
-  if (!keys && !statusMessage) return null;
+function EpicRows({
+  epic,
+  you,
+  titles,
+  agents,
+  onOpen,
+}: {
+  epic: BoardEpic;
+  you: string;
+  titles: Map<string, string>;
+  agents: Set<string>;
+  onOpen: (episode?: string | null) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const now = useNow();
+  const parts = useMemo(() => new Map(epic.path.map(p => [p.key, p])), [epic.path]);
+  const newest = Math.max(0, ...epic.path.map(lastMoved), lastMoved(epic));
+  const quiet = epic.path.some(p => isQuiet(p, now)) && !epic.path.some(p => p.state === "working" && !isQuiet(p, now));
+  const lead = epic.lead === you ? "you" : (epic.lead ?? null);
+  const Chevron = open ? ChevronDown : ChevronRight;
   return (
-    <footer className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-5 py-1.5">
-      {keys && (
-        <span className="hidden flex-wrap items-center gap-x-2 gap-y-1 text-micro text-faint @[34rem]:flex">
-          <Key k="j/k" /> move
-          <Key k="c" /> claim
-          <Key k="r" /> resolve
-          <Key k="b" /> block
-          <Key k="t" /> thread
-          <Key k="esc" /> done
-        </span>
-      )}
-      {statusMessage && (
-        <span className="ml-auto truncate text-micro text-accent" title={statusMessage}>
-          {statusMessage}
-        </span>
-      )}
-    </footer>
-  );
-}
-
-function Key({ k }: { k: string }) {
-  return (
-    <kbd className="rounded border border-border bg-surface px-1 py-px font-mono text-micro text-muted-foreground">
-      {k}
-    </kbd>
+    <>
+      <Row
+        who={lead}
+        avatar={lead === "you" ? you : undefined}
+        agent={!!lead && agents.has(lead)}
+        title={epic.title}
+        line={epicLine(epic, titles)}
+        standing={{ word: progressOf(epic), tone: "var(--muted-foreground)" }}
+        age={quiet ? `quiet ${shortAge(newest, now)}` : shortAge(newest, now)}
+        quiet={quiet}
+        rowKey={epic.key}
+        lead={
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={open ? `Hide the parts of ${epic.title}` : `Show the parts of ${epic.title}`}
+            onClick={e => {
+              e.stopPropagation();
+              setOpen(o => !o);
+            }}
+            className="flex w-3 flex-shrink-0 justify-center text-faint hover:text-text"
+          >
+            <Chevron className="size-3" />
+          </span>
+        }
+        onOpen={() => onOpen(epic.episode)}
+      />
+      {open &&
+        epic.steps.flatMap((step, n) =>
+          step.map(key => {
+            const part = parts.get(key);
+            if (!part) return null;
+            return (
+              <TaskRow
+                key={key}
+                task={part}
+                you={you}
+                titles={titles}
+                agents={agents}
+                indent={1}
+                lead={
+                  <span
+                    className="w-3 flex-shrink-0 text-right font-mono text-faint"
+                    title={sideBySide(key, step, titles)}
+                  >
+                    {n + 1}
+                  </span>
+                }
+                onOpen={onOpen}
+              />
+            );
+          }),
+        )}
+    </>
   );
 }

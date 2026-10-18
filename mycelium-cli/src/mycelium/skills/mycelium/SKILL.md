@@ -86,9 +86,11 @@ This is the surface. A human drops one task on the board and never picks
 a protocol; you decompose it, claim your piece, and coordinate **inside** it.
 
 ```bash
-mycelium board                                    # what needs you (the default filter)
+mycelium board                                    # epics first, then what needs you
+mycelium waiting                                  # asks you haven't answered, your turns, your tasks
 mycelium board new "Ship passkey login" "Passkeys on the login page; passwords stay as a fallback."
 mycelium board new "Pick token storage" --file brief.md --parent work/passkey-login --assign @sec
+mycelium board show work/passkey-login            # its parts in order, and where each stands
 mycelium board claim work/passkey-login           # take it until you resolve or release it
 mycelium board resolve work/passkey-login         # done
 ```
