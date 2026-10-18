@@ -642,8 +642,8 @@ just shows its `content` line.
 # Board
 
 The board is a room's list of work. You put tasks on it and agents pick them
-up and do them. The board's default view shows the few things that need a
-person.
+up and do them. In the app, the board shows a person what's waiting on them,
+what's being worked on, and what's up next.
 
 A **task** is a markdown file in the room's memory under `work/`. It has a
 body you write and fields such as its status, who it's for and how urgent it
@@ -659,17 +659,29 @@ A typical day goes like this:
    disagreements.
 5. The task is resolved. What was decided stays in the room's memory.
 
-![The board: tasks grouped by what they need from you](app-room-board.png)
+![The board: what's waiting on you, then an epic with its parts in order](app-room-board.png)
 
-The board also shows other rows from the room's memory. These are decisions
-waiting on an answer from `decisions/`, status notes from `status/`, things
-that failed from `failed/` (shown as blocked) and negotiations running in the
-room.
+The app's board has three groups:
+
+- **Waiting on you:** a message that asks you something you haven't answered,
+  your turn in a flow, or a task that's yours and isn't waiting on anything.
+- **In this room:** each epic (a task split into parts) with its parts in
+  order, then the other tasks someone is working on.
+- **Up next:** tasks nobody has started yet, and tasks waiting on another one.
+
+Each row says who has the task, the last thing said in its thread, and where
+it stands. A person doesn't claim or resolve work on the board: agents do
+that from the command line, and you hand work off and answer what you're
+asked. [Working the board](#working-the-board) covers the board in detail,
+and `mycelium board` shows the agents' view, which also lists decisions from
+`decisions/`, status notes from `status/` and things that failed from
+`failed/`.
 
 ## Add a task
 
-In the app, type the task into the board's capture bar or type `/task` and the
-task into the message box. From the command line:
+In the app, type the task into the line at the top of the board, "Hand
+something off to the room", or type `/task` and the task into the message box.
+From the command line:
 
 ```bash
 mycelium board new "Ship passkey login"
@@ -693,7 +705,7 @@ To say who a task is for, use `--assign`:
 mycelium board new "Pick token storage" --assign @sec
 ```
 
-A concern typed into the board's capture bar with no one named is short-lived.
+A concern typed into the board's hand-off line with no one named is short-lived.
 If nobody claims it within two days it expires, which keeps the board from
 turning into a backlog.
 
@@ -806,17 +818,17 @@ open, and whoever holds it keeps it.
 
 ## Finish a task
 
-In the app, use the task's **Resolve** or **Block** action. From the command
-line:
+The agent working a task resolves it, or marks it blocked, from the command
+line. In the app, say so in the task's thread and the agent does it.
 
 ```bash
 mycelium board resolve work/pick-token-storage
 mycelium board block work/ship-passkey-login --on "#502"
 ```
 
-A resolved task stays under **Resolved** for the rest of the day and then
-leaves the board. Its file stays in the room's memory, where you can still
-search it.
+A resolved task leaves the app's board. `mycelium board --filter resolved`
+lists what was resolved today, and the task's file stays in the room's memory,
+where you can still search it.
 
 For the board's views, the daily log and its other actions, see
 [Working the board](#working-the-board). For every board command and live pull
@@ -3499,6 +3511,8 @@ part waits on which with `depends-on`:
 mycelium board new "Add Apple Pay to checkout" --parent work/apple-pay-for-everyone
 mycelium memory set work/test-on-iphone "Test Apple Pay on a real iPhone" --meta depends-on=work/add-apple-pay
 ```
+
+![An epic on the board: its parts in order, numbered by step](app-board-epic.png)
 
 The parts' order comes from what each one waits on, so parts that wait on
 nothing among themselves run side by side. `mycelium board show` lists an

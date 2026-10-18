@@ -162,7 +162,7 @@
       '<div class="stats"><span><b>' + COURSES.length + "</b>courses</span><span><b>" + lessons +
       "</b>lessons</span><span><b>" + minutes + "</b>minutes in all</span></div></div>" +
       '<div class="stage" aria-hidden="true">' +
-      '<div class="shot back"><img src="app-board-columns.png" alt=""></div>' +
+      '<div class="shot back"><img src="app-room-board.png" alt=""></div>' +
       '<div class="shot front"><img src="walk-thread.png" alt=""></div></div></section>';
 
     // The core course opens the catalog and the capstone closes it, each as a

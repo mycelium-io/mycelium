@@ -47,6 +47,7 @@ export const TARGETS: Record<string, Target[]> = {
   "room-board": [{ dir: DOCS_DIR, name: "app-room-board", retina: true }],
   "room-empty": [{ dir: DOCS_DIR, name: "app-room-empty", retina: true }],
   // The docs' concept and guide pages.
+  "board-epic": [{ dir: DOCS_DIR, name: "app-board-epic", retina: true }],
   "thread-flow": [{ dir: DOCS_DIR, name: "app-thread-flow", retina: true }],
   "swarm-dialog": [{ dir: DOCS_DIR, name: "app-swarm", retina: true }],
   machines: [{ dir: DOCS_DIR, name: "app-machines", retina: true }],

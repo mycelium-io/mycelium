@@ -1226,6 +1226,8 @@ EOF
       <p>An epic is a task with parts. File the parts with <code>--parent</code>, and say which part waits on which with <code>depends-on</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Add Apple Pay to checkout&quot;</span> <span class="flag">--parent</span> work/apple-pay-for-everyone
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/test-on-iphone <span class="str">&quot;Test Apple Pay on a real iPhone&quot;</span> <span class="flag">--meta</span> depends-on=work/add-apple-pay</code></pre>
+      <figure class="doc-figure"><img class="doc-img" src="app-board-epic.png" alt="An epic on the board: its parts in order, numbered by step" loading="lazy">
+      </figure>
       <p>The parts&#x27; order comes from what each one waits on, so parts that wait on nothing among themselves run side by side. <code>mycelium board show</code> lists an epic&#x27;s parts in that order, with where each stands and the latest thing said in its thread:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">show</span> work/apple-pay-for-everyone</code></pre>
       <pre><code> Apple Pay for everyone   1 of 5 parts are done. @builder leads it.   work/apple-pay-for-everyone

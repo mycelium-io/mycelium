@@ -74,6 +74,8 @@ mycelium board new "Add Apple Pay to checkout" --parent work/apple-pay-for-every
 mycelium memory set work/test-on-iphone "Test Apple Pay on a real iPhone" --meta depends-on=work/add-apple-pay
 ```
 
+![An epic on the board: its parts in order, numbered by step](app-board-epic.png)
+
 The parts' order comes from what each one waits on, so parts that wait on
 nothing among themselves run side by side. `mycelium board show` lists an
 epic's parts in that order, with where each stands and the latest thing said
