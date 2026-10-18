@@ -1962,6 +1962,155 @@
         }
       }
     },
+    "/api/rooms/{room_name}/board": {
+      "get": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Read Board",
+        "description": "The room's open epics, each with its parts in path order, and its other open tasks.",
+        "operationId": "read_board_api_rooms__room_name__board_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/board/{key}": {
+      "get": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Read Board Row",
+        "description": "One board row as the board reads it, settled or not, with its parts.",
+        "operationId": "read_board_row_api_rooms__room_name__board__key__get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardEpic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/waiting": {
+      "get": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Read Waiting",
+        "description": "What is waiting on a member: asks it hasn't answered, a flow step whose\nfloor it has, and the open tasks it holds that wait on nothing.",
+        "operationId": "read_waiting_api_rooms__room_name__waiting_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "for",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The member to read for",
+              "title": "For"
+            },
+            "description": "The member to read for"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitingRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/swarms": {
       "post": {
         "tags": [
@@ -7196,6 +7345,299 @@
         "title": "AgentRenameRead",
         "description": "What a rename moved, or that it waits for a yes on the machine running the agent."
       },
+      "BoardEpic": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "done",
+              "blocked",
+              "waiting",
+              "working",
+              "open"
+            ],
+            "title": "State"
+          },
+          "holder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "waiting_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Waiting On"
+          },
+          "blocked_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked By"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestLine"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest message in its thread"
+          },
+          "parts": {
+            "type": "integer",
+            "title": "Parts",
+            "description": "How many rows are part of this one",
+            "default": 0
+          },
+          "parts_done": {
+            "type": "integer",
+            "title": "Parts Done",
+            "default": 0
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "lead": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead",
+            "description": "Who holds it, else who wrote all its parts"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "steps": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Steps",
+            "description": "The parts' keys in path order; parts in one step run side by side"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/BoardPart"
+            },
+            "type": "array",
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "state",
+          "done",
+          "total"
+        ],
+        "title": "BoardEpic"
+      },
+      "BoardPart": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "done",
+              "blocked",
+              "waiting",
+              "working",
+              "open"
+            ],
+            "title": "State"
+          },
+          "holder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "waiting_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Waiting On"
+          },
+          "blocked_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked By"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestLine"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest message in its thread"
+          },
+          "parts": {
+            "type": "integer",
+            "title": "Parts",
+            "description": "How many rows are part of this one",
+            "default": 0
+          },
+          "parts_done": {
+            "type": "integer",
+            "title": "Parts Done",
+            "default": 0
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "state"
+        ],
+        "title": "BoardPart"
+      },
+      "BoardRead": {
+        "properties": {
+          "epics": {
+            "items": {
+              "$ref": "#/components/schemas/BoardEpic"
+            },
+            "type": "array",
+            "title": "Epics"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/BoardPart"
+            },
+            "type": "array",
+            "title": "Tasks",
+            "description": "Open tasks that are part of no open epic"
+          }
+        },
+        "type": "object",
+        "required": [
+          "epics",
+          "tasks"
+        ],
+        "title": "BoardRead"
+      },
       "Body_create_upload_api_rooms__room_name__uploads_post": {
         "properties": {
           "file": {
@@ -8731,6 +9173,35 @@
           "code"
         ],
         "title": "JoinRedeem"
+      },
+      "LatestLine": {
+        "properties": {
+          "sender": {
+            "type": "string",
+            "title": "Sender"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sender",
+          "text"
+        ],
+        "title": "LatestLine"
       },
       "MachineAgentRead": {
         "properties": {
@@ -14333,6 +14804,153 @@
         ],
         "title": "VoiceStatus",
         "description": "Whether this hub can transcribe a mic, and what it hears."
+      },
+      "WaitingItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ask",
+              "turn",
+              "task"
+            ],
+            "title": "Kind"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key",
+            "description": "The task it's in; none for the room itself"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "epic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epic"
+          },
+          "epic_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epic Title"
+          },
+          "sender": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender",
+            "description": "Who asked, or whose flow holds the floor"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "The ask's first line, or the task's latest line"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Asks in the same thread, the newest shown",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "WaitingItem"
+      },
+      "WaitingRead": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WaitingItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "items"
+        ],
+        "title": "WaitingRead"
       },
       "WakeOutcome": {
         "properties": {

@@ -47,6 +47,7 @@ from mycelium.board.activity import (
     zone,
 )
 from mycelium.board.assignment import attention_of_item
+from mycelium.board.epics import epic_lines, epic_parts, where_it_stands
 from mycelium.board.model import (
     EPISODE_FIELD,
     KINDS,
@@ -201,6 +202,8 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], HubHealth]:
         agents = get(f"/api/rooms/{name}/agents", [], "agents")
         members = get(f"/api/rooms/{name}/sessions/members", {}, "members")
         messages = get(f"/api/rooms/{name}/messages?limit=300", {}, "messages")
+        # The epics, worked out by the hub, so this draws what the app draws.
+        epics = get(f"/api/rooms/{name}/board", None, "board")
 
     return (
         name,
@@ -211,12 +214,13 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], HubHealth]:
             "members": (members or {}).get("members", []) if isinstance(members, dict) else [],
             "messages": (messages or {}).get("messages", []) if isinstance(messages, dict) else [],
             "upstream": upstream if isinstance(upstream, dict) else None,
+            "board": epics if isinstance(epics, dict) else None,
         },
         health,
     )
 
 
-def _fetch(room: str | None) -> tuple[str, list[LiveItem], HubHealth]:
+def _fetch(room: str | None) -> tuple[str, list[LiveItem], HubHealth, dict[str, Any] | None]:
     """Read every source the board projects.  A source that isn't reachable
     contributes nothing rather than failing the whole board."""
     name, sources, health = _fetch_raw(room)
@@ -227,7 +231,7 @@ def _fetch(room: str | None) -> tuple[str, list[LiveItem], HubHealth]:
         members=sources["members"],
         now=datetime.now(UTC),
     )
-    return name, attach_upstream(items, sources["upstream"]), health
+    return name, attach_upstream(items, sources["upstream"]), health, sources["board"]
 
 
 # ── rendering ────────────────────────────────────────────────────────────────
@@ -357,6 +361,7 @@ def _render(
     attention_filter: str | None,
     group_by: str,
     view: str,
+    epics: dict[str, Any] | None = None,
 ) -> Group:
     now = datetime.now(UTC)
     attention_filters = {i.id: attention_of_item(i, now) for i in items}
@@ -379,6 +384,21 @@ def _render(
     )
 
     blocks: list[RenderableType] = [header, Text()]
+
+    # Each open epic as a tree of its parts in path order, ahead of the rows,
+    # which then leave out what the tree already drew. A list of what resolved
+    # has no open epics to draw.
+    drawn_epics = (epics or {}).get("epics") or []
+    if view != "table" and drawn_epics and attention_filter != "resolved":
+        title = Text()
+        title.append("Epics ", style="bold")
+        title.append(str(len(drawn_epics)), style="dim")
+        blocks.append(title)
+        for epic in drawn_epics:
+            blocks.extend(epic_lines(epic))
+            blocks.append(Text())
+        in_tree = epic_parts(epics)
+        shown = [i for i in shown if i.id.split(":", 1)[-1] not in in_tree]
 
     if view == "table":
         blocks.append(_table(shown, items))
@@ -478,7 +498,7 @@ def board(
         raise typer.Exit(1)
 
     def read() -> Group:
-        name, items, health = _fetch(room)
+        name, items, health, epics = _fetch(room)
         if not health.reachable:
             return Group(Text(f"  {health.note}. No board to draw for {name}.", style="red"))
         rendered = _render(
@@ -487,6 +507,7 @@ def board(
             attention_filter=ATTENTION_CHOICES[attention_filter],
             group_by=group_by,
             view=view,
+            epics=epics,
         )
         if health.note:
             # A board missing a source is not a quiet board, and the difference
@@ -507,6 +528,65 @@ def board(
                 time.sleep(max(1.0, interval))
     except KeyboardInterrupt:
         console.print("[dim]  stopped[/dim]")
+
+
+@doc_ref(
+    usage="mycelium board show <id>",
+    desc="One task and its parts in path order: who is on each, where it stands, and its latest line.",
+    group="board",
+)
+@app.command(name="show")
+@in_room()
+@emits_json()
+def board_show(
+    ctx: typer.Context,
+    row_id: str = typer.Argument(..., help="Row id or memory key (e.g. t3, work/apple-pay)"),
+    room: str | None = None,
+) -> None:
+    """Show a task with its parts.
+
+    The parts come in path order: a part's number is its step, and parts with
+    the same number run side by side. Under each is the newest line said in its
+    thread. A task with no parts shows on its own.
+    """
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    key = row_id.strip()
+    if not _looks_like_key(key):
+        item = _row(name, key)
+        found = board_fields.memory_key_of(item) if item is not None else None
+        key = found or key
+    try:
+        with hub_client(cfg, timeout=30) as client:
+            resp = client.get(f"/api/rooms/{name}/board/{key}")
+    except httpx.HTTPError as e:
+        console.print(f"[red]✗[/red] hub unreachable: {e}")
+        raise typer.Exit(1) from e
+    if resp.status_code == 404:
+        console.print(f"[dim]No board row '{row_id}' in {name}.[/dim]")
+        raise typer.Exit(1)
+    if resp.status_code >= 400:
+        console.print(f"[red]✗[/red] HTTP {resp.status_code}: {resp.text[:200]}")
+        raise typer.Exit(1)
+    epic = resp.json()
+    if _json_wanted(ctx):
+        sys.stdout.write(json.dumps(epic, indent=2) + "\n")
+        return
+    lines = epic_lines(epic, latest=True)
+    if not epic.get("path"):
+        lines = [*lines[:1], Text(f"   {where_it_stands(epic)}", style="dim")]
+        if said := epic.get("latest"):
+            lines.append(Text(f"   @{said['sender']}: {said['text']}", style="dim italic"))
+    console.print(Group(*lines))
+    console.print(
+        Text(f"\n  Read a part's thread: mycelium board messages <key> --room {name}", style="dim")
+    )
+
+
+def _looks_like_key(value: str) -> bool:
+    """Whether ``value`` reads as a memory key (``work/apple-pay``) rather than
+    a row id the board shortened or a thread id."""
+    return "/" in value and not value.startswith(("memory:", "episode:"))
 
 
 @doc_ref(
@@ -692,7 +772,7 @@ def _row(room: str, row_id: str) -> LiveItem | None:
     the thread, not the memory key, and the reader who followed one types back
     what they read.
     """
-    _, items, _ = _fetch(room)
+    _, items, _, _ = _fetch(room)
     wanted = row_id.strip()
     for item in items:
         tail = item.id.split(":", 1)[1] if ":" in item.id else item.id
