@@ -42,6 +42,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { copyText } from "@/lib/clipboard";
+import { clearOnScreen, setOnScreen } from "@/lib/on-screen";
 import { useRoomThreads } from "@/lib/room-data";
 import { threadShortId } from "@/lib/threads";
 import {
@@ -49,6 +50,7 @@ import {
   isClosable,
   loadLayout,
   memoryPanelId,
+  panesInFront,
   parsePanelId,
   restorableLayout,
   saveLayout,
@@ -714,9 +716,19 @@ export function RoomDock({
       api.getPanel("channel")?.api.setRenderer("always");
       if (narrowRef.current) collapseGroups(api);
 
-      api.onDidLayoutChange(() => saveLayout(roomName, api.toJSON()));
-      api.onDidActivePanelChange(e => onActiveChange(e.panel?.id ?? null));
+      // What's in front of you, for the bell and reading aloud: every group's
+      // front tab, since a split shows the Channel and a thread side by side.
+      const publish = () => setOnScreen({ room: roomName, panes: panesInFront(api.groups.map(g => g.activePanel?.id)) });
+      api.onDidLayoutChange(() => {
+        saveLayout(roomName, api.toJSON());
+        publish();
+      });
+      api.onDidActivePanelChange(e => {
+        onActiveChange(e.panel?.id ?? null);
+        publish();
+      });
       onActiveChange(api.activePanel?.id ?? null);
+      publish();
       onReady(handleRef.current);
     },
     // The dock is keyed by room, so this runs once per room.
@@ -733,6 +745,9 @@ export function RoomDock({
     const api = apiRef.current;
     if (api && narrow) collapseGroups(api);
   }, [narrow]);
+
+  // Leaving the room: none of it is in front any more.
+  useEffect(() => () => clearOnScreen(roomName), [roomName]);
 
   const context = useMemo<DockContextValue>(
     () => ({

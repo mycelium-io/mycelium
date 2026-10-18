@@ -156,6 +156,13 @@ describe("createReader", () => {
     expect(h.now()).toBe("julia, in Speed up the board.");
   });
 
+  it("reads the whole message, with no stop, when the person asked for that", async () => {
+    const h = harness();
+    h.reader.enqueue({ ...item("a", "The start.\n\nThe rest. And more."), whole: true });
+    expect(await h.finishAll()).toEqual(["julia, in Speed up the board.", "The start.", "The rest.", "And more."]);
+    expect(h.state().status).toBe("idle");
+  });
+
   it("stops the sentence a mic opens over and says it again after", async () => {
     const h = harness();
     h.reader.enqueue(item("a", "One. Two."));

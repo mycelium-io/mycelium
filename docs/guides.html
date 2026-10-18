@@ -1508,16 +1508,49 @@ Review 1
       <p>Audio is never saved. The hub keeps only the few seconds it is transcribing and discards them once they&#x27;re text.</p>
       <p>The model runs in a separate process that the hub starts when someone turns on a mic and that stops about five minutes after the last mic is turned off. That&#x27;s when its memory is given back. Starting it takes about a second, during which the line under the box says it&#x27;s getting ready. Keep the mic on until your words appear: what you say meanwhile is held and transcribed once it&#x27;s ready, but turning the mic off before then drops it.</p>
       <p>The mic button is missing when voice is off or the hub can&#x27;t run it (it has no model and can&#x27;t download one), and in the desktop app when it&#x27;s connected to another hub. The app gives the microphone only to the hub it runs itself, so a remote hub&#x27;s pages can&#x27;t listen; use that hub in a browser to talk to it.</p>
-      <h2 id="voice-reading-mentions-aloud">Reading mentions aloud</h2>
-      <p>The app can also read your mentions to you. When the bell rings for a message, it says who sent it and where, then the start of the message, while a popover on the bell shows the words with the sentence being said lit. Click the popover to open the message, press <strong>Read all</strong> for the rest, or press ✕ (or Esc, when you aren&#x27;t typing) to stop it.</p>
+      <h2 id="voice-reading-messages-aloud">Reading messages aloud</h2>
+      <p>The app can also read messages to you. It says who sent each one and where, then the message, while a popover on the bell shows the words with the sentence being said lit. Click the popover to open the message, press <strong>Read all</strong> for the rest, or press ✕ (or Esc, when you aren&#x27;t typing) to stop it.</p>
       <p>It needs a speech server on the hub. Mycelium ships no speech model: whoever runs the hub points it at an OpenAI-style text-to-speech server they run, such as one serving Qwen&#x27;s or Kokoro&#x27;s voices:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> voice.speech_url <span class="url">http://127.0.0.1:8880/v1</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> voice.speech_voice &lt;a voice the server has&gt;
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
 <span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
       <p><code>/audio/speech</code> is added to the address unless it ends with it already. <code>voice.speech_model</code> names the model when the server expects one, and <code>voice.speech_api_key</code> is sent as a bearer token when it asks for a key. All four can be set on the Hub settings page too. The app asks the hub and the hub asks the server, so the server needs no CORS headers, it can be on plain http while the app is on https, and its key stays on the hub. It&#x27;s separate from the mic: a hub can read aloud without transcribing, and the other way round.</p>
-      <p>Then each person turns on <strong>Read aloud</strong> in their notification settings, which is off until they do, and only shown when the hub has a speech server. <strong>Try it</strong> there reads a sample line.</p>
-      <p>Only the window you can see reads aloud, and only one window does when you have several open. It waits while a mic is open in any of them, so what it says never lands in your draft, and goes on once the mic is off. Do not disturb and muted rooms keep it quiet. A browser plays nothing until you have clicked or typed in the page once, so the first mention after opening the app only rings.</p>
+      <p>Then each person sets it up for themselves in Settings, under <strong>Read aloud</strong>. It&#x27;s off until they turn it on, and <strong>Try it</strong> reads a sample line. Every other choice there is theirs too, starting from the first option listed:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Setting</th>
+              <th>Choices</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>What it reads</td>
+              <td>Mentions of you and messages sent to you, or everything said in rooms you pick (and mentions anywhere)</td>
+            </tr>
+            <tr>
+              <td>Skip what&#x27;s in front of me</td>
+              <td>The thread you have open, the room you have open, or nothing</td>
+            </tr>
+            <tr>
+              <td>How much</td>
+              <td>The start (the first paragraph or about twenty seconds, with <strong>Read all</strong> for the rest), or all of it</td>
+            </tr>
+            <tr>
+              <td>Voice</td>
+              <td>The hub&#x27;s voice, or another the speech server lists</td>
+            </tr>
+            <tr>
+              <td>Speed</td>
+              <td>Normal, slower or faster</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>&quot;In front of me&quot; means what the window you&#x27;re working in shows: its room, and the Channel or the task threads it has open (a split can show several). The bell&#x27;s ping has the same choice of its own, under Notifications.</p>
+      <p>Only a window you can see reads aloud, and only one window does when you have several open. It waits while a mic is open in any of them, so what it says never lands in your draft, and goes on once the mic is off. Do not disturb and muted rooms keep it quiet. A browser plays nothing until you have clicked or typed in the page once, so the first message after opening the app isn&#x27;t read.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/voice.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="voice" aria-label="Previous and next sections">

@@ -84,6 +84,18 @@ export function parsePanelId(
   return null;
 }
 
+/** The conversations in front, from the tab in front of each group: the
+ *  Channel, and each task thread's episode. Other views show no messages. */
+export function panesInFront(frontTabs: readonly (string | null | undefined)[]): string[] {
+  const panes = new Set<string>();
+  for (const id of frontTabs) {
+    const parsed = id ? parsePanelId(id) : null;
+    if (parsed?.kind === "channel") panes.add("channel");
+    else if (parsed?.kind === "thread") panes.add(parsed.episode);
+  }
+  return [...panes];
+}
+
 /** The Channel is the room's home: every other tab can close, it can't. */
 export function isClosable(id: string): boolean {
   return id !== "channel";

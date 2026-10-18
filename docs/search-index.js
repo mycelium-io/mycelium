@@ -1352,10 +1352,10 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
-    "u": "guides.html#voice-reading-mentions-aloud",
-    "t": "Reading mentions aloud",
+    "u": "guides.html#voice-reading-messages-aloud",
+    "t": "Reading messages aloud",
     "s": "Work › Voice",
-    "x": "The app can also read your mentions to you. When the bell rings for a message, it says who sent it and where, then the start of the message, while a popover on the bell shows the words with the sentence being said lit. Click the popover to open the message, press Read all for the rest, or press ✕ (or Esc, when you aren't typing) to stop it. It needs a speech server on the hub. Mycelium ships no speech model: whoever ",
+    "x": "The app can also read messages to you. It says who sent each one and where, then the message, while a popover on the bell shows the words with the sentence being said lit. Click the popover to open the message, press Read all for the rest, or press ✕ (or Esc, when you aren't typing) to stop it. It needs a speech server on the hub. Mycelium ships no speech model: whoever runs the hub points it at an OpenAI-style text-",
     "p": "Guides"
   },
   {

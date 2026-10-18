@@ -115,11 +115,11 @@ model and can't download one), and in the desktop app when it's connected to
 another hub. The app gives the microphone only to the hub it runs itself, so a
 remote hub's pages can't listen; use that hub in a browser to talk to it.
 
-## Reading mentions aloud
+## Reading messages aloud
 
-The app can also read your mentions to you. When the bell rings for a message,
-it says who sent it and where, then the start of the message, while a popover
-on the bell shows the words with the sentence being said lit. Click the
+The app can also read messages to you. It says who sent each one and where,
+then the message, while a popover on the bell shows the words with the
+sentence being said lit. Click the
 popover to open the message, press **Read all** for the rest, or press ✕ (or
 Esc, when you aren't typing) to stop it.
 
@@ -143,12 +143,24 @@ http while the app is on https, and its key stays on the hub. It's separate
 from the mic: a hub can read aloud without transcribing, and the other way
 round.
 
-Then each person turns on **Read aloud** in their notification settings, which
-is off until they do, and only shown when the hub has a speech server. **Try
-it** there reads a sample line.
+Then each person sets it up for themselves in Settings, under **Read aloud**.
+It's off until they turn it on, and **Try it** reads a sample line. Every
+other choice there is theirs too, starting from the first option listed:
 
-Only the window you can see reads aloud, and only one window does when you
+| Setting | Choices |
+| --- | --- |
+| What it reads | Mentions of you and messages sent to you, or everything said in rooms you pick (and mentions anywhere) |
+| Skip what's in front of me | The thread you have open, the room you have open, or nothing |
+| How much | The start (the first paragraph or about twenty seconds, with **Read all** for the rest), or all of it |
+| Voice | The hub's voice, or another the speech server lists |
+| Speed | Normal, slower or faster |
+
+"In front of me" means what the window you're working in shows: its room, and
+the Channel or the task threads it has open (a split can show several). The
+bell's ping has the same choice of its own, under Notifications.
+
+Only a window you can see reads aloud, and only one window does when you
 have several open. It waits while a mic is open in any of them, so what it says
 never lands in your draft, and goes on once the mic is off. Do not disturb and
 muted rooms keep it quiet. A browser plays nothing until you have clicked or
-typed in the page once, so the first mention after opening the app only rings.
+typed in the page once, so the first message after opening the app isn't read.

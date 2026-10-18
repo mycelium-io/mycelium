@@ -5658,6 +5658,28 @@
         }
       }
     },
+    "/api/voice/voices": {
+      "get": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "Speech Voices",
+        "description": "The voices the hub's speech server lists, for a person to choose one.",
+        "operationId": "speech_voices_api_voice_voices_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeechVoices"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/voice/sessions/{session_id}": {
       "post": {
         "tags": [
@@ -13127,6 +13149,33 @@
             "minLength": 1,
             "title": "Text",
             "description": "What to say"
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:+ -]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice",
+            "description": "A voice the person chose, in place of the hub's `voice.speech_voice`"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.5
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed",
+            "description": "How fast to say it; 1 is normal"
           }
         },
         "type": "object",
@@ -13135,6 +13184,27 @@
         ],
         "title": "SpeechRequest",
         "description": "Text to say. The hub sends it to its own speech server; there is no\naddress to give, by design."
+      },
+      "SpeechVoices": {
+        "properties": {
+          "voices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Voices",
+            "description": "Empty when the server doesn't list them"
+          },
+          "default": {
+            "type": "string",
+            "title": "Default",
+            "description": "The hub's own `voice.speech_voice`, used when none is chosen",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "SpeechVoices",
+        "description": "The voices the hub's speech server lists, for a person to pick from."
       },
       "SubscriptionCreate": {
         "properties": {

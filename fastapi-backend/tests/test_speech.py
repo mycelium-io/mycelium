@@ -176,3 +176,72 @@ def test_an_address_that_isnt_http_is_refused(monkeypatch):
     monkeypatch.setattr(settings, "VOICE_SPEECH_URL", "file:///etc/passwd")
     with pytest.raises(speech.SpeechUnavailable):
         speech.endpoint()
+
+
+@pytest.mark.asyncio
+async def test_a_persons_voice_and_speed_go_in_place_of_the_hubs(client, server, monkeypatch):
+    seen, _ = server
+    monkeypatch.setattr(settings, "VOICE_SPEECH_VOICE", "af_heart")
+    response = await client.post(
+        "/api/voice/speech", json={"text": "hi", "voice": "bm_george", "speed": 1.25}
+    )
+    assert response.status_code == 200
+    assert json.loads(seen[0].content) == {
+        "input": "hi",
+        "response_format": "mp3",
+        "voice": "bm_george",
+        "speed": 1.25,
+    }
+    # Without a choice, the hub's voice and the server's own speed.
+    await client.post("/api/voice/speech", json={"text": "hi"})
+    assert json.loads(seen[1].content) == {
+        "input": "hi",
+        "response_format": "mp3",
+        "voice": "af_heart",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra",
+    [{"voice": "../../etc"}, {"voice": "x" * 65}, {"voice": ""}, {"speed": 0.1}, {"speed": 5}],
+)
+async def test_a_voice_or_speed_out_of_range_is_refused(client, server, extra):
+    seen, _ = server
+    response = await client.post("/api/voice/speech", json={"text": "hi", **extra})
+    assert response.status_code == 422
+    assert seen == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"voices": ["bm_george", "af_heart"]},
+        ["af_heart", "bm_george"],
+        {"data": [{"name": "af_heart"}, {"id": "bm_george"}]},
+        {"voices": [{"voice_id": "bm_george"}, {"name": "af_heart"}, {"name": ""}]},
+    ],
+)
+async def test_the_servers_voices_are_listed_from_any_common_shape(
+    client, server, monkeypatch, answer
+):
+    seen, state = server
+    monkeypatch.setattr(settings, "VOICE_SPEECH_VOICE", "af_heart")
+    state["reply"] = httpx.Response(200, json=answer)
+    response = await client.get("/api/voice/voices")
+    assert response.json() == {"voices": ["af_heart", "bm_george"], "default": "af_heart"}
+    assert str(seen[0].url) == "http://tts.local:8880/v1/audio/voices"
+
+
+@pytest.mark.asyncio
+async def test_a_server_that_lists_no_voices_answers_none(client, server):
+    _, state = server
+    state["reply"] = httpx.Response(404, json={"detail": "Not Found"})
+    assert (await client.get("/api/voice/voices")).json() == {"voices": [], "default": ""}
+
+
+@pytest.mark.asyncio
+async def test_no_voices_without_a_speech_server(client, monkeypatch):
+    monkeypatch.setattr(settings, "VOICE_SPEECH_URL", "")
+    assert (await client.get("/api/voice/voices")).status_code == 404

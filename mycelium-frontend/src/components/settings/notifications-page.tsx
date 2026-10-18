@@ -3,18 +3,25 @@
 
 "use client";
 
+import Link from "next/link";
 import { X } from "lucide-react";
-import { useNotifications, useReadAloud } from "@/components/notifications-provider";
-import { Button } from "@/components/ui/button";
+import { useNotifications } from "@/components/notifications-provider";
+import { settingHref } from "@/lib/client-settings";
 import { DEFAULT_SETTINGS, roomLevel } from "@/lib/notifications";
+import type { SkipRule } from "@/lib/on-screen";
 import { useIsDesktop } from "@/lib/desktop";
-import { Note, Row, Section, SettingsPage, Toggle } from "./settings-ui";
+import { Note, Row, Section, Segmented, SettingsPage, Toggle } from "./settings-ui";
+
+const PING_SKIPS: { value: SkipRule; label: string }[] = [
+  { value: "thread", label: "Its thread is open" },
+  { value: "room", label: "Its room is open" },
+  { value: "never", label: "Never" },
+];
 
 /** How the bell tells you you've been mentioned, and which rooms are muted.
  *  The bell's gear opens this page, so there is one place to change them. */
 export function NotificationsPage() {
   const { settings, setSettings, desktopPermission, requestDesktopPermission, unmuteRoom } = useNotifications();
-  const readAloud = useReadAloud();
   const desktop = useIsDesktop();
   const rooms = [...new Set([...settings.mutedRooms, ...Object.keys(settings.roomLevels ?? {})])]
     .filter((room) => roomLevel(settings, room) === "muted")
@@ -45,7 +52,7 @@ export function NotificationsPage() {
         <Row
           id="notifications.sound"
           label="Sound"
-          help="A short ping when someone mentions you, unless you're already looking at that room."
+          help="A short ping when someone mentions you, unless it's already in front of you (see below)."
           changed={settings.soundEnabled !== DEFAULT_SETTINGS.soundEnabled || settings.soundVolume !== DEFAULT_SETTINGS.soundVolume}
           onReset={() =>
             setSettings({ ...settings, soundEnabled: DEFAULT_SETTINGS.soundEnabled, soundVolume: DEFAULT_SETTINGS.soundVolume })
@@ -68,6 +75,21 @@ export function NotificationsPage() {
             label="Sound"
             checked={settings.soundEnabled}
             onChange={(soundEnabled) => setSettings({ ...settings, soundEnabled })}
+          />
+        </Row>
+        <Row
+          id="notifications.ping-skip"
+          label="Quiet for what's in front of me"
+          help="No ping for a mention you can already see. Choose what counts: its thread is open, its room is open, or never stay quiet."
+          changed={settings.pingSkip !== DEFAULT_SETTINGS.pingSkip}
+          onReset={() => setSettings({ ...settings, pingSkip: DEFAULT_SETTINGS.pingSkip })}
+          defaultLabel="the room I have open"
+        >
+          <Segmented
+            label="Quiet for what's in front of me"
+            value={settings.pingSkip}
+            options={PING_SKIPS}
+            onChange={(pingSkip) => setSettings({ ...settings, pingSkip })}
           />
         </Row>
         <Row
@@ -94,25 +116,15 @@ export function NotificationsPage() {
             }}
           />
         </Row>
-        {readAloud.available && (
-          <Row
-            id="notifications.read-aloud"
-            label="Read aloud"
-            help="Say who mentioned you and where, then the start of the message, with the words shown on the bell. Not while your mic is on, and not while Mycelium is hidden."
-            changed={settings.readAloud !== DEFAULT_SETTINGS.readAloud}
-            onReset={() => setSettings({ ...settings, readAloud: DEFAULT_SETTINGS.readAloud })}
-            defaultLabel="off"
-          >
-            <Button size="sm" variant="outline" onClick={readAloud.tryIt} disabled={readAloud.state.item !== null}>
-              Try it
-            </Button>
-            <Toggle
-              label="Read aloud"
-              checked={settings.readAloud}
-              onChange={(readAloudOn) => setSettings({ ...settings, readAloud: readAloudOn })}
-            />
-          </Row>
-        )}
+        <Row
+          id="notifications.read-aloud"
+          label="Read aloud"
+          help="Hearing messages read to you has its own settings: what it reads, what it skips and the voice."
+        >
+          <Link href={settingHref("read-aloud")} className="text-label text-accent hover:underline">
+            Read aloud settings
+          </Link>
+        </Row>
       </Section>
 
       <Section
