@@ -160,23 +160,24 @@ def herdr_name(room: str, handle: str) -> str:
     """The name herdr shows for ``handle``'s agent in ``room``: readable, unique per machine.
 
     herdr names are unique across the machine, while a handle is unique only in
-    its room, so the name carries both (``reviewer_mycelium-general``). When
-    that is longer than herdr allows, the room is cut and a short hash of the
-    pair keeps it unique. ``_`` appears only between the two, so no other pair
-    can produce the same name. Only a label: who a pane is comes from the
-    registry, never from this name.
+    its room, so the name carries both (``reviewer_mycelium-general``). ``_``
+    appears only between the two. When either had to change to fit herdr's
+    rule, or the pair is longer than herdr allows (then the room is cut), a
+    short hash of the pair keeps it unique. Only a label: who a pane is comes
+    from the registry, never from this name.
     """
 
     def clean(text: str) -> str:
         return re.sub(r"[^a-z0-9-]+", "-", text.lower()).strip("-") or "x"
 
-    h, r = clean(handle.lstrip("@")), clean(room)
+    raw = handle.lstrip("@")
+    h, r = clean(raw), clean(room)
     if not h[0].isalpha():
         h = f"a{h}"
     name = f"{h}_{r}"
-    if len(name) <= _HERDR_NAME_MAX:
+    if len(name) <= _HERDR_NAME_MAX and (h, r) == (raw, room):
         return name
-    tag = hashlib.sha1(f"{room}/{handle.lstrip('@')}".encode()).hexdigest()[:4]
+    tag = hashlib.sha1(f"{room}/{raw}".encode()).hexdigest()[:4]
     room_room = _HERDR_NAME_MAX - len(h) - len(tag) - 2
     if room_room < 1:
         return f"{h[: _HERDR_NAME_MAX - len(tag) - 1]}_{tag}"
