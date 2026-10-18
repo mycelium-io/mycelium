@@ -203,6 +203,7 @@ class Report:
         for w, workspace in zip(body["workspaces"], self.workspaces, strict=True):
             for a, agent in zip(w["agents"], workspace.agents, strict=True):
                 a["restartable"] = agent.restartable
+                a["resumes"] = resumes(agent)
         return body
 
 

@@ -805,7 +805,10 @@ function LaunchProgress({
       at: report.step,
     }),
   ];
-  const help = failed && report.why ? startHelp(report.why, { machine, cli: frameworkName, handle }) : null;
+  const help =
+    failed && report.why
+      ? startHelp(report.why, { machine, cli: frameworkName, handle, detail: report.detail })
+      : null;
   const terminal = desktop && herdr && report.pane ? terminalLink(report.pane) : null;
   return (
     <div className="px-5 py-4">

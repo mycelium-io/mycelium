@@ -113,6 +113,8 @@ class AgentHost(Protocol):
     worktrees: bool
     #: Why an agent the host no longer has reads as stopped, for a person.
     gone_detail: str
+    #: Why an agent that exited where it ran, which is still open, reads as stopped.
+    exited_detail: str
 
     def available(self) -> bool:
         """Whether agents can be started here right now."""
@@ -143,6 +145,13 @@ class AgentHost(Protocol):
 
     def alive(self, ref: str) -> bool:
         """Whether the agent at ``ref`` is still there."""
+        ...
+
+    def still_open(self, ref: str) -> bool:
+        """Whether the place the agent at ``ref`` ran in is still open with no agent
+        in it, so an agent started there again is the same member. ``True`` when
+        the host can't tell, so a stopped agent is never forgotten on a guess.
+        """
         ...
 
     def statuses(self) -> dict[str, tuple[str, str | None]] | None:
@@ -208,6 +217,7 @@ class HerdrHost:
     joins = False
     worktrees = False
     gone_detail = "its herdr pane closed"
+    exited_detail = "it exited, and its herdr pane is still open"
 
     def __init__(
         self,
@@ -324,6 +334,12 @@ class HerdrHost:
     def alive(self, ref: str) -> bool:
         return self.bridge.get_agent(ref) is not None
 
+    def still_open(self, ref: str) -> bool:
+        try:
+            return any(str(p.get("pane_id")) == ref for p in self.bridge.list_panes())
+        except HerdrError:
+            return True
+
     def statuses(self) -> dict[str, tuple[str, str | None]] | None:
         try:
             agents = self.bridge.list_agents()
@@ -384,7 +400,8 @@ class HerdrHost:
         It stops being synced and its room binding is dropped, so nothing of a
         finished workspace is left in the user's herdr bindings.
         """
-        busy = {a.workspace for a in state.agents.values() if a.live}
+        # An agent that exited in a pane still open may be started there again.
+        busy = {a.workspace for a in state.agents.values() if a.live or a.exited}
         for workspace in [w for w in state.owned if w not in busy]:
             del state.owned[workspace]
             self.bridge.registry.unbind(workspace)
@@ -439,6 +456,7 @@ class OmnigentHost:
     joins = True
     worktrees = True
     gone_detail = "its Omnigent session ended"
+    exited_detail = gone_detail
 
     def __init__(
         self,
@@ -566,6 +584,9 @@ class OmnigentHost:
         except HostError:
             return False
         return bool(session.get("runner_online", True)) and session.get("status") != "failed"
+
+    def still_open(self, ref: str) -> bool:  # noqa: ARG002 - a session ends with its agent
+        return False
 
     def _sessions(self) -> list[dict[str, Any]]:
         listed = self._get("/v1/sessions", visibility="all", limit="200")

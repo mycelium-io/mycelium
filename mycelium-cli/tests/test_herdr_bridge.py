@@ -546,6 +546,62 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
     assert bridge.registry.get("r", "manual") is not None
 
 
+def test_reconcile_never_makes_a_member_out_of_a_tab_mycelium_named(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """A tab named ``@stick-builder @stick-planner`` holds agents Mycelium started.
+    An agent there that no mapping has (one quit and started again by hand while
+    its mapping was lost) is left alone, never enrolled as
+    ``@stick-builder-stick-planner``."""
+    from mycelium.commands import herdr as herdr_cmd
+
+    written: list[AgentManifest] = []
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr(
+        "mycelium.commands.agent._write_manifest",
+        lambda config, room, manifest, created_by, **_kw: written.append(manifest),
+    )
+    agent = {"pane_id": "w12:p1", "tab_id": "w12:t1", "workspace_id": "w12", "agent": "claude"}
+    tabs = [{"tab_id": "w12:t1", "label": "@stick-builder @stick-planner"}]
+    bridge = HerdrBridge(
+        runner=ScriptedRunner(
+            {
+                "agent list": _proc(_ok({"agents": [agent]})),
+                "tab list": _proc(_ok({"tabs": tabs})),
+                "pane list": _proc(_ok({"panes": [{"pane_id": "w12:p1"}]})),
+            }
+        )
+    )
+
+    for name_from in ("tab", "pane"):
+        enrolled, _retired = herdr_cmd._reconcile_workspace(
+            cast("MyceliumConfig", _Cfg()),
+            bridge,
+            "w12",
+            "sf",
+            name_from=name_from,
+            prefix="",
+            kind=None,
+        )
+        assert enrolled == []
+    assert written == []
+    assert bridge.registry.all() == []
+
+
+def test_a_tab_mycelium_named_is_never_a_handle() -> None:
+    from mycelium.commands.herdr import _derive_handle
+    from mycelium.integrations.herdr import named_by_mycelium
+
+    assert named_by_mycelium("@a @b")
+    assert not named_by_mycelium("pr review")
+    assert not named_by_mycelium("")
+    # Joining from a pane in such a tab falls back to the pane, not `a-b`.
+    handle = _derive_handle(
+        tab_label="@a @b", pane_id="w2:pQ", prefix="", name_from="tab", taken=set()
+    )
+    assert handle == "agent-pq"
+
+
 class _Cfg:
     def get_current_identity(self) -> str:
         return "tester"

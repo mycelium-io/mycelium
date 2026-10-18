@@ -9463,6 +9463,12 @@
             "title": "Restartable",
             "description": "Stopped or gone, with a folder and CLI to restart",
             "default": false
+          },
+          "resumes": {
+            "type": "boolean",
+            "title": "Resumes",
+            "description": "A restart brings it back in its own session, keeping its conversation",
+            "default": false
           }
         },
         "type": "object",
