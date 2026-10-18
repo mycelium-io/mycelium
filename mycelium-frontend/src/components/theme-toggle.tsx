@@ -35,20 +35,38 @@ export function ThemeToggle() {
   const [open, setOpen] = useState(false);
   const mounted = useIsClient();
   const ref = useRef<HTMLDivElement>(null);
+  // The theme in use before a hover started showing others, put back unless
+  // one is picked: what you hover is shown, what you click is kept.
+  const [before, setBefore] = useState<{ theme: string | undefined; custom: string | undefined } | null>(
+    null,
+  );
+
+  const restore = () => {
+    if (!before) return;
+    setBefore(null);
+    if (before.custom) setClientSetting("appearance.custom-theme", before.custom);
+    if (before.theme) setTheme(before.theme);
+  };
+  const close = () => {
+    restore();
+    setOpen(false);
+  };
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+    // `close` reads `before` and setters alone, so these are the listeners' inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, before]);
 
   const groups = useMemo<[string, Option[]][]>(() => {
     const builtIn = (mode: ThemeMode) =>
@@ -67,8 +85,25 @@ export function ThemeToggle() {
       setTheme(CUSTOM_THEME);
     } else setTheme(option.value);
   };
+  /** Show ``option`` while it's hovered or focused, remembering what to go back to. */
+  const preview = (option: Option | typeof SYSTEM) => {
+    setBefore((saved) => saved ?? { theme, custom: activeCustom?.id });
+    if (option === SYSTEM) setTheme(SYSTEM);
+    else pick(option);
+  };
+  /** Keep it: what's showing now is the choice, nothing to put back. */
+  const choose = (option: Option | typeof SYSTEM) => {
+    setBefore(null);
+    if (option === SYSTEM) setTheme(SYSTEM);
+    else pick(option);
+    setOpen(false);
+  };
+  // What the menu marks as yours: the theme from before a hover, not the one
+  // being previewed.
+  const kept = before ? before.theme : theme;
+  const keptCustom = before ? before.custom : activeCustom?.id;
   const isShowing = (option: Option) =>
-    option.custom ? theme === CUSTOM_THEME && activeCustom?.id === option.value : theme === option.value;
+    option.custom ? kept === CUSTOM_THEME && keptCustom === option.value : kept === option.value;
 
   // Separate commands so palette search finds "Dracula" instead of "Toggle theme".
   const commands = useMemo<PaletteCommand[]>(
@@ -103,18 +138,27 @@ export function ThemeToggle() {
 
   return (
     <div ref={ref} className="relative">
-      <IconButton label="Theme" size="md" side="bottom" pressed={open} onClick={() => setOpen((o) => !o)}>
+      <IconButton
+        label="Theme"
+        size="md"
+        side="bottom"
+        pressed={open}
+        onClick={() => (open ? close() : setOpen(true))}
+      >
         {mounted ? <ModeIcon mode={modeOf(resolvedTheme, activeCustom?.mode)} /> : <span className="size-4" />}
       </IconButton>
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1.5 max-h-[min(32rem,calc(100vh-4rem))] w-56 overflow-y-auto rounded-xl border border-border bg-elevated p-1 shadow-xl">
+        // Hovering or focusing a theme shows it; leaving the menu puts yours back.
+        <div
+          onMouseLeave={restore}
+          className="absolute right-0 top-full z-30 mt-1.5 max-h-[min(32rem,calc(100vh-4rem))] w-56 overflow-y-auto rounded-xl border border-border bg-elevated p-1 shadow-xl"
+        >
           <button
             type="button"
-            onClick={() => {
-              setTheme(SYSTEM);
-              setOpen(false);
-            }}
-            className={row(theme === SYSTEM)}
+            onMouseEnter={() => preview(SYSTEM)}
+            onFocus={() => preview(SYSTEM)}
+            onClick={() => choose(SYSTEM)}
+            className={row(kept === SYSTEM)}
           >
             <Monitor className="size-4" />
             Match this computer
@@ -127,10 +171,9 @@ export function ThemeToggle() {
                   <button
                     key={`${title}-${option.value}`}
                     type="button"
-                    onClick={() => {
-                      pick(option);
-                      setOpen(false);
-                    }}
+                    onMouseEnter={() => preview(option)}
+                    onFocus={() => preview(option)}
+                    onClick={() => choose(option)}
                     className={row(isShowing(option))}
                   >
                     <ModeIcon mode={option.mode} />
@@ -143,7 +186,7 @@ export function ThemeToggle() {
           <div className="mt-1 border-t border-border pt-1">
             <Link
               href={clientSettingHref("appearance.custom-themes")}
-              onClick={() => setOpen(false)}
+              onClick={close}
               className="block rounded-lg px-2.5 py-1.5 text-label text-muted-foreground transition-colors hover:bg-surface"
             >
               Your own theme…
