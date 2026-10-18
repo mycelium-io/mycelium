@@ -6,7 +6,7 @@
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ActivityLog } from "./activity-log";
+import { ActivityLog, rangeHeading } from "./activity-log";
 import type { ActivityEvent } from "@/lib/board/activity";
 
 const NOW = Date.parse("2026-10-17T15:00:00Z");
@@ -54,8 +54,26 @@ describe("<ActivityLog />", () => {
         now={NOW}
       />,
     );
-    expect(screen.getByText("Nothing logged today yet")).toBeInTheDocument();
     expect(screen.getByText("Move card payments to Stripe")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "30 days" }).className).toContain("text-accent");
+    // The header describes the range it shows, not an empty today beside it.
+    expect(screen.getByText("1 active day from August 28 to September 26")).toBeInTheDocument();
+    expect(screen.getByText(/1 logged · longest streak 1 day · nothing logged today yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/streak broken/)).not.toBeInTheDocument();
+    // Said once: the line by the range buttons doesn't repeat it.
+    expect(screen.queryByText(/August 28 to September 26 · 1 active day/)).not.toBeInTheDocument();
+  });
+
+  it("says only the heading when nothing at all is logged", () => {
+    render(<ActivityLog events={[]} tz="UTC" onTz={vi.fn()} now={NOW} />);
+    expect(screen.getByText(/^Nothing logged from /)).toBeInTheDocument();
+    expect(screen.queryByText(/0 logged/)).not.toBeInTheDocument();
+  });
+});
+
+describe("rangeHeading", () => {
+  it("says what a view that isn't today shows, in one sentence", () => {
+    expect(rangeHeading(2, "2026-07-30", "2026-08-28")).toBe("2 active days from July 30 to August 28");
+    expect(rangeHeading(0, "2026-08-03", "2026-08-03")).toMatch(/^Nothing logged on .*August 3/);
   });
 });
