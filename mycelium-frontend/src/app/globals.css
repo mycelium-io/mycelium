@@ -2,12 +2,25 @@
 @import "tw-animate-css";
 @import "./markdown-editor.css";
 
-@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant dark (&:where(
+  .dark, .dark *,
+  .theme-catppuccin-mocha, .theme-catppuccin-mocha *,
+  .theme-dracula, .theme-dracula *,
+  .theme-github-dark, .theme-github-dark *,
+  .theme-gruvbox-dark, .theme-gruvbox-dark *,
+  .theme-high-contrast-dark, .theme-high-contrast-dark *,
+  .theme-nord, .theme-nord *,
+  .theme-one-dark, .theme-one-dark *,
+  .theme-solarized-dark, .theme-solarized-dark *,
+  .theme-tokyo-night, .theme-tokyo-night *
+));
 
 /* ── Palette ─────────────────────────────────────────────────────────────
- * Two themes, one contract. Raw values live in :root (light) and .dark;
- * everything else references the runtime vars via `@theme inline` below, so a
- * class toggle reskins the app.
+ * Many themes, one contract. Mycelium light is the default in :root; each
+ * other theme is a class on <html> (`lib/themes.ts` lists them) that sets the
+ * same tokens. Everything else references the runtime vars via `@theme inline`
+ * below, so a class toggle reskins the app. Every theme's text, accent and
+ * state colors are held to AA on its surfaces by `theme-contrast.test.ts`.
  *
  * TEXT vs BACKGROUND is kept honest (the shadcn contract): a token is either a
  * surface you sit ON, or a foreground you paint WITH — never both.
@@ -30,7 +43,7 @@
  * Design intent: cool neutral grays, one accent doing one job, desaturated
  * semantics reserved for true state — not general emphasis.
  * ──────────────────────────────────────────────────────────────────────── */
-:root {
+:root, .light {
   /* surfaces */
   --bg: #ffffff;
   --surface: #f2f4f6;
@@ -93,13 +106,59 @@
   --avatar-5: #5c3f86; /* violet */
   --avatar-6: #6e3f6b; /* plum   */
   --avatar-neutral: #565d6b;
+  /* What an avatar's initials are mixed with (`lib/avatar-color.ts`): the
+   * theme's text, unless that text is too soft to hold the initials at AA on
+   * the tinted disc. */
+  --avatar-ink: var(--text);
+  /* Stream lanes — one color per task's thread in the Stream tab, drawn as its
+   * line and as the text naming it, so each is legible as text on --bg. */
+  --lane-1: #096a7b;
+  --lane-2: #8a6410;
+  --lane-3: #7a4fb3;
+  --lane-4: #0b7a56;
+  --lane-5: #bd3f3a;
+  --lane-6: #3a5fc0;
+  --lane-7: #a8417a;
+  --lane-8: #52701c;
 }
 
-.dark {
-  /* Native pieces the browser draws (a select's option list, scrollbars)
-     follow the theme rather than the system, so a dark list never carries
-     our light text on a light background. */
+/* Every dark theme: the browser's own pieces (a select's option list,
+ * scrollbars) follow the theme rather than the system, so a dark list never
+ * carries light text on a light background; and the categorical palettes lift
+ * for a dark canvas. Each theme's block below sets the rest. */
+.dark,
+.theme-catppuccin-mocha,
+.theme-dracula,
+.theme-github-dark,
+.theme-gruvbox-dark,
+.theme-high-contrast-dark,
+.theme-nord,
+.theme-one-dark,
+.theme-solarized-dark,
+.theme-tokyo-night {
   color-scheme: dark;
+  /* categorical palette (see :root) — same 8 hues in the same load-bearing
+   * order, lifted brighter for the dark canvas. */
+  --graph-ns-1: #a3e265; /* hue  90 yellow-green */
+  --graph-ns-2: #656fe2; /* hue 235 blue */
+  --graph-ns-3: #e265ae; /* hue 325 pink */
+  --graph-ns-4: #65e2d7; /* hue 175 teal */
+  --graph-ns-5: #65e27a; /* hue 130 green */
+  --graph-ns-6: #65aee2; /* hue 205 sky */
+  --graph-ns-7: #9965e2; /* hue 265 violet */
+  --graph-ns-8: #e265e2; /* hue 300 magenta */
+  --lane-1: #5cc7d2;
+  --lane-2: #d9a94e;
+  --lane-3: #b48ae0;
+  --lane-4: #4fc296;
+  --lane-5: #e8817c;
+  --lane-6: #7aa2f7;
+  --lane-7: #e08ab4;
+  --lane-8: #a3c46a;
+}
+
+/* Mycelium dark. */
+.dark {
   /* surfaces */
   --bg: #0c0e11;
   --surface: #14171c;
@@ -123,32 +182,338 @@
   --green: #4fc296;
   --yellow: #d9a94e;
   --red: #e6746f;
-  /* categorical palette (see :root) — same 8 hues in the same load-bearing
-   * order, lifted brighter for the dark canvas. */
-  --graph-ns-1: #a3e265; /* hue  90 yellow-green */
-  --graph-ns-2: #656fe2; /* hue 235 blue */
-  --graph-ns-3: #e265ae; /* hue 325 pink */
-  --graph-ns-4: #65e2d7; /* hue 175 teal */
-  --graph-ns-5: #65e27a; /* hue 130 green */
-  --graph-ns-6: #65aee2; /* hue 205 sky */
-  --graph-ns-7: #9965e2; /* hue 265 violet */
-  --graph-ns-8: #e265e2; /* hue 300 magenta */
-  /* avatar palette — solid fill, so the same deep cool arc serves both themes
-   * (see :root); no per-theme lift needed. */
-  --avatar-1: #1f6f66; /* teal   */
-  --avatar-2: #216078; /* cyan   */
-  --avatar-3: #2f4f8c; /* blue   */
-  --avatar-4: #474394; /* indigo */
-  --avatar-5: #5c3f86; /* violet */
-  --avatar-6: #6e3f6b; /* plum   */
-  --avatar-neutral: #565d6b;
+  /* The avatar tints are a solid fill under near-white initials, so the one
+   * deep cool arc in :root serves every theme. */
+}
+
+/* ── The other themes ──────────────────────────────────────────────────────
+ * Each starts from its own published palette. A color is lifted or deepened
+ * only where the canonical one would fall under AA as text on the theme's
+ * surfaces (a comment gray as `--faint`, say); the hue stays the theme's. */
+
+.theme-catppuccin-latte {
+  --bg: #eff1f5;
+  --surface: #e6e9ef;
+  --paper: #eff1f5;
+  --elevated: #f7f8fa;
+  --muted-bg: #dce0e8;
+  --hairline: rgba(76, 79, 105, 0.04);
+  --text: #4c4f69;
+  --prose: #4c4f69;
+  --muted-foreground: #53566f;
+  /* subtext0, deepened: Latte's own reads 4.1:1 on its crust. */
+  --faint: #5e6174;
+  --border: rgba(76, 79, 105, 0.12);
+  --border2: rgba(76, 79, 105, 0.2);
+  --accent: #8534ef;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(133, 52, 239, 0.1);
+  /* Latte's green and yellow are made for fills; as text they're deepened. */
+  --green: #2f7620;
+  --yellow: #905c13;
+  --red: #cd0f38;
+  /* Latte's text is gentle on purpose; avatar initials need a deeper ink. */
+  --avatar-ink: #2e2f3f;
+}
+
+.theme-catppuccin-mocha {
+  --bg: #1e1e2e;
+  --surface: #181825;
+  --paper: #232334;
+  --elevated: #313244;
+  --muted-bg: #313244;
+  --hairline: rgba(205, 214, 244, 0.04);
+  --text: #cdd6f4;
+  --prose: #bac2de;
+  --muted-foreground: #a6adc8;
+  --faint: #969cb4;
+  --border: rgba(205, 214, 244, 0.09);
+  --border2: rgba(205, 214, 244, 0.17);
+  --accent: #cba6f7;
+  --accent-fg: #1e1e2e;
+  --accent-soft: rgba(203, 166, 247, 0.14);
+  --green: #a6e3a1;
+  --yellow: #f9e2af;
+  --red: #f38ba8;
+}
+
+.theme-dracula {
+  --bg: #282a36;
+  --surface: #21222c;
+  --paper: #2c2e3b;
+  --elevated: #343746;
+  --muted-bg: #343746;
+  --hairline: rgba(248, 248, 242, 0.04);
+  --text: #f8f8f2;
+  --prose: #e4e4de;
+  --muted-foreground: #c8cad6;
+  /* Dracula's comment purple, lifted: as text it reads 2.5:1 on its own panels. */
+  --faint: #97a2c3;
+  --border: rgba(248, 248, 242, 0.09);
+  --border2: rgba(248, 248, 242, 0.17);
+  --accent: #bd93f9;
+  --accent-fg: #21222c;
+  --accent-soft: rgba(189, 147, 249, 0.14);
+  --green: #50fa7b;
+  --yellow: #f1fa8c;
+  --red: #ff7979;
+}
+
+.theme-github-light {
+  --bg: #ffffff;
+  --surface: #f6f8fa;
+  --paper: #ffffff;
+  --elevated: #ffffff;
+  --muted-bg: #eff2f5;
+  --hairline: rgba(31, 35, 40, 0.04);
+  --text: #1f2328;
+  --prose: #1f2328;
+  --muted-foreground: #59636e;
+  /* fg.subtle, deepened: 4.1:1 on GitHub's muted fill as it stands. */
+  --faint: #666e77;
+  --border: rgba(31, 35, 40, 0.12);
+  --border2: rgba(31, 35, 40, 0.2);
+  --accent: #0969da;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(9, 105, 218, 0.1);
+  --green: #1a7f37;
+  --yellow: #9a6700;
+  --red: #d1242f;
+}
+
+.theme-github-dark {
+  --bg: #0d1117;
+  --surface: #010409;
+  --paper: #161b22;
+  --elevated: #161b22;
+  --muted-bg: #21262d;
+  --hairline: rgba(230, 237, 243, 0.04);
+  --text: #e6edf3;
+  --prose: #c9d1d9;
+  --muted-foreground: #9198a1;
+  --faint: #8d96a0;
+  --border: rgba(230, 237, 243, 0.1);
+  --border2: rgba(230, 237, 243, 0.18);
+  --accent: #4493f8;
+  --accent-fg: #0d1117;
+  --accent-soft: rgba(68, 147, 248, 0.15);
+  --green: #3fb950;
+  --yellow: #d29922;
+  --red: #f85149;
+}
+
+.theme-gruvbox-light {
+  --bg: #fbf1c7;
+  --surface: #f2e5bc;
+  --paper: #fbf1c7;
+  --elevated: #f9f5d7;
+  --muted-bg: #ebdbb2;
+  --hairline: rgba(60, 56, 54, 0.04);
+  --text: #3c3836;
+  --prose: #3c3836;
+  --muted-foreground: #504945;
+  --faint: #665c54;
+  --border: rgba(60, 56, 54, 0.14);
+  --border2: rgba(60, 56, 54, 0.24);
+  --accent: #af3a03;
+  --accent-fg: #fbf1c7;
+  --accent-soft: rgba(175, 58, 3, 0.1);
+  /* Gruvbox's faded green and yellow, deepened to read as text. */
+  --green: #6b670c;
+  --yellow: #8c5b0f;
+  --red: #9d0006;
+  /* Gruvbox's own darkest gray, so avatar initials hold AA on the tints. */
+  --avatar-ink: #282828;
+}
+
+.theme-gruvbox-dark {
+  --bg: #282828;
+  --surface: #1d2021;
+  --paper: #32302f;
+  --elevated: #3c3836;
+  --muted-bg: #3c3836;
+  --hairline: rgba(235, 219, 178, 0.04);
+  --text: #ebdbb2;
+  --prose: #d5c4a1;
+  --muted-foreground: #bdae93;
+  --faint: #afa28e;
+  --border: rgba(235, 219, 178, 0.1);
+  --border2: rgba(235, 219, 178, 0.18);
+  --accent: #fe8019;
+  --accent-fg: #282828;
+  --accent-soft: rgba(254, 128, 25, 0.14);
+  --green: #b8bb26;
+  --yellow: #fabd2f;
+  /* Gruvbox's bright red, lifted: 3.4:1 on its raised panels as it stands. */
+  --red: #fc7f70;
+}
+
+/* High contrast: the most legible the app can be, rather than a look. Black
+ * and white canvases, near-full-contrast text at every level, saturated state
+ * colors, and borders strong enough to see every edge. */
+.theme-high-contrast-light {
+  --bg: #ffffff;
+  --surface: #f2f2f2;
+  --paper: #ffffff;
+  --elevated: #ffffff;
+  --muted-bg: #e6e6e6;
+  --hairline: rgba(0, 0, 0, 0.08);
+  --text: #000000;
+  --prose: #000000;
+  --muted-foreground: #1a1a1a;
+  --faint: #333333;
+  --border: rgba(0, 0, 0, 0.4);
+  --border2: rgba(0, 0, 0, 0.65);
+  --accent: #0040c1;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(0, 64, 193, 0.12);
+  --green: #006b1b;
+  --yellow: #6b4c00;
+  --red: #b0000f;
+}
+
+.theme-high-contrast-dark {
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --paper: #000000;
+  --elevated: #121212;
+  --muted-bg: #1f1f1f;
+  --hairline: rgba(255, 255, 255, 0.08);
+  --text: #ffffff;
+  --prose: #ffffff;
+  --muted-foreground: #e6e6e6;
+  --faint: #cccccc;
+  --border: rgba(255, 255, 255, 0.45);
+  --border2: rgba(255, 255, 255, 0.7);
+  --accent: #6cb6ff;
+  --accent-fg: #000000;
+  --accent-soft: rgba(108, 182, 255, 0.18);
+  --green: #4ade80;
+  --yellow: #facc15;
+  --red: #ff6b6b;
+}
+
+.theme-nord {
+  --bg: #2e3440;
+  --surface: #292e39;
+  --paper: #3b4252;
+  --elevated: #3b4252;
+  --muted-bg: #434c5e;
+  --hairline: rgba(236, 239, 244, 0.04);
+  --text: #eceff4;
+  --prose: #e5e9f0;
+  --muted-foreground: #d8dee9;
+  /* Nord's own grays are surfaces (Polar Night); a quiet text level is drawn
+   * from Snow Storm instead, dimmed. */
+  --faint: #b7becb;
+  --border: rgba(236, 239, 244, 0.09);
+  --border2: rgba(236, 239, 244, 0.17);
+  --accent: #88c0d0;
+  --accent-fg: #2e3440;
+  --accent-soft: rgba(136, 192, 208, 0.14);
+  --green: #a3be8c;
+  --yellow: #ebcb8b;
+  /* Aurora red, lifted: 2.5:1 on Nord's panels as it stands. */
+  --red: #d9a2a8;
+}
+
+.theme-one-dark {
+  --bg: #282c34;
+  --surface: #21252b;
+  --paper: #2c313a;
+  --elevated: #2c313a;
+  --muted-bg: #3e4451;
+  --hairline: rgba(220, 223, 228, 0.04);
+  --text: #dcdfe4;
+  --prose: #c8ccd4;
+  /* One Dark's foreground is a mid gray, so it serves as prose, a step
+   * lighter as secondary text, and its comment gray is lifted to be the faint
+   * level (2.2:1 as it stands). */
+  --muted-foreground: #c0c5ce;
+  --faint: #aeb3bc;
+  --border: rgba(220, 223, 228, 0.09);
+  --border2: rgba(220, 223, 228, 0.17);
+  --accent: #61afef;
+  --accent-fg: #21252b;
+  --accent-soft: rgba(97, 175, 239, 0.14);
+  --green: #98c379;
+  --yellow: #e5c07b;
+  --red: #e37b83;
+}
+
+.theme-solarized-light {
+  --bg: #fdf6e3;
+  --surface: #eee8d5;
+  --paper: #fdf6e3;
+  --elevated: #fffbf0;
+  --muted-bg: #e6dfc9;
+  --hairline: rgba(7, 54, 66, 0.04);
+  --text: #073642;
+  --prose: #073642;
+  /* Solarized's accents and content grays are tuned to sit at about 4:1 on
+   * base3; each is deepened along its own hue until it reads at AA. */
+  --muted-foreground: #4a5c62;
+  --faint: #52646b;
+  --border: rgba(7, 54, 66, 0.12);
+  --border2: rgba(7, 54, 66, 0.2);
+  --accent: #1d6ca2;
+  --accent-fg: #fdf6e3;
+  --accent-soft: rgba(29, 108, 162, 0.1);
+  --green: #5f6e00;
+  --yellow: #826200;
+  --red: #c62421;
+}
+
+.theme-solarized-dark {
+  --bg: #002b36;
+  --surface: #00252f;
+  --paper: #073642;
+  --elevated: #073642;
+  --muted-bg: #0a3e4b;
+  --hairline: rgba(238, 232, 213, 0.04);
+  --text: #eee8d5;
+  /* base1 and base0, and the accents, lifted along their own hues to AA on
+   * base02 (see Solarized light). */
+  --prose: #a5b0b0;
+  --muted-foreground: #a5b0b0;
+  --faint: #98a6a8;
+  --border: rgba(238, 232, 213, 0.09);
+  --border2: rgba(238, 232, 213, 0.17);
+  --accent: #4aa1de;
+  --accent-fg: #002b36;
+  --accent-soft: rgba(74, 161, 222, 0.16);
+  --green: #90a600;
+  --yellow: #c29300;
+  --red: #e87977;
+}
+
+.theme-tokyo-night {
+  --bg: #1a1b26;
+  --surface: #16161e;
+  --paper: #1f2335;
+  --elevated: #24283b;
+  --muted-bg: #292e42;
+  --hairline: rgba(192, 202, 245, 0.04);
+  --text: #c0caf5;
+  --prose: #a9b1d6;
+  --muted-foreground: #a9b1d6;
+  /* Tokyo Night's comment gray, lifted: 2.2:1 on its highlight as it stands. */
+  --faint: #8f96b9;
+  --border: rgba(192, 202, 245, 0.09);
+  --border2: rgba(192, 202, 245, 0.17);
+  --accent: #7aa2f7;
+  --accent-fg: #1a1b26;
+  --accent-soft: rgba(122, 162, 247, 0.14);
+  --green: #9ece6a;
+  --yellow: #e0af68;
+  --red: #f7768e;
 }
 
 /* Raw-var back-compat: legacy CSS + inline styles reference var(--text2),
  * var(--muted), var(--dim) directly. var() resolves lazily, so aliasing once
  * here tracks whichever theme is active. All three now point at LEGIBLE text
  * values (muted → the muted-foreground floor, not a background). */
-:root, .dark {
+:root {
   --text2: var(--muted-foreground);
   --muted: var(--muted-foreground);
   --dim: var(--faint);

@@ -65,11 +65,11 @@ function halo(presence: Presence, status?: string | null): Halo {
   if (presence === "herdr" || (status && HERDR_STATES.has(status))) {
     switch (status) {
       case "working":
-        return { color: "var(--warning, #d19a45)", ring: true, pulse: true, label: "working" };
+        return { color: "var(--yellow)", ring: true, pulse: true, label: "working" };
       case "blocked":
-        return { color: "var(--destructive, #d1495b)", ring: true, pulse: true, label: "blocked, needs input" };
+        return { color: "var(--red)", ring: true, pulse: true, label: "blocked, needs input" };
       case "done":
-        return { color: "var(--success, #4c9a6a)", ring: true, pulse: false, label: "done" };
+        return { color: "var(--green)", ring: true, pulse: false, label: "done" };
       default: // idle — no ring, just the dot
         return { color: "var(--muted-foreground)", ring: false, pulse: false, label: "idle, asleep" };
     }
