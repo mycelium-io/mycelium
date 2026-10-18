@@ -44,6 +44,8 @@ import { PATTERN_ROOMS } from "./patterns";
 // A fixed "now" so relative timestamps render deterministically. Callers
 // offset from this; nothing here calls Date.now(), so snapshots stay stable.
 const NOW = Date.parse("2026-08-28T17:30:00Z");
+/** The fixtures' "now", for a mock route that answers against the real clock. */
+export const MOCK_NOW = NOW;
 const iso = (minsAgo: number): string => new Date(NOW - minsAgo * 60_000).toISOString();
 
 export interface MockRoom {
@@ -902,6 +904,22 @@ function alertsThread(): MockMessage[] {
 // something in every attention filter (needs-you, in-flight, resolved) and a
 // column for every inferred field, without any in-app demo layer.
 const checkoutBoardRows: MockMemory[] = [
+  // The epic: a task with parts. Each part names it with `part-of`, and the
+  // board draws it as a path, ordered by the parts' `depends-on`.
+  {
+    key: "work/apple-pay-for-everyone",
+    value:
+      "Apple Pay for everyone\n\n" +
+      "Customers can pay with Apple Pay at checkout before the spring sale, " +
+      "without double charges.",
+    meta: { kind: "action", status: "open", assignee: "@builder", priority: "high" },
+    content_text: "Apple Pay at checkout for everyone before the spring sale, without double charges.",
+    created_by: "operator",
+    updated_by: "operator",
+    version: 1,
+    updated_at: iso(60 * 25),
+    episode: checkoutEpisode("e0a2c4"),
+  },
   // What the launch-day agreement compiled into. Two tasks from one negotiation
   // are two tasks with two threads, not two rows sharing the conversation that
   // produced them — so each carries its own episode, not the negotiation's.
@@ -911,7 +929,15 @@ const checkoutBoardRows: MockMemory[] = [
       "Turn on Apple Pay for everyone\n\n" +
       "Behind the `checkout.apple_pay` switch, off for now. Don't turn it on until the " +
       "test orders pass and @reviewer signs off. Waiting on the Apple Pay PR (#502).",
-    meta: { "depends-on": ["work/add-apple-pay", "work/review-double-charge-fix"], kind: "action", status: "open", assignee: "@builder", priority: "high", issue: "#502" },
+    meta: {
+      "part-of": "work/apple-pay-for-everyone",
+      "depends-on": ["work/add-apple-pay", "work/review-double-charge-fix", "failed/test-on-real-iphone"],
+      kind: "action",
+      status: "open",
+      assignee: "@builder",
+      priority: "high",
+      issue: "#502",
+    },
     content_text: "Turn on Apple Pay for everyone, behind a switch. Waiting on the test orders.",
     created_by: "aligner",
     updated_by: "aligner",
@@ -953,11 +979,12 @@ const checkoutBoardRows: MockMemory[] = [
     key: "failed/test-on-real-iphone",
     value: "Test Apple Pay on a real iPhone",
     meta: {
-      status: "blocked",
-      kind: "blocked",
-      owner: "@operator",
+      "part-of": "work/apple-pay-for-everyone",
+      "depends-on": ["work/add-apple-pay"],
+      status: "open",
+      kind: "action",
+      assignee: "@operator",
       priority: "high",
-      blocked_by: ["#502"],
       issue: "#502",
     },
     content_text: "Can't test on a real phone until the Apple Pay PR is on staging (#502).",
@@ -970,7 +997,7 @@ const checkoutBoardRows: MockMemory[] = [
   {
     key: "work/review-double-charge-fix",
     value: "Review the double-charge fix (PR #504)",
-    meta: { "depends-on": ["work/stripe-payments"],
+    meta: { "part-of": "work/apple-pay-for-everyone", "depends-on": ["work/stripe-payments"],
       status: "in_review",
       kind: "review",
       owner: "@reviewer",
@@ -990,7 +1017,7 @@ const checkoutBoardRows: MockMemory[] = [
   {
     key: "work/add-apple-pay",
     value: "Add Apple Pay to checkout",
-    meta: { "depends-on": ["work/stripe-payments"],
+    meta: { "part-of": "work/apple-pay-for-everyone", "depends-on": ["work/stripe-payments"],
       status: "in_progress",
       kind: "action",
       owner: "@builder",
@@ -1048,6 +1075,7 @@ const checkoutBoardRows: MockMemory[] = [
     key: "work/stripe-payments",
     value: "Move card payments to Stripe",
     meta: {
+      "part-of": "work/apple-pay-for-everyone",
       status: "resolved",
       kind: "action",
       owner: "@builder",
@@ -1236,6 +1264,9 @@ const checkout: RoomFixture = {
     // Two agents staging the "turn on Apple Pay" row talk inside its thread. The
     // channel does not carry this, so the room hears the pings below instead,
     // and the prose reads in the thread pane.
+    // After the run agrees, the decision is put to Morgan in its own task's
+    // thread: what the board's "Waiting on you" lists until Morgan answers there.
+    { id: "r1", sender_handle: "reviewer", message_type: "broadcast", content: "@operator we agreed to refund double charges under $50 automatically and send the rest to support. Can I close this?", created_at: iso(2), episode: REFUND_THREAD },
     { id: "t1", sender_handle: "builder", message_type: "broadcast", content: "apple pay is behind the `checkout.apple_pay` switch, off for now.", created_at: iso(22), episode: LAUNCH_THREAD },
     { id: "t2", sender_handle: "reviewer", message_type: "broadcast", content: "don't switch it on until i've placed test orders on a real phone. i'll post the results here.", created_at: iso(21), episode: LAUNCH_THREAD },
     { id: "t3", sender_handle: "builder", message_type: "broadcast", content: "sounds good, waiting on you.", created_at: iso(20), episode: LAUNCH_THREAD },

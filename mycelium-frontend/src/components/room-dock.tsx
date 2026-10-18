@@ -135,7 +135,7 @@ function BoardPanel() {
   const d = useDock();
   return (
     <div className="h-full min-h-0">
-      <RoomBoard roomName={d.roomName} onOpenThread={d.onOpenThread} />
+      <RoomBoard roomName={d.roomName} onOpenThread={d.onOpenThread} onOpenMessage={d.onOpenMessage} />
     </div>
   );
 }

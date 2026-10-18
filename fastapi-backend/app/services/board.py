@@ -36,6 +36,10 @@ PART_STATES = ("done", "blocked", "waiting", "working", "open")
 #: How much of a thread's newest message a part carries as its latest line.
 LATEST_CHARS = 280
 
+#: Rows the board lists. ``status/`` rows are reports on how things stand, not
+#: work anyone picks up, so they are read (a task can wait on one) but not listed.
+LISTED_NAMESPACES = tasks.BOARD_NAMESPACES - {"status"}
+
 PARENT_RELATION = assignments.PARENT_RELATION
 BLOCKED_FIELD = "blocked_by"
 
@@ -224,7 +228,7 @@ class _Rows:
 def board(room: str, now: datetime) -> dict[str, Any]:
     """The room's open epics, and its open tasks that are part of none.
 
-    An epic nested in another open epic is drawn as a part of it, not again at
+    ``status/`` rows are left out (:data:`LISTED_NAMESPACES`). An epic nested in another open epic is drawn as a part of it, not again at
     the top. A settled epic, or a settled task, leaves the board; both stay in
     the room's memory.
     """
@@ -232,6 +236,8 @@ def board(room: str, now: datetime) -> dict[str, Any]:
     epics: list[dict[str, Any]] = []
     loose: list[dict[str, Any]] = []
     for key in sorted(rows.rows, key=rows._created):
+        if key.split("/", 1)[0] not in LISTED_NAMESPACES:
+            continue
         if rows.settled(key) or rows.inside_open_epic(key):
             continue
         if rows.children.get(key):

@@ -93,11 +93,9 @@ const BASE: Shot[] = [
     theme: "dark",
     viewport: "desktop",
     steps: ["Board"],
-    // The pull requests' states arrive after the rows; shoot them answered.
-    // "Needs you" leaves out rows waiting on other work, so wait on a state
-    // one of its own rows shows.
-    actions: ["wait-text:CI running"],
-    caption: "The board is the surface: task rows grouped by attention, each a row and a thread, with owners, CI and thread activity.",
+    // The board and what's waiting on you are two reads; shoot both answered.
+    actions: ["wait-text:Waiting on you", "wait-text:1 of 5 parts done"],
+    caption: "The board: what's waiting on you, each epic as a path of its parts, and what's up next.",
   },
   {
     id: "room-start",
@@ -148,25 +146,13 @@ const BASE: Shot[] = [
 
   // ── The docs' concept and guide pages ────────────────────────────────────
   {
-    id: "board-columns",
-    route: "/room/checkout",
-    theme: "dark",
-    viewport: "desktop",
-    steps: ["Board"],
-    // The view switcher's "Board" (columns), not the tab of the same name.
-    actions: ['click:css=button[aria-label="Board"]', "sleep:800"],
-    caption: "The board's columns view: the same rows, grouped by any field.",
-  },
-  {
     id: "thread-flow",
     route: "/room/checkout",
     theme: "dark",
     viewport: "desktop",
     steps: ["Board"],
     actions: [
-      // A claimed task is under In flight, not the board's first view.
-      "click:text=In flight",
-      'click:[data-board-row="memory:work/turn-on-apple-pay"]',
+      'click:[data-board-row="work/turn-on-apple-pay"]',
       "sleep:1200",
       'click:css=button[aria-expanded]:has-text("Flow")',
       "sleep:800",
@@ -247,11 +233,9 @@ const BASE: Shot[] = [
     theme: "dark",
     viewport: "desktop",
     steps: ["Board"],
-    // By the row's key: its title also appears in another row's "blocks" note.
+    // By the row's key: its title also appears in what another part waits on.
     actions: [
-      // A claimed task is under In flight, not the board's first view.
-      "click:text=In flight",
-      'click:[data-board-row="memory:work/turn-on-apple-pay"]',
+      'click:[data-board-row="work/turn-on-apple-pay"]',
       "sleep:1200",
     ],
     caption: "A task's own thread: the agents talk it through here, not in the room.",

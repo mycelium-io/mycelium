@@ -1055,6 +1055,87 @@ export async function fetchProtocols(roomName: string): Promise<Protocol[]> {
   });
 }
 
+/** Where a part of an epic stands (contracts/board-vocabulary.json, `epic`). */
+export type PartState = "done" | "blocked" | "waiting" | "working" | "open";
+
+/** The newest message said in a task's thread. */
+export interface LatestLine {
+  sender: string;
+  text: string;
+  at?: string | null;
+}
+
+/** One task as the board reads it for people (`GET /rooms/{room}/board`). */
+export interface BoardPart {
+  key: string;
+  title: string;
+  episode?: string | null;
+  state: PartState;
+  holder?: string | null;
+  assignee?: string | null;
+  waiting_on: string[];
+  blocked_by?: string | null;
+  latest?: LatestLine | null;
+  parts: number;
+  parts_done: number;
+  updated_at?: string | null;
+}
+
+/** A task with parts: its progress, and its parts in path order. `steps` holds
+ *  the parts' keys, one list per step; parts in one step run side by side. */
+export interface BoardEpic extends BoardPart {
+  lead?: string | null;
+  done: number;
+  total: number;
+  steps: string[][];
+  path: BoardPart[];
+}
+
+export interface BoardRead {
+  epics: BoardEpic[];
+  /** Open tasks that are part of no open epic. */
+  tasks: BoardPart[];
+}
+
+/** A room's open epics and its other open tasks, worked out by the hub, so the
+ *  app and `mycelium board` draw the same thing. */
+export async function fetchRoomBoard(roomName: string): Promise<BoardRead> {
+  return apiFetch<BoardRead>(`${roomApiPath(roomName)}/board`, {
+    cache: "no-store",
+    fallback: { epics: [], tasks: [] },
+  });
+}
+
+/** One thing waiting on a member (`GET /rooms/{room}/waiting?for=`). */
+export interface WaitingItem {
+  kind: "ask" | "turn" | "task";
+  key?: string | null;
+  title?: string | null;
+  episode?: string | null;
+  epic?: string | null;
+  epic_title?: string | null;
+  sender?: string | null;
+  text?: string | null;
+  message_id?: string | null;
+  at?: string | null;
+  count: number;
+}
+
+export interface WaitingRead {
+  handle: string;
+  items: WaitingItem[];
+}
+
+/** What is waiting on `handle`: asks it hasn't answered, its turn in a flow,
+ *  and the open tasks it holds that wait on nothing. */
+export async function fetchWaiting(roomName: string, handle: string): Promise<WaitingRead> {
+  const query = new URLSearchParams({ for: handle });
+  return apiFetch<WaitingRead>(`${roomApiPath(roomName)}/waiting?${query}`, {
+    cache: "no-store",
+    fallback: { handle, items: [] },
+  });
+}
+
 /** What the tools a room points at say about the work its rows mention.
  *  A read is answered from the hub's cache and never fetches, so polling this
  *  costs a cache lookup rather than a round trip to GitHub. */

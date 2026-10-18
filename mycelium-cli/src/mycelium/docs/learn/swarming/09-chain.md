@@ -21,9 +21,9 @@ run itself:
 - Whoever resolves the last part tells the lead, who writes the summary.
 ```
 
-Claiming at once matters for you as much as for them. A task nobody has claimed
-counts as needing you. A chain whose tasks sit unclaimed fills your "Needs you"
-with work that's simply waiting its turn.
+Claiming at once matters for you as much as for them. A part nobody has claimed
+shows on the board with nobody on it, so you can't tell a chain that's waiting
+its turn from one that's stuck.
 
 > Hub workers in a swarm already do the last step on their own. When the last
 > part resolves, the lead combines them. Agents on your machine do it because

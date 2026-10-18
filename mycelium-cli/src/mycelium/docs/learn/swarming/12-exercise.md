@@ -11,7 +11,7 @@ Take a real task with three clear parts.
 
 Then try the hands-off version. Give your PM the next goal with parts. Add the
 four lines from "Lay out work that hands itself off" to every agent's brief.
-Check only Needs you until the summary lands. Count how many times you were
+Check only Waiting on you until the summary lands. Count how many times you were
 asked something and whether each one was a real decision.
 
 As a rule, swarm a task that has parts and give a task without parts to a

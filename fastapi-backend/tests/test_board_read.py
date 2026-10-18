@@ -142,6 +142,13 @@ class TestEpics:
             "work/turn-on": "waiting",
         }
 
+    def test_a_status_report_is_read_but_not_listed(self, apple_pay):
+        row("status/launch", "Stripe is live", minute=9)
+        row("work/after", "After the report", minute=10, **{"depends-on": "status/launch"})
+        tasks = {t["key"]: t for t in board.board(ROOM, NOW)["tasks"]}
+        assert "status/launch" not in tasks
+        assert tasks["work/after"]["waiting_on"] == ["status/launch"]
+
     def test_other_open_tasks_stand_alone_and_settled_ones_leave(self, apple_pay):
         read = board.board(ROOM, NOW)
         assert [t["key"] for t in read["tasks"]] == ["work/old-form", "work/alerts"]

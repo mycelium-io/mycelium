@@ -56,11 +56,13 @@ def test_states_match_the_contract():
 def test_an_epic_draws_its_parts_in_path_order_with_side_by_side_steps():
     text = plain(epics.epic_lines(EPIC))
     assert "1 of 4 parts are done. @builder leads it." in text
+    # Each part is two lines: its step, mark and title, then where it stands.
     lines = [ln.strip() for ln in text.splitlines()[1:]]
-    assert lines[0].startswith("1 ✓ Move card payments to Stripe")
-    assert lines[1].startswith("2 ● Fix the double charges")
-    assert lines[2].startswith("2 ○ Add Apple Pay to checkout")
-    assert "Waits on Add Apple Pay to checkout" in lines[3]
+    assert lines[0] == "1 ✓ Move card payments to Stripe"
+    assert lines[1] == "Done  work/stripe"
+    assert lines[2] == "2 ● Fix the double charges"
+    assert lines[4] == "2 ○ Add Apple Pay to checkout"
+    assert lines[7] == "Waits on Add Apple Pay to checkout  work/iphone"
     # The latest line shows only where it's asked for.
     assert "Approved #504." not in text
     assert "@reviewer: Approved #504." in plain(epics.epic_lines(EPIC, latest=True))

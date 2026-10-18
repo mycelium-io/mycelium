@@ -31,8 +31,6 @@ STATE_MARK = {
     "open": ("○", "dim"),
 }
 
-TITLE_WIDTH = 44
-
 
 def _clip(text: str, width: int) -> str:
     return text if len(text) <= width else text[: width - 1] + "…"
@@ -76,7 +74,10 @@ def _part_line(part: dict[str, Any], step: int, named: dict[str, str], *, latest
     line = Text("   ")
     line.append(f"{step:>2} ", style="dim")
     line.append(f"{mark} ", style=color)
-    line.append(f"{_clip(part['title'], TITLE_WIDTH):<{TITLE_WIDTH}}  ")
+    line.append(part["title"])
+    # What it is and where it stands go on their own line, so a long title or
+    # a long list of what it waits on wraps without burying the key.
+    line.append("\n        ")
     line.append(where_it_stands(part, named), style=color if color != "cyan" else "")
     if part.get("parts"):
         line.append(f"  {part.get('parts_done', 0)} of {part['parts']} parts done", style="dim")

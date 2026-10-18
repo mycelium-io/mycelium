@@ -14,6 +14,10 @@ interface Props {
   onCapture: (parsed: ParsedCapture) => void;
   /** Hand what is typed to a team instead of filing it: opens the swarm dialog. */
   onSwarm?: (text: string) => void;
+  /** What the empty box says. The capture grammar (@owner, !urgent, #tag, ?
+   *  for a decision) is the field's tooltip, not its placeholder: a cheat
+   *  sheet in every empty box is the loudest thing on the board. */
+  placeholder?: string;
 }
 
 /**
@@ -21,16 +25,12 @@ interface Props {
  * sigils teach themselves and nothing is filed with fields the writer didn't see.
  */
 export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCapture(
-  { actor, now, onCapture, onSwarm },
+  { actor, now, onCapture, onSwarm, placeholder = "Add a task…" },
   ref,
 ) {
   const [text, setText] = useState("");
   const parsed = useMemo(() => parseCapture(text, actor, now), [text, actor, now]);
   const armed = parsed.title.length > 0;
-  // The capture grammar (@owner, !urgent, #tag, ? for a decision) is the
-  // field's tooltip, not its placeholder: a cheat sheet in every empty box is
-  // the loudest thing on the board.
-  const placeholder = "Add a task…";
 
   const file = () => {
     if (!armed) return;
@@ -39,15 +39,10 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
   };
 
   return (
-    <div className="border-b border-border px-3 py-1 sm:px-5">
-      <div
-        className={cn(
-          "flex h-8 items-center gap-2 rounded px-1.5 transition-colors focus-within:bg-bg hover:bg-hairline",
-          armed && "bg-bg",
-        )}
-      >
+    <div>
+      <div className="flex h-11 items-center gap-2 rounded-lg border border-border bg-paper px-3 transition-colors focus-within:border-accent">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Plus className="size-3.5 shrink-0 text-faint" strokeWidth={2} />
+          <Plus className="size-4 shrink-0 text-faint" strokeWidth={2} />
           <input
             ref={ref}
             value={text}
@@ -60,7 +55,7 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
             placeholder={placeholder}
             title="@who · !urgent · #tag · #502 for an issue · end with ? for a decision"
             aria-label="New task"
-            className="min-w-0 flex-1 bg-transparent text-label text-text outline-none placeholder:text-faint"
+            className="min-w-0 flex-1 bg-transparent text-body text-text outline-none placeholder:text-faint"
           />
         </div>
         {/* One control, two outcomes: a row someone claims later, or a team
