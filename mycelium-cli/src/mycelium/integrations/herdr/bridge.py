@@ -162,12 +162,13 @@ def herdr_name(room: str, handle: str) -> str:
     herdr names are unique across the machine, while a handle is unique only in
     its room, so the name carries both (``reviewer_mycelium-general``). When
     that is longer than herdr allows, the room is cut and a short hash of the
-    pair keeps it unique. Only a label: who a pane is comes from the registry,
-    never from this name.
+    pair keeps it unique. ``_`` appears only between the two, so no other pair
+    can produce the same name. Only a label: who a pane is comes from the
+    registry, never from this name.
     """
 
     def clean(text: str) -> str:
-        return re.sub(r"[^a-z0-9_-]+", "-", text.lower()).strip("-_") or "x"
+        return re.sub(r"[^a-z0-9-]+", "-", text.lower()).strip("-") or "x"
 
     h, r = clean(handle.lstrip("@")), clean(room)
     if not h[0].isalpha():

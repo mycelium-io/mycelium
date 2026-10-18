@@ -319,6 +319,9 @@ def test_herdr_names_are_scoped_by_room_and_fit_herdrs_rule():
         assert rule.match(name), name
     # Cut names stay unique per room and handle.
     assert herdr_name(long_room, "reviewer") != herdr_name(long_room + "-2", "reviewer")
+    # An underscore in a handle or room can't move the split between them.
+    assert herdr_name("x", "build_bot") != herdr_name("bot_x", "build")
+    assert herdr_name("x", "build_bot") == "build-bot_x"
 
 
 def test_a_running_agent_isnt_restarted(herdr: FakeHerdr):
