@@ -167,35 +167,31 @@ export function useFeedContext(
 export function SystemNotice({
   time,
   at,
-  prevAt,
   icon,
   label,
   labelColor,
   strong,
+  task,
   children,
-  aside,
-  trailing,
 }: {
   time: string;
   /** When it landed, as an ISO stamp: shown as "2m ago", the exact time on hover. */
   at?: string;
-  /** When the notice above it landed, so a run doesn't repeat one age down the column. */
-  prevAt?: string;
   /** What kind of line it is, as an icon in its color (`lib/event-icons.ts`). */
   icon: EventIcon;
   label?: string;
   labelColor?: string;
   strong?: boolean;
-  children: React.ReactNode;
-  /** Who it was by or for, in a column of one width before the time, so a run
-   *  of notices reads as columns rather than starting it wherever its title ends. */
-  aside?: React.ReactNode;
-  /** Held out of the truncating run, so a control here survives a long title. */
-  trailing?: React.ReactNode;
+  /** The task or thread it is about, in a column of one width, so every line's
+   *  task starts and its detail starts at the same place down a run. */
+  task?: React.ReactNode;
+  /** The detail: who it was by or for, or the first line of what was said. */
+  children?: React.ReactNode;
 }) {
   // A run of notices reads as one block: space above the first, none between
-  // them, so six tasks filed in a row take six lines rather than a screen. The
-  // label, the title, who and when each keep a column of their own.
+  // them, so six tasks filed in a row take six lines rather than a screen. What
+  // happened (or who said it), the task, the detail and when each keep a
+  // column of their own.
   return (
     <div
       data-system-notice=""
@@ -205,26 +201,24 @@ export function SystemNotice({
       {label && (
         <span
           title={label}
-          className={`w-24 flex-shrink-0 truncate whitespace-nowrap ${strong ? "font-semibold" : "font-medium"}`}
+          className={`w-1/5 max-w-32 flex-shrink-0 truncate whitespace-nowrap ${strong ? "font-semibold" : "font-medium"}`}
           style={{ color: labelColor ?? "var(--muted-foreground)" }}
         >
           {label}
         </span>
       )}
-      {/* Up to a width, so on a wide window who it was by stays near the
-          title rather than drifting to the far edge. */}
+      {/* Shares of the row's width, up to a cap: every row is as wide as the
+          next, so the columns still line up, and a narrow pane (a split
+          beside a thread) leaves the detail room rather than squeezing it out. */}
+      {task !== undefined && <span className="flex w-1/3 min-w-0 max-w-64 flex-shrink-0 items-center">{task}</span>}
+      {/* Up to a width, so on a wide window the detail stays near the task
+          rather than drifting to the far edge. */}
       <span className="flex min-w-0 max-w-[36rem] flex-1 items-center gap-1.5 truncate">{children}</span>
-      {aside !== undefined && (
-        <span className="w-32 flex-shrink-0 truncate" title={typeof aside === "string" ? aside : undefined}>
-          {aside}
-        </span>
-      )}
-      {trailing}
-      {/* A column of its own even when the age is left out (the same as the
-          line above), so who it was by stays where it is on every line. */}
+      {/* Every line says when, even when the line above says the same: a
+          blank here read as a line with no time. */}
       <span className="ml-auto flex w-16 flex-shrink-0 justify-end">
         {at ? (
-          <Ago at={at} unlessSameAs={prevAt} className="whitespace-nowrap tabular text-faint" />
+          <Ago at={at} className="whitespace-nowrap tabular text-faint" />
         ) : (
           <span className="tabular text-faint">{time.slice(0, 5)}</span>
         )}
@@ -323,8 +317,6 @@ interface FeedRowProps {
 /** One event as a row: a notice, a conductor line or a chat message. */
 export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }: FeedRowProps) {
   const { threads, rowNames, onOpenThread, onOpenMemory } = ctx;
-  // A notice under another says its age only when it differs.
-  const prevAt = prev && SYSTEM_TYPES.has(prev.type) ? prev.at : undefined;
 
   if (ev.type === PING_TYPE) {
     if (!pingLine || !ev.thread) return null;
@@ -332,29 +324,29 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
     const thread = ev.thread;
     const shortId = threadShortId(thread) ?? "thread";
     const owner = threads.get(thread);
-    // One line from the thread: who, where, and the first line of what they
+    // One line from the thread: who, the task, and the first line of what they
     // said. The argument stays in the thread.
     return (
       <SystemNotice
         time={ev.time}
         at={ev.at}
-        prevAt={prevAt}
         icon={THREAD_ICON}
         label={`@${said.sender || ev.pingSenders[0] || "someone"}`}
         labelColor="var(--text)"
+        task={
+          <button
+            type="button"
+            onClick={() => onOpenThread?.(thread)}
+            disabled={!onOpenThread}
+            title={owner?.title ?? thread}
+            aria-label={`Open thread ${shortId}`}
+            className="inline-flex max-w-full items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default"
+          >
+            <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
+            <span className="truncate">{owner?.title ?? shortId}</span>
+          </button>
+        }
       >
-        <span>in</span>
-        <button
-          type="button"
-          onClick={() => onOpenThread?.(thread)}
-          disabled={!onOpenThread}
-          title={thread}
-          aria-label={`Open thread ${shortId}`}
-          className="inline-flex max-w-[16rem] flex-shrink-0 items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default"
-        >
-          <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
-          <span className="truncate">{owner?.title ?? shortId}</span>
-        </button>
         <span className="truncate text-text">{quote}</span>
         {n > 1 && <span className="flex-shrink-0 text-faint">· {n} messages</span>}
       </SystemNotice>
@@ -371,42 +363,43 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
     const icon = noticeIcon(subkind, change, ev.raw.kind as string | undefined);
     const ref = ev.raw.ref as string | undefined;
     const prUrl = ev.raw.url as string | undefined;
+    // A filed task reads by who it is for; anything else "by" who did it (a
+    // lease event by who moved it); an expired one by who let it drain. Fall
+    // back to the filer when a task is for no one.
+    const detail =
+      subkind === "upstream" ? (
+        ref && prUrl ? (
+          <a href={prUrl} target="_blank" rel="noreferrer" className="truncate hover:text-text hover:underline">
+            {ref}
+          </a>
+        ) : (
+          (ref ?? null)
+        )
+      ) : subkind === "filed" && ev.raw.for ? (
+        `for @${String(ev.raw.for).replace(/^@/, "")}`
+      ) : by ? (
+        `${subkind === "expired" ? "held by" : "by"} @${by}`
+      ) : null;
     return (
       <SystemNotice
         time={ev.time}
         at={ev.at}
-        prevAt={prevAt}
         icon={icon}
         label={noticeLabel(subkind, ev.raw.kind as string | undefined, change)}
-        // A filed task reads by who it is for; anything else "by" who did it
-        // (a lease event by who moved it), so the column reads the same down a
-        // run; an expired one by who let it drain. Fall back to the filer when
-        // a task is for no one.
-        aside={
-          subkind === "upstream" ? (
-            ref && prUrl ? (
-              <a href={prUrl} target="_blank" rel="noreferrer" className="hover:text-text hover:underline">
-                {ref}
-              </a>
-            ) : (
-              (ref ?? null)
-            )
-          ) : subkind === "filed" && ev.raw.for ? (
-            `for @${String(ev.raw.for).replace(/^@/, "")}`
-          ) : by ? (
-            `${subkind === "expired" ? "held by" : "by"} @${by}`
-          ) : null
+        task={
+          <button
+            type="button"
+            onClick={() => episode && onOpenThread?.(episode)}
+            disabled={!episode || !onOpenThread}
+            title={ev.content}
+            className="inline-flex max-w-full items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
+          >
+            <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
+            <span className="truncate">{ev.content}</span>
+          </button>
         }
       >
-        <button
-          type="button"
-          onClick={() => episode && onOpenThread?.(episode)}
-          disabled={!episode || !onOpenThread}
-          className="inline-flex max-w-full items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
-        >
-          <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
-          <span className="truncate">{ev.content}</span>
-        </button>
+        {typeof detail === "string" ? <span className="truncate">{detail}</span> : detail}
       </SystemNotice>
     );
   }
@@ -422,26 +415,28 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
       <SystemNotice
         time={ev.time}
         at={ev.at}
-        prevAt={prevAt}
         icon={MEMORY_ICON}
         label="Knowledge"
-        aside={updatedBy ? `by @${updatedBy}` : null}
+        task={
+          named ? (
+            <button
+              type="button"
+              onClick={() => named.episode && onOpenThread?.(named.episode)}
+              disabled={!named.episode || !onOpenThread}
+              title={key}
+              className="inline-flex max-w-full items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
+            >
+              <span className="truncate">{named.title}</span>
+            </button>
+          ) : (
+            <span className="truncate px-1">{ev.content}</span>
+          )
+        }
       >
-        <span>updated</span>
-        {named ? (
-          <button
-            type="button"
-            onClick={() => named.episode && onOpenThread?.(named.episode)}
-            disabled={!named.episode || !onOpenThread}
-            title={key}
-            className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
-          >
-            <span className="truncate">{named.title}</span>
-          </button>
-        ) : (
-          <span className="truncate">{ev.content}</span>
-        )}
-        {typeof version === "number" && <span>· v{version}</span>}
+        <span className="truncate">
+          updated{typeof version === "number" ? ` to v${version}` : ""}
+          {updatedBy ? ` by @${updatedBy}` : ""}
+        </span>
       </SystemNotice>
     );
   }
@@ -459,6 +454,11 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
     const gar = typeof garRaw === "number" && Number.isFinite(garRaw) ? garRaw : undefined;
     const tone = broken ? "var(--yellow)" : "var(--green)";
     const openEpisode = onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined;
+    const where = shortId ? (
+      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={openEpisode} />
+    ) : (
+      <span className="px-1 font-mono">episode</span>
+    );
     // A conductor run ends `resolved`, or `converged` when a pick certified an
     // agreement: a flow walked to its end, so it says which flow and how far
     // (and what it agreed on).
@@ -472,20 +472,14 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
         <SystemNotice
           time={ev.time}
           at={ev.at}
-          prevAt={prevAt}
           icon={agreed ? AGREED_ICON : DONE_ICON}
           label={agreed ? "Agreed" : "Done"}
           labelColor={tone}
           strong
+          task={where}
         >
-          <span>in</span>
-          {shortId ? (
-            <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={openEpisode} />
-          ) : (
-            <span className="font-mono">episode</span>
-          )}
-          <span>
-            · {flow} flow
+          <span className="truncate">
+            {flow} flow
             {steps !== undefined ? `, ${steps} step${steps === 1 ? "" : "s"}` : ""}
             {agreed ? `, going with ${agreed}` : ""}
           </span>
@@ -496,24 +490,18 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
       <SystemNotice
         time={ev.time}
         at={ev.at}
-        prevAt={prevAt}
         icon={broken ? TIMEOUT_ICON : AGREED_ICON}
         label={broken ? "Timeout" : "Consensus"}
         labelColor={tone}
         strong
+        task={where}
       >
-        <span>in</span>
-        {shortId ? (
-          <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={openEpisode} />
-        ) : (
-          <span className="font-mono">episode</span>
-        )}
         {broken ? (
-          <span>· no agreement</span>
+          <span>no agreement</span>
         ) : (
           <>
             <span>
-              · {issueCount} issue{issueCount === 1 ? "" : "s"} agreed
+              {issueCount} issue{issueCount === 1 ? "" : "s"} agreed
             </span>
             {gar !== undefined ? (
               <Tooltip content="Genuine agreement ratio: how many agents actually moved toward the outcome">
@@ -542,17 +530,24 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
     const episodeUrn = (ev.raw.episode as string | undefined) ?? (ev.raw.session as string | undefined);
     const shortId = episodeUrn ? episodeUrn.split(":").pop() : undefined;
     return (
-      <SystemNotice time={ev.time} at={ev.at} prevAt={prevAt} icon={JOIN_ICON}>
-        <span className="font-medium text-muted-foreground">@{handle}</span>
-        <span>joined</span>
-        {shortId ? (
-          <EpisodeTag
-            urn={episodeUrn}
-            shortId={shortId}
-            onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined}
-          />
-        ) : null}
-        {intent ? <span>· &ldquo;{intent}&rdquo;</span> : null}
+      <SystemNotice
+        time={ev.time}
+        at={ev.at}
+        icon={JOIN_ICON}
+        label={`@${handle}`}
+        task={
+          shortId ? (
+            <EpisodeTag
+              urn={episodeUrn}
+              shortId={shortId}
+              onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined}
+            />
+          ) : null
+        }
+      >
+        <span className="truncate">
+          joined{intent ? <>: &ldquo;{intent}&rdquo;</> : null}
+        </span>
       </SystemNotice>
     );
   }
