@@ -182,11 +182,14 @@ export function ActivityLog({ events, tz, onTz, now }: Props) {
           ) : (
             <>
               <p className="text-body text-text">{rangeHeading(summary.activeDays, span.from, span.to)}</p>
-              <p className="text-micro tabular text-muted-foreground">
-                {summary.events.length} logged · longest streak {run.longest}{" "}
-                {run.longest === 1 ? "day" : "days"}
-                {todayCount === 0 ? " · nothing logged today yet" : ` · ${todayCount} logged today`}
-              </p>
+              {/* Nothing in view: the heading says so, and a line of zeros adds nothing. */}
+              {summary.events.length > 0 && (
+                <p className="text-micro tabular text-muted-foreground">
+                  {summary.events.length} logged · longest streak {run.longest}{" "}
+                  {run.longest === 1 ? "day" : "days"}
+                  {todayCount === 0 ? " · nothing logged today yet" : ` · ${todayCount} logged today`}
+                </p>
+              )}
             </>
           )}
         </div>

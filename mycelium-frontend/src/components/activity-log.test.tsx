@@ -61,6 +61,12 @@ describe("<ActivityLog />", () => {
     expect(screen.getByText(/1 logged · longest streak 1 day · nothing logged today yet/)).toBeInTheDocument();
     expect(screen.queryByText(/streak broken/)).not.toBeInTheDocument();
   });
+
+  it("says only the heading when nothing at all is logged", () => {
+    render(<ActivityLog events={[]} tz="UTC" onTz={vi.fn()} now={NOW} />);
+    expect(screen.getByText(/^Nothing logged from /)).toBeInTheDocument();
+    expect(screen.queryByText(/0 logged/)).not.toBeInTheDocument();
+  });
 });
 
 describe("rangeHeading", () => {
