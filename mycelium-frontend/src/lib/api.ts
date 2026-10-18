@@ -1022,17 +1022,37 @@ export async function closeVoiceSession(sessionId: string): Promise<void> {
   await apiFetch(`/api/voice/sessions/${sessionId}`, { method: "DELETE", fallback: undefined });
 }
 
+/** A person's own voice and speed for reading aloud; unset uses the hub's. */
+export interface SpeechChoice {
+  voice?: string | null;
+  speed?: number;
+}
+
 /** `text` said by the hub's speech server, as audio to play. Reading a
  *  notification aloud asks for a sentence at a time. */
-export async function fetchSpeech(text: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+export async function fetchSpeech(text: string, signal?: AbortSignal, choice: SpeechChoice = {}): Promise<ArrayBuffer> {
+  const body: Record<string, unknown> = { text };
+  if (choice.voice) body.voice = choice.voice;
+  if (choice.speed && choice.speed !== 1) body.speed = choice.speed;
   const res = await fetch("/api/voice/speech", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(body),
     signal,
   });
   if (!res.ok) throw new ApiError(await errorDetail(res), res.status);
   return res.arrayBuffer();
+}
+
+export interface SpeechVoices {
+  /** Empty when the speech server doesn't list them. */
+  voices: string[];
+  /** The hub's own voice, used when a person chose none. */
+  default: string;
+}
+
+export async function fetchSpeechVoices(): Promise<SpeechVoices | null> {
+  return apiFetch<SpeechVoices | null>("/api/voice/voices", { cache: "no-store", fallback: null });
 }
 
 /** A flow the room's conductor can run: `@conductor <name> @a @b: …`. */

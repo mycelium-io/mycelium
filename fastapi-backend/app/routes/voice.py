@@ -8,6 +8,7 @@ GET    /voice                     whether this hub can transcribe, and at what r
 POST   /voice/sessions/{id}       a chunk of one open mic's audio; ``?final=true`` closes it
 DELETE /voice/sessions/{id}       close a mic without transcribing what's left
 POST   /voice/speech              text in, audio out, from the hub's speech server
+GET    /voice/voices              the voices that server lists, for a person to pick
 
 The app sends raw 16 kHz mono 16-bit little-endian PCM a fraction of a second
 at a time while the mic is on, and appends each text it gets back to the draft.
@@ -24,7 +25,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 
 from app.config import settings
-from app.schemas import SpeechRequest, VoiceHeard, VoiceStatus
+from app.schemas import SpeechRequest, SpeechVoices, VoiceHeard, VoiceStatus
 from app.services import actor, speech, voice, voice_worker
 
 router = APIRouter(prefix="/voice", tags=["voice"])
@@ -69,7 +70,7 @@ async def voice_status() -> VoiceStatus:
 async def say(payload: SpeechRequest) -> Response:
     """Say ``text`` with the hub's speech server, for reading a notification aloud."""
     try:
-        audio, media = await speech.speak(payload.text)
+        audio, media = await speech.speak(payload.text, payload.voice, payload.speed)
     except speech.SpeechUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except speech.SpeechBusy as exc:
@@ -77,6 +78,18 @@ async def say(payload: SpeechRequest) -> Response:
     except speech.SpeechFailed as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return Response(content=audio, media_type=media, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/voices", response_model=SpeechVoices)
+async def speech_voices() -> SpeechVoices:
+    """The voices the hub's speech server lists, for a person to choose one."""
+    try:
+        names = await speech.voices()
+    except speech.SpeechUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except speech.SpeechBusy as exc:
+        raise HTTPException(status_code=429, detail=str(exc), headers={"Retry-After": "2"}) from exc
+    return SpeechVoices(voices=names, default=(settings.VOICE_SPEECH_VOICE or "").strip())
 
 
 @router.post(

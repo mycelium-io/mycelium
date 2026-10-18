@@ -7,6 +7,7 @@ import {
   isClosable,
   loadLayout,
   memoryPanelId,
+  panesInFront,
   parsePanelId,
   restorableLayout,
   saveLayout,
@@ -21,6 +22,16 @@ function layout(panels: Record<string, string>) {
     panels: Object.fromEntries(Object.entries(panels).map(([id, component]) => [id, { id, contentComponent: component }])),
   };
 }
+
+describe("panesInFront", () => {
+  it("names the conversations in front of each group, and nothing else", () => {
+    expect(panesInFront(["channel", threadPanelId(EPISODE), memoryPanelId("decisions/x"), "board", undefined])).toEqual([
+      "channel",
+      EPISODE,
+    ]);
+    expect(panesInFront(["board"])).toEqual([]);
+  });
+});
 
 describe("room dock panel ids", () => {
   it("names a memory and a thread by what they show, so one never opens twice", () => {

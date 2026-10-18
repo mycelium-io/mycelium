@@ -8,6 +8,7 @@
 // React-aware consumer, so this stays unit-testable without rendering.
 
 import { parseMentions } from "@/lib/mentions";
+import type { OnScreen, SkipRule } from "@/lib/on-screen";
 import { CHAT_TYPES, unwrapContent } from "@/lib/room-events";
 import { isLiveEpisode, threadShortId } from "@/lib/threads";
 
@@ -47,13 +48,31 @@ export type NotificationScope = "needs-me" | "everything";
  *  just badges; muted = nothing (no badge, no bell). */
 export type RoomLevel = "all" | "mentions" | "muted";
 
+/** What reading aloud reads: what rings the bell, or everything said in rooms you pick. */
+export type ReadAloudReads = "mentions" | "rooms";
+
+/** How much of a message is read: its start (Read all for the rest), or all of it. */
+export type ReadAloudLength = "start" | "all";
+
 export interface NotificationSettings {
   scope: NotificationScope;
   soundEnabled: boolean;
   soundVolume: number;
+  /** What counts as already in front of you, so the ping stays quiet. */
+  pingSkip: SkipRule;
   desktopEnabled: boolean;
-  /** Read a mention aloud through the hub's speech server, when it has one. */
+  /** Reading aloud through the hub's speech server, when it has one. It has
+   *  its own settings page; the bell's settings don't decide it. */
   readAloud: boolean;
+  readAloudReads: ReadAloudReads;
+  /** The rooms everything is read from, when `readAloudReads` is "rooms". */
+  readAloudRooms: string[];
+  readAloudSkip: SkipRule;
+  readAloudLength: ReadAloudLength;
+  /** A voice the speech server lists, or null for the hub's own. */
+  readAloudVoice: string | null;
+  /** 1 is normal speed. */
+  readAloudSpeed: number;
   dnd: boolean;
   mutedRooms: string[];
   /** Per-room overrides of the scope-derived default. */
@@ -64,8 +83,15 @@ export const DEFAULT_SETTINGS: NotificationSettings = {
   scope: "needs-me",
   soundEnabled: true,
   soundVolume: 0.5,
+  pingSkip: "room",
   desktopEnabled: false,
   readAloud: false,
+  readAloudReads: "mentions",
+  readAloudRooms: [],
+  readAloudSkip: "thread",
+  readAloudLength: "start",
+  readAloudVoice: null,
+  readAloudSpeed: 1,
   dnd: false,
   mutedRooms: [],
   roomLevels: {},
@@ -264,9 +290,10 @@ export type CrossTabMessage =
   | { type: "dismiss"; id: string }
   | { type: "clear" }
   | { type: "settings"; settings: NotificationSettings }
-  /** The room the focused window shows, or null when it lost focus: a mention
-   *  there is on someone's screen, so no other window reads it aloud. */
-  | { type: "viewing"; room: string | null };
+  /** What the focused window shows, or null when it lost focus: a message
+   *  there may already be in front of you, so no other window rings or reads
+   *  it aloud. */
+  | { type: "viewing"; screen: OnScreen | null };
 
 const CHANNEL_NAME = "mycelium-notifications";
 

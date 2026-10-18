@@ -69,6 +69,7 @@ export const SETTINGS_PAGES = [
   "profile",
   "general",
   "notifications",
+  "read-aloud",
   "keys",
   "connection",
   "room",

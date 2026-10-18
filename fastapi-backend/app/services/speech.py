@@ -14,12 +14,15 @@ at anything else. Mycelium ships no speech model.
 
 from __future__ import annotations
 
+import re
 import time
 from collections import deque
+from typing import Any
 
 import httpx
 
 from app.config import settings
+from app.schemas import VOICE_NAME_PATTERN
 
 #: The longest text one request may ask for. The app sends a sentence at a
 #: time, so this is well past what it needs.
@@ -33,6 +36,10 @@ MAX_AUDIO_BYTES = 10 * 1024 * 1024
 
 #: The path an OpenAI-style server takes speech requests at.
 SPEECH_PATH = "/audio/speech"
+
+#: The most voices listed for a person to pick from.
+MAX_VOICES = 300
+_VOICE_NAME = re.compile(VOICE_NAME_PATTERN)
 
 #: How the hub reaches the server; tests replace it with a mock transport.
 _transport: httpx.AsyncBaseTransport | None = None
@@ -87,15 +94,68 @@ def endpoint() -> str:
     return url if url.endswith(SPEECH_PATH) else url + SPEECH_PATH
 
 
-def body(text: str) -> dict[str, str]:
+def body(text: str, voice: str | None = None, speed: float | None = None) -> dict[str, str | float]:
     """The OpenAI-style request: the text, mp3 back, and the model and voice
-    only when the hub sets them, so a server's own defaults apply otherwise."""
-    out = {"input": text, "response_format": "mp3"}
+    only when set, so a server's own defaults apply otherwise. A person's own
+    voice and speed, when they chose one, go in place of the hub's."""
+    out: dict[str, str | float] = {"input": text, "response_format": "mp3"}
     if model := (settings.VOICE_SPEECH_MODEL or "").strip():
         out["model"] = model
-    if voice := (settings.VOICE_SPEECH_VOICE or "").strip():
-        out["voice"] = voice
+    if chosen := (voice or settings.VOICE_SPEECH_VOICE or "").strip():
+        out["voice"] = chosen
+    if speed is not None:
+        out["speed"] = speed
     return out
+
+
+def _headers(accept: str) -> dict[str, str]:
+    headers = {"Accept": accept}
+    if key := (settings.VOICE_SPEECH_API_KEY or "").strip():
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
+
+
+def voices_endpoint() -> str:
+    """Where the server lists its voices, beside its speech endpoint: the
+    ``/audio/voices`` that Kokoro, vLLM and most OpenAI-style servers add."""
+    return endpoint().removesuffix("/speech") + "/voices"
+
+
+def _names(data: Any) -> list[str]:
+    """Voice names from the shapes servers answer with: a list, or one under
+    ``voices`` or ``data``, of names or of objects naming one. Only names a
+    request may ask for are kept, so the picker never offers one the hub then
+    refuses, and at most `MAX_VOICES` of them, from a server that sends more."""
+    if isinstance(data, dict):
+        data = data.get("voices", data.get("data", []))
+    if not isinstance(data, list):
+        return []
+    names: set[str] = set()
+    for entry in data:
+        name = entry
+        if isinstance(entry, dict):
+            name = entry.get("name") or entry.get("id") or entry.get("voice_id")
+        if isinstance(name, str) and _VOICE_NAME.match(name.strip()):
+            names.add(name.strip())
+    return sorted(names)[:MAX_VOICES]
+
+
+async def voices() -> list[str]:
+    """The voices the speech server offers, or none when it doesn't list them
+    (OpenAI's own API has no such endpoint); a person can still type one."""
+    url = voices_endpoint()
+    _admit()
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_S, transport=_transport) as client:
+            response = await client.get(url, headers=_headers("application/json"))
+    except httpx.HTTPError:
+        return []
+    if response.status_code >= 400:
+        return []
+    try:
+        return _names(response.json())
+    except ValueError:
+        return []
 
 
 def _reason(response: httpx.Response) -> str:
@@ -113,16 +173,17 @@ def _reason(response: httpx.Response) -> str:
     return text[:200]
 
 
-async def speak(text: str) -> tuple[bytes, str]:
+async def speak(
+    text: str, voice: str | None = None, speed: float | None = None
+) -> tuple[bytes, str]:
     """Ask the speech server to say ``text``; returns its audio and media type."""
     url = endpoint()
     _admit()
-    headers = {"Accept": "audio/*"}
-    if key := (settings.VOICE_SPEECH_API_KEY or "").strip():
-        headers["Authorization"] = f"Bearer {key}"
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_S, transport=_transport) as client:
-            response = await client.post(url, json=body(text), headers=headers)
+            response = await client.post(
+                url, json=body(text, voice, speed), headers=_headers("audio/*")
+            )
     except httpx.TimeoutException as exc:
         msg = f"The speech server didn't answer within {TIMEOUT_S:.0f} seconds."
         raise SpeechFailed(msg) from exc

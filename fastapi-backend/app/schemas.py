@@ -674,11 +674,33 @@ class VoiceStatus(BaseModel):
     )
 
 
+#: A speech voice's name, as a person may choose one: what servers name voices
+#: with, and nothing that could carry anything else.
+VOICE_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.:+ -]{0,63}$"
+
+
 class SpeechRequest(BaseModel):
     """Text to say. The hub sends it to its own speech server; there is no
     address to give, by design."""
 
     text: str = Field(..., min_length=1, max_length=1000, description="What to say")
+    voice: str | None = Field(
+        None,
+        pattern=VOICE_NAME_PATTERN,
+        description="A voice the person chose, in place of the hub's `voice.speech_voice`",
+    )
+    speed: float | None = Field(None, ge=0.5, le=2.0, description="How fast to say it; 1 is normal")
+
+
+class SpeechVoices(BaseModel):
+    """The voices the hub's speech server lists, for a person to pick from."""
+
+    voices: list[str] = Field(
+        default_factory=list, description="Empty when the server doesn't list them"
+    )
+    default: str = Field(
+        "", description="The hub's own `voice.speech_voice`, used when none is chosen"
+    )
 
 
 class VoiceHeard(BaseModel):

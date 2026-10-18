@@ -12,6 +12,7 @@ import { useIsDesktop } from "@/lib/desktop";
 import { ProfilePage } from "./profile-page";
 import { GeneralPage } from "./general-page";
 import { NotificationsPage } from "./notifications-page";
+import { ReadAloudPage } from "./read-aloud-page";
 import { KeysPage } from "./keys-page";
 import { ConnectionPage } from "./connection-page";
 import { RoomSettingsPage } from "./room-page";
@@ -80,6 +81,7 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
             room={room}
           />
           <RailLink item={{ page: "notifications", label: "Notifications" }} active={page === "notifications"} room={room} />
+          <RailLink item={{ page: "read-aloud", label: "Read aloud" }} active={page === "read-aloud"} room={room} />
           <RailLink
             item={{ page: "keys", label: "Keyboard shortcuts", changed: keysChanged }}
             active={page === "keys"}
@@ -98,6 +100,7 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
         {page === "profile" && <ProfilePage />}
         {page === "general" && <GeneralPage />}
         {page === "notifications" && <NotificationsPage />}
+        {page === "read-aloud" && <ReadAloudPage />}
         {page === "keys" && <KeysPage />}
         {page === "connection" && <ConnectionPage />}
         {page === "room" && <RoomSettingsPage room={room} />}

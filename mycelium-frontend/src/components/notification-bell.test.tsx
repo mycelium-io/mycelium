@@ -11,8 +11,10 @@ import { resetStreamHub } from "@/lib/stream-hub";
 const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
 const NOTE_THREAD = "urn:ioc:mycelium:episode:sprint:n1";
 
-/** What the hub's speech server was asked to say, and whether it has one. */
+/** What the hub's speech server was asked to say, with which voice and speed,
+ *  and whether it has one. */
 const spoken: string[] = [];
+const choices: unknown[] = [];
 const voice = { speech: false };
 vi.mock("@/lib/api", () => ({
   // Every memory in the room: a board row and a note, each with its thread.
@@ -21,8 +23,9 @@ vi.mock("@/lib/api", () => ({
     { key: "context/chat-buddy", value: "Talking with the chat buddy", episode: NOTE_THREAD },
   ]),
   fetchVoiceStatus: vi.fn(async () => ({ state: "ready", speech: voice.speech })),
-  fetchSpeech: vi.fn(async (text: string) => {
+  fetchSpeech: vi.fn(async (text: string, _signal?: AbortSignal, choice?: unknown) => {
     spoken.push(text);
+    choices.push(choice);
     return new ArrayBuffer(8);
   }),
 }));
@@ -44,6 +47,7 @@ import { CurrentUserProvider } from "@/components/current-user";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { NotificationBell } from "@/components/notification-bell";
 import { OPEN_MENTION_EVENT } from "@/lib/notifications";
+import { clearOnScreen, setOnScreen } from "@/lib/on-screen";
 
 const CREATED = "2026-08-15T10:00:00.000000+00:00";
 let seq = 0;
@@ -97,6 +101,7 @@ describe("<NotificationBell />", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
     ping.mockClear();
     spoken.length = 0;
+    choices.length = 0;
     playing.length = 0;
     voice.speech = false;
   });
@@ -177,9 +182,9 @@ describe("<NotificationBell />", () => {
   });
 
   describe("read aloud", () => {
-    function turnOn() {
+    function turnOn(more: Record<string, unknown> = {}) {
       voice.speech = true;
-      window.localStorage.setItem("mycelium.notification-settings", JSON.stringify({ readAloud: true }));
+      window.localStorage.setItem("mycelium.notification-settings", JSON.stringify({ readAloud: true, ...more }));
       vi.spyOn(document, "hasFocus").mockReturnValue(true);
       vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     }
@@ -276,42 +281,113 @@ describe("<NotificationBell />", () => {
       });
       await start();
       const other = new BroadcastChannel("mycelium-notifications");
-      other.postMessage({ type: "viewing", room: "sprint" });
+      other.postMessage({ type: "viewing", screen: { room: "sprint", panes: ["channel"] } });
       await act(async () => new Promise((r) => setTimeout(r, 20)));
       await emit(message("@bob in the room you're looking at"));
       await act(async () => new Promise((r) => setTimeout(r, 400)));
       expect(spoken).toEqual([]);
       // Once that window shows something else, this one reads it.
-      other.postMessage({ type: "viewing", room: null });
+      other.postMessage({ type: "viewing", screen: null });
       await act(async () => new Promise((r) => setTimeout(r, 20)));
       await emit(message("@bob now it's yours"));
       await screen.findByRole("region", { name: "Reading aloud: alice" }, { timeout: 2000 });
       other.close();
     });
 
-    it("tells the other windows when the focused one leaves a room for another page", async () => {
+    it("tells the other windows what's in front of the focused one, as it changes", async () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(true);
       const heard: unknown[] = [];
       const other = new BroadcastChannel("mycelium-notifications");
       other.onmessage = (e) => heard.push(e.data);
-      path.current = "/room/sprint";
-      const { rerender } = renderBell();
-      await act(async () => new Promise((r) => setTimeout(r, 20)));
-      path.current = "/settings/notifications";
-      rerender(
-        <SWRConfig value={{ provider: () => new Map() }}>
-          <CurrentUserProvider>
-            <NotificationsProvider>
-              <NotificationBell />
-            </NotificationsProvider>
-          </CurrentUserProvider>
-        </SWRConfig>,
-      );
-      await act(async () => new Promise((r) => setTimeout(r, 20)));
-      expect(heard).toContainEqual({ type: "viewing", room: "sprint" });
-      expect(heard.at(-1)).toEqual({ type: "viewing", room: null });
+      await start();
+      const wait = () => act(async () => new Promise((r) => setTimeout(r, 20)));
+      // The room's dock shows the Channel, then a thread beside it, then the room closes.
+      act(() => setOnScreen({ room: "sprint", panes: ["channel"] }));
+      await wait();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel", THREAD] }));
+      await wait();
+      act(() => clearOnScreen("sprint"));
+      await wait();
+      expect(heard).toContainEqual({ type: "viewing", screen: { room: "sprint", panes: ["channel"] } });
+      expect(heard).toContainEqual({ type: "viewing", screen: { room: "sprint", panes: ["channel", THREAD] } });
+      expect(heard.at(-1)).toEqual({ type: "viewing", screen: null });
       other.close();
-      path.current = "/";
+    });
+
+    it("reads a mention in another thread of the room you have open, by default", async () => {
+      turnOn();
+      await start();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel"] }));
+      await emit(message("@bob over in the task", THREAD));
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
+      act(() => clearOnScreen("sprint"));
+    });
+
+    it("skips a mention in the thread you have open", async () => {
+      turnOn();
+      await start();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel", THREAD] }));
+      await emit(message("@bob right here", THREAD));
+      await act(async () => new Promise((r) => setTimeout(r, 50)));
+      expect(spoken).toEqual([]);
+      act(() => clearOnScreen("sprint"));
+    });
+
+    it("skips the whole room you have open, when that's the person's rule", async () => {
+      turnOn({ readAloudSkip: "room" });
+      await start();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel"] }));
+      await emit(message("@bob over in the task", THREAD));
+      await act(async () => new Promise((r) => setTimeout(r, 50)));
+      expect(spoken).toEqual([]);
+      act(() => clearOnScreen("sprint"));
+    });
+
+    it("reads even what's in front of you, when the person never skips", async () => {
+      turnOn({ readAloudSkip: "never" });
+      await start();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel", THREAD] }));
+      await emit(message("@bob right here", THREAD));
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
+      act(() => clearOnScreen("sprint"));
+    });
+
+    it("reads everything said in rooms the person picked, and only there", async () => {
+      turnOn({ readAloudReads: "rooms", readAloudRooms: ["sprint"] });
+      await start();
+      await emit({ ...message("a plain message, no mention"), room_name: "lobby" });
+      await act(async () => new Promise((r) => setTimeout(r, 50)));
+      expect(spoken).toEqual([]);
+      await emit(message("a plain message, no mention"));
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
+    });
+
+    it("reads all of a long message when the person chose that", async () => {
+      turnOn({ readAloudLength: "all" });
+      await start();
+      await emit(message("@bob the start.\n\nThe rest."));
+      const popover = await screen.findByRole("region", { name: "Reading aloud: alice" });
+      expect(within(popover).queryByRole("button", { name: "Read all" })).not.toBeInTheDocument();
+    });
+
+    it("asks for the person's own voice and speed", async () => {
+      turnOn({ readAloudVoice: "bm_george", readAloudSpeed: 1.25 });
+      await start();
+      await emit(message("@bob hello"));
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
+      expect(choices[0]).toEqual({ voice: "bm_george", speed: 1.25 });
+    });
+
+    it("pings for a mention in another thread when the ping's rule is the thread", async () => {
+      window.localStorage.setItem("mycelium.notification-settings", JSON.stringify({ pingSkip: "thread" }));
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      await start();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel"] }));
+      await emit(message("@bob over in the task", THREAD));
+      expect(ping).toHaveBeenCalledTimes(1);
+      await emit(message("@bob in the channel"));
+      expect(ping).toHaveBeenCalledTimes(1);
+      act(() => clearOnScreen("sprint"));
     });
 
     it("keeps the whole message out of what the bell stores", async () => {

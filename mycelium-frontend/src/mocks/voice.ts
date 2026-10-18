@@ -52,6 +52,9 @@ export async function handleVoice(req: Request, rest: string[]): Promise<Respons
   if (rest.length === 1 && req.method === "GET") {
     return json({ state: "ready", detail: "", language: "en", sample_rate: RATE, model: "mock", speech: true });
   }
+  if (rest[1] === "voices" && rest.length === 2 && req.method === "GET") {
+    return json({ voices: ["af_heart", "af_bella", "am_michael", "bf_emma", "bm_george"], default: "af_heart" });
+  }
   if (rest[1] === "speech" && rest.length === 2 && req.method === "POST") {
     const { text } = (await req.json()) as { text?: string };
     if (!text) return json({ detail: "Nothing to say" }, 422);

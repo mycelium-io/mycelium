@@ -31,6 +31,8 @@ export interface ReadItem {
   /** Where clicking the popover goes. */
   href: string | null;
   blocks: Block[];
+  /** Read all of it, not only its start. */
+  whole?: boolean;
 }
 
 export type ReaderStatus = "idle" | "speaking" | "held" | "lingering" | "failed";
@@ -175,7 +177,8 @@ export function createReader(deps: ReaderDeps): Reader {
       return audio.get(i)!;
     };
     const first = intro ? -1 : 0;
-    set({ item, status: "speaking", at: null, end: excerptLength(item.blocks), total: sentences.length, error: null });
+    const end = item.whole ? sentences.length : excerptLength(item.blocks);
+    set({ item, status: "speaking", at: null, end, total: sentences.length, error: null });
 
     for (let i = first; i < state.end; ) {
       await untilMicClosed(signal);

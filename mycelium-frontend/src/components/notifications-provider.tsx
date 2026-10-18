@@ -22,6 +22,7 @@ import { audioReady, ping, playAudio, primeAudio } from "@/lib/audio-ping";
 import { fetchMemories, fetchSpeech, fetchVoiceStatus } from "@/lib/api";
 import { micOpen, onMicChange } from "@/lib/mic-activity";
 import { mentionHref, OPEN_MENTION_EVENT } from "@/lib/notifications";
+import { onOnScreenChange, onScreenNow, shows, type OnScreen, type SkipRule } from "@/lib/on-screen";
 import { createReader, IDLE, type Reader, type ReaderState, type ReadItem } from "@/lib/read-aloud";
 import { claimToSpeak } from "@/lib/speaking-tab";
 import { speakable } from "@/lib/speakable";
@@ -60,7 +61,7 @@ interface NotificationsContextValue {
   requestDesktopPermission: () => void;
 }
 
-/** Reading mentions aloud, as the bell's popover and the settings page use it. */
+/** Reading messages aloud, as the bell's popover and the settings page use it. */
 export interface ReadAloud {
   /** The hub has a speech server, so it can be turned on. */
   available: boolean;
@@ -79,6 +80,10 @@ const NotificationsContext = createContext<NotificationsContextValue | null>(nul
 const ReadAloudContext = createContext<ReadAloud | null>(null);
 
 const BASE_TITLE = "mycelium";
+
+/** What "everything in rooms you pick" reads: what people say, not memory
+ *  changes or joins. */
+const READABLE = new Set<string>(["mention", "direct", "message", "consensus"]);
 
 /** The longest a mention waits for its task's name before it's read with the room's. */
 const TITLE_WAIT_MS = 1_500;
@@ -101,8 +106,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => { principalRef.current = principal; }, [principal]);
   const seenIds = useRef<Set<string>>(new Set());
   const isLeader = useRef(false);
-  /** The room another, focused window shows, from its "viewing" posts. */
-  const viewedElsewhere = useRef<string | null>(null);
+  /** What another, focused window shows, from its "viewing" posts. */
+  const viewedElsewhere = useRef<OnScreen | null>(null);
   const channelRef = useRef<ReturnType<typeof openCrossTabChannel> | null>(null);
 
   // Load from localStorage once the DOM is there to read it: on the server
@@ -139,7 +144,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const readerRef = useRef<Reader | null>(null);
   useEffect(() => {
     const reader = createReader({
-      fetch: fetchSpeech,
+      // The person's own voice and speed, as set when each sentence is asked for.
+      fetch: (text, signal) =>
+        fetchSpeech(text, signal, {
+          voice: settingsRef.current.readAloudVoice,
+          speed: settingsRef.current.readAloudSpeed,
+        }),
       play: playAudio,
       micOpen,
       onMicChange,
@@ -190,7 +200,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           setSettingsState(msg.settings);
           break;
         case "viewing":
-          viewedElsewhere.current = msg.room;
+          viewedElsewhere.current = msg.screen;
           break;
       }
     });
@@ -238,12 +248,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return cached.byEpisode.get(episode) ?? null;
   }, []);
 
-  /** Read a mention aloud, if this is the tab that should: the one you can
+  /** Whether a message is already in front of you, by `rule`: in this window
+   *  while it has focus, or in the focused window elsewhere. */
+  const inFront = useCallback(
+    (m: { room: string; episode?: string | null }, rule: SkipRule) =>
+      (document.hasFocus() && shows(onScreenNow(), m, rule)) || shows(viewedElsewhere.current, m, rule),
+    [],
+  );
+
+  /** Read a message aloud, if this is the tab that should: the one you can
    *  see, never a hidden one, and only one of several. */
-  const readMention = useCallback(
-    async (n: { id: string; room: string; sender: string; episode?: string | null; text: string }) => {
-      // Shown in the window you're working in: you can read it there.
-      if (!document.hasFocus() && viewedElsewhere.current === n.room) return;
+  const readMessage = useCallback(
+    async (n: { id: string; room: string; sender: string; episode?: string | null; text: string; whole: boolean }) => {
       if (!(await claimToSpeak(n.id))) return;
       let where = n.room;
       if (n.episode) {
@@ -253,7 +269,14 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         ]);
         if (title) where = title;
       }
-      const item: ReadItem = { id: n.id, sender: n.sender, where, href: mentionHref(n), blocks: speakable(n.text) };
+      const item: ReadItem = {
+        id: n.id,
+        sender: n.sender,
+        where,
+        href: mentionHref(n),
+        blocks: speakable(n.text),
+        whole: n.whole,
+      };
       readerRef.current?.enqueue(item);
     },
     [taskTitle],
@@ -276,12 +299,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const focused = document.hasFocus();
     const seeing = focused && roomOfPath(window.location.pathname) === n.room;
     setNotifications((prev) => [...prev, { ...n, read: seeing, alert: loud }]);
-    // A mention of you plays a sound, unless you're looking at the room it was
-    // said in. Only the leader tab plays it, so several open tabs ring once.
-    // The system notification is for when the window isn't focused:
-    // `hasFocus()` (not visibilityState) is false when you've switched tabs,
-    // minimized, or alt-tabbed to another app.
-    if (loud && !seeing && !settingsRef.current.dnd && isLeader.current) {
+    // A mention of you plays a sound, unless it's already in front of you by
+    // the person's own rule (the room, the thread, or never skip). Only the
+    // leader tab plays it, so several open tabs ring once. The system
+    // notification is for when the window isn't focused: `hasFocus()` (not
+    // visibilityState) is false when you've switched tabs, minimized, or
+    // alt-tabbed to another app.
+    if (loud && !inFront(n, settingsRef.current.pingSkip) && !settingsRef.current.dnd && isLeader.current) {
       if (settingsRef.current.soundEnabled) ping(settingsRef.current.soundVolume);
       if (
         !focused &&
@@ -304,10 +328,22 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         }
       }
     }
-    // Read aloud whenever the bell rings for it, in the tab you can see, once
-    // the page can play sound: a popover never opens pretending to read.
-    if (loud && !seeing && !settingsRef.current.dnd && settingsRef.current.readAloud && speechRef.current && text && audioReady()) {
-      void readMention({ ...n, text });
+    // Read aloud by the person's own choices, apart from the bell's: what it
+    // reads, what counts as already in front of them, and how much. Only in
+    // the tab you can see, once the page can play sound, so a popover never
+    // opens pretending to read.
+    const s = settingsRef.current;
+    const wanted = loud || (s.readAloudReads === "rooms" && READABLE.has(n.kind) && s.readAloudRooms.includes(n.room));
+    if (
+      wanted &&
+      s.readAloud &&
+      !s.dnd &&
+      speechRef.current &&
+      text &&
+      audioReady() &&
+      !inFront(n, s.readAloudSkip)
+    ) {
+      void readMessage({ ...n, text, whole: s.readAloudLength === "all" });
     }
     // A mention in a task's thread names the task in the bell.
     if (loud && n.episode) {
@@ -379,33 +415,42 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       prev.map((n) => (n.room === room && !n.read ? { ...n, read: true } : n)),
     );
     channelRef.current?.post({ type: "room-read", room });
-    if (document.hasFocus()) channelRef.current?.post({ type: "viewing", room });
+  }, []);
+
+  /** Tell the other windows what this one shows, while it has focus: what's
+   *  in front of you here doesn't need ringing or reading from there. */
+  const announce = useCallback(() => {
+    // The room's dock sets this and clears it when the room closes, so a page
+    // that isn't a room shows nothing.
+    if (document.hasFocus()) channelRef.current?.post({ type: "viewing", screen: onScreenNow() });
   }, []);
 
   // Coming back to the window reads the room it's showing: what arrived while
   // you were away is on screen now. Leaving it tells the other windows nothing
-  // is on screen here any more.
+  // is in front of you here any more.
   useEffect(() => {
     const onFocus = () => {
       const room = roomOfPath(window.location.pathname);
       if (room) markRoomRead(room);
-      else channelRef.current?.post({ type: "viewing", room: null });
+      announce();
     };
-    const onBlur = () => channelRef.current?.post({ type: "viewing", room: null });
+    const onBlur = () => channelRef.current?.post({ type: "viewing", screen: null });
     window.addEventListener("focus", onFocus);
     window.addEventListener("blur", onBlur);
+    const off = onOnScreenChange(announce);
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("blur", onBlur);
+      off();
     };
-  }, [markRoomRead]);
+  }, [markRoomRead, announce]);
 
-  // Moving to another page without leaving the window: the room it showed is
-  // off screen, so the other windows may read its mentions again.
+  // Moving to another page without leaving the window, or another tab or
+  // split inside a room, changes what's in front of you.
   const pathname = usePathname();
   useEffect(() => {
-    if (document.hasFocus()) channelRef.current?.post({ type: "viewing", room: roomOfPath(pathname ?? "") });
-  }, [pathname]);
+    announce();
+  }, [pathname, announce]);
 
   const requestDesktopPermission = useCallback(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
