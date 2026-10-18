@@ -142,6 +142,7 @@ async def _start_on_runner(
                 owner=me if me != "web-ui" else runner.owner,
             ),
             created_by=me,
+            principal=actor.principal_handle(request),
         )
 
     row = await tasks.create_task(room_name, task, created_by=me)

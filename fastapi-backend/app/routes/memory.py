@@ -46,6 +46,7 @@ from app.services import (
     in_memory_store,
     links,
     memory_sync,
+    principals,
     room_settings,
     search_index,
     uploads,
@@ -253,7 +254,29 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate, request: R
         item.created_by = actor.bind_delegated_actor(
             request, room_name, item.created_by, field="created_by"
         )
+        _guard_manifest(request, room_name, item.key, item.value)
     return await upsert_memories(room_name, payload)
+
+
+def _guard_manifest(
+    request: Request, room_name: str, key: str, value: Any, *, deleting: bool = False
+) -> None:
+    """Refuse a write that changes who may act as an agent, unless the caller may.
+
+    Only with a verified caller: with sign-in off, anyone can claim any handle
+    anyway, so there is nothing for this to protect.
+    """
+    if not _is_agent_manifest(key):
+        return
+    principal = actor.current_principal(request)
+    if principal is None:
+        return
+    content = "" if deleting else value_to_content(value)
+    refusal = principals.grant_change_refusal(
+        room_name, key.removeprefix("agents/"), content, principal.handle, deleting=deleting
+    )
+    if refusal:
+        raise HTTPException(status_code=403, detail=refusal)
 
 
 async def upsert_memories(
@@ -630,12 +653,19 @@ async def get_memory(room_name: str, key: str):
 
 
 @router.delete("/{key:path}", status_code=204)
-async def delete_memory(room_name: str, key: str):
+async def delete_memory(room_name: str, key: str, request: Request):
     """Delete a memory by key. Removes the file and its search-index entry.
 
     An ``uploads/`` record takes its file's bytes with it once no other upload
-    in the room names them.
+    in the room names them. An agent's manifest is its owner's to remove.
     """
+    _guard_manifest(request, room_name, key, None, deleting=True)
+    await remove_memory(room_name, key)
+
+
+async def remove_memory(room_name: str, key: str) -> None:
+    """The delete itself, for the route and for the hub's own removals (an
+    agent leaving, a rename), which are authorized where they start."""
     room_dir = get_room_dir(room_name)
     found = read_memory_file(room_dir, key)
     file_deleted = delete_memory_file(room_dir, key)

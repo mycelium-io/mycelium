@@ -107,15 +107,15 @@ def test_an_agent_holding_two_rows_gets_the_same_grace(monkeypatch, notices):
 
 
 def test_removing_an_agent_releases_what_it_held(notices):
-    from app.routes.memory import delete_memory
+    from app.routes.memory import remove_memory
 
     _row()
     write_memory_file(get_room_dir(ROOM), "agents/coder", "handle: coder", created_by="lead")
     write_memory_file(get_room_dir(ROOM), "agents/coder/notes", "notes", created_by="lead")
     # Its notes going is not the agent leaving.
-    asyncio.run(delete_memory(ROOM, "agents/coder/notes"))
+    asyncio.run(remove_memory(ROOM, "agents/coder/notes"))
     assert assignments.state_of(_meta(), datetime.now(UTC)) == "held"
-    asyncio.run(delete_memory(ROOM, "agents/coder"))
+    asyncio.run(remove_memory(ROOM, "agents/coder"))
     meta = _meta()
     assert assignments.state_of(meta, datetime.now(UTC)) == "released"
     assert meta["assignment_note"] == "@coder was removed from the room"

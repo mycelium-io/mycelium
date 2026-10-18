@@ -104,7 +104,13 @@ async def create_a2a_agent(room_name: str, payload: A2aAgentCreate, request: Req
         "owner": norm_handle((payload.owner or registrar or "").partition("#")[0]) or None,
         "team": norm_handle(payload.team),
     }
-    await write_agent_manifest(room_name, handle, body, created_by=registrar or "web-ui")
+    await write_agent_manifest(
+        room_name,
+        handle,
+        body,
+        created_by=registrar or "web-ui",
+        principal=actor.principal_handle(request),
+    )
     logger.info(
         "room %s: registered a2a agent @%s (%s, %d skills)",
         room_name,
