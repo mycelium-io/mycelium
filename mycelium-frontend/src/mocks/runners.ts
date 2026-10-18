@@ -137,6 +137,7 @@ function machineAgent(
   folder: string | null,
 ): MachineAgent {
   const open = state !== "gone";
+  const restartable = (state === "stopped" || state === "gone") && folder !== null;
   return {
     handle,
     room,
@@ -146,7 +147,9 @@ function machineAgent(
     folder,
     workspace: open ? pane.split(":")[0] : null,
     restores: open ? false : null,
-    restartable: (state === "stopped" || state === "gone") && folder !== null,
+    restartable,
+    // Claude Code resumes the session herdr recorded; the others start a new one.
+    resumes: restartable && kind === "claude",
   };
 }
 

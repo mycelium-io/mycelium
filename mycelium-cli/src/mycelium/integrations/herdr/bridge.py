@@ -746,9 +746,7 @@ class HerdrBridge:
                 return
             label = str(tab.get("label") or "")
             words = label.split()
-            if label != str(tab.get("number")) and not (
-                words and all(w.startswith("@") for w in words)
-            ):
+            if label != str(tab.get("number")) and not named_by_mycelium(label):
                 return
             here = {str(p["pane_id"]) for p in panes if p.get("tab_id") == tab_id}
             moved = {m.handle for m in self.registry.all() if m.room == room and m.pane not in here}
@@ -962,6 +960,16 @@ class HerdrBridge:
 def _tab_label(handles: list[str], handle: str) -> str:
     """``@a @b``: the handles in a tab, ``handle`` last, each once."""
     return " ".join(f"@{h}" for h in [*(h for h in handles if h != handle), handle])
+
+
+def named_by_mycelium(label: str) -> bool:
+    """Whether a tab's name is one Mycelium gave it (every word an ``@handle``).
+
+    Such a tab holds agents Mycelium started, and its name lists them, so it is
+    never a name for a new member.
+    """
+    words = label.split()
+    return bool(words) and all(w.startswith("@") for w in words)
 
 
 def _split_target(panes: list[dict]) -> tuple[str | None, str]:

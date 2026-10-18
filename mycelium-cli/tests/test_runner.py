@@ -635,9 +635,44 @@ def test_a_closed_pane_is_a_stopped_agent(make_runner, herdr: Herdr, hub: Hub):
     assert r.hello_body()["agents"][0]["status"] == "working"
 
     herdr.live.clear()
+    herdr.panes.clear()
     r.refresh()
     agent = r.hello_body()["agents"][0]
     assert agent["status"] == "stopped"
+    assert agent["detail"] == "its herdr pane closed"
+    assert r.bridge.registry.get("eng", "scout") is None
+
+
+def test_an_agent_quit_and_started_again_in_its_pane_stays_itself(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    """A person quits the agent (to load an MCP, say) and starts it again in the
+    same pane. The pane's mapping stays, so the sync pass never enrolls it as a
+    new member named from its tab."""
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    herdr.live.clear()  # quit; the pane is still open
+    r.refresh()
+    agent = r.hello_body()["agents"][0]
+    assert agent["status"] == "stopped"
+    assert agent["detail"] == "it exited, and its herdr pane is still open"
+    mapping = r.bridge.registry.get("eng", "scout")
+    assert mapping is not None
+    assert mapping.pane == "w9:p1"
+    # Its workspace stays bound, so the agent started again there is synced.
+    assert r.bridge.registry.bindings()
+
+    herdr.live["w9:p1"] = "idle"  # started again by hand
+    r.refresh()
+    assert r.hello_body()["agents"][0]["status"] == "idle"
+    assert r.bridge.registry.get("eng", "scout") is not None
+
+    # Quit again and then close the pane: now it has gone.
+    herdr.live.clear()
+    r.refresh()
+    herdr.panes.clear()
+    r.refresh()
+    assert r.hello_body()["agents"][0]["detail"] == "its herdr pane closed"
     assert r.bridge.registry.get("eng", "scout") is None
 
 

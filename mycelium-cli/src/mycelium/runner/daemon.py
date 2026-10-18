@@ -318,6 +318,9 @@ class Tracked:
     #: Already running in its pane before it joined (an ``adopt``), so stopping
     #: it from the app takes it out of the room but never closes its pane.
     adopted: bool = False
+    #: Stopped because it exited where it ran, which is still open, so an agent
+    #: started there again (a person restarting it by hand) is it, running again.
+    exited: bool = False
 
     @property
     def live(self) -> bool:
@@ -695,17 +698,34 @@ class Runner:
         changed = False
         with self._lock:
             for key, agent in list(self.state.agents.items()):
-                if agent.status in ("stopped", "failed"):
+                found = live.get(agent.pane)
+                if agent.exited and found is not None:
+                    # Started again where it exited: it's running, as itself.
+                    agent.exited = False
+                    agent.stopped_at = None
+                    changed = True
+                elif agent.status in ("stopped", "failed"):
+                    if agent.exited and not self.host.still_open(agent.pane):
+                        agent.exited = False
+                        agent.detail = self.host.gone_detail
+                        self.host.gone(agent)
+                        changed = True
                     if agent.stopped_at and datetime.fromisoformat(agent.stopped_at) < cutoff:
                         del self.state.agents[key]
                         changed = True
                     continue
-                found = live.get(agent.pane)
-                if found is None:
+                elif found is None:
                     agent.status = "stopped"
-                    agent.detail = self.host.gone_detail
                     agent.stopped_at = _now()
-                    self.host.gone(agent)
+                    # Only a closed pane loses its mapping. A person who quits the
+                    # agent and starts it again in its pane keeps the same member;
+                    # forgetting the pane made the sync pass enroll it as a new one.
+                    if self.host.still_open(agent.pane):
+                        agent.exited = True
+                        agent.detail = self.host.exited_detail
+                    else:
+                        agent.detail = self.host.gone_detail
+                        self.host.gone(agent)
                     changed = True
                     continue
                 before = (agent.status, agent.detail, agent.intro)
@@ -1021,6 +1041,7 @@ class Runner:
             else:
                 self.host.stop(agent)
             agent.status = "stopped"
+            agent.exited = False
             agent.detail = "stopped from the app"
             agent.stopped_at = _now()
             self.host.release(self.state)

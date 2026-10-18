@@ -899,6 +899,10 @@ class MachineAgentRead(BaseModel):
     restartable: bool = Field(
         False, description="Stopped or gone, with a folder and CLI to restart"
     )
+    resumes: bool = Field(
+        False,
+        description="A restart brings it back in its own session, keeping its conversation",
+    )
 
 
 class MachineUnenrolledRead(BaseModel):

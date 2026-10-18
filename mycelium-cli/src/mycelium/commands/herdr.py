@@ -46,6 +46,7 @@ from mycelium.integrations.herdr import (
     build_mention_prompt,
     build_wake_prompt,
     herdr_name,
+    named_by_mycelium,
     session_of,
 )
 from mycelium.protocol import AgentManifest
@@ -63,6 +64,8 @@ HUB_TIMEOUT_S = 15.0
 #: Wakes delivered, and hub calls that fail or are slow, in the runner's log.
 _sync = logging.getLogger("mycelium.runner.sync")
 _hub = logging.getLogger("mycelium.runner.hub")
+#: Panes the sync pass left alone and said so, so it says it once, not every pass.
+_left_alone: set[str] = set()
 
 
 def _bridge() -> HerdrBridge:
@@ -509,7 +512,8 @@ def _derive_handle(
     appended to keep handles unique — pane ids are unique by construction.
     """
     if name_from == "tab":
-        base = _sanitize_handle(tab_label, prefix)
+        # A tab Mycelium named lists the members in it, which is no name for another.
+        base = "" if named_by_mycelium(tab_label) else _sanitize_handle(tab_label, prefix)
         if not base:  # unusable tab label → pane fallback, namespaced so it isn't bare
             base = _sanitize_handle(_pane_suffix(pane_id), prefix or "agent-")
     else:  # pane mode: the pane id with the caller's prefix (verbatim)
@@ -531,12 +535,13 @@ def _enroll_one(
     taken: set[str],
     name_from: str,
     prefix: str,
-    tab_labels: dict[str, str],
+    tab_labels: Callable[[], dict[str, str]],
     owner: Callable[[], str],
 ) -> str | None:
     """Ensure one live herdr agent is a member of ``room``; return its handle if
-    this call newly enrolled it (``None`` if it was already bound). ``owner`` is
-    asked only when a manifest is written, so a quiet pass costs no lookup.
+    this call newly enrolled it (``None`` if it was already bound or is left
+    alone). ``owner`` and ``tab_labels`` are asked only for an agent no mapping
+    has, so a quiet pass costs no lookup.
 
     Idempotency is keyed on the **pane**, not the derived handle: if any mapping
     in the room already points at this pane, the agent is already a member (we
@@ -561,8 +566,23 @@ def _enroll_one(
             _write_manifest(config, room, manifest, created_by=owner(), timeout=HUB_TIMEOUT_S)
         return None
 
+    tab_label = tab_labels().get(str(agent.get("tab_id") or ""), "")
+    if named_by_mycelium(tab_label):
+        # Mycelium started the agents in this tab and mapped each one, so an
+        # agent here that no mapping has is not a new member. Enrolling it made
+        # a member named after the tab, its handles joined (`@a @b` -> `a-b`).
+        if pane not in _left_alone:
+            _left_alone.add(pane)
+            _sync.info(
+                "left alone the agent in %s: its tab %r is one Mycelium named, and no "
+                "member is mapped to its pane",
+                pane,
+                tab_label,
+            )
+        return None
+
     handle = _derive_handle(
-        tab_label=tab_labels.get(str(agent.get("tab_id") or ""), ""),
+        tab_label=tab_label,
         pane_id=pane,
         prefix=prefix,
         name_from=name_from,
@@ -664,8 +684,8 @@ def _reconcile_workspace(
         and (kind is None or a.get("agent") == kind)
     ]
     live_panes = {str(a["pane_id"]) for a in agents}
-    tab_labels = bridge.tab_labels(workspace) if name_from == "tab" else {}
-    # Looked up once, and only if this pass writes a manifest.
+    # Each looked up once, and only if this pass finds an agent no mapping has.
+    tab_labels = functools.cache(lambda: bridge.tab_labels(workspace))
     owner = functools.cache(lambda: _owner(config))
     # Seed with the room's existing handles so a new pane never collides with one.
     taken = {m.handle for m in bridge.registry.all() if m.room == room}

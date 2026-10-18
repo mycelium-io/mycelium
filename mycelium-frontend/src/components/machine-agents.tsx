@@ -182,6 +182,21 @@ export function MachineAgents({ runner }: { runner: Runner }) {
   );
 }
 
+/**
+ * What a restart does to what they remember. One whose agent CLI can resume
+ * comes back in its own session; any other starts a new one and catches up.
+ */
+export function restartSaid(agents: Pick<MachineAgent, "resumes">[]): string {
+  const start = "Each starts again in its own folder, as itself.";
+  if (agents.every((a) => a.resumes)) {
+    return `${start} It comes back in its own session, so it keeps its conversation.`;
+  }
+  if (!agents.some((a) => a.resumes)) {
+    return `${start} It starts a new session, so it reads its notes and catches up from the room.`;
+  }
+  return `${start} Those in their own session keep their conversation. Those in a new session read their notes and catch up from the room.`;
+}
+
 /** What restarting does, said before anything starts. The machine asks once more. */
 function RestartDialog({ runner, agents, onClose }: { runner: Runner; agents: MachineAgent[]; onClose: () => void }) {
   const revalidate = useRunnersRevalidate();
@@ -228,10 +243,7 @@ function RestartDialog({ runner, agents, onClose }: { runner: Runner; agents: Ma
         <DialogTitle>
           Restart {agents.length} {agents.length === 1 ? "agent" : "agents"} on {name}?
         </DialogTitle>
-        <DialogDescription>
-          Each starts again in its own folder, as itself. It won&apos;t remember what it was doing, so it reads its
-          notes and catches up from the room.
-        </DialogDescription>
+        <DialogDescription>{restartSaid(agents)}</DialogDescription>
         <ul className="space-y-2">
           {agents.map((a) => {
             const key = `${a.room}/${a.handle}`;
@@ -258,6 +270,7 @@ function RestartDialog({ runner, agents, onClose }: { runner: Runner; agents: Ma
                   </span>
                   <p className="mt-0.5 text-micro text-faint">
                     {a.state === "stopped" ? `In its pane, ${a.pane}` : "In a new pane beside its room's"}
+                    {a.resumes ? ", in its own session" : ", in a new session"}
                   </p>
                 </div>
               </li>

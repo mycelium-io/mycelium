@@ -243,7 +243,18 @@ export interface StartHelp {
 /** The person's way through a start that stopped, by why it stopped. */
 export function startHelp(
   why: StartWhy | null,
-  { machine, cli, handle }: { machine: string; cli: string; handle: string },
+  {
+    machine,
+    cli,
+    handle,
+    detail = null,
+  }: {
+    machine: string;
+    cli: string;
+    handle: string;
+    /** What the host said, when it refused for a reason of its own. */
+    detail?: string | null;
+  },
 ): StartHelp {
   if (why === "shell") {
     return {
@@ -265,6 +276,19 @@ export function startHelp(
         `Once ${cli} shows its normal prompt, try again.`,
       ],
       short: `${cli} is waiting for something in its terminal on ${machine}`,
+    };
+  }
+  if (why === "host" && detail) {
+    // The host refused and said why (herdr: "agent name builder is already
+    // used"). That is the cause, so lead with it rather than suggesting the
+    // CLI itself is broken.
+    return {
+      happened: `${machine} couldn't start ${cli}: ${detail}`,
+      steps: [
+        `Fix what it says above, then try again.`,
+        `For the full error, open Logs → Agent starts in the Mycelium menu on ${machine}, or ~/.mycelium/runner/runner.log.`,
+      ],
+      short: `${machine} couldn't start ${cli}`,
     };
   }
   return {

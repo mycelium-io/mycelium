@@ -1456,6 +1456,8 @@ export interface MachineAgent {
   restores: boolean | null;
   /** Stopped or gone, with a folder and CLI to restart it. */
   restartable: boolean;
+  /** A restart brings it back in its own session, keeping its conversation. */
+  resumes?: boolean;
 }
 
 export interface MachineWorkspace {
