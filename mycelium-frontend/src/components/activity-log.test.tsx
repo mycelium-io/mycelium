@@ -60,6 +60,8 @@ describe("<ActivityLog />", () => {
     expect(screen.getByText("1 active day from August 28 to September 26")).toBeInTheDocument();
     expect(screen.getByText(/1 logged · longest streak 1 day · nothing logged today yet/)).toBeInTheDocument();
     expect(screen.queryByText(/streak broken/)).not.toBeInTheDocument();
+    // Said once: the line by the range buttons doesn't repeat it.
+    expect(screen.queryByText(/August 28 to September 26 · 1 active day/)).not.toBeInTheDocument();
   });
 
   it("says only the heading when nothing at all is logged", () => {

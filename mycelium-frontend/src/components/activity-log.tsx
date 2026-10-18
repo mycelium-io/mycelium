@@ -230,13 +230,16 @@ export function ActivityLog({ events, tz, onTz, now }: Props) {
             {r.label}
           </button>
         ))}
-        <span className="text-micro tabular text-faint">
-          {span.from === span.to
-            ? formatDay(span.from)
-            : `${formatDay(span.from, { weekday: undefined })} to ${formatDay(span.to, { weekday: undefined })}`}
-          {" · "}
-          {summary.activeDays} active {summary.activeDays === 1 ? "day" : "days"}
-        </span>
+        {/* When the header describes the range, this would only say it again. */}
+        {aboutToday && (
+          <span className="text-micro tabular text-faint">
+            {span.from === span.to
+              ? formatDay(span.from)
+              : `${formatDay(span.from, { weekday: undefined })} to ${formatDay(span.to, { weekday: undefined })}`}
+            {" · "}
+            {summary.activeDays} active {summary.activeDays === 1 ? "day" : "days"}
+          </span>
+        )}
       </div>
 
       {summary.events.length === 0 ? (
