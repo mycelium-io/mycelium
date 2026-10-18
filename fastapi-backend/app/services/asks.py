@@ -25,10 +25,15 @@ engines alike (``contracts/asks.json`` holds its cases):
   and the conductor put a question to one member.
 - A ``reply`` asks only whoever it mentions. Its recipient is whoever the
   replier last heard from (``respond`` fills it in), not a choice to ask them.
+
+Being asked is one way to be woken; the other is a subscription the member
+made itself (``app.services.subscriptions``). :func:`wakes_for` is both, in
+that order, and it is what ``await``, the doorbell and the digest read.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from app.services import message_format
@@ -97,4 +102,48 @@ def asked(content: dict[str, Any]) -> dict[str, Reason]:
         name = _norm(candidate)
         if name and name not in found and (why := asks(content, name)):
             found[name] = why
+    return found
+
+
+WakeReason = Literal["mention", "turn", "interrupt", "subscribed"]
+
+
+@dataclass(frozen=True)
+class Wake:
+    """Why a record wakes a member: it asks them, or it falls under a
+    subscription they made (``subscribed``, with the line saying which)."""
+
+    reason: WakeReason
+    why: str | None = None
+    subscription: str | None = None
+
+
+def wakes_for(room: str, record: Any, handle: str, subs: list[Any] | None = None) -> Wake | None:
+    """Whether ``record`` wakes ``handle``, and why: :func:`asks`, then the
+    member's own subscriptions (``app.services.subscriptions``).
+
+    What asks a member always wins, so a mention is never read as a
+    subscription. ``subs`` is the room's subscriptions when the caller has
+    them loaded already (``await`` reads them once per poll)."""
+    reason = asks(record.content, handle)
+    if reason:
+        return Wake(reason)
+    from app.services import subscriptions
+
+    me = _norm(handle)
+    mine = [s for s in (subscriptions.load(room) if subs is None else subs) if s.handle == me]
+    if not mine:
+        return None
+    found = subscriptions.matches(room, record, mine)
+    return Wake("subscribed", found[0].why, found[0].sub.id) if found else None
+
+
+def woken_by(room: str, record: Any) -> dict[str, Wake]:
+    """Everyone ``record`` wakes: whoever it asks (:func:`asked`), then every
+    subscriber it falls under who it doesn't ask."""
+    from app.services import subscriptions
+
+    found = {name: Wake(why) for name, why in asked(record.content).items()}
+    for match in subscriptions.matches(room, record):
+        found.setdefault(match.sub.handle, Wake("subscribed", match.why, match.sub.id))
     return found

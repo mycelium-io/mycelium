@@ -19,7 +19,8 @@ from typing import Any
 
 import pytest
 
-from app.services.asks import asks
+from app.services import subscriptions
+from app.services.asks import asks, wakes_for
 from tests import wake_paths
 from tests.wake_paths import AGENT, HERDR, Decided
 
@@ -31,6 +32,7 @@ def test_the_contract_names_each_case_once():
     names = [c["case"] for c in CASES]
     assert len(names) == len(set(names))
     assert {c["asks"] for c in CASES} == {None, "mention", "turn", "interrupt"}
+    assert {c.get("wakes", c["asks"]) for c in CASES} >= {"subscribed"}
 
 
 @pytest.mark.asyncio
@@ -38,7 +40,10 @@ def test_the_contract_names_each_case_once():
 async def test_every_path_gives_the_contract_s_answer(case: dict, client, monkeypatch) -> None:
     agent = case.get("agent", AGENT)
     reason = case["asks"]
+    wakes = case.get("wakes", reason)
     room = await wake_paths.open_room(client, monkeypatch)
+    if sub := case.get("subscribed"):
+        await subscriptions.add(wake_paths.ROOM, agent, sub["kind"], sub["target"])
     start = wake_paths.mark_read(room, agent)
     await wake_paths.say(
         room,
@@ -54,11 +59,13 @@ async def test_every_path_gives_the_contract_s_answer(case: dict, client, monkey
     assert recorded, "the case wrote nothing"
     found = {why for r in recorded if (why := asks(r.content, agent))}
     assert found == ({reason} if reason else set())
+    woken = {w.reason for r in recorded if (w := wakes_for(wake_paths.ROOM, r, agent))}
+    assert woken == ({wakes} if wakes else set())
 
     turned = agent in room.turns
     got = await wake_paths.decided(room, agent)
-    rung = reason if agent in HERDR else None
-    assert got == Decided(doorbell=rung, awaited=bool(reason), digest=bool(reason))
+    rung = wakes if agent in HERDR else None
+    assert got == Decided(doorbell=rung, awaited=bool(wakes), digest=bool(wakes))
     # The members the hub plays hear every turn (each answers its own); nothing
     # else is one.
     assert turned == (reason == "turn")

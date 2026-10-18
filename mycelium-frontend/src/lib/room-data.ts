@@ -59,6 +59,7 @@ import {
   type JoinedVia,
   type RoomFloor,
   type RoomOther,
+  type RoomSubscription,
   type RoomPeople,
   type RoomPresence,
   type RoomMessage,
@@ -149,7 +150,7 @@ const NO_STATUS: RoomStatus = {
 };
 const NO_ROOMS: Room[] = [];
 const NO_AGENTS: AgentSummary[] = [];
-const NO_PRESENCE: RoomPresence = { members: [], floors: [] };
+const NO_PRESENCE: RoomPresence = { members: [], floors: [], subscriptions: [] };
 const NO_MESSAGES: RoomMessage[] = [];
 const NO_PEOPLE: RoomPeople = { people: [], agents: [], engines: [], others: [] };
 const NO_MEMORIES: Memory[] = [];
@@ -309,7 +310,14 @@ export function useRoomMembers(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery(
     room, "members", fetchRoomMembers, NO_PRESENCE, POLL.members, opts,
   );
-  return { members: data.members, floors: data.floors, loading, refresh };
+  return {
+    members: data.members,
+    floors: data.floors,
+    // Absent from a members read older than subscriptions.
+    subscriptions: data.subscriptions ?? [],
+    loading,
+    refresh,
+  };
 }
 
 /** Everyone in a room from the hub's records: its people (recorded when they
@@ -684,6 +692,8 @@ export interface RoomRoster {
   presence: Map<string, PresenceMember>;
   /** handle (lowercased) → the floor it holds or was given, for badging whose turn it is. */
   floors: Map<string, RoomFloor>;
+  /** handle (lowercased) → what it subscribed to, for its hover card. */
+  subscriptions: Map<string, RoomSubscription[]>;
   loading: boolean;
   refresh: () => void;
 }
@@ -696,7 +706,12 @@ export interface RoomRoster {
  */
 export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRoster {
   const { agents, loading, refresh: refreshAgents } = useRoomAgents(room, opts);
-  const { members, floors: floorList, refresh: refreshMembers } = useRoomMembers(room, opts);
+  const {
+    members,
+    floors: floorList,
+    subscriptions: subscriptionList,
+    refresh: refreshMembers,
+  } = useRoomMembers(room, opts);
   const { people: joined, others, refresh: refreshPeople } = useRoomPeople(room, opts);
   const { principal } = useCurrentUser();
   const me = principal.trim().toLowerCase();
@@ -706,6 +721,14 @@ export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRo
     [members],
   );
   const floors = useMemo(() => floorsByHandle(floorList), [floorList]);
+  const subscriptions = useMemo(() => {
+    const byHandle = new Map<string, RoomSubscription[]>();
+    for (const s of subscriptionList) {
+      const handle = s.handle.toLowerCase();
+      byHandle.set(handle, [...(byHandle.get(handle) ?? []), s]);
+    }
+    return byHandle;
+  }, [subscriptionList]);
 
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle.toLowerCase())), [agents]);
 
@@ -742,5 +765,5 @@ export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRo
     refreshPeople();
   }, [refreshAgents, refreshMembers, refreshPeople]);
 
-  return { agents, people, others: otherHandles, presence, floors, loading, refresh };
+  return { agents, people, others: otherHandles, presence, floors, subscriptions, loading, refresh };
 }

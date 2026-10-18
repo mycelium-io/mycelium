@@ -25,6 +25,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.bus import bus, room_channel
+from app.routes.subscriptions import read as read_subscription
 from app.schemas import (
     CoordinationSessionRead,
     ParticipantCreate,
@@ -38,6 +39,7 @@ from app.services import (
     message_format,
     room_channels,
     schedules,
+    subscriptions,
     tasks,
     wake_digest,
     wake_log,
@@ -229,6 +231,13 @@ async def list_members(room_name: str):
         "floors": [
             _floor_entry(room_name, floor) for floor in room_channels.manager.floors_of(room_name)
         ],
+        # What each member has subscribed to (``mycelium subscribe``), for its
+        # card: a member's own choice, shown whether or not it is present.
+        "subscriptions": [
+            read_subscription(s).model_dump(mode="json")
+            for s in subscriptions.load(room_name)
+            if s.live_at(datetime.now(UTC))
+        ],
     }
 
 
@@ -272,8 +281,8 @@ async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
 
 #: The wakes that exist to answer a message: one with nothing unread behind
 #: it when it's due is skipped. A task given to the agent, or its schedule,
-#: needs no message.
-NEEDS_A_MESSAGE = frozenset({"mention", "turn", "interrupt"})
+#: needs no message. A subscription's wake needs one of the records it caught.
+NEEDS_A_MESSAGE = frozenset({"mention", "turn", "interrupt", "subscribed"})
 
 
 @router.get("/herdr-wakes")
@@ -299,12 +308,15 @@ async def drain_herdr_wakes(room_name: str):
         # rather than at its last message, which it may have posted unread.
         if log is not None and log.knows(handle):
             wake[wake_digest.READ_FROM] = log.position(handle)
-        covered = wake_digest.coverage(wake, records)
+        covered = wake_digest.coverage(wake, records, room_name)
         # Never ring for nothing: a wake that needs a message to answer, with
         # none unread when it's due, is recorded and not handed over. With no
-        # transcript to look in there's no telling, and it goes as it is.
-        nothing = log is not None and not covered["messages"]
-        if wake.get("reason", "mention") in NEEDS_A_MESSAGE and nothing:
+        # transcript to look in there's no telling, and it goes as it is. A
+        # subscription's wake needs one of the records it caught, unread.
+        reason = wake.get("reason", "mention")
+        unread = covered["messages"] + (covered["watching"] if reason == "subscribed" else [])
+        nothing = log is not None and not unread
+        if reason in NEEDS_A_MESSAGE and nothing:
             wake_log.dropped(
                 room_name,
                 wake,
@@ -325,6 +337,13 @@ async def drain_herdr_wakes(room_name: str):
             wake_log.handed(room_name, wake, covered)
         except Exception:
             logger.exception("wake log failed for @%s in %s", handle, room_name)
+        # What it posts while answering this wakes none of the senders of what
+        # the wake covered by subscription (``subscriptions.answering``).
+        shown = set(covered["messages"]) | set(covered.get("watching", []))
+        senders = {r.sender for r in records if r.message_id in shown and r.sender}
+        if wake.get("from"):
+            senders.add(str(wake["from"]))
+        subscriptions.answering(room_name, handle, senders)
         # Handed to its host to type now, so the room hears it's being worked
         # on whether or not the agent reads through ``await``. Its reply, or
         # the TTL, settles it. The thread named is the one its digest tells it

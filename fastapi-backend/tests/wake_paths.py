@@ -124,6 +124,7 @@ async def open_room(client: AsyncClient, monkeypatch: Any) -> Room:
         members_provider=lambda: set(),
         on_summon=manager._summon_adapter(ROOM),
         on_asked=manager._asked_adapter(ROOM),
+        on_recorded=manager._recorded_adapter(ROOM),
         feed_bus=False,
     )
     monkeypatch.setitem(manager._channels, ROOM, managed)
@@ -274,7 +275,7 @@ class Decided:
 
     doorbell: str | None  # the reason a wake was queued with, or None
     awaited: bool  # whether ``await`` handed the message over as a turn
-    digest: bool  # whether the digest listed it as asking for the agent
+    digest: bool  # whether the digest listed it as asking for the agent, or watched
 
     @property
     def asked(self) -> set[bool]:
@@ -307,7 +308,8 @@ async def decided(room: Room, agent: str) -> Decided:
     response = await room.client.get(f"/api/rooms/{ROOM}/sessions/herdr-wakes")
     assert response.status_code == 200, response.text
     (entry,) = wake_log.read(ROOM, agent=agent, limit=1)
-    digest = bool(entry.get("messages"))
+    # What asked for it, or what its subscriptions caught (``Watching:``).
+    digest = bool(entry.get("messages") or entry.get("watching"))
     manager.set_herdr_presence(ROOM, {AGENT: "idle", PEER: "idle"})
 
     result = await participate.await_message(ROOM, _REQUEST, handle=agent, timeout=0)
@@ -338,5 +340,6 @@ def restart(room: Room) -> None:
         members_provider=lambda: set(),
         on_summon=manager._summon_adapter(ROOM),
         on_asked=manager._asked_adapter(ROOM),
+        on_recorded=manager._recorded_adapter(ROOM),
         feed_bus=False,
     )

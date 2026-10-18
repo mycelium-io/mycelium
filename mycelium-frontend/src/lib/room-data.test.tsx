@@ -38,11 +38,14 @@ const agent = (handle: string, extra: Record<string, unknown> = {}) => ({
 
 /** A roster consumer for testing cache dedup (two instances should share one request). */
 function Roster({ room, testId }: { room: string; testId: string }) {
-  const { agents, people, others } = useRoomRoster(room);
+  const { agents, people, others, subscriptions } = useRoomRoster(room);
   return (
     <ul data-testid={testId}>
       {agents.map((a) => (
         <li key={`agent-${a.handle}`}>{`agent:${a.handle}`}</li>
+      ))}
+      {[...subscriptions].map(([handle, subs]) => (
+        <li key={`subscribed-${handle}`}>{`subscribed:${handle}:${subs.map((s) => s.describe).join("+")}`}</li>
       ))}
       {people.map((p) => (
         <li key={`person-${p.handle}`}>
@@ -83,6 +86,10 @@ describe("useRoomRoster", () => {
         { handle: "watcher", kind: "lease", last_seen: "2026-08-20T00:00:00Z" },
       ],
       floors: [],
+      subscriptions: [
+        { id: "a1", handle: "Bob-Code", kind: "task", target: "work/x", describe: "work/x", until: null },
+        { id: "a2", handle: "bob-code", kind: "notice", target: "resolved", describe: "resolved notices", until: null },
+      ],
     });
     vi.mocked(fetchRoomPeople).mockReset().mockResolvedValue({
       people: [
@@ -110,6 +117,11 @@ describe("useRoomRoster", () => {
     expect(fetchRoomAgents).toHaveBeenCalledTimes(1);
     expect(fetchRoomMembers).toHaveBeenCalledTimes(1);
     expect(fetchRoomPeople).toHaveBeenCalledTimes(1);
+  });
+
+  it("groups what each agent subscribed to under its handle, for its hover card", async () => {
+    renderRoster(<Roster room="demo" testId="rail" />);
+    expect(await screen.findByText("subscribed:bob-code:work/x+resolved notices")).toBeInTheDocument();
   });
 
   it("lists the people the hub recorded, never guessed from who posted or is present", async () => {

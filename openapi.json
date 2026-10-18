@@ -5103,6 +5103,188 @@
         }
       }
     },
+    "/api/rooms/{room_name}/subscriptions": {
+      "get": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "List Subscriptions",
+        "description": "Every subscription in the room that hasn't ended, oldest first.",
+        "operationId": "list_subscriptions_api_rooms__room_name__subscriptions_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this agent's",
+              "title": "Handle"
+            },
+            "description": "Only this agent's"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WakeSubscriptionListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "Subscribe",
+        "description": "Subscribe an agent to a task, a kind of notice, a member or a search.\nThe same subscription twice is one, renewed to the end asked this time.",
+        "operationId": "subscribe_api_rooms__room_name__subscriptions_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WakeSubscriptionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WakeSubscriptionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "Unsubscribe",
+        "description": "Drop one of an agent's subscriptions, or every one of them.",
+        "operationId": "unsubscribe_api_rooms__room_name__subscriptions_delete",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The agent whose subscription goes",
+              "title": "Handle"
+            },
+            "description": "The agent whose subscription goes"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The one to drop; omit to drop all of them",
+              "title": "Id"
+            },
+            "description": "The one to drop; omit to drop all of them"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WakeSubscriptionsRemoved"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/skills": {
       "post": {
         "tags": [
@@ -15127,6 +15309,181 @@
         ],
         "title": "WakeRecord",
         "description": "One wake the hub raised for an agent, and what became of it."
+      },
+      "WakeSubscriptionCreate": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "The agent subscribing; it is woken for what matches"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "task",
+              "notice",
+              "member",
+              "search"
+            ],
+            "title": "Kind"
+          },
+          "target": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Target",
+            "description": "A task key, a notice kind (filed, resolved, upstream:merged...), a member's handle, or a room search query"
+          },
+          "parts": {
+            "type": "boolean",
+            "title": "Parts",
+            "description": "For a task: its parts too, including later ones",
+            "default": false
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task",
+            "description": "For a notice kind: only notices about this task"
+          },
+          "span": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span",
+            "description": "How long it lasts, like 2h or 3d, or never. A member or search subscription lasts 24h unless told; a task one ends with its task"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "kind",
+          "target"
+        ],
+        "title": "WakeSubscriptionCreate"
+      },
+      "WakeSubscriptionListResponse": {
+        "properties": {
+          "subscriptions": {
+            "items": {
+              "$ref": "#/components/schemas/WakeSubscriptionRead"
+            },
+            "type": "array",
+            "title": "Subscriptions"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subscriptions",
+          "total"
+        ],
+        "title": "WakeSubscriptionListResponse"
+      },
+      "WakeSubscriptionRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "task",
+              "notice",
+              "member",
+              "search"
+            ],
+            "title": "Kind"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "parts": {
+            "type": "boolean",
+            "title": "Parts",
+            "default": false
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until",
+            "description": "When it ends, if it was given an end"
+          },
+          "describe": {
+            "type": "string",
+            "title": "Describe",
+            "description": "The subscription as a person reads it"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "handle",
+          "kind",
+          "target",
+          "created_at",
+          "describe"
+        ],
+        "title": "WakeSubscriptionRead"
+      },
+      "WakeSubscriptionsRemoved": {
+        "properties": {
+          "removed": {
+            "items": {
+              "$ref": "#/components/schemas/WakeSubscriptionRead"
+            },
+            "type": "array",
+            "title": "Removed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "removed"
+        ],
+        "title": "WakeSubscriptionsRemoved"
       },
       "WriteBody": {
         "properties": {

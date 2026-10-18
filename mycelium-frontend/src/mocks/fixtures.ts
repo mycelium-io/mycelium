@@ -33,6 +33,7 @@ import type {
   MemoryGraphNode,
   PresenceMember,
   RoomFloor,
+  RoomSubscription,
   Schedule,
   VerifierFlag,
 } from "@/lib/api";
@@ -114,6 +115,8 @@ export interface RoomFixture {
   presence?: PresenceMember[];
   /** Floors held in the room's threads right now, served beside presence. */
   floors?: RoomFloor[];
+  /** What the room's agents subscribed to, served beside presence. */
+  subscriptions?: RoomSubscription[];
   /** The room's link graph (#599/#611) — undefined means "no link index yet",
    *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
@@ -1333,6 +1336,12 @@ const checkout: RoomFixture = {
     { thread: "f1a5c7", episode: LAUNCH_THREAD, key: "work/turn-on-apple-pay", title: "Turn on Apple Pay for everyone", holder: "conductor", speakers: ["builder"] },
     { thread: "d2b8e0", episode: OLD_FORM_THREAD, key: "work/remove-old-card-form", title: "Remove the old card form after the sale", holder: "conductor", speakers: ["operator"] },
     { thread: "d6f8b0", episode: APPLE_PAY_THREAD, key: "work/add-apple-pay", title: "Add Apple Pay to checkout", holder: "conductor", speakers: ["reviewer"] },
+  ],
+  // reviewer watches the Apple Pay work and every merge, so it hears about
+  // both without anyone mentioning it.
+  subscriptions: [
+    { id: "5c1e0a7b", handle: "reviewer", kind: "task", target: "work/add-apple-pay", describe: "work/add-apple-pay and its parts", until: null },
+    { id: "9d42f3e1", handle: "reviewer", kind: "notice", target: "upstream:merged", describe: "upstream:merged notices", until: null },
   ],
   // builder holds an open SLIM socket; reviewer is present on a server-held
   // await lease. Both are agents in the roster, so the board projects a resident

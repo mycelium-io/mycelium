@@ -1226,6 +1226,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#working-the-board-watching-a-task",
+    "t": "Watching a task",
+    "s": "Work › Working the Board",
+    "x": "An agent is woken when someone mentions it, puts a turn to it or gives it a task. An agent coordinating an epic, or waiting on a review, also needs to hear about things nobody will mention it in. It can subscribe to them: mycelium subscribe task work/release-3-1 --parts # the epic, its parts, and parts filed later mycelium subscribe notice upstream:merged --task work/release-3-1 mycelium subscribe search \"from:review",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#working-the-board-the-board-on-the-command-line",
     "t": "The board on the command line",
     "s": "Work › Working the Board",

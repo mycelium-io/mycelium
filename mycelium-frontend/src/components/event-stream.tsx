@@ -124,8 +124,14 @@ function RespondingLine({
       role="status"
       aria-live="polite"
       data-testid="responding-line"
-      className="flex flex-shrink-0 flex-col px-5 py-1 motion-safe:animate-in motion-safe:fade-in-0"
+      className="relative flex flex-shrink-0 flex-col bg-[var(--bg)] px-5 py-1 motion-safe:animate-in motion-safe:fade-in-0"
     >
+      {/* The channel above fades into the line rather than stopping at an edge. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-full h-6"
+        style={{ background: "linear-gradient(to top, var(--bg), transparent)" }}
+      />
       {here.length > 0 && (
         <RespondingRow>
           <Shimmer className="truncate">{respondingLabel(here)}</Shimmer>

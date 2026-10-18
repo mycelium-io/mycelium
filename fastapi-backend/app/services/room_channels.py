@@ -58,6 +58,7 @@ from app.services.persister import (
     bus_frame,
     envelope_sender,
     parse_mentions,
+    record_episode,
     record_from,
     rename_cursors_on_disk,
 )
@@ -100,10 +101,12 @@ RoomRecordedHook = Callable[[str, "TranscriptRecord"], None]
 logger = logging.getLogger(__name__)
 
 #: How a held wake's reason ranks when another wake for the same handle
-#: arrives: a text mention least, a turn put to it, a task given to it or its
-#: schedule above that, and an interrupt above all. A reason not listed ranks
-#: with a turn.
+#: arrives: something it subscribed to least, so it never replaces an ask,
+#: then a text mention, a turn put to it, a task given to it or its schedule
+#: above that, and an interrupt above all. A reason not listed ranks with a
+#: turn.
 WAKE_RANK = {
+    "subscribed": -1,
     "mention": 0,
     "turn": 1,
     "assigned": 1,
@@ -569,6 +572,7 @@ class RoomChannelManager:
         title: str | None = None,
         sender: str | None = None,
         episode: str | None = None,
+        why: str | None = None,
     ) -> None:
         """Ring the doorbell for a herdr-present handle in ``room``.
 
@@ -583,9 +587,11 @@ class RoomChannelManager:
         ``reason`` says what kind of doorbell it is, so the bridge can word the
         prompt: ``mention`` (someone tagged you), ``turn`` (a turn is addressed
         to you), ``assigned`` (the row ``key`` was given to you), or
-        ``interrupt`` (an ``@!`` stopped your turn to say this). The most
-        specific reason pending wins over a mention, and an interrupt over the
-        rest, since the agent's turn was stopped to deliver it.
+        ``interrupt`` (an ``@!`` stopped your turn to say this), or
+        ``subscribed`` (something it subscribed to happened; ``why`` says which
+        subscription and what). The most specific reason pending wins over a
+        mention, and an interrupt over the rest, since the agent's turn was
+        stopped to deliver it; a subscription never replaces any of them.
 
         ``sender`` and ``episode`` say who rang last and where. What they said
         isn't kept here: when the wake is delivered, the digest it carries is
@@ -601,6 +607,8 @@ class RoomChannelManager:
             entry["from"] = sender.lstrip("@")
         if episode:
             entry["episode"] = episode
+        if why:
+            entry["why"] = why
         for w in queue:
             if w["handle"] == handle:
                 w["ts"] = entry["ts"]  # fresh activity refreshes the hold timer
@@ -610,6 +618,9 @@ class RoomChannelManager:
                 # lesser one: an interrupt from a person stays theirs when an
                 # agent mentions the same handle after it.
                 if WAKE_RANK.get(reason, 1) >= WAKE_RANK.get(w.get("reason", "mention"), 1):
+                    # A subscription's why belongs to it alone; an ask that
+                    # replaces it doesn't carry it on.
+                    w.pop("why", None)
                     w.update({k: v for k, v in entry.items() if k != "handle"})
                 return
         # Its id follows it to the runner and back, so the wake log
@@ -698,6 +709,41 @@ class RoomChannelManager:
                 reason = "mention"
         self.enqueue_herdr_wake(room, name, reason=reason, sender=sender, episode=episode)
         return True
+
+    def ring_subscribed(self, room: str, record: TranscriptRecord) -> list[str]:
+        """Ring the doorbell of each herdr-present handle ``record`` falls under
+        a subscription of, and end the task subscriptions it finished.
+
+        Every recorded message is held to the room's subscriptions on the way
+        in (:meth:`_recorded_adapter`), as it is to :mod:`app.services.asks`; a
+        handle the record asks is rung for that instead (:meth:`ring_asked`),
+        so this rings only the rest, ranked below any ask. A handle with no
+        herdr pane reads it on its next ``await``. Returns who was rung.
+        """
+        from app.services import subscriptions
+        from app.services.asks import woken_by
+
+        # Whoever its sender was answering, stamped now: ``await`` reads it
+        # later, when that turn may be over.
+        subscriptions.note_posted(room, record)
+        subs = subscriptions.load(room)
+        if not subs:
+            return []
+        rung: list[str] = []
+        for handle, wake in woken_by(room, record).items():
+            if wake.reason != "subscribed" or self.herdr_status(room, handle) is None:
+                continue
+            self.enqueue_herdr_wake(
+                room,
+                handle,
+                reason="subscribed",
+                sender=record.sender,
+                episode=record_episode(record),
+                why=wake.why,
+            )
+            rung.append(handle)
+        subscriptions.end_settled(room, record)
+        return rung
 
     def _unreachable_agent(self, room: str, handle: str) -> bool:
         """Whether ``handle`` is a registered agent that a mention can't reach
@@ -1084,9 +1130,14 @@ class RoomChannelManager:
 
     def _recorded_adapter(self, room: str) -> Callable[[TranscriptRecord], None] | None:
         """Bind ``room`` onto the room-aware ``on_recorded`` hook. Read at call
-        time, so a hook wired after the room's persister started still fires."""
+        time, so a hook wired after the room's persister started still fires.
+        The subscriptions' doorbell rings here first (:meth:`ring_subscribed`)."""
 
         def adapter(record: TranscriptRecord, _room: str = room) -> None:
+            try:
+                self.ring_subscribed(_room, record)
+            except Exception:
+                logger.exception("subscriptions: ringing failed for %s", record.message_id)
             hook = self.on_recorded
             if hook is not None:
                 hook(_room, record)

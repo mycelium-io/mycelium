@@ -364,8 +364,16 @@ def _reply_thread(room: str, asked: list[Any]) -> str | None:
     """Where the digest tells its agent to reply: the thread of the newest
     message that asked for it, or the room (``None``) when none did. The
     digest's ``Reply:`` line and the room's "is responding in" line both come
-    from here, so they can't disagree."""
-    return _thread_of(room, asked[-1]) if asked else None
+    from here, so they can't disagree. A notice (one a subscription caught) is
+    answered in the thread of the task it is about."""
+    if not asked:
+        return None
+    notice = _board_notice(asked[-1]) or _upstream_notice(asked[-1])
+    if notice and notice.get("key"):
+        from app.services import tasks
+
+        return tasks.episode_of(room, str(notice["key"]))
+    return _thread_of(room, asked[-1])
 
 
 def _floor_line(room: str, thread: str | None, me: str) -> str | None:
@@ -383,8 +391,24 @@ def _floor_line(room: str, thread: str | None, me: str) -> str | None:
 def reply_episode(room: str, wake: dict[str, Any], records: list[Any]) -> str | None:
     """The thread ``wake``'s agent is told to reply in, for the room's "is
     responding in" line; ``None`` for the room itself (:func:`_reply_thread`)."""
-    _, _, _, asked = _since(str(wake.get("handle") or ""), records, wake.get(READ_FROM))
-    return _reply_thread(room, asked)
+    handle = str(wake.get("handle") or "")
+    _, _, since, asked = _since(handle, records, wake.get(READ_FROM))
+    return _reply_thread(room, asked or [r for r, _ in _watched(room, handle, since)])
+
+
+def _watched(room: str, handle: str, since: list[Any]) -> list[tuple[Any, Any]]:
+    """The records in ``since`` that woke ``handle`` through a subscription it
+    made rather than by asking it, each with its wake (``asks.wakes_for``, the
+    rule ``await`` and the doorbell read too)."""
+    from app.services import subscriptions
+    from app.services.asks import wakes_for
+
+    me = _norm(handle)
+    mine = [s for s in subscriptions.load(room) if s.handle == me]
+    if not mine:
+        return []
+    found = [(r, wakes_for(room, r, handle, mine)) for r in since]
+    return [(r, w) for r, w in found if w is not None and w.reason == "subscribed"]
 
 
 #: The key on a wake holding its agent's read position in the transcript: the
@@ -420,12 +444,16 @@ def _since(
     return window, last, since, asked
 
 
-def coverage(wake: dict[str, Any], records: list[Any]) -> dict[str, Any]:
+def coverage(wake: dict[str, Any], records: list[Any], room: str | None = None) -> dict[str, Any]:
     """Which messages a wake covers, as ids: the ones that asked for its agent,
-    and the range its digest summarized (what its agent hadn't read, oldest to
+    with ``room`` the ones its subscriptions caught (``watching``), and the
+    range its digest summarized (what its agent hadn't read, oldest to
     newest). Text stays in the transcript; the wake log keeps these."""
-    _, _, since, asked = _since(str(wake.get("handle") or ""), records, wake.get(READ_FROM))
+    handle = str(wake.get("handle") or "")
+    _, _, since, asked = _since(handle, records, wake.get(READ_FROM))
     covered: dict[str, Any] = {"messages": [r.message_id for r in asked]}
+    if room is not None:
+        covered["watching"] = [r.message_id for r, _ in _watched(room, handle, since)]
     if since:
         covered["range"] = [since[0].message_id, since[-1].message_id]
     return covered
@@ -568,6 +596,26 @@ def _other_asks(
     return lines
 
 
+def _watching_lines(room: str, me: str, watched: list[tuple[Any, Any]], now: datetime) -> list[str]:
+    """What the agent's subscriptions caught since it last read, newest kept,
+    one line each with the subscription that matched: apart from what asks it,
+    since nobody asked it anything."""
+    if not watched:
+        return []
+    shown = watched[-CHANGES_SHOWN:]
+    out = [""]
+    for i, (record, wake) in enumerate(shown):
+        when = age(parse_recorded_at(record.recorded_at), now)
+        # "work/x: @r posted in it": the heading says these are subscriptions.
+        what = plain(str(wake.why)).removeprefix("you subscribed to ")
+        line = f"{what} · {when} · {short_id(record)} · subscription {wake.subscription}"
+        out.append(f"{'Watching:' if i == 0 else '':<10}{line}")
+    if len(watched) > CHANGES_SHOWN:
+        out.append(f"{'':<10}and {len(watched) - CHANGES_SHOWN} earlier")
+    out.append(f"{'':<10}stop one: mycelium subscribe rm <id> --room {room} --as {me}")
+    return out
+
+
 def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | None = None) -> str:
     """The digest typed into ``wake``'s agent: why, what changed, what asked for it."""
     now = now or datetime.now(UTC)
@@ -575,14 +623,18 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     me = _norm(handle)
     reason = wake.get("reason") or "mention"
     window, last, since, asked = _since(handle, records, wake.get(READ_FROM))
+    # What its subscriptions caught, kept apart from what asks it. With no ask,
+    # the newest of these is what it answers, so it sets where to reply.
+    watched = _watched(room, handle, since)
+    answering = asked or [r for r, _ in watched[-1:]]
     last_at = parse_recorded_at(window[last].recorded_at) if last >= 0 else None
-    episode = record_episode(asked[-1]) if asked else wake.get("episode")
+    here = _reply_thread(room, answering)
+    episode = here or (record_episode(answering[-1]) if answering else wake.get("episode"))
     where = _where(room, episode)
 
     def place_of(record: Any) -> str | None:
         return _thread_of(room, record)
 
-    here = _reply_thread(room, asked)
     # What was said since its last *turn*: its read position can lag behind
     # that (an ``await`` it never ran), and what it saw before it last spoke
     # is no news. The asks still come from the read position, since ``await``
@@ -607,6 +659,14 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         why = f'{sender} handed your task back to you in its thread: "{title}" ({wake.get("key")})'
     elif reason == "schedule":
         why = f'your schedule "{title}" fired'
+    elif reason == "subscribed":
+        # The subscription's own line ("you subscribed to work/x: @r posted
+        # in it"), the newest one's when several fired.
+        why = plain(
+            str(watched[-1][1].why if watched else wake.get("why") or "a subscription fired")
+        )
+        if len(watched) > 1:
+            why += f" (and {len(watched) - 1} more below)"
     elif reason == "turn":
         who = f"@{asked[-1].sender}" if asked and asked[-1].sender else sender
         why = f"it's your turn in {_place(room, where)}; {who} is asking"
@@ -665,6 +725,8 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     # The message that woke it, whole, then what to do about it.
     if asked:
         lines += ["", *_ask_box(room, asked[-1], now, LATEST_CHARS)]
+    elif answering and _conversational_text(answering[-1].content):
+        lines += ["", *_ask_box(room, answering[-1], now, LATEST_CHARS)]
     lines.append("")
     if reason == "assigned" and wake.get("key"):
         key = wake["key"]
@@ -716,6 +778,7 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
 
     # The others asking for it: whole while they fit, newest first, then named.
     lines += _other_asks(room, window, asked, me, now)
+    lines += _watching_lines(room, me, watched, now)
 
     mine, tally = board(room, handle, now)
     lines.append("")

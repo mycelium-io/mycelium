@@ -1534,6 +1534,56 @@ class ScheduleListResponse(BaseModel):
     )
 
 
+# --- Wake subscriptions -----------------------------------------------------
+# What an agent asked to be woken for (``app/services/subscriptions.py``).
+# Named apart from ``SubscriptionCreate``/``SubscriptionRead`` above, which are
+# the memory routes' key-pattern subscriptions: a bus feed that wakes nobody.
+
+
+class WakeSubscriptionCreate(BaseModel):
+    handle: str = Field(..., description="The agent subscribing; it is woken for what matches")
+    kind: Literal["task", "notice", "member", "search"]
+    target: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description=(
+            "A task key, a notice kind (filed, resolved, upstream:merged...), "
+            "a member's handle, or a room search query"
+        ),
+    )
+    parts: bool = Field(False, description="For a task: its parts too, including later ones")
+    task: str | None = Field(None, description="For a notice kind: only notices about this task")
+    span: str | None = Field(
+        None,
+        description=(
+            "How long it lasts, like 2h or 3d, or never. A member or search "
+            "subscription lasts 24h unless told; a task one ends with its task"
+        ),
+    )
+
+
+class WakeSubscriptionRead(BaseModel):
+    id: str
+    handle: str
+    kind: Literal["task", "notice", "member", "search"]
+    target: str
+    parts: bool = False
+    task: str | None = None
+    created_at: datetime
+    until: datetime | None = Field(None, description="When it ends, if it was given an end")
+    describe: str = Field(..., description="The subscription as a person reads it")
+
+
+class WakeSubscriptionListResponse(BaseModel):
+    subscriptions: list[WakeSubscriptionRead]
+    total: int
+
+
+class WakeSubscriptionsRemoved(BaseModel):
+    removed: list[WakeSubscriptionRead]
+
+
 # --- Verifier ---------------------------------------------------------------
 
 

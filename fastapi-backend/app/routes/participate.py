@@ -47,10 +47,11 @@ from app.services import (
     room_channels,
     room_people,
     schedules,
+    subscriptions,
     tasks,
 )
 from app.services.agent_registry import norm_handle
-from app.services.asks import asks
+from app.services.asks import Wake, asks, wakes_for
 from app.services.filesystem import room_exists
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content, serialize_envelope
@@ -283,9 +284,15 @@ async def await_message(
         # wake shows them all, so the read takes them all, and the newest (the
         # one the wake leads with) is the turn. Handing them over one call at a
         # time served the oldest first, so the agent read something the wake
-        # had already moved past while what woke it waited.
+        # had already moved past while what woke it waited. What falls under a
+        # subscription the handle made comes with them, kept apart: it is the
+        # turn only when nothing asks.
         end = len(records)
+        # Ended ones too: each record is held to the subscription as it stood
+        # when the record was made (``Subscription.live_at``).
+        mine = [s for s in subscriptions.load(room_name) if s.handle == _norm(handle)]
         unread: list[tuple[int, Any]] = []
+        watched: list[tuple[int, Any, Wake]] = []
         for i in range(_position(), end):
             record = records[i]
             ep = record_episode(record)
@@ -303,11 +310,24 @@ async def await_message(
                 # with no extra write.
                 if persister.episode_position(handle, ep) > i:
                     continue
-            if asks(record.content, handle):
+            wake = wakes_for(room_name, record, handle, mine)
+            if wake is None:
+                continue
+            if wake.reason == "subscribed":
+                watched.append((i, record, wake))
+            else:
                 unread.append((i, record))
-        if unread:
+        if unread or watched:
             _commit(end)
-            at, record = unread[-1]
+            # What it posts while answering these wakes none of their senders
+            # by subscription (``subscriptions.answering``).
+            subscriptions.answering(
+                room_name,
+                handle,
+                {r.sender for _, r in unread} | {r.sender for _, r, _ in watched},
+            )
+            subscribed = None if unread else watched[-1][2]
+            at, record = unread[-1] if unread else watched[-1][:2]
             _last_tick[key] = record.content
             room_channels.manager.refresh_lease(room_name, handle)
             # The turn is handed over: from here until this handle's reply
@@ -327,6 +347,17 @@ async def await_message(
             )
             # All of them, oldest first, the turn last: what the wake showed.
             turn["asks"] = [_ask_of(room_name, r) for _, r in unread]
+            # What the handle's subscriptions caught, each with the one that did.
+            turn["watching"] = [
+                {**_ask_of(room_name, r), "why": w.why, "subscription": w.subscription}
+                for _, r, w in watched
+            ]
+            # Why this is the handle's turn: how it asks, or the subscription
+            # it fell under when nothing asks.
+            if subscribed is not None:
+                turn["reason"], turn["why"] = "subscribed", subscribed.why
+            else:
+                turn["reason"], turn["why"] = asks(record.content, handle), None
             return turn
         # Nothing addressed in the scanned range: consume it (advance past the
         # observer/broadcast turns this handle doesn't await) and keep polling.
