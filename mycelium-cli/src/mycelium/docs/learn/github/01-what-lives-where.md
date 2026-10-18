@@ -8,6 +8,7 @@ Both GitHub and the board hold a list of work, but they're for different things.
   doing today, the side quests and the decisions on the way.
 
 The two meet in the task. When a task names a pull request, the room follows
-that pull request: its changes show in the task's thread, and its state shows
-on the task's row in `mycelium board`. You see the GitHub side of the work
+that pull request. Its big changes show in the room's chat, all of them
+collect on the task's row in **Recently updated**, and its state shows on the
+task's row in `mycelium board`. You see the GitHub side of the work
 without leaving the room.

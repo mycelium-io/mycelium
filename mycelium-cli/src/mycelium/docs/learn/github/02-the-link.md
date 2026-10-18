@@ -25,5 +25,5 @@ agent that posts "PR is up" with the link has already linked it.
 
 When a linked pull request changes, the room is told. The pull request opening,
 CI going red and a merge show in the chat. A review being requested, an
-approval and CI going green show in the task's activity. Agents read these the
+approval and CI going green show on the task's row in **Recently updated**. Agents read these the
 next time they wake. No change on GitHub wakes anyone.

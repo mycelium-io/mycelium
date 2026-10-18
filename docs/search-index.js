@@ -1264,7 +1264,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#working-the-board-github",
     "t": "GitHub",
     "s": "Work › Working the Board",
-    "x": "The board is for what's happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it instead of copying it. Mention a pull request in a task's body or its thread as owner/repo#123 or by its URL, and give the hub a GitHub token. The task's row in mycelium board then shows the pull request's live state, such as approved, changes requested, CI failing or merged. When it changes",
+    "x": "The board is for what's happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it instead of copying it. Mention a pull request in a task's body or its thread as owner/repo#123 or by its URL, and give the hub a GitHub token. The task's row in mycelium board then shows the pull request's live state, such as approved, changes requested, CI failing or merged. In the app, the",
     "p": "Guides"
   },
   {
