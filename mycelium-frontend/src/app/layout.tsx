@@ -4,6 +4,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { THEME_CLASSES, THEME_IDS } from "@/lib/themes";
 import { CurrentUserProvider } from "@/components/current-user";
 import { MachineFromUrl } from "@/components/machine-from-url";
 import { AuthSessionProvider } from "@/components/auth-session";
@@ -35,7 +36,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-screen bg-bg text-text antialiased">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+        <ThemeProvider
+          attribute="class"
+          themes={THEME_IDS}
+          value={THEME_CLASSES}
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+        >
           {/* One cache for every room read below, above the router so it
               survives navigation between rooms. */}
           <SWRProvider>

@@ -20,13 +20,8 @@ import { Monogram } from "@/components/ui/monogram";
 import { Select } from "@/components/ui/select";
 import { useIsClient } from "@/lib/client-hooks";
 import { useIsDesktop } from "@/lib/desktop";
+import { SYSTEM, THEMES } from "@/lib/themes";
 import { Note, Row, Section, Segmented, SettingsPage } from "./settings-ui";
-
-const THEMES = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
-] as const;
 
 /** Download what this browser has set, to take to another one. */
 function exportFile() {
@@ -85,13 +80,19 @@ export function GeneralPage() {
     >
       {imported && <Note>{imported}</Note>}
       <Section title="Appearance">
-        <Row id="general.theme" label="Theme" help="Light, dark, or whatever your computer is set to.">
-          <Segmented
-            label="Theme"
-            value={currentTheme as (typeof THEMES)[number]["value"]}
-            options={THEMES}
-            onChange={(t) => setTheme(t)}
-          />
+        <Row
+          id="general.theme"
+          label="Theme"
+          help="Mycelium's own light or dark, or a theme you know from your editor. Matching this computer picks Mycelium light or dark to suit it."
+        >
+          <Select aria-label="Theme" value={currentTheme} onChange={(e) => setTheme(e.target.value)}>
+            <option value={SYSTEM}>Match this computer</option>
+            {THEMES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </Select>
         </Row>
         <Row
           id="general.agent-avatars"

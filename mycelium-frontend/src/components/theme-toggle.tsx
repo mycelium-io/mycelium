@@ -10,11 +10,11 @@ import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useCommands } from "@/components/keymap-provider";
 import { IconButton } from "@/components/ui/icon-button";
 import type { PaletteCommand } from "@/lib/commands";
+import { SYSTEM, THEMES, modeOf } from "@/lib/themes";
 
 const OPTIONS: { value: string; label: string; icon: LucideIcon }[] = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
+  ...THEMES.map((t) => ({ value: t.id, label: t.label, icon: t.mode === "dark" ? Moon : Sun })),
+  { value: SYSTEM, label: "Match this computer", icon: Monitor },
 ];
 
 export function ThemeToggle() {
@@ -37,21 +37,21 @@ export function ThemeToggle() {
     };
   }, [open]);
 
-  // Separate commands so palette search finds "Dark" instead of "Toggle theme".
+  // Separate commands so palette search finds "Dracula" instead of "Toggle theme".
   const commands = useMemo<PaletteCommand[]>(
     () =>
       OPTIONS.map(({ value, label }) => ({
         id: `theme.${value}`,
-        title: `${label} theme`,
+        title: value === SYSTEM ? "Theme: match this computer" : `${label} theme`,
         group: "Preferences",
-        keywords: ["theme", "appearance", "color", "color"],
+        keywords: ["theme", "appearance", "color", "dark", "light"],
         run: () => setTheme(value),
       })),
     [setTheme],
   );
   useCommands(commands);
 
-  const Active = (mounted && resolvedTheme === "dark" ? Moon : Sun) as LucideIcon;
+  const Active = (mounted && modeOf(resolvedTheme) === "dark" ? Moon : Sun) as LucideIcon;
 
   return (
     <div ref={ref} className="relative">
@@ -59,7 +59,7 @@ export function ThemeToggle() {
         {mounted ? <Active /> : <span className="size-4" />}
       </IconButton>
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1.5 w-36 overflow-hidden rounded-xl border border-border bg-elevated p-1 shadow-xl">
+        <div className="absolute right-0 top-full z-30 mt-1.5 w-52 overflow-hidden rounded-xl border border-border bg-elevated p-1 shadow-xl">
           {OPTIONS.map(({ value, label, icon: Icon }) => (
             <button
               key={value}

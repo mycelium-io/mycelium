@@ -206,7 +206,9 @@ export function lanesOf(lines: StreamLine[]): Lane[] {
   return lanes;
 }
 
-const LANE_COLORS = ["#5cc7d2", "#d9a94e", "#b48ae0", "#4fc296", "#e6746f", "#7aa2f7", "#e08ab4", "#a3c46a"];
+/** The lane palette's tokens (`--lane-1` … `--lane-8` in globals.css), so a
+ *  lane is legible in whichever theme is on. */
+const LANE_COLORS = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `var(--lane-${n})`);
 
 /** A thread's own color, from its id, so it's the same across reloads. */
 export function laneColor(episode: string): string {

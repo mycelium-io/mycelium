@@ -152,9 +152,9 @@ function DetailRow({
 /** Per-herdr-state accent for the roster's activity line, so the palette isn't
  *  uniformly cold: working reads warm, blocked hot, done green, idle muted. */
 const HERDR_STATE_COLOR: Record<string, string> = {
-  working: "var(--warning, #d19a45)",
-  blocked: "var(--destructive, #d1495b)",
-  done: "var(--success, #4c9a6a)",
+  working: "var(--yellow)",
+  blocked: "var(--red)",
+  done: "var(--green)",
   idle: "var(--muted-foreground)",
 };
 

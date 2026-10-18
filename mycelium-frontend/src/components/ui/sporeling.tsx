@@ -7,14 +7,14 @@ import { genome, type Detail, type Genome } from "@/lib/sporelings";
 /** The creature's three colors, all from the handle's avatar tint:
  *
  *  - `ink`: the creature's main shape, the same color the initials were (the tint
- *    mixed with the theme's text color), so it holds the initials' 4.5:1 against
- *    the disc in both themes.
+ *    mixed with the theme's `--avatar-ink`), so it holds the initials' 4.5:1
+ *    against the disc in every theme.
  *  - `mid`: a second, softer shape (a cap's face, an owl's ears), halfway to the disc.
  *  - `hole`: the disc's own color, for eyes and markings, which read as cut out
  *    of the body rather than drawn on it, so they keep the same contrast. */
 function palette(tint: string) {
   return {
-    ink: `color-mix(in srgb, ${tint} ${AVATAR_INK}%, var(--text))`,
+    ink: `color-mix(in srgb, ${tint} ${AVATAR_INK}%, var(--avatar-ink))`,
     mid: `color-mix(in srgb, ${tint} 62%, var(--text))`,
     hole: `color-mix(in srgb, ${tint} ${AVATAR_FILL}%, var(--surface))`,
   };
