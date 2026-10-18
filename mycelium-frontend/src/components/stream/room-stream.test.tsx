@@ -54,9 +54,6 @@ vi.mock("@/lib/room-data", () => ({
 }));
 vi.mock("@/components/message-actions", () => ({ MessageActions: () => null }));
 vi.mock("@/components/current-user", () => ({ useCurrentUser: () => ({ principal: "bob" }) }));
-vi.mock("@/components/room-chat-box", () => ({
-  RoomChatBox: ({ episode }: { episode: string | null }) => <div data-testid="composer">{episode ?? "channel"}</div>,
-}));
 vi.mock("@/components/message-body", () => ({ MessageBody: ({ content }: { content: string }) => <div>{content}</div> }));
 
 import { RoomStream } from "@/components/stream/room-stream";
@@ -168,15 +165,15 @@ describe("<RoomStream />", () => {
     expect(screen.getByText(/which preset\?/)).toBeInTheDocument();
   });
 
-  it("opens a message in place and points the box at its thread", async () => {
+  it("opens a message in place, and is a stream to read with nowhere to type", async () => {
     const user = userEvent.setup();
     await renderStream();
-    expect(screen.getByTestId("composer")).toHaveTextContent("channel");
     await user.click(screen.getByText(/which preset\?/));
     expect(screen.getByText(/Zed or VS Code/)).toBeInTheDocument();
-    expect(screen.getByTestId("composer")).toHaveTextContent(THREAD);
-    await user.click(screen.getByRole("button", { name: /Back to the channel/ }));
-    expect(screen.getByTestId("composer")).toHaveTextContent("channel");
+    // Replying happens in the channel or the task's thread, not here.
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Replying in/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Back to the channel/ })).not.toBeInTheDocument();
   });
 
   it("opens a task's thread from its tag", async () => {
