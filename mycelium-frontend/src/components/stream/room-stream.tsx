@@ -10,7 +10,6 @@ import { useRoomStream } from "@/lib/stream-hub";
 import { useRoomThreads } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { MessageBody } from "@/components/message-body";
-import { RoomChatBox } from "@/components/room-chat-box";
 import { Chip } from "@/components/ui/chip";
 import { EventIconMark } from "@/components/event-icon";
 import { JumpToLatest } from "@/components/jump-to-latest";
@@ -32,7 +31,6 @@ import {
   describe,
   firstLine,
   foldEvents,
-  laneColor,
   lanesOf,
   matches,
   streamEventOf,
@@ -116,9 +114,11 @@ interface Props {
  * order. Messages in the channel and in every task's thread, board changes,
  * pull request changes and saved memories, with nothing ranked or hidden.
  * Each thread on screen gets a colored lane in the gutter, so conversations
- * running in parallel can be told apart. Clicking a message opens it in place
- * and points the box below at that message's thread; a task's tag opens its
- * thread as a tab.
+ * running in parallel can be told apart. Clicking a message opens it in place;
+ * a task's tag opens its thread as a tab.
+ *
+ * It's read-only: a stream to watch, not a place to talk. Replying happens in
+ * the channel or in a task's thread, where the conversation is.
  */
 export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
   const [events, setEvents] = useState<StreamEvent[]>([]);
@@ -132,7 +132,6 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
   const [mineOnly, setMineOnly] = useState(false);
   const [who, setWho] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [target, setTarget] = useState<string | null>(null);
   const [seenAt, setSeenAt] = useState<string | null>(null);
 
   // History first, then whatever the live feed adds; ids keep the two from
@@ -293,7 +292,6 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
                   style={{ gridTemplateColumns: `2.5rem ${gutter}px 8rem minmax(0,1fr)` }}
                   onClick={() => {
                     if (!isMessage) return;
-                    setTarget(ev.episode);
                     setExpanded((prev) => {
                       const next = new Set(prev);
                       if (next.has(ev.id)) next.delete(ev.id);
@@ -394,31 +392,6 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
       <div className="relative h-0 flex-shrink-0">
         {!jumpTo.atBottom && lines.length > 0 && <JumpToLatest unread={jumpTo.unread} onClick={jumpTo.jump} />}
       </div>
-
-      {target && (
-        <div className="mx-4 -mb-1 mt-2 flex items-center gap-2 text-micro text-muted-foreground">
-          <span>
-            Replying in{" "}
-            <span className="font-medium" style={{ color: lanes.find((l) => l.episode === target)?.color ?? laneColor(target) }}>
-              {titleOf(target) ?? "this thread"}
-            </span>
-          </span>
-          <button
-            type="button"
-            onClick={() => setTarget(null)}
-            className="flex items-center gap-0.5 rounded px-1 hover:bg-hairline hover:text-text"
-          >
-            <X className="size-3" />
-            Back to the channel
-          </button>
-        </div>
-      )}
-      <RoomChatBox
-        roomName={roomName}
-        episode={target}
-        threadLabel={target ? titleOf(target) : null}
-        onOpenMemory={onOpenMemory}
-      />
     </div>
   );
 }
