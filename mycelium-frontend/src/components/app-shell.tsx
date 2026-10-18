@@ -39,6 +39,7 @@ import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
 import { useSheetLayout } from "@/lib/use-viewport";
 import { RailSheet } from "@/components/rail-sheet";
 import { useKeyAction } from "@/components/keymap-provider";
+import type { RoomViewsNav } from "@/components/room-views-nav";
 
 interface Props {
   /** The open room (highlights its sidebar row); null on the home view. */
@@ -52,6 +53,8 @@ interface Props {
   /** Left/right slots of the bottom status bar (editor-style). */
   statusLeft?: ReactNode;
   statusRight?: ReactNode;
+  /** The open room's views, for the Rooms rail to draw under the room. */
+  roomViews?: RoomViewsNav;
   children: ReactNode;
 }
 
@@ -148,6 +151,7 @@ export function AppShell({
   headerRight,
   statusLeft,
   statusRight,
+  roomViews,
   children,
 }: Props) {
   // Where you are, after the hub in the title bar: what the page names itself,
@@ -222,6 +226,7 @@ export function AppShell({
                   // strip is still on screen behind it, and the control that
                   // opened it is the one a reader reaches for to put it away.
                   onCollapsedChange={() => setRoomsOpen(open => !open)}
+                  roomViews={roomViews}
                 />
               </div>
             )}
@@ -231,7 +236,20 @@ export function AppShell({
               side="left"
               label="Rooms"
             >
-              <RoomsSidebar activeRoom={activeRoom} onCollapsedChange={() => setRoomsOpen(false)} />
+              <RoomsSidebar
+                activeRoom={activeRoom}
+                onCollapsedChange={() => setRoomsOpen(false)}
+                // Picking a view puts the sheet away, to show it.
+                roomViews={
+                  roomViews && {
+                    ...roomViews,
+                    onView: v => {
+                      roomViews.onView(v);
+                      setRoomsOpen(false);
+                    },
+                  }
+                }
+              />
             </RailSheet>
             <ResizablePanelGroup
               className="min-h-0 flex-1"
@@ -258,6 +276,7 @@ export function AppShell({
                     <RoomsSidebar
                       activeRoom={activeRoom}
                       onCollapsedChange={next => setRoomsOpen(!next)}
+                      roomViews={roomViews}
                     />
                   </ResizablePanel>
 

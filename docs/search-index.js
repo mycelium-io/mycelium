@@ -1310,10 +1310,10 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
-    "u": "guides.html#files-the-files-tab",
-    "t": "The Files tab",
+    "u": "guides.html#files-the-files-view",
+    "t": "The Files view",
     "s": "Work › Files",
-    "x": "The room's Files tab (⌥U) shows every file the room keeps, newest first and grouped by day. Images show as small pictures, and other files as a card with their type. Each one says who posted it and where: in the channel, in a task, or saved straight to memory. Click that line to open the message it was posted with, or the task's thread. Click a file to preview it. The preview's arrows step through the files the tab i",
+    "x": "The room's Files view (under the room in the Rooms rail, or ⌥U) shows every file the room keeps, newest first and grouped by day. Images show as small pictures, and other files as a card with their type. Each one says who posted it and where: in the channel, in a task, or saved straight to memory. Click that line to open the message it was posted with, or the task's thread. Click a file to preview it. The preview's a",
     "p": "Guides"
   },
   {
@@ -1411,7 +1411,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#schedules-in-the-app",
     "t": "In the app",
     "s": "Work › Schedules",
-    "x": "The room's Schedules tab (Alt+K, or the tab strip's + menu) lists every schedule: its agent, when it runs, its check, its status, the next run and the last one. The ⋯ menu on a row has Run now, Pause/Resume, Renew, Edit and Delete. Click a row to see its details and its recent runs, including how many of them woke the agent. In the Members rail, an agent with a schedule shows a small clock. If you pause an agent's sc",
+    "x": "The room's Schedules view (under the room in the Rooms rail, or Alt+K) lists every schedule: its agent, when it runs, its check, its status, the next run and the last one. The ⋯ menu on a row has Run now, Pause/Resume, Renew, Edit and Delete. Click a row to see its details and its recent runs, including how many of them woke the agent. In the Members rail, an agent with a schedule shows a small clock. If you pause an",
     "p": "Guides"
   },
   {

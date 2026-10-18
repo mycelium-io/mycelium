@@ -15,16 +15,13 @@ import {
   type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from "dockview-react";
-import { ChevronDown, Copy, FileText, Link2, MessageSquare, Plus, X } from "lucide-react";
-import { KbdChord } from "@/components/ui/kbd";
+import { ChevronDown, Copy, FileText, Link2, MessageSquare, X } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { iconButtonClass } from "@/components/ui/icon-button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EventStream } from "@/components/event-stream";
 import { RoomBoard } from "@/components/board/room-board";
 import { RoomSchedules } from "@/components/schedules/room-schedules";
@@ -33,7 +30,6 @@ import { RoomFiles } from "@/components/files/room-files";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { MemoryView, type GuardHandle } from "@/components/memory-view";
 import { ThreadView } from "@/components/thread-view";
-import { KeyBadge } from "@/components/key-badge";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -57,6 +53,7 @@ import {
   threadPanelId,
   type View,
 } from "@/lib/room-dock";
+import { cn } from "@/lib/utils";
 
 /** A memory's name on its tab: the last part of its key (`cutover` for `decisions/cutover`). */
 export function memoryTabLabel(key: string): string {
@@ -65,6 +62,11 @@ export function memoryTabLabel(key: string): string {
 
 /** Colors come from the app's own tokens (globals.css), so it follows light and dark. */
 const THEME: DockviewTheme = { name: "mycelium", className: "dockview-theme-mycelium" };
+
+/** How much of the center the open tabs take beside the view, at first. */
+const TABS_SHARE = 0.45;
+const TABS_SHARE_MIN = 0.25;
+const TABS_SHARE_MAX = 0.75;
 
 interface DockContextValue {
   roomName: string;
@@ -78,9 +80,8 @@ interface DockContextValue {
   openFind: number;
   onMemoryGuard: (key: string, guard: GuardHandle | null) => void;
   requestClose: (id: string) => void;
-  channelCount: number | null;
   setChannelCount: (n: number) => void;
-  /** Open one of the room's views, as a tab if it isn't one already. */
+  /** Show one of the room's views in the view pane. */
   showView: (view: View) => void;
 }
 
@@ -92,9 +93,9 @@ function useDock(): DockContextValue {
   return value;
 }
 
-// ── Panels ──────────────────────────────────────────────────────────────────
+// ── The room's views ────────────────────────────────────────────────────────
 
-function ChannelPanel() {
+function ChannelView() {
   const d = useDock();
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden bg-bg">
@@ -116,40 +117,50 @@ function ChannelPanel() {
   );
 }
 
-function StreamPanel() {
+function OtherView({ view }: { view: Exclude<View, "channel"> }) {
   const d = useDock();
-  return <RoomStream roomName={d.roomName} onOpenThread={d.onOpenThread} onOpenMemory={d.onOpenMemory} />;
-}
-
-function FilesPanel() {
-  const d = useDock();
-  return (
-    <RoomFiles
-      roomName={d.roomName}
-      onOpenThread={d.onOpenThread}
-      onOpenMessage={d.onOpenMessage}
-      onOpenMemory={d.onOpenMemory}
-    />
-  );
-}
-
-function BoardPanel() {
-  const d = useDock();
-  return (
-    <div className="h-full min-h-0">
-      <RoomBoard roomName={d.roomName} onOpenThread={d.onOpenThread} onOpenMessage={d.onOpenMessage} />
-    </div>
-  );
-}
-
-function SchedulesPanel() {
-  const d = useDock();
+  if (view === "stream") return <RoomStream roomName={d.roomName} onOpenThread={d.onOpenThread} onOpenMemory={d.onOpenMemory} />;
+  if (view === "files") {
+    return (
+      <RoomFiles
+        roomName={d.roomName}
+        onOpenThread={d.onOpenThread}
+        onOpenMessage={d.onOpenMessage}
+        onOpenMemory={d.onOpenMemory}
+      />
+    );
+  }
+  if (view === "board") {
+    return (
+      <div className="h-full min-h-0">
+        <RoomBoard roomName={d.roomName} onOpenThread={d.onOpenThread} onOpenMessage={d.onOpenMessage} />
+      </div>
+    );
+  }
   return (
     <div className="h-full min-h-0">
       <RoomSchedules roomName={d.roomName} />
     </div>
   );
 }
+
+/**
+ * The view pane: the view picked under the room in the Rooms rail. The Channel
+ * stays mounted while another view is shown, so it keeps its scroll position
+ * and its live feed; the others mount when shown.
+ */
+function ViewPane({ view }: { view: View }) {
+  return (
+    <>
+      <div className={cn("h-full min-h-0", view !== "channel" && "hidden")}>
+        <ChannelView />
+      </div>
+      {view !== "channel" && <OtherView view={view} />}
+    </>
+  );
+}
+
+// ── What you opened ─────────────────────────────────────────────────────────
 
 function MemoryPanel({ params }: IDockviewPanelProps<{ key: string }>) {
   const d = useDock();
@@ -179,11 +190,6 @@ function ThreadPanel({ params, api }: IDockviewPanelProps<{ episode: string }>) 
 }
 
 const COMPONENTS = {
-  channel: ChannelPanel,
-  stream: StreamPanel,
-  board: BoardPanel,
-  files: FilesPanel,
-  schedules: SchedulesPanel,
   memory: MemoryPanel,
   thread: ThreadPanel,
 } as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>;
@@ -207,7 +213,8 @@ function ThreadTabLabel({ episode }: { episode: string }) {
   return <>{title || `Thread ${threadShortId(episode) ?? ""}`.trim()}</>;
 }
 
-/** How a tab names itself, the same in the strip and in its overflow menu. */
+/** How a tab names itself, the same in the strip, its overflow menu and the
+ *  narrow pane's list of open tabs. */
 function tabFace(id: string, fallback: string | undefined) {
   const parsed = parsePanelId(id);
   let icon: React.ReactNode = null;
@@ -221,24 +228,19 @@ function tabFace(id: string, fallback: string | undefined) {
     icon = <MessageSquare className="size-3.5 flex-shrink-0 text-accent" strokeWidth={1.9} />;
     label = <ThreadTabLabel episode={parsed.episode} />;
     title = parsed.episode;
-  } else if (parsed) {
-    label = VIEW_LABELS[parsed.kind];
   }
-  const view = parsed && parsed.kind !== "memory" && parsed.kind !== "thread" ? (parsed.kind as View) : null;
-  return { parsed, icon, label, title, view };
+  return { parsed, icon, label, title };
 }
 
 /**
- * One tab, for every kind: the room's own views wear the key that selects them
- * (shown while the reveal modifier is held) and the Channel its count; a memory
- * or a thread closes with its ×, a middle click, or its menu. Dragging it is
- * dockview's: onto another tab bar to move it, onto an edge to split.
+ * One tab: a memory or a thread you opened. It closes with its ×, a middle
+ * click, its menu or ⌘W. Dragging it is dockview's: onto another tab bar to
+ * move it, onto an edge to split.
  */
 function DockTab({ api, containerApi }: IDockviewPanelHeaderProps) {
   const d = useDock();
   const shown = useShown(api);
-  const { parsed, icon, label, title, view } = tabFace(api.id, api.title);
-  const closable = isClosable(api.id);
+  const { parsed, icon, label, title } = tabFace(api.id, api.title);
   const close = () => d.requestClose(api.id);
 
   const others = () => api.group.panels.filter(p => p.id !== api.id && isClosable(p.id)).map(p => p.id);
@@ -251,50 +253,39 @@ function DockTab({ api, containerApi }: IDockviewPanelHeaderProps) {
           aria-selected={shown}
           title={title}
           data-panel-id={api.id}
-          data-tour={view ? `tab-${view}` : undefined}
           onMouseDown={e => {
-            if (e.button === 1 && closable) {
+            if (e.button === 1) {
               e.preventDefault();
               close();
             }
           }}
-          className={`group/tab flex h-full items-center gap-1.5 border-r border-border text-label transition-colors ${
-            closable ? "pl-3 pr-1.5" : "px-3"
-          } ${shown ? "bg-paper text-text" : "text-muted-foreground hover:bg-hairline hover:text-text"}`}
+          className={`group/tab flex h-full items-center gap-1.5 border-r border-border pl-3 pr-1.5 text-label transition-colors ${
+            shown ? "bg-paper text-text" : "text-muted-foreground hover:bg-hairline hover:text-text"
+          }`}
         >
           {icon}
           <span className="max-w-40 truncate">{label}</span>
-          {view && <KeyBadge action={`pane.${view}`} />}
-          {view === "channel" && d.channelCount !== null && (
-            <span className={`text-micro tabular ${shown ? "text-accent" : "text-muted-foreground"}`}>
-              {d.channelCount}
-            </span>
-          )}
-          {closable && (
-            <button
-              type="button"
-              aria-label={`Close ${title ?? label}`}
-              // Not a drag start, and not a click on the tab under it.
-              onMouseDown={e => e.stopPropagation()}
-              onClick={e => {
-                e.stopPropagation();
-                close();
-              }}
-              className={`flex size-4 items-center justify-center rounded transition-opacity hover:bg-hairline ${
-                shown ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100"
-              }`}
-            >
-              <X className="size-3" />
-            </button>
-          )}
+          <button
+            type="button"
+            aria-label={`Close ${title ?? label}`}
+            // Not a drag start, and not a click on the tab under it.
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => {
+              e.stopPropagation();
+              close();
+            }}
+            className={`flex size-4 items-center justify-center rounded transition-opacity hover:bg-hairline ${
+              shown ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100"
+            }`}
+          >
+            <X className="size-3" />
+          </button>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        {closable && (
-          <ContextMenuItem icon={X} onClick={close}>
-            Close
-          </ContextMenuItem>
-        )}
+        <ContextMenuItem icon={X} onClick={close}>
+          Close
+        </ContextMenuItem>
         <ContextMenuItem disabled={others().length === 0} onClick={() => others().forEach(d.requestClose)}>
           Close others
         </ContextMenuItem>
@@ -426,7 +417,6 @@ function GroupOverflow({ group }: IDockviewHeaderActionsProps) {
                   {face.icon ?? <span className="w-3.5 shrink-0" />}
                   <span className={`min-w-0 flex-1 truncate ${isActive ? "font-medium" : ""}`}>{face.label}</span>
                   {isActive && <span aria-label="Shown" className="size-1.5 shrink-0 rounded-full bg-accent" />}
-                  {face.view && <KbdChord action={`pane.${face.view}`} size="xs" tone="muted" />}
                 </DropdownMenuItem>
               );
             })}
@@ -437,83 +427,35 @@ function GroupOverflow({ group }: IDockviewHeaderActionsProps) {
   );
 }
 
-// ── The strip's + ───────────────────────────────────────────────────────────
-
-/** The room's own views that aren't open anywhere in the dock. */
-function useClosedViews(api: DockviewApi): View[] {
-  const closedNow = useCallback(() => VIEW_ORDER.filter(v => !api.getPanel(v)), [api]);
-  const [closed, setClosed] = useState<View[]>(closedNow);
-  useEffect(() => {
-    const update = () => setClosed(closedNow());
-    const subs = [api.onDidAddPanel(update), api.onDidRemovePanel(update)];
-    return () => subs.forEach(s => s.dispose());
-  }, [api, closedNow]);
-  return closed;
-}
-
 /**
- * After a group's tabs: a + that brings back a room view that was closed,
- * into this group. Shown only while there is one to bring back.
+ * On a narrow pane, over the view while tabs are open: one line naming them,
+ * each a way back to it. The view and the tabs don't fit side by side there,
+ * so the pane shows one or the other.
  */
-function GroupActions({ containerApi, group }: IDockviewHeaderActionsProps) {
-  const closed = useClosedViews(containerApi);
-  const [open, setOpen] = useState(false);
-  if (closed.length === 0) return null;
+function OpenTabsLine({ ids, titles, onShow }: { ids: string[]; titles: Record<string, string | undefined>; onShow: (id: string) => void }) {
   return (
-    <div className="flex h-full items-center px-1">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          aria-label="Open a view"
-          title="Open a view"
-          className={iconButtonClass("sm", "data-[popup-open]:bg-hairline data-[popup-open]:text-text")}
-        >
-          <Plus />
-        </PopoverTrigger>
-        <PopoverContent side="bottom" align="start" className="w-48 p-1">
-          {closed.map(view => (
-            <button
-              key={view}
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                addView(containerApi, view, { referenceGroup: group });
-              }}
-              className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-label text-text transition-colors hover:bg-hairline"
-            >
-              {VIEW_LABELS[view]}
-              <KbdChord action={`pane.${view}`} size="sm" />
-            </button>
-          ))}
-        </PopoverContent>
-      </Popover>
+    <div className="flex h-8 flex-shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-surface px-2 text-micro text-muted-foreground">
+      <span className="flex-shrink-0 px-1 text-faint">Open</span>
+      {ids.map(id => {
+        const face = tabFace(id, titles[id]);
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onShow(id)}
+            title={face.title}
+            className="flex h-6 max-w-48 flex-shrink-0 items-center gap-1 rounded px-1.5 text-label transition-colors hover:bg-hairline hover:text-text"
+          >
+            {face.icon}
+            <span className="truncate">{face.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 // ── Opening and moving ──────────────────────────────────────────────────────
-
-const VIEW_ORDER: View[] = ["channel", "stream", "board", "files", "schedules"];
-
-function addView(api: DockviewApi, view: View, position?: Parameters<DockviewApi["addPanel"]>[0]["position"]) {
-  return api.addPanel({
-    id: view,
-    component: view,
-    title: VIEW_LABELS[view],
-    // The Channel stays laid out while another tab is in front of it, so it
-    // keeps its scroll position and never mistakes itself for an empty viewport.
-    renderer: view === "channel" ? "always" : undefined,
-    ...(position ? { position } : {}),
-  });
-}
-
-/** The room's first layout: Channel, Stream, Board and Files as tabs, the Channel in front. */
-function defaultLayout(api: DockviewApi): void {
-  addView(api, "channel");
-  addView(api, "stream", { referencePanel: "channel" });
-  addView(api, "board", { referencePanel: "channel" });
-  addView(api, "files", { referencePanel: "channel" });
-  api.getPanel("channel")?.api.setActive();
-}
 
 /** Move a tab into a new group to the right of its own, when its group has others. */
 export function splitRight(api: DockviewApi, id: string): void {
@@ -534,11 +476,12 @@ function collapseGroups(api: DockviewApi): void {
 export interface RoomDockHandle {
   /** The room this dock is, so a handle left over from the last room is never used. */
   room: string;
-  /** Show one of the room's views, reopening it if it was closed. */
+  /** Show one of the room's views in the view pane. */
   showView: (view: View) => void;
   openMemory: (key: string) => void;
   openThread: (episode: string) => void;
-  /** Close the tab in front of the active group, if it closes; false when it doesn't. */
+  /** Close the tab in front of the active group; false when there's none to
+   *  close. A view is never closed. */
   closeActive: () => boolean;
   /** Reopen the tab closed most recently. */
   reopenClosed: () => void;
@@ -548,14 +491,20 @@ export interface RoomDockHandle {
 
 interface Props {
   roomName: string;
+  /** The view in the view pane, picked under the room in the Rooms rail. */
+  view: View;
+  onViewChange: (view: View) => void;
+  /** How many messages the Channel has, for its row in the Rooms rail. */
+  onChannelCount: (n: number) => void;
   onMemoryChanged: () => void;
   onConnectionChange: (connected: boolean) => void;
   focusMessageId: string | null;
   onFocusConsumed: () => void;
   openFind: number;
-  /** Too narrow for splits: every tab stays in one group, and dragging is off. */
+  /** Too narrow for the view and the tabs side by side: the pane shows one at
+   *  a time, every tab stays in one group, and dragging is off. */
   narrow: boolean;
-  /** The tab in front of the active group, whenever it changes. */
+  /** What's in front: the view, or the tab in front of the active group. */
   onActiveChange: (id: string | null) => void;
   onReady: (handle: RoomDockHandle) => void;
   /** Wired by the page to the dock's own handle, so a `[[link]]` or a ping in
@@ -567,11 +516,16 @@ interface Props {
 }
 
 /**
- * The room's center: every view is a tab, and tabs drag into splits. The
- * layout is this browser's, remembered per room.
+ * The room's center: the view picked in the Rooms rail, and beside it the
+ * tabs you opened, which drag into splits. The view isn't a tab, so it can't
+ * be closed or lost among them. The tabs' layout is this browser's,
+ * remembered per room.
  */
 export function RoomDock({
   roomName,
+  view,
+  onViewChange,
+  onChannelCount,
   onMemoryChanged,
   onConnectionChange,
   focusMessageId,
@@ -585,13 +539,28 @@ export function RoomDock({
   onOpenMessage,
 }: Props) {
   const apiRef = useRef<DockviewApi | null>(null);
-  const [channelCount, setChannelCount] = useState<number | null>(null);
   const memoryGuards = useRef(new Map<string, GuardHandle>());
   const closed = useRef<string[]>([]);
+  // The open tabs, in the order they were opened, and their titles.
+  const [tabs, setTabs] = useState<string[]>([]);
+  const [titles, setTitles] = useState<Record<string, string | undefined>>({});
+  // On a narrow pane, which of the two is shown.
+  const [showing, setShowing] = useState<"view" | "tabs">("view");
+  const [share, setShare] = useState(TABS_SHARE);
+  const centerRef = useRef<HTMLDivElement>(null);
+
   const narrowRef = useRef(narrow);
+  const viewRef = useRef(view);
+  const showingRef = useRef(showing);
   useEffect(() => {
     narrowRef.current = narrow;
-  }, [narrow]);
+    viewRef.current = view;
+    showingRef.current = showing;
+  }, [narrow, view, showing]);
+
+  const hasTabs = tabs.length > 0;
+  const viewShown = !narrow || !hasTabs || showing === "view";
+  const tabsShown = hasTabs && (!narrow || showing === "tabs");
 
   const onMemoryGuard = useCallback((key: string, guard: GuardHandle | null) => {
     if (guard) memoryGuards.current.set(key, guard);
@@ -613,71 +582,60 @@ export function RoomDock({
     else close();
   }, []);
 
+  // What's in front of you, for the bell and reading aloud: the view when it's
+  // on screen, and every group's front tab when the tabs are.
+  const publish = useCallback(() => {
+    const api = apiRef.current;
+    const n = api?.panels.length ?? 0;
+    const front: (string | undefined)[] = [];
+    if (!narrowRef.current || n === 0 || showingRef.current === "view") front.push(viewRef.current);
+    if (api && n > 0 && (!narrowRef.current || showingRef.current === "tabs")) {
+      front.push(...api.groups.map(g => g.activePanel?.id));
+    }
+    setOnScreen({ room: roomName, panes: panesInFront(front) });
+  }, [roomName]);
+
   const handle = useMemo<RoomDockHandle>(() => {
     const api = () => apiRef.current;
-    const show = (id: string) => api()?.getPanel(id)?.api.setActive();
-    /** Where a new tab goes: the active group, or beside the Channel when the
-     *  active group is the Channel's and a split is wanted. */
+    const reveal = (id: string) => {
+      api()?.getPanel(id)?.api.setActive();
+      setShowing("tabs");
+    };
     const open = (id: string, add: (api: DockviewApi) => void) => {
       const a = api();
       if (!a) return;
-      if (a.getPanel(id)) return show(id);
-      add(a);
+      if (!a.getPanel(id)) add(a);
+      reveal(id);
     };
+    const into = (a: DockviewApi) => (a.activeGroup ? { position: { referenceGroup: a.activeGroup } } : {});
     return {
       room: roomName,
-      showView: view => {
-        open(view, a => {
-          const anchor = VIEW_ORDER.map(v => a.getPanel(v)).find(Boolean);
-          addView(a, view, anchor ? { referencePanel: anchor } : undefined);
-        });
+      showView: next => {
+        onViewChange(next);
+        setShowing("view");
+        onActiveChange(next);
       },
       openMemory: key => {
         const id = memoryPanelId(key);
-        open(id, a => {
-          const group = a.activeGroup;
-          a.addPanel({
-            id,
-            component: "memory",
-            params: { key },
-            title: memoryTabLabel(key),
-            ...(group ? { position: { referenceGroup: group } } : {}),
-          });
-        });
+        open(id, a => a.addPanel({ id, component: "memory", params: { key }, title: memoryTabLabel(key), ...into(a) }));
       },
       openThread: episode => {
         const id = threadPanelId(episode);
-        open(id, a => {
-          // A thread opens beside the room rather than over it, as it always
-          // has: into a group of threads to the right of the Channel's, made
-          // the first time. Too narrow to split, it is one more tab.
-          const channelGroup = a.getPanel("channel")?.api.group;
-          const threadGroup = a.panels.find(p => parsePanelId(p.id)?.kind === "thread")?.api.group;
-          const position = narrowRef.current
-            ? a.activeGroup
-              ? { referenceGroup: a.activeGroup }
-              : undefined
-            : threadGroup
-              ? { referenceGroup: threadGroup }
-              : channelGroup
-                ? { referenceGroup: channelGroup, direction: "right" as const }
-                : undefined;
-          a.addPanel({ id, component: "thread", params: { episode }, ...(position ? { position } : {}) });
-        });
+        open(id, a => a.addPanel({ id, component: "thread", params: { episode }, ...into(a) }));
       },
       closeActive: () => {
+        // A tab hidden behind the view on a narrow pane isn't the one in front.
+        if (narrowRef.current && showingRef.current === "view") return false;
         const id = api()?.activePanel?.id;
-        if (!id || !api()?.getPanel(id) || !isClosable(id)) return false;
+        if (!id || !isClosable(id)) return false;
         requestClose(id);
         return true;
       },
       reopenClosed: () => {
         const id = closed.current.pop();
         const parsed = id ? parsePanelId(id) : null;
-        if (!parsed) return;
-        if (parsed.kind === "memory") onOpenMemory(parsed.key);
-        else if (parsed.kind === "thread") onOpenThread(parsed.episode);
-        else handleRef.current?.showView(parsed.kind);
+        if (parsed?.kind === "memory") onOpenMemory(parsed.key);
+        else if (parsed?.kind === "thread") onOpenThread(parsed.episode);
       },
       splitActive: () => {
         const a = api();
@@ -691,7 +649,7 @@ export function RoomDock({
         else a.activatePrevious();
       },
     };
-  }, [roomName, requestClose, onOpenMemory, onOpenThread]);
+  }, [roomName, requestClose, onOpenMemory, onOpenThread, onViewChange, onActiveChange]);
   const handleRef = useRef(handle);
   useEffect(() => {
     handleRef.current = handle;
@@ -702,32 +660,36 @@ export function RoomDock({
       const api = event.api;
       apiRef.current = api;
       const saved = loadLayout(roomName);
-      let restored = false;
       if (restorableLayout(saved)) {
         try {
           api.fromJSON(saved as Parameters<DockviewApi["fromJSON"]>[0]);
-          restored = true;
         } catch {
           api.clear();
         }
       }
-      if (!restored) defaultLayout(api);
-      // Saved layouts predate nothing: the Channel's renderer isn't serialized.
-      api.getPanel("channel")?.api.setRenderer("always");
       if (narrowRef.current) collapseGroups(api);
 
-      // What's in front of you, for the bell and reading aloud: every group's
-      // front tab, since a split shows the Channel and a thread side by side.
-      const publish = () => setOnScreen({ room: roomName, panes: panesInFront(api.groups.map(g => g.activePanel?.id)) });
+      const recount = () => {
+        setTabs(api.panels.map(p => p.id));
+        setTitles(Object.fromEntries(api.panels.map(p => [p.id, p.title])));
+        if (api.panels.length === 0) {
+          // The last tab closed: the view is what's in front again.
+          setShowing("view");
+          onActiveChange(viewRef.current);
+        }
+      };
+      api.onDidAddPanel(recount);
+      api.onDidRemovePanel(recount);
       api.onDidLayoutChange(() => {
         saveLayout(roomName, api.toJSON());
         publish();
       });
       api.onDidActivePanelChange(e => {
-        onActiveChange(e.panel?.id ?? null);
+        if (e.panel) onActiveChange(e.panel.id);
         publish();
       });
-      onActiveChange(api.activePanel?.id ?? null);
+      recount();
+      onActiveChange(viewRef.current);
       publish();
       onReady(handleRef.current);
     },
@@ -746,8 +708,30 @@ export function RoomDock({
     if (api && narrow) collapseGroups(api);
   }, [narrow]);
 
+  // Whatever the pane shows changed: say what's in front now.
+  useEffect(() => {
+    if (apiRef.current) publish();
+  }, [view, showing, narrow, hasTabs, publish]);
+
   // Leaving the room: none of it is in front any more.
   useEffect(() => () => clearOnScreen(roomName), [roomName]);
+
+  // The handle between the view and the tabs: drag to share the width.
+  const startResize = useCallback((e: React.PointerEvent) => {
+    const box = centerRef.current?.getBoundingClientRect();
+    if (!box) return;
+    e.preventDefault();
+    const move = (ev: PointerEvent) => {
+      const next = (box.right - ev.clientX) / box.width;
+      setShare(Math.min(TABS_SHARE_MAX, Math.max(TABS_SHARE_MIN, next)));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, []);
 
   const context = useMemo<DockContextValue>(
     () => ({
@@ -762,9 +746,8 @@ export function RoomDock({
       openFind,
       onMemoryGuard,
       requestClose,
-      channelCount,
-      setChannelCount,
-      showView: (view: View) => handleRef.current?.showView(view),
+      setChannelCount: onChannelCount,
+      showView: (next: View) => handleRef.current?.showView(next),
     }),
     [
       roomName,
@@ -778,25 +761,64 @@ export function RoomDock({
       openFind,
       onMemoryGuard,
       requestClose,
-      channelCount,
+      onChannelCount,
     ],
   );
 
   return (
     <DockContext.Provider value={context}>
-      <DockviewReact
-        className="h-full w-full"
-        theme={THEME}
-        components={COMPONENTS}
-        defaultTabComponent={DockTab}
-        leftHeaderActionsComponent={GroupActions}
-        rightHeaderActionsComponent={GroupOverflow}
-        disableTabsOverflowList
-        onReady={ready}
-        disableDnd={narrow}
-        disableFloatingGroups
-        singleTabMode="default"
-      />
+      <div ref={centerRef} className="flex h-full min-h-0 w-full min-w-0">
+        <section
+          aria-label={VIEW_LABELS[view]}
+          data-room-view={view}
+          // Clicking into the view puts it in front again, for the keys that
+          // act on what's in front (⌘F finds in the Channel).
+          onFocusCapture={() => onActiveChange(view)}
+          className={cn("flex min-h-0 min-w-0 flex-1 flex-col", !viewShown && "hidden")}
+        >
+          {narrow && hasTabs && (
+            <OpenTabsLine
+              ids={tabs}
+              titles={titles}
+              onShow={id => {
+                apiRef.current?.getPanel(id)?.api.setActive();
+                setShowing("tabs");
+              }}
+            />
+          )}
+          <div className="min-h-0 flex-1">
+            <ViewPane view={view} />
+          </div>
+        </section>
+        {tabsShown && !narrow && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize the open tabs"
+            onPointerDown={startResize}
+            className="w-px flex-shrink-0 cursor-col-resize bg-border transition-colors hover:bg-accent"
+          />
+        )}
+        {/* Always mounted, so the tabs' layout survives having none open. */}
+        <section
+          aria-label="Open tabs"
+          className={cn("min-h-0 min-w-0", !tabsShown && "hidden", narrow ? "flex-1" : "flex-shrink-0")}
+          style={!narrow ? { width: `${share * 100}%` } : undefined}
+        >
+          <DockviewReact
+            className="h-full w-full"
+            theme={THEME}
+            components={COMPONENTS}
+            defaultTabComponent={DockTab}
+            rightHeaderActionsComponent={GroupOverflow}
+            disableTabsOverflowList
+            onReady={ready}
+            disableDnd={narrow}
+            disableFloatingGroups
+            singleTabMode="default"
+          />
+        </section>
+      </div>
     </DockContext.Provider>
   );
 }

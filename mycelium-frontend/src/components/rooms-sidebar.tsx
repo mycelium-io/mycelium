@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -50,6 +50,7 @@ import {
   type RoomFolder,
 } from "@/lib/room-folders";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
+import { RoomViewMark, RoomViewsList, type RoomViewsNav } from "@/components/room-views-nav";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { usePrincipal } from "@/components/current-user";
 import {
@@ -108,9 +109,12 @@ interface Props {
   /** Draw the rail as a strip of room monograms rather than a list of names. */
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
+  /** The open room's views, drawn under its row (its icon under the monogram
+   *  when folded). Absent off a room page. */
+  roomViews?: RoomViewsNav;
 }
 
-export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsedChange }: Props) {
+export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsedChange, roomViews }: Props) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("all");
   const [showCreate, setShowCreate] = useState(false);
@@ -341,8 +345,10 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
               e.dataTransfer.effectAllowed = "move";
             }}
             onDragEnd={() => setDropTarget(null)}
+            // With its views under it, the open room's view row is the one
+            // marked, so the room's own row isn't marked twice.
             className={`group flex h-7 items-center gap-2 rounded px-1.5 transition-colors ${
-              active ? "bg-hairline" : "hover:bg-hairline"
+              active && !roomViews ? "bg-hairline" : "hover:bg-hairline"
             }`}
           >
             <RoomAvatar name={room.name} className="size-[18px] rounded-[4px] text-[8px]">
@@ -392,6 +398,17 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
       </RoomContextMenu>
     );
   };
+
+  /** A room's row, and under the open room its views. */
+  const rowWithViews = (room: Room, markPrivate: boolean) =>
+    room.name === activeRoom && roomViews ? (
+      <Fragment key={room.name}>
+        {row(room, markPrivate)}
+        <RoomViewsList {...roomViews} />
+      </Fragment>
+    ) : (
+      row(room, markPrivate)
+    );
 
   // Collapsed: the same rail as a strip of room monograms — every room still
   // one click away, the filter and the names traded for the 48px the window
@@ -473,6 +490,8 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                   </button>
                   </div>
                   </RoomContextMenu>
+                  {/* Folded, the open room's view is its icon under the monogram. */}
+                  {active && roomViews && <RoomViewMark {...roomViews} />}
                 </div>
               );
             })}
@@ -626,7 +645,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                       }}
                     />
                   )}
-                  {filed.map(room => row(room, true))}
+                  {filed.map(room => rowWithViews(room, true))}
                   {filed.length === 0 && newRoomIn !== folder.id && (
                     <p className="flex h-7 items-center px-1.5 text-micro text-faint">Drag rooms here</p>
                   )}
@@ -652,7 +671,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
             )
           ) : (
             <>
-              {shared.map(room => row(room, false))}
+              {shared.map(room => rowWithViews(room, false))}
               {mine.length > 0 && (shared.length > 0 || groups.length > 0) && (
                 <div className="mt-2 flex h-6 items-center gap-1.5 px-1.5 text-micro font-medium text-faint">
                   <Lock className="size-3" />
@@ -661,7 +680,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
               )}
               {/* A private room says so on its own row wherever no heading
                   above it already does. */}
-              {mine.map(room => row(room, shared.length === 0 && groups.length === 0 && activeScope === "all"))}
+              {mine.map(room => rowWithViews(room, shared.length === 0 && groups.length === 0 && activeScope === "all"))}
             </>
           )}
         </DropZone>

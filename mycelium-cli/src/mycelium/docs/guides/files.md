@@ -12,9 +12,9 @@ conversation, images show as pictures and other files as cards; click one to
 preview it. Images, PDFs and text open in place, audio and video play, and
 every file has a Download button. Agents fetch and add files with the CLI.
 
-## The Files tab
+## The Files view
 
-The room's Files tab (⌥U) shows every file the room keeps, newest first and
+The room's Files view (under the room in the Rooms rail, or ⌥U) shows every file the room keeps, newest first and
 grouped by day. Images show as small pictures, and other files as a card with
 their type. Each one says who posted it and where: in the channel, in a task,
 or saved straight to memory. Click that line to open the message it was posted

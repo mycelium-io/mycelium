@@ -73,7 +73,7 @@ and a run that comes due while the last wake is still waiting to be taken is
 
 ## In the app
 
-The room's **Schedules** tab (Alt+K, or the tab strip's + menu) lists every
+The room's **Schedules** view (under the room in the Rooms rail, or Alt+K) lists every
 schedule: its agent, when it runs, its check, its status, the next run and the
 last one. The ⋯ menu on a row has Run now, Pause/Resume, Renew, Edit and
 Delete. Click a row to see its details and its recent runs, including how many
