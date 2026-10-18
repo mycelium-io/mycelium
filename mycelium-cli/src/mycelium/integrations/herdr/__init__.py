@@ -34,6 +34,8 @@ from mycelium.integrations.herdr.bridge import (
     build_assigned_prompt,
     build_mention_prompt,
     build_wake_prompt,
+    herdr_name,
+    session_of,
 )
 
 __all__ = [
@@ -49,4 +51,6 @@ __all__ = [
     "build_assigned_prompt",
     "build_mention_prompt",
     "build_wake_prompt",
+    "herdr_name",
+    "session_of",
 ]

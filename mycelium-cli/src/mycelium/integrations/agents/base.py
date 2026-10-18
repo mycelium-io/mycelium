@@ -41,6 +41,11 @@ class AgentKind:
         """Arguments every agent of this kind starts with."""
         return []
 
+    def resume_args(self, session: str) -> list[str] | None:  # noqa: ARG002 - a CLI that can resume says how
+        """Arguments that start it in ``session``, its conversation so far; ``None``
+        when it can't be resumed that way, and a restart starts a new session."""
+        return None
+
     def blocked_hint(self) -> str | None:
         """A line on what it commonly waits for when its host reads it as blocked."""
         return None

@@ -56,6 +56,8 @@ class Herdr:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
         self.live: dict[str, str] = {}
+        #: The agent CLI session herdr reports for a live pane, by pane.
+        self.sessions: dict[str, str] = {}
         #: Open panes, with an agent in them or not.
         self.panes: list[str] = []
         self._panes = 0
@@ -112,6 +114,11 @@ class Herdr:
         if head == "agent list":
             agents = [
                 {"pane_id": p, "agent_status": s, "workspace_id": "w9", "agent": "claude"}
+                | (
+                    {"agent_session": {"kind": "id", "value": self.sessions[p]}}
+                    if p in self.sessions
+                    else {}
+                )
                 for p, s in self.live.items()
             ]
             return _proc(_ok({"agents": agents}))
@@ -337,7 +344,7 @@ def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(
     assert "MYCELIUM_ROOM_ID=eng" in create
     assert "MYCELIUM_API_URL=http://hub:8000" in create
     start = herdr.of("agent start")[0]
-    assert start[2:6] == ["scout", "--kind", "claude", "--pane"]
+    assert start[2:6] == ["scout_eng", "--kind", "claude", "--pane"]
     assert start[-3:] == ["--", "--allowedTools", "Bash(mycelium:*)"]
     prompt = herdr.of("agent prompt")[0][3]
     assert "You are @scout" in prompt
@@ -411,7 +418,7 @@ def test_the_next_agent_in_a_room_shares_its_workspace(make_runner, herdr: Herdr
     r.launch({"room": "eng", "handle": "two", "framework": "opencode"})
     assert len(herdr.of("workspace create")) == 1
     assert herdr.of("pane split")[0][2] == "w9:p1"
-    assert herdr.of("agent start")[1][2:4] == ["two", "--kind"]
+    assert herdr.of("agent start")[1][2:4] == ["two_eng", "--kind"]
     assert "--allowedTools" not in herdr.of("agent start")[1]
     # Without notes it is pointed at the board instead.
     assert "mycelium board --room eng" in herdr.of("agent prompt")[1][3]
@@ -764,7 +771,7 @@ def test_a_swarm_job_starts_the_team_briefs_it_and_kicks_it_off(
         }
     )
 
-    assert [c[2] for c in herdr.of("agent start")] == ["agent-1", "agent-2"]
+    assert [c[2] for c in herdr.of("agent start")] == ["agent-1_eng", "agent-2_eng"]
     # The hub already wrote the members; the runner writes only their briefs.
     memory = hub.of("POST", "/api/rooms/eng/memory")
     assert [i["key"] for i in memory[0]["items"]] == [
@@ -830,7 +837,7 @@ def test_a_launch_from_a_hub_the_runner_does_not_own_waits_for_a_yes(
 
     approvals.answer("a1b2c3d4", yes=True, base=tmp_path)
     _until(lambda: _report(hub, "a1b2c3d4", "done"))
-    assert [c[2] for c in herdr.of("agent start")] == ["a"]
+    assert [c[2] for c in herdr.of("agent start")] == ["a_eng"]
     assert approvals.pending(base=tmp_path) == []
 
 
@@ -1240,7 +1247,7 @@ def test_a_launch_a_paired_device_signed_starts_without_asking(
 
     done = _until(lambda: _report(hub, "c1c1c1", "done"))
     assert done["pairing"] == {"name": "work laptop", "accepted": True}
-    assert [c[2] for c in herdr.of("agent start")] == ["a"]
+    assert [c[2] for c in herdr.of("agent start")] == ["a_eng"]
     assert approvals.pending(base=tmp_path) == []
     assert "signed by 'work laptop'" in (daemon.runner_dir() / "runner.log").read_text()
 
@@ -1593,8 +1600,11 @@ def test_a_renamed_agent_starts_again_under_its_new_handle(make_runner, herdr: H
     assert old_pane not in herdr.panes
     assert done == {"handle": "lookout", "pane": done["pane"]}
     assert done["pane"] in herdr.panes
-    assert herdr.of("agent start")[-1][2] == "lookout"
+    assert herdr.of("agent start")[-1][2] == "lookout_eng"
     assert any("MYCELIUM_AGENT_HANDLE=lookout" in " ".join(c) for c in herdr.calls)
+    # herdr reported no session for it, so it starts a new one, and says so.
+    assert "--resume" not in herdr.of("agent start")[-1]
+    assert "in a new session, so it doesn't keep its conversation" in question["message"]
     told = herdr.of("agent prompt")[-1][3]
     assert told.startswith("[mycelium] You are @lookout") and "You were @scout" in told
 
@@ -1603,6 +1613,27 @@ def test_a_renamed_agent_starts_again_under_its_new_handle(make_runner, herdr: H
     assert moved is not None and moved.pane == done["pane"]
     assert list(r.state.agents) == ["eng/lookout"]
     assert daemon.State.load(r._state_path).agents["eng/lookout"].pane == done["pane"]
+
+
+def test_a_renamed_agent_comes_back_in_its_own_session(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    herdr.sessions[r.state.agents["eng/scout"].pane] = "sess-1"
+
+    question = r.question(
+        {"kind": "rename", "spec": {"room": "eng", "handle": "scout", "to": "lookout"}}
+    )
+    assert "in its own session, keeping its conversation" in question["message"]
+
+    done = r.rename_agent({"room": "eng", "handle": "scout", "to": "lookout"})
+    start = herdr.of("agent start")[-1]
+    assert start[2] == "lookout_eng"
+    assert start[-2:] == ["--resume", "sess-1"]
+    told = herdr.of("agent prompt")[-1][3]
+    assert told.startswith("[mycelium] Your conversation was restored. You were @scout")
+    assert "Use --handle lookout from now on" in told
+    moved = r.bridge.registry.get("eng", "lookout")
+    assert moved is not None and (moved.pane, moved.session) == (done["pane"], "sess-1")
 
 
 def test_a_rename_for_an_agent_this_machine_doesnt_have_fails(make_runner, herdr: Herdr, hub: Hub):

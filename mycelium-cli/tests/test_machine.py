@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -193,7 +194,7 @@ def test_restarting_into_the_open_pane_sets_who_it_is_and_tells_it_to_catch_up(h
     assert command.startswith("cd /shop && export MYCELIUM_API_URL=http://hub:8000")
     assert "MYCELIUM_AGENT_HANDLE=reviewer" in command and "MYCELIUM_ROOM_ID=checkout" in command
     start = herdr.of("agent start")[0]
-    assert start[2:5] == ["reviewer", "--kind", "claude"]
+    assert start[2:5] == ["reviewer_checkout", "--kind", "claude"]
     prompt = herdr.of("agent prompt")[0][3]
     assert "You were restarted" in prompt
     assert "mycelium await --room checkout --handle reviewer" in prompt
@@ -228,7 +229,99 @@ def test_restarting_gone_agents_of_one_room_opens_one_workspace_for_them_all(her
     assert len(herdr.of("workspace create")) == 1
     assert second.startswith("w7:")  # beside the first, in the workspace it opened
     assert bridge.registry.bindings() == {"w7": "checkout"}
-    assert herdr.of("agent start")[1][2:5] == ["b", "--kind", "codex"]
+    assert herdr.of("agent start")[1][2:5] == ["b_checkout", "--kind", "codex"]
+
+
+def test_a_restart_resumes_the_session_on_record_after_its_pane_stopped(herdr: FakeHerdr):
+    bridge = _setup(herdr)
+    # herdr no longer reports @reviewer (its pane is a bare shell), but the
+    # session the sync pass recorded while it ran is still on record.
+    mapping = bridge.registry.get("checkout", "reviewer")
+    assert mapping is not None
+    bridge.registry.set(replace(mapping, session="sess-9"))
+    reviewer = _report(bridge).find("reviewer")
+    assert reviewer.session == "sess-9" and machine.resumes(reviewer)
+    assert "in its own session" in machine.restart_command(reviewer)
+
+    machine.restart(_config(), reviewer, bridge=bridge)
+
+    assert herdr.of("agent start")[0][-2:] == ["--resume", "sess-9"]
+    prompt = herdr.of("agent prompt")[0][3]
+    assert "your conversation is intact" in prompt and "You are still @reviewer" in prompt
+    kept = bridge.registry.get("checkout", "reviewer")
+    assert kept is not None and kept.session == "sess-9"
+
+
+def test_a_session_already_running_elsewhere_isnt_started_twice(herdr: FakeHerdr):
+    bridge = _setup(herdr)
+    mapping = bridge.registry.get("checkout", "reviewer")
+    assert mapping is not None
+    bridge.registry.set(replace(mapping, session="sess-9"))
+    herdr.agents.append(
+        {
+            "pane_id": "w3:p4",
+            "workspace_id": "w3",
+            "agent_status": "idle",
+            "agent": "claude",
+            "agent_session": {"kind": "id", "value": "sess-9"},
+        }
+    )
+    with pytest.raises(machine.MachineError, match="already running in pane w3:p4"):
+        machine.restart(_config(), _report(bridge).find("reviewer"), bridge=bridge)
+    assert herdr.of("agent start") == []
+
+
+def test_an_agent_cli_that_cant_resume_starts_a_new_session(herdr: FakeHerdr):
+    bridge = HerdrBridge(runner=herdr)
+    bridge.registry.set(
+        HerdrPaneMapping(
+            room="checkout", handle="a", pane="w9:a", kind="codex", cwd="/w", session="sess-1"
+        )
+    )
+    a = _report(bridge).find("a")
+    assert not machine.resumes(a)
+    assert "in a new session" in machine.restart_command(a)
+    machine.restart(_config(), a, bridge=bridge)
+    assert "--resume" not in herdr.of("agent start")[0]
+
+
+def test_the_sync_pass_records_each_mapped_panes_session(herdr: FakeHerdr):
+    from mycelium.commands.herdr import _collect_presence
+
+    bridge = _setup(herdr)
+    herdr.agents[0]["agent_session"] = {"kind": "id", "value": "sess-b"}
+    _collect_presence(bridge, None)
+    kept = bridge.registry.get("checkout", "builder")
+    assert kept is not None and kept.session == "sess-b"
+    # A later write that doesn't say a session keeps it, for the same pane.
+    bridge.registry.set(
+        HerdrPaneMapping(room="checkout", handle="builder", pane="w2:p1", kind="claude")
+    )
+    again = bridge.registry.get("checkout", "builder")
+    assert again is not None and again.session == "sess-b"
+
+
+def test_herdr_names_are_scoped_by_room_and_fit_herdrs_rule():
+    import re
+
+    from mycelium.integrations.herdr import herdr_name
+
+    rule = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+    assert herdr_name("mycelium-general", "reviewer") == "reviewer_mycelium-general"
+    # The same handle in two rooms gets two names, so neither blocks the other.
+    assert herdr_name("wow-forever-buddy", "reviewer") != herdr_name("mycelium-general", "reviewer")
+    long_room = "a-room-whose-name-goes-on-for-a-very-long-time"
+    for name in (
+        herdr_name(long_room, "reviewer"),
+        herdr_name(long_room, "a-handle-that-is-itself-quite-long-too"),
+        herdr_name("Checkout Room", "@3d-printer"),
+    ):
+        assert rule.match(name), name
+    # Cut names stay unique per room and handle.
+    assert herdr_name(long_room, "reviewer") != herdr_name(long_room + "-2", "reviewer")
+    # An underscore in a handle or room can't move the split between them.
+    assert herdr_name("x", "build_bot") != herdr_name("bot_x", "build")
+    assert herdr_name("x", "build_bot") == "build-bot_x"
 
 
 def test_a_running_agent_isnt_restarted(herdr: FakeHerdr):

@@ -313,8 +313,14 @@ SHELL_WAIT_S = 30.0
 SLOW_START_S = 10.0
 
 
-def _start_when_ready(bridge: Any, handle: str, kind: str, pane: str) -> dict | None:
+def _start_when_ready(
+    bridge: Any, handle: str, kind: str, pane: str, *, room: str, resume: str | None = None
+) -> dict | None:
     """Start ``kind`` in ``pane``, giving a just-opened pane's shell time to come up.
+
+    herdr names it for ``handle`` in ``room`` (:func:`herdr_name`), so a handle
+    taken by an agent of another room here never blocks it. ``resume`` is a
+    session to start it in, for a kind that can resume one.
 
     herdr starts an agent only in a pane sitting at its shell prompt, and a
     pane split a moment ago may still be starting its shell, so a start herdr
@@ -329,15 +335,22 @@ def _start_when_ready(bridge: Any, handle: str, kind: str, pane: str) -> dict | 
     agent, and :class:`HerdrError` for anything else.
     """
     from mycelium.integrations.agents import of_kind
-    from mycelium.integrations.herdr import AgentNotReadyError, HerdrError, ShellNotReadyError
+    from mycelium.integrations.herdr import (
+        AgentNotReadyError,
+        HerdrError,
+        ShellNotReadyError,
+        herdr_name,
+    )
     from mycelium.integrations.herdr.bridge import NOT_A_SHELL
 
+    known = of_kind(kind)
+    args = known.launch_args() + ((known.resume_args(resume) or []) if resume else [])
     deadline = time.monotonic() + SHELL_WAIT_S
     failures = 0
     while True:
         began = time.monotonic()
         try:
-            bridge.start_agent(handle, kind, pane, agent_args=of_kind(kind).launch_args() or None)
+            bridge.start_agent(herdr_name(room, handle), kind, pane, agent_args=args or None)
         except HerdrError as e:
             if (agent := bridge.get_agent(pane)) is not None:
                 return agent
@@ -355,14 +368,16 @@ def _start_when_ready(bridge: Any, handle: str, kind: str, pane: str) -> dict | 
             return None
 
 
-def _start_unblocked(bridge: Any, handle: str, kind: str, pane: str) -> None:
+def _start_unblocked(
+    bridge: Any, handle: str, kind: str, pane: str, *, room: str, resume: str | None = None
+) -> None:
     """:func:`_start_when_ready`, refusing to go on past an agent waiting for input.
 
     The pane is left open: what it waits on is the person's to answer.
     """
     from mycelium.integrations.herdr import HerdrError
 
-    agent = _start_when_ready(bridge, handle, kind, pane)
+    agent = _start_when_ready(bridge, handle, kind, pane, room=room, resume=resume)
     if agent is not None and agent.get("agent_status") == "blocked":
         raise HerdrError(
             f"@{handle} started in pane {pane} but is waiting for input there; "
@@ -419,7 +434,7 @@ def start_local(
     local = LocalTeam(workspace=workspace, panes=panes)
 
     for handle, pane in local.panes.items():
-        _start_unblocked(bridge, handle, kind, pane)
+        _start_unblocked(bridge, handle, kind, pane, room=room)
         mapping = HerdrPaneMapping(
             room=room, handle=handle, pane=pane, kind=kind, managed=True, cwd=str(dirs[handle])
         )
