@@ -103,8 +103,9 @@ logger = logging.getLogger(__name__)
 #: How a held wake's reason ranks when another wake for the same handle
 #: arrives: something it subscribed to least, so it never replaces an ask,
 #: then a text mention, a turn put to it, a task given to it or its schedule
-#: above that, and an interrupt above all. A reason not listed ranks with a
-#: turn.
+#: above that, and an interrupt above those. A resume outranks everything: its
+#: digest covers whatever else was asked while the agent was paused. A reason
+#: not listed ranks with a turn.
 WAKE_RANK = {
     "subscribed": -1,
     "mention": 0,
@@ -113,6 +114,7 @@ WAKE_RANK = {
     "handback": 1,
     "schedule": 1,
     "interrupt": 2,
+    "resumed": 3,
 }
 
 # The moderator's app id (third Name segment) on every room channel. Distinct
@@ -703,9 +705,11 @@ class RoomChannelManager:
                 )
             return False
         if reason == "interrupt":
-            from app.services import interrupts
+            from app.services import interrupts, pauses
 
-            if not interrupts.request(room, name, sender, status):
+            # A paused agent stays paused: the @! waits for its resume like
+            # any other ask.
+            if pauses.is_paused(room, name) or not interrupts.request(room, name, sender, status):
                 reason = "mention"
         self.enqueue_herdr_wake(room, name, reason=reason, sender=sender, episode=episode)
         return True
@@ -800,16 +804,26 @@ class RoomChannelManager:
         than ``hold_ttl_s`` is dropped so a never-idle agent doesn't hold a tag
         forever. Presence is refreshed by the sync bridge every few seconds, so
         the backend's view of "idle" is near-live.
+
+        A paused agent's wake is held whatever its state and however long, and
+        never dropped: its resume (``reason="resumed"``) takes its place, and
+        that digest covers everything that arrived during the pause.
         """
         queue = self._herdr_wakes.get(room)
         if not queue:
             return []
+        from app.services import pauses
+
         now = time.monotonic()
         live = self._live_herdr(room)
+        paused = pauses.paused_in(room)
         released: list[dict] = []
         held: list[dict] = []
         for w in queue:
             status = live.get(w["handle"], (None,))[0]
+            if w["handle"] in paused:
+                held.append(w)
+                continue
             if now - float(w.get("ts", now)) > hold_ttl_s:
                 # Stale hold: dropped, and said why in the wake log.
                 from app.services import wake_log

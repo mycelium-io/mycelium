@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.bus import app_channel, bus
 from app.schemas import RoomCreate, RoomRead
-from app.services import actor, room_access, room_channels, room_people
+from app.services import actor, pauses, room_access, room_channels, room_people
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import (
     ensure_room_structure,
@@ -264,6 +264,7 @@ async def delete_room(room_name: str):
 
     await room_channels.manager.close(room_name)
     remove_room_dir(room_name)
+    pauses.forget_room(room_name)
     logger.info("Removed room %s", room_name)
 
     bus.publish(app_channel(), {"type": "room_deleted", "room_name": room_name})

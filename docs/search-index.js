@@ -2259,6 +2259,30 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-agent",
+    "t": "mycelium agent pause [<handle>] [--all] [--room <room>] [--as <you>]",
+    "s": "CLI Reference",
+    "x": "Pause an agent you own: its turn stops, it's told this is a pause and not a correction, and nothing wakes it until it's resumed. Messages for it still land. --all pauses every agent you own.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium agent resume [<handle>] [--all] [--room <room>] [--as <you>]",
+    "s": "CLI Reference",
+    "x": "Resume a paused agent: it's woken with what arrived while it was paused. --all resumes every agent you paused.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium agent stop <handle> [--room <room>] [--as <you>] [--yes]",
+    "s": "CLI Reference",
+    "x": "Stop an agent you own: the machine running it interrupts it and closes its pane. It stays a member, and can be restarted.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
     "t": "mycelium agent credential set <handle> [--client-id ID] [--secret-stdin] [--issuer URL]",
     "s": "CLI Reference",
     "x": "Give an agent its own service-account credential, stored 0600 outside config.toml. Only meaningful once a hub enables auth.",

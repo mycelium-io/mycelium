@@ -1452,6 +1452,163 @@ def agent_rename(
         raise typer.Exit(1) from None
 
 
+# ── pause, resume, stop ──────────────────────────────────────────────────────
+
+_CONTROL_DONE = {"pause": "Paused", "resume": "Resumed", "stop": "Stopped"}
+
+
+def _control(
+    ctx: typer.Context,
+    verb: str,
+    handle: str | None,
+    room: str | None,
+    by: str | None,
+    *,
+    every: bool,
+) -> None:
+    """Pause, resume or stop one agent, or (``every``) every agent ``by`` owns.
+
+    Always through the hub, which records it and asks the machine running the
+    agent, so what the hub says and what the agent was told can't disagree.
+    """
+    import httpx
+
+    if handle and every:
+        console.print("[red]Name one agent, or pass --all, not both.[/red]")
+        raise typer.Exit(2)
+    if not handle and not every:
+        console.print(f"[red]Name an agent to {verb}, or pass --all for every agent you own.[/red]")
+        raise typer.Exit(2)
+    try:
+        config = MyceliumConfig.load()
+        with hub_client(config) as client:
+            if every:
+                resp = client.post(f"/api/agents/{verb}", json={"by": by, "room": room})
+            else:
+                name = (handle or "").lstrip("@")
+                where = _resolve_room(config, room)
+                resp = client.post(f"/api/rooms/{where}/agents/{name}/{verb}", json={"by": by})
+        if resp.status_code >= 400:
+            try:
+                detail = resp.json().get("detail")
+            except ValueError:
+                detail = resp.text
+            console.print(f"[red]Couldn't {verb} {handle or 'your agents'}:[/red] {detail}")
+            raise typer.Exit(1)
+        body = resp.json()
+        if ctx.obj and ctx.obj.get("json"):
+            print(json_module.dumps(body))
+            return
+        done = body.get("agents", [body]) if every else [body]
+        if not done:
+            console.print(f"Nothing to {verb}: you own no agents{f' in {room}' if room else ''}.")
+            return
+        for agent in done:
+            line = f"[green]{_CONTROL_DONE[verb]}[/green] @{agent['handle']} in {agent['room']}"
+            if verb == "pause" and not agent.get("runner"):
+                line += " (no machine is running it; its wakes are held)"
+            console.print(line)
+        if verb == "pause":
+            again = "--all" if every else f"{handle} --room {done[0]['room']}"
+            console.print(f"Resume with `mycelium agent resume {again}`.")
+    except typer.Exit:
+        raise
+    except httpx.HTTPError as e:
+        console.print(f"[red]Couldn't reach the hub:[/red] {e}")
+        raise typer.Exit(1) from None
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
+_ALL_HELP = "Every agent you own, in every room (or only --room's)"
+_CONTROL_ROOM_HELP = "The agent's room, or with --all only that room's agents"
+
+
+@doc_ref(
+    usage="mycelium agent pause [<handle>] [--all] [--room <room>] [--as <you>]",
+    desc=(
+        "Pause an agent you own: its turn stops, it's told this is a pause and not a "
+        "correction, and nothing wakes it until it's resumed. Messages for it still land. "
+        "<code>--all</code> pauses every agent you own."
+    ),
+    group="agent",
+)
+@app.command("pause")
+@in_room(resolve=False, help=_CONTROL_ROOM_HELP)
+@acts_as("by", fallback=None)
+@emits_json()
+def agent_pause(
+    ctx: typer.Context,
+    handle: str | None = typer.Argument(None, help="The agent to pause"),
+    every: bool = typer.Option(False, "--all", help=_ALL_HELP),
+    room: str | None = None,
+    by: str | None = None,
+) -> None:
+    """Pause an agent you own, or every one (``--all``).
+
+    A working agent's turn is stopped with its CLI's own key, and it's told the
+    pause came from Mycelium, isn't a correction, and to wait. Its wakes are
+    held, so a mention doesn't start it again; messages still land, and the
+    resume hands it everything that arrived.
+    """
+    _control(ctx, "pause", handle, room, by, every=every)
+
+
+@doc_ref(
+    usage="mycelium agent resume [<handle>] [--all] [--room <room>] [--as <you>]",
+    desc=(
+        "Resume a paused agent: it's woken with what arrived while it was paused. "
+        "<code>--all</code> resumes every agent you paused."
+    ),
+    group="agent",
+)
+@app.command("resume")
+@in_room(resolve=False, help=_CONTROL_ROOM_HELP)
+@acts_as("by", fallback=None)
+@emits_json()
+def agent_resume(
+    ctx: typer.Context,
+    handle: str | None = typer.Argument(None, help="The agent to resume"),
+    every: bool = typer.Option(False, "--all", help=_ALL_HELP),
+    room: str | None = None,
+    by: str | None = None,
+) -> None:
+    """Resume an agent you own, or every paused one (``--all``)."""
+    _control(ctx, "resume", handle, room, by, every=every)
+
+
+@doc_ref(
+    usage="mycelium agent stop <handle> [--room <room>] [--as <you>] [--yes]",
+    desc=(
+        "Stop an agent you own: the machine running it interrupts it and closes its "
+        "pane. It stays a member, and can be restarted."
+    ),
+    group="agent",
+)
+@app.command("stop")
+@in_room(resolve=False, help="The agent's room")
+@acts_as("by", fallback=None)
+@confirms()
+@emits_json()
+def agent_stop(
+    ctx: typer.Context,
+    handle: str = typer.Argument(..., help="The agent to stop"),
+    room: str | None = None,
+    by: str | None = None,
+    yes: bool = False,
+) -> None:
+    """Stop an agent you own and close its pane on the machine running it.
+
+    The hard stop: unlike a pause, its session ends. It stays a member of the
+    room, and its machine can start it again.
+    """
+    if not yes and not typer.confirm(f"Stop @{handle.lstrip('@')} and close its pane?"):
+        raise typer.Exit(0)
+    _control(ctx, "stop", handle, room, by, every=False)
+
+
 # ── credential ───────────────────────────────────────────────────────────────
 #
 # An agent's own credential, so its writes carry *its* identity rather than

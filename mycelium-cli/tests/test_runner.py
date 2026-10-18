@@ -69,6 +69,8 @@ class Herdr:
         self.shell_starting = 0
         #: Called on every ``agent start``, to look at the runner while herdr waits.
         self.on_start: Any = None
+        #: A working agent sent a key settles to idle, the way an interrupted one does.
+        self.keys_settle = False
         #: What ``pane read`` shows.
         self.screen = "Do you trust the files in this folder?\n\n  1. Yes, proceed\n  2. No, exit\n"
         self.layout = HerdrLayout(self._pane)
@@ -125,6 +127,8 @@ class Herdr:
         if head == "pane read":
             return _proc(_ok({"text": self.screen}))
         if head in ("pane run", "pane send-keys"):
+            if head == "pane send-keys" and self.keys_settle and args[2] in self.live:
+                self.live[args[2]] = "idle"
             return _proc("")
         if head == "agent get":
             status = self.live.get(args[2])
@@ -720,6 +724,52 @@ def test_interrupt_reaches_an_agent_the_runner_did_not_start(make_runner, herdr:
     assert result == {"pane": "w3:p1", "interrupted": True}
     with pytest.raises(daemon.JobError, match="Nothing on"):
         r.do({"kind": "interrupt", "spec": {"room": "eng", "handle": "nobody"}})
+
+
+def test_a_pause_stops_the_turn_then_says_it_is_a_pause(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    prompts_before = len(herdr.of("agent prompt"))
+    herdr.live["w9:p1"] = "working"
+    herdr.keys_settle = True
+    spec = {"room": "eng", "handle": "scout", "by": "julia"}
+    result = r.do({"kind": "pause", "spec": spec})
+    assert result == {"pane": "w9:p1", "interrupted": True, "told": True}
+    assert herdr.of("pane send-keys") == [["pane", "send-keys", "w9:p1", "esc"]]
+    told = herdr.of("agent prompt")[prompts_before:]
+    assert len(told) == 1
+    assert "Paused by @julia from Mycelium" in told[0][3]
+    assert "isn't a correction" in told[0][3]
+    assert herdr.of("pane close") == []
+
+
+def test_a_pause_leaves_an_idle_agent_untouched(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    herdr.live["w9:p1"] = "idle"
+    prompts_before = len(herdr.of("agent prompt"))
+    result = r.do({"kind": "pause", "spec": {"room": "eng", "handle": "scout", "by": "julia"}})
+    # Nothing to stop, and nothing typed into a pane a person may be writing in.
+    assert result == {"pane": "w9:p1", "interrupted": False, "told": False}
+    assert herdr.of("pane send-keys") == []
+    assert len(herdr.of("agent prompt")) == prompts_before
+
+
+def test_stop_reaches_an_agent_the_runner_did_not_start(make_runner, herdr: Herdr, hub: Hub):
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    r = make_runner()
+    pane = herdr._pane("w3")
+    r.bridge.registry.set(
+        HerdrPaneMapping(room="eng", handle="planner", pane=pane, kind="claude", managed=True)
+    )
+    herdr.live[pane] = "working"
+    assert r.do({"kind": "stop", "spec": {"room": "eng", "handle": "planner"}}) == {"pane": pane}
+    assert herdr.of("pane close") == [["pane", "close", pane]]
+    # Still a member, so it can be started again; the sync pass won't retire it.
+    mapping = r.bridge.registry.get("eng", "planner")
+    assert mapping is not None
+    assert mapping.managed is False
 
 
 def test_the_runner_remembers_its_agents_across_a_restart(make_runner, herdr: Herdr, hub: Hub):
