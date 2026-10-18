@@ -230,7 +230,7 @@ describe("<EventStream /> live message rendering", () => {
     });
 
     expect(await screen.findByText("Consensus")).toBeInTheDocument();
-    expect(screen.getByText("· 1 issue agreed", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("1 issue agreed", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("GAR 0.80", { exact: false })).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
