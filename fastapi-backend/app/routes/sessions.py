@@ -352,14 +352,7 @@ async def drain_herdr_wakes(room_name: str):
             where = wake_digest.reply_episode(room_name, wake, records)
         except Exception:
             where = None
-        # A wake rung by a subscription alone says which, on the room's line.
-        activity.signal(
-            room_name,
-            wake["handle"],
-            "responding",
-            episode=where,
-            watching=wake.get("watching") if reason == "subscribed" else None,
-        )
+        activity.signal(room_name, wake["handle"], "responding", episode=where)
         wake.pop(wake_digest.READ_FROM, None)
         handed.append(wake)
     return {"wakes": handed}

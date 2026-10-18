@@ -20,6 +20,7 @@ import {
   type JoinedVia,
   type PresenceMember,
   type RoomFloor,
+  type RoomSubscription,
   type RoomOther,
 } from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
@@ -268,7 +269,7 @@ export function AgentsPanel({
   // manifests, people from the hub's record of who joined, others who hold a
   // task or are present, and a presence entry for whoever holds a SLIM socket
   // or an `await` lease.
-  const { agents, people, others, presence, floors, loading, refresh } = useRoomRoster(roomName);
+  const { agents, people, others, presence, floors, subscriptions, loading, refresh } = useRoomRoster(roomName);
   const { room } = useRoom(roomName);
   const removePerson = (handle: string) => {
     removeRoomPerson(roomName, handle)
@@ -475,6 +476,7 @@ export function AgentsPanel({
                       machine={machine}
                       memberPresence={presence.get(a.handle.toLowerCase())}
                       floor={floors.get(a.handle.toLowerCase())}
+                      subscriptions={subscriptions.get(a.handle.toLowerCase())}
                       schedules={scheduled.get(a.handle.toLowerCase()) ?? 0}
                       marked={marked}
                       rowRef={marked ? highlightRow : undefined}
@@ -712,6 +714,7 @@ function AgentRow({
   groupOwner,
   memberPresence,
   floor,
+  subscriptions,
   schedules = 0,
   marked,
   rowRef,
@@ -722,6 +725,8 @@ function AgentRow({
   groupOwner: string | null;
   memberPresence?: PresenceMember;
   floor?: RoomFloor;
+  /** What it subscribed to: woken when these happen, without anyone asking it. */
+  subscriptions?: RoomSubscription[];
   /** How many live schedules wake this agent; a clock shows when there is one. */
   schedules?: number;
   marked: boolean;
@@ -748,6 +753,18 @@ function AgentRow({
           <DetailRow
             label="schedules"
             value={schedules ? `${schedules} (see the Schedules tab)` : undefined}
+          />
+          <DetailRow
+            label="subscribed"
+            value={
+              subscriptions?.length ? (
+                <span className="flex flex-col">
+                  {subscriptions.map((s) => (
+                    <span key={s.id}>{s.describe}</span>
+                  ))}
+                </span>
+              ) : undefined
+            }
           />
           <DetailRow
             label="skills"

@@ -334,15 +334,8 @@ async def await_message(
             # lands, the room is waiting on it. Transient, bus-only (#513). A
             # wake already said where it's replying (the thread its digest
             # named); scoped to a task, the agent chose the thread, so that wins.
-            # Woken by a subscription alone, the line says which.
             if scoped or not activity.is_responding(room_name, handle):
-                activity.signal(
-                    room_name,
-                    handle,
-                    "responding",
-                    episode=record_episode(record),
-                    watching=subscribed.watching if subscribed else None,
-                )
+                activity.signal(room_name, handle, "responding", episode=record_episode(record))
             _metrics.record_await_poll(
                 room=room_name,
                 handle=handle,

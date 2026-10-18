@@ -1791,21 +1791,37 @@ export interface RoomFloor {
   speakers: string[];
 }
 
+/** Something an agent subscribed to (`mycelium subscribe`), so it is woken
+ *  when it happens without anyone asking it. */
+export interface RoomSubscription {
+  id: string;
+  handle: string;
+  kind: "task" | "notice" | "member" | "search";
+  target: string;
+  /** How a person reads it: "work/x and its parts", "resolved notices". */
+  describe: string;
+  /** When it ends, if it was given an end; a task's ends with the task. */
+  until: string | null;
+}
+
 export interface RoomPresence {
   members: PresenceMember[];
   floors: RoomFloor[];
+  subscriptions: RoomSubscription[];
 }
 
 /** Live presence set for a room: SLIM-connected + server-held lease members,
- *  and the floors held in its threads right now. */
+ *  the floors held in its threads right now, and what its agents subscribed to. */
 export async function fetchRoomMembers(roomName: string): Promise<RoomPresence> {
-  const data = await apiFetch<{ members?: PresenceMember[]; floors?: RoomFloor[] }>(
-    `${roomApiPath(roomName)}/sessions/members`,
-    { cache: "no-store", fallback: {} },
-  );
+  const data = await apiFetch<{
+    members?: PresenceMember[];
+    floors?: RoomFloor[];
+    subscriptions?: RoomSubscription[];
+  }>(`${roomApiPath(roomName)}/sessions/members`, { cache: "no-store", fallback: {} });
   return {
     members: Array.isArray(data.members) ? data.members : [],
     floors: Array.isArray(data.floors) ? data.floors : [],
+    subscriptions: Array.isArray(data.subscriptions) ? data.subscriptions : [],
   };
 }
 

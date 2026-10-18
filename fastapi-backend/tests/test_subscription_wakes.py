@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
-from app.services import activity, room_channels, subscriptions, wake_log
+from app.services import room_channels, subscriptions, wake_log
 from tests import wake_paths
 from tests.wake_paths import AGENT, PEER, PERSON, ROOM
 
@@ -96,45 +96,6 @@ async def test_a_post_in_a_subscribed_task_rings_says_why_and_is_awaited(room):
     assert turn["why"] == f"you subscribed to {TASK}: @{PERSON} posted in it"
     assert turn["asks"] == []
     assert [w["message_id"] for w in turn["watching"]] == [posted]
-
-
-def _responding(monkeypatch) -> list[dict]:
-    """The "is responding" frames the room's line is drawn from."""
-    frames: list[dict] = []
-
-    class _Bus:
-        def publish(self, _channel, frame):
-            if frame.get("type") == activity.ACTIVITY_TYPE and frame["state"] == "responding":
-                frames.append(frame)
-
-    monkeypatch.setattr(activity, "bus", _Bus())
-    activity.reset()
-    return frames
-
-
-@pytest.mark.asyncio
-async def test_the_responding_line_says_which_subscription_woke_the_agent(room, monkeypatch):
-    frames = _responding(monkeypatch)
-    await _subscribe(room, kind="task", target=TASK)
-    await wake_paths.say(room, PERSON, "the parser is green now", where="thread")
-    await wake_paths.handed(room)  # the doorbell's delivery
-    assert [(f["handle"], f.get("watching")) for f in frames] == [(AGENT, TASK)]
-
-    # Read through ``await`` with nothing standing, it says the same.
-    activity.reset()
-    await wake_paths.say(room, PERSON, "and the docs too", where="thread")
-    await wake_paths.await_turn(AGENT)
-    assert frames[-1].get("watching") == TASK
-
-
-@pytest.mark.asyncio
-async def test_a_mention_s_responding_line_names_no_subscription(room, monkeypatch):
-    frames = _responding(monkeypatch)
-    await _subscribe(room, kind="task", target=TASK)
-    await wake_paths.say(room, PERSON, "the parser is green now", where="thread")
-    await wake_paths.say(room, PERSON, "@coder can you ship it?")
-    await wake_paths.handed(room)
-    assert [f.get("watching") for f in frames] == [None]
 
 
 @pytest.mark.asyncio

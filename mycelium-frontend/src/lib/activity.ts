@@ -29,16 +29,12 @@ export interface ActivityFrame {
   state: "responding" | "done";
   episode?: string | null;
   ttl_s?: number;
-  /** The subscription that woke it, when nothing asked it (`work/x and its parts`). */
-  watching?: string | null;
 }
 
 export interface Responding {
   handle: string;
   /** The thread the turn is in, or null for the room's own channel. */
   episode: string | null;
-  /** The subscription that woke it, when nobody asked it; null for an ask. */
-  watching: string | null;
   /** When the current `responding` arrived (ms since epoch). */
   since: number;
   /** When it is dropped if nothing has been heard from the handle (ms since epoch). */
@@ -62,21 +58,7 @@ export function applyActivity(current: Responding[], frame: ActivityFrame, now: 
   const rest = current.filter((r) => r.handle !== handle);
   if (frame.state === "done") return rest;
   const ttl = typeof frame.ttl_s === "number" && frame.ttl_s > 0 ? frame.ttl_s * 1000 : DEFAULT_TTL_MS;
-  const watching = typeof frame.watching === "string" && frame.watching ? frame.watching : null;
-  return [...rest, { handle, episode: frame.episode ?? null, watching, since: now, until: now + ttl }];
-}
-
-/** Why an agent nobody asked is responding, when the line names one agent a
- *  subscription woke: "it subscribed to this task" when the subscription is
- *  the task whose thread it's answering in (`threadKeys`, that thread's rows),
- *  else "it subscribed to resolved notices" and so on, in the hub's words.
- *  Several agents on one line say nothing, since one subscription can't speak
- *  for all of them. */
-export function watchingNote(entries: Responding[], threadKeys: string[] = []): string | null {
-  const watching = entries.length === 1 ? entries[0].watching : null;
-  if (!watching) return null;
-  const thisTask = threadKeys.some((key) => watching === key || watching.startsWith(`${key} and its parts`));
-  return `it subscribed to ${thisTask ? "this task" : watching}`;
+  return [...rest, { handle, episode: frame.episode ?? null, since: now, until: now + ttl }];
 }
 
 /** A message from the handle is the turn ending, whatever the frames said. */

@@ -12,7 +12,6 @@ import {
   respondingNames,
   settleActivity,
   splitActivity,
-  watchingNote,
   type Responding,
 } from "@/lib/activity";
 
@@ -41,16 +40,7 @@ describe("recognising an activity frame", () => {
 describe("folding frames", () => {
   it("a responding adds one entry per handle, with the frame's TTL", () => {
     const next = applyActivity([], frame("aligner", "responding", { ttl_s: 30, episode: "urn:e1" }), T0);
-    expect(next).toEqual<Responding[]>([
-      { handle: "aligner", episode: "urn:e1", watching: null, since: T0, until: T0 + 30_000 },
-    ]);
-  });
-
-  it("keeps the subscription that woke it, and drops it when the next turn was asked", () => {
-    let s = applyActivity([], frame("builder", "responding", { watching: "work/release-3-1 and its parts" }), T0);
-    expect(s[0].watching).toBe("work/release-3-1 and its parts");
-    s = applyActivity(s, frame("builder", "responding"), T0 + 1);
-    expect(s[0].watching).toBeNull();
+    expect(next).toEqual<Responding[]>([{ handle: "aligner", episode: "urn:e1", since: T0, until: T0 + 30_000 }]);
   });
 
   it("a second responding for the same handle refreshes rather than duplicates", () => {
@@ -95,7 +85,7 @@ describe("settling and expiring", () => {
 
 describe("the line", () => {
   const at = (...handles: string[]): Responding[] =>
-    handles.map((h) => ({ handle: h, episode: null, watching: null, since: T0, until: T0 + 1 }));
+    handles.map((h) => ({ handle: h, episode: null, since: T0, until: T0 + 1 }));
 
   it("reads naturally for one, two and many", () => {
     expect(respondingLabel([])).toBe("");
@@ -110,29 +100,10 @@ describe("the line", () => {
     expect(respondingLabel(at("aligner"), "elsewhere")).toBe("@aligner is responding in");
     expect(respondingLabel(at("a", "b"), "elsewhere")).toBe("@a and @b are responding in");
   });
-
-  it("says which subscription woke one agent nobody asked, and nothing for several", () => {
-    const woken = { ...at("builder")[0], watching: "work/release-3-1" };
-    expect(watchingNote([woken])).toBe("it subscribed to work/release-3-1");
-    // In the subscribed task's own thread, with or without its parts.
-    expect(watchingNote([woken], ["work/release-3-1"])).toBe("it subscribed to this task");
-    const parts = { ...woken, watching: "work/release-3-1 and its parts" };
-    expect(watchingNote([parts], ["work/release-3-1"])).toBe("it subscribed to this task");
-    const notices = { ...woken, watching: "resolved notices" };
-    expect(watchingNote([notices], ["work/release-3-1"])).toBe("it subscribed to resolved notices");
-    expect(watchingNote(at("builder"))).toBeNull();
-    expect(watchingNote([woken, ...at("reviewer")])).toBeNull();
-  });
 });
 
 describe("splitting by where the turn lands", () => {
-  const entry = (handle: string, episode: string | null): Responding => ({
-    handle,
-    episode,
-    watching: null,
-    since: T0,
-    until: T0 + 1,
-  });
+  const entry = (handle: string, episode: string | null): Responding => ({ handle, episode, since: T0, until: T0 + 1 });
   const live = "urn:ioc:mycelium:episode:atlas:live";
 
   it("keeps room-level turns here and groups thread turns by their thread", () => {
