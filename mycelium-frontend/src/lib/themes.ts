@@ -12,6 +12,8 @@
  * which icon stands for the theme.
  */
 
+import { CUSTOM_CLASS, CUSTOM_THEME } from "@/lib/custom-themes";
+
 export type ThemeMode = "light" | "dark";
 
 export interface Theme {
@@ -44,17 +46,22 @@ export const THEMES: readonly Theme[] = [
 /** Follow the computer's light or dark setting, with Mycelium's two themes. */
 export const SYSTEM = "system";
 
-/** What next-themes is given: every theme id, and the class each one sets. */
-export const THEME_IDS = THEMES.map((t) => t.id);
-export const THEME_CLASSES: Record<string, string> = Object.fromEntries(
-  THEMES.map((t) => [t.id, t.className]),
-);
+/** What next-themes is given: every theme id, and the class each one sets.
+ *  The custom theme is one more id; which imported theme it shows, and its
+ *  colors, are set beside it (`components/custom-theme.tsx`). */
+export const THEME_IDS = [...THEMES.map((t) => t.id), CUSTOM_THEME];
+export const THEME_CLASSES: Record<string, string> = {
+  ...Object.fromEntries(THEMES.map((t) => [t.id, t.className])),
+  [CUSTOM_THEME]: CUSTOM_CLASS,
+};
 
 export function themeById(id: string | undefined): Theme | undefined {
   return THEMES.find((t) => t.id === id);
 }
 
-/** Whether ``id`` (a theme, or what "system" resolved to) draws dark. */
-export function modeOf(id: string | undefined): ThemeMode {
+/** Whether ``id`` (a theme, or what "system" resolved to) draws dark. The
+ *  custom theme's mode is its own, so a caller showing it passes that. */
+export function modeOf(id: string | undefined, customMode?: ThemeMode): ThemeMode {
+  if (id === CUSTOM_THEME && customMode) return customMode;
   return themeById(id)?.mode ?? "dark";
 }

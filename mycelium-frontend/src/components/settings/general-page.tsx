@@ -12,6 +12,7 @@ import {
   exportClientSettings,
   importClientSettings,
   resetClientSetting,
+  setClientSetting,
   useClientSetting,
   type AgentAvatars,
   type SendKey,
@@ -21,7 +22,13 @@ import { Select } from "@/components/ui/select";
 import { useIsClient } from "@/lib/client-hooks";
 import { useIsDesktop } from "@/lib/desktop";
 import { SYSTEM, THEMES } from "@/lib/themes";
+import { CUSTOM_THEME } from "@/lib/custom-themes";
+import { useCustomThemes } from "@/components/custom-theme";
+import { CustomThemesRow } from "./custom-themes-row";
 import { Note, Row, Section, Segmented, SettingsPage } from "./settings-ui";
+
+/** How an imported theme is told apart from a built-in one in the dropdown. */
+const CUSTOM_PREFIX = "custom:";
 
 /** Download what this browser has set, to take to another one. */
 function exportFile() {
@@ -45,6 +52,7 @@ export function GeneralPage() {
   const [imported, setImported] = useState<string | null>(null);
   const here = mounted ? localZone() : "";
   const currentTheme = (mounted ? theme : undefined) ?? "dark";
+  const { themes: customThemes, active: activeCustom } = useCustomThemes();
 
   const onImport = async (file: File | undefined) => {
     if (!file) return;
@@ -83,17 +91,46 @@ export function GeneralPage() {
         <Row
           id="general.theme"
           label="Theme"
-          help="Mycelium's own light or dark, or a theme you know from your editor. Matching this computer picks Mycelium light or dark to suit it."
+          help="Mycelium's own light or dark, a theme you know from your editor, or one of your own. Matching this computer picks Mycelium light or dark to suit it."
         >
-          <Select aria-label="Theme" value={currentTheme} onChange={(e) => setTheme(e.target.value)}>
+          <Select
+            aria-label="Theme"
+            value={currentTheme === CUSTOM_THEME && activeCustom ? `${CUSTOM_PREFIX}${activeCustom.id}` : currentTheme}
+            onChange={(e) => {
+              const picked = e.target.value;
+              if (picked.startsWith(CUSTOM_PREFIX)) {
+                setClientSetting("appearance.custom-theme", picked.slice(CUSTOM_PREFIX.length));
+                setTheme(CUSTOM_THEME);
+              } else setTheme(picked);
+            }}
+          >
             <option value={SYSTEM}>Match this computer</option>
-            {THEMES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
+            <optgroup label="Light">
+              {THEMES.filter((t) => t.mode === "light").map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Dark">
+              {THEMES.filter((t) => t.mode === "dark").map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </optgroup>
+            {customThemes.length > 0 && (
+              <optgroup label="Yours">
+                {customThemes.map((t) => (
+                  <option key={t.id} value={`${CUSTOM_PREFIX}${t.id}`}>
+                    {t.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </Select>
         </Row>
+        <CustomThemesRow />
         <Row
           id="general.agent-avatars"
           label="Agents appear as"

@@ -13,6 +13,7 @@
  *  this tab or another one. */
 
 import { useCallback, useSyncExternalStore } from "react";
+import { sanitizeCustomThemes, type CustomTheme } from "@/lib/custom-themes";
 import { isDesktop } from "@/lib/desktop";
 import { setDesktopApp, setKeyOverrides } from "@/lib/keymap";
 
@@ -37,6 +38,10 @@ export interface ClientSettings {
   "general.time-zone": string;
   /** Keyboard shortcuts changed from their defaults, by action id. */
   "keys.overrides": Record<string, string[]>;
+  /** Themes imported as JSON (`lib/custom-themes.ts`). */
+  "appearance.custom-themes": CustomTheme[];
+  /** Which of them the custom theme shows; empty when none is picked. */
+  "appearance.custom-theme": string;
 }
 
 export type ClientSettingId = keyof ClientSettings;
@@ -46,6 +51,8 @@ export const CLIENT_DEFAULTS: ClientSettings = {
   "general.agent-avatars": "creatures",
   "general.time-zone": "",
   "keys.overrides": {},
+  "appearance.custom-themes": [],
+  "appearance.custom-theme": "",
 };
 
 /** The settings page each client setting is on, for `settingHref`. */
@@ -54,6 +61,8 @@ const PAGE_OF: Record<ClientSettingId, SettingsPage> = {
   "general.agent-avatars": "general",
   "general.time-zone": "general",
   "keys.overrides": "keys",
+  "appearance.custom-themes": "general",
+  "appearance.custom-theme": "general",
 };
 
 export const SETTINGS_PAGES = [
@@ -113,7 +122,7 @@ function migrate(stored: Partial<ClientSettings>): Partial<ClientSettings> {
 /** Drop anything stored that doesn't match its setting's type, so a hand edit
  *  or an older version can't put a wrong value in front of the app. */
 function sanitize(stored: Partial<ClientSettings>): ClientSettings {
-  const out: ClientSettings = { ...CLIENT_DEFAULTS, "keys.overrides": {} };
+  const out: ClientSettings = { ...CLIENT_DEFAULTS, "keys.overrides": {}, "appearance.custom-themes": [] };
   if (stored["general.send"] === "enter" || stored["general.send"] === "mod-enter") {
     out["general.send"] = stored["general.send"];
   }
@@ -126,6 +135,11 @@ function sanitize(stored: Partial<ClientSettings>): ClientSettings {
     for (const [id, chords] of Object.entries(keys)) {
       if (Array.isArray(chords) && chords.every((c) => typeof c === "string")) out["keys.overrides"][id] = chords;
     }
+  }
+  out["appearance.custom-themes"] = sanitizeCustomThemes(stored["appearance.custom-themes"]);
+  const active = stored["appearance.custom-theme"];
+  if (typeof active === "string" && out["appearance.custom-themes"].some((t) => t.id === active)) {
+    out["appearance.custom-theme"] = active;
   }
   return out;
 }

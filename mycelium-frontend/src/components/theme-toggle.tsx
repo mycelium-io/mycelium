@@ -4,21 +4,34 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useIsClient } from "@/lib/client-hooks";
 import { useTheme } from "next-themes";
-import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react";
+import { useCustomThemes } from "@/components/custom-theme";
 import { useCommands } from "@/components/keymap-provider";
 import { IconButton } from "@/components/ui/icon-button";
+import { clientSettingHref, setClientSetting } from "@/lib/client-settings";
 import type { PaletteCommand } from "@/lib/commands";
-import { SYSTEM, THEMES, modeOf } from "@/lib/themes";
+import { CUSTOM_THEME } from "@/lib/custom-themes";
+import { SYSTEM, THEMES, modeOf, type ThemeMode } from "@/lib/themes";
 
-const OPTIONS: { value: string; label: string; icon: LucideIcon }[] = [
-  ...THEMES.map((t) => ({ value: t.id, label: t.label, icon: t.mode === "dark" ? Moon : Sun })),
-  { value: SYSTEM, label: "Match this computer", icon: Monitor },
-];
+interface Option {
+  /** The next-themes id, or the custom theme's own id for one of yours. */
+  value: string;
+  label: string;
+  mode: ThemeMode;
+  custom?: boolean;
+}
+
+/** A theme's icon: a moon for a dark one, a sun for a light one. */
+function ModeIcon({ mode }: { mode: ThemeMode }) {
+  return mode === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />;
+}
 
 export function ThemeToggle() {
   const { theme, resolvedTheme, setTheme } = useTheme();
+  const { themes: customThemes, active: activeCustom } = useCustomThemes();
   const [open, setOpen] = useState(false);
   const mounted = useIsClient();
   const ref = useRef<HTMLDivElement>(null);
@@ -37,45 +50,105 @@ export function ThemeToggle() {
     };
   }, [open]);
 
+  const groups = useMemo<[string, Option[]][]>(() => {
+    const builtIn = (mode: ThemeMode) =>
+      THEMES.filter((t) => t.mode === mode).map((t) => ({ value: t.id, label: t.label, mode }));
+    const yours = customThemes.map((t) => ({ value: t.id, label: t.name, mode: t.mode, custom: true }));
+    return [
+      ["Light", builtIn("light")],
+      ["Dark", builtIn("dark")],
+      ["Yours", yours],
+    ];
+  }, [customThemes]);
+
+  const pick = (option: Option) => {
+    if (option.custom) {
+      setClientSetting("appearance.custom-theme", option.value);
+      setTheme(CUSTOM_THEME);
+    } else setTheme(option.value);
+  };
+  const isShowing = (option: Option) =>
+    option.custom ? theme === CUSTOM_THEME && activeCustom?.id === option.value : theme === option.value;
+
   // Separate commands so palette search finds "Dracula" instead of "Toggle theme".
   const commands = useMemo<PaletteCommand[]>(
-    () =>
-      OPTIONS.map(({ value, label }) => ({
-        id: `theme.${value}`,
-        title: value === SYSTEM ? "Theme: match this computer" : `${label} theme`,
+    () => [
+      ...groups.flatMap(([, options]) =>
+        options.map((option) => ({
+          id: `theme.${option.value}`,
+          title: `${option.label} theme`,
+          group: "Preferences",
+          keywords: ["theme", "appearance", "color", "dark", "light"],
+          run: () => pick(option),
+        })),
+      ),
+      {
+        id: `theme.${SYSTEM}`,
+        title: "Theme: match this computer",
         group: "Preferences",
         keywords: ["theme", "appearance", "color", "dark", "light"],
-        run: () => setTheme(value),
-      })),
-    [setTheme],
+        run: () => setTheme(SYSTEM),
+      },
+    ],
+    // `pick` only reads setters, so the commands change with the list alone.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [groups, setTheme],
   );
   useCommands(commands);
 
-  const Active = (mounted && modeOf(resolvedTheme) === "dark" ? Moon : Sun) as LucideIcon;
+  const row = (selected: boolean) =>
+    `flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-label transition-colors hover:bg-surface ${
+      selected ? "text-accent" : "text-muted-foreground"
+    }`;
 
   return (
     <div ref={ref} className="relative">
       <IconButton label="Theme" size="md" side="bottom" pressed={open} onClick={() => setOpen((o) => !o)}>
-        {mounted ? <Active /> : <span className="size-4" />}
+        {mounted ? <ModeIcon mode={modeOf(resolvedTheme, activeCustom?.mode)} /> : <span className="size-4" />}
       </IconButton>
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1.5 w-52 overflow-hidden rounded-xl border border-border bg-elevated p-1 shadow-xl">
-          {OPTIONS.map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => {
-                setTheme(value);
-                setOpen(false);
-              }}
-              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-label transition-colors hover:bg-surface ${
-                theme === value ? "text-accent" : "text-muted-foreground"
-              }`}
+        <div className="absolute right-0 top-full z-30 mt-1.5 max-h-[min(32rem,calc(100vh-4rem))] w-56 overflow-y-auto rounded-xl border border-border bg-elevated p-1 shadow-xl">
+          <button
+            type="button"
+            onClick={() => {
+              setTheme(SYSTEM);
+              setOpen(false);
+            }}
+            className={row(theme === SYSTEM)}
+          >
+            <Monitor className="size-4" />
+            Match this computer
+          </button>
+          {groups.map(([title, options]) =>
+            options.length ? (
+              <div key={title} role="group" aria-label={title}>
+                <div className="px-2.5 pb-0.5 pt-2 text-micro text-faint">{title}</div>
+                {options.map((option) => (
+                  <button
+                    key={`${title}-${option.value}`}
+                    type="button"
+                    onClick={() => {
+                      pick(option);
+                      setOpen(false);
+                    }}
+                    className={row(isShowing(option))}
+                  >
+                    <ModeIcon mode={option.mode} />
+                    <span className="truncate">{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null,
+          )}
+          <div className="mt-1 border-t border-border pt-1">
+            <Link
+              href={clientSettingHref("appearance.custom-themes")}
+              onClick={() => setOpen(false)}
+              className="block rounded-lg px-2.5 py-1.5 text-label text-muted-foreground transition-colors hover:bg-surface"
             >
-              <Icon className="size-4" />
-              {label}
-            </button>
-          ))}
+              Your own theme…
+            </Link>
+          </div>
         </div>
       )}
     </div>
