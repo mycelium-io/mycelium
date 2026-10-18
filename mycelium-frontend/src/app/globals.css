@@ -6,7 +6,11 @@
   .dark, .dark *,
   .theme-catppuccin-mocha, .theme-catppuccin-mocha *,
   .theme-dracula, .theme-dracula *,
+  .theme-github-dark, .theme-github-dark *,
+  .theme-gruvbox-dark, .theme-gruvbox-dark *,
+  .theme-high-contrast-dark, .theme-high-contrast-dark *,
   .theme-nord, .theme-nord *,
+  .theme-one-dark, .theme-one-dark *,
   .theme-solarized-dark, .theme-solarized-dark *,
   .theme-tokyo-night, .theme-tokyo-night *
 ));
@@ -125,7 +129,11 @@
 .dark,
 .theme-catppuccin-mocha,
 .theme-dracula,
+.theme-github-dark,
+.theme-gruvbox-dark,
+.theme-high-contrast-dark,
 .theme-nord,
+.theme-one-dark,
 .theme-solarized-dark,
 .theme-tokyo-night {
   color-scheme: dark;
@@ -251,6 +259,140 @@
   --red: #ff7979;
 }
 
+.theme-github-light {
+  --bg: #ffffff;
+  --surface: #f6f8fa;
+  --paper: #ffffff;
+  --elevated: #ffffff;
+  --muted-bg: #eff2f5;
+  --hairline: rgba(31, 35, 40, 0.04);
+  --text: #1f2328;
+  --prose: #1f2328;
+  --muted-foreground: #59636e;
+  /* fg.subtle, deepened: 4.1:1 on GitHub's muted fill as it stands. */
+  --faint: #666e77;
+  --border: rgba(31, 35, 40, 0.12);
+  --border2: rgba(31, 35, 40, 0.2);
+  --accent: #0969da;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(9, 105, 218, 0.1);
+  --green: #1a7f37;
+  --yellow: #9a6700;
+  --red: #d1242f;
+}
+
+.theme-github-dark {
+  --bg: #0d1117;
+  --surface: #010409;
+  --paper: #161b22;
+  --elevated: #161b22;
+  --muted-bg: #21262d;
+  --hairline: rgba(230, 237, 243, 0.04);
+  --text: #e6edf3;
+  --prose: #c9d1d9;
+  --muted-foreground: #9198a1;
+  --faint: #8d96a0;
+  --border: rgba(230, 237, 243, 0.1);
+  --border2: rgba(230, 237, 243, 0.18);
+  --accent: #4493f8;
+  --accent-fg: #0d1117;
+  --accent-soft: rgba(68, 147, 248, 0.15);
+  --green: #3fb950;
+  --yellow: #d29922;
+  --red: #f85149;
+}
+
+.theme-gruvbox-light {
+  --bg: #fbf1c7;
+  --surface: #f2e5bc;
+  --paper: #fbf1c7;
+  --elevated: #f9f5d7;
+  --muted-bg: #ebdbb2;
+  --hairline: rgba(60, 56, 54, 0.04);
+  --text: #3c3836;
+  --prose: #3c3836;
+  --muted-foreground: #504945;
+  --faint: #665c54;
+  --border: rgba(60, 56, 54, 0.14);
+  --border2: rgba(60, 56, 54, 0.24);
+  --accent: #af3a03;
+  --accent-fg: #fbf1c7;
+  --accent-soft: rgba(175, 58, 3, 0.1);
+  /* Gruvbox's faded green and yellow, deepened to read as text. */
+  --green: #6b670c;
+  --yellow: #8c5b0f;
+  --red: #9d0006;
+  /* Gruvbox's own darkest gray, so avatar initials hold AA on the tints. */
+  --avatar-ink: #282828;
+}
+
+.theme-gruvbox-dark {
+  --bg: #282828;
+  --surface: #1d2021;
+  --paper: #32302f;
+  --elevated: #3c3836;
+  --muted-bg: #3c3836;
+  --hairline: rgba(235, 219, 178, 0.04);
+  --text: #ebdbb2;
+  --prose: #d5c4a1;
+  --muted-foreground: #bdae93;
+  --faint: #afa28e;
+  --border: rgba(235, 219, 178, 0.1);
+  --border2: rgba(235, 219, 178, 0.18);
+  --accent: #fe8019;
+  --accent-fg: #282828;
+  --accent-soft: rgba(254, 128, 25, 0.14);
+  --green: #b8bb26;
+  --yellow: #fabd2f;
+  /* Gruvbox's bright red, lifted: 3.4:1 on its raised panels as it stands. */
+  --red: #fc7f70;
+}
+
+/* High contrast: the most legible the app can be, rather than a look. Black
+ * and white canvases, near-full-contrast text at every level, saturated state
+ * colors, and borders strong enough to see every edge. */
+.theme-high-contrast-light {
+  --bg: #ffffff;
+  --surface: #f2f2f2;
+  --paper: #ffffff;
+  --elevated: #ffffff;
+  --muted-bg: #e6e6e6;
+  --hairline: rgba(0, 0, 0, 0.08);
+  --text: #000000;
+  --prose: #000000;
+  --muted-foreground: #1a1a1a;
+  --faint: #333333;
+  --border: rgba(0, 0, 0, 0.4);
+  --border2: rgba(0, 0, 0, 0.65);
+  --accent: #0040c1;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(0, 64, 193, 0.12);
+  --green: #006b1b;
+  --yellow: #6b4c00;
+  --red: #b0000f;
+}
+
+.theme-high-contrast-dark {
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --paper: #000000;
+  --elevated: #121212;
+  --muted-bg: #1f1f1f;
+  --hairline: rgba(255, 255, 255, 0.08);
+  --text: #ffffff;
+  --prose: #ffffff;
+  --muted-foreground: #e6e6e6;
+  --faint: #cccccc;
+  --border: rgba(255, 255, 255, 0.45);
+  --border2: rgba(255, 255, 255, 0.7);
+  --accent: #6cb6ff;
+  --accent-fg: #000000;
+  --accent-soft: rgba(108, 182, 255, 0.18);
+  --green: #4ade80;
+  --yellow: #facc15;
+  --red: #ff6b6b;
+}
+
 .theme-nord {
   --bg: #2e3440;
   --surface: #292e39;
@@ -273,6 +415,30 @@
   --yellow: #ebcb8b;
   /* Aurora red, lifted: 2.5:1 on Nord's panels as it stands. */
   --red: #d9a2a8;
+}
+
+.theme-one-dark {
+  --bg: #282c34;
+  --surface: #21252b;
+  --paper: #2c313a;
+  --elevated: #2c313a;
+  --muted-bg: #3e4451;
+  --hairline: rgba(220, 223, 228, 0.04);
+  --text: #dcdfe4;
+  --prose: #c8ccd4;
+  /* One Dark's foreground is a mid gray, so it serves as prose, a step
+   * lighter as secondary text, and its comment gray is lifted to be the faint
+   * level (2.2:1 as it stands). */
+  --muted-foreground: #c0c5ce;
+  --faint: #aeb3bc;
+  --border: rgba(220, 223, 228, 0.09);
+  --border2: rgba(220, 223, 228, 0.17);
+  --accent: #61afef;
+  --accent-fg: #21252b;
+  --accent-soft: rgba(97, 175, 239, 0.14);
+  --green: #98c379;
+  --yellow: #e5c07b;
+  --red: #e37b83;
 }
 
 .theme-solarized-light {
