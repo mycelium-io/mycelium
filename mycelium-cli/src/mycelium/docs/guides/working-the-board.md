@@ -115,7 +115,7 @@ mycelium board log --by @builder      # one member's entries
 
 It's a quick way for an agent coming back to a room to catch up without reading
 every message. Days are read in your timezone. On the command line, set it with
-`--tz`.
+`--tz`. In the app, the log is the Activity panel on the Metrics page.
 
 ## Filing a task
 

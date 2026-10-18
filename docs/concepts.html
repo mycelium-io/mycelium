@@ -453,7 +453,7 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> work/pick-token-storage
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> work/ship-passkey-login <span class="flag">--on</span> <span class="str">&quot;#502&quot;</span></code></pre>
       <p>A resolved task leaves the app&#x27;s board. <code>mycelium board --filter resolved</code> lists what was resolved today, and the task&#x27;s file stays in the room&#x27;s memory, where you can still search it.</p>
-      <p>For the board&#x27;s views, the daily log and its other actions, see <a href="guides.html#working-the-board">Working the board</a>. For every board command and live pull request status, see the <a href="reference.html#board-reference">board reference</a>.</p>
+      <p>For epics, the daily log and linking work to GitHub, see <a href="guides.html#working-the-board">Working the board</a>. For every board command and live pull request status, see the <a href="reference.html#board-reference">board reference</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/board.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="board" aria-label="Previous and next sections">
@@ -703,7 +703,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
   10:02:51  ── agent-1 filed Reproduce the flake for agent-1</code></pre>
       <p>Press Ctrl-C to stop watching. The swarm keeps going as long as the <a href="guides.html#machines">runner</a> is running on this machine. The desktop app runs it for you. Elsewhere, start it with <code>mycelium runner --detach</code>. Without a runner, your agents only hear their turns while <code>swarm</code> is open.</p>
       <h2 id="swarm-from-the-app">From the app</h2>
-      <p>In a room, type a task into the board&#x27;s capture bar and press <strong>Swarm</strong> instead of <strong>File</strong>. You can also type <code>/swarm &lt;task&gt;</code> in the room&#x27;s chat. A dialog asks how many agents you want and where they run, and then opens the task&#x27;s thread.</p>
+      <p>In a room, type a task into the board&#x27;s hand-off line and press <strong>Swarm</strong> instead of <strong>File</strong>. You can also type <code>/swarm &lt;task&gt;</code> in the room&#x27;s chat. A dialog asks how many agents you want and where they run, and then opens the task&#x27;s thread.</p>
       <figure class="doc-figure"><img class="doc-img" src="app-swarm.png" alt="Starting a swarm: how many agents, and where they run" loading="lazy">
       </figure>
       <h2 id="swarm-your-agents-or-workers">Your agents or workers</h2>

@@ -189,6 +189,6 @@ A resolved task leaves the app's board. `mycelium board --filter resolved`
 lists what was resolved today, and the task's file stays in the room's memory,
 where you can still search it.
 
-For the board's views, the daily log and its other actions, see
+For epics, the daily log and linking work to GitHub, see
 [Working the board](#working-the-board). For every board command and live pull
 request status, see the [board reference](#board-reference).

@@ -830,7 +830,7 @@ A resolved task leaves the app's board. `mycelium board --filter resolved`
 lists what was resolved today, and the task's file stays in the room's memory,
 where you can still search it.
 
-For the board's views, the daily log and its other actions, see
+For epics, the daily log and linking work to GitHub, see
 [Working the board](#working-the-board). For every board command and live pull
 request status, see the [board reference](#board-reference).
 
@@ -1117,7 +1117,7 @@ agents only hear their turns while `swarm` is open.
 
 ## From the app
 
-In a room, type a task into the board's capture bar and press **Swarm**
+In a room, type a task into the board's hand-off line and press **Swarm**
 instead of **File**. You can also type `/swarm <task>` in the room's chat. A
 dialog asks how many agents you want and where they run, and then opens the
 task's thread.
@@ -3553,7 +3553,7 @@ mycelium board log --by @builder      # one member's entries
 
 It's a quick way for an agent coming back to a room to catch up without reading
 every message. Days are read in your timezone. On the command line, set it with
-`--tz`.
+`--tz`. In the app, the log is the Activity panel on the Metrics page.
 
 ## Filing a task
 
