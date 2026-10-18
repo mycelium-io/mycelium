@@ -142,9 +142,10 @@ module; read it before changing what a rule protects.
   memory is created and no write can change it. Create tasks through
   `POST /rooms/{room}/tasks` (or `mycelium board new`), never a raw memory write.
 - **No process of the hub's own wakes an agent.** A wake comes from a person,
-  another agent or a schedule the agent owns. What the hub notices itself (a
-  quiet task, a pull request changing, a verifier flag) is a notice, and
-  notices and pings wake nobody. The verifier never blocks a message either. The notice kinds are a closed set (`message_format.NOTICE_SUBKINDS`,
+  another agent, or a schedule or subscription the agent set up itself
+  (`app/services/subscriptions.py`). What the hub notices itself (a quiet
+  task, a pull request changing, a verifier flag) is a notice, and notices
+  and pings wake nobody, except an agent that subscribed to that notice. The verifier never blocks a message either. The notice kinds are a closed set (`message_format.NOTICE_SUBKINDS`,
   frozen as `notice.subkinds` in `contracts/slim-wire.json`).
 - **Who may write in a thread is decided in code**, at
   `tasks.thread_write_refusal`: a frozen negotiation's roster and a floor's
