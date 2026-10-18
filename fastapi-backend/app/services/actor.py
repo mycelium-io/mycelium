@@ -68,6 +68,12 @@ def current_principal(request: Request | None) -> Principal | None:
     return principal if isinstance(principal, Principal) else None
 
 
+def principal_handle(request: Request | None) -> str | None:
+    """The verified caller's handle, or ``None`` when the request is anonymous."""
+    principal = current_principal(request)
+    return principal.handle if principal is not None else None
+
+
 def bind_actor(request: Request | None, claimed: str, *, field: str = "handle") -> str:
     """The authoritative actor for a write whose body always carries one."""
     principal = current_principal(request)

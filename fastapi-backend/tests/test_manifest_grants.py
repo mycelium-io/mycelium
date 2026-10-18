@@ -149,6 +149,47 @@ async def test_an_unowned_agent_is_claimed_only_by_itself_or_whom_it_allows(clie
 
 
 @pytest.mark.asyncio
+async def test_an_unowned_agent_that_allows_someone_can_t_be_deleted_and_made_again(
+    client, as_principal
+):
+    _seed("old-bot", allow_from=["sam"])
+    as_principal("mallory", role="user")
+    gone = await client.delete(f"/api/rooms/{ROOM}/memory/agents/old-bot")
+    assert gone.status_code == 403
+    assert read_memory_file(get_room_dir(ROOM), "agents/old-bot") is not None
+    # One that grants nothing has only its name to lose, and stays removable.
+    _seed("plain-bot")
+    assert (await client.delete(f"/api/rooms/{ROOM}/memory/agents/plain-bot")).status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_routes_that_write_manifests_themselves_are_held_to_it_too(client, as_principal):
+    as_principal("mallory", role="user")
+    resp = await client.post(
+        f"/api/rooms/{ROOM}/engines",
+        json={"handle": "helper", "kind": "persona", "owner": "julia", "created_by": "mallory"},
+    )
+    assert resp.status_code == 403, resp.text
+    assert read_memory_file(get_room_dir(ROOM), "agents/helper") is None
+    # Their own is fine.
+    resp = await client.post(
+        f"/api/rooms/{ROOM}/engines",
+        json={"handle": "helper", "kind": "persona", "owner": "mallory", "created_by": "mallory"},
+    )
+    assert resp.status_code in (200, 201), resp.text
+
+
+@pytest.mark.asyncio
+async def test_a_manifest_that_doesn_t_parse_is_no_one_s_to_rewrite(client, as_principal):
+    write_memory_file(get_room_dir(ROOM), "agents/broken", "owner: [julia", created_by="seed")
+    as_principal("mallory", role="user")
+    claim = await _write(client, "agents/broken", _manifest(owner="mallory"), "mallory")
+    assert claim.status_code == 403
+    assert "can't be read" in claim.json()["detail"]
+    assert (await client.delete(f"/api/rooms/{ROOM}/memory/agents/broken")).status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_with_sign_in_off_nothing_changes(client):
     resp = await _write(client, "agents/lead", _manifest(owner="mallory"), "mallory")
     assert resp.status_code == 201, resp.text

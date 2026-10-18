@@ -92,7 +92,13 @@ async def create_engine(room_name: str, payload: EngineCreate, request: Request)
         "owner": norm_handle(payload.owner),
         "team": norm_handle(payload.team),
     }
-    await write_agent_manifest(room_name, handle, body, created_by=registrar or "web-ui")
+    await write_agent_manifest(
+        room_name,
+        handle,
+        body,
+        created_by=registrar or "web-ui",
+        principal=actor.principal_handle(request),
+    )
     logger.info("room %s: registered engine @%s (kind=%s)", room_name, handle, kind)
 
     return AgentRead(

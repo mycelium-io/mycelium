@@ -371,6 +371,7 @@ async def launch_agent(
             owner=owner,
         ),
         created_by=me or "web-ui",
+        principal=actor.principal_handle(request),
     )
     instructions = (payload.instructions or "").strip()
     if instructions:
@@ -441,6 +442,7 @@ async def adopt_agent(runner_id: str, payload: RunnerAgentAdopt, request: Reques
             owner=me or runner.owner,
         ),
         created_by=me or "web-ui",
+        principal=actor.principal_handle(request),
     )
     spec = {
         "room": payload.room,

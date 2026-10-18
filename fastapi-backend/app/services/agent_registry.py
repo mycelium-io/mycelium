@@ -47,7 +47,14 @@ def norm_handle(value: object) -> str | None:
 _norm = norm_handle
 
 
-async def write_agent_manifest(room_name: str, handle: str, body: dict, *, created_by: str) -> None:
+async def write_agent_manifest(
+    room_name: str,
+    handle: str,
+    body: dict,
+    *,
+    created_by: str,
+    principal: str | None = None,
+) -> None:
     """Write (or overwrite) an agent manifest memory for *handle* in *room_name*.
 
     The memory is stored as ``agents/<handle>`` with ``embed=False`` and
@@ -56,13 +63,26 @@ async def write_agent_manifest(room_name: str, handle: str, body: dict, *, creat
     with their respective ``body`` dict so the YAML serialization, tag constant,
     and embed flag are not duplicated.
 
+    ``principal`` is the verified caller a route writes for: the write is then
+    held to who may change who acts as the agent
+    (``principals.grant_change_refusal``) and refused with a 403. The hub's own
+    writers pass none.
+
     Uses a lazy import of :func:`app.routes.memory.upsert_memories` to avoid
     a services → routes circular dependency, following the same pattern as
     :mod:`app.services.task_sync` and :mod:`app.services.synthesizer`.
     """
+    from fastapi import HTTPException
+
     from app.routes.memory import upsert_memories  # lazy — routes import services
     from app.schemas import MemoryBatchCreate, MemoryCreate
+    from app.services import principals
 
+    if principal:
+        try:
+            principals.check_manifest_write(room_name, handle, body, principal)
+        except principals.ManifestRefusedError as err:
+            raise HTTPException(status_code=403, detail=str(err)) from err
     key = f"agents/{handle}"
     yaml_body = yaml.safe_dump(body, sort_keys=False, default_flow_style=False).strip()
     batch = MemoryBatchCreate(

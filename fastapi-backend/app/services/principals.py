@@ -104,6 +104,37 @@ def _grants(manifest: dict[str, Any] | None) -> tuple[str | None, frozenset[str]
     return _norm(manifest.get("owner")), frozenset(n for e in entries if (n := _norm(e)))
 
 
+def _unreadable_manifest(room: str, handle: str) -> bool:
+    """Whether ``agents/<handle>`` is there but isn't a YAML mapping."""
+    if not room_exists(room):
+        return False
+    found = read_memory_file(get_room_dir(room), f"agents/{handle}")
+    if found is None:
+        return False
+    try:
+        data = yaml.safe_load(found[1]) or {}
+    except yaml.YAMLError:
+        return True
+    return not isinstance(data, dict)
+
+
+class ManifestRefusedError(PermissionError):
+    """A manifest write the caller may not make, with the reason they're shown."""
+
+
+def check_manifest_write(room: str, handle: str, body: dict[str, Any], principal: str) -> None:
+    """Raise :class:`ManifestRefusedError` if ``principal`` may not write this manifest.
+
+    For the routes that build a manifest themselves (engines, A2A agents, a
+    runner's launch and adopt, a swarm), so every way a person writes one is
+    held to :func:`grant_change_refusal`.
+    """
+    content = yaml.safe_dump(body, sort_keys=False, default_flow_style=False)
+    refusal = grant_change_refusal(room, handle, content, principal)
+    if refusal:
+        raise ManifestRefusedError(refusal)
+
+
 def grant_change_refusal(
     room: str, handle: str, new_content: str, principal: str, *, deleting: bool = False
 ) -> str | None:
@@ -115,20 +146,32 @@ def grant_change_refusal(
     to edit. With a verified caller:
 
     - an agent with an owner: only that owner changes them, or deletes it;
-    - one with none yet: only the agent itself or a handle it already allows;
+    - one with none yet: only the agent itself or a handle it already allows
+      changes them, and deletes it if it allows anyone (so it can't be deleted
+      and made again to take what it granted);
     - a new one: its owner, if it names one, is the caller, and only an owner
-      grants ``allow_from``; and its handle can't be another person's.
+      grants ``allow_from``; and its handle can't be another person's;
+    - one whose file is there but doesn't parse: nobody, since who owns it
+      can't be read. The hub's own writers don't come through here.
 
-    A handle is an agent's name in one room, so two people's agents may share
-    one in different rooms. Every other edit (notes, description, adapter) is
+    An unowned agent that allows nobody has only its name to lose, and a handle
+    is an agent's name in one room: two people's agents may share one in
+    different rooms. Every other edit (notes, description, adapter) is
     untouched.
     """
     me = _norm(principal)
+    if _unreadable_manifest(room, handle):
+        return (
+            f"@{handle}'s manifest can't be read, so who owns it can't be checked; "
+            "it has to be fixed on the hub first."
+        )
     existing = _read_agent_manifest(room, handle)
     old_owner, old_allow = _grants(existing)
     if deleting:
         if old_owner and me != old_owner:
             return f"@{handle} belongs to @{old_owner}; only they can remove it."
+        if not old_owner and old_allow and me != _norm(handle) and me not in old_allow:
+            return f"Only @{handle}, or a handle it allows, can remove it."
         return None
     try:
         parsed = yaml.safe_load(new_content) if new_content else {}
