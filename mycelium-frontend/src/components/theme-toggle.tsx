@@ -15,6 +15,7 @@ import { clientSettingHref, setClientSetting } from "@/lib/client-settings";
 import type { PaletteCommand } from "@/lib/commands";
 import { CUSTOM_THEME } from "@/lib/custom-themes";
 import { SYSTEM, THEMES, modeOf, type ThemeMode } from "@/lib/themes";
+import { endPreview, previewTheme } from "@/lib/theme-preview";
 
 interface Option {
   /** The next-themes id, or the custom theme's own id for one of yours. */
@@ -35,38 +36,35 @@ export function ThemeToggle() {
   const [open, setOpen] = useState(false);
   const mounted = useIsClient();
   const ref = useRef<HTMLDivElement>(null);
-  // The theme in use before a hover started showing others, put back unless
-  // one is picked: what you hover is shown, what you click is kept.
-  const [before, setBefore] = useState<{ theme: string | undefined; custom: string | undefined } | null>(
-    null,
-  );
-
-  const restore = () => {
-    if (!before) return;
-    setBefore(null);
-    if (before.custom) setClientSetting("appearance.custom-theme", before.custom);
-    if (before.theme) setTheme(before.theme);
-  };
+  // What you hover is shown (painted, not saved: `lib/theme-preview`); what you
+  // click is kept. Closing the menu any way but a click takes the preview off.
   const close = () => {
-    restore();
+    endPreview();
     setOpen(false);
   };
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close();
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        endPreview();
+        setOpen(false);
+      }
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      endPreview();
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-    // `close` reads `before` and setters alone, so these are the listeners' inputs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, before]);
+  }, [open]);
+  // Leaving the page with a preview up mustn't leave it painted.
+  useEffect(() => endPreview, []);
 
   const groups = useMemo<[string, Option[]][]>(() => {
     const builtIn = (mode: ThemeMode) =>
@@ -85,25 +83,28 @@ export function ThemeToggle() {
       setTheme(CUSTOM_THEME);
     } else setTheme(option.value);
   };
-  /** Show ``option`` while it's hovered or focused, remembering what to go back to. */
+  /** Show ``option`` while it's hovered or focused. */
   const preview = (option: Option | typeof SYSTEM) => {
-    setBefore((saved) => saved ?? { theme, custom: activeCustom?.id });
-    if (option === SYSTEM) setTheme(SYSTEM);
-    else pick(option);
+    if (option === SYSTEM || !option.custom) previewTheme(option === SYSTEM ? SYSTEM : option.value);
+    else {
+      const custom = customThemes.find((t) => t.id === option.value);
+      if (custom) previewTheme(custom);
+    }
   };
-  /** Keep it: what's showing now is the choice, nothing to put back. */
+  /** Keep it: the one choice that's saved. */
   const choose = (option: Option | typeof SYSTEM) => {
-    setBefore(null);
+    endPreview();
     if (option === SYSTEM) setTheme(SYSTEM);
     else pick(option);
     setOpen(false);
   };
-  // What the menu marks as yours: the theme from before a hover, not the one
-  // being previewed.
-  const kept = before ? before.theme : theme;
-  const keptCustom = before ? before.custom : activeCustom?.id;
+  /** Focus leaving the menu ends a preview, as the pointer leaving does. */
+  const onBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) endPreview();
+  };
+  // The menu marks the chosen theme; a preview never changes it.
   const isShowing = (option: Option) =>
-    option.custom ? kept === CUSTOM_THEME && keptCustom === option.value : kept === option.value;
+    option.custom ? theme === CUSTOM_THEME && activeCustom?.id === option.value : theme === option.value;
 
   // Separate commands so palette search finds "Dracula" instead of "Toggle theme".
   const commands = useMemo<PaletteCommand[]>(
@@ -150,7 +151,8 @@ export function ThemeToggle() {
       {open && (
         // Hovering or focusing a theme shows it; leaving the menu puts yours back.
         <div
-          onMouseLeave={restore}
+          onMouseLeave={endPreview}
+          onBlur={onBlur}
           className="absolute right-0 top-full z-30 mt-1.5 max-h-[min(32rem,calc(100vh-4rem))] w-56 overflow-y-auto rounded-xl border border-border bg-elevated p-1 shadow-xl"
         >
           <button
@@ -158,7 +160,7 @@ export function ThemeToggle() {
             onMouseEnter={() => preview(SYSTEM)}
             onFocus={() => preview(SYSTEM)}
             onClick={() => choose(SYSTEM)}
-            className={row(kept === SYSTEM)}
+            className={row(theme === SYSTEM)}
           >
             <Monitor className="size-4" />
             Match this computer
