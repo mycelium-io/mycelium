@@ -136,8 +136,16 @@ export function ActivityLog({ events, tz, onTz, now }: Props) {
   const grid = useMemo(() => daysEnding(end, GRID_DAYS), [end]);
   const run = useMemo(() => streaks(days, end), [days, end]);
 
-  const [selected, setSelected] = useState<DayKey>(end);
-  const [range, setRange] = useState<Range>("day");
+  // It opens on the newest day anything happened, over 30 days, so a quiet
+  // today or a fresh room doesn't open on an empty panel. A day picked on the
+  // grid wins from then on.
+  const latest = useMemo(
+    () => [...days.keys()].filter(key => key <= end && (days.get(key)?.length ?? 0) > 0).sort().pop(),
+    [days, end],
+  );
+  const [picked, setSelected] = useState<DayKey | null>(null);
+  const selected = picked ?? latest ?? end;
+  const [range, setRange] = useState<Range>("month");
 
   const span = useMemo(() => {
     // A week runs Monday to the selected day's Sunday, so "this week" means the
@@ -162,7 +170,7 @@ export function ActivityLog({ events, tz, onTz, now }: Props) {
               ? "Nothing logged today yet"
               : `${todayCount} logged today${todayCount >= DAILY_GOAL ? ", day filled" : ""}`}
           </p>
-          <p className="font-mono text-micro text-muted-foreground">
+          <p className="text-micro tabular text-muted-foreground">
             {run.current > 0 ? `${run.current}-day streak` : "streak broken"} · longest {run.longest} ·{" "}
             {summary.events.length} in view
           </p>
@@ -195,7 +203,7 @@ export function ActivityLog({ events, tz, onTz, now }: Props) {
             key={r.id}
             onClick={() => setRange(r.id)}
             className={cn(
-              "rounded-full border px-2.5 py-0.5 font-mono text-micro transition-colors",
+              "rounded-full border px-2.5 py-0.5 text-micro transition-colors",
               range === r.id
                 ? "border-accent/40 bg-accent-soft text-accent"
                 : "border-border text-muted-foreground hover:text-text",
@@ -204,7 +212,7 @@ export function ActivityLog({ events, tz, onTz, now }: Props) {
             {r.label}
           </button>
         ))}
-        <span className="font-mono text-micro text-faint">
+        <span className="text-micro tabular text-faint">
           {span.from === span.to
             ? formatDay(span.from)
             : `${formatDay(span.from, { weekday: undefined })} to ${formatDay(span.to, { weekday: undefined })}`}
@@ -363,10 +371,10 @@ function ActorLane({
     <section className="rounded-lg border border-border bg-surface/30 px-3 py-2.5">
       <header className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         <Icon className="size-3.5 shrink-0" strokeWidth={1.8} style={{ color }} />
-        <span className="font-mono text-label" style={{ color }}>
+        <span className="text-label" style={{ color }}>
           @{actor}
         </span>
-        <span className="rounded bg-hairline px-1.5 font-mono text-micro text-faint">{actorKind}</span>
+        <span className="rounded bg-hairline px-1.5 text-micro text-faint">{actorKind}</span>
         <span className="tabular text-micro text-muted-foreground">{events.length} logged</span>
         <span className="ml-auto flex items-end gap-[2px]" aria-hidden>
           {spark.map((count, i) => (
@@ -389,12 +397,12 @@ function ActorLane({
             <span className="w-14 shrink-0 whitespace-nowrap tabular text-micro text-faint">
               {formatTime(event.at, tz)}
             </span>
-            <span className="shrink-0 font-mono text-micro text-muted-foreground">{event.action}</span>
+            <span className="shrink-0 text-micro text-muted-foreground">{event.action}</span>
             <span className="min-w-0 flex-1 truncate text-label text-text">{event.title}</span>
           </li>
         ))}
         {events.length > 8 && (
-          <li className="pl-16 font-mono text-micro text-faint">+{events.length - 8} more</li>
+          <li className="pl-16 text-micro tabular text-faint">{events.length - 8} more</li>
         )}
       </ul>
     </section>

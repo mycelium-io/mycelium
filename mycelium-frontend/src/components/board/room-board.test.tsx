@@ -103,7 +103,9 @@ describe("<RoomBoard />", () => {
     const row = (key: string) => container.querySelector<HTMLElement>(`[data-board-row="${key}"]`)!;
 
     // The line that says what's going on, before any of the rows.
-    expect(await screen.findByText("1 thing needs you. builder is on 3 tasks. 1 is up next.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("1 thing needs you. 3 tasks are being worked on. 1 is up next."),
+    ).toBeInTheDocument();
 
     const asks = await screen.findByRole("region", { name: "Waiting on you" });
     // The same shape as any row: the task as the title, the words that ask you as the line.
@@ -116,8 +118,12 @@ describe("<RoomBoard />", () => {
     expect(onOpenThread).toHaveBeenCalledWith(ep("double"));
 
     const room = screen.getByRole("region", { name: "In this room" });
-    expect(within(row("work/apple-pay")).getByText("1/4")).toBeInTheDocument();
-    expect(within(row("work/apple-pay")).getByText("1 of 4 parts done")).toBeInTheDocument();
+    // Progress said once, and the epic's line is the newest from its parts.
+    expect(within(row("work/apple-pay")).getByText("1 of 4 done")).toBeInTheDocument();
+    expect(within(row("work/apple-pay")).getByText("reviewer: Approved #504.")).toBeInTheDocument();
+    expect(row("work/checkout").querySelector("[title]")?.getAttribute("title")).toBe(
+      "Runs at the same time as Fix the double charges",
+    );
     // Parts in path order, numbered by step: two that run side by side share one.
     expect(within(row("work/double")).getByText("2")).toBeInTheDocument();
     expect(within(row("work/checkout")).getByText("2")).toBeInTheDocument();

@@ -43,4 +43,19 @@ describe("<ActivityLog />", () => {
     expect(screen.getByText("@julia")).toBeInTheDocument();
     expect(screen.getByText("Add Apple Pay to checkout")).toBeInTheDocument();
   });
+
+  it("opens on the newest day anything happened, so a quiet today isn't an empty panel", () => {
+    // Everything was logged three weeks ago; nothing today.
+    render(
+      <ActivityLog
+        events={[event("a", "builder", 24 * 21, "Move card payments to Stripe")]}
+        tz="UTC"
+        onTz={vi.fn()}
+        now={NOW}
+      />,
+    );
+    expect(screen.getByText("Nothing logged today yet")).toBeInTheDocument();
+    expect(screen.getByText("Move card payments to Stripe")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "30 days" }).className).toContain("text-accent");
+  });
 });

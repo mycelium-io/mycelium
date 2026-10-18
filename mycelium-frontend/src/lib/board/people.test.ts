@@ -10,7 +10,9 @@ import {
   STANDING,
   WAITING_KINDS,
   WAITING_STANDING,
+  epicLine,
   humanLine,
+  sideBySide,
   isQuiet,
   splitTasks,
   startsAfter,
@@ -95,11 +97,35 @@ describe("the people's board words", () => {
       steps: [],
       path: [part("working", { key: "p1", holder: "builder" }), part("working", { key: "p2", holder: "reviewer" })],
     };
-    const board = { epics: [epic], tasks: [part("open", { key: "n1" }), part("waiting", { key: "n2" })] };
-    expect(summary(board, [{ kind: "ask", count: 1 }, { kind: "task", count: 1 }])).toBe(
-      "2 things need you. builder and reviewer are on 2 tasks. 2 are up next.",
+    const tasks = [part("open", { key: "n1" }), part("waiting", { key: "n2" })];
+    expect(summary([epic], tasks, [{ kind: "ask", count: 1 }, { kind: "task", count: 1 }])).toBe(
+      "2 things need you. 2 tasks are being worked on. 2 are up next.",
     );
-    expect(summary({ epics: [], tasks: [] }, [])).toBe("Nothing needs you.");
+    expect(summary([], [], [])).toBe("Nothing needs you.");
+  });
+
+  it("gives an epic the newest line from its parts, and says what runs side by side", () => {
+    const at = (m: number) => new Date(Date.UTC(2026, 9, 17, 12, m)).toISOString();
+    const epic: BoardEpic = {
+      ...part("working", { key: "e" }),
+      done: 0,
+      total: 2,
+      steps: [["p1", "p2"]],
+      path: [
+        part("working", { key: "p1", holder: "builder", latest: { sender: "builder", text: "Old.", at: at(1) } }),
+        part("working", { key: "p2", holder: "builder", latest: { sender: "reviewer", text: "New.", at: at(9) } }),
+      ],
+    };
+    expect(epicLine(epic)).toBe("reviewer: New.");
+    const titles = new Map([["p1", "Add Apple Pay"], ["p2", "Fix the charges"]]);
+    expect(sideBySide("p1", ["p1", "p2"], titles)).toBe("Runs at the same time as Fix the charges");
+    expect(sideBySide("p1", ["p1"], titles)).toBeUndefined();
+  });
+
+  it("colors only what needs you, what's stopped, and nothing else", () => {
+    expect(STANDING.working.tone).toBe("var(--muted-foreground)");
+    expect(STANDING.blocked.tone).toBe("var(--red)");
+    expect(WAITING_STANDING.ask.tone).toBe("var(--accent)");
   });
 
   it("gives a waiting item the same shape as any row: its task, then one line", () => {

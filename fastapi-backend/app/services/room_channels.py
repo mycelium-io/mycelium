@@ -1557,7 +1557,7 @@ class RoomChannelManager:
             holder = new if floor.holder == old else floor.holder
             speakers = frozenset(new if s == old else s for s in floor.speakers)
             if (holder, speakers) != (floor.holder, floor.speakers):
-                managed.floors[episode] = Floor(episode, holder, speakers)
+                managed.floors[episode] = Floor(episode, holder, speakers, floor.since)
         if managed.persister is not None:
             managed.persister.rename_handle(old, new)
         else:
@@ -1604,12 +1604,16 @@ class RoomChannelManager:
         managed = self._channels.get(room)
         if managed is None or message_format.is_live_episode(room, episode):
             return None
+        previous = managed.floors.get(episode)
         floor = Floor(
             episode=episode,
             holder=norm_handle(holder) or holder,
             speakers=frozenset(h for h in (norm_handle(s) for s in speakers) if h),
+            since=datetime.now(UTC),
         )
-        previous = managed.floors.get(episode)
+        if previous is not None and previous == floor:
+            # The same turn re-held: it has been waiting since it was first given.
+            floor = previous
         managed.floors[episode] = floor
         if previous != floor:
             # Whose turn it is changed: one line in the room's timeline, and the

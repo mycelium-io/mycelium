@@ -25,18 +25,19 @@ export interface Standing {
   tone: string;
 }
 
-/** A part's state as a word, and the one color it wears. Finished work steps
- *  back, so the eye goes to what's still moving. */
+/** A part's state as a word, and the color it wears. Color only where it
+ *  means something: red for what's stopped. Everything else is muted, so the
+ *  accent finds what needs you and yellow finds a task gone quiet. */
 export const STANDING: Record<PartState, Standing> = {
   done: { word: "Done", tone: "var(--faint)" },
   blocked: { word: "Blocked", tone: "var(--red)" },
-  // Muted: waiting its turn is ordinary. Yellow is kept for a task gone quiet.
   waiting: { word: "Waiting", tone: "var(--muted-foreground)" },
-  working: { word: "Working", tone: "var(--accent)" },
+  working: { word: "Working", tone: "var(--muted-foreground)" },
   open: { word: "Not started", tone: "var(--muted-foreground)" },
 };
 
-/** What each kind of waiting item is, as a word in the state column. */
+/** What each kind of waiting item is, as a word in the state column: the
+ *  accent, since these are the rows that need you. */
 export const WAITING_STANDING: Record<WaitingItem["kind"], Standing> = {
   ask: { word: "Asks you", tone: "var(--accent)" },
   turn: { word: "Your turn", tone: "var(--accent)" },
@@ -109,30 +110,42 @@ export function splitTasks(tasks: BoardPart[]): { running: BoardPart[]; next: Bo
 }
 
 /** The line that opens the board: what a person came to find out, in sentences.
- *  "2 things need you. builder and reviewer are on 4 tasks. 3 are up next." */
-export function summary(board: BoardRead, waiting: WaitingItem[], you = ""): string {
-  const { running, next } = splitTasks(board.tasks);
-  const working = [...board.epics.flatMap(e => e.path), ...running].filter(p => p.state === "working");
-  const holders = [...new Set(working.map(p => bare(p.holder)).filter(Boolean))];
-  // You last, by name: "builder, reviewer and you".
-  const who = [...holders.filter(h => h !== bare(you)), ...(holders.includes(bare(you)) ? ["you"] : [])];
+ *  "2 things need you. 4 tasks are being worked on. 3 are up next."
+ *  `tasks` are the standalone tasks as the board lists them, so the counts
+ *  are of rows the reader can see. */
+export function summary(epics: BoardEpic[], tasks: BoardPart[], waiting: WaitingItem[]): string {
+  const { running, next } = splitTasks(tasks);
+  const working = [...epics.flatMap(e => e.path), ...running].filter(p => p.state === "working").length;
   const said: string[] = [];
   said.push(
     waiting.length === 0
       ? "Nothing needs you."
       : `${waiting.length} ${waiting.length === 1 ? "thing needs" : "things need"} you.`,
   );
-  if (working.length > 0) {
-    const names = who.length > 3 ? `${who.length} members` : joinNames(who);
-    said.push(`${names} ${who.length === 1 ? "is" : "are"} on ${working.length} ${working.length === 1 ? "task" : "tasks"}.`);
+  if (working > 0) {
+    said.push(working === 1 ? "1 task is being worked on." : `${working} tasks are being worked on.`);
   }
   if (next.length > 0) said.push(`${next.length} ${next.length === 1 ? "is" : "are"} up next.`);
   return said.join(" ");
 }
 
-/** An epic's progress, as the rails count: "1/5". */
+/** An epic's own line: the newest thing said in any of its parts' threads. */
+export function epicLine(epic: BoardEpic, titles: Map<string, string> = new Map()): string {
+  const said = epic.path.filter(p => p.latest);
+  if (said.length === 0) return "";
+  const newest = said.reduce((a, b) => (lastMoved(b) > lastMoved(a) ? b : a));
+  return humanLine(newest, titles);
+}
+
+/** What runs at the same time as a part, for the tooltip on its step number. */
+export function sideBySide(key: string, step: string[], titles: Map<string, string>): string | undefined {
+  const others = step.filter(k => k !== key).map(k => titles.get(k) ?? k);
+  return others.length ? `Runs at the same time as ${joinNames(others)}` : undefined;
+}
+
+/** An epic's progress, said once, in its state column: "1 of 5 done". */
 export function progressOf(epic: BoardEpic): string {
-  return `${epic.done}/${epic.total}`;
+  return `${epic.done} of ${epic.total} done`;
 }
 
 /** A waiting item's title, the same as every other row's: the task it's in. */

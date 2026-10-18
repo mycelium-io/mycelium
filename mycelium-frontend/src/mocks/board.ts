@@ -232,7 +232,9 @@ export function mockWaiting(fx: RoomFixture, handle: string): WaitingItem[] {
       sender: floor.holder,
       text: null,
       message_id: null,
-      at: null,
+      // The fixtures don't say when a floor was given; the mock says a few
+      // minutes ago, as a running flow's turn would be.
+      at: today(new Date(MOCK_NOW - 6 * 60_000).toISOString()),
       count: 1,
     });
     seen.add(floor.episode);

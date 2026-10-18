@@ -295,9 +295,17 @@ class TestWaiting:
     def test_a_floor_given_to_the_member_is_its_turn(self, apple_pay, monkeypatch):
         from app.services.room_channels import manager
 
-        floor = Floor(thread("alerts"), "conductor", frozenset({"julia"}))
+        given = NOW - timedelta(minutes=12)
+        floor = Floor(thread("alerts"), "conductor", frozenset({"julia"}), given)
         monkeypatch.setattr(manager, "floors_of", lambda room: [floor])
         items = waiting.waiting(ROOM, "julia", NOW)
-        assert [(i["kind"], i["key"], i["sender"]) for i in items] == [
-            ("turn", "work/alerts", "conductor")
+        assert [(i["kind"], i["key"], i["sender"], i["at"]) for i in items] == [
+            ("turn", "work/alerts", "conductor", given.isoformat())
         ]
+
+    def test_re_holding_the_same_turn_keeps_when_it_was_given(self):
+        # Equal floors compare equal whatever their time, so a re-hold raises
+        # no notice, and the turn keeps waiting from when it was first given.
+        first = Floor(thread("a"), "conductor", frozenset({"julia"}), NOW)
+        again = Floor(thread("a"), "conductor", frozenset({"julia"}), NOW + timedelta(minutes=5))
+        assert first == again

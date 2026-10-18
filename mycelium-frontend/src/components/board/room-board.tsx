@@ -22,7 +22,9 @@ import { fileCapture } from "@/lib/board/file-capture";
 import {
   STANDING,
   WAITING_STANDING,
+  epicLine,
   humanLine,
+  sideBySide,
   isQuiet,
   lastMoved,
   progressOf,
@@ -138,7 +140,7 @@ export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
     <div data-tour="board" className="@container flex h-full min-h-0 flex-col bg-bg">
       <div className="flex h-7 flex-shrink-0 items-center gap-3 border-b border-border bg-surface px-3 text-micro text-muted-foreground sm:px-4">
         <span className="min-w-0 truncate" role="status">
-          {filing ?? (loading ? "" : summary(board, waiting, you))}
+          {filing ?? (loading ? "" : summary(board.epics, [...running, ...next], waiting))}
         </span>
         <span className="ml-auto hidden flex-shrink-0 items-center gap-1 text-faint @[36rem]:flex">
           <Kbd size="xs" tone="muted">j</Kbd>
@@ -295,7 +297,13 @@ function Row({
           <span className={cn("min-w-0 truncate text-label", dim ? "text-muted-foreground" : "text-text")}>{title}</span>
           {line && <span className="hidden min-w-0 truncate text-faint @[36rem]:inline">{line}</span>}
         </span>
-        <span className="flex flex-shrink-0 items-center gap-1.5 @[30rem]:w-[5.5rem]" style={{ color: standing.tone }}>
+        {/* A blocked row's reason rides on its state too, since a narrow pane
+            drops the line column and the reason is what you need there. */}
+        <span
+          className="flex flex-shrink-0 items-center gap-1.5 @[30rem]:w-[5.5rem]"
+          style={{ color: standing.tone }}
+          title={standing === STANDING.blocked && line ? line : undefined}
+        >
           <Dot tone={standing.tone} />
           <span className="hidden truncate @[30rem]:inline">{standing.word}</span>
         </span>
@@ -426,7 +434,7 @@ function EpicRows({
         avatar={lead === "you" ? you : undefined}
         agent={!!lead && agents.has(lead)}
         title={epic.title}
-        line={`${epic.done} of ${epic.total} parts done`}
+        line={epicLine(epic, titles)}
         standing={{ word: progressOf(epic), tone: "var(--muted-foreground)" }}
         age={quiet ? `quiet ${shortAge(newest, now)}` : shortAge(newest, now)}
         quiet={quiet}
@@ -463,7 +471,7 @@ function EpicRows({
                 lead={
                   <span
                     className="w-3 flex-shrink-0 text-right font-mono text-faint"
-                    title={step.length > 1 ? "Runs side by side with the others in this step" : undefined}
+                    title={sideBySide(key, step, titles)}
                   >
                     {n + 1}
                   </span>

@@ -140,7 +140,8 @@ def waiting(room: str, handle: str, now: datetime) -> list[dict[str, Any]]:
                 "sender": floor.holder,
                 "text": None,
                 "message_id": None,
-                "at": None,
+                # How long the turn has been waiting on the member.
+                "at": floor.since.isoformat() if floor.since else None,
                 "count": 1,
             }
         )
