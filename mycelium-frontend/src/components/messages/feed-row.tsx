@@ -211,7 +211,9 @@ export function SystemNotice({
           {label}
         </span>
       )}
-      <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">{children}</span>
+      {/* Up to a width, so on a wide window who it was by stays near the
+          title rather than drifting to the far edge. */}
+      <span className="flex min-w-0 max-w-[36rem] flex-1 items-center gap-1.5 truncate">{children}</span>
       {aside !== undefined && (
         <span className="w-32 flex-shrink-0 truncate" title={typeof aside === "string" ? aside : undefined}>
           {aside}
@@ -376,9 +378,10 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
         prevAt={prevAt}
         icon={icon}
         label={noticeLabel(subkind, ev.raw.kind as string | undefined, change)}
-        // A filed task reads by who it is for; a lease event by who moved it;
-        // an expired one by who let it drain. Fall back to the filer when a
-        // task is for no one.
+        // A filed task reads by who it is for; anything else "by" who did it
+        // (a lease event by who moved it), so the column reads the same down a
+        // run; an expired one by who let it drain. Fall back to the filer when
+        // a task is for no one.
         aside={
           subkind === "upstream" ? (
             ref && prUrl ? (
@@ -391,7 +394,7 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
           ) : subkind === "filed" && ev.raw.for ? (
             `for @${String(ev.raw.for).replace(/^@/, "")}`
           ) : by ? (
-            `${subkind === "filed" ? "by " : subkind === "expired" ? "held by " : ""}@${by}`
+            `${subkind === "expired" ? "held by" : "by"} @${by}`
           ) : null
         }
       >

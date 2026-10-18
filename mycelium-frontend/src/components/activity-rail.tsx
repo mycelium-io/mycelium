@@ -359,7 +359,7 @@ function ActivityRow({
         {/* The task itself, as text rather than a link-colored wall: it still
             opens the task, and says so on hover. What changed sits in a column
             of its own beside it, so every row's starts at the same place. */}
-        <span className="grid min-w-0 flex-1 items-center gap-3 @[36rem]:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <span className="grid min-w-0 flex-1 items-center gap-3 @[36rem]:grid-cols-[minmax(0,min(60%,30rem))_minmax(0,1fr)]">
           <button
             type="button"
             onClick={() =>
