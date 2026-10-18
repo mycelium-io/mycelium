@@ -11,7 +11,8 @@ import { RoomViewIcons, RoomViewsList } from "./room-views-nav";
 describe("<RoomViewIcons />", () => {
   it("folds every view to an icon under the room, marks the one shown, and picks one on a click", async () => {
     const onView = vi.fn();
-    render(<RoomViewIcons view="board" onView={onView} channelCount={null} />);
+    render(<RoomViewIcons view="board" onView={onView} channelCount={40} />);
+    expect(screen.getByLabelText("40 messages")).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Room views" });
     expect([...nav.querySelectorAll("button")].map(b => b.getAttribute("aria-label"))).toEqual([
       "Channel",

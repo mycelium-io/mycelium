@@ -70,7 +70,7 @@ export function RoomViewsList({ view, onView, channelCount }: RoomViewsNav) {
  * monogram, the one shown marked, each one a click away like the rows they
  * fold from.
  */
-export function RoomViewIcons({ view, onView }: RoomViewsNav) {
+export function RoomViewIcons({ view, onView, channelCount }: RoomViewsNav) {
   return (
     <nav aria-label="Room views" className="mt-1 flex flex-col items-center gap-0.5">
       {ROOM_VIEWS.map(v => {
@@ -98,6 +98,14 @@ export function RoomViewIcons({ view, onView }: RoomViewsNav) {
               )}
             >
               <Icon className="size-3.5" strokeWidth={1.8} />
+              {v === "channel" && channelCount !== null && (
+                <span
+                  aria-label={`${channelCount} messages`}
+                  className="absolute -right-1 -top-1 rounded-full bg-elevated px-0.5 text-[9px] tabular leading-3 text-muted-foreground"
+                >
+                  {channelCount > 99 ? "99+" : channelCount}
+                </span>
+              )}
               <KeyBadge action={`pane.${v}`} overlay />
             </button>
           </Tooltip>
