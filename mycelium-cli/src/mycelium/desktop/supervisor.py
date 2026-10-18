@@ -67,6 +67,8 @@ from typing import Any, Literal
 
 import httpx
 
+from mycelium import themes
+
 Mode = Literal["hub", "client"]
 State = Literal["starting", "running", "stopped", "failed", "disabled"]
 
@@ -522,6 +524,10 @@ class Supervisor:
             # Only read by `next dev` (a checkout); it refuses pages opened
             # from a host it wasn't told about.
             "MYCELIUM_ALLOWED_DEV_ORIGINS": f"{HOST},localhost",
+            # This machine's themes (`mycelium theme`), which the app shows and
+            # follows. Only a UI the desktop app runs for its own person reads
+            # them; one serving many people never gets this.
+            "MYCELIUM_THEMES_DIR": str(themes.folder()),
         }
         return [
             Component(

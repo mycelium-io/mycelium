@@ -49,12 +49,12 @@ export const OPTIONAL_COLORS = ["prose", "border", "border2", "hairline", "accen
 
 /** Colors that sit under or around text may be see-through; text and the
  *  surfaces it's read on have to be solid, or contrast can't be known. */
-const MAY_BE_TRANSLUCENT = new Set(["border", "border2", "hairline", "accent-soft"]);
+export const MAY_BE_TRANSLUCENT = new Set(["border", "border2", "hairline", "accent-soft"]);
 
 const ALL_COLORS = new Set<string>([...REQUIRED_COLORS, ...OPTIONAL_COLORS]);
 const SOLID = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 const ANY_HEX = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
-const NAME_MAX = 40;
+export const NAME_MAX = 40;
 
 export interface CustomTheme {
   /** Stable, from the name: `custom-midnight`. */

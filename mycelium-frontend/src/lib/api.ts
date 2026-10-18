@@ -1918,6 +1918,34 @@ export async function saveRoomFolders(handle: string, layout: RoomFolders): Prom
   });
 }
 
+/** This machine's themes (`~/.mycelium/themes/`, the ones `mycelium theme`
+ *  writes) and which one is picked, from the app's own server. `available` is
+ *  false where the app keeps no theme files (anywhere but the desktop app). */
+export interface LocalThemes {
+  themes: { id: string; name: string; mode: "light" | "dark"; colors: Record<string, string> }[];
+  current: string | null;
+  available: boolean;
+}
+
+export async function fetchLocalThemes(): Promise<LocalThemes> {
+  const data = await apiFetch<Partial<LocalThemes> | null>(`/api/themes`, { cache: "no-store", fallback: null });
+  return {
+    themes: Array.isArray(data?.themes) ? data.themes : [],
+    current: typeof data?.current === "string" ? data.current : null,
+    available: data?.available === true,
+  };
+}
+
+/** Pick a theme in this machine's `~/.mycelium/theme.json`, as `mycelium theme use` does. */
+export async function saveLocalTheme(theme: string): Promise<string | null> {
+  const data = await apiFetch<{ theme?: string | null }>(`/api/themes`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theme }),
+  });
+  return data.theme ?? null;
+}
+
 /** Teams rolled up from agent manifests and user memberships. */
 export async function fetchTeams(): Promise<Team[]> {
   const data = await apiFetch<{ teams?: Team[] }>(`/api/teams`, { cache: "no-store", fallback: {} });

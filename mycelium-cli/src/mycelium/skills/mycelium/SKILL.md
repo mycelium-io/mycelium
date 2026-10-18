@@ -478,6 +478,25 @@ You can change, pause or remove your own schedules. If one keeps waking you
 with nothing to do, slow it down or pause it rather than answering every time,
 and say so in the room so the person who set it up knows.
 
+## Themes
+
+When the person whose machine you're on asks you to make or change the app's
+colors, use `mycelium theme`. Their desktop app switches as you run it, so they
+watch it happen.
+
+```bash
+mycelium theme ls                                  # every theme, marking the one in use
+mycelium theme show fern                           # one of theirs as JSON, to start from
+mycelium theme add fern.json --use                 # a file, a URL, or the JSON itself
+mycelium theme use nord                            # or `system` to follow the computer
+```
+
+Themes are files on this machine, in `~/.mycelium/themes/`, and the one in use
+is `~/.mycelium/theme.json`. A theme is JSON: `{"name", "mode": "light" |
+"dark", "colors"}`, the app's color names to hex. `mycelium theme add` says
+what's wrong with one it won't take; editing a file in the folder changes it in
+the app too.
+
 ## Subscribing to what you're watching
 
 You're woken when someone mentions you, puts a turn to you or gives you a
