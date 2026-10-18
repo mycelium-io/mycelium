@@ -212,7 +212,11 @@ export function SystemNotice({
         </span>
       )}
       <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">{children}</span>
-      {aside !== undefined && <span className="w-32 flex-shrink-0 truncate">{aside}</span>}
+      {aside !== undefined && (
+        <span className="w-32 flex-shrink-0 truncate" title={typeof aside === "string" ? aside : undefined}>
+          {aside}
+        </span>
+      )}
       {trailing}
       {/* A column of its own even when the age is left out (the same as the
           line above), so who it was by stays where it is on every line. */}
