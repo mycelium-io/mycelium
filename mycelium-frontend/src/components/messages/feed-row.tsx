@@ -201,13 +201,16 @@ export function SystemNotice({
       {label && (
         <span
           title={label}
-          className={`w-32 flex-shrink-0 truncate whitespace-nowrap ${strong ? "font-semibold" : "font-medium"}`}
+          className={`w-1/5 max-w-32 flex-shrink-0 truncate whitespace-nowrap ${strong ? "font-semibold" : "font-medium"}`}
           style={{ color: labelColor ?? "var(--muted-foreground)" }}
         >
           {label}
         </span>
       )}
-      {task !== undefined && <span className="flex w-64 min-w-0 flex-shrink-0 items-center">{task}</span>}
+      {/* Shares of the row's width, up to a cap: every row is as wide as the
+          next, so the columns still line up, and a narrow pane (a split
+          beside a thread) leaves the detail room rather than squeezing it out. */}
+      {task !== undefined && <span className="flex w-1/3 min-w-0 max-w-64 flex-shrink-0 items-center">{task}</span>}
       {/* Up to a width, so on a wide window the detail stays near the task
           rather than drifting to the far edge. */}
       <span className="flex min-w-0 max-w-[36rem] flex-1 items-center gap-1.5 truncate">{children}</span>

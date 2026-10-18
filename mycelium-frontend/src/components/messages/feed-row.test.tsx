@@ -67,7 +67,7 @@ describe("the chat's status rows", () => {
     const tasks = screen.getAllByText("Jumps").map((t) => t.closest("button")?.parentElement?.className);
     expect(tasks).toHaveLength(2);
     expect(tasks[0]).toBe(tasks[1]);
-    expect(tasks[0]).toContain("w-64");
+    expect(tasks[0]).toContain("w-1/3");
     // Every row says when, even when the row above says the same.
     for (const row of rows) expect(row.querySelector("time, .tabular")).not.toBeNull();
     expect(screen.getByText("I approve the jump arc")).toBeInTheDocument();
