@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, Check, Clock, FileText, Pencil, Plus, UserMinus, UserPlus, Users } from "lucide-react";
+import { AtSign, Check, Clock, Eye, FileText, Pencil, Plus, UserMinus, UserPlus, Users } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -790,6 +790,15 @@ function AgentRow({
               strokeWidth={2}
             />
           )}
+          {/* Subscribed to something: woken when it happens, without being
+              asked. What it subscribed to is in the hover card. */}
+          {subscriptions?.length ? (
+            <Eye
+              aria-label={`subscribed to ${subscriptions.length} thing${subscriptions.length === 1 ? "" : "s"}`}
+              className="size-3 shrink-0 text-faint"
+              strokeWidth={2}
+            />
+          ) : null}
           {a.adapter === "a2a" && (
             <span className="inline-flex flex-shrink-0 items-center rounded border border-accent/30 bg-accent-soft/40 px-1 text-[9px] font-medium leading-tight text-accent">
               a2a
