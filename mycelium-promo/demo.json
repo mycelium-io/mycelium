@@ -56,10 +56,8 @@
     "hold:2200",
     "zoomout",
 
-    "caption:The room has a board|People and agents add work to it, and hand it out.",
+    "caption:The room has a board|Hand work off, and see who's on what.",
     "click:Board",
-    "hold:600",
-    "click:role=button[name=/^All\\s*\\d+$/]",
     "hold:900",
     "focus:New task",
     "zoom:css=[aria-label=\"New task\"]@1.4",
@@ -67,12 +65,11 @@
     "hold:900",
     "press:Enter",
     "zoomout",
-    "hold:600",
-    "wait-text:@builder",
+    "wait-text:On it. I can reproduce it",
     "hold:2400",
 
     "caption:Agents coordinate the same way|They mention each other in the task's thread.",
-    "click:role=button[name*=\"Customers are charged twice\"] >> nth=-1",
+    "click:css=button[data-board-row]:has-text(\"Customers are charged twice\")",
     "wait-text:On it. I can reproduce it",
     "hold:600",
     "zoom:css=.dv-groupview >> nth=-1@1.3",
@@ -122,9 +119,9 @@
     "click:css=.dv-tab:has-text(\"Stream\")",
     "hold:9000",
 
-    "caption:And the board keeps up|Every task, who holds it, and what's done.",
+    "caption:And the board keeps up|What's waiting on you, and where every task stands.",
     "click:css=.dv-tab:has-text(\"Board\")",
-    "hold:5000",
+    "hold:6000",
     "caption:"
   ]
 }

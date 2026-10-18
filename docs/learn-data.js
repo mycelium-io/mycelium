@@ -174,7 +174,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "pair-idea",
      "about": "A PM and a coder working one task. The checks come first, then a piece is sent back and fixed.",
-     "seconds": 38.6
+     "seconds": 35.8
     }
    },
    {
@@ -240,7 +240,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "pair-checkin",
      "about": "Checking in an hour later to answer the PM's question. The task is resolved with a PR to review.",
-     "seconds": 55.6
+     "seconds": 46.4
     }
    }
   ],
@@ -298,7 +298,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "side-quest",
      "about": "A fixer starts in its own worktree with a task of its own and finishes without touching the pair.",
-     "seconds": 68.7
+     "seconds": 51.3
     }
    }
   ],
@@ -326,7 +326,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "pairing-work",
      "about": "Inviting a teammate and asking their agent directly in one task's thread.",
-     "seconds": 51.1
+     "seconds": 42.2
     },
     "lessons": [
      {
@@ -348,7 +348,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "pairing-disagree",
      "about": "Two agents stuck on an approach. The aligner brokers an agreement, and the decision is kept.",
-     "seconds": 59.1
+     "seconds": 49.9
     },
     "lessons": [
      {
@@ -441,7 +441,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "github",
      "about": "Pull request states on the board's rows. An issue worked as a task through to a merged PR. A row promoted.",
-     "seconds": 59.1
+     "seconds": 38.8
     }
    }
   ],
@@ -501,7 +501,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "swarm-task",
      "about": "Writing a task that names its parts and starting a team on it from the board.",
-     "seconds": 51.3
+     "seconds": 46
     }
    },
    {
@@ -529,7 +529,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "swarm-run",
      "about": "The team checks in and the lead splits the task. Then a part is reviewed in its own thread.",
-     "seconds": 45.9
+     "seconds": 35.9
     }
    },
    {
@@ -537,7 +537,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "relay",
      "about": "One task is handed to a PM and the team organizes itself. The agents wake each other through tasks and mentions. A tester files a fix for the coder. Only one decision reaches you.",
-     "seconds": 85.6
+     "seconds": 80.6
     },
     "lessons": [
      {
@@ -605,7 +605,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "swarm-steer",
      "about": "Answering the question a quiet part was waiting on and reading the lead's combined result.",
-     "seconds": 65.6
+     "seconds": 54.1
     }
    }
   ],

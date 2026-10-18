@@ -1,35 +1,35 @@
 {
   "github": {
-    "seconds": 59.1
+    "seconds": 38.8
   },
   "pair-checkin": {
-    "seconds": 55.6
+    "seconds": 46.4
   },
   "pair-idea": {
-    "seconds": 38.6
+    "seconds": 35.8
   },
   "pair-setup": {
     "seconds": 87.4
   },
   "pairing-disagree": {
-    "seconds": 59.1
+    "seconds": 49.9
   },
   "pairing-work": {
-    "seconds": 51.1
+    "seconds": 42.2
   },
   "relay": {
-    "seconds": 85.6
+    "seconds": 80.6
   },
   "side-quest": {
-    "seconds": 68.7
+    "seconds": 51.3
   },
   "swarm-run": {
-    "seconds": 45.9
+    "seconds": 35.9
   },
   "swarm-steer": {
-    "seconds": 65.6
+    "seconds": 54.1
   },
   "swarm-task": {
-    "seconds": 51.3
+    "seconds": 46
   }
 }

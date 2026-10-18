@@ -38,6 +38,9 @@ import {
 } from "@/lib/board/people";
 import { BoardCapture } from "./board-capture";
 
+/** How long "Filed …" stands in for the board's summary line. */
+const FILED_FOR_MS = 5000;
+
 interface Props {
   roomName: string;
   /** Open a task's thread. The pane it opens belongs to the room's workspace. */
@@ -101,8 +104,12 @@ export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
       setFiling(`Filing "${parsed.title}"…`);
       fileCapture(roomName, parsed, you || "you")
         .then(() => {
-          setFiling(`Filed "${parsed.title}". An agent will pick it up.`);
+          const filed = `Filed "${parsed.title}". An agent will pick it up.`;
+          setFiling(filed);
           refreshBoard();
+          // Said for a moment, then the line goes back to what's going on;
+          // a refusal stays until the next thing is filed.
+          setTimeout(() => setFiling(now => (now === filed ? null : now)), FILED_FOR_MS);
         })
         .catch(err => setFiling(`Couldn't file "${parsed.title}": ${err instanceof Error ? err.message : err}`));
     },

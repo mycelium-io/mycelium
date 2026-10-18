@@ -20,7 +20,8 @@
 
 import type { EpisodeSummary } from "@/lib/api";
 import type { UpstreamRef } from "@/lib/board/upstream";
-import { Director, once, sleep } from "./director";
+import type { UPSTREAM_CHANGES } from "@/lib/threads";
+import { Director, once, sleep, titleOf } from "./director";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
 import { publish } from "./live";
 
@@ -602,15 +603,26 @@ function githubRoom(): RoomFixture {
   return fx;
 }
 
-/** Point a row at a pull request in a given state, the way the hub's cache would answer. */
-function setPr(d: Director, key: string, id: string, state: UpstreamRef["state"], label: string): void {
+/** Point a row at a pull request in a given state, the way the hub's cache would
+ *  answer, and say what changed with the hub's `upstream` notice: the chat
+ *  shows it opening, merging or going red, and the rail all of it. */
+function setPr(
+  d: Director,
+  key: string,
+  id: string,
+  state: UpstreamRef["state"],
+  label: string,
+  change: (typeof UPSTREAM_CHANGES)[number],
+): void {
   const status = d.fx.status;
   if (!status) return;
   const ref = pr(id, state, label, key, 5);
   status.refs = [...status.refs.filter((r) => r.id !== id), ref];
   status.rows[`memory:${key}`] = [ref.ref];
   const r = d.fx.memories.find((m) => m.key === key);
-  if (r) d.patchRow(key, {}, String(r.updated_by ?? "coder"));
+  if (!r) return;
+  d.patchRow(key, {}, String(r.updated_by ?? "coder"));
+  d.notice({ subkind: "upstream", key, title: titleOf(r), episode: r.episode, change, ref: `#${id.split("#")[1]}`, url: ref.url });
 }
 
 async function githubIssue(d: Director, row: MockMemory, owner: string): Promise<void> {
@@ -629,15 +641,17 @@ async function githubIssue(d: Director, row: MockMemory, owner: string): Promise
   const title = String(row.value).split("\n")[0];
   d.setMemory(row.key, `${title}\n\nPR: ${TAX_PR}`, owner);
   d.patchRow(row.key, { branch: "fix/receipt-tax", pr: "#616", ci: "running" }, owner);
-  setPr(d, row.key, TAX_PR, "pending", "CI running");
-  d.say(owner, `Opened ${TAX_PR} ("Fixes #118"), and put it on this task so the board follows it.`, thread);
+  setPr(d, row.key, TAX_PR, "pending", "CI running", "opened");
+  d.say(owner, `Opened ${TAX_PR} ("Fixes #118"), and put it on this task so the room follows it.`, thread);
   await sleep(4200);
   d.patchRow(row.key, { ci: "green" }, owner);
-  setPr(d, row.key, TAX_PR, "pending", "awaiting review");
+  setPr(d, row.key, TAX_PR, "pending", "CI green", "ci_passed");
+  await sleep(2000);
+  setPr(d, row.key, TAX_PR, "pending", "awaiting review", "review_requested");
   await sleep(3800);
-  setPr(d, row.key, TAX_PR, "ok", "approved");
+  setPr(d, row.key, TAX_PR, "ok", "approved", "approved");
   await sleep(3200);
-  setPr(d, row.key, TAX_PR, "done", "merged");
+  setPr(d, row.key, TAX_PR, "done", "merged", "merged");
   await d.think(owner, thread, 1400);
   d.say(owner, "#616 is merged, and GitHub closed #118 from it. Resolving.", thread);
   d.resolve(row.key, owner);
@@ -922,6 +936,9 @@ async function relay(d: Director, parent: MockMemory): Promise<void> {
   await sleep(1200);
   d.fileRow(EXPIRY.key, EXPIRY.title, { kind: "decision", status: "open", priority: "high", "part-of": SHIP }, "pm", EXPIRY.short);
   d.say("pm", "One thing only you can decide, so I filed it: do gift cards expire? Everything else goes ahead meanwhile.", top);
+  // Asked in the decision's own thread, by name, which is what puts it under
+  // "Waiting on you" on the person's board.
+  d.say("pm", `@${SAM} do gift cards expire? Once you say, the help page and the checkout copy follow.`, d.ep(EXPIRY.short));
   d.present("coder", api.title);
 
   await d.think("coder", d.ep(api.short), 4200);

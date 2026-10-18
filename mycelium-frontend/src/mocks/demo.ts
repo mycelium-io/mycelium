@@ -414,7 +414,18 @@ const CHATTER: [string, string | null, string][] = [
   ["qa", "e4f5a6", "400 a minute, everything under a second. Good to go for the sale."],
   ["ops", "f2b4d6", "Turned the alert on. Closing this."],
   ["growth", "a6b7c8", "Scheduled for Monday 8:00."],
+  // Left unanswered, so the board has something waiting on you.
+  ["support", "d3e4f5", "@sam-rivera two of the refunds are over $200. Should I send them, or do you want to look first?"],
 ];
+
+/** The epic the team's sale work is part of, and the tasks that are its parts. */
+const SALE = "work/spring-sale";
+const SALE_PARTS = new Set([
+  "work/spring-menu-photos",
+  "work/load-test-checkout",
+  "work/spring-sale-email",
+  "work/loyalty-card",
+]);
 
 /** The room, some days later: more members, each on a task, every thread moving. */
 export function demoBusy(fx: RoomFixture): void {
@@ -424,7 +435,13 @@ export function demoBusy(fx: RoomFixture): void {
   for (const key of ["work/add-apple-pay", "work/turn-on-apple-pay"]) {
     patchRow(fx, key, { status: "resolved", assignment: "resolved" }, "reviewer");
   }
+  // The spring sale, as an epic: the board draws it with its parts under it.
+  fx.memories.push(
+    boardRow(SALE, "Get ready for the spring sale", { kind: "action", status: "open" }, DEMO_PERSON.handle, 60 * 24, "e5f6a7"),
+  );
+  publish(ROOM, memoryChangedFrame(SALE, 1, DEMO_PERSON.handle));
   for (const [i, m] of TEAM.entries()) {
+    const partOf = SALE_PARTS.has(m.row) ? { "part-of": SALE } : {};
     if (!isAgent(fx, m.handle)) {
       fx.memories.push({
         key: `agents/${m.handle}`,
@@ -438,13 +455,21 @@ export function demoBusy(fx: RoomFixture): void {
     }
     const existing = fx.memories.find((r) => r.key === m.row);
     if (existing) {
-      patchRow(fx, m.row, { assignment: "held", owner: `@${m.handle}`, claimed_at: ago(40), ...(m.meta ?? {}) }, m.handle);
+      patchRow(fx, m.row, { assignment: "held", owner: `@${m.handle}`, claimed_at: ago(40), ...(m.meta ?? {}), ...partOf }, m.handle);
     } else {
       fx.memories.push(
         boardRow(
           m.row,
           m.title,
-          { kind: "action", status: "open", assignment: "held", owner: `@${m.handle}`, claimed_at: ago(30 + i * 7), ...(m.meta ?? {}) },
+          {
+            kind: "action",
+            status: "open",
+            assignment: "held",
+            owner: `@${m.handle}`,
+            claimed_at: ago(30 + i * 7),
+            ...(m.meta ?? {}),
+            ...partOf,
+          },
           DEMO_PERSON.handle,
           30 + i * 7,
           m.short,
@@ -455,7 +480,7 @@ export function demoBusy(fx: RoomFixture): void {
     setPresence(fx, m.handle, m.title);
   }
   setPresence(fx, "reviewer", "Review the loyalty card");
-  // A row of new work waiting, for the board to have more than one column.
+  // New work nobody has taken yet, for the board's Up next.
   for (const [key, title, short] of [
     ["work/oat-milk-stamps", "Count oat milk drinks on the loyalty card", "b8c9d0"],
     ["work/gift-cards", "Sell gift cards at checkout", "c9d0e1"],
