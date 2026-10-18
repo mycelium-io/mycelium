@@ -29,8 +29,8 @@ import {
   splitTasks,
   summary,
   titlesOf,
-  waitingText,
-  waitingWhere,
+  waitingLine,
+  waitingTitle,
   whoHasIt,
   type Standing,
 } from "@/lib/board/people";
@@ -128,7 +128,10 @@ export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
   }, []);
 
   const titles = useMemo(() => titlesOf(board), [board]);
-  const { running, next } = splitTasks(board.tasks);
+  // A task that's waiting on you lives there, not again below. An epic's part
+  // stays in its epic, since the path would read wrong with a step missing.
+  const yours = useMemo(() => new Set(waiting.map(item => item.key).filter(Boolean)), [waiting]);
+  const { running, next } = splitTasks(board.tasks.filter(task => !yours.has(task.key)));
   const quietRoom = !loading && waiting.length === 0 && board.epics.length === 0 && board.tasks.length === 0;
 
   return (
@@ -341,8 +344,8 @@ function WaitingRow({
       who={item.kind === "task" ? "you" : (item.sender ?? null)}
       avatar={item.kind === "task" ? you : undefined}
       agent={item.kind !== "task" && agent}
-      title={waitingText(item, you)}
-      line={waitingWhere(item)}
+      title={waitingTitle(item)}
+      line={waitingLine(item, you)}
       standing={WAITING_STANDING[item.kind]}
       age={item.at ? shortAge(Date.parse(item.at), now) : ""}
       // Its own key: the task it's in may also have a row of its own below.

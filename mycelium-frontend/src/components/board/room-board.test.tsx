@@ -106,8 +106,9 @@ describe("<RoomBoard />", () => {
     expect(await screen.findByText("1 thing needs you. builder is on 3 tasks. 1 is up next.")).toBeInTheDocument();
 
     const asks = await screen.findByRole("region", { name: "Waiting on you" });
+    // The same shape as any row: the task as the title, the words that ask you as the line.
+    expect(within(asks).getByText("Fix the double charges")).toBeInTheDocument();
     expect(within(asks).getByText(/refund automatically/)).toBeInTheDocument();
-    expect(within(asks).getByText("In Fix the double charges (part of Apple Pay for everyone)")).toBeInTheDocument();
     expect(within(asks).getByText("Asks you")).toBeInTheDocument();
     // The row is what opens it: there is no button to press on it.
     expect(within(asks).queryByRole("button", { name: "Answer" })).not.toBeInTheDocument();
@@ -154,6 +155,21 @@ describe("<RoomBoard />", () => {
     expect(document.activeElement).toBe(container.querySelector('[data-board-row="work/checkout"]'));
     await userEvent.keyboard("k");
     expect(document.activeElement).toBe(container.querySelector('[data-board-row="work/double"]'));
+  });
+
+  it("shows a task that's waiting on you there, and not again below", async () => {
+    board = {
+      epics: [],
+      tasks: [part("work/alerts", "Alert us when payments fail", "working", { holder: "julia" })],
+    };
+    waiting = {
+      handle: "julia",
+      items: [{ kind: "task", key: "work/alerts", title: "Alert us when payments fail", episode: ep("alerts"), count: 1 }],
+    };
+    renderWithSWR(<RoomBoard roomName="checkout" />);
+    const asks = await screen.findByRole("region", { name: "Waiting on you" });
+    expect(within(asks).getByText("Alert us when payments fail")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "In this room" })).not.toBeInTheDocument();
   });
 
   it("says plainly when nothing is going on", async () => {

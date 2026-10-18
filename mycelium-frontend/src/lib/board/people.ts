@@ -30,7 +30,8 @@ export interface Standing {
 export const STANDING: Record<PartState, Standing> = {
   done: { word: "Done", tone: "var(--faint)" },
   blocked: { word: "Blocked", tone: "var(--red)" },
-  waiting: { word: "Waiting", tone: "var(--yellow)" },
+  // Muted: waiting its turn is ordinary. Yellow is kept for a task gone quiet.
+  waiting: { word: "Waiting", tone: "var(--muted-foreground)" },
   working: { word: "Working", tone: "var(--accent)" },
   open: { word: "Not started", tone: "var(--muted-foreground)" },
 };
@@ -74,7 +75,12 @@ export function startsAfter(part: BoardPart, titles: Map<string, string>): strin
  *  else why it can't go on. Never an engine's report: the hub leaves those
  *  out of `latest`. Empty when there is nothing worth saying. */
 export function humanLine(part: BoardPart, titles: Map<string, string> = new Map()): string {
-  if (part.latest) return `${part.latest.sender}: ${part.latest.text}`;
+  // Named only when someone other than its holder spoke last: the row
+  // already says who has it.
+  if (part.latest) {
+    const own = bare(part.latest.sender) === (bare(part.holder) || bare(part.assignee));
+    return own ? part.latest.text : `${part.latest.sender}: ${part.latest.text}`;
+  }
   if (part.state === "blocked") {
     if (part.blocked_by) return `Blocked by ${part.blocked_by}`;
     return part.key.startsWith("failed/") ? "It failed and needs a fix" : "";
@@ -129,28 +135,22 @@ export function progressOf(epic: BoardEpic): string {
   return `${epic.done}/${epic.total}`;
 }
 
-/** What a waiting item says on its row. An ask is its own words, less the
- *  mention of you it opens with: the row is already yours. */
-export function waitingText(item: WaitingItem, you = ""): string {
+/** A waiting item's title, the same as every other row's: the task it's in. */
+export function waitingTitle(item: WaitingItem): string {
+  return item.title ?? "A message in the room";
+}
+
+/** A waiting item's one line: the words that ask you (less the mention of you
+ *  they open with, since the row is already yours), whose turn it is, or a
+ *  task's latest line. */
+export function waitingLine(item: WaitingItem, you = ""): string {
   if (item.kind === "ask") {
     const text = (item.text ?? "").replace(new RegExp(`^@!?${escape(bare(you))}\\b[,:]?\\s*`, "i"), "");
     if (!text) return `${item.sender} asked you something`;
     return you && text !== item.text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
   }
-  if (item.kind === "turn") return `It's your turn in ${item.title ?? "a flow"}`;
-  return item.title ?? "A task";
-}
-
-/** Where a waiting item is: its task, and the epic that task is part of. */
-export function waitingWhere(item: WaitingItem): string {
-  if (item.kind === "turn") {
-    return item.epic_title ? `Part of ${item.epic_title}` : `${item.sender ?? "A flow"} is waiting on you`;
-  }
-  if (item.kind === "task") {
-    return item.epic_title ? `Part of ${item.epic_title}` : (item.text ?? "");
-  }
-  if (!item.title) return "In the room";
-  return item.epic_title ? `In ${item.title} (part of ${item.epic_title})` : `In ${item.title}`;
+  if (item.kind === "turn") return `${item.sender ?? "A flow"} is waiting on you`;
+  return item.text ?? "";
 }
 
 function escape(text: string): string {

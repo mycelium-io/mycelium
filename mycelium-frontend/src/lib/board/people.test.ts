@@ -15,8 +15,8 @@ import {
   splitTasks,
   startsAfter,
   summary,
-  waitingText,
-  waitingWhere,
+  waitingLine,
+  waitingTitle,
   whoHasIt,
 } from "./people";
 
@@ -50,9 +50,13 @@ describe("the people's board words", () => {
 
   it("gives a row one human line: its latest message, else why it can't go on", () => {
     const titles = new Map([["work/a", "Add Apple Pay"], ["work/b", "Fix the charges"]]);
-    expect(humanLine(part("working", { latest: { sender: "builder", text: "Opened #502." } }))).toBe(
-      "builder: Opened #502.",
-    );
+    expect(
+      humanLine(part("working", { holder: "reviewer", latest: { sender: "builder", text: "Opened #502." } })),
+    ).toBe("builder: Opened #502.");
+    // The row already names its holder, so their own line isn't signed again.
+    expect(
+      humanLine(part("working", { holder: "builder", latest: { sender: "builder", text: "Opened #502." } })),
+    ).toBe("Opened #502.");
     expect(humanLine(part("working"))).toBe("");
     expect(humanLine(part("blocked", { blocked_by: "#502" }))).toBe("Blocked by #502");
     expect(humanLine(part("blocked", { key: "failed/iphone" }))).toBe("It failed and needs a fix");
@@ -98,20 +102,23 @@ describe("the people's board words", () => {
     expect(summary({ epics: [], tasks: [] }, [])).toBe("Nothing needs you.");
   });
 
-  it("words each kind of waiting item, and where it is", () => {
-    expect(waitingText({ kind: "ask", text: "Ship it?", count: 1 })).toBe("Ship it?");
-    expect(waitingText({ kind: "ask", text: "@julia can I close this?", count: 1 }, "julia")).toBe(
+  it("gives a waiting item the same shape as any row: its task, then one line", () => {
+    expect(waitingTitle({ kind: "ask", title: "Fix it", count: 1 })).toBe("Fix it");
+    expect(waitingTitle({ kind: "ask", count: 1 })).toBe("A message in the room");
+    expect(waitingLine({ kind: "ask", text: "Ship it?", count: 1 })).toBe("Ship it?");
+    expect(waitingLine({ kind: "ask", text: "@julia can I close this?", count: 1 }, "julia")).toBe(
       "Can I close this?",
     );
-    expect(waitingText({ kind: "ask", text: "@ana can I close this?", count: 1 }, "julia")).toBe(
+    expect(waitingLine({ kind: "ask", text: "@ana can I close this?", count: 1 }, "julia")).toBe(
       "@ana can I close this?",
     );
-    expect(waitingText({ kind: "turn", title: "Review", count: 1 })).toBe("It's your turn in Review");
-    expect(waitingText({ kind: "task", title: "Test it", count: 1 })).toBe("Test it");
-    expect(waitingWhere({ kind: "ask", title: "Fix it", count: 1 })).toBe("In Fix it");
-    expect(waitingWhere({ kind: "ask", title: "Fix it", epic_title: "Apple Pay", count: 1 })).toBe(
-      "In Fix it (part of Apple Pay)",
+    expect(waitingLine({ kind: "turn", title: "Review", sender: "conductor", count: 1 })).toBe(
+      "conductor is waiting on you",
     );
-    expect(waitingWhere({ kind: "ask", count: 1 })).toBe("In the room");
+    expect(waitingLine({ kind: "task", title: "Test it", text: "Opened #502.", count: 1 })).toBe("Opened #502.");
+  });
+
+  it("keeps yellow for a quiet task: waiting its turn is ordinary", () => {
+    expect(STANDING.waiting.tone).not.toBe("var(--yellow)");
   });
 });
