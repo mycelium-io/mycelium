@@ -5,6 +5,7 @@
 @custom-variant dark (&:where(
   .dark, .dark *,
   .theme-catppuccin-mocha, .theme-catppuccin-mocha *,
+  .theme-custom-dark, .theme-custom-dark *,
   .theme-dracula, .theme-dracula *,
   .theme-github-dark, .theme-github-dark *,
   .theme-gruvbox-dark, .theme-gruvbox-dark *,
@@ -128,6 +129,7 @@
  * for a dark canvas. Each theme's block below sets the rest. */
 .dark,
 .theme-catppuccin-mocha,
+.theme-custom-dark,
 .theme-dracula,
 .theme-github-dark,
 .theme-gruvbox-dark,

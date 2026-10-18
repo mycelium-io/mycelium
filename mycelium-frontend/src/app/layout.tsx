@@ -4,6 +4,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { CustomThemeStyle } from "@/components/custom-theme";
 import { THEME_CLASSES, THEME_IDS } from "@/lib/themes";
 import { CurrentUserProvider } from "@/components/current-user";
 import { MachineFromUrl } from "@/components/machine-from-url";
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange
         >
+          <CustomThemeStyle />
           {/* One cache for every room read below, above the router so it
               survives navigation between rooms. */}
           <SWRProvider>

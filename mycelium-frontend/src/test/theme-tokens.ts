@@ -43,19 +43,6 @@ export function themeTokens(className: string): Record<string, string> {
   );
 }
 
-export const rgb = (hex: string): number[] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-
-function luminance(c: number[]): number {
-  const [r, g, b] = c.map((v) => {
-    const s = v / 255;
-    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-/** WCAG contrast between two colors, each a hex string or `[r, g, b]`. */
-export function contrast(a: string | number[], b: string | number[]): number {
-  const [x, y] = [a, b].map((c) => luminance(typeof c === "string" ? rgb(c) : c));
-  const [hi, lo] = [x, y].sort((p, q) => q - p);
-  return (hi + 0.05) / (lo + 0.05);
-}
+// The math is the app's own (`lib/theme-contrast.ts`), so a test and an
+// imported theme are judged the same way.
+export { contrast, rgb } from "@/lib/theme-contrast";
