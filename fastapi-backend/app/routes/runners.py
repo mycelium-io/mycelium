@@ -213,7 +213,7 @@ async def _forget_unadopted(runner_id: str, spec: dict) -> None:
     with no pane. Every way an adopt fails is before the mapping, so the member
     goes, unless it has since become some other runner's.
     """
-    from app.routes.memory import delete_memory  # lazy: routes import each other
+    from app.routes.memory import remove_memory  # lazy: routes import each other
 
     room, handle = str(spec.get("room") or ""), str(spec.get("handle") or "")
     if not room or not handle or not room_exists(room):
@@ -222,7 +222,7 @@ async def _forget_unadopted(runner_id: str, spec: dict) -> None:
     if not exists or owner != runner_id:
         return
     try:
-        await delete_memory(room, f"agents/{handle}")
+        await remove_memory(room, f"agents/{handle}")
     except HTTPException:
         logger.debug("adopt: @%s in %s was already gone", handle, room)
 

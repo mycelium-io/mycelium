@@ -18,7 +18,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.routes.memory import delete_memory, upsert_memories
+from app.routes.memory import remove_memory, upsert_memories
 from app.schemas import MemoryBatchCreate, MemoryCreate
 from app.services import actor, room_settings
 from app.services.filesystem import room_exists
@@ -101,7 +101,7 @@ async def reset_room_setting(room_name: str, setting_id: str) -> RoomSettingRead
     """Drop the room's own value, so it runs with the hub's (or the default) again."""
     _require(room_name, setting_id)
     try:
-        await delete_memory(room_name, f"{room_settings.NAMESPACE}{setting_id}")
+        await remove_memory(room_name, f"{room_settings.NAMESPACE}{setting_id}")
     except HTTPException as exc:
         if exc.status_code != 404:
             raise

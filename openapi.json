@@ -4187,7 +4187,7 @@
           "memory"
         ],
         "summary": "Delete Memory",
-        "description": "Delete a memory by key. Removes the file and its search-index entry.\n\nAn ``uploads/`` record takes its file's bytes with it once no other upload\nin the room names them.",
+        "description": "Delete a memory by key. Removes the file and its search-index entry.\n\nAn ``uploads/`` record takes its file's bytes with it once no other upload\nin the room names them. An agent's manifest is its owner's to remove.",
         "operationId": "delete_memory_api_rooms__room_name__memory__key__delete",
         "parameters": [
           {

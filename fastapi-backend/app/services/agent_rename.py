@@ -209,7 +209,7 @@ async def rename(room: str, old: str, new: str, *, by: str) -> tuple[list[str], 
     Checked first (:func:`check`), so a refused rename writes nothing. The room
     isn't told here: :func:`apply` does both.
     """
-    from app.routes.memory import delete_memory  # lazy: routes import services
+    from app.routes.memory import remove_memory  # lazy: routes import services
     from app.services import schedules
 
     old, new = norm_handle(old) or "", norm_handle(new) or ""
@@ -219,7 +219,7 @@ async def rename(room: str, old: str, new: str, *, by: str) -> tuple[list[str], 
     # holds, as it does when an agent leaves the room.
     rows = await _move_rows(room, old, new, by)
     for key in old_keys:
-        await delete_memory(room, key)
+        await remove_memory(room, key)
     await schedules.rename_owner(room, old, new)
     _move_room_member(room, old, new)
     manager.rename_member(room, old, new)

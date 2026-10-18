@@ -96,6 +96,71 @@ def delegates_to(room: str, handle: str, candidate: str) -> bool:
     return any(_norm(entry) == actor_handle for entry in allow_from)
 
 
+def _grants(manifest: dict[str, Any] | None) -> tuple[str | None, frozenset[str]]:
+    """Who a manifest lets act as its agent: its ``owner`` and ``allow_from``."""
+    manifest = manifest or {}
+    allow_from = manifest.get("allow_from")
+    entries = allow_from if isinstance(allow_from, list) else []
+    return _norm(manifest.get("owner")), frozenset(n for e in entries if (n := _norm(e)))
+
+
+def grant_change_refusal(
+    room: str, handle: str, new_content: str, principal: str, *, deleting: bool = False
+) -> str | None:
+    """Why ``principal`` may not write (or delete) ``handle``'s manifest as asked,
+    or ``None`` when it may.
+
+    A manifest's ``owner`` and ``allow_from`` are who may act as its agent
+    (:func:`delegates_to`), so they are the one part of it that isn't anyone's
+    to edit. With a verified caller:
+
+    - an agent with an owner: only that owner changes them, or deletes it;
+    - one with none yet: only the agent itself or a handle it already allows;
+    - a new one: its owner, if it names one, is the caller, and only an owner
+      grants ``allow_from``; and its handle can't be another person's, or an
+      agent someone else owns in another room.
+
+    Every other edit (notes, description, adapter) is untouched.
+    """
+    me = _norm(principal)
+    existing = _read_agent_manifest(room, handle)
+    old_owner, old_allow = _grants(existing)
+    if deleting:
+        if old_owner and me != old_owner:
+            return f"@{handle} belongs to @{old_owner}; only they can remove it."
+        return None
+    try:
+        parsed = yaml.safe_load(new_content) if new_content else {}
+    except yaml.YAMLError:
+        parsed = {}
+    new_owner, new_allow = _grants(parsed if isinstance(parsed, dict) else {})
+    if existing is not None:
+        if (new_owner, new_allow) == (old_owner, old_allow):
+            return None
+        if old_owner:
+            if me == old_owner:
+                return None
+            return (
+                f"@{handle} belongs to @{old_owner}; only they can change who owns it "
+                "or who may act as it."
+            )
+        if me == _norm(handle) or me in old_allow:
+            return None
+        return f"Only @{handle}, or a handle it allows, can say who owns it or may act as it."
+    if new_owner and new_owner != me:
+        return f"A new agent's owner has to be you (@{me}), not @{new_owner}."
+    if new_allow and new_owner != me:
+        return "Only an agent's owner can say who may act as it: name yourself as its owner."
+    target = _norm(handle)
+    if target and target != me and load_user(target) is not None:
+        return f"@{target} is a person here; an agent can't take their handle."
+    for other in iter_agent_manifests():
+        # Without naming the room: it may be one the caller can't see.
+        if other["handle"] == target and other["owner"] and other["owner"] != me:
+            return f"@{target} is @{other['owner']}'s agent on this hub; pick another handle."
+    return None
+
+
 def post_rejection_reason(room: str, handle: str, *, allow_unregistered: bool) -> str | None:
     """Why ``handle`` may not post in ``room``, or None if it may.
 
