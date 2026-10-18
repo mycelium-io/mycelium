@@ -45,6 +45,7 @@ ALLOWED: dict[str, str] = {
     "docs/og.png": "the 1200x630 social card, a full-bleed gradient, already optimized",
     "mycelium-desktop/src-tauri/icons/icon.icns": "the macOS icon bundle `tauri icon` writes, every size up to 1024px",
     "mycelium-frontend/package-lock.json": "npm's lockfile, which has to be committed",
+    "openapi.json": "the generated API spec, which grows with every route",
 }
 
 # A PNG oxipng (at level 2, its fast setting) shrinks by more than this was
