@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Every command the Mac app answers checks who is calling.
+"""Every command the desktop app answers checks who is calling.
 
 The hub's own UI in the app's window may call into it
 (``mycelium-desktop/src-tauri/capabilities/own-hub-ui.json``), so the
 capability no longer keeps a hub's page out: each ``#[tauri::command]`` has to
 refuse a page itself, with ``local_only`` (the app's own pages) or
-``own_ui_only`` (this Mac's own hub UI). This reads the Rust and fails on a
+``own_ui_only`` (the hub UI of the app's own hub). This reads the Rust and fails on a
 command that does neither. CI doesn't build the app, so the check is here.
 """
 

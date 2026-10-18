@@ -9,7 +9,7 @@ import { FolderPicker, insideRoots } from "./folder-picker";
 const ROOT = "/Users/morgan/code";
 const runner = { id: "mbp", label: "morgans-mbp", roots: [ROOT] } as unknown as Runner;
 
-/** The app's bridge, as its own hub UI sees it: this Mac is `machine`. */
+/** The app's bridge, as its own hub UI sees it: this machine is `machine`. */
 function inTheApp(machine: string, picked: string | null) {
   const invoke = vi.fn(async (command: string) => (command === "this_machine" ? machine : picked));
   (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = { invoke };
@@ -27,6 +27,11 @@ describe("insideRoots", () => {
     expect(insideRoots(`${ROOT}-old/shop`, [ROOT])).toBe(false);
     expect(insideRoots("/etc", [ROOT])).toBe(false);
   });
+
+  it("knows a Windows folder under a Windows root", () => {
+    expect(insideRoots("C:\\Users\\morgan\\code\\shop", ["C:\\Users\\morgan\\code"])).toBe(true);
+    expect(insideRoots("C:\\Users\\morgan\\code-old", ["C:\\Users\\morgan\\code"])).toBe(false);
+  });
 });
 
 describe("FolderPicker", () => {
@@ -42,7 +47,7 @@ describe("FolderPicker", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("opens the Mac's folder dialog at the folder typed and picks what was chosen", async () => {
+  it("opens the system's folder dialog at the folder typed and picks what was chosen", async () => {
     const invoke = inTheApp("mbp", `${ROOT}/shop`);
     const onPick = vi.fn();
     render(<FolderPicker runner={runner} value={`${ROOT}/api`} onPick={onPick} />);

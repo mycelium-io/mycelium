@@ -6,21 +6,25 @@
 import { useState } from "react";
 import { FolderOpen } from "lucide-react";
 import type { Runner } from "@/lib/api";
-import { chooseFolderHere, useThisMachine } from "@/lib/desktop";
+import { chooseFolderHere, desktopMachine, useThisMachine } from "@/lib/desktop";
 
-/** Whether `path` is one of `roots` or inside one. */
+/** Whether `path` is one of `roots` or inside one, with either separator,
+ *  since a Windows folder is `C:\code\api`. */
 export function insideRoots(path: string, roots: string[]): boolean {
-  return roots.some((root) => path === root || path.startsWith(`${root.replace(/\/+$/, "")}/`));
+  return roots.some((root) => {
+    const base = root.replace(/[\\/]+$/, "");
+    return path === root || path === base || path.startsWith(`${base}/`) || path.startsWith(`${base}\\`);
+  });
 }
 
 /**
- * Pick where an agent works with the Mac's own folder dialog.
+ * Pick where an agent works with the system's own folder dialog.
  *
- * Only in the desktop app, on its own hub, for an agent starting on that same
- * Mac: a browser can't tell a page a folder's path, and the dialog picks on
- * the Mac it opens on. Anywhere else this renders nothing and the path is
- * typed. `value` is the folder as typed, already absolute; `onPick` gets the
- * absolute path chosen, when it's one the machine lets agents start in.
+ * Only in the desktop app, on its own hub, for an agent starting on the same
+ * machine: a browser can't tell a page a folder's path, and the dialog picks
+ * on the machine it opens on. Anywhere else this renders nothing and the path
+ * is typed. `value` is the folder as typed, already absolute; `onPick` gets
+ * the absolute path chosen, when it's one the machine lets agents start in.
  */
 export function FolderPicker({
   runner,
@@ -58,7 +62,7 @@ export function FolderPicker({
       <button
         type="button"
         onClick={() => void choose()}
-        title="Choose a folder on this Mac"
+        title={`Choose a folder on this ${desktopMachine()}`}
         className="flex h-8 items-center gap-1.5 rounded-md border border-border px-2 text-label text-muted-foreground transition-colors hover:border-border2 hover:text-text"
       >
         <FolderOpen className="size-4" aria-hidden />

@@ -35,8 +35,8 @@ The shell adds:
   everything it starts.
 
 The hub's UI, once loaded, can call two commands and nothing else: which
-machine this is, and a folder dialog for where a new agent works. Only this
-Mac's own hub UI gets them (`capabilities/own-hub-ui.json`, and the commands
+machine this is, and a folder dialog for where a new agent works. Only the UI
+of the app's own hub gets them (`capabilities/own-hub-ui.json`, and the commands
 check the page is the hub this app started). Every other command refuses any
 page but the app's own, and another hub's pages, which client mode shows, get
 nothing.

@@ -8,7 +8,7 @@
 //! Around that: a tray with what is running, first-run choices, `mycelium://`
 //! links, and a window with the agents' terminals. Every command here refuses
 //! a page that isn't the app's own, except `this_machine` and
-//! `choose_agent_folder`, which answer this Mac's own hub UI alone (the Add
+//! `choose_agent_folder`, which answer the app's own hub UI alone (the Add
 //! member window's folder dialog); another hub's pages get nothing.
 
 mod close;
@@ -111,7 +111,7 @@ fn media_permission(app: &AppHandle, webview: &Webview, kind: PermissionKind) ->
     }
 }
 
-/// Whether `webview` shows this Mac's own hub UI: the hub this app started,
+/// Whether `webview` shows the app's own hub UI: the hub this app started,
 /// in hub mode. Never another hub's pages, which client mode shows.
 fn shows_own_ui(app: &AppHandle, webview: &Webview) -> bool {
     let status = app.state::<Supervisor>().status();
@@ -124,7 +124,7 @@ fn shows_own_ui(app: &AppHandle, webview: &Webview) -> bool {
 }
 
 /// The two commands the hub's page may call (`capabilities/own-hub-ui.json`),
-/// and only this Mac's own hub UI: which machine this is, and a folder dialog.
+/// and only the app's own hub UI: which machine this is, and a folder dialog.
 fn own_ui_only(app: &AppHandle, webview: &Webview) -> Result<(), String> {
     if shows_own_ui(app, webview) {
         Ok(())
@@ -1106,7 +1106,7 @@ async fn pick_folder(
         .map(|p| p.to_string_lossy().to_string()))
 }
 
-/// This Mac's runner id, for its own hub UI: the machine `choose_agent_folder`
+/// This machine's runner id, for the app's own hub UI: the machine `choose_agent_folder`
 /// picks on, so the page offers the dialog only for an agent starting here.
 #[tauri::command]
 fn this_machine(app: AppHandle, webview: Webview) -> Result<Option<String>, String> {
@@ -1118,8 +1118,8 @@ fn this_machine(app: AppHandle, webview: Webview) -> Result<Option<String>, Stri
         .map(str::to_string))
 }
 
-/// The macOS folder picker, for where a new agent works, opened at `start`.
-/// Only for this Mac's own hub UI; `None` when the person cancels. The page
+/// The system's folder picker, for where a new agent works, opened at `start`.
+/// Only for the app's own hub UI; `None` when the person cancels. The page
 /// checks the folder is one agents may start in, and the runner checks again.
 #[tauri::command]
 async fn choose_agent_folder(
