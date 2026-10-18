@@ -752,7 +752,7 @@ function AgentRow({
           <DetailRow label="machine" value={machine ?? undefined} />
           <DetailRow
             label="schedules"
-            value={schedules ? `${schedules} (see the Schedules tab)` : undefined}
+            value={schedules ? `${schedules} (see Schedules, under the room)` : undefined}
           />
           <DetailRow
             label="subscribed"

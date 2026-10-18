@@ -56,7 +56,7 @@ export const TOUR_STOPS: TourStop[] = [
     element: '[data-tour="tab-board"]',
     title: "The board",
     text: "The room's tasks, and who has each one. Every task has its own thread, so the talk about it stays with it instead of filling the channel.",
-    side: "bottom",
+    side: "right",
     align: "start",
     view: "board",
   },

@@ -2,13 +2,15 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * The room's center as tabs and splits: what a tab can be, its id, and the
- * layout remembered per room in this browser.
+ * The room's center: one of the room's views, and beside it the tabs you
+ * opened, with the layout of those tabs and the view you were on remembered
+ * per room in this browser.
  *
- * Every view in the center is one kind of tab. The room's own views (Channel,
- * Stream, Board, Files, Schedules) have fixed ids; a memory and a thread are
- * keyed by what they show, so opening one that is already open shows it rather
- * than a second copy.
+ * The room's own views (Channel, Stream, Board, Files, Schedules) aren't tabs:
+ * they're picked under the room in the Rooms rail, and one always fills the
+ * view pane, so none can be closed. Tabs are only what you opened: a memory
+ * and a thread, keyed by what they show, so opening one that is already open
+ * shows it rather than a second copy.
  */
 
 export type View = "channel" | "stream" | "board" | "files" | "schedules";
@@ -25,9 +27,10 @@ export const VIEW_LABELS: Record<View, string> = {
   schedules: "Schedules",
 };
 
-/** Tabs a room no longer has: the Network tab, and the Raw messages tab it
- *  became. A layout saved with one open loads without it. */
-const RETIRED_IDS: ReadonlySet<string> = new Set(["network", "raw"]);
+/** Tabs a room no longer has: the Network tab, the Raw messages tab it became,
+ *  and the room's views, which left the tab strip for the Rooms rail. A layout
+ *  saved with one open loads without it. */
+const RETIRED_IDS: ReadonlySet<string> = new Set(["network", "raw", ...ROOM_VIEWS]);
 
 /** A saved layout without the tabs this version no longer draws. A retired tab
  *  is taken out of its group, and the group shows its first remaining tab if
@@ -96,9 +99,31 @@ export function panesInFront(frontTabs: readonly (string | null | undefined)[]):
   return [...panes];
 }
 
-/** The Channel is the room's home: every other tab can close, it can't. */
+/** Every tab is something you opened, so every tab closes. A view isn't a tab,
+ *  and can't be closed. */
 export function isClosable(id: string): boolean {
-  return id !== "channel";
+  const kind = parsePanelId(id)?.kind;
+  return kind === "memory" || kind === "thread";
+}
+
+const VIEW_PREFIX = "mycelium.room-view.";
+
+/** The view a room was last on in this browser; the Channel the first time. */
+export function loadView(room: string): View {
+  try {
+    const saved = window.localStorage.getItem(VIEW_PREFIX + room);
+    return saved && (ROOM_VIEWS as readonly string[]).includes(saved) ? (saved as View) : "channel";
+  } catch {
+    return "channel";
+  }
+}
+
+export function saveView(room: string, view: View): void {
+  try {
+    window.localStorage.setItem(VIEW_PREFIX + room, view);
+  } catch {
+    // Not remembered: the room opens on the Channel next time.
+  }
 }
 
 const STORAGE_PREFIX = "mycelium.dock.";
@@ -136,19 +161,19 @@ interface SerializedPanel {
 }
 
 /**
- * A saved layout this version can restore: every panel it names is one it can
- * draw, with the component that draws it, and the Channel is among them. A
- * layout from an older or newer version that fails any of that is dropped
- * rather than half-restored.
+ * A saved layout this version can restore: it has at least one tab, and every
+ * tab is something opened (a memory or a thread) with the component that draws
+ * it. A layout from an older or newer version that fails any of that is
+ * dropped rather than half-restored.
  */
 export function restorableLayout(layout: unknown): boolean {
   if (!layout || typeof layout !== "object") return false;
   const panels = (layout as { panels?: Record<string, SerializedPanel> }).panels;
   if (!panels || typeof panels !== "object") return false;
   const ids = Object.keys(panels);
-  if (!ids.includes("channel")) return false;
+  if (ids.length === 0) return false;
   return ids.every(id => {
     const parsed = parsePanelId(id);
-    return parsed !== null && panels[id]?.contentComponent === parsed.kind;
+    return isClosable(id) && parsed !== null && panels[id]?.contentComponent === parsed.kind;
   });
 }

@@ -18,7 +18,7 @@ import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { CELL, StatusButton, StatusDot } from "@/components/status-items";
 import { episodeUrn } from "@/lib/threads";
-import { parsePanelId, type View } from "@/lib/room-dock";
+import { loadView, parsePanelId, saveView, type View } from "@/lib/room-dock";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
@@ -98,7 +98,7 @@ function RoomWorkspace() {
     setInspectorOpen(true);
   }, []);
 
-  // The room's center is a dock of tabs (`RoomDock`). What arrives before it
+  // The room's center is its view and a dock of tabs (`RoomDock`). What arrives before it
   // is ready (a `?focus=` on first load) waits for it rather than being lost.
   const dock = useRef<RoomDockHandle | null>(null);
   const pending = useRef<((d: RoomDockHandle) => void)[]>([]);
@@ -115,6 +115,22 @@ function RoomWorkspace() {
     pending.current = [];
     queued.forEach(run => run(handle));
   }, []);
+  // The view in the room's view pane, picked under the room in the Rooms rail
+  // and remembered per room. Read once mounted, so the server's render and the
+  // first client one agree.
+  const [view, setView] = useState<View>("channel");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the saved view is client-only
+    setView(loadView(roomName));
+  }, [roomName]);
+  const changeView = useCallback(
+    (next: View) => {
+      setView(next);
+      saveView(roomName, next);
+    },
+    [roomName],
+  );
+  const [channelCount, setChannelCount] = useState<number | null>(null);
   const [activePanel, setActivePanel] = useState<string | null>("channel");
   const activeParsed = activePanel ? parsePanelId(activePanel) : null;
   const activeMemory = activeParsed?.kind === "memory" ? activeParsed.key : null;
@@ -128,7 +144,8 @@ function RoomWorkspace() {
     },
     [withDock],
   );
-  const showView = useCallback((view: View) => withDock(d => d.showView(view)), [withDock]);
+  const showView = useCallback((next: View) => withDock(d => d.showView(next)), [withDock]);
+  const roomViews = useMemo(() => ({ view, onView: showView, channelCount }), [view, showView, channelCount]);
 
   const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
 
@@ -373,6 +390,7 @@ function RoomWorkspace() {
       activeRoom={roomName}
       header={header}
       statusLeft={statusLeft}
+      roomViews={roomViews}
     >
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <ResizablePanelGroup
@@ -397,6 +415,9 @@ function RoomWorkspace() {
                 // the room's, and switching rooms starts from that room's own.
                 key={roomName}
                 roomName={roomName}
+                view={view}
+                onViewChange={changeView}
+                onChannelCount={setChannelCount}
                 onMemoryChanged={handleMemoryChanged}
                 onConnectionChange={setConnected}
                 focusMessageId={focus?.type === "message" ? focus.id : null}

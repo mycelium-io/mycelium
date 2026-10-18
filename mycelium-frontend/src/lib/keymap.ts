@@ -103,12 +103,14 @@ export const KEYMAP: Binding[] = [
   },
   { id: "nav.home", keys: ["alt+h"], label: "Home", group: "Navigate", scope: "global" },
 
-  { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },
-  { id: "pane.stream", keys: ["alt+l"], label: "Stream", group: "Panes", scope: "room" },
-  { id: "pane.board", keys: ["alt+p"], label: "Board", group: "Panes", scope: "room" },
+  // The room's views, in the Rooms rail's order. ⌘1 to ⌘5 in the desktop app, as
+  // in an editor; a browser keeps those for its own tabs.
+  { id: "pane.channel", keys: ["alt+c"], desktopKeys: ["mod+1"], label: "Channel", group: "Panes", scope: "room" },
+  { id: "pane.stream", keys: ["alt+l"], desktopKeys: ["mod+2"], label: "Stream", group: "Panes", scope: "room" },
+  { id: "pane.board", keys: ["alt+p"], desktopKeys: ["mod+3"], label: "Board", group: "Panes", scope: "room" },
   // U for uploads: alt+F opens the browser's own menu on Windows and Linux.
-  { id: "pane.files", keys: ["alt+u"], label: "Files", group: "Panes", scope: "room" },
-  { id: "pane.schedules", keys: ["alt+k"], label: "Schedules", group: "Panes", scope: "room" },
+  { id: "pane.files", keys: ["alt+u"], desktopKeys: ["mod+4"], label: "Files", group: "Panes", scope: "room" },
+  { id: "pane.schedules", keys: ["alt+k"], desktopKeys: ["mod+5"], label: "Schedules", group: "Panes", scope: "room" },
   {
     id: "tab.close",
     keys: ["alt+w"],
@@ -230,7 +232,15 @@ export const FIXED_BINDINGS: ReadonlySet<string> = new Set(["rooms.digit", "mode
 
 /** ⌘/Ctrl chords a browser handles before any page sees them, so a page can't
  *  bind them; the desktop app can. */
-const BROWSER_KEPT = new Set(["mod+w", "mod+t", "mod+n", "mod+q", "mod+Tab"]);
+const BROWSER_KEPT = new Set([
+  "mod+w",
+  "mod+t",
+  "mod+n",
+  "mod+q",
+  "mod+Tab",
+  // A browser's own tab switching.
+  ...Array.from({ length: 9 }, (_, i) => `mod+${i + 1}`),
+]);
 
 export function isBrowserKept(chord: string): boolean {
   return BROWSER_KEPT.has(chord);

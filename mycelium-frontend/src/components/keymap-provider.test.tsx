@@ -291,6 +291,37 @@ describe("<KeymapProvider />", () => {
     }
   });
 
+  it("picks the room's views with ⌘1 to ⌘5 in the desktop app, from the composer too, and leaves them to a browser", () => {
+    const onPane = vi.fn();
+    const tree = (
+      <KeymapProvider>
+        <Room onPane={onPane} />
+        <Composer />
+      </KeymapProvider>
+    );
+    // jsdom is not a Mac, so `mod` is Ctrl.
+    const press = (key: string) => fireEvent.keyDown(document.activeElement ?? document.body, { key, ctrlKey: true });
+
+    // A browser keeps ⌘1 to ⌘9 for its own tabs.
+    const { unmount } = render(tree);
+    press("3");
+    expect(onPane).not.toHaveBeenCalled();
+    unmount();
+
+    setDesktopApp(true);
+    try {
+      render(tree);
+      press("3");
+      expect(onPane).toHaveBeenLastCalledWith("board");
+      // A ⌘ chord isn't a character, so it reaches the room from the composer.
+      screen.getByRole("textbox", { name: "Message" }).focus();
+      press("1");
+      expect(onPane).toHaveBeenLastCalledWith("channel");
+    } finally {
+      setDesktopApp(false);
+    }
+  });
+
   it("refuses to register outside a provider, rather than silently doing nothing", () => {
     // The shipping bug this guards: a page registering bindings while sitting
     // above the provider it registers into.
