@@ -6,8 +6,10 @@
 //! The shell starts the supervisor, shows its progress on a local page, then
 //! points the main window at the room UI it serves (or at the remote hub).
 //! Around that: a tray with what is running, first-run choices, `mycelium://`
-//! links, and a window with the agents' terminals. The hub's UI, once loaded,
-//! gets no IPC: every command here refuses a page that isn't the app's own.
+//! links, and a window with the agents' terminals. Every command here refuses
+//! a page that isn't the app's own, except `this_machine` and
+//! `choose_agent_folder`, which answer the app's own hub UI alone (the Add
+//! member window's folder dialog); another hub's pages get nothing.
 
 mod close;
 mod download;
@@ -102,15 +104,32 @@ fn media_permission(app: &AppHandle, webview: &Webview, kind: PermissionKind) ->
     if !matches!(kind, PermissionKind::Microphone) {
         return PermissionResponse::Default;
     }
+    if shows_own_ui(app, webview) {
+        PermissionResponse::Allow
+    } else {
+        PermissionResponse::Deny
+    }
+}
+
+/// Whether `webview` shows the app's own hub UI: the hub this app started,
+/// in hub mode. Never another hub's pages, which client mode shows.
+fn shows_own_ui(app: &AppHandle, webview: &Webview) -> bool {
     let status = app.state::<Supervisor>().status();
     let own_ui = status
         .as_ref()
         .filter(|s| s.get("mode").and_then(Value::as_str) == Some("hub"))
         .and_then(|s| s.get("ui_url").and_then(Value::as_str))
         .and_then(|u| Url::parse(u).ok());
-    match (webview.url(), own_ui) {
-        (Ok(page), Some(ui)) if page.origin() == ui.origin() => PermissionResponse::Allow,
-        _ => PermissionResponse::Deny,
+    matches!((webview.url(), own_ui), (Ok(page), Some(ui)) if page.origin() == ui.origin())
+}
+
+/// The two commands the hub's page may call (`capabilities/own-hub-ui.json`),
+/// and only the app's own hub UI: which machine this is, and a folder dialog.
+fn own_ui_only(app: &AppHandle, webview: &Webview) -> Result<(), String> {
+    if shows_own_ui(app, webview) {
+        Ok(())
+    } else {
+        Err("Not available to this page.".into())
     }
 }
 
@@ -1087,6 +1106,45 @@ async fn pick_folder(
         .map(|p| p.to_string_lossy().to_string()))
 }
 
+/// This machine's runner id, for the app's own hub UI: the machine `choose_agent_folder`
+/// picks on, so the page offers the dialog only for an agent starting here.
+#[tauri::command]
+fn this_machine(app: AppHandle, webview: Webview) -> Result<Option<String>, String> {
+    own_ui_only(&app, &webview)?;
+    let status = app.state::<Supervisor>().status();
+    Ok(status
+        .as_ref()
+        .and_then(|s| s.get("runner_id").and_then(Value::as_str))
+        .map(str::to_string))
+}
+
+/// The system's folder picker, for where a new agent works, opened at `start`.
+/// Only for the app's own hub UI; `None` when the person cancels. The page
+/// checks the folder is one agents may start in, and the runner checks again.
+#[tauri::command]
+async fn choose_agent_folder(
+    app: AppHandle,
+    webview: Webview,
+    start: Option<String>,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    own_ui_only(&app, &webview)?;
+    let mut dialog = app
+        .dialog()
+        .file()
+        .set_title("Folder the agent works in")
+        .set_can_create_directories(true);
+    if let Some(start) = start.filter(|s| !s.is_empty()) {
+        dialog = dialog.set_directory(start);
+    }
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(picked
+        .and_then(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().to_string()))
+}
+
 /// Save the first-run choice and start. Returns what happened to PATH.
 #[tauri::command]
 fn start(app: AppHandle, webview: Webview, settings: Settings) -> Result<paths::PathSetup, String> {
@@ -1261,6 +1319,8 @@ pub fn run() {
             get_state,
             scan_agents,
             pick_folder,
+            this_machine,
+            choose_agent_folder,
             run_doctor,
             herdr_integrations,
             get_model,

@@ -2,12 +2,13 @@
 // Copyright 2026 Mycelium Contributors
 
 // The desktop app (Mycelium.app) shows this same UI in its window and marks
-// its web view's user agent with `MyceliumDesktop/<version>`. The page never
-// calls into the app: it asks for things by `mycelium://` link, which the app
-// alone answers, so a hub's page can open an agent's terminal but can never
-// run anything on the machine itself.
+// its web view's user agent with `MyceliumDesktop/<version>`. The page asks
+// for things by `mycelium://` link, which the app alone answers, so a hub's
+// page can open an agent's terminal but can never run anything on the machine
+// itself. The one exception is the app's own hub UI, which may call two
+// commands: which machine this is, and a folder dialog (`chooseFolderHere`).
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 const MARK = /\bMyceliumDesktop\/[\w.+-]+/;
 
@@ -53,6 +54,46 @@ function readUpdate(): string | null {
   if (!isDesktop()) return null;
   const found = (globalThis as { __myceliumUpdate?: { version?: unknown } | null }).__myceliumUpdate;
   return typeof found?.version === "string" ? found.version : null;
+}
+
+type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+
+/** The app's command bridge, present only on its own hub UI; null everywhere else. */
+function appInvoke(): Invoke | null {
+  const internals = (globalThis as { __TAURI_INTERNALS__?: { invoke?: Invoke } }).__TAURI_INTERNALS__;
+  return typeof internals?.invoke === "function" ? internals.invoke : null;
+}
+
+/**
+ * The runner id of the machine the app runs on, when this page is the app's
+ * own hub UI; null in a browser, in client mode, or before it has answered.
+ * The app's folder dialog picks on this machine, so it is offered only for an
+ * agent starting here.
+ */
+export function useThisMachine(): string | null {
+  const [id, setId] = useState<string | null>(null);
+  useEffect(() => {
+    const invoke = appInvoke();
+    if (!invoke) return;
+    let live = true;
+    invoke("this_machine")
+      .then((found) => {
+        if (live && typeof found === "string") setId(found);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  return id;
+}
+
+/** The app's folder dialog, opened at `start`: the absolute path chosen, or null when cancelled. */
+export async function chooseFolderHere(start?: string): Promise<string | null> {
+  const invoke = appInvoke();
+  if (!invoke) return null;
+  const picked = await invoke("choose_agent_folder", { start: start ?? null });
+  return typeof picked === "string" ? picked : null;
 }
 
 /** Asks the app to update: its Check for Updates…, which asks before it downloads. */
