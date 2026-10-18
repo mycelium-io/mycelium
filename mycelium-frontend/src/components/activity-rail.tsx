@@ -357,8 +357,9 @@ function ActivityRow({
           <span className="hidden @[30rem]:inline">{standing.word}</span>
         </span>
         {/* The task itself, as text rather than a link-colored wall: it still
-            opens the task, and says so on hover. */}
-        <span className="flex min-w-0 flex-1 items-center gap-2">
+            opens the task, and says so on hover. What changed sits in a column
+            of its own beside it, so every row's starts at the same place. */}
+        <span className="grid min-w-0 flex-1 items-center gap-3 @[36rem]:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <button
             type="button"
             onClick={() =>
@@ -368,7 +369,7 @@ function ActivityRow({
             title={item.subject}
             aria-label={`Open task ${item.title}`}
             className={cn(
-              "min-w-0 truncate rounded text-left text-label transition-colors enabled:hover:text-accent enabled:hover:underline disabled:cursor-default",
+              "min-w-0 max-w-full justify-self-start truncate rounded text-left text-label transition-colors enabled:hover:text-accent enabled:hover:underline disabled:cursor-default",
               done ? "text-muted-foreground" : "text-text",
             )}
           >
@@ -380,11 +381,10 @@ function ActivityRow({
             </span>
           )}
         </span>
-        {item.lastActor && (
-          <span className="hidden max-w-[9rem] flex-shrink-0 truncate text-muted-foreground @[30rem]:inline">
-            @{item.lastActor}
-          </span>
-        )}
+        {/* Who, in a column of one width whether or not a row has one. */}
+        <span className="hidden w-24 flex-shrink-0 truncate text-muted-foreground @[30rem]:inline">
+          {item.lastActor ? `@${item.lastActor}` : null}
+        </span>
         <span className="tabular w-8 flex-shrink-0 text-right text-faint" title={item.time.slice(0, 5)}>
           {shortAge(item.at, now)}
         </span>

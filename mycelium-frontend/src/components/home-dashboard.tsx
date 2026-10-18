@@ -241,16 +241,20 @@ function RoomRow({ room }: { room: Room }) {
       className="flex h-9 items-center gap-2.5 rounded px-2 text-label transition-colors hover:bg-hairline"
     >
       <RoomAvatar name={room.name} className="size-[18px] rounded-[4px] text-[8px]" />
-      <span className="flex-shrink-0 font-medium text-text">{room.name}</span>
-      {room.is_public === false && <Lock aria-label="private" className="size-3 flex-shrink-0 text-faint" />}
-      {state?.live && (
-        <span
-          aria-label={state.label}
-          title={state.label}
-          className="inline-block size-1.5 flex-shrink-0 animate-pulse rounded-full"
-          style={{ background: state.color }}
-        />
-      )}
+      {/* The name in a column of one width, so what was last said starts at
+          the same place on every row; a long name is cut, the title shows it. */}
+      <span className="flex w-48 flex-shrink-0 items-center gap-1.5" title={room.name}>
+        <span className="min-w-0 truncate font-medium text-text">{room.name}</span>
+        {room.is_public === false && <Lock aria-label="private" className="size-3 flex-shrink-0 text-faint" />}
+        {state?.live && (
+          <span
+            aria-label={state.label}
+            title={state.label}
+            className="inline-block size-1.5 flex-shrink-0 animate-pulse rounded-full"
+            style={{ background: state.color }}
+          />
+        )}
+      </span>
       <span className="min-w-0 flex-1 truncate text-muted-foreground">
         {latestLoading ? (
           <Skeleton className="inline-block h-2.5 w-40 align-middle" />

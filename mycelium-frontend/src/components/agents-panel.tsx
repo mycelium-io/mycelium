@@ -223,7 +223,7 @@ function MemberTooltipCard({
           wakePending={presence?.wake_pending}
           mutePresence
         />
-        <span className="font-mono text-label font-semibold text-text">@{handle}</span>
+        <span className="text-label font-semibold text-text">@{handle}</span>
         {presence && isHerdr(presence) && (
           <HerdrRam className="size-3 opacity-70" style={{ color: "var(--accent)" }} />
         )}
@@ -549,13 +549,20 @@ function SectionLabel({
       <span className="flex-shrink-0 whitespace-nowrap">{children}</span>
       {count !== undefined && <span className="flex-shrink-0 font-normal tabular">{count}</span>}
       {hint && (
-        <span className="ml-auto min-w-0 truncate font-mono text-micro font-normal text-faint">
+        <span className="ml-auto min-w-0 truncate text-micro font-normal text-faint">
           {hint}
         </span>
       )}
     </div>
   );
 }
+
+/** Every row's name, in a column of one width: what is said about each member
+ *  then starts at the same place down the whole list. A longer name is cut,
+ *  and the row's tooltip has it whole. */
+const NAME_COLUMN = "flex w-32 flex-shrink-0 items-center gap-1.5 min-w-0";
+/** What is said about the member, after the name column. */
+const META_COLUMN = "min-w-0 flex-1 truncate text-micro text-faint";
 
 type AgentSummary = ReturnType<typeof useRoomRoster>["agents"][number];
 type RosterPerson = ReturnType<typeof useRoomRoster>["people"][number];
@@ -600,8 +607,10 @@ function OtherRow({
         }`}
       >
         <Monogram handle={o.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} mutePresence />
-        <span className="shrink-0 font-mono text-label text-text">@{o.handle}</span>
-        <span className="ml-auto min-w-0 truncate text-micro text-faint">{why}</span>
+        <span className={NAME_COLUMN}>
+          <span className="truncate text-label text-text">@{o.handle}</span>
+        </span>
+        <span className={META_COLUMN}>{why}</span>
       </div>
     </Tooltip>
   );
@@ -655,21 +664,15 @@ function PersonRow({
         }`}
       >
         <Monogram handle={p.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
-        {/* Their name when they gave one, the handle quieter beside it. It
-            keeps its width up to two thirds of the row, so a long floor label
-            beside it is cut first rather than the name. */}
-        {name ? (
-          <span className="flex min-w-0 max-w-[66%] shrink-0 items-baseline gap-1.5">
-            <span className="truncate text-label text-text">{name}</span>
-            <span className="shrink-0 font-mono text-micro text-faint">@{p.handle}</span>
-          </span>
-        ) : (
-          <span className="shrink-0 font-mono text-label text-text">@{p.handle}</span>
-        )}
-        {p.you && <span className="flex-shrink-0 text-micro font-medium text-accent">you</span>}
+        {/* Their name when they gave one (the handle is in the tooltip), and
+            whether it's you, in the name column. */}
+        <span className={NAME_COLUMN}>
+          <span className="truncate text-label text-text">{name ?? `@${p.handle}`}</span>
+          {p.you && <span className="flex-shrink-0 text-micro font-medium text-accent">you</span>}
+        </span>
         {/* The floor's label names a task, which can be long: it is what gives
-            way, never the handle it is about (the tooltip carries it whole). */}
-        {meta && <span className="ml-auto min-w-0 truncate text-micro text-faint">{meta}</span>}
+            way, never the name (the tooltip carries it whole). */}
+        {meta && <span className={META_COLUMN}>{meta}</span>}
       </div>
     </Tooltip>
   );
@@ -698,8 +701,8 @@ function rowMeta(
 
 /**
  * One agent, one line. The dense roster reads as a scannable column of handles,
- * not a stack of cards: a small avatar, the handle, and a terse right-aligned
- * status. The owner is hoisted to the group header (nearly every agent in a room
+ * not a stack of cards: a small avatar, the handle, and a terse status in a
+ * column that starts at the same place on every row. The owner is hoisted to the group header (nearly every agent in a room
  * shares one), so a row only tags an owner when it breaks from the group's; the
  * description and full owner/team live in the hover tooltip rather than on every
  * row.
@@ -761,23 +764,26 @@ function AgentRow({
         }`}
       >
         <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence kind={a.adapter === "engine" ? "engine" : "agent"} />
-        <span className="shrink-0 font-mono text-label text-text">{a.handle}</span>
-        {schedules > 0 && (
-          <Clock
-            aria-label={`${schedules} schedule${schedules === 1 ? "" : "s"}`}
-            className="size-3 shrink-0 text-faint"
-            strokeWidth={2}
-          />
+        <span className={NAME_COLUMN}>
+          <span className="truncate text-label text-text">{a.handle}</span>
+          {schedules > 0 && (
+            <Clock
+              aria-label={`${schedules} schedule${schedules === 1 ? "" : "s"}`}
+              className="size-3 shrink-0 text-faint"
+              strokeWidth={2}
+            />
+          )}
+          {a.adapter === "a2a" && (
+            <span className="inline-flex flex-shrink-0 items-center rounded border border-accent/30 bg-accent-soft/40 px-1 text-[9px] font-medium leading-tight text-accent">
+              a2a
+            </span>
+          )}
+        </span>
+        {/* Whose it is (when not the group's), then what it's doing, both
+            starting where every row's do. */}
+        {(oddOwner || meta) && (
+          <span className={META_COLUMN}>{[oddOwner && `@${oddOwner}`, meta].filter(Boolean).join(" · ")}</span>
         )}
-        {a.adapter === "a2a" && (
-          <span className="inline-flex flex-shrink-0 items-center rounded border border-accent/30 bg-accent-soft/40 px-1 text-[9px] font-medium leading-tight text-accent">
-            a2a
-          </span>
-        )}
-        {oddOwner && (
-          <span className="truncate font-mono text-micro text-faint">@{oddOwner}</span>
-        )}
-        {meta && <span className="ml-auto min-w-0 truncate text-micro text-faint">{meta}</span>}
       </div>
     </Tooltip>
   );

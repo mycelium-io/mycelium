@@ -173,6 +173,7 @@ export function SystemNotice({
   labelColor,
   strong,
   children,
+  aside,
   trailing,
 }: {
   time: string;
@@ -186,11 +187,15 @@ export function SystemNotice({
   labelColor?: string;
   strong?: boolean;
   children: React.ReactNode;
+  /** Who it was by or for, in a column of one width before the time, so a run
+   *  of notices reads as columns rather than starting it wherever its title ends. */
+  aside?: React.ReactNode;
   /** Held out of the truncating run, so a control here survives a long title. */
   trailing?: React.ReactNode;
 }) {
   // A run of notices reads as one block: space above the first, none between
-  // them, so six tasks filed in a row take six lines rather than a screen.
+  // them, so six tasks filed in a row take six lines rather than a screen. The
+  // label, the title, who and when each keep a column of their own.
   return (
     <div
       data-system-notice=""
@@ -199,23 +204,25 @@ export function SystemNotice({
       <EventIconMark icon={icon} />
       {label && (
         <span
-          className={`flex-shrink-0 whitespace-nowrap ${strong ? "font-semibold" : "font-medium"}`}
+          title={label}
+          className={`w-24 flex-shrink-0 truncate whitespace-nowrap ${strong ? "font-semibold" : "font-medium"}`}
           style={{ color: labelColor ?? "var(--muted-foreground)" }}
         >
           {label}
         </span>
       )}
-      <span className="flex min-w-0 items-center gap-1.5 truncate">{children}</span>
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">{children}</span>
+      {aside !== undefined && <span className="w-32 flex-shrink-0 truncate">{aside}</span>}
       {trailing}
-      {at ? (
-        <Ago
-          at={at}
-          unlessSameAs={prevAt}
-          className="ml-auto flex-shrink-0 whitespace-nowrap pl-2 tabular text-faint"
-        />
-      ) : (
-        <span className="ml-auto flex-shrink-0 tabular text-faint">{time.slice(0, 5)}</span>
-      )}
+      {/* A column of its own even when the age is left out (the same as the
+          line above), so who it was by stays where it is on every line. */}
+      <span className="ml-auto flex w-16 flex-shrink-0 justify-end">
+        {at ? (
+          <Ago at={at} unlessSameAs={prevAt} className="whitespace-nowrap tabular text-faint" />
+        ) : (
+          <span className="tabular text-faint">{time.slice(0, 5)}</span>
+        )}
+      </span>
     </div>
   );
 }
@@ -365,37 +372,34 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
         prevAt={prevAt}
         icon={icon}
         label={noticeLabel(subkind, ev.raw.kind as string | undefined, change)}
+        // A filed task reads by who it is for; a lease event by who moved it;
+        // an expired one by who let it drain. Fall back to the filer when a
+        // task is for no one.
+        aside={
+          subkind === "upstream" ? (
+            ref && prUrl ? (
+              <a href={prUrl} target="_blank" rel="noreferrer" className="hover:text-text hover:underline">
+                {ref}
+              </a>
+            ) : (
+              (ref ?? null)
+            )
+          ) : subkind === "filed" && ev.raw.for ? (
+            `for @${String(ev.raw.for).replace(/^@/, "")}`
+          ) : by ? (
+            `${subkind === "filed" ? "by " : subkind === "expired" ? "held by " : ""}@${by}`
+          ) : null
+        }
       >
         <button
           type="button"
           onClick={() => episode && onOpenThread?.(episode)}
           disabled={!episode || !onOpenThread}
-          className="inline-flex max-w-[20rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
+          className="inline-flex max-w-full items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
         >
           <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
           <span className="truncate">{ev.content}</span>
         </button>
-        {/* A filed task reads by who it is for; a lease event by who moved it;
-            an expired one by who let it drain. Fall back to the filer when a
-            task is for no one. */}
-        {subkind === "upstream" ? (
-          ref && prUrl ? (
-            <span>
-              ·{" "}
-              <a href={prUrl} target="_blank" rel="noreferrer" className="hover:text-text hover:underline">
-                {ref}
-              </a>
-            </span>
-          ) : ref ? (
-            <span>· {ref}</span>
-          ) : null
-        ) : subkind === "filed" && ev.raw.for ? (
-          <span>· for @{String(ev.raw.for).replace(/^@/, "")}</span>
-        ) : by ? (
-          <span>
-            · {subkind === "filed" ? "by " : subkind === "expired" ? "held by " : ""}@{by}
-          </span>
-        ) : null}
       </SystemNotice>
     );
   }
@@ -408,7 +412,14 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
     // already said it, in slug form.
     const named = key ? nameActivity(key, [ev], threads, rowNames) : null;
     return (
-      <SystemNotice time={ev.time} at={ev.at} prevAt={prevAt} icon={MEMORY_ICON} label="Knowledge">
+      <SystemNotice
+        time={ev.time}
+        at={ev.at}
+        prevAt={prevAt}
+        icon={MEMORY_ICON}
+        label="Knowledge"
+        aside={updatedBy ? `by @${updatedBy}` : null}
+      >
         <span>updated</span>
         {named ? (
           <button
@@ -424,7 +435,6 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
           <span className="truncate">{ev.content}</span>
         )}
         {typeof version === "number" && <span>· v{version}</span>}
-        {updatedBy ? <span>· by @{updatedBy}</span> : null}
       </SystemNotice>
     );
   }
