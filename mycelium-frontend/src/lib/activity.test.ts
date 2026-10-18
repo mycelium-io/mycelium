@@ -113,7 +113,13 @@ describe("the line", () => {
 
   it("says which subscription woke one agent nobody asked, and nothing for several", () => {
     const woken = { ...at("builder")[0], watching: "work/release-3-1" };
-    expect(watchingNote([woken])).toBe("watching work/release-3-1");
+    expect(watchingNote([woken])).toBe("it subscribed to work/release-3-1");
+    // In the subscribed task's own thread, with or without its parts.
+    expect(watchingNote([woken], ["work/release-3-1"])).toBe("it subscribed to this task");
+    const parts = { ...woken, watching: "work/release-3-1 and its parts" };
+    expect(watchingNote([parts], ["work/release-3-1"])).toBe("it subscribed to this task");
+    const notices = { ...woken, watching: "resolved notices" };
+    expect(watchingNote([notices], ["work/release-3-1"])).toBe("it subscribed to resolved notices");
     expect(watchingNote(at("builder"))).toBeNull();
     expect(watchingNote([woken, ...at("reviewer")])).toBeNull();
   });

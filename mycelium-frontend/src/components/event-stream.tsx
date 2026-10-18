@@ -104,16 +104,16 @@ function RespondingRow({ children, offset = 0 }: { children: React.ReactNode; of
   );
 }
 
-/** "· watching work/x" after a responding line whose one agent was woken by
- *  a subscription it made, not by anyone asking it: why it started. */
-function WatchingNote({ entries }: { entries: Responding[] }) {
-  const note = watchingNote(entries);
+/** "· it subscribed to this task" after a responding line whose one agent was
+ *  woken by a subscription it made, not by anyone asking it: why it started. */
+function WatchingNote({ entries, threadKeys }: { entries: Responding[]; threadKeys?: string[] }) {
+  const note = watchingNote(entries, threadKeys);
   if (!note) return null;
   return (
     <span
       // Takes only the room the line leaves: who and where matter more than why.
       className="min-w-0 flex-1 basis-0 truncate text-muted-foreground/80"
-      title={`${entries[0].watching}: it subscribed to this, so it was woken without anyone asking it`}
+      title={`Nobody asked it: it subscribed to ${entries[0].watching}`}
       data-testid="responding-watching"
     >
       · {note}
@@ -142,8 +142,14 @@ function RespondingLine({
       role="status"
       aria-live="polite"
       data-testid="responding-line"
-      className="flex flex-shrink-0 flex-col px-5 py-1 motion-safe:animate-in motion-safe:fade-in-0"
+      className="relative flex flex-shrink-0 flex-col bg-[var(--bg)] px-5 py-1 motion-safe:animate-in motion-safe:fade-in-0"
     >
+      {/* The channel above fades into the line rather than stopping at an edge. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-full h-6"
+        style={{ background: "linear-gradient(to top, var(--bg), transparent)" }}
+      />
       {here.length > 0 && (
         <RespondingRow>
           <Shimmer className="truncate">{respondingLabel(here)}</Shimmer>
@@ -167,7 +173,7 @@ function RespondingLine({
               <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
               <span className="truncate">{title}</span>
             </button>
-            <WatchingNote entries={group} />
+            <WatchingNote entries={group} threadKeys={threads.get(thread)?.keys} />
           </RespondingRow>
         );
       })}

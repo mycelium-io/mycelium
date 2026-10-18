@@ -66,11 +66,17 @@ export function applyActivity(current: Responding[], frame: ActivityFrame, now: 
   return [...rest, { handle, episode: frame.episode ?? null, watching, since: now, until: now + ttl }];
 }
 
-/** "watching work/x": why an agent nobody asked is responding, when the line
- *  names one agent a subscription woke. Several agents on one line say nothing,
- *  since one subscription can't speak for all of them. */
-export function watchingNote(entries: Responding[]): string | null {
-  return entries.length === 1 && entries[0].watching ? `watching ${entries[0].watching}` : null;
+/** Why an agent nobody asked is responding, when the line names one agent a
+ *  subscription woke: "it subscribed to this task" when the subscription is
+ *  the task whose thread it's answering in (`threadKeys`, that thread's rows),
+ *  else "it subscribed to resolved notices" and so on, in the hub's words.
+ *  Several agents on one line say nothing, since one subscription can't speak
+ *  for all of them. */
+export function watchingNote(entries: Responding[], threadKeys: string[] = []): string | null {
+  const watching = entries.length === 1 ? entries[0].watching : null;
+  if (!watching) return null;
+  const thisTask = threadKeys.some((key) => watching === key || watching.startsWith(`${key} and its parts`));
+  return `it subscribed to ${thisTask ? "this task" : watching}`;
 }
 
 /** A message from the handle is the turn ending, whatever the frames said. */
