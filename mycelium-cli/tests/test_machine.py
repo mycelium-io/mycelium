@@ -321,7 +321,10 @@ def test_herdr_names_are_scoped_by_room_and_fit_herdrs_rule():
     assert herdr_name(long_room, "reviewer") != herdr_name(long_room + "-2", "reviewer")
     # An underscore in a handle or room can't move the split between them.
     assert herdr_name("x", "build_bot") != herdr_name("bot_x", "build")
-    assert herdr_name("x", "build_bot") == "build-bot_x"
+    assert herdr_name("x", "build_bot").startswith("build-bot_x-")
+    # Nor can two handles that differ only in what had to change.
+    assert herdr_name("c", "a_b") != herdr_name("c", "a-b")
+    assert herdr_name("c", "a-b") == "a-b_c"
 
 
 def test_a_running_agent_isnt_restarted(herdr: FakeHerdr):
