@@ -121,20 +121,20 @@ async def test_a_new_agent_is_yours_or_no_one_s(client, as_principal):
 
 
 @pytest.mark.asyncio
-async def test_a_new_agent_can_t_take_someone_else_s_handle_in_another_room(client, as_principal):
+async def test_a_handle_is_a_name_in_one_room_but_a_person_s_is_theirs(client, as_principal):
     principals.write_user({"handle": "julia"})
     as_principal("mallory", role="user")
-    # Julia's agent, made again in a room she isn't watching.
+    # Another room's agent of the same name is a different agent: no name is
+    # reserved across rooms.
     lead = await _write(client, "agents/lead", _manifest(owner="mallory"), "mallory", room=OTHER)
-    assert lead.status_code == 403
-    assert OTHER not in lead.json()["detail"] and ROOM not in lead.json()["detail"]
-    # A person's own handle.
+    assert lead.status_code == 201, lead.text
+    # In the room where julia's lead is, it's hers.
+    assert (
+        await _write(client, "agents/lead", _manifest(owner="mallory"), "mallory")
+    ).status_code == 403
+    # A person's own handle isn't an agent's to take.
     person = await _write(client, "agents/julia", _manifest(owner="mallory"), "mallory", room=OTHER)
     assert person.status_code == 403
-    # Julia can add her own agent to another room.
-    as_principal("julia", role="user")
-    again = await _write(client, "agents/lead", _manifest(owner="julia"), "julia", room=OTHER)
-    assert again.status_code == 201, again.text
 
 
 @pytest.mark.asyncio

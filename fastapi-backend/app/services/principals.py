@@ -117,10 +117,11 @@ def grant_change_refusal(
     - an agent with an owner: only that owner changes them, or deletes it;
     - one with none yet: only the agent itself or a handle it already allows;
     - a new one: its owner, if it names one, is the caller, and only an owner
-      grants ``allow_from``; and its handle can't be another person's, or an
-      agent someone else owns in another room.
+      grants ``allow_from``; and its handle can't be another person's.
 
-    Every other edit (notes, description, adapter) is untouched.
+    A handle is an agent's name in one room, so two people's agents may share
+    one in different rooms. Every other edit (notes, description, adapter) is
+    untouched.
     """
     me = _norm(principal)
     existing = _read_agent_manifest(room, handle)
@@ -154,10 +155,6 @@ def grant_change_refusal(
     target = _norm(handle)
     if target and target != me and load_user(target) is not None:
         return f"@{target} is a person here; an agent can't take their handle."
-    for other in iter_agent_manifests():
-        # Without naming the room: it may be one the caller can't see.
-        if other["handle"] == target and other["owner"] and other["owner"] != me:
-            return f"@{target} is @{other['owner']}'s agent on this hub; pick another handle."
     return None
 
 
