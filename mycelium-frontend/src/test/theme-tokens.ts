@@ -13,7 +13,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-const css = readFileSync(path.resolve(__dirname, "../app/globals.css"), "utf8");
+/** `globals.css` as written. */
+export const css = readFileSync(path.resolve(__dirname, "../app/globals.css"), "utf8");
 // The palette is everything before the first `@theme` rule (not a mention of
 // one in a comment).
 const palette = css.slice(0, css.search(/^@theme inline \{/m));

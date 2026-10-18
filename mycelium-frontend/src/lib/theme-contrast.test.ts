@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { THEMES } from "@/lib/themes";
-import { contrast, themeTokens } from "@/test/theme-tokens";
+import { contrast, css, themeTokens } from "@/test/theme-tokens";
 
 /**
  * Every theme's text is readable on every surface it sits on: WCAG AA, 4.5:1.
@@ -56,5 +56,28 @@ describe.each(THEMES.map((t) => [t.label, t] as const))("%s", (_label, theme) =>
     const on = (fg: string) => contrast(tokens[fg], tokens.bg);
     expect(on("text")).toBeGreaterThanOrEqual(on("muted-foreground"));
     expect(on("muted-foreground")).toBeGreaterThanOrEqual(on("faint"));
+  });
+});
+
+describe("dark themes in globals.css", () => {
+  // A dark theme is named in `lib/themes.ts` and twice in the stylesheet: the
+  // `dark` variant, so a `dark:` class applies under it, and the block that
+  // sets `color-scheme: dark`, so the browser's own pieces (a select's option
+  // list, scrollbars) are drawn dark. Each list is read here and compared.
+  const classesIn = (text: string) => new Set([...text.matchAll(/\.([\w-]+)/g)].map((m) => m[1]));
+  const variant = classesIn(css.match(/@custom-variant dark \(([\s\S]*?)\)\);/)![1]);
+  const scheme = classesIn(
+    [...css.matchAll(/([^{}]+)\{[^{}]*color-scheme:\s*dark[^{}]*\}/g)]
+      .map((m) => m[1].replace(/\/\*[\s\S]*?\*\//g, ""))
+      .join(","),
+  );
+  const darkClasses = new Set(THEMES.filter((t) => t.mode === "dark").map((t) => t.className));
+
+  it("names exactly the dark themes in the dark variant", () => {
+    expect(variant).toEqual(darkClasses);
+  });
+
+  it("draws exactly the dark themes with the browser's dark color scheme", () => {
+    expect(scheme).toEqual(darkClasses);
   });
 });
