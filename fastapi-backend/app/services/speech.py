@@ -14,6 +14,7 @@ at anything else. Mycelium ships no speech model.
 
 from __future__ import annotations
 
+import re
 import time
 from collections import deque
 from typing import Any
@@ -21,6 +22,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.schemas import VOICE_NAME_PATTERN
 
 #: The longest text one request may ask for. The app sends a sentence at a
 #: time, so this is well past what it needs.
@@ -34,6 +36,10 @@ MAX_AUDIO_BYTES = 10 * 1024 * 1024
 
 #: The path an OpenAI-style server takes speech requests at.
 SPEECH_PATH = "/audio/speech"
+
+#: The most voices listed for a person to pick from.
+MAX_VOICES = 300
+_VOICE_NAME = re.compile(VOICE_NAME_PATTERN)
 
 #: How the hub reaches the server; tests replace it with a mock transport.
 _transport: httpx.AsyncBaseTransport | None = None
@@ -117,19 +123,21 @@ def voices_endpoint() -> str:
 
 def _names(data: Any) -> list[str]:
     """Voice names from the shapes servers answer with: a list, or one under
-    ``voices`` or ``data``, of names or of objects naming one."""
+    ``voices`` or ``data``, of names or of objects naming one. Only names a
+    request may ask for are kept, so the picker never offers one the hub then
+    refuses, and at most `MAX_VOICES` of them, from a server that sends more."""
     if isinstance(data, dict):
         data = data.get("voices", data.get("data", []))
     if not isinstance(data, list):
         return []
-    names: list[str] = []
+    names: set[str] = set()
     for entry in data:
         name = entry
         if isinstance(entry, dict):
             name = entry.get("name") or entry.get("id") or entry.get("voice_id")
-        if isinstance(name, str) and name.strip():
-            names.append(name.strip())
-    return sorted(set(names))
+        if isinstance(name, str) and _VOICE_NAME.match(name.strip()):
+            names.add(name.strip())
+    return sorted(names)[:MAX_VOICES]
 
 
 async def voices() -> list[str]:

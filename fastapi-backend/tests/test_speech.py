@@ -245,3 +245,15 @@ async def test_a_server_that_lists_no_voices_answers_none(client, server):
 async def test_no_voices_without_a_speech_server(client, monkeypatch):
     monkeypatch.setattr(settings, "VOICE_SPEECH_URL", "")
     assert (await client.get("/api/voice/voices")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_only_names_a_request_may_ask_for_are_listed_and_not_too_many(client, server):
+    _, state = server
+    junk = ["x" * 65, "../etc", "<script>", " ", "good one"]
+    many = [f"voice_{i:04d}" for i in range(speech.MAX_VOICES + 50)]
+    state["reply"] = httpx.Response(200, json={"voices": junk + many})
+    listed = (await client.get("/api/voice/voices")).json()["voices"]
+    assert len(listed) == speech.MAX_VOICES
+    assert "good one" in listed
+    assert not {"x" * 65, "../etc", "<script>"} & set(listed)
