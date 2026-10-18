@@ -1,0 +1,41 @@
+{
+  "_comment": [
+    "Frozen contract for a theme someone (or an agent) brings themselves, and the built-in themes it sits beside.",
+    "",
+    "A custom theme is JSON: {\"name\": \"Midnight\", \"mode\": \"dark\", \"colors\": {\"bg\": \"#0b1020\", ...}}.",
+    "The colors are the app's own tokens, as hex. `required` must all be given, `optional` may be, and",
+    "nothing else is accepted. `translucent` colors may carry alpha (#rrggbbaa); every other one is solid",
+    "(#rgb or #rrggbb). Its id is `custom-` and its name lowercased with every run of other characters as",
+    "one hyphen.",
+    "",
+    "Two copies read it: the app's parser (mycelium-frontend/src/lib/custom-themes.ts, which also checks",
+    "contrast and shows the problems, and which the app's own server uses on the theme files) and the",
+    "CLI's (mycelium-cli/src/mycelium/themes.py, which writes ~/.mycelium/themes/ and refuses a file the",
+    "app would refuse). `builtin` is every theme the app ships, by id (mycelium-frontend/src/lib/themes.ts),",
+    "which is what `mycelium theme use` may name besides a custom one, along with `system`. Each side's",
+    "tests assert against this file."
+  ],
+  "version": 1,
+  "name_max": 40,
+  "required": ["bg", "surface", "paper", "elevated", "muted-bg", "text", "muted-foreground", "faint", "accent", "accent-fg", "green", "yellow", "red"],
+  "optional": ["prose", "border", "border2", "hairline", "accent-soft", "avatar-ink"],
+  "translucent": ["border", "border2", "hairline", "accent-soft"],
+  "builtin": [
+    {"id": "light", "label": "Mycelium light", "mode": "light"},
+    {"id": "dark", "label": "Mycelium dark", "mode": "dark"},
+    {"id": "catppuccin-latte", "label": "Catppuccin Latte", "mode": "light"},
+    {"id": "catppuccin-mocha", "label": "Catppuccin Mocha", "mode": "dark"},
+    {"id": "dracula", "label": "Dracula", "mode": "dark"},
+    {"id": "github-light", "label": "GitHub light", "mode": "light"},
+    {"id": "github-dark", "label": "GitHub dark", "mode": "dark"},
+    {"id": "gruvbox-light", "label": "Gruvbox light", "mode": "light"},
+    {"id": "gruvbox-dark", "label": "Gruvbox dark", "mode": "dark"},
+    {"id": "high-contrast-light", "label": "High contrast light", "mode": "light"},
+    {"id": "high-contrast-dark", "label": "High contrast dark", "mode": "dark"},
+    {"id": "nord", "label": "Nord", "mode": "dark"},
+    {"id": "one-dark", "label": "One Dark", "mode": "dark"},
+    {"id": "solarized-light", "label": "Solarized light", "mode": "light"},
+    {"id": "solarized-dark", "label": "Solarized dark", "mode": "dark"},
+    {"id": "tokyo-night", "label": "Tokyo Night", "mode": "dark"}
+  ]
+}

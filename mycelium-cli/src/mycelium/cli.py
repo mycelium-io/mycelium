@@ -40,6 +40,7 @@ from mycelium.commands import (
     skill,
     subscribe,
     swarm,
+    theme,
     ui,
     user,
     version,
@@ -149,6 +150,7 @@ app.add_typer(memory.app, name="memory")
 app.add_typer(skill.app, name="skill")
 app.add_typer(schedule.app, name="schedule")
 app.add_typer(subscribe.app, name="subscribe")
+app.add_typer(theme.app, name="theme")
 app.add_typer(file.app, name="file")
 app.add_typer(config.app, name="config")
 app.add_typer(docs.app, name="docs")

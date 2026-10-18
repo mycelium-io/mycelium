@@ -169,6 +169,7 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("skill", "skill", "skill"),
     ("schedule", "schedule", "schedule"),
     ("subscribe", "subscribe", "subscribe"),
+    ("theme", "theme", "theme"),
     ("file", "file", "file"),
     ("negotiate", "negotiate", "negotiate"),
     ("cfn", "cfn", "cfn"),

@@ -88,8 +88,11 @@ def _manifest(handle: str, body: dict[str, Any]) -> None:
 async def open_room(client: AsyncClient, monkeypatch: Any) -> Room:
     """A room with two herdr agents, a person, the engines and an A2A agent."""
     from app.config import settings
-    from app.services import interrupts
+    from app.services import interrupts, subscriptions
 
+    # Every test's room has the same name, and who was answering whom is kept
+    # in memory; one test's wakes mustn't decide another's.
+    subscriptions.reset()
     manager = room_channels.manager
     monkeypatch.setattr(settings, "SLIM_ENABLED", True)
     monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
