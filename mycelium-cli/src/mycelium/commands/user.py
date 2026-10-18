@@ -397,9 +397,32 @@ def _principal_view(handle: str) -> tuple[UserManifest | None, list[tuple[str, s
         return None
 
 
+def _subscriptions_of(
+    config: MyceliumConfig, handle: str
+) -> tuple[str, list[dict[str, Any]]] | None:
+    """The room this resolves to and what ``handle`` is subscribed to there
+    (``mycelium subscribe``), or ``None`` with no room or no hub."""
+    from mycelium import caller
+    from mycelium_backend_client.api.subscriptions import (
+        list_subscriptions_api_rooms_room_name_subscriptions_get as list_api,
+    )
+
+    room = caller.room(config).value
+    if not room:
+        return None
+    try:
+        with _typed_client() as client:
+            resp = list_api.sync_detailed(room_name=room, client=client, handle=handle)
+    except httpx.HTTPError:
+        return None
+    if resp.status_code != 200:
+        return None
+    return room, json_module.loads(resp.content).get("subscriptions", [])
+
+
 @doc_ref(
     usage="mycelium whoami [--sources]",
-    desc="Print the user you're acting as, plus the agents you own.",
+    desc="Print the user you're acting as, the agents you own, and what you're subscribed to in this room.",
     group="user",
 )
 @emits_json()
@@ -447,6 +470,7 @@ def _whoami(ctx: typer.Context, *, sources: bool) -> None:
         view = _principal_view(principal)
         hub_down = view is None
         user, owned = (None, []) if view is None else view
+        watching = None if hub_down else _subscriptions_of(config, principal)
 
         if json_output:
             typer.echo(
@@ -471,6 +495,11 @@ def _whoami(ctx: typer.Context, *, sources: bool) -> None:
                             None
                             if hub_down
                             else [{"room": room, "handle": h} for h, _adapter, room in owned]
+                        ),
+                        "subscriptions": (
+                            None
+                            if watching is None
+                            else {"room": watching[0], "items": watching[1]}
                         ),
                     },
                     indent=2,
@@ -519,6 +548,12 @@ def _whoami(ctx: typer.Context, *, sources: bool) -> None:
             console.print(f"\n[bold]owns {len(owned)} agent(s)[/bold]")
             for agent_handle, _adapter, room_name in owned:
                 console.print(f"  @{agent_handle} [dim]({room_name})[/dim]")
+        if watching is not None and watching[1]:
+            room_name, items = watching
+            console.print(f"\n[bold]subscribed to {len(items)} in {room_name}[/bold]")
+            for s in items:
+                console.print(f"  {s['describe']} [dim](id {s['id']})[/dim]")
+            console.print("  [dim]drop one: mycelium subscribe rm <id>[/dim]")
     except typer.Exit:
         raise
     except Exception as e:

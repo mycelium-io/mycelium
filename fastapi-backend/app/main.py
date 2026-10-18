@@ -57,6 +57,7 @@ from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
 from app.routes.status import router as status_router
 from app.routes.stream import router as stream_router
+from app.routes.subscriptions import router as subscriptions_router
 from app.routes.swarms import router as swarms_router
 from app.routes.tasks import router as tasks_router
 from app.routes.uploads import router as uploads_router
@@ -425,6 +426,7 @@ app.include_router(briefing_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(schedules_router, prefix="/api")
+app.include_router(subscriptions_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
 app.include_router(room_settings_router, prefix="/api")
 app.include_router(uploads_router, prefix="/api")

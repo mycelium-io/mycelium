@@ -25,8 +25,10 @@ import pytest_asyncio
 from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
-from app.services.asks import asks
+from app.services import subscriptions
+from app.services.asks import asks, wakes_for
 from app.services.message_models import Kind
+from app.services.room_channels import WAKE_RANK
 from tests import wake_paths
 from tests.wake_paths import AGENT, ENGINES, HERDR, PEER, PERSON, REMOTE, Decided
 
@@ -90,6 +92,18 @@ def _case(draw: st.DrawFn) -> tuple[str, dict[str, Any]]:
             "to": draw(st.lists(handle, max_size=3, unique=True)),
             "commit": draw(st.integers(0, 4)) == 0,
         }
+    # Half the time the agent has subscribed to something first: the task, a
+    # member, a notice kind or a search, so a message can wake it without
+    # asking it.
+    message["subscribed"] = draw(
+        st.one_of(
+            st.none(),
+            st.just(("task", "work/parser-work")),
+            st.sampled_from(CAST).map(lambda h: ("member", h)),
+            st.sampled_from(["claimed", "resolved"]).map(lambda k: ("notice", k)),
+            st.sampled_from(["parser", "ship it"]).map(lambda q: ("search", q)),
+        )
+    )
     return agent, message
 
 
@@ -130,13 +144,20 @@ async def _write(room: wake_paths.Room, message: dict[str, Any]) -> None:
 @given(case=_case())  # ty: ignore[missing-argument]  # st.composite fills `draw`
 async def test_the_paths_agree(room: wake_paths.Room, case: tuple[str, dict]) -> None:
     agent, message = case
+    await subscriptions.remove(wake_paths.ROOM, agent)
+    if message["subscribed"]:
+        kind, target = message["subscribed"]
+        await subscriptions.add(wake_paths.ROOM, agent, kind, target)
     start = wake_paths.mark_read(room, agent)
     await _write(room, message)
 
-    found = {why for r in room.log.records[start:] if (why := asks(r.content, agent))}
+    records = room.log.records[start:]
+    found = {why for r in records if (why := asks(r.content, agent))}
     assert len(found) <= 1
-    reason = next(iter(found), None)
-    event(f"asks: {reason}")
+    woken = {w.reason for r in records if (w := wakes_for(wake_paths.ROOM, r, agent))}
+    # What asks it outranks a subscription on the doorbell, as it does per record.
+    reason = max(woken, key=lambda w: WAKE_RANK.get(w, 1), default=None)
+    event(f"wakes: {reason}")
     got = await wake_paths.decided(room, agent)
     rung = reason if agent in HERDR else None
     assert got == Decided(doorbell=rung, awaited=bool(reason), digest=bool(reason)), message

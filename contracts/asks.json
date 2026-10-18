@@ -32,11 +32,19 @@
     "through the turn primitive it calls). `asks` is the reason for `agent`, or",
     "null.",
     "",
+    "Being asked is one way to be woken. The other is a subscription the agent",
+    "made itself (fastapi-backend/app/services/subscriptions.py): a case with",
+    "`subscribed` has the agent subscribed to that (`kind`, `target`) first,",
+    "and `wakes` is why it is woken (`asks.wakes_for`): the ask when there is",
+    "one, else `subscribed`, else null. Without `subscribed`, `wakes` is",
+    "`asks`. A subscription never wakes an agent for its own post or for a",
+    "reply to it, and a ping wakes nobody.",
+    "",
     "fastapi-backend/tests/test_wake_paths_table.py writes each case through",
-    "the route or engine call that sends it and asserts asks() itself, the",
-    "doorbell, `await` and the digest all give `asks`."
+    "the route or engine call that sends it and asserts asks() itself gives",
+    "`asks`, and the doorbell, `await` and the digest all give `wakes`."
   ],
-  "version": 2,
+  "version": 3,
   "cases": [
     {"case": "a person mentions the agent", "sender": "hay", "text": "@coder can you look at the parser?", "asks": "mention"},
     {"case": "a person mentions the agent in a thread", "sender": "hay", "text": "@coder can you look?", "where": "thread", "asks": "mention"},
@@ -80,6 +88,18 @@
     {"case": "a ping", "sender": "planner", "shape": "ping", "asks": null},
     {"case": "a notice", "sender": "planner", "shape": "notice", "asks": null},
     {"case": "presence", "sender": "planner", "to": ["coder"], "shape": "presence", "asks": null},
-    {"case": "a commit", "sender": "aligner", "text": "@coder agreed: ship friday", "to": ["coder"], "shape": "commit", "asks": null}
+    {"case": "a commit", "sender": "aligner", "text": "@coder agreed: ship friday", "to": ["coder"], "shape": "commit", "asks": null},
+    {"case": "a post in a task the agent subscribed to", "sender": "hay", "text": "the parser is green now", "where": "thread", "subscribed": {"kind": "task", "target": "work/parser-work"}, "asks": null, "wakes": "subscribed"},
+    {"case": "a mention in a task the agent subscribed to", "sender": "hay", "text": "@coder the parser is green", "where": "thread", "subscribed": {"kind": "task", "target": "work/parser-work"}, "asks": "mention", "wakes": "mention"},
+    {"case": "a post in the room, subscribed to a task", "sender": "hay", "text": "the parser is green now", "subscribed": {"kind": "task", "target": "work/parser-work"}, "asks": null, "wakes": null},
+    {"case": "a notice about a task the agent subscribed to", "sender": "planner", "shape": "notice", "subscribed": {"kind": "task", "target": "work/parser-work"}, "asks": null, "wakes": "subscribed"},
+    {"case": "a notice of a kind the agent subscribed to", "sender": "planner", "shape": "notice", "subscribed": {"kind": "notice", "target": "claimed"}, "asks": null, "wakes": "subscribed"},
+    {"case": "a notice of another kind", "sender": "planner", "shape": "notice", "subscribed": {"kind": "notice", "target": "resolved"}, "asks": null, "wakes": null},
+    {"case": "a ping in a task the agent subscribed to", "sender": "planner", "shape": "ping", "subscribed": {"kind": "task", "target": "work/parser-work"}, "asks": null, "wakes": null},
+    {"case": "a member the agent subscribed to replies to someone else", "sender": "planner", "text": "Yes, that works.", "to": ["hay"], "subscribed": {"kind": "member", "target": "planner"}, "asks": null, "wakes": "subscribed"},
+    {"case": "a member the agent subscribed to replies to the agent", "sender": "planner", "text": "Yes, that command works.", "to": ["coder"], "subscribed": {"kind": "member", "target": "planner"}, "asks": null, "wakes": null},
+    {"case": "a message matching the agent's search", "sender": "hay", "text": "the parser is ready to merge", "subscribed": {"kind": "search", "target": "ready to merge"}, "asks": null, "wakes": "subscribed"},
+    {"case": "a message not matching the agent's search", "sender": "hay", "text": "the parser needs another pass", "subscribed": {"kind": "search", "target": "ready to merge"}, "asks": null, "wakes": null},
+    {"case": "the agent's own post in a task it subscribed to", "sender": "coder", "text": "parser done", "where": "thread", "subscribed": {"kind": "task", "target": "work/parser-work"}, "asks": null, "wakes": null}
   ]
 }
