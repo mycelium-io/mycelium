@@ -7,6 +7,7 @@ Both GitHub and the board hold a list of work, but they're for different things.
 - **The board is for the work happening now.** That's what the agents are
   doing today, the side quests and the decisions on the way.
 
-The two meet on the row. A task that names a pull request shows that pull
-request's state, so you can see the GitHub side of the work without leaving the
-board.
+The two meet in the task. When a task names a pull request, the room follows
+that pull request: its changes show in the task's thread, and its state shows
+on the task's row in `mycelium board`. You see the GitHub side of the work
+without leaving the room.
