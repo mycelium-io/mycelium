@@ -25,6 +25,7 @@ Design rules (mirrors the package docstring):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -141,10 +142,52 @@ class HerdrPaneMapping:
     managed: bool = False
     #: The folder it works in, which is where a restart starts it again.
     cwd: str | None = None
+    #: The agent CLI's own session in this pane, as herdr last reported it, so a
+    #: restart or a rename resumes its conversation rather than starting a new one.
+    session: str | None = None
 
     @property
     def key(self) -> str:
         return f"{self.room}/{self.handle.lstrip('@')}"
+
+
+#: What herdr accepts as an agent name (its own rule, from ``invalid_agent_name``).
+_HERDR_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+_HERDR_NAME_MAX = 32
+
+
+def herdr_name(room: str, handle: str) -> str:
+    """The name herdr shows for ``handle``'s agent in ``room``: readable, unique per machine.
+
+    herdr names are unique across the machine, while a handle is unique only in
+    its room, so the name carries both (``reviewer_mycelium-general``). When
+    that is longer than herdr allows, the room is cut and a short hash of the
+    pair keeps it unique. Only a label: who a pane is comes from the registry,
+    never from this name.
+    """
+
+    def clean(text: str) -> str:
+        return re.sub(r"[^a-z0-9_-]+", "-", text.lower()).strip("-_") or "x"
+
+    h, r = clean(handle.lstrip("@")), clean(room)
+    if not h[0].isalpha():
+        h = f"a{h}"
+    name = f"{h}_{r}"
+    if len(name) <= _HERDR_NAME_MAX:
+        return name
+    tag = hashlib.sha1(f"{room}/{handle.lstrip('@')}".encode()).hexdigest()[:4]
+    room_room = _HERDR_NAME_MAX - len(h) - len(tag) - 2
+    if room_room < 1:
+        return f"{h[: _HERDR_NAME_MAX - len(tag) - 1]}_{tag}"
+    return f"{h}_{r[:room_room].rstrip('-_')}-{tag}"
+
+
+def session_of(agent: dict | None) -> str | None:
+    """The agent CLI's session id herdr reports for a live agent, or ``None``."""
+    found = (agent or {}).get("agent_session")
+    if isinstance(found, dict) and found.get("kind") == "id" and found.get("value"):
+        return str(found["value"])
+    return None
 
 
 @dataclass(frozen=True)
@@ -251,6 +294,7 @@ class HerdrRegistry:
             kind=entry.get("kind"),
             managed=bool(entry.get("managed", False)),
             cwd=entry.get("cwd") or None,
+            session=entry.get("session") or None,
         )
 
     def all(self) -> list[HerdrPaneMapping]:
@@ -270,12 +314,13 @@ class HerdrRegistry:
         return self._mapping(room, h, entry)
 
     def set(self, mapping: HerdrPaneMapping) -> None:
-        """Write ``mapping``. A folder it doesn't say is kept from before, for
-        the same pane and the same kind of agent.
+        """Write ``mapping``. A folder or session it doesn't say is kept from
+        before, for the same pane and the same kind of agent.
 
         The workspace sync rewrites a pane's mapping without knowing which
-        folder the agent was started in, and that folder is where a restart
-        starts it again. Another pane or kind is another agent.
+        folder the agent was started in or which session it's in, and those
+        are what a restart starts it again with. Another pane or kind is
+        another agent.
         """
         data = self._load()
         raw = data.get(mapping.key)
@@ -285,8 +330,29 @@ class HerdrRegistry:
         cwd = mapping.cwd or (before.get("cwd") if same else None)
         if cwd:
             entry["cwd"] = cwd
+        session = mapping.session or (before.get("session") if same else None)
+        if session:
+            entry["session"] = session
         data[mapping.key] = entry
         self._save(data)
+
+    def note_sessions(self, by_pane: dict[str, str]) -> None:
+        """Record the session herdr reports for each mapped pane, where it changed.
+
+        Called with what herdr says now, so the session outlives the pane: once
+        an agent has stopped, or its pane has closed, herdr no longer reports it.
+        """
+        data = self._load()
+        changed = False
+        for entry in data.values():
+            if not isinstance(entry, dict):
+                continue
+            session = by_pane.get(str(entry.get("pane")))
+            if session and entry.get("session") != session:
+                entry["session"] = session
+                changed = True
+        if changed:
+            self._save(data)
 
     def remove(self, room: str, handle: str) -> bool:
         data = self._load()

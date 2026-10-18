@@ -19,6 +19,10 @@ class Claude(AgentKind):
         # only, never in the person's settings.
         return ["--allowedTools", "Bash(mycelium:*)"]
 
+    def resume_args(self, session: str) -> list[str] | None:
+        # The id herdr records for the pane through its Claude integration.
+        return ["--resume", session]
+
     def blocked_hint(self) -> str | None:
         # Nothing says which prompt is on screen (herdr has no rule for the
         # first-run one), so this names what it commonly is, never which.

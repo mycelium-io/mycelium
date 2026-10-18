@@ -45,6 +45,8 @@ from mycelium.integrations.herdr import (
     build_assigned_prompt,
     build_mention_prompt,
     build_wake_prompt,
+    herdr_name,
+    session_of,
 )
 from mycelium.protocol import AgentManifest
 from mycelium.runner.log import failing, ms, recovered, slow
@@ -300,8 +302,14 @@ def herdr_enroll(
                 pane=pane_id,
                 kind=agent.get("agent"),
                 cwd=agent.get("foreground_cwd") or agent.get("cwd"),
+                session=session_of(agent),
             )
         )
+        # Its herdr name says its handle in this room; only a label.
+        try:
+            bridge.rename_agent(pane_id, herdr_name(room_name, wanted))
+        except HerdrError:
+            pass
         console.print(
             f"[green]Joined[/green] {escape(room_name)} as [cyan]@{wanted}[/cyan]. "
             f"Mentions of @{wanted} now wake pane {escape(pane_id)}."
@@ -815,14 +823,19 @@ def _collect_presence(
     handles whose pane currently hosts a live agent are included; an unmapped/dead
     pane is omitted so its backend entry lapses on its TTL.
     """
+    agents = [a for a in bridge.list_agents() if a.get("pane_id")]
     live: dict[str, dict[str, str | None]] = {
         str(a["pane_id"]): {
             "status": str(a.get("agent_status") or "unknown"),
             "title": (a.get("terminal_title_stripped") or a.get("terminal_title") or None),
         }
-        for a in bridge.list_agents()
-        if a.get("pane_id")
+        for a in agents
     }
+    # Each mapped pane's session, kept while herdr can still say it, so a
+    # restart or a rename resumes the agent's conversation once it can't.
+    bridge.registry.note_sessions(
+        {str(a["pane_id"]): s for a in agents if (s := session_of(a)) is not None}
+    )
     view: dict[str, dict[str, dict[str, str | None]]] = {}
     for m in bridge.registry.all():
         if room_filter and m.room != room_filter:

@@ -68,7 +68,13 @@ from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations import agents
 from mycelium.integrations.agents import of_kind
-from mycelium.integrations.herdr import HerdrBridge, HerdrError, HerdrPaneMapping
+from mycelium.integrations.herdr import (
+    HerdrBridge,
+    HerdrError,
+    HerdrPaneMapping,
+    herdr_name,
+    session_of,
+)
 from mycelium.runner import approvals, frameworks, pairing
 from mycelium.runner.hosts import (
     STEP_AGENT,
@@ -580,7 +586,9 @@ class Runner:
         running as it was. A running agent's environment says its old handle
         and can't be changed, so it is ended (its pane closed) and started
         again, in its folder, in a pane beside its room's, with the new handle
-        in that pane's environment. Its mapping and its record here move too.
+        in that pane's environment, and in its own session when its CLI can
+        resume one, so it keeps its conversation. Its mapping (with that
+        session) and its record here move too.
         """
         agent = self._renamable(spec)
         room, old, new = agent.room, agent.handle, str(spec.get("to"))
@@ -599,12 +607,7 @@ class Runner:
         self.bridge.registry.remove(room, old)
         renamed = replace(agent, handle=new)
         try:
-            pane = this_machine.restart(
-                self.config,
-                renamed,
-                bridge=self.bridge,
-                prompt=this_machine.rename_prompt(renamed, old),
-            )
+            pane = this_machine.restart(self.config, renamed, bridge=self.bridge, renamed_from=old)
         except this_machine.MachineError as e:
             raise JobError(str(e)) from e
         with self._lock:
@@ -958,8 +961,21 @@ class Runner:
         kind = str(running.get("agent") or spec.get("framework") or "") or None
         cwd = running.get("foreground_cwd") or running.get("cwd") or spec.get("cwd")
         self.bridge.registry.set(
-            HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, cwd=cwd)
+            HerdrPaneMapping(
+                room=room,
+                handle=handle,
+                pane=pane,
+                kind=kind,
+                cwd=cwd,
+                session=session_of(running),
+            )
         )
+        # herdr shows it by its handle in this room, as every agent the runner
+        # starts; only a label, so one herdr won't take is left as it was.
+        try:
+            self.bridge.rename_agent(pane, herdr_name(room, handle))
+        except HerdrError as e:
+            log.info("adopt %s: couldn't name it in herdr: %s", pane, e)
         workspace = str(running.get("workspace_id") or "") or None
         try:
             agent = Tracked(
@@ -1222,14 +1238,20 @@ class Runner:
             agent = self._renamable(spec)
             old, new = agent.handle, str(spec.get("to"))
             running = agent.state not in ("stopped", "gone")
+            kept = (
+                "in its own session, keeping its conversation, and is told its new name"
+                if this_machine.resumes(agent)
+                else "in a new session, so it doesn't keep its conversation, and catches up "
+                "from the room"
+            )
             return {
                 "kind": kind,
                 "title": f"Restart @{old} as @{new} on {self.label}?",
                 "message": (
                     f"@{old} was renamed @{new} in {agent.room}. "
                     + ("Its pane closes, ending what it's doing, and " if running else "")
-                    + f"{agent.kind} starts again in {_tilde(Path(str(agent.folder)))} as @{new} "
-                    "and catches up from the room.\n\n"
+                    + f"{agent.kind} starts again in {_tilde(Path(str(agent.folder)))} as @{new}, "
+                    f"{kept}.\n\n"
                     f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
                 ),
                 "hub": hub,
@@ -1243,7 +1265,8 @@ class Runner:
                 "kind": kind,
                 "title": f"Restart {n} agent{'s' if n != 1 else ''} on {self.label}?",
                 "message": (
-                    f"Each starts again as itself and catches up from the room:\n{lines}\n\n"
+                    f"Each starts again as itself and catches up from the room. One in its own "
+                    f"session keeps its conversation; one in a new session doesn't:\n{lines}\n\n"
                     f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
                 ),
                 "hub": hub,

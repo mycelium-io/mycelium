@@ -264,9 +264,9 @@ def test_each_member_gets_a_pane_an_agent_and_its_own_identity(
         )
     ]
     assert [c[2:6] for c in herdr.of("agent start")] == [
-        ["agent-1", "--kind", "claude", "--pane"],
-        ["agent-2", "--kind", "claude", "--pane"],
-        ["agent-3", "--kind", "claude", "--pane"],
+        ["agent-1_fix-tests", "--kind", "claude", "--pane"],
+        ["agent-2_fix-tests", "--kind", "claude", "--pane"],
+        ["agent-3_fix-tests", "--kind", "claude", "--pane"],
     ]
     # Each Claude session may run mycelium without a prompt, and only this one:
     # the grant rides the command line, not the user's settings.
@@ -459,7 +459,7 @@ def test_an_agent_is_started_again_while_its_pane_comes_up(monkeypatch: pytest.M
         def get_agent(self, pane: str) -> dict | None:
             return None
 
-    swarm._start_when_ready(_Bridge(), "agent-1", "claude", "w9:p1")
+    swarm._start_when_ready(_Bridge(), "agent-1", "claude", "w9:p1", room="eng")
     assert attempts == ["w9:p1", "w9:p1"]
 
     attempts.clear()
@@ -470,7 +470,7 @@ def test_an_agent_is_started_again_while_its_pane_comes_up(monkeypatch: pytest.M
             raise HerdrError("still not ready")
 
     with pytest.raises(HerdrError):
-        swarm._start_when_ready(_Never(), "agent-1", "claude", "w9:p1")
+        swarm._start_when_ready(_Never(), "agent-1", "claude", "w9:p1", room="eng")
     assert len(attempts) == swarm.START_ATTEMPTS
 
 
