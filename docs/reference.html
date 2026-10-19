@@ -816,6 +816,27 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">pause</span> [<span class="arg">&lt;handle&gt;</span>] [<span class="flag">--all</span>] [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;you&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Pause an agent you own: its turn stops, it's told this is a pause and not a correction, and nothing wakes it until it's resumed. Messages for it still land. <code>--all</code> pauses every agent you own.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">resume</span> [<span class="arg">&lt;handle&gt;</span>] [<span class="flag">--all</span>] [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;you&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Resume a paused agent: it's woken with what arrived while it was paused. <code>--all</code> resumes every agent you paused.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">stop</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;you&gt;</span>] [<span class="flag">--yes</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Stop an agent you own: the machine running it interrupts it and closes its pane. It stays a member, and can be restarted.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">credential</span> set <span class="arg">&lt;handle&gt;</span> [<span class="flag">--client-id</span> <span class="arg">ID</span>] [<span class="flag">--secret-stdin</span>] [<span class="flag">--issuer</span> <span class="arg">URL</span>]</code>
         </div>
         <div class="cmd-ref-body">Give an agent its own service-account credential, stored 0600 outside <code>config.toml</code>. Only meaningful once a hub enables auth.</div>

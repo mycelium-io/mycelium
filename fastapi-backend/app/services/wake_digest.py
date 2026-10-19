@@ -680,6 +680,13 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
             "which stops your turn if you were working. Read it and act on it, then "
             "carry on with what you were doing unless it says otherwise."
         )
+    elif reason == "resumed":
+        # The other half of a pause (``pauses``): it was told to stop and wait,
+        # so it needs telling that it may carry on, and what came in meanwhile.
+        why = (
+            f"{sender} resumed you from Mycelium. Carry on where you stopped. "
+            "Below is what arrived while you were paused."
+        )
     else:
         n = len(asked)
         latest = f", latest {age(parse_recorded_at(asked[-1].recorded_at), now)}" if asked else ""

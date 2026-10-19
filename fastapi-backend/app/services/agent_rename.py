@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, cast
 import yaml
 
 from app.schemas import HANDLE_PATTERN
-from app.services import assignments, fields
+from app.services import assignments, fields, pauses
 from app.services.agent_registry import AGENTS_PREFIX, norm_handle
 from app.services.filesystem import (
     get_room_dir,
@@ -223,6 +223,7 @@ async def rename(room: str, old: str, new: str, *, by: str) -> tuple[list[str], 
     await schedules.rename_owner(room, old, new)
     _move_room_member(room, old, new)
     manager.rename_member(room, old, new)
+    pauses.rename(room, old, new)
     logger.info("room %s: @%s renamed to @%s by %s", room, old, new, by)
     return memories, rows
 

@@ -167,6 +167,325 @@
         }
       }
     },
+    "/api/rooms/{room_name}/agents/{handle}/pause": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Pause Agent",
+        "description": "Pause an agent: stop its turn, tell it it's a pause, and hold its wakes.",
+        "operationId": "pause_agent_api_rooms__room_name__agents__handle__pause_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentControl"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentControlRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/agents/{handle}/resume": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Resume Agent",
+        "description": "Resume a paused agent with a wake listing what arrived while it was paused.",
+        "operationId": "resume_agent_api_rooms__room_name__agents__handle__resume_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentControl"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentControlRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/agents/{handle}/stop": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Stop Agent",
+        "description": "Stop an agent and close its pane, on the machine running it. Its owner only;\none with no owner on record can't be stopped from here.",
+        "operationId": "stop_agent_api_rooms__room_name__agents__handle__stop_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentControl"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentControlRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agents/pause": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Pause Mine",
+        "description": "Pause every agent the caller owns.",
+        "operationId": "pause_mine_api_agents_pause_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentsControl"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsControlRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agents/resume": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Resume Mine",
+        "description": "Resume every paused agent the caller owns.",
+        "operationId": "resume_mine_api_agents_resume_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentsControl"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsControlRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agents/paused": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "List Paused",
+        "description": "Every paused agent ``owner`` owns, across rooms.\n\nWith sign-in on, only your own. With it off, anyone may list anyone's, as\nthey may read any room's members.",
+        "operationId": "list_paused_api_agents_paused_get",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Whose agents",
+              "title": "Owner"
+            },
+            "description": "Whose agents"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PauseRead"
+                  },
+                  "title": "Response List Paused Api Agents Paused Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/a2a-agents": {
       "post": {
         "tags": [
@@ -7332,6 +7651,76 @@
         ],
         "title": "AgentContextOut"
       },
+      "AgentControl": {
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who is asking; the verified caller wins"
+          }
+        },
+        "type": "object",
+        "title": "AgentControl",
+        "description": "Pause, resume or stop one agent. Only its owner may."
+      },
+      "AgentControlRead": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "paused": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PauseRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runner"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "handle"
+        ],
+        "title": "AgentControlRead",
+        "description": "What happened to one agent."
+      },
       "AgentRead": {
         "properties": {
           "handle": {
@@ -7548,6 +7937,50 @@
         ],
         "title": "AgentRenameRead",
         "description": "What a rename moved, or that it waits for a yes on the machine running the agent."
+      },
+      "AgentsControl": {
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Whose agents; the verified caller wins"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room",
+            "description": "Only the agents in this room"
+          }
+        },
+        "type": "object",
+        "title": "AgentsControl",
+        "description": "Pause or resume every agent someone owns, in one room or all of them."
+      },
+      "AgentsControlRead": {
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentControlRead"
+            },
+            "type": "array",
+            "title": "Agents"
+          }
+        },
+        "type": "object",
+        "title": "AgentsControlRead"
       },
       "BoardEpic": {
         "properties": {
@@ -11390,6 +11823,36 @@
         "title": "PatternSummary",
         "description": "A scenario as a list shows it."
       },
+      "PauseRead": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "by": {
+            "type": "string",
+            "title": "By"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "handle",
+          "by",
+          "at"
+        ],
+        "title": "PauseRead",
+        "description": "An agent's pause: who paused it, and when."
+      },
       "ProtocolSummary": {
         "properties": {
           "name": {
@@ -12566,7 +13029,8 @@
               "pair",
               "interrupt",
               "adopt",
-              "rename"
+              "rename",
+              "pause"
             ],
             "title": "Kind"
           },

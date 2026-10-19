@@ -454,6 +454,10 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         &[
             &MenuItem::with_id(app, "machines", "Your agents…", true, None::<&str>)?,
             &MenuItem::with_id(app, "terminal", "Agents terminal", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            // Bedtime and morning, one click each: every agent you own.
+            &MenuItem::with_id(app, "agents:pause", "Pause my agents", true, None::<&str>)?,
+            &MenuItem::with_id(app, "agents:resume", "Resume my agents", true, None::<&str>)?,
         ],
     )?;
     let experiences = Submenu::with_id(app, "experiences", "Experiences", true)?;
@@ -621,6 +625,8 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         "open" => show_main(app),
         "terminal" => open_terminal_window(app, None),
         "machines" => show_page(app, "/machines"),
+        "agents:pause" => control_my_agents(app, "pause"),
+        "agents:resume" => control_my_agents(app, "resume"),
         "settings" => open_settings(app),
         "switch" => show_local(app, "onboarding"),
         "status" | "doctor" => show_local(app, "doctor"),
@@ -1021,6 +1027,46 @@ async fn hub_settings_cli(hub: Option<String>) -> Result<Value, String> {
         return Err(err.lines().last().unwrap_or("Couldn't ask the hub.").trim().to_string());
     }
     serde_json::from_slice(&out.stdout).map_err(|_| "The hub's answer was unreadable.".into())
+}
+
+/// Pause or resume every agent the person on this machine owns:
+/// `mycelium agent <verb> --all` against the hub the app is using. It acts as
+/// the machine's person, and the hub lets an agent's owner alone do it. Only a
+/// failure is said, since the status rail shows the paused agents.
+fn control_my_agents(app: &AppHandle, verb: &'static str) {
+    let api = app
+        .state::<Supervisor>()
+        .status()
+        .and_then(|s| s.get("api_url").and_then(Value::as_str).map(str::to_string));
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let title = if verb == "pause" { "Pause my agents" } else { "Resume my agents" };
+        let Some(bin) = paths::resolve("mycelium") else {
+            app.dialog().message("The mycelium program isn't available.").title(title).show(|_| {});
+            return;
+        };
+        let out = tauri::async_runtime::spawn_blocking(move || {
+            let mut cmd = paths::command(bin);
+            cmd.args(["agent", verb, "--all"])
+                .env("PATH", paths::shell_path())
+                .env("NO_COLOR", "1");
+            if let Some(api) = api {
+                cmd.env("MYCELIUM_API_URL", api);
+            }
+            cmd.output()
+        })
+        .await;
+        let failed = match out {
+            Ok(Ok(out)) if out.status.success() => return,
+            Ok(Ok(out)) => {
+                let said = [String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)].concat();
+                said.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("It failed.").trim().to_string()
+            }
+            Ok(Err(e)) => e.to_string(),
+            Err(e) => e.to_string(),
+        };
+        app.dialog().message(failed).title(title).show(|_| {});
+    });
 }
 
 /// Open an experience: the room UI, at the path the experience opens on.

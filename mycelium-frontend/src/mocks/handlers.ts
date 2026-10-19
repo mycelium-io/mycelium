@@ -53,6 +53,7 @@ import {
   saveHubSettings,
   setRoomSettingMock,
 } from "./settings";
+import { controlMine, controlOne, pausedIn } from "./pauses";
 import { handleUploads } from "./uploads";
 import { handleVoice } from "./voice";
 import { VERIFIER, handleVerifierFlags, verifierSettingsRead } from "./verifier";
@@ -426,6 +427,15 @@ export async function handleMock(req: Request): Promise<Response | null> {
 
   // ── /api/runners ────────────────────────────────────────────────────────────
   if (rest[0] === "runners") return handleRunners(req, method, rest.slice(1));
+
+  // ── /api/agents/pause|resume|paused: every agent a person owns ──────────────
+  if (rest[0] === "agents" && rest.length === 2) {
+    const by =
+      method === "GET"
+        ? (searchParams.get("owner") ?? "")
+        : String((await readJson(req)).by ?? "");
+    return controlMine(method, rest[1], by.replace(/^@/, "").toLowerCase());
+  }
 
   // ── /api/patterns ───────────────────────────────────────────────────────────
   if (rest[0] === "patterns") {
@@ -963,6 +973,11 @@ export async function handleMock(req: Request): Promise<Response | null> {
         if (!brief) return json({ detail: "Say what the agent is for first." }, 422);
         return json({ notes: mockNotesDraft(brief, fx) });
       }
+      // POST /agents/{handle}/pause|resume|stop — for its owner only.
+      if (sub.length === 3 && ["pause", "resume", "stop"].includes(sub[2]) && method === "POST") {
+        const by = String((await readJson(req)).by ?? "").replace(/^@/, "").toLowerCase();
+        return controlOne(fx, roomName, decodeURIComponent(sub[1]), sub[2], by);
+      }
       // POST /agents/{handle}/rename — one a machine runs waits for a yes
       // there (the job is queued, nothing moves); any other is renamed at once,
       // its memories moving to the new handle as the hub does.
@@ -1292,6 +1307,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
           members: fx.presence ?? [],
           floors: fx.floors ?? [],
           subscriptions: fx.subscriptions ?? [],
+          paused: pausedIn(roomName),
         });
       }
       return null;

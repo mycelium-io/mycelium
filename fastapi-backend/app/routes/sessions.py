@@ -37,6 +37,7 @@ from app.services import (
     actor,
     in_memory_store,
     message_format,
+    pauses,
     room_channels,
     schedules,
     subscriptions,
@@ -237,6 +238,12 @@ async def list_members(room_name: str):
             read_subscription(s).model_dump(mode="json")
             for s in subscriptions.load(room_name)
             if s.live_at(datetime.now(UTC))
+        ],
+        # Who is paused, by whom and since when (``pauses``): shown whether or
+        # not the member is present, since a paused agent is often idle.
+        "paused": [
+            {"handle": h, "by": p["by"], "at": p["at"]}
+            for h, p in sorted(pauses.paused_in(room_name).items())
         ],
     }
 

@@ -32,6 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.a2a_agents import router as a2a_agents_router
 from app.routes.a2a_server import router as a2a_server_router
 from app.routes.a2a_state import router as a2a_state_router
+from app.routes.agent_pauses import router as agent_pauses_router
 from app.routes.agents import router as agents_router
 from app.routes.assignments import router as assignments_router
 from app.routes.board import router as board_router
@@ -402,6 +403,7 @@ app.add_middleware(
 
 # Core routes. Health endpoints stay top-level for orchestrator probes.
 app.include_router(agents_router, prefix="/api")
+app.include_router(agent_pauses_router, prefix="/api")
 app.include_router(a2a_agents_router, prefix="/api")
 app.include_router(a2a_server_router, prefix="/api")
 app.include_router(a2a_state_router, prefix="/api")

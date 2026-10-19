@@ -854,6 +854,45 @@ class AgentRenameRead(BaseModel):
     restart_job: str | None = None
 
 
+class AgentControl(BaseModel):
+    """Pause, resume or stop one agent. Only its owner may."""
+
+    by: str | None = Field(None, description="Who is asking; the verified caller wins")
+
+
+class AgentsControl(BaseModel):
+    """Pause or resume every agent someone owns, in one room or all of them."""
+
+    by: str | None = Field(None, description="Whose agents; the verified caller wins")
+    room: str | None = Field(None, description="Only the agents in this room")
+
+
+class PauseRead(BaseModel):
+    """An agent's pause: who paused it, and when."""
+
+    room: str
+    handle: str
+    by: str
+    at: datetime
+
+
+class AgentControlRead(BaseModel):
+    """What happened to one agent."""
+
+    room: str
+    handle: str
+    #: The pause it has now: ``None`` once resumed or stopped.
+    paused: PauseRead | None = None
+    #: The machine asked to interrupt or stop it, and that job. ``None`` when no
+    #: connected machine runs it (a pause still holds its wakes).
+    runner: str | None = None
+    job: str | None = None
+
+
+class AgentsControlRead(BaseModel):
+    agents: list[AgentControlRead] = Field(default_factory=list)
+
+
 # ── Runners (a user's machine, dialed in) ────────────────────────────────────
 #
 # A runner is `mycelium runner` on someone's computer. It dials out to the hub,
@@ -866,7 +905,7 @@ RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
 RunnerJobKind = Literal[
-    "launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt", "rename"
+    "launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt", "rename", "pause"
 ]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]

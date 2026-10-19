@@ -94,6 +94,10 @@ from mycelium.utils.process import pid_alive
 ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt", "rename"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
+#: How long a paused agent has to stop working before it's told why, and how
+#: often it's checked meanwhile.
+PAUSE_SETTLE_S = 20.0
+PAUSE_POLL_S = 0.5
 
 #: How often the runner says hello when nothing else has.
 HEARTBEAT_S = 10.0
@@ -292,6 +296,16 @@ def intro_prompt(
         f"claim it (`mycelium board claim <id> --room {room} --to @{handle}`) and post what "
         f'you do in its thread (`mycelium board send <id> --room {room} --as {handle} --body "..."`). '
         f"{later}"
+    )
+
+
+def pause_prompt(by: str, room: str) -> str:
+    """What an agent whose turn a pause stopped is told, so it waits for the resume."""
+    return (
+        f"[mycelium] ⏸ Paused by @{by} from Mycelium (room '{room}'). This isn't a "
+        "correction of your work. Stop where you are and don't start anything new. "
+        "Leave files as they are. Post one line in your task's thread saying where you "
+        "stopped, then wait. You'll get a \"resumed\" message when it's time to continue."
     )
 
 
@@ -1034,7 +1048,7 @@ class Runner:
         with self._lock:
             agent = self.state.agents.get(key)
             if agent is None:
-                raise JobError(f"{self.label} isn't running @{spec['handle']} in {spec['room']}.")
+                return self._stop_mapped(str(spec["room"]), str(spec["handle"]))
             if agent.adopted:
                 # It was running before it joined: let go of it, never close its pane.
                 self.host.gone(agent)
@@ -1049,25 +1063,55 @@ class Runner:
         self.log.print(f"[yellow]stopped[/yellow] @{agent.handle} in {agent.room}")
         return {"pane": agent.pane}
 
+    def _stop_mapped(self, room: str, handle: str) -> dict[str, Any]:
+        """Stop an agent bound to a room here that this runner didn't start.
+
+        Its turn is interrupted, then its pane closed. The mapping stays, no
+        longer ``managed``: a managed member whose pane closes is retired from
+        the room by the sync pass, and a stop is not a removal, so it stays a
+        member that can be restarted.
+        """
+        mapping = self.bridge.registry.get(room, handle)
+        if mapping is None:
+            raise JobError(f"Nothing on {self.label} is running @{handle} in {room}.")
+        host = self.host if isinstance(self.host, HerdrHost) else HerdrHost(self.bridge)
+        try:
+            host.interrupt(mapping.pane, mapping.kind)
+        except HostError as e:
+            log.info("stop @%s: couldn't interrupt %s first: %s", handle, mapping.pane, e)
+        if mapping.managed:
+            self.bridge.registry.set(replace(mapping, managed=False))
+        try:
+            self.bridge.close_pane(mapping.pane)
+        except HerdrError as e:
+            raise JobError(f"herdr couldn't close @{handle}'s pane {mapping.pane}: {e}") from e
+        self.log.print(f"[yellow]stopped[/yellow] @{handle} in {room} ({mapping.pane})")
+        return {"pane": mapping.pane}
+
+    def _running(self, room: str, handle: str) -> tuple[AgentHost, str, str | None]:
+        """The host, ref and kind of ``handle`` in ``room`` running on this machine.
+
+        One this runner started is on its own host; any other agent bound to a
+        room here is in a herdr pane (``mycelium machine`` lists them).
+        """
+        tracked = self.state.agents.get(f"{room}/{handle}")
+        if tracked is not None and tracked.live:
+            return self.host, tracked.pane, tracked.framework
+        mapping = self.bridge.registry.get(room, handle)
+        if mapping is None:
+            raise JobError(f"Nothing on {self.label} is running @{handle} in {room}.")
+        host = self.host if isinstance(self.host, HerdrHost) else HerdrHost(self.bridge)
+        return host, mapping.pane, mapping.kind
+
     def interrupt_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
         """Stop an agent mid-turn with its CLI's own key, keeping its session.
 
         For an ``@!`` mention. Only a working agent is sent the key; what it is
         told is the wake the hub queued, which the sync pass delivers once it is
-        idle. One this runner started is on its own host; any other agent bound
-        to a room here is in a herdr pane (``mycelium machine`` lists them).
+        idle.
         """
         room, handle = str(spec["room"]), str(spec["handle"])
-        tracked = self.state.agents.get(f"{room}/{handle}")
-        host: AgentHost
-        if tracked is not None and tracked.live:
-            host, ref, kind = self.host, tracked.pane, tracked.framework
-        else:
-            mapping = self.bridge.registry.get(room, handle)
-            if mapping is None:
-                raise JobError(f"Nothing on {self.label} is running @{handle} in {room}.")
-            host = self.host if isinstance(self.host, HerdrHost) else HerdrHost(self.bridge)
-            ref, kind = mapping.pane, mapping.kind
+        host, ref, kind = self._running(room, handle)
         try:
             sent = host.interrupt(ref, kind)
         except HostError as e:
@@ -1075,6 +1119,45 @@ class Runner:
         said = "interrupted" if sent else "left alone (not working)"
         self.log.print(f"[yellow]{said}[/yellow] @{handle} in {room}")
         return {"pane": ref, "interrupted": sent}
+
+    def pause_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Stop a working agent's turn and tell it this is a pause, not a correction.
+
+        The hub already holds its wakes. A working agent is sent its CLI's own
+        key, then, once it has settled, the pause message: without it a bare
+        interrupt reads as "the person stopped me", and the agent waits for a
+        person rather than for the resume. An idle agent has no turn to stop and
+        is told nothing, since typing into an idle pane could land in what a
+        person was writing there; its next wake is the resume.
+        """
+        room, handle = str(spec["room"]), str(spec["handle"])
+        by = str(spec.get("by") or "") or "its owner"
+        host, ref, kind = self._running(room, handle)
+        try:
+            sent = host.interrupt(ref, kind)
+        except HostError as e:
+            raise JobError(str(e)) from e
+        told = False
+        if sent and self._settled(host, ref):
+            try:
+                host.wake(ref, pause_prompt(by.lstrip("@"), room))
+                told = True
+            except HostError as e:
+                log.warning("pause @%s: couldn't tell it in %s: %s", handle, ref, e)
+        said = "paused" if sent else "paused (it was idle)"
+        self.log.print(f"[yellow]{said}[/yellow] @{handle} in {room}")
+        return {"pane": ref, "interrupted": sent, "told": told}
+
+    def _settled(self, host: AgentHost, ref: str) -> bool:
+        """Wait, up to :data:`PAUSE_SETTLE_S`, for an interrupted agent to stop working."""
+        deadline = time.monotonic() + PAUSE_SETTLE_S
+        while time.monotonic() < deadline:
+            statuses = host.statuses() or {}
+            status = statuses.get(ref, ("gone", None))[0]
+            if status != "working":
+                return status in {"idle", "running"}
+            time.sleep(PAUSE_POLL_S)
+        return False
 
     def swarm(self, spec: dict[str, Any], created_by: str | None) -> dict[str, Any]:
         """Open a herdr workspace for a team the hub set up, brief it, and start the kickoff.
@@ -1232,6 +1315,8 @@ class Runner:
             return self.stop_agent(spec)
         if kind == "interrupt":
             return self.interrupt_agent(spec)
+        if kind == "pause":
+            return self.pause_agent(spec)
         if kind == "scan":
             found = self.scan()
             return {"installed": [f.id for f in found if f.installed]}
@@ -1352,6 +1437,12 @@ class Runner:
                 args=(job,),
                 name=f"runner-job-{job_id}",
                 daemon=True,
+            ).start()
+            return
+        if job.get("kind") == "pause":
+            # It waits for the agent to settle, and "pause my agents" sends several.
+            threading.Thread(
+                target=self._do_and_report, args=(job,), name=f"runner-job-{job_id}", daemon=True
             ).start()
             return
         self._do_and_report(job)

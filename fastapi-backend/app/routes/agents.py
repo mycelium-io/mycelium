@@ -7,6 +7,8 @@ POST /rooms/{room_name}/agents/draft-notes — a member's notes, drafted by the
 hub's Pi from the line a person typed about it, for the Add member dialog.
 
 POST /rooms/{room_name}/agents/{handle}/rename — a new handle for an agent.
+
+POST /rooms/{room_name}/agents/{handle}/pause|resume|stop — for its owner.
 """
 
 import asyncio
@@ -15,8 +17,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.schemas import AgentRead, AgentRename, AgentRenameRead
-from app.services import actor, agent_rename, notes_draft
+from app.schemas import AgentControl, AgentControlRead, AgentRead, AgentRename, AgentRenameRead
+from app.services import actor, agent_control, agent_rename, notes_draft
 from app.services.agent_registry import norm_handle, room_agents
 from app.services.filesystem import read_room_meta, room_exists
 
@@ -118,3 +120,51 @@ async def rename_agent(
     return AgentRenameRead(
         handle=new, was=old, pending=True, restart_runner=target, restart_job=job.id
     )
+
+
+def _controlled(
+    room_name: str, handle: str, payload: AgentControl, request: Request, verb: str = "pause"
+):
+    """``(handle, by)`` once ``by`` is shown to own the agent, else the refusal."""
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    target = norm_handle(handle) or ""
+    by = norm_handle(actor.bind_optional_actor(request, payload.by, field="by"))
+    if not by:
+        raise HTTPException(status_code=422, detail="Say who is asking (`by`).")
+    try:
+        agent_control.check(room_name, target, by, verb)
+    except agent_control.ControlError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return target, by
+
+
+@router.post("/{handle}/pause", response_model=AgentControlRead)
+async def pause_agent(
+    room_name: str, handle: str, payload: AgentControl, request: Request
+) -> AgentControlRead:
+    """Pause an agent: stop its turn, tell it it's a pause, and hold its wakes."""
+    target, by = _controlled(room_name, handle, payload, request)
+    return agent_control.pause(room_name, target, by)
+
+
+@router.post("/{handle}/resume", response_model=AgentControlRead)
+async def resume_agent(
+    room_name: str, handle: str, payload: AgentControl, request: Request
+) -> AgentControlRead:
+    """Resume a paused agent with a wake listing what arrived while it was paused."""
+    target, by = _controlled(room_name, handle, payload, request)
+    return agent_control.resume(room_name, target, by)
+
+
+@router.post("/{handle}/stop", response_model=AgentControlRead)
+async def stop_agent(
+    room_name: str, handle: str, payload: AgentControl, request: Request
+) -> AgentControlRead:
+    """Stop an agent and close its pane, on the machine running it. Its owner only;
+    one with no owner on record can't be stopped from here."""
+    target, by = _controlled(room_name, handle, payload, request, "stop")
+    try:
+        return agent_control.stop(room_name, target, by)
+    except agent_control.ControlError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc

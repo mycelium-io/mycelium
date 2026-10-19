@@ -974,10 +974,17 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#agents-on-a-machine-pausing-your-agents",
+    "t": "Pausing your agents",
+    "s": "Agents › Your Agents on a Machine",
+    "x": "Pausing an agent stops it where it is without closing it. Nothing wakes it until you resume it, and messages for it still arrive. When it's resumed, it's told what came in while it was paused and carries on where it stopped. A working agent is interrupted, and told the pause came from Mycelium and isn't a correction of its work. mycelium agent pause --all # every agent you own, in every room mycelium agent resume --a",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#agents-on-a-machine-restarting-agents",
     "t": "Restarting agents",
     "s": "Agents › Your Agents on a Machine",
-    "x": "An agent that stopped and didn't come back can be restarted. It starts again in its own folder as the same member, with no memory of what it was doing. It reads its notes and then catches up from the room. mycelium machine restart --all # every stopped agent mycelium machine restart reviewer # one On the Machines page, Restart shows where each agent will start before it starts any of them. The runner then asks you on",
+    "x": "An agent that stopped and didn't come back can be restarted. It starts again in its own folder as the same member. Claude Code comes back in its own conversation. Other agent CLIs start a new one, read their notes and catch up from the room. mycelium machine restart --all # every stopped agent mycelium machine restart reviewer # one On the Machines page, Restart shows where each agent will start before it starts any ",
     "p": "Guides"
   },
   {
@@ -2254,6 +2261,30 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium agent rename <handle> <new-handle> [--room <room>] [--as <you>]",
     "s": "CLI Reference",
     "x": "Give an agent a new handle. Its notes, the tasks it holds and its place in the room move with it, the machine running it restarts it under the new name (asking there first), and the room is told.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium agent pause [<handle>] [--all] [--room <room>] [--as <you>]",
+    "s": "CLI Reference",
+    "x": "Pause an agent you own: its turn stops, it's told this is a pause and not a correction, and nothing wakes it until it's resumed. Messages for it still land. --all pauses every agent you own.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium agent resume [<handle>] [--all] [--room <room>] [--as <you>]",
+    "s": "CLI Reference",
+    "x": "Resume a paused agent: it's woken with what arrived while it was paused. --all resumes every agent you paused.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium agent stop <handle> [--room <room>] [--as <you>] [--yes]",
+    "s": "CLI Reference",
+    "x": "Stop an agent you own: the machine running it interrupts it and closes its pane. It stays a member, and can be restarted.",
     "k": "cmd",
     "p": "Reference"
   },
