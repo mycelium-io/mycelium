@@ -14,8 +14,10 @@
  * out (`src/lib/stream-hub.ts`).
  */
 
-/** The feeds carried over the one connection. */
-export const STREAM_CHANNELS = ["room", "app", "notification"] as const;
+/** The feeds carried over the one connection. `themes` is the app's own
+ *  server saying this machine's theme files changed (`lib/theme-files.ts`),
+ *  carried only where the desktop app keeps them. */
+export const STREAM_CHANNELS = ["room", "app", "notification", "themes"] as const;
 
 export type StreamChannel = (typeof STREAM_CHANNELS)[number];
 

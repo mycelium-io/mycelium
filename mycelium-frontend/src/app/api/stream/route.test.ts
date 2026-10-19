@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSseDecoder, type SseEvent } from "@/lib/sse";
 
@@ -105,6 +108,37 @@ describe("GET /api/stream", () => {
         "http://backend:8000/api/events/stream",
         "http://backend:8000/api/notifications/stream",
       ]);
+    });
+
+    // The theme files are this machine's, so their feed is this server's own
+    // watch, never a hub request, and it is there only where the desktop app
+    // says where they are.
+    it("carries this machine's theme files on the global stream where there are some", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "myc-themes-"));
+      vi.stubEnv("MYCELIUM_THEMES_DIR", path.join(dir, "themes"));
+      const dialed: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          dialed.push(url);
+          return upstream().response;
+        }),
+      );
+      try {
+        const res = await GET(new Request("http://ui/api/stream"));
+        const frames = await collect(res, 4);
+        expect(frames.some((f) => f.event === "themes")).toBe(true);
+        expect(dialed).toEqual([
+          "http://backend:8000/api/events/stream",
+          "http://backend:8000/api/notifications/stream",
+        ]);
+        // A room's stream has no business with them.
+        const room = await GET(new Request("http://ui/api/stream?room=sprint"));
+        expect((await collect(room, 1)).map((f) => f.event)).toEqual(["status"]);
+      } finally {
+        vi.unstubAllEnvs();
+        await rm(dir, { recursive: true, force: true });
+      }
     });
 
     it("serves only the room feeds when rooms are asked for", async () => {

@@ -267,3 +267,8 @@ export function useRoomConnected(room: string): boolean {
 export function useNotificationsConnected(): boolean {
   return useFeedConnected("notification", null);
 }
+
+/** This machine's theme files changed. Only the desktop app's server says so. */
+export function useThemeFilesStream(handler: StreamHandler): void {
+  useStream("themes", null, handler);
+}
