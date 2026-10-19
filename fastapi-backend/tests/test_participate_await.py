@@ -457,6 +457,32 @@ async def test_a_confirmation_that_never_landed_rides_on_the_next_await(wired):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("thread", ["live", "t3"])
+async def test_a_confirmed_position_past_the_transcript_is_held_to_its_end(
+    wired, monkeypatch, thread
+):
+    """A position owed from a room deleted and made again under the same
+    name, or any bad number, can't move the read position past messages not
+    said yet: the next one said still wakes the agent, in the room or a thread."""
+    monkeypatch.setattr(participate.tasks, "row_of_episode", lambda *_a: None)
+    log = _log(_said("m1", "@agent ship it?", thread=thread))
+    wired(log)
+    episode = None if thread == "live" else message_format.episode_urn("r", thread)
+    await participate.await_message("r", _REQUEST, handle="agent", timeout=0, episode=episode)
+    await participate.confirm_delivery(
+        "r", participate.ConfirmBody(handle="agent", position=10**6, episode=episode), _REQUEST
+    )
+    await participate.await_message(
+        "r", _REQUEST, handle="agent", timeout=1, episode=episode, confirm=True, confirmed=10**6
+    )
+    _add(log, _said("m2", "@agent and now?", thread=thread))
+    turn = await participate.await_message(
+        "r", _REQUEST, handle="agent", timeout=0, episode=episode
+    )
+    assert turn["message_id"] == "m2"
+
+
+@pytest.mark.asyncio
 async def test_a_confirmed_await_hands_the_turn_over_again_until_it_is_confirmed(wired):
     """With ``confirm``, a turn whose response never arrived is handed over by
     the next await; confirming it is what marks it read."""
