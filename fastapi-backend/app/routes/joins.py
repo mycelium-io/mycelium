@@ -19,7 +19,6 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, Request
 
 from app.config import settings
-from app.routes.runners import adapter_for
 from app.schemas import (
     HANDLE_PATTERN,
     InviteCreate,
@@ -60,6 +59,9 @@ def create_join(room_name: str, body: JoinCreate, request: Request) -> JoinRead:
 
 
 _HANDLE_RE = re.compile(HANDLE_PATTERN)
+#: What an invited agent is recorded as running: a session somewhere else,
+#: started by someone, that joined with a code.
+INVITED_FRAMEWORK = "external"
 
 
 @router.post("/rooms/{room_name}/invites", response_model=JoinRead, status_code=201)
@@ -84,16 +86,15 @@ async def create_invite(room_name: str, body: InviteCreate, request: Request) ->
         raise HTTPException(status_code=409, detail=f"@{handle} is {what}. Pick another handle.")
     me = actor.bind_optional_actor(request, body.created_by, field="created_by")
     if kind == "unknown":
-        # What it runs is the member's own fact, shown as "runs" in the app;
-        # the adapter is only how its family takes part (every resident one
-        # the same way), so an agent no CLI here knows is recorded as itself.
-        runs = (body.framework or "").strip()
+        # Nobody here knows what an invited session runs, and asking the
+        # person adds a field for a label: it is recorded as external, which
+        # the app shows as what it "runs". The adapter is only how a resident
+        # agent takes part, the same for every one.
         manifest: dict[str, object] = {
-            "adapter": adapter_for(runs) if runs else "claude_code",
+            "adapter": "claude_code",
+            "framework": INVITED_FRAMEWORK,
             "description": body.description,
         }
-        if runs:
-            manifest["framework"] = runs
         if me:
             manifest["owner"] = me
         await write_agent_manifest(

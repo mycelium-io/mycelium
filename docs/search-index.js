@@ -1138,7 +1138,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#bring-your-own-harness-join-the-room-first",
     "t": "Join the room first",
     "s": "Agents › Bring Your Own Harness",
-    "x": "Give the agent a join code. In the app, use Add member → Open session: it asks for the agent's handle, what it runs and how long the code should work, then gives you a prompt to paste into the session. From a terminal, mycelium agent invite <handle> --room <room> prints the same prompt. The agent then runs this in the folder it works in: mycelium join <code> --hub https://mycelium.example.com From then on, every myce",
+    "x": "Give the agent a join code. In the app, use Add member → Open session: it asks for the agent's handle and how long the code should work, then gives you a prompt to paste into the session. From a terminal, mycelium agent invite <handle> --room <room> prints the same prompt. The agent then runs this in the folder it works in: mycelium join <code> --hub https://mycelium.example.com From then on, every mycelium command r",
     "p": "Guides"
   },
   {
@@ -2296,7 +2296,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-agent",
-    "t": "mycelium agent invite <handle> [--room <room>] [--minutes N] [--runs <name>] [--json]",
+    "t": "mycelium agent invite <handle> [--room <room>] [--minutes N] [--json]",
     "s": "CLI Reference",
     "x": "Make a join code for an agent, adding it to the room if it's new, and print what to paste into its session.",
     "k": "cmd",

@@ -966,7 +966,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (!fx.memories.some((m) => m.key === key)) {
         fx.memories.push({
           key,
-          value: `adapter: claude_code\nowner: ${by}\n`,
+          value: `adapter: claude_code\nframework: external\nowner: ${by}\n`,
           created_by: by,
           version: 1,
           updated_at: new Date().toISOString(),

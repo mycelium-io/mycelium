@@ -248,17 +248,11 @@ describe("AddMemberDialog", () => {
     expect(createInvite).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "muse" } });
-    fireEvent.change(screen.getByLabelText(/What it runs/), { target: { value: "hermes" } });
     fireEvent.click(screen.getByRole("radio", { name: "1 hour" }));
     fireEvent.click(screen.getByRole("button", { name: "Make the prompt" }));
 
     expect(await screen.findByText(/You are joining the Mycelium room `atlas`/)).toBeInTheDocument();
-    expect(createInvite).toHaveBeenCalledWith("atlas", {
-      handle: "muse",
-      ttl_minutes: 60,
-      created_by: "julia",
-      framework: "hermes",
-    });
+    expect(createInvite).toHaveBeenCalledWith("atlas", { handle: "muse", ttl_minutes: 60, created_by: "julia" });
     expect(screen.getByText(/mycelium join k7mq-2xpa-9vtd --hub/)).toBeInTheDocument();
     // jsdom serves the page from localhost, which another machine can't reach.
     expect(screen.getByText(/only works for a session on this machine/)).toBeInTheDocument();

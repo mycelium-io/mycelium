@@ -144,18 +144,17 @@ async def test_an_invite_adds_a_new_agent_owned_by_who_asked_and_gives_its_code(
 
 
 @pytest.mark.asyncio
-async def test_an_invited_agent_is_recorded_as_running_what_it_said(client: AsyncClient):
+async def test_an_invited_agent_is_recorded_as_running_externally(client: AsyncClient):
+    """Not as Claude Code, or whatever the hub would guess: nobody here
+    knows what an invited session runs, and the person isn't asked."""
     from app.services.filesystem import read_memory_file
 
     await _room(client)
-    resp = await client.post(
-        f"/api/rooms/{ROOM}/invites", json={"handle": "muse", "framework": "hermes"}
-    )
+    resp = await client.post(f"/api/rooms/{ROOM}/invites", json={"handle": "muse"})
     assert resp.status_code == 201, resp.text
     found = read_memory_file(get_room_dir(ROOM), "agents/muse")
     assert found is not None
-    manifest = yaml.safe_load(found[1])
-    assert manifest["framework"] == "hermes"
+    assert yaml.safe_load(found[1])["framework"] == "external"
 
 
 @pytest.mark.asyncio

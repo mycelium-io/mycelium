@@ -1408,8 +1408,6 @@ export async function createInvite(
     ttl_minutes?: number;
     created_by?: string;
     description?: string;
-    /** What it runs, recorded if it's new: the members list shows it. */
-    framework?: string;
   },
 ): Promise<JoinCode> {
   return apiFetch<JoinCode>(`${roomApiPath(roomName)}/invites`, {

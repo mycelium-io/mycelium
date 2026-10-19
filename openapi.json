@@ -9931,19 +9931,6 @@
             "description": "What it does here, if it's new",
             "default": ""
           },
-          "framework": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 40
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Framework",
-            "description": "What it runs, if it's new (e.g. claude, codex, or a name of your own)"
-          },
           "created_by": {
             "anyOf": [
               {
