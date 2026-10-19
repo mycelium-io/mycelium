@@ -57,6 +57,10 @@ async def resume_mine(payload: AgentsControl, request: Request) -> AgentsControl
 async def list_paused(
     request: Request, owner: str = Query(..., description="Whose agents")
 ) -> list[PauseRead]:
-    """Every paused agent ``owner`` owns, across rooms."""
+    """Every paused agent ``owner`` owns, across rooms.
+
+    With sign-in on, only your own. With it off, anyone may list anyone's, as
+    they may read any room's members.
+    """
     who = norm_handle(actor.bind_optional_actor(request, owner, field="owner"))
     return agent_control.paused_of(who or "")

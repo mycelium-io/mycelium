@@ -49,21 +49,41 @@ def _pause_read(room: str, handle: str, record: dict[str, str] | None) -> PauseR
     )
 
 
+#: What a manifest says when it knew no owner: the same as saying nothing.
+NO_OWNER = frozenset({"unknown"})
+
+
+def _owner(raw: str | None) -> str | None:
+    owner = norm_handle(raw or "") or None
+    return None if owner in NO_OWNER else owner
+
+
 def owner_of(room: str, handle: str) -> tuple[bool, str | None]:
     """``(registered, owner)`` for ``handle`` in ``room``."""
     for agent in room_agents(room):
         if agent.handle == handle:
-            return True, norm_handle(agent.owner or "") or None
+            return True, _owner(agent.owner)
     return False, None
 
 
-def check(room: str, handle: str, by: str) -> None:
-    """Refuse anyone but the agent's owner, and an agent the room doesn't have."""
+def check(room: str, handle: str, by: str, verb: str = "pause") -> None:
+    """Refuse anyone but the agent's owner, and an agent the room doesn't have.
+
+    With no owner on record anyone may pause or resume it, which only holds
+    its wakes. Nobody may stop it from here: a stop closes a pane on someone's
+    machine without asking there.
+    """
     registered, owner = owner_of(room, handle)
     if not registered:
         raise ControlError(f"@{handle} isn't an agent in {room}.", 404)
     if owner and owner != by:
         raise ControlError(f"Only @{owner}, who owns @{handle}, can pause, resume or stop it.", 403)
+    if owner is None and verb == "stop":
+        raise ControlError(
+            f"@{handle} has no owner on record, so it can't be stopped from here. "
+            "Stop it on its machine, or set its owner first.",
+            403,
+        )
 
 
 def _ask_runner(
@@ -124,7 +144,7 @@ def owned_by(owner: str, room: str | None = None) -> list[tuple[str, str]]:
         found.extend(
             (name, a.handle)
             for a in room_agents(name)
-            if norm_handle(a.owner or "") == owner and a.adapter != "engine"
+            if _owner(a.owner) == owner and a.adapter != "engine"
         )
     return found
 

@@ -26,7 +26,8 @@ function ownerOf(fx: RoomFixture, handle: string): { found: boolean; owner: stri
     typeof manifest.value === "string"
       ? /^owner:\s*['"]?@?([\w.-]+)/m.exec(manifest.value)?.[1]
       : (manifest.value.owner as string | undefined);
-  return { found: true, owner: raw ? raw.replace(/^@/, "").toLowerCase() : null };
+  const owner = raw ? raw.replace(/^@/, "").toLowerCase() : null;
+  return { found: true, owner: owner === "unknown" ? null : owner };
 }
 
 function agentsOf(fx: RoomFixture): string[] {
@@ -65,6 +66,9 @@ export function controlOne(
   if (!found) return json({ detail: `@${handle} isn't an agent in ${room}.` }, 404);
   if (owner && owner !== by) {
     return json({ detail: `Only @${owner}, who owns @${handle}, can pause, resume or stop it.` }, 403);
+  }
+  if (!owner && verb === "stop") {
+    return json({ detail: `@${handle} has no owner on record, so it can't be stopped from here.` }, 403);
   }
   return json(apply(room, handle, verb, by));
 }

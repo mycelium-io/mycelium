@@ -229,12 +229,13 @@ def herdr_enroll(
         # The person whose machine this is owns the agent and is the one
         # registering it, whichever agent typed the command.
         whose = owner.lstrip("@") if owner else _owner(config)
+        writer = whose or config.get_current_identity()
         mappings = [m for m in bridge.registry.all() if m.room == room_name]
         here = next((m for m in mappings if m.pane == pane_id), None)
         if here is not None:
             if not member(here.handle):
                 manifest = _member_manifest(here.handle, room_name, agent, whose, description)
-                _write_manifest(config, room_name, manifest, created_by=whose)
+                _write_manifest(config, room_name, manifest, created_by=writer)
             elif description or owner:
                 with typed_client(config, timeout=HUB_TIMEOUT_S) as client:
                     current = _load_manifest_remote(client, room_name, here.handle)
@@ -250,9 +251,9 @@ def herdr_enroll(
                 if description:
                     changes["description"] = description
                 if owner:
-                    changes["owner"] = whose
+                    changes["owner"] = owner.lstrip("@")
                 _write_manifest(
-                    config, room_name, current.model_copy(update=changes), created_by=whose
+                    config, room_name, current.model_copy(update=changes), created_by=writer
                 )
                 console.print(
                     f"Updated @{escape(here.handle)}'s {' and '.join(changes)} in "
@@ -297,7 +298,7 @@ def herdr_enroll(
                 )
 
         manifest = _member_manifest(wanted, room_name, agent, whose, description)
-        _write_manifest(config, room_name, manifest, created_by=whose)
+        _write_manifest(config, room_name, manifest, created_by=writer)
         bridge.registry.set(
             HerdrPaneMapping(
                 room=room_name,
@@ -536,7 +537,7 @@ def _enroll_one(
     name_from: str,
     prefix: str,
     tab_labels: Callable[[], dict[str, str]],
-    owner: Callable[[], str],
+    owner: Callable[[], str | None],
 ) -> str | None:
     """Ensure one live herdr agent is a member of ``room``; return its handle if
     this call newly enrolled it (``None`` if it was already bound or is left
@@ -556,6 +557,9 @@ def _enroll_one(
     """
     from mycelium.commands.agent import _write_manifest
 
+    def writer() -> str:
+        return owner() or config.get_current_identity()
+
     pane = str(agent["pane_id"])
     existing = next((m for m in bridge.registry.all() if m.room == room and m.pane == pane), None)
     if existing is not None:
@@ -563,7 +567,7 @@ def _enroll_one(
         # under us so the member doesn't silently drop off the roster.
         if _manifest_on_hub(config, room, existing.handle) is False:
             manifest = _member_manifest(existing.handle, room, agent, owner())
-            _write_manifest(config, room, manifest, created_by=owner(), timeout=HUB_TIMEOUT_S)
+            _write_manifest(config, room, manifest, created_by=writer(), timeout=HUB_TIMEOUT_S)
         return None
 
     tab_label = tab_labels().get(str(agent.get("tab_id") or ""), "")
@@ -590,7 +594,7 @@ def _enroll_one(
     )
     taken.add(handle)
     manifest = _member_manifest(handle, room, agent, owner())
-    _write_manifest(config, room, manifest, created_by=owner(), timeout=HUB_TIMEOUT_S)
+    _write_manifest(config, room, manifest, created_by=writer(), timeout=HUB_TIMEOUT_S)
     bridge.registry.set(
         HerdrPaneMapping(
             room=room,
@@ -624,7 +628,7 @@ def _manifest_on_hub(config: MyceliumConfig, room: str, handle: str) -> bool | N
 
 
 def _member_manifest(
-    handle: str, room: str, agent: dict, owner: str, description: str | None = None
+    handle: str, room: str, agent: dict, owner: str | None, description: str | None = None
 ) -> AgentManifest:
     """The manifest for a herdr agent enrolled as ``handle``, saying which agent CLI it is."""
     from mycelium.integrations import AddOptions, adapter_for, get_integration
@@ -640,11 +644,17 @@ def _member_manifest(
     return manifest.model_copy(update={"framework": kind})
 
 
-def _owner(config: MyceliumConfig) -> str:
-    """Who owns an agent this machine registers: its person, never the agent asking."""
+def _owner(config: MyceliumConfig) -> str | None:
+    """Who owns an agent this machine registers: its person, never the agent asking.
+
+    ``None`` when the machine names no person. Falling back to the acting
+    identity wrote the agent that ran the command (``mycelium-harness``) or the
+    placeholder ``unknown`` as owner, and only an owner may pause or stop an
+    agent, so "pause my agents" missed them.
+    """
     from mycelium import caller
 
-    return caller.person(config) or config.get_current_identity()
+    return caller.person(config)
 
 
 def _retire_one(config: MyceliumConfig, bridge: HerdrBridge, mapping: HerdrPaneMapping) -> None:

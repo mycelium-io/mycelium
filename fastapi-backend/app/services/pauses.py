@@ -108,11 +108,12 @@ def resume(room: str, handle: str) -> dict[str, str] | None:
 
 def rename(room: str, old: str, new: str) -> None:
     """Carry a pause to an agent's new handle."""
+    was, now = norm_handle(old) or old, norm_handle(new) or new
     with _lock:
         data = _load()
         held = data.get(room, {})
-        if old in held:
-            held[new] = held.pop(old)
+        if was in held:
+            held[now] = held.pop(was)
             _save(data)
 
 

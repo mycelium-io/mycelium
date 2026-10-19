@@ -164,9 +164,26 @@ async def test_stop_asks_the_machine_and_ends_the_pause(client, rooms, runners):
     assert resp.status_code == 200, resp.text
     assert sorted(k for k, _ in _jobs(runners)) == ["pause", "stop"]
     assert not pauses.is_paused(ROOM, "coder")
-    # Nothing runs @loose, so there's nothing to stop.
-    nothing = await client.post(f"/api/rooms/{ROOM}/agents/loose/stop", json={"by": "julia"})
+    # Nobody owns @loose, so nobody may close its pane from here.
+    loose = await client.post(f"/api/rooms/{ROOM}/agents/loose/stop", json={"by": "julia"})
+    assert loose.status_code == 403
+    assert "no owner on record" in loose.json()["detail"]
+    # Nothing runs Julia's @reviewer in the other room, so there's nothing to stop.
+    nothing = await client.post(f"/api/rooms/{OTHER}/agents/reviewer/stop", json={"by": "julia"})
     assert nothing.status_code == 409
+
+
+def test_an_owner_of_unknown_is_no_owner(monkeypatch: pytest.MonkeyPatch):
+    from app.schemas import AgentRead
+
+    agents = [AgentRead(handle="voice", adapter="claude_code", owner="unknown")]
+    monkeypatch.setattr(agent_control, "room_agents", lambda _room: agents)
+    assert agent_control.owner_of("r", "voice") == (True, None)
+    agent_control.check("r", "voice", "sam")  # anyone may pause it
+    with pytest.raises(agent_control.ControlError, match="no owner on record"):
+        agent_control.check("r", "voice", "julia", "stop")
+    monkeypatch.setattr(agent_control, "list_room_names", lambda: ["r"])
+    assert agent_control.owned_by("unknown") == []
 
 
 @pytest.mark.asyncio

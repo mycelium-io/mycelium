@@ -2836,7 +2836,8 @@ In the app, an agent's right-click menu in the members list has **Pause**,
 agents**. While your agents are paused, the status bar says how many, and
 clicking it resumes them. The desktop app has the same two under **Agents** in
 its menu bar or system tray icon. Only an agent's owner can pause, resume or
-stop it.
+stop it. An agent with no owner on record can be paused by anyone, but can only
+be stopped on its own machine.
 
 ## Restarting agents
 

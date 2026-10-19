@@ -1455,6 +1455,54 @@ def agent_rename(
 # ── pause, resume, stop ──────────────────────────────────────────────────────
 
 _CONTROL_DONE = {"pause": "Paused", "resume": "Resumed", "stop": "Stopped"}
+_NOT_RUNNING = "no machine is running it; its wakes are held"
+#: How long to wait for the machines' pause jobs to say what they did: the
+#: runner gives a working agent 20 seconds to stop before giving up.
+_PAUSE_WAIT_S = 30.0
+
+
+def _pause_outcomes(config: MyceliumConfig, done: list[dict]) -> dict[str, str]:
+    """What each pause job did on its machine, keyed ``handle@room``.
+
+    A pause holds the agent's wakes either way; this says whether its turn
+    stopped and it was told, so "paused" isn't said of an agent still working.
+    """
+    import time
+
+    pending = {
+        f"{a['handle']}@{a['room']}": (a["runner"], a["job"])
+        for a in done
+        if a.get("runner") and a.get("job")
+    }
+    said: dict[str, str] = {}
+    deadline = time.monotonic() + _PAUSE_WAIT_S
+    with hub_client(config) as client:
+        while pending and time.monotonic() < deadline:
+            for key, (runner, job) in list(pending.items()):
+                resp = client.get(f"/api/runners/{runner}/jobs/{job}")
+                if resp.status_code >= 400:
+                    continue
+                read = resp.json()
+                if read.get("status") not in ("done", "failed"):
+                    continue
+                result = read.get("result") or {}
+                if read.get("status") == "failed":
+                    said[key] = f"its machine couldn't interrupt it: {read.get('error')}"
+                elif not result.get("interrupted"):
+                    said[key] = "it was idle, so nothing was stopped; its wakes are held"
+                elif result.get("told"):
+                    said[key] = "its turn stopped and it was told to wait"
+                else:
+                    said[key] = (
+                        "[yellow]it was still working 20 seconds later and wasn't told; "
+                        "its wakes are held[/yellow]"
+                    )
+                del pending[key]
+            if pending:
+                time.sleep(1.0)
+    for key in pending:
+        said[key] = "[yellow]its machine hasn't said yet whether its turn stopped[/yellow]"
+    return said
 
 
 def _control(
@@ -1503,10 +1551,11 @@ def _control(
         if not done:
             console.print(f"Nothing to {verb}: you own no agents{f' in {room}' if room else ''}.")
             return
+        outcomes = _pause_outcomes(config, done) if verb == "pause" else {}
         for agent in done:
             line = f"[green]{_CONTROL_DONE[verb]}[/green] @{agent['handle']} in {agent['room']}"
-            if verb == "pause" and not agent.get("runner"):
-                line += " (no machine is running it; its wakes are held)"
+            if verb == "pause":
+                line += f" ({outcomes.get(agent['handle'] + '@' + agent['room'], _NOT_RUNNING)})"
             console.print(line)
         if verb == "pause":
             again = "--all" if every else f"{handle} --room {done[0]['room']}"

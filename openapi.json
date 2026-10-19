@@ -297,7 +297,7 @@
           "agents"
         ],
         "summary": "Stop Agent",
-        "description": "Stop an agent and close its pane, on the machine running it.",
+        "description": "Stop an agent and close its pane, on the machine running it. Its owner only;\none with no owner on record can't be stopped from here.",
         "operationId": "stop_agent_api_rooms__room_name__agents__handle__stop_post",
         "parameters": [
           {
@@ -443,7 +443,7 @@
           "agents"
         ],
         "summary": "List Paused",
-        "description": "Every paused agent ``owner`` owns, across rooms.",
+        "description": "Every paused agent ``owner`` owns, across rooms.\n\nWith sign-in on, only your own. With it off, anyone may list anyone's, as\nthey may read any room's members.",
         "operationId": "list_paused_api_agents_paused_get",
         "parameters": [
           {

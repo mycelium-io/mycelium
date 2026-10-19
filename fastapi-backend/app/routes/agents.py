@@ -122,7 +122,9 @@ async def rename_agent(
     )
 
 
-def _controlled(room_name: str, handle: str, payload: AgentControl, request: Request):
+def _controlled(
+    room_name: str, handle: str, payload: AgentControl, request: Request, verb: str = "pause"
+):
     """``(handle, by)`` once ``by`` is shown to own the agent, else the refusal."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
@@ -131,7 +133,7 @@ def _controlled(room_name: str, handle: str, payload: AgentControl, request: Req
     if not by:
         raise HTTPException(status_code=422, detail="Say who is asking (`by`).")
     try:
-        agent_control.check(room_name, target, by)
+        agent_control.check(room_name, target, by, verb)
     except agent_control.ControlError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
     return target, by
@@ -159,8 +161,9 @@ async def resume_agent(
 async def stop_agent(
     room_name: str, handle: str, payload: AgentControl, request: Request
 ) -> AgentControlRead:
-    """Stop an agent and close its pane, on the machine running it."""
-    target, by = _controlled(room_name, handle, payload, request)
+    """Stop an agent and close its pane, on the machine running it. Its owner only;
+    one with no owner on record can't be stopped from here."""
+    target, by = _controlled(room_name, handle, payload, request, "stop")
     try:
         return agent_control.stop(room_name, target, by)
     except agent_control.ControlError as exc:

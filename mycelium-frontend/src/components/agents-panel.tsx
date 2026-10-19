@@ -81,6 +81,7 @@ function MemberMenu({
   onOpenMemory,
   onRename,
   onControl,
+  canStop = false,
   paused = false,
   onUnregister,
   onRemove,
@@ -92,8 +93,10 @@ function MemberMenu({
   onOpenMemory?: (key: string) => void;
   /** Agents an engine isn't: opens the form for `agent rename`. */
   onRename?: () => void;
-  /** Your own agents only: pause, resume or stop it. */
+  /** Your own agents, or one nobody owns: pause or resume it. */
   onControl?: (verb: AgentControlVerb) => void;
+  /** Your own agents only: stop it too. */
+  canStop?: boolean;
   /** It's paused now, so the menu offers Resume rather than Pause. */
   paused?: boolean;
   /** Agents only: opens the confirmation for `agent rm`. */
@@ -135,9 +138,11 @@ function MemberMenu({
                 Pause
               </ContextMenuItem>
             )}
-            <ContextMenuItem icon={Square} onClick={() => onControl("stop")}>
-              Stop…
-            </ContextMenuItem>
+            {canStop && (
+              <ContextMenuItem icon={Square} onClick={() => onControl("stop")}>
+                Stop…
+              </ContextMenuItem>
+            )}
           </>
         )}
         {agent && onUnregister && (
@@ -315,9 +320,19 @@ export function AgentsPanel({
   const { room } = useRoom(roomName);
   const me = usePrincipal();
   // Pause, resume and stop are the owner's alone (the hub refuses anyone
-  // else); one with no owner on record has nobody to protect it.
-  const mine = (a: AgentSummary) =>
-    a.adapter !== "engine" && !!me && (!a.owner || a.owner.toLowerCase() === me);
+  // else). One with no owner on record ("unknown" says the same) can be
+  // paused by anyone, but stopped by nobody: a stop closes a pane on someone's
+  // machine.
+  const ownerOf = (a: AgentSummary) => {
+    const owner = (a.owner ?? "").replace(/^@/, "").toLowerCase();
+    return owner && owner !== "unknown" ? owner : null;
+  };
+  const controls = (a: AgentSummary): AgentControlVerb[] | null => {
+    if (a.adapter === "engine" || !me) return null;
+    const owner = ownerOf(a);
+    if (owner === me) return ["pause", "resume", "stop"];
+    return owner ? null : ["pause", "resume"];
+  };
   const control = (handle: string, verb: AgentControlVerb) => {
     if (verb === "stop" && !window.confirm(`Stop @${handle} and close its pane? It stays in the room.`)) return;
     controlAgent(roomName, handle, verb, me)
@@ -516,7 +531,8 @@ export function AgentsPanel({
                       agent
                       onOpenMemory={onOpenMemory}
                       onRename={a.adapter === "engine" ? undefined : () => setRenaming(a.handle)}
-                      onControl={mine(a) ? (verb) => control(a.handle, verb) : undefined}
+                      onControl={controls(a) ? (verb) => control(a.handle, verb) : undefined}
+                      canStop={controls(a)?.includes("stop") ?? false}
                       paused={paused.has(a.handle.toLowerCase())}
                       onUnregister={() =>
                         setUnregistering({
