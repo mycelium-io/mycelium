@@ -30,6 +30,7 @@ import {
   readSseEvents,
   type StreamChannel,
 } from "@/lib/sse";
+import { themeFileEvents, themesFolder } from "@/lib/theme-files";
 import { isMockMode, mockNotificationStream, mockStream } from "@/mocks";
 
 export const dynamic = "force-dynamic";
@@ -79,7 +80,12 @@ function sources(rooms: string[], headers: Record<string, string>, viewer: strin
         : upstream(`/api/rooms/${encodeURIComponent(room)}/messages/stream`),
     }));
   }
+  // Not the hub's: this machine's theme files, watched by this server.
+  const themes = themesFolder();
   return [
+    ...(themes
+      ? [{ channel: "themes" as const, room: null, open: async (signal: AbortSignal) => themeFileEvents(themes, signal) }]
+      : []),
     { channel: "app", room: null, open: mock ? idleStream : upstream("/api/events/stream") },
     {
       channel: "notification",

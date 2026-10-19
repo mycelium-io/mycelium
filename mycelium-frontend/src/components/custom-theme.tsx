@@ -9,18 +9,19 @@ import { useTheme } from "next-themes";
 import { fetchLocalThemes, logFetchError, saveLocalTheme } from "@/lib/api";
 import { setClientSetting, useClientSetting } from "@/lib/client-settings";
 import { CUSTOM_DARK_CLASS, CUSTOM_THEME, themeVars, type CustomTheme } from "@/lib/custom-themes";
+import { useThemeFilesStream } from "@/lib/stream-hub";
 import { SYSTEM, themeById } from "@/lib/themes";
 
 const LOCAL_THEMES = ["local-themes"] as const;
-/** How often the app looks at the theme files for a change. They're local and
- *  small, so this is what "live" costs. */
-export const LOCAL_THEMES_EVERY_MS = 1500;
 
+/** Read once, then again only when the app's server says the files changed
+ *  (`ThemeFileSync`, on the held stream's `themes` feed). Where the app keeps
+ *  no theme files (anything but the desktop app), that one answer says so and
+ *  nothing asks again. */
 function useLocalThemes() {
   return useSWR(LOCAL_THEMES, fetchLocalThemes, {
-    // Where the app keeps no theme files (anything but the desktop app), one
-    // answer says so, and there's nothing to keep asking about.
-    refreshInterval: (data) => (data?.available ? LOCAL_THEMES_EVERY_MS : 0),
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
     dedupingInterval: 500,
   });
 }
@@ -76,14 +77,16 @@ export function CustomThemeStyle(): null {
 /**
  * Keeps the app on the theme this machine's `~/.mycelium/theme.json` names, and
  * that file on the one picked in the app. `mycelium theme use` (or an agent
- * editing the file) switches the open app within a moment; picking a theme in
- * the app writes the file, so `mycelium theme ls` agrees. Does nothing where
- * the app keeps no theme files.
+ * editing the file) switches the open app within a moment, because the app's
+ * server watches the files and says so; picking a theme in the app writes the
+ * file, so `mycelium theme ls` agrees. Does nothing where the app keeps no
+ * theme files.
  */
 export function ThemeFileSync(): null {
   const { theme, setTheme } = useTheme();
   const { themes, active } = useCustomThemes();
   const { data: files, mutate } = useLocalThemes();
+  useThemeFilesStream(() => void mutate());
 
   // The file's pick this app last followed or wrote, so a change on either side
   // is told from the other one catching up.

@@ -10,22 +10,18 @@
 // GET  → { themes, current }: every file that's a theme (by the app's own rules),
 //        and the picked id, or null.
 // PUT  { theme } → writes the pick, so the CLI and the app agree.
+//
+// The open app hears that either changed on its held stream (the `themes`
+// feed, `lib/theme-files.ts`), not by asking here.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { CUSTOM_THEME, parseCustomTheme, type CustomTheme } from "@/lib/custom-themes";
+import { pickFile, themesFolder as folder } from "@/lib/theme-files";
 import { SYSTEM, themeById } from "@/lib/themes";
 
 export const dynamic = "force-dynamic";
-
-function folder(): string | null {
-  const dir = process.env.MYCELIUM_THEMES_DIR?.trim();
-  return dir ? path.resolve(dir) : null;
-}
-
-/** ~/.mycelium/theme.json, beside the themes folder. */
-const pickFile = (dir: string) => path.join(path.dirname(dir), "theme.json");
 
 async function readThemes(dir: string): Promise<CustomTheme[]> {
   let names: string[];

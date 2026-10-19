@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,7 +38,22 @@ vi.mock("@/lib/api", () => ({
   logFetchError: () => () => {},
 }));
 
-import { LOCAL_THEMES_EVERY_MS, ThemeFileSync } from "@/components/custom-theme";
+/** The held stream's `themes` feed: the app's server saying the files changed. */
+const feed = { handlers: new Set<() => void>() };
+const filesChanged = () => act(() => feed.handlers.forEach((h) => h()));
+vi.mock("@/lib/stream-hub", async () => {
+  const { useEffect } = await import("react");
+  return {
+    useThemeFilesStream: (handler: () => void) => {
+      useEffect(() => {
+        feed.handlers.add(handler);
+        return () => void feed.handlers.delete(handler);
+      }, [handler]);
+    },
+  };
+});
+
+import { ThemeFileSync } from "@/components/custom-theme";
 import { __resetClientSettingsCache, getClientSetting } from "@/lib/client-settings";
 
 const FERN = {
@@ -56,8 +71,8 @@ function mount() {
   );
 }
 
-/** Long enough for the app to look at the files again. */
-const nextLook = { timeout: LOCAL_THEMES_EVERY_MS * 3 };
+/** Long enough that a poll, if there were one, would have asked again. */
+const idle = () => new Promise((r) => setTimeout(r, 2000));
 
 describe("<ThemeFileSync />", () => {
   beforeEach(() => {
@@ -72,16 +87,17 @@ describe("<ThemeFileSync />", () => {
     files.reads = 0;
   });
 
-  it("stops asking where the app keeps no theme files", async () => {
-    files.available = false;
+  it("reads the files once and asks nothing more while they don't change", async () => {
     mount();
-    await new Promise((r) => setTimeout(r, LOCAL_THEMES_EVERY_MS * 2.5));
+    await idle();
     expect(files.reads).toBe(1);
   });
 
-  it("keeps looking where it does", async () => {
+  it("reads them again when the app's server says they changed", async () => {
     mount();
-    await waitFor(() => expect(files.reads).toBeGreaterThan(1), { timeout: LOCAL_THEMES_EVERY_MS * 3 });
+    await waitFor(() => expect(files.reads).toBe(1));
+    filesChanged();
+    await waitFor(() => expect(files.reads).toBe(2));
   });
 
   it("switches to the theme theme.json names", async () => {
@@ -96,7 +112,8 @@ describe("<ThemeFileSync />", () => {
     mount();
     await new Promise((r) => setTimeout(r, 50));
     files.current = "nord";
-    await waitFor(() => expect(theme.set).toHaveBeenCalledWith("nord"), nextLook);
+    filesChanged();
+    await waitFor(() => expect(theme.set).toHaveBeenCalledWith("nord"));
     // Catching up isn't a pick of its own, so nothing is written back.
     expect(files.saved).toEqual([]);
   });
@@ -107,7 +124,8 @@ describe("<ThemeFileSync />", () => {
     await new Promise((r) => setTimeout(r, 50));
     files.themes = [FERN];
     files.current = "custom-fern";
-    await waitFor(() => expect(theme.set).toHaveBeenCalledWith("custom"), nextLook);
+    filesChanged();
+    await waitFor(() => expect(theme.set).toHaveBeenCalledWith("custom"));
     expect(getClientSetting("appearance.custom-theme")).toBe("custom-fern");
   });
 
