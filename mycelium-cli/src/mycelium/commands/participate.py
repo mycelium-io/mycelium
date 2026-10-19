@@ -28,6 +28,7 @@ from __future__ import annotations
 import json as json_module
 import os
 import subprocess
+from pathlib import Path
 
 import httpx
 import typer
@@ -110,16 +111,23 @@ def _await_request(
     params: dict[str, str | int] = {"handle": handle, "timeout": wait, "confirm": "true"}
     if episode:
         params["episode"] = episode
+    key = _pending_key(config, room_name, handle, episode)
+    owed = _pending().get(key)
+    if owed is not None:
+        params["confirmed"] = owed
     with hub_client(config, timeout=float(wait) + 15.0, handle=handle) as client:
         resp = client.get(f"/api/rooms/{room_name}/await", params=params)
     resp.raise_for_status()
+    if owed is not None:
+        _set_pending(key, None)
     data = resp.json()
     return data if "prompt" in data else None
 
 
 def _confirm(config: MyceliumConfig, room_name: str, handle: str, turn: dict) -> None:
-    """Tell the hub ``turn`` arrived, so it marks it read. If that fails the
-    hub hands the turn over again next time: shown twice, never lost."""
+    """Tell the hub ``turn`` arrived, so it marks it read. If that fails, the
+    position is kept on this machine and sent with the next ``await``, which
+    confirms it there: the turn may be shown twice, never over and over."""
     delivered = turn.get("delivered")
     if not isinstance(delivered, dict):
         return
@@ -129,12 +137,43 @@ def _confirm(config: MyceliumConfig, room_name: str, handle: str, turn: dict) ->
                 f"/api/rooms/{room_name}/await/confirm", json={"handle": handle, **delivered}
             )
         resp.raise_for_status()
-    except httpx.HTTPError as e:
-        typer.secho(
-            f"  ⟫  couldn't mark this read ({e}); the next await shows it again",
-            fg=typer.colors.YELLOW,
-            err=True,
-        )
+    except httpx.HTTPError:
+        key = _pending_key(config, room_name, handle, delivered.get("episode"))
+        _set_pending(key, int(delivered.get("position") or 0))
+
+
+def _pending_file() -> Path:
+    """Where confirmations that didn't land wait for the next ``await``."""
+    return MyceliumConfig.get_global_config_dir() / "await-pending.json"
+
+
+def _pending_key(config: MyceliumConfig, room: str, handle: str, episode: str | None) -> str:
+    return "|".join([config.server.api_url.rstrip("/"), room, handle, episode or ""])
+
+
+def _pending() -> dict[str, int]:
+    try:
+        data = json_module.loads(_pending_file().read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, int)} if isinstance(data, dict) else {}
+
+
+def _set_pending(key: str, position: int | None) -> None:
+    """Keep ``position`` owed for ``key`` (never lower than one already owed),
+    or forget it with ``None``."""
+    owed = _pending()
+    if position is None:
+        if owed.pop(key, None) is None:
+            return
+    else:
+        owed[key] = max(position, owed.get(key, 0))
+    try:
+        path = _pending_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json_module.dumps(owed))
+    except OSError:
+        pass  # not kept: the hub hands the turn over again, which is the old behavior
 
 
 def _task_episode(room_name: str, row_id: str) -> str:

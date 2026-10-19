@@ -1024,7 +1024,7 @@ def handoff_prompt(hub_url: str, room: str, handle: str, code: str, until: str) 
 
 
 @doc_ref(
-    usage="mycelium agent invite <handle> [--room <room>] [--minutes N] [--json]",
+    usage="mycelium agent invite <handle> [--room <room>] [--minutes N] [--runs <name>] [--json]",
     desc=(
         "Make a join code for an agent, adding it to the room if it's new, and print what to "
         "paste into its session."
@@ -1044,6 +1044,11 @@ def agent_invite(
         min=1,
         max=24 * 60,
         help="How long the code works, unused (at most a day). Keep it short.",
+    ),
+    runs: str | None = typer.Option(
+        None,
+        "--runs",
+        help="What the session runs, shown in the room's members (e.g. codex, or your own name)",
     ),
     room: str | None = None,
     inviter: str | None = None,
@@ -1067,6 +1072,8 @@ def agent_invite(
     body: dict[str, object] = {"handle": handle.lstrip("@"), "ttl_minutes": minutes}
     if inviter:
         body["created_by"] = inviter
+    if runs and runs.strip():
+        body["framework"] = runs.strip()
     try:
         with hub_client(config, timeout=15) as client:
             resp = client.post(f"/api/rooms/{room_name}/invites", json=body)

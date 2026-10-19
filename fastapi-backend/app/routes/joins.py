@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, Request
 
 from app.config import settings
+from app.routes.runners import adapter_for
 from app.schemas import (
     HANDLE_PATTERN,
     InviteCreate,
@@ -83,7 +84,16 @@ async def create_invite(room_name: str, body: InviteCreate, request: Request) ->
         raise HTTPException(status_code=409, detail=f"@{handle} is {what}. Pick another handle.")
     me = actor.bind_optional_actor(request, body.created_by, field="created_by")
     if kind == "unknown":
-        manifest: dict[str, object] = {"adapter": "claude_code", "description": body.description}
+        # What it runs is the member's own fact, shown as "runs" in the app;
+        # the adapter is only how its family takes part (every resident one
+        # the same way), so an agent no CLI here knows is recorded as itself.
+        runs = (body.framework or "").strip()
+        manifest: dict[str, object] = {
+            "adapter": adapter_for(runs) if runs else "claude_code",
+            "description": body.description,
+        }
+        if runs:
+            manifest["framework"] = runs
         if me:
             manifest["owner"] = me
         await write_agent_manifest(

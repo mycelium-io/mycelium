@@ -144,6 +144,21 @@ async def test_an_invite_adds_a_new_agent_owned_by_who_asked_and_gives_its_code(
 
 
 @pytest.mark.asyncio
+async def test_an_invited_agent_is_recorded_as_running_what_it_said(client: AsyncClient):
+    from app.services.filesystem import read_memory_file
+
+    await _room(client)
+    resp = await client.post(
+        f"/api/rooms/{ROOM}/invites", json={"handle": "muse", "framework": "hermes"}
+    )
+    assert resp.status_code == 201, resp.text
+    found = read_memory_file(get_room_dir(ROOM), "agents/muse")
+    assert found is not None
+    manifest = yaml.safe_load(found[1])
+    assert manifest["framework"] == "hermes"
+
+
+@pytest.mark.asyncio
 async def test_no_invite_for_a_person_or_an_engine(client: AsyncClient):
     await _room(client)
     write_memory_file(

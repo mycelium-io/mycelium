@@ -1222,6 +1222,11 @@ class InviteCreate(BaseModel):
 
     handle: str = Field(..., min_length=1, max_length=64)
     description: str = Field("", max_length=2000, description="What it does here, if it's new")
+    framework: str | None = Field(
+        None,
+        max_length=40,
+        description="What it runs, if it's new (e.g. claude, codex, or a name of your own)",
+    )
     created_by: str | None = Field(None, description="Who is inviting it; its owner if it's new")
     ttl_minutes: int | None = Field(
         None,

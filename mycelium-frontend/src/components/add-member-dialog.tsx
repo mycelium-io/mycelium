@@ -430,6 +430,10 @@ function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => v
     () => "<this-hub-url>",
   );
   const [handle, setHandle] = useState("");
+  // What the session runs, as the person names it: the app shows it as the
+  // member's "runs", so a session that isn't one of the known CLIs isn't
+  // listed as one.
+  const [runs, setRuns] = useState("");
   const [minutes, setMinutes] = useState(CODE_LIFETIMES[0].minutes);
   const [invite, setInvite] = useState<JoinCode | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -445,7 +449,7 @@ function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => v
       setError(
         trimmed
           ? "A handle is lowercase letters, digits, - and _, starting with a letter or digit."
-          : "Name the member the session joins as first.",
+          : "Enter a handle first.",
       );
       return;
     }
@@ -457,6 +461,7 @@ function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => v
           handle: trimmed,
           ttl_minutes: minutes,
           created_by: principal.trim() || undefined,
+          ...(runs.trim() ? { framework: runs.trim() } : {}),
         }),
       );
       revalidate();
@@ -517,6 +522,20 @@ function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => v
           }}
           hint="The member the session joins as. It gets a join code for it."
         />
+        <div className="space-y-1.5">
+          <label htmlFor="session-runs" className="block text-micro font-medium text-muted-foreground">
+            What it runs <span className="font-normal text-faint">optional</span>
+          </label>
+          <input
+            id="session-runs"
+            value={runs}
+            onChange={(e) => setRuns(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            placeholder="Codex, Claude Code, your own agent…"
+            maxLength={40}
+            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-label text-text outline-none transition-colors placeholder:text-faint hover:border-border2 focus:border-accent"
+          />
+        </div>
         <div>
           <p id="code-lifetime-label" className="mb-2 text-micro font-medium text-muted-foreground">
             The code works for

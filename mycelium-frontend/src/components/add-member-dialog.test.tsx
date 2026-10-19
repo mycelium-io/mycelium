@@ -244,15 +244,21 @@ describe("AddMemberDialog", () => {
     expect(screen.getByRole("radio", { name: "10 minutes" })).toHaveAttribute("aria-checked", "true");
     // Pressable with no handle, and it says what's missing rather than looking dim.
     fireEvent.click(screen.getByRole("button", { name: "Make the prompt" }));
-    expect(screen.getByText("Name the member the session joins as first.")).toBeInTheDocument();
+    expect(screen.getByText("Enter a handle first.")).toBeInTheDocument();
     expect(createInvite).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "muse" } });
+    fireEvent.change(screen.getByLabelText(/What it runs/), { target: { value: "hermes" } });
     fireEvent.click(screen.getByRole("radio", { name: "1 hour" }));
     fireEvent.click(screen.getByRole("button", { name: "Make the prompt" }));
 
     expect(await screen.findByText(/You are joining the Mycelium room `atlas`/)).toBeInTheDocument();
-    expect(createInvite).toHaveBeenCalledWith("atlas", { handle: "muse", ttl_minutes: 60, created_by: "julia" });
+    expect(createInvite).toHaveBeenCalledWith("atlas", {
+      handle: "muse",
+      ttl_minutes: 60,
+      created_by: "julia",
+      framework: "hermes",
+    });
     expect(screen.getByText(/mycelium join k7mq-2xpa-9vtd --hub/)).toBeInTheDocument();
     // jsdom serves the page from localhost, which another machine can't reach.
     expect(screen.getByText(/only works for a session on this machine/)).toBeInTheDocument();

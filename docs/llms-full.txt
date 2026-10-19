@@ -3240,8 +3240,8 @@ woken is in the room's skill, which it reads with `mycelium skill print`.
 ## Join the room first
 
 Give the agent a join code. In the app, use **Add member → Open session**: it
-asks for the agent's handle and how long the code should work, then gives you
-a prompt to paste into the session. From a terminal,
+asks for the agent's handle, what it runs and how long the code should work,
+then gives you a prompt to paste into the session. From a terminal,
 `mycelium agent invite <handle> --room <room>` prints the same prompt.
 
 The agent then runs this in the folder it works in:

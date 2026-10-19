@@ -222,6 +222,16 @@ async def await_message(
             )
         ),
     ] = False,
+    confirmed: Annotated[
+        int | None,
+        Query(
+            description=(
+                "A turn's `delivered.position` whose confirmation didn't land: confirmed "
+                "here, before waiting, so a caller that can't reach await/confirm isn't "
+                "handed the same turn forever."
+            )
+        ),
+    ] = None,
 ):
     """Long-poll for the next message addressed to ``handle`` (server-held member).
 
@@ -236,7 +246,8 @@ async def await_message(
     The turn carries ``digest``: the text a herdr wake types into its agent
     (``wake_digest``), so an agent on any harness is told the same thing. With
     ``confirm`` the read position stays put until the caller confirms the
-    turn arrived; without it, handing the turn over moves it. Either way a
+    turn arrived (``await/confirm``, or ``confirmed`` on its next await);
+    without it, handing the turn over moves it. Either way a
     caller that hangs up while waiting is let go, so nothing is handed over to
     a connection nobody is reading.
     """
@@ -278,6 +289,11 @@ async def await_message(
             persister.advance_episode_cursor(handle, scoped, pos)
         else:
             persister.advance_cursor(handle, pos)
+
+    # A confirmation that couldn't be posted rides along on the next await:
+    # the read position moves forward to it (never back) before waiting.
+    if confirmed is not None:
+        _commit(confirmed)
 
     loop = asyncio.get_event_loop()
     deadline = loop.time() + (timeout if timeout > 0 else _MAX_WAIT_S)

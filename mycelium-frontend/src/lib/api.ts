@@ -1403,7 +1403,14 @@ export interface JoinCode {
  *  at most a day). Throws `ApiError` (409 for a person's or an engine's handle). */
 export async function createInvite(
   roomName: string,
-  data: { handle: string; ttl_minutes?: number; created_by?: string; description?: string },
+  data: {
+    handle: string;
+    ttl_minutes?: number;
+    created_by?: string;
+    description?: string;
+    /** What it runs, recorded if it's new: the members list shows it. */
+    framework?: string;
+  },
 ): Promise<JoinCode> {
   return apiFetch<JoinCode>(`${roomApiPath(roomName)}/invites`, {
     method: "POST",

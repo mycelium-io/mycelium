@@ -440,6 +440,23 @@ async def test_a_turn_in_a_tasks_thread_names_the_task(wired, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_confirmation_that_never_landed_rides_on_the_next_await(wired):
+    """A caller that can't reach await/confirm passes the position on its
+    next await, so it isn't handed the same turn over and over."""
+    wired(_log(_said("m1", "@agent ship it?")))
+    first = await participate.await_message("r", _REQUEST, handle="agent", timeout=0, confirm=True)
+    after = await participate.await_message(
+        "r",
+        _REQUEST,
+        handle="agent",
+        timeout=1,
+        confirm=True,
+        confirmed=first["delivered"]["position"],
+    )
+    assert after["message"] is None
+
+
+@pytest.mark.asyncio
 async def test_a_confirmed_await_hands_the_turn_over_again_until_it_is_confirmed(wired):
     """With ``confirm``, a turn whose response never arrived is handed over by
     the next await; confirming it is what marks it read."""

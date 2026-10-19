@@ -3410,7 +3410,7 @@
           "participate"
         ],
         "summary": "Await Message",
-        "description": "Long-poll for the next message addressed to ``handle`` (server-held member).\n\n``episode`` narrows the wake to one thread \u2014 a task being coordinated\nin, or a negotiation inside one. It narrows *only* the wake: the handle's\npresence lease stays room-scoped (a member of a thread is a member of the\nroom), and so does its room-wide delivery position, so scoping to a task\nnever eats mentions made to it elsewhere. The thread's own position is\npersisted the same way, so a restart mid-thread resumes rather than\nre-serving.\n\nThe turn carries ``digest``: the text a herdr wake types into its agent\n(``wake_digest``), so an agent on any harness is told the same thing. With\n``confirm`` the read position stays put until the caller confirms the\nturn arrived; without it, handing the turn over moves it. Either way a\ncaller that hangs up while waiting is let go, so nothing is handed over to\na connection nobody is reading.",
+        "description": "Long-poll for the next message addressed to ``handle`` (server-held member).\n\n``episode`` narrows the wake to one thread \u2014 a task being coordinated\nin, or a negotiation inside one. It narrows *only* the wake: the handle's\npresence lease stays room-scoped (a member of a thread is a member of the\nroom), and so does its room-wide delivery position, so scoping to a task\nnever eats mentions made to it elsewhere. The thread's own position is\npersisted the same way, so a restart mid-thread resumes rather than\nre-serving.\n\nThe turn carries ``digest``: the text a herdr wake types into its agent\n(``wake_digest``), so an agent on any harness is told the same thing. With\n``confirm`` the read position stays put until the caller confirms the\nturn arrived (``await/confirm``, or ``confirmed`` on its next await);\nwithout it, handing the turn over moves it. Either way a\ncaller that hangs up while waiting is let go, so nothing is handed over to\na connection nobody is reading.",
         "operationId": "await_message_api_rooms__room_name__await_get",
         "parameters": [
           {
@@ -3470,6 +3470,24 @@
               "title": "Confirm"
             },
             "description": "Leave what is handed over unread until the caller confirms it (POST await/confirm with the turn's `delivered`), so a response lost on the way is handed over again by the next await."
+          },
+          {
+            "name": "confirmed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A turn's `delivered.position` whose confirmation didn't land: confirmed here, before waiting, so a caller that can't reach await/confirm isn't handed the same turn forever.",
+              "title": "Confirmed"
+            },
+            "description": "A turn's `delivered.position` whose confirmation didn't land: confirmed here, before waiting, so a caller that can't reach await/confirm isn't handed the same turn forever."
           }
         ],
         "responses": {
@@ -9912,6 +9930,19 @@
             "title": "Description",
             "description": "What it does here, if it's new",
             "default": ""
+          },
+          "framework": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Framework",
+            "description": "What it runs, if it's new (e.g. claude, codex, or a name of your own)"
           },
           "created_by": {
             "anyOf": [

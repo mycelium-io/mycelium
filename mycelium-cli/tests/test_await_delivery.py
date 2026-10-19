@@ -127,6 +127,35 @@ def test_a_turn_from_a_hub_without_confirmation_is_not_confirmed(monkeypatch, co
     assert posted == ["/api/rooms/r/await/confirm"]
 
 
+def test_a_confirmation_that_failed_rides_on_the_next_await(monkeypatch, config, tmp_path) -> None:
+    """A proxy that blocks the confirming POST can't make every await hand
+    over the same turn: the position goes with the next await, even from a
+    new process, and is forgotten once the hub has it."""
+    monkeypatch.setattr(participate.MyceliumConfig, "get_global_config_dir", lambda: tmp_path)
+    sent: list[dict] = []
+
+    class _Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+        def post(self, path, **_kw):
+            return httpx.Response(403, request=httpx.Request("POST", path))
+
+        def get(self, path, params=None, **_kw):
+            sent.append(dict(params or {}))
+            return httpx.Response(200, json={"message": None}, request=httpx.Request("GET", path))
+
+    monkeypatch.setattr(participate, "hub_client", lambda *_a, **_k: _Client())
+    participate._confirm(config, "r", "agent", dict(_TURN))
+    participate._await_request(config, "r", "agent", 5, None)
+    participate._await_request(config, "r", "agent", 5, None)
+    assert sent[0]["confirmed"] == 7
+    assert "confirmed" not in sent[1]
+
+
 def test_plain_await_prints_the_digest(capsys) -> None:
     participate._print_turn(dict(_TURN), "agent")
     assert capsys.readouterr().out.strip() == _TURN["digest"]
