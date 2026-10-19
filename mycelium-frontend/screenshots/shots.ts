@@ -11,6 +11,8 @@
  * fixture in `src/mocks/fixtures.ts`. `targets.ts` decides where each shot lands.
  */
 
+import { themeFiles, type ThemeFile } from "./themes.ts";
+
 export type Theme = "dark" | "light";
 
 export interface Viewport {
@@ -67,6 +69,8 @@ export interface Shot {
    * shot is taken as Morgan (@operator), the person in the mock rooms.
    */
   fresh?: boolean;
+  /** Shown in this custom theme instead of `theme`, which is then its mode. */
+  custom?: ThemeFile["theme"];
   /** One-line note on what this shot is meant to show. */
   caption: string;
 }
@@ -387,4 +391,15 @@ export const SHOTS: Shot[] = [
     crop: { x: 229, y: 68, width: 582, height: 320 },
     caption: "One of the room's memories, rendered, with the memories it links to.",
   },
+  // ── The themes repo: the room's channel in each of its themes ────────────
+  ...themeFiles().map(
+    ({ file, theme }): Shot => ({
+      id: `theme-${file}`,
+      route: "/room/checkout",
+      theme: theme.mode,
+      viewport: "desktop",
+      custom: theme,
+      caption: `The room's channel in ${theme.name}.`,
+    }),
+  ),
 ];

@@ -2,16 +2,18 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * The seam between captured shots and the two consumers that publish them:
- * the docs site (`docs/`) and the splash repo (`mycelium-io.github.io/`).
+ * The seam between captured shots and the consumers that publish them: the
+ * docs site (`docs/`), the splash repo (`mycelium-io.github.io/`) and the
+ * themes repo (`themes/`, see `themes.ts`).
  *
  * Paths are resolved relative to this file so a capture run works from any cwd.
- * Both trees receive committed PNGs — normal doc/splash builds never touch a
+ * Every tree receives committed PNGs — normal doc/splash builds never touch a
  * browser, and the splash repo builds standalone.
  */
 
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { THEMES_REPO, themeFiles } from "./themes.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -64,6 +66,10 @@ export const TARGETS: Record<string, Target[]> = {
   "home-mention": [{ dir: SPLASH_DIR, name: "step-wake", retina: true }],
   "home-memory": [{ dir: SPLASH_DIR, name: "step-memory", retina: true }],
   "walk-aligner": [{ dir: DOCS_DIR, name: "walk-aligner", retina: true }],
+  // The themes repo: each theme's picture, beside its file.
+  ...Object.fromEntries(
+    themeFiles().map(({ file }) => [`theme-${file}`, [{ dir: join(THEMES_REPO, "screens"), name: file }]]),
+  ),
   // The verifier: docs/verifier.html and its engine page, each in both themes.
   ...Object.fromEntries(
     ["line", "line-sure", "show-why", "fine", "settings", "channel"].flatMap((shot) =>

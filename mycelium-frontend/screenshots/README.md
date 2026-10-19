@@ -3,8 +3,8 @@
 
 # Screenshots — the app's camera
 
-Committed PNGs of the real frontend, for the docs site (`docs/`) and the splash
-repo (`mycelium-io.github.io/`). Conceptually a sibling of `docs/generate_docs.py`:
+Committed PNGs of the real frontend, for the docs site (`docs/`), the splash
+repo (`mycelium-io.github.io/`) and the themes repo (`themes/`). Conceptually a sibling of `docs/generate_docs.py`:
 both regenerate published artifacts from a source of truth. This one's source of
 truth is the UI itself, captured in **mock mode** (`pnpm dev:mock`,
 `MYCELIUM_UI_MOCK=1`) so every state renders with no backend, SLIM node, or LLM.
@@ -12,6 +12,7 @@ truth is the UI itself, captured in **mock mode** (`pnpm dev:mock`,
 ```
 pnpm screenshots            # boot dev:mock, capture every shot, write PNGs
 pnpm screenshots room-board  # a subset, by shot id
+pnpm screenshots themes     # one shot per theme in the themes repo (see themes.ts)
 pnpm screenshots --keep     # attach to a dev:mock already running on $PORT
 pnpm screenshots --offline  # don't wait on webfont CDNs (much faster if they're unreachable)
 ```
@@ -26,6 +27,11 @@ the splash repo builds standalone. Re-run and commit when the UI changes.
 - **`targets.ts`** — where each shot's PNG(s) land (docs/ and/or splash), and the
   `@2x` retina variants. The splash path defaults to a sibling checkout; override
   with `MYCELIUM_SPLASH_DIR`.
+- **`themes.ts`** — the themes repo (github.com/mycelium-io/themes) as a third
+  target: one shot of the room's channel per theme file in it, painted as a
+  custom theme from the file, written to its `screens/<file>.png`. The repo
+  defaults to a sibling checkout (`../themes`); override with
+  `MYCELIUM_THEMES_REPO`. With no checkout there are no theme shots.
 - **`capture.ts`** — maps each manifest entry to a `shotkit` spec, then optimizes
   with `sharp` and `optimize.ts` and fans out to targets. The browser work — booting the mock
   server, finding a usable Chromium, waiting for a *populated* frame (shell
