@@ -251,6 +251,12 @@ function FileCard({
     <FileMenu upload={upload} copy={copy}>
       <li
         className={cn(
+          // A card off screen skips layout and paint. Without it, the desktop
+          // app's engine (WebKit) relaid and repainted every card in a room's
+          // gallery on each frame of anything animating on the page, a working
+          // agent's avatar glow among them: seconds per frame at a few hundred
+          // files. `auto` keeps each card's last drawn size once it has one.
+          "[content-visibility:auto] [contain-intrinsic-size:auto_220px]",
           "group relative flex flex-col overflow-hidden rounded-lg border bg-surface transition-colors",
           selected ? "border-accent ring-1 ring-accent" : "border-border hover:border-border2",
         )}
