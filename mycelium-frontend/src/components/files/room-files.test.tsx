@@ -160,3 +160,55 @@ describe("<RoomFiles />", () => {
     expect(await items("shot-1.png")).toEqual(["Copy image", "Copy link", "Download"]);
   });
 });
+
+describe("a room with many files", () => {
+  // jsdom has no IntersectionObserver: this one hands the test a way to say
+  // the end of the gallery came near.
+  let near: (() => void) | null = null;
+  let roots: (Element | Document | null | undefined)[] = [];
+  beforeEach(() => {
+    near = null;
+    roots = [];
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(
+          private cb: IntersectionObserverCallback,
+          options?: IntersectionObserverInit,
+        ) {
+          roots.push(options?.root);
+        }
+        observe() {
+          near = () => this.cb([{ isIntersecting: true } as IntersectionObserverEntry], this as never);
+        }
+        disconnect() {}
+      },
+    );
+    FILES = Array.from({ length: 130 }, (_, i) => file(`shot-${i}.png`, i / 10, { created_by: i % 2 ? "julia" : "builder" }));
+  });
+
+  it("draws the newest page, then the next as you near the end, and starts again on a new filter", async () => {
+    const { act } = await import("react");
+    renderFiles();
+    expect(cards()).toHaveLength(60);
+    expect(cards()[0]).toBe("Preview shot-0.png");
+    expect(screen.getByText("70 more")).toBeInTheDocument();
+    // It watches the gallery's own scroller, so the early margin applies there.
+    const scroller = screen.getByText("70 more").closest('[data-slot="scroll-area-viewport"]');
+    expect(scroller).not.toBeNull();
+    expect(roots.at(-1)).toBe(scroller);
+    // The count still says how many there are, not how many are drawn.
+    expect(screen.getByText("130 files")).toBeInTheDocument();
+
+    act(() => near?.());
+    expect(cards()).toHaveLength(120);
+    act(() => near?.());
+    expect(cards()).toHaveLength(130);
+    expect(screen.queryByText(/more$/)).toBeNull();
+
+    // A filter searches every file, and draws its first page again.
+    fireEvent.change(screen.getByLabelText("Posted by"), { target: { value: "julia" } });
+    expect(cards()).toHaveLength(60);
+    expect(screen.getByText("65 of 130")).toBeInTheDocument();
+  });
+});
