@@ -86,10 +86,8 @@ async def create_invite(room_name: str, body: InviteCreate, request: Request) ->
         raise HTTPException(status_code=409, detail=f"@{handle} is {what}. Pick another handle.")
     me = actor.bind_optional_actor(request, body.created_by, field="created_by")
     if kind == "unknown":
-        # Nobody here knows what an invited session runs, and asking the
-        # person adds a field for a label: it is recorded as external, which
-        # the app shows as what it "runs". The adapter is only how a resident
-        # agent takes part, the same for every one.
+        # An invited session runs somewhere we can't see, so it's recorded as
+        # external.
         manifest: dict[str, object] = {
             "adapter": "claude_code",
             "framework": INVITED_FRAMEWORK,
