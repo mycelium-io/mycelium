@@ -5,7 +5,8 @@
 
 Read from the CLI itself, not from a list: every command Typer would build is
 walked, and each shared flag is checked wherever it appears. A command that
-reads something must also say it in JSON, with ``--json`` after the command.
+reads something must also say it in JSON, with ``--json`` after the command,
+and one that writes as someone (its code asks who is acting) must take ``--as``.
 Where a command legitimately differs, it is named in ``EXEMPT`` with why, and
 an exemption that no longer applies is a finding too.
 
@@ -17,7 +18,9 @@ an exemption that no longer applies is a finding too.
 
 from __future__ import annotations
 
+import inspect
 import sys
+import types
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -43,9 +46,16 @@ TEXT_COMMANDS = frozenset(
     }
 )  # fmt: skip
 
+#: Calls that answer "who is acting". A command whose code makes one, itself or
+#: through a helper in its own module, acts as someone, so it takes ``--as``.
+ACTOR_LOOKUPS = frozenset({"get_current_identity", "resolve_actor", "resolve_handle"})
+
 #: Commands that differ on purpose, with why.
 EXEMPT: dict[tuple[str, str], str] = {
     ("docs ls", "json"): "lists the docs bundled with the CLI for a person to open",
+    ("iam", "as"): "sets who this machine acts as; the handle it takes is that answer",
+    ("herdr enroll", "as"): "registers the agent as this machine's owner, named by --owner",
+    ("herdr sync", "as"): "registers members as this machine's owner, not as who runs it",
 }
 
 
@@ -54,6 +64,7 @@ class Command:
     path: str
     flags: dict[str, set[str]] = field(default_factory=dict)  # param name -> its flags
     required: set[str] = field(default_factory=set)
+    acts: bool = False  # its code asks who is acting
 
     def has(self, flag: str) -> bool:
         return any(flag in f for f in self.flags.values())
@@ -78,7 +89,7 @@ def commands() -> list[Command]:
             if hasattr(sub, "commands"):
                 walk(sub, here)
                 continue
-            cmd = Command(" ".join(here))
+            cmd = Command(" ".join(here), acts=_asks_who_acts(sub.callback))
             for p in sub.params:
                 flags = {*getattr(p, "opts", []), *getattr(p, "secondary_opts", [])}
                 flags = {f for f in flags if f.startswith("-")}
@@ -90,6 +101,37 @@ def commands() -> list[Command]:
 
     walk(typer.main.get_command(app), [])
     return out
+
+
+def _asks_who_acts(callback: Any) -> bool:
+    """Whether a command's code looks up who is acting.
+
+    Read from its compiled code: the names it calls, its nested functions, and
+    any function of its own module it calls, followed the same way.
+    """
+    if callback is None:
+        return False
+    fn = inspect.unwrap(callback)
+    module = getattr(fn, "__module__", None)
+    scope = getattr(fn, "__globals__", {})
+    seen: set[types.CodeType] = set()
+
+    def looks(code: types.CodeType) -> bool:
+        if code in seen:
+            return False
+        seen.add(code)
+        if ACTOR_LOOKUPS & set(code.co_names):
+            return True
+        nested = (c for c in code.co_consts if isinstance(c, types.CodeType))
+        helpers = (
+            f.__code__
+            for n in code.co_names
+            if isinstance(f := scope.get(n), types.FunctionType) and f.__module__ == module
+        )
+        return any(looks(c) for c in (*nested, *helpers))
+
+    code = getattr(fn, "__code__", None)
+    return looks(code) if code is not None else False
 
 
 def _is_read(cmd: Command) -> bool:
@@ -119,6 +161,8 @@ def findings(cmds: list[Command] | None = None) -> list[str]:
                     found.append(f"{cmd.path}: --as should be spelled {'/'.join(ACT_FLAGS)}")
                 if name in cmd.required and not exempt(cmd, "as"):
                     found.append(f"{cmd.path}: --as should not be required (it resolves)")
+        if cmd.acts and not _is_read(cmd) and not cmd.has("--as") and not exempt(cmd, "as"):
+            found.append(f"{cmd.path}: writes as someone, so it should take --as")
         for flags in cmd.holding("--limit"):
             if not set(LIMIT_FLAGS) <= flags and not exempt(cmd, "limit"):
                 found.append(f"{cmd.path}: --limit should be spelled {'/'.join(LIMIT_FLAGS)}")

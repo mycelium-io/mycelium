@@ -189,6 +189,7 @@ def list_rooms(
     group="room",
 )
 @app.command()
+@acts_as("owner", optional=True)
 @emits_json()
 def create(
     ctx: typer.Context,
@@ -198,6 +199,7 @@ def create(
         "--public/--private",
         help="Private rooms are listed only for you. It hides the room; it doesn't lock it.",
     ),
+    owner: str | None = None,
 ) -> None:
     """Create a new room."""
     try:
@@ -215,8 +217,7 @@ def create(
         with _typed_client(config) as client:
             # A private room is listed for its owner, so it needs one; the hub
             # says so plainly when nobody could be named.
-            owner = None if public else _viewer(config)
-            body = RoomCreate(name=name, is_public=public, owner=owner)
+            body = RoomCreate(name=name, is_public=public, owner=None if public else owner)
             result = create_api.sync(client=client, body=body)
             room_data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
@@ -1397,12 +1398,14 @@ def search(  # noqa: PLR0913 — one flag per field an agent narrows by
     group="room",
 )
 @app.command()
+@acts_as("sender", fallback="unknown")
 @emits_json()
 def delegate(
     ctx: typer.Context,
     session_id: str = typer.Argument(..., help="Room session/name"),
     to: str = typer.Option(..., "--to", help="Target agent handle"),
     task: str = typer.Option(..., "--task", "-t", help="Task description to delegate"),
+    sender: str = "",
 ) -> None:
     """
     Delegate a task to an agent in a room.
@@ -1417,7 +1420,6 @@ def delegate(
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
         config = MyceliumConfig.load()
-        sender = config.get_current_identity()
 
         from mycelium_backend_client.api.messages import (
             send_message_api_rooms_room_name_messages_post as send_api,
