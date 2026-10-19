@@ -136,9 +136,7 @@ NavPage = tuple[str, str, str, list[tuple[str, list[tuple[str, str]]]]]
 # Hand-written pages the nav lists inside a generated group, right after the
 # section they go deeper on. The generator never writes these files; it only
 # links them. (page_id, group_label, after_anchor, file_name, label)
-HANDWRITTEN_NAV: list[tuple[str, str, str, str, str]] = [
-    ("engines", "Engines", "verifier", "verifier.html", "Verifier, in depth"),
-]
+HANDWRITTEN_NAV: list[tuple[str, str, str, str, str]] = []
 
 
 def _with_handwritten(
