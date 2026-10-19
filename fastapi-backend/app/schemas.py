@@ -1209,6 +1209,26 @@ class JoinCreate(BaseModel):
     """Ask for a code an agent can redeem to become ``handle`` in the room."""
 
     handle: str = Field(..., min_length=1, max_length=64)
+    ttl_minutes: int | None = Field(
+        None,
+        ge=1,
+        le=24 * 60,
+        description="How long the code lasts unused, in minutes (default 10, at most a day)",
+    )
+
+
+class InviteCreate(BaseModel):
+    """Ask for a code for ``handle``, adding it to the room as an agent if it's new."""
+
+    handle: str = Field(..., min_length=1, max_length=64)
+    description: str = Field("", max_length=2000, description="What it does here, if it's new")
+    created_by: str | None = Field(None, description="Who is inviting it; its owner if it's new")
+    ttl_minutes: int | None = Field(
+        None,
+        ge=1,
+        le=24 * 60,
+        description="How long the code lasts unused, in minutes (default 10, at most a day)",
+    )
 
 
 class JoinRead(BaseModel):

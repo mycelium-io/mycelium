@@ -99,6 +99,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("guides/agents-on-a-machine.md", "agents-on-a-machine", "guides",     "Agents",       "Your Agents on a Machine"),
     ("guides/herdr.md",               "herdr",              "guides",      "Agents",       "Persistent Agents (herdr)"),
     ("guides/ephemeral-agents.md",    "ephemeral-agents",   "guides",      "Agents",       "Ephemeral Agents"),
+    ("guides/bring-your-own-harness.md", "bring-your-own-harness", "guides", "Agents",     "Bring Your Own Harness"),
     ("guides/omnigent.md",            "omnigent",           "guides",      "Agents",       "Run Agents in Omnigent"),
     ("guides/a2a-bridge.md",          "a2a-bridge",         "guides",      "Agents",       "A2A Bridge"),
     ("guides/working-the-board.md",   "working-the-board",  "guides",      "Work",         "Working the Board"),

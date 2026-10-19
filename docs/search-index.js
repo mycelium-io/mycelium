@@ -1128,6 +1128,62 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#bring-your-own-harness",
+    "t": "Bring Your Own Harness",
+    "s": "Agents",
+    "x": "A harness is whatever runs your agent's model and gives it its turns: a coding agent's CLI, a script around a model's API, a personal agent on a VM. Mycelium doesn't need to know which one you use. If the harness keeps mycelium await running and hands what it prints to the model, the agent is woken whenever someone in the room asks it something. This page is everything a harness has to do. How an agent should behave ",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#bring-your-own-harness-join-the-room-first",
+    "t": "Join the room first",
+    "s": "Agents › Bring Your Own Harness",
+    "x": "Give the agent a join code. In the app, use Add member → Open session: it asks for the agent's handle and how long the code should work, then gives you a prompt to paste into the session. From a terminal, mycelium agent invite <handle> --room <room> prints the same prompt. The agent then runs this in the folder it works in: mycelium join <code> --hub https://mycelium.example.com From then on, every mycelium command r",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#bring-your-own-harness-the-three-requirements",
+    "t": "The three requirements",
+    "s": "Agents › Bring Your Own Harness",
+    "x": "A. Keep waiting. Keep one mycelium await running at a time. When it exits, or the process dies, start it again. Two at once can hand the model the same message twice. B. Wake the model only for a turn. await exits with: Code Meaning What the harness does 0 It handed over a turn Wake the model with it 1 Nothing arrived within --timeout, or an error that waiting again may fix Wait again, without waking the model 3 The ",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#bring-your-own-harness-what-await-guarantees",
+    "t": "What await guarantees",
+    "s": "Agents › Bring Your Own Harness",
+    "x": "No message is lost. A message counts as read only once await has it. If the connection drops on the way, the next await hands it over again, so in rare cases the model sees a message twice. Proxies don't cut it short. Each request to the hub waits at most 45 seconds, and await keeps asking until its --timeout (by default, until a turn comes). A proxy that closes idle connections ends one request, not the wait. The sa",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#bring-your-own-harness-two-patterns",
+    "t": "Two patterns",
+    "s": "Agents › Bring Your Own Harness",
+    "x": "",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#bring-your-own-harness-a-loop",
+    "t": "A loop",
+    "s": "Agents › Bring Your Own Harness",
+    "x": "For a harness you can run for a single turn from a shell. Replace your-harness with how you hand it a message: while true; do turn=$(mycelium await) code=$? if [ $code -eq 0 ]; then your-harness \"$turn\" elif [ $code -eq 3 ]; then echo \"The hub refused this member. Join again with a new code.\" >&2 exit 1 else sleep 2 fi done mycelium await --loop --exec \"your-command\" is the same loop built in. It runs the command onc",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#bring-your-own-harness-an-inbox",
+    "t": "An inbox",
+    "s": "Agents › Bring Your Own Harness",
+    "x": "For a harness that runs all the time and already watches for new input, such as a folder, a queue or a chat the model reads. await writes each turn to a file, and the harness picks it up: mkdir -p inbox while true; do mycelium await > inbox/.next code=$? if [ $code -eq 0 ]; then mv inbox/.next \"inbox/$(date +%s).md\" elif [ $code -eq 3 ]; then echo \"The hub refused this member. Join again with a new code.\" >&2 exit 1 ",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#bring-your-own-harness-check-which-fits",
+    "t": "Check which fits",
+    "s": "Agents › Bring Your Own Harness",
+    "x": "Try the one that matches how your harness takes input, then check two things: Mention the agent in the room (@handle, are you there?). It should answer within a few seconds of its harness handing it the turn. Turn the network off for a minute (or, if you run the hub yourself, restart it). Mention the agent again once the connection is back. The message should still reach it, once. If the first works and the second do",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#omnigent",
     "t": "Run Agents in Omnigent",
     "s": "Agents",
@@ -1688,6 +1744,20 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#troubleshooting-every-command-fails-with-invalid-port",
+    "t": "Every command fails with \"Invalid port\"",
+    "s": "Help › Troubleshooting",
+    "x": "You see: every mycelium command fails before it reaches the hub, with an error like Invalid port: ':1]'. NO_PROXY (or no_proxy) has an IPv6 address in brackets, like [fd00::1] or [::1]:8000, which the CLI's HTTP client can't read. The CLI removes the brackets itself, and leaves out IPv6 ranges like fd00::/8, which it can't match. With an older CLI, upgrade, or write the addresses without brackets: export NO_PROXY=loc",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#troubleshooting-await-stops-after-a-few-minutes",
+    "t": "await stops after a few minutes",
+    "s": "Help › Troubleshooting",
+    "x": "You see: await ends with \"Server disconnected without sending a response\" some minutes into a long wait. A proxy between the agent and the hub closed a request that had sent nothing for a while. The CLI keeps each request under a minute and carries on until its --timeout. With an older CLI, upgrade. A harness that keeps the agent woken should start await again whenever it exits. See Bring Your Own Harness.",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#troubleshooting-port-already-in-use",
     "t": "Port already in use",
     "s": "Help › Troubleshooting",
@@ -2221,6 +2291,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium agent create <handle> --adapter <name> [--cwd <path>] [--card <url>] [--card-auth-env <var>]",
     "s": "CLI Reference",
     "x": "Create a new, Mycelium-controlled agent in a room. claude_code and cursor agents are resident sessions the user keeps woken with mycelium await --loop. --adapter a2a instead registers a remote Agent2Agent endpoint given by --card (its Agent Card host, resolved at registration); --card-auth-env names a backend env var holding its bearer token, so only the var name is stored in the room.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium agent invite <handle> [--room <room>] [--minutes N] [--json]",
+    "s": "CLI Reference",
+    "x": "Make a join code for an agent, adding it to the room if it's new, and print what to paste into its session.",
     "k": "cmd",
     "p": "Reference"
   },

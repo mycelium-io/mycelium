@@ -437,3 +437,96 @@ async def test_a_turn_in_a_tasks_thread_names_the_task(wired, monkeypatch):
     result = await participate.await_message("r", _REQUEST, handle="agent", timeout=0)
     assert result["episode"] == thread
     assert result["task"] == "work/fix-receipt"
+
+
+@pytest.mark.asyncio
+async def test_a_confirmation_that_never_landed_rides_on_the_next_await(wired):
+    """A caller that can't reach await/confirm passes the position on its
+    next await, so it isn't handed the same turn over and over."""
+    wired(_log(_said("m1", "@agent ship it?")))
+    first = await participate.await_message("r", _REQUEST, handle="agent", timeout=0, confirm=True)
+    after = await participate.await_message(
+        "r",
+        _REQUEST,
+        handle="agent",
+        timeout=1,
+        confirm=True,
+        confirmed=first["delivered"]["position"],
+    )
+    assert after["message"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("thread", ["live", "t3"])
+async def test_a_confirmed_position_past_the_transcript_is_held_to_its_end(
+    wired, monkeypatch, thread
+):
+    """A position owed from a room deleted and made again under the same
+    name, or any bad number, can't move the read position past messages not
+    said yet: the next one said still wakes the agent, in the room or a thread."""
+    monkeypatch.setattr(participate.tasks, "row_of_episode", lambda *_a: None)
+    log = _log(_said("m1", "@agent ship it?", thread=thread))
+    wired(log)
+    episode = None if thread == "live" else message_format.episode_urn("r", thread)
+    await participate.await_message("r", _REQUEST, handle="agent", timeout=0, episode=episode)
+    await participate.confirm_delivery(
+        "r", participate.ConfirmBody(handle="agent", position=10**6, episode=episode), _REQUEST
+    )
+    await participate.await_message(
+        "r", _REQUEST, handle="agent", timeout=1, episode=episode, confirm=True, confirmed=10**6
+    )
+    _add(log, _said("m2", "@agent and now?", thread=thread))
+    turn = await participate.await_message(
+        "r", _REQUEST, handle="agent", timeout=0, episode=episode
+    )
+    assert turn["message_id"] == "m2"
+
+
+@pytest.mark.asyncio
+async def test_a_confirmed_await_hands_the_turn_over_again_until_it_is_confirmed(wired):
+    """With ``confirm``, a turn whose response never arrived is handed over by
+    the next await; confirming it is what marks it read."""
+    log = _log(_said("m1", "@agent ship it?"))
+    wired(log)
+    first = await participate.await_message("r", _REQUEST, handle="agent", timeout=0, confirm=True)
+    assert first["message_id"] == "m1"
+    assert first["delivered"] == {"position": 1, "episode": None}
+
+    # The response was lost on the way: the next await hands it over again.
+    again = await participate.await_message("r", _REQUEST, handle="agent", timeout=0, confirm=True)
+    assert again["message_id"] == "m1"
+
+    await participate.confirm_delivery(
+        "r", participate.ConfirmBody(handle="agent", **again["delivered"]), _REQUEST
+    )
+    after = await participate.await_message("r", _REQUEST, handle="agent", timeout=1, confirm=True)
+    assert after["message"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_turn_carries_the_wake_digest_with_the_reply_as_its_next_step(wired):
+    """``await`` prints what a herdr wake types, minus the step to run
+    ``await``: it already did."""
+    wired(_log(_said("m1", "@agent ship it?")))
+    turn = await participate.await_message("r", _REQUEST, handle="agent", timeout=0)
+    digest = turn["digest"]
+    assert digest.startswith("mycelium wake for @agent in r")
+    assert "ship it?" in digest
+    assert "mycelium await" not in digest
+    assert "Next:    " in digest
+    assert "mycelium respond --room r --handle agent" in digest
+
+
+@pytest.mark.asyncio
+async def test_an_await_whose_caller_hung_up_hands_nothing_over(wired, monkeypatch):
+    """A caller gone while it waited (a proxy cut it) is let go, so a message
+    said afterwards is left for its next await rather than lost."""
+    log = _log()
+    wired(log)
+
+    async def gone(_request):
+        return True
+
+    monkeypatch.setattr(participate, "_hung_up", gone)
+    result = await participate.await_message("r", _REQUEST, handle="agent", timeout=30)
+    assert result["message"] is None

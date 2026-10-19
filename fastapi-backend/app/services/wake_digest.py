@@ -616,8 +616,19 @@ def _watching_lines(room: str, me: str, watched: list[tuple[Any, Any]], now: dat
     return out
 
 
-def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | None = None) -> str:
-    """The digest typed into ``wake``'s agent: why, what changed, what asked for it."""
+def build(
+    room: str,
+    wake: dict[str, Any],
+    records: list[Any],
+    now: datetime | None = None,
+    *,
+    awaited: bool = False,
+) -> str:
+    """The digest typed into ``wake``'s agent: why, what changed, what asked for it.
+
+    ``awaited`` is the same digest printed by ``await``, which has already
+    handed these messages over, so it doesn't say to run ``await`` first.
+    """
     now = now or datetime.now(UTC)
     handle = str(wake.get("handle") or "")
     me = _norm(handle)
@@ -761,10 +772,14 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         # that woke it first: an older ask can be a flow's turn in another
         # thread, with a floor and a deadline there.
         replies = _reply_lines(room, me, window, asked)
-        lines += [
-            f"Next:    1. mycelium await --room {room} --handle {me} --json --timeout 5",
-            f"            (marks these read and says you're on it{extra})",
-        ]
+        # Handed over by ``await``, these are already read: the reply is all
+        # that's left to do, and it is the one step.
+        step = "Next:    " if awaited else "         2. "
+        if not awaited:
+            lines += [
+                f"Next:    1. mycelium await --room {room} --handle {me} --json --timeout 5",
+                f"            (marks these read and says you're on it{extra})",
+            ]
         # An agent asked in a task's thread tends to answer in the main
         # channel, weighing a hint against its own sense of where a topic
         # belongs. The wake is the one place it learns where the person
@@ -773,14 +788,14 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
             task = f" --task {where[0]}" if here and where else ""
             lands = _named(where) if here and where else "the room"
             lines.append(
-                f'         2. mycelium respond --room {room} --handle {me}{task} --body "..."'
+                f'{step}mycelium respond --room {room} --handle {me}{task} --body "..."'
                 f"   (lands in {lands})"
             )
         elif len(replies) == 1:
             place, command = replies[0]
-            lines += [f"         2. reply where {place}:", f"            {command}"]
+            lines += [f"{step}reply where {place}:", f"            {command}"]
         else:
-            lines.append("         2. reply where each was written:")
+            lines.append(f"{step}reply where each was written:")
             lines += [f"            {command}   ({place})" for place, command in replies]
 
     # The others asking for it: whole while they fit, newest first, then named.
