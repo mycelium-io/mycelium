@@ -99,6 +99,45 @@ def test_facet_counts_ignore_their_own_field():
     assert {b.value: b.count for b in out.facets["tag"]} == {"x": 1, "y": 1}
 
 
+@pytest.mark.parametrize(
+    ("query", "found"),
+    [
+        # A word matches a whole word, whatever its case or the punctuation by it.
+        ("ready", ["Ready.", "is it ready?", "ready to merge"]),
+        # A phrase the same way: "ready to" is inside "already tomorrow" twice over.
+        ('"ready to"', ["ready to merge"]),
+        # And a word left out leaves out only that word, not one it is inside.
+        ("-ready", ["already tomorrow", "unready", "fixes #1399.", "#13990"]),
+        # Punctuation in the word itself still matches as typed.
+        ("#1399", ["fixes #1399."]),
+    ],
+)
+def test_free_text_matches_whole_words_never_part_of_one(query, found):
+    """``ready`` is not in "already": the search ⌘F, ``room search`` and subscriptions share."""
+    docs = [
+        "Ready.",
+        "is it ready?",
+        "ready to merge",
+        "already tomorrow",
+        "unready",
+        "fixes #1399.",
+        "#13990",
+    ]
+    out = facet_query.run(
+        docs,
+        facet_query.parse(query, []),
+        [],
+        text=lambda d: d,
+        when=lambda _d: NOW,
+    )
+    assert sorted(d for d, _ in out.hits) == sorted(found)
+
+
+def test_a_snippet_centers_on_the_word_not_a_word_it_is_inside():
+    text = "already " + "x " * 200 + "ready now"
+    assert "ready now" in facet_query.snippet(text, ["ready"], width=60)
+
+
 # ── the route ─────────────────────────────────────────────────────────────────
 
 

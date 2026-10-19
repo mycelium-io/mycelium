@@ -19,6 +19,13 @@ const TOKEN = /(-?)(?:([A-Za-z][\w-]*):)?("([^"]*)"?|\S+)/g;
 const AGE = /^(\d+)\s*(m|min|h|d|w)$/i;
 const AGE_MS: Record<string, number> = { m: 60e3, min: 60e3, h: 3600e3, d: 86400e3, w: 604800e3 };
 
+/** How often `needle` stands on its own in `text`, as the hub matches it: a
+ *  whole word, so "ready" is not in "already". */
+function wholeCount(text: string, needle: string): number {
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (text.match(new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, "gu")) ?? []).length;
+}
+
 interface Clause {
   field: string;
   value: string;
@@ -160,8 +167,8 @@ export function mockMessageSearch(fx: RoomFixture, raw: string, limit: number): 
     if (after !== null && at < after) continue;
     if (before !== null && at >= before) continue;
     const text = doc.m.content.toLowerCase();
-    if (excluded.some((x) => text.includes(x))) continue;
-    if (![...terms, ...phrases].every((t) => text.includes(t))) continue;
+    if (excluded.some((x) => wholeCount(text, x) > 0)) continue;
+    if (![...terms, ...phrases].every((t) => wholeCount(text, t) > 0)) continue;
     const failed = clauseFields.filter((f) => !passes(doc, f));
     if (failed.length > 1) continue;
     for (const f of facetFields) {
@@ -170,7 +177,7 @@ export function mockMessageSearch(fx: RoomFixture, raw: string, limit: number): 
       }
     }
     if (failed.length === 0) {
-      const score = [...terms, ...phrases].reduce((n, t) => n + text.split(t).length - 1, 0);
+      const score = [...terms, ...phrases].reduce((n, t) => n + wholeCount(text, t), 0);
       hits.push({ doc, score });
     }
   }

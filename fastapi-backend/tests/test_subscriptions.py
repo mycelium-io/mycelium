@@ -163,6 +163,13 @@ def test_a_search_subscription_wakes_for_a_matching_message():
     assert _woken(_said("builder", "ready to merge")) == []
 
 
+def test_a_search_subscription_wakes_on_whole_words_only():
+    """`from:reviewer ready` woke @lead twice on messages that said "already"."""
+    _sub("lead", "search", "from:reviewer ready")
+    assert _woken(_said("reviewer", "#1399 already has its fixes", minutes=2)) == []
+    assert _woken(_said("reviewer", "Ready. #1399 passes", minutes=3)) == ["lead"]
+
+
 def test_nobody_is_woken_by_their_own_post_or_by_what_came_before():
     _sub("coordinator", "task", EPIC)
     assert _woken(_said("coordinator", "on it", episode=_thread(EPIC))) == []

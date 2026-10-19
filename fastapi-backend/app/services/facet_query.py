@@ -10,9 +10,11 @@ One line of text carries the words to look for and every field to narrow by::
 
 Tokens
 ------
-``word``              free text; every word must appear (case-insensitive).
-``"a phrase"``        an exact phrase that must appear.
-``-word``             a word that must not appear.
+``word``              free text; every word must appear (case-insensitive), as
+                      a whole word: ``ready`` matches "Ready." but not
+                      "already".
+``"a phrase"``        an exact phrase that must appear, the same way.
+``-word``             a word that must not appear, the same way.
 ``field:value``       keep documents whose ``field`` matches ``value``. The same
                       field given twice is an OR (``from:a from:b``); different
                       fields AND together. ``field:"two words"`` quotes a value.
@@ -267,24 +269,31 @@ class Outcome(Generic[D]):
     scanned: int
 
 
+def _whole(needle: str) -> re.Pattern[str]:
+    """``needle`` where it stands on its own, not inside a longer word."""
+    return re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)")
+
+
 def _text_score(text: str, query: FacetQuery) -> float | None:
-    """How well ``text`` answers the free text; ``None`` when it fails to."""
+    """How well ``text`` answers the free text; ``None`` when it fails to.
+
+    Words and phrases match whole words only. A subscription to ``ready`` that
+    woke on "already" was this matching inside words.
+    """
     lowered = text.lower()
-    if any(x in lowered for x in query.excluded):
+    if any(_whole(x).search(lowered) for x in query.excluded):
         return None
     score = 0.0
     for phrase in query.phrases:
-        n = lowered.count(phrase)
+        n = len(_whole(phrase).findall(lowered))
         if n == 0:
             return None
         score += 3.0 * n
     for term in query.terms:
-        n = lowered.count(term)
+        n = len(_whole(term).findall(lowered))
         if n == 0:
             return None
-        # A whole-word hit reads as a better answer than a fragment of one.
-        whole = len(re.findall(rf"(?<!\w){re.escape(term)}(?!\w)", lowered))
-        score += min(n, 5) + whole
+        score += min(n, 5)
     return score
 
 
@@ -359,12 +368,13 @@ def run(
 
 
 def snippet(text: str, needles: Sequence[str], *, width: int = 180) -> str:
-    """A one-line window of ``text`` centered on the first needle in it."""
+    """A one-line window of ``text`` centered on the first needle in it, as a whole word."""
     flat = " ".join(text.split())
     if len(flat) <= width:
         return flat
     lowered = flat.lower()
-    at = next((i for i in (lowered.find(n) for n in needles if n) if i >= 0), -1)
+    found = (_whole(n).search(lowered) for n in needles if n)
+    at = next((m.start() for m in found if m), -1)
     if at < 0:
         return flat[:width].rstrip() + "…"
     start = max(0, at - width // 3)
