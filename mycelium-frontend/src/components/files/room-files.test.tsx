@@ -165,12 +165,19 @@ describe("a room with many files", () => {
   // jsdom has no IntersectionObserver: this one hands the test a way to say
   // the end of the gallery came near.
   let near: (() => void) | null = null;
+  let roots: (Element | Document | null | undefined)[] = [];
   beforeEach(() => {
     near = null;
+    roots = [];
     vi.stubGlobal(
       "IntersectionObserver",
       class {
-        constructor(private cb: IntersectionObserverCallback) {}
+        constructor(
+          private cb: IntersectionObserverCallback,
+          options?: IntersectionObserverInit,
+        ) {
+          roots.push(options?.root);
+        }
         observe() {
           near = () => this.cb([{ isIntersecting: true } as IntersectionObserverEntry], this as never);
         }
@@ -186,6 +193,10 @@ describe("a room with many files", () => {
     expect(cards()).toHaveLength(60);
     expect(cards()[0]).toBe("Preview shot-0.png");
     expect(screen.getByText("70 more")).toBeInTheDocument();
+    // It watches the gallery's own scroller, so the early margin applies there.
+    const scroller = screen.getByText("70 more").closest('[data-slot="scroll-area-viewport"]');
+    expect(scroller).not.toBeNull();
+    expect(roots.at(-1)).toBe(scroller);
     // The count still says how many there are, not how many are drawn.
     expect(screen.getByText("130 files")).toBeInTheDocument();
 

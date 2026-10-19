@@ -79,15 +79,18 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
   const groups = useMemo(() => groupByDay(drawn), [drawn]);
   const more = drawn.length < shown.length;
   const end = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = end.current;
     if (!el || !more) return;
-    // Well before the end comes into view, so the next page is there when it does.
+    // Well before the end comes into view, so the next page is there when it
+    // does. Watched from the gallery's own scroller: a margin only reaches
+    // that far past the root it's given, and the window isn't what scrolls.
     const seen = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) setCount((n) => n + FILES_PAGE);
       },
-      { rootMargin: "600px 0px" },
+      { root: viewport.current, rootMargin: "600px 0px" },
     );
     seen.observe(el);
     return () => seen.disconnect();
@@ -204,7 +207,7 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
         </div>
       )}
 
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="min-h-0 flex-1" viewportRef={viewport}>
         {shown.length === 0 && isFiltered(filter) ? (
           <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
             <p className="text-label text-muted-foreground">No files match these filters.</p>
