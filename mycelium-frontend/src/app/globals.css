@@ -639,22 +639,34 @@ body {
   .responding-shimmer { animation: none; background: none; color: var(--muted-foreground); }
 }
 
-/* Avatar presence halo. The ring breathes via box-shadow — spread plus a soft
- * outer glow, at full opacity throughout — rather than fading, so the row line
- * behind it never bleeds through the way an opacity pulse does. `--halo` is set
- * inline per tier; the disc's own edge is a border, leaving box-shadow free. */
+/* Avatar presence halo. The ring is a still box-shadow, at full opacity, so the
+ * row line behind it never bleeds through. A working agent's ring breathes by a
+ * glow on a layer of its own that fades in and out: an opacity animation the
+ * compositor runs. Animating the box-shadow itself made WebKit (the desktop
+ * app) restyle and repaint on every frame, which froze long pages, such as a
+ * room's Files gallery, for seconds at a time. `--halo` is set inline per
+ * tier; the disc's own edge is a border, leaving box-shadow free. */
 .avatar-halo { box-shadow: 0 0 0 2px var(--halo); }
-.avatar-halo.pulse { animation: halo-breathe 1.8s ease-in-out infinite; }
+.avatar-halo.pulse { position: relative; }
+.avatar-halo.pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 2.5px var(--halo),
+    0 0 7px 1px color-mix(in srgb, var(--halo) 55%, transparent);
+  opacity: 0;
+  will-change: opacity;
+  animation: halo-breathe 1.8s ease-in-out infinite;
+}
 @keyframes halo-breathe {
-  0%, 100% { box-shadow: 0 0 0 2px var(--halo); }
-  50% {
-    box-shadow:
-      0 0 0 2.5px var(--halo),
-      0 0 7px 1px color-mix(in srgb, var(--halo) 55%, transparent);
-  }
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .avatar-halo.pulse { animation: none; }
+  .avatar-halo.pulse::after { animation: none; }
 }
 
 .tabular { font-variant-numeric: tabular-nums; }
