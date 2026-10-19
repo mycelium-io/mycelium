@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FileUp, Loader2, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -36,6 +36,9 @@ interface Props {
   onOpenMemory: (key: string) => void;
 }
 
+/** How many files the gallery draws at first, and adds each time you near its end. */
+export const FILES_PAGE = 60;
+
 /** `Where` as a select's value, and back. */
 function whereValue(where: Where): string {
   return typeof where === "string" ? where : `task:${where.task}`;
@@ -50,17 +53,45 @@ function whereFrom(value: string): Where {
  * saying who posted it and where, with a link back to that message. Clicking a
  * file opens the preview window, whose arrows step through the gallery as it's
  * filtered. Several can be selected to download or delete together.
+ *
+ * It draws the newest {@link FILES_PAGE} files and adds the next page as you
+ * scroll near the end. Drawing a room's every file at once (hundreds of cards)
+ * froze the desktop app's engine while the thumbnails loaded, stuttered every
+ * scroll and took seconds to redraw on a resize. The filters still search all
+ * of them, and the count says how many there are.
  */
 export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory }: Props) {
   const { uploads, loading, refresh } = useRoomUploads(roomName);
-  const [filter, setFilter] = useState<FileFilter>(NO_FILTER);
+  const [filter, setFilterState] = useState<FileFilter>(NO_FILTER);
+  const [count, setCount] = useState(FILES_PAGE);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [preview, setPreview] = useState<Upload | null>(null);
   const [deleting, setDeleting] = useState(false);
   const copy = useFileCopy();
+  // A new filter starts again from the newest page.
+  const setFilter = (next: FileFilter) => {
+    setFilterState(next);
+    setCount(FILES_PAGE);
+  };
 
   const shown = useMemo(() => filterFiles(uploads, filter), [uploads, filter]);
-  const groups = useMemo(() => groupByDay(shown), [shown]);
+  const drawn = useMemo(() => shown.slice(0, count), [shown, count]);
+  const groups = useMemo(() => groupByDay(drawn), [drawn]);
+  const more = drawn.length < shown.length;
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = end.current;
+    if (!el || !more) return;
+    // Well before the end comes into view, so the next page is there when it does.
+    const seen = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setCount((n) => n + FILES_PAGE);
+      },
+      { rootMargin: "600px 0px" },
+    );
+    seen.observe(el);
+    return () => seen.disconnect();
+  }, [more, drawn.length]);
   const posters = useMemo(() => postersIn(uploads), [uploads]);
   const tasks = useMemo(() => tasksIn(uploads), [uploads]);
   const chosen = uploads.filter((u) => selected.has(u.key));
@@ -202,6 +233,11 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
                 </ul>
               </section>
             ))}
+            {more && (
+              <div ref={end} className="py-2 text-center text-micro text-faint">
+                {shown.length - drawn.length} more
+              </div>
+            )}
           </div>
         )}
       </ScrollArea>
@@ -265,11 +301,14 @@ function FileCard({
           type="button"
           onClick={onOpen}
           aria-label={`Preview ${upload.filename}`}
-          className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-hairline/40 outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          // A fixed height, not an aspect ratio: WebKit laid the whole grid out
+          // again for each card scrolled into view when its box took its height
+          // from its width, so every scroll step stalled for a fraction of a second.
+          className="flex h-[7.5rem] items-center justify-center overflow-hidden bg-hairline/40 outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
           {upload.kind === "image" ? (
             // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
-            <img src={upload.thumb_url || upload.url} alt="" loading="lazy" draggable={false} className="size-full object-cover" />
+            <img src={upload.thumb_url || upload.url} alt="" loading="lazy" decoding="async" draggable={false} className="size-full object-cover" />
           ) : (
             <span className="flex flex-col items-center gap-1.5 px-2 text-center">
               <Icon className="size-7 text-muted-foreground" strokeWidth={1.5} />
