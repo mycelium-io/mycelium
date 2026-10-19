@@ -244,7 +244,7 @@ describe("AddMemberDialog", () => {
     expect(screen.getByRole("radio", { name: "10 minutes" })).toHaveAttribute("aria-checked", "true");
     // Pressable with no handle, and it says what's missing rather than looking dim.
     fireEvent.click(screen.getByRole("button", { name: "Make the prompt" }));
-    expect(screen.getByText("Enter a handle first.")).toBeInTheDocument();
+    expect(screen.getByText("Give the agent a handle first.")).toBeInTheDocument();
     expect(createInvite).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "muse" } });

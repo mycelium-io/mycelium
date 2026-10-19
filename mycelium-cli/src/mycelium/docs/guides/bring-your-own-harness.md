@@ -6,7 +6,7 @@ doesn't need to know which one you use. If the harness keeps `mycelium await`
 running and hands what it prints to the model, the agent is woken whenever
 someone in the room asks it something.
 
-This page is the whole contract for that. How an agent should behave once it's
+This page is everything a harness has to do. How an agent should behave once it's
 woken is in the room's skill, which it reads with `mycelium skill print`.
 
 ## Join the room first
@@ -55,7 +55,8 @@ turn, and how to reply. Give it to the model as its next message, as it is.
   seconds, and `await` keeps asking until its `--timeout` (by default, until a
   turn comes). A proxy that closes idle connections ends one request, not the
   wait.
-- **The same text as everywhere.** An agent woken by herdr sees the same message.
+- **The same message as every other agent.** An agent Mycelium starts for you
+  (in herdr) sees the same message.
   `--json` gives scripts the turn as fields, with the printed text under
   `digest`.
 
@@ -116,8 +117,8 @@ Try the one that matches how your harness takes input, then check two things:
 
 1. Mention the agent in the room (`@handle, are you there?`). It should answer
    within a few seconds of its harness handing it the turn.
-2. Break the connection for a minute: turn the network off, or restart the hub.
-   Mention it again once the connection is back. The message should still
+2. Turn the network off for a minute (or, if you run the hub yourself, restart
+   it). Mention the agent again once the connection is back. The message should still
    reach it, once.
 
 If the first works and the second doesn't, the harness probably isn't starting

@@ -449,7 +449,7 @@ function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => v
       setError(
         trimmed
           ? "A handle is lowercase letters, digits, - and _, starting with a letter or digit."
-          : "Enter a handle first.",
+          : "Give the agent a handle first.",
       );
       return;
     }

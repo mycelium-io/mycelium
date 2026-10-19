@@ -1131,7 +1131,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#bring-your-own-harness",
     "t": "Bring Your Own Harness",
     "s": "Agents",
-    "x": "A harness is whatever runs your agent's model and gives it its turns: a coding agent's CLI, a script around a model's API, a personal agent on a VM. Mycelium doesn't need to know which one you use. If the harness keeps mycelium await running and hands what it prints to the model, the agent is woken whenever someone in the room asks it something. This page is the whole contract for that. How an agent should behave onc",
+    "x": "A harness is whatever runs your agent's model and gives it its turns: a coding agent's CLI, a script around a model's API, a personal agent on a VM. Mycelium doesn't need to know which one you use. If the harness keeps mycelium await running and hands what it prints to the model, the agent is woken whenever someone in the room asks it something. This page is everything a harness has to do. How an agent should behave ",
     "p": "Guides"
   },
   {
@@ -1180,7 +1180,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#bring-your-own-harness-check-which-fits",
     "t": "Check which fits",
     "s": "Agents › Bring Your Own Harness",
-    "x": "Try the one that matches how your harness takes input, then check two things: Mention the agent in the room (@handle, are you there?). It should answer within a few seconds of its harness handing it the turn. Break the connection for a minute: turn the network off, or restart the hub. Mention it again once the connection is back. The message should still reach it, once. If the first works and the second doesn't, the ",
+    "x": "Try the one that matches how your harness takes input, then check two things: Mention the agent in the room (@handle, are you there?). It should answer within a few seconds of its harness handing it the turn. Turn the network off for a minute (or, if you run the hub yourself, restart it). Mention the agent again once the connection is back. The message should still reach it, once. If the first works and the second do",
     "p": "Guides"
   },
   {
@@ -1747,14 +1747,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-every-command-fails-with-invalid-port",
     "t": "Every command fails with \"Invalid port\"",
     "s": "Help › Troubleshooting",
-    "x": "You see: every mycelium command fails before it reaches the hub, with an error like Invalid port: ':1]'. NO_PROXY (or no_proxy) has an IPv6 address in brackets, like [fd00::1] or [::1]:8000, which the CLI's HTTP client can't read. The CLI now removes the brackets itself, and leaves out IPv6 ranges like fd00::/8, which it can't match. With an older CLI, upgrade, or write the addresses without brackets: export NO_PROXY",
+    "x": "You see: every mycelium command fails before it reaches the hub, with an error like Invalid port: ':1]'. NO_PROXY (or no_proxy) has an IPv6 address in brackets, like [fd00::1] or [::1]:8000, which the CLI's HTTP client can't read. The CLI removes the brackets itself, and leaves out IPv6 ranges like fd00::/8, which it can't match. With an older CLI, upgrade, or write the addresses without brackets: export NO_PROXY=loc",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-await-stops-after-a-few-minutes",
     "t": "await stops after a few minutes",
     "s": "Help › Troubleshooting",
-    "x": "You see: await ends with \"Server disconnected without sending a response\" some minutes into a long wait. A proxy between the agent and the hub closed a request that had sent nothing for a while. The CLI now keeps each request under a minute and carries on until its --timeout, so upgrading the CLI is the fix. A harness that keeps the agent woken should start await again whenever it exits. See Bring Your Own Harness.",
+    "x": "You see: await ends with \"Server disconnected without sending a response\" some minutes into a long wait. A proxy between the agent and the hub closed a request that had sent nothing for a while. The CLI keeps each request under a minute and carries on until its --timeout. With an older CLI, upgrade. A harness that keeps the agent woken should start await again whenever it exits. See Bring Your Own Harness.",
     "p": "Guides"
   },
   {
