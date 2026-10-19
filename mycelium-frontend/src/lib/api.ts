@@ -1390,6 +1390,28 @@ export async function registerA2aAgent(
   });
 }
 
+/** A join code an agent redeems with `mycelium join` to become a member. */
+export interface JoinCode {
+  code: string;
+  room: string;
+  handle: string;
+  expires_at: string;
+}
+
+/** A join code for `handle`, which the hub adds to the room first if it's new,
+ *  owned by `created_by`. The code works once, for `ttl_minutes` (default 10,
+ *  at most a day). Throws `ApiError` (409 for a person's or an engine's handle). */
+export async function createInvite(
+  roomName: string,
+  data: { handle: string; ttl_minutes?: number; created_by?: string; description?: string },
+): Promise<JoinCode> {
+  return apiFetch<JoinCode>(`${roomApiPath(roomName)}/invites`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 // ── Runners (the machines agents run on) ─────────────────────────────────────
 //
 // A runner is `mycelium runner` on someone's computer. It dials out to the hub,

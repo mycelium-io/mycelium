@@ -140,6 +140,36 @@ Common causes:
 
 ---
 
+### Every command fails with "Invalid port"
+
+**You see:** every `mycelium` command fails before it reaches the hub, with an
+error like `Invalid port: ':1]'`.
+
+`NO_PROXY` (or `no_proxy`) has an IPv6 address in brackets, like `[fd00::1]`
+or `[::1]:8000`, which the CLI's HTTP client can't read. The CLI now removes
+the brackets itself, and leaves out IPv6 ranges like `fd00::/8`, which it
+can't match. With an older CLI, upgrade, or write the addresses without
+brackets:
+
+```bash
+export NO_PROXY=localhost,127.0.0.1,fd00::1
+```
+
+---
+
+### `await` stops after a few minutes
+
+**You see:** `await` ends with "Server disconnected without sending a
+response" some minutes into a long wait.
+
+A proxy between the agent and the hub closed a request that had sent nothing
+for a while. The CLI now keeps each request under a minute and carries on
+until its `--timeout`, so upgrading the CLI is the fix. A harness that keeps
+the agent woken should start `await` again whenever it exits. See
+[Bring Your Own Harness](#bring-your-own-harness).
+
+---
+
 ### Port already in use
 
 **You see:** `bind: address already in use` when starting the stack.

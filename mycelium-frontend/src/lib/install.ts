@@ -61,28 +61,32 @@ export function hubSetupPrompt(options: HubSetupOptions): string {
   ].join("\n\n");
 }
 
-export interface AgentHandoffOptions extends HubSetupOptions {
+/** Where the docs say what an agent's harness does to keep it woken. */
+export const HARNESS_SPEC_URL = `${DOCS_URL}/guides.html#bring-your-own-harness`;
+
+export interface AgentHandoffOptions {
+  hubUrl: string;
   roomName: string;
+  handle: string;
+  /** The join code the hub gave for `handle`. */
+  code: string;
+  /** When the code stops working, as the reader will read it ("14:32"). */
+  until: string;
 }
 
-/** The handoff a human pastes into an agent that is already running locally.
- * Mycelium configures and registers it; it never starts another agent process. */
+/** The handoff a person pastes into an agent session, wherever it runs: on
+ * this machine or someone else's. The join code makes it the member, so it
+ * needs no login and no config. Mycelium starts no agent process for it.
+ * `mycelium agent invite` prints the same text (`commands/agent.py`). */
 export function agentHandoffPrompt(options: AgentHandoffOptions): string {
-  const owner = options.authRequired === false && options.principal ? ` --owner ${options.principal}` : "";
-  const auth = options.authRequired
-    ? `Sign in with \`${LOGIN_COMMAND}\` first and use the identity it confirms; do not invent or override an identity.`
-    : options.authRequired === false && options.principal
-      ? `The room's human owner is @${options.principal}.`
-      : "If the hub asks you to sign in, use the identity it confirms. Otherwise ask the human for an owner if you need one.";
+  const { hubUrl, roomName, handle, code, until } = options;
   return [
-    `You are joining the Mycelium room \`${options.roomName}\` on the already-running hub at ${options.hubUrl} as a coding-agent collaborator.`,
-    `Install the CLI if needed with \`${CLI_INSTALL_COMMAND}\`, then run \`${configSetCommand(options.hubUrl)}\`.`,
-    auth,
+    `You are joining the Mycelium room \`${roomName}\` on the hub at ${hubUrl}, as @${handle}.`,
+    `Install the CLI if needed with \`${CLI_INSTALL_COMMAND}\`.`,
+    `In the folder you work in, run \`mycelium join ${code} --hub ${hubUrl}\`. The code works once, until ${until}; if it has run out, ask me for a new one. Every \`mycelium\` command you run in that folder then acts as @${handle}.`,
     "Read how an agent takes part in a room with `mycelium skill print`.",
-    `Choose a short handle and register yourself with \`mycelium agent create <handle> --room ${options.roomName}${owner}\`.`,
-    `Read \`mycelium room messages ${options.roomName} --limit 20\` and \`mycelium board --room ${options.roomName}\`. Claim a suitable task or ask me which task to take.`,
-    `Speak in the room with \`mycelium respond --room ${options.roomName} --handle <handle> "..."\`. Address another member as \`@handle\`; summon the mediator with \`@aligner\` when you and another agent genuinely disagree.`,
-    `Then keep taking turns: run \`mycelium await --room ${options.roomName} --handle <handle> --timeout 30\`, and when it returns a message, reason about it, reply with \`mycelium respond\`, and await again. Repeat until I tell you to stop; do not start a separate daemon or replace this session.`,
+    `Read \`mycelium room messages ${roomName} --limit 20\` and \`mycelium board --room ${roomName}\`. Take a suitable task or ask me which one to take.`,
+    `To be woken when someone asks for you, keep \`mycelium await --room ${roomName}\` running the way ${HARNESS_SPEC_URL} describes, and treat what it prints as your next turn. Repeat until I tell you to stop.`,
   ].join("\n\n");
 }
 

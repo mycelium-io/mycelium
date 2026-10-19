@@ -45,6 +45,19 @@ from mycelium.text_input import takes_text
 #: Statuses a resident loop stops on: the hub rejected the caller's identity
 #: (401) or refused it this handle (403). Everything else is treated as a blip.
 _TERMINAL_STATUSES = frozenset({401, 403})
+#: ``await``'s exit code when the hub refuses who it is waiting as. 0 is a
+#: turn, 1 nothing within ``--timeout`` (or an error worth waiting again on).
+EXIT_REFUSED = 3
+
+
+#: The longest one request waits on the hub. Proxies cut a request that sends
+#: nothing for a while (nginx's default is 60 seconds), so a long wait is made
+#: of short ones, each picking up where the last left off.
+WAIT_CHUNK_S = 45
+#: What a proxy answers when it gave up on the hub, rather than the hub refusing.
+_PROXY_STATUSES = frozenset({502, 503, 504})
+#: A connection that dropped mid-wait, which means waiting again.
+_DROPPED = (httpx.RemoteProtocolError, httpx.ReadError, httpx.ReadTimeout)
 
 
 def _await_once(
@@ -54,19 +67,74 @@ def _await_once(
     timeout: int,
     episode: str | None = None,
 ) -> dict | None:
-    """One long-poll. Returns the turn dict, or ``None`` on timeout."""
-    path = f"/api/rooms/{room_name}/await"
-    # The server blocks up to `timeout`; give the client a little more headroom
-    # (or no cap when waiting indefinitely).
-    client_timeout = float(timeout) + 15.0 if timeout > 0 else None
-    params: dict[str, str | int] = {"handle": handle, "timeout": timeout}
+    """Wait up to ``timeout`` seconds (0 = for good) for a turn. Returns the
+    turn dict, or ``None`` on timeout.
+
+    The wait is made of requests of at most :data:`WAIT_CHUNK_S`, and one
+    that drops (a proxy's idle limit) is waited again, so neither ends the
+    wait early. Each asks the hub to keep what it hands over unread until
+    it is confirmed (``confirm``), and the turn is confirmed once it is
+    here: a response lost on the way is handed over again, not lost. A hub
+    from before that marks it read itself and asks for no confirmation.
+    """
+    import time
+
+    deadline = time.monotonic() + timeout if timeout > 0 else None
+    while True:
+        left = WAIT_CHUNK_S if deadline is None else int(deadline - time.monotonic())
+        if left <= 0:
+            return None
+        wait = min(left, WAIT_CHUNK_S)
+        started = time.monotonic()
+        try:
+            data = _await_request(config, room_name, handle, wait, episode)
+        except _DROPPED:
+            data = None
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code not in _PROXY_STATUSES:
+                raise
+            data = None
+        if data is not None:
+            _confirm(config, room_name, handle, data)
+            return data
+        # Back well before its wait was up (a drop, a proxy, a hub with no
+        # channel for the room): pause, so waiting again never spins.
+        if time.monotonic() - started < wait - 1:
+            time.sleep(1.0)
+
+
+def _await_request(
+    config: MyceliumConfig, room_name: str, handle: str, wait: int, episode: str | None
+) -> dict | None:
+    """One long-poll of up to ``wait`` seconds: the turn, or ``None``."""
+    params: dict[str, str | int] = {"handle": handle, "timeout": wait, "confirm": "true"}
     if episode:
         params["episode"] = episode
-    with hub_client(config, timeout=client_timeout, handle=handle) as client:
-        resp = client.get(path, params=params)
+    with hub_client(config, timeout=float(wait) + 15.0, handle=handle) as client:
+        resp = client.get(f"/api/rooms/{room_name}/await", params=params)
     resp.raise_for_status()
     data = resp.json()
     return data if "prompt" in data else None
+
+
+def _confirm(config: MyceliumConfig, room_name: str, handle: str, turn: dict) -> None:
+    """Tell the hub ``turn`` arrived, so it marks it read. If that fails the
+    hub hands the turn over again next time: shown twice, never lost."""
+    delivered = turn.get("delivered")
+    if not isinstance(delivered, dict):
+        return
+    try:
+        with hub_client(config, timeout=15, handle=handle) as client:
+            resp = client.post(
+                f"/api/rooms/{room_name}/await/confirm", json={"handle": handle, **delivered}
+            )
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        typer.secho(
+            f"  ⟫  couldn't mark this read ({e}); the next await shows it again",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
 
 
 def _task_episode(room_name: str, row_id: str) -> str:
@@ -172,9 +240,15 @@ def _sender_label(ask: dict) -> str:
 
 
 def _print_turn(turn: dict, handle: str) -> None:
-    """A turn as a person or an agent reads it: what was said before it, then
-    every message asking for the handle that this ``await`` handed over, each in
-    a box (``chat.box``), oldest first, the turn last."""
+    """A turn as a person or an agent reads it: the hub's wake digest, the
+    same text a herdr wake types, ready to hand to a model as its turn. A hub
+    from before the digest gets what was said before it, then every message
+    asking for the handle that this ``await`` handed over, each in a box
+    (``chat.box``), oldest first, the turn last."""
+    digest = turn.get("digest")
+    if isinstance(digest, str) and digest.strip():
+        typer.echo(digest)
+        return
     earlier = [e for e in turn.get("earlier") or [] if isinstance(e, dict)]
     if earlier:
         typer.secho("  ⟫  earlier here:", fg=typer.colors.BRIGHT_BLACK)
@@ -238,6 +312,8 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
         "MYCELIUM_SENDER_NAME": str(turn.get("sender_name") or ""),
         "MYCELIUM_PROMPT": prompt,
         "MYCELIUM_ASKS": str(len(asks)),
+        # What plain ``await`` prints: the wake digest, to hand a model as is.
+        "MYCELIUM_DIGEST": str(turn.get("digest") or ""),
         # The row the turn was asked in, empty for the room: ``respond --task``.
         "MYCELIUM_TASK": str(turn.get("task") or ""),
     }
@@ -294,9 +370,13 @@ def await_room(
 ) -> None:
     """Block until a message addressed to the handle arrives, print it, and exit.
 
-    A single stateless long-poll against the backend: the caller is a server-held
+    A stateless long-poll against the backend: the caller is a server-held
     room member for the purpose of the aligner's roster, without holding any
-    connection. On timeout, exits non-zero with no message.
+    connection. It prints the wake message, the same text a herdr wake types,
+    ready to hand to a model as its turn (``--json`` for scripts). It exits 0
+    with a turn, 1 with none within ``--timeout`` (or on an error), and 3 when
+    the hub refuses the handle. A dropped connection is waited again, and a
+    message counts as read only once it arrived.
 
     With ``--loop`` it becomes a **resident runner**: it re-awaits after every turn,
     so the handle stays present (its lease refreshes each poll) and never misses a
@@ -371,8 +451,14 @@ def await_room(
         typer.echo("\n  [Stopped]")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-        raise typer.Exit(1) from e
+        # A refused identity gets its own code, so a harness that waits again
+        # on anything else stops on this one: waiting again can't fix it.
+        refused = (
+            isinstance(e, httpx.HTTPStatusError) and e.response.status_code in _TERMINAL_STATUSES
+        )
+        code = EXIT_REFUSED if refused else 1
+        print_error(e, verbose=verbose, exit_code=code)
+        raise typer.Exit(code) from e
 
 
 def _await_loop(

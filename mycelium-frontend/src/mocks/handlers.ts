@@ -955,6 +955,29 @@ export async function handleMock(req: Request): Promise<Response | null> {
       );
     }
 
+    case "invites": {
+      // POST /invites — a join code for an agent, added to the room if new.
+      if (sub.length !== 1 || method !== "POST") return null;
+      const body = await readJson(req);
+      const handle = String(body.handle ?? "").trim().replace(/^@/, "").toLowerCase();
+      if (!/^[a-z0-9][a-z0-9_-]*$/.test(handle)) return json({ detail: "Handle must be a lowercase slug." }, 422);
+      const key = `agents/${handle}`;
+      const by = String(body.created_by ?? "user");
+      if (!fx.memories.some((m) => m.key === key)) {
+        fx.memories.push({
+          key,
+          value: `adapter: claude_code\nowner: ${by}\n`,
+          created_by: by,
+          version: 1,
+          updated_at: new Date().toISOString(),
+        });
+        publish(roomName, memoryChangedFrame(key, 1, by));
+      }
+      const minutes = Number(body.ttl_minutes ?? 10);
+      const expires = new Date(Date.now() + minutes * 60_000).toISOString();
+      return json({ code: "k7mq-2xpa-9vtd", room: roomName, handle, expires_at: expires }, 201);
+    }
+
     case "swarms": {
       // POST /swarms — a team put on a task. Only a Learn take plays one; the
       // default fixtures have no workers to run it.

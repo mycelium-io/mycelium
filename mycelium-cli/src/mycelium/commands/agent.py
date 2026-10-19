@@ -993,6 +993,109 @@ def _pick_room(config: MyceliumConfig) -> str | None:
     return name
 
 
+# ── invite ───────────────────────────────────────────────────────────────────
+
+#: Where the docs say what an agent's harness does to keep it woken.
+HARNESS_SPEC_URL = "https://mycelium-io.github.io/mycelium/guides.html#bring-your-own-harness"
+_CLI_INSTALL = (
+    "curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only"
+)
+
+
+def handoff_prompt(hub_url: str, room: str, handle: str, code: str, until: str) -> str:
+    """What to paste into an agent session, wherever it runs, so it joins as
+    ``handle``. The app's Open session gives the same text
+    (``mycelium-frontend/src/lib/install.ts``, ``agentHandoffPrompt``)."""
+    return "\n\n".join(
+        [
+            f"You are joining the Mycelium room `{room}` on the hub at {hub_url}, as @{handle}.",
+            f"Install the CLI if needed with `{_CLI_INSTALL}`.",
+            f"In the folder you work in, run `mycelium join {code} --hub {hub_url}`. The code "
+            f"works once, until {until}; if it has run out, ask me for a new one. Every "
+            f"`mycelium` command you run in that folder then acts as @{handle}.",
+            "Read how an agent takes part in a room with `mycelium skill print`.",
+            f"Read `mycelium room messages {room} --limit 20` and `mycelium board --room {room}`. "
+            "Take a suitable task or ask me which one to take.",
+            f"To be woken when someone asks for you, keep `mycelium await --room {room}` running "
+            f"the way {HARNESS_SPEC_URL} describes, and treat what it prints as your next turn. "
+            "Repeat until I tell you to stop.",
+        ]
+    )
+
+
+@doc_ref(
+    usage="mycelium agent invite <handle> [--room <room>] [--minutes N] [--json]",
+    desc=(
+        "Make a join code for an agent, adding it to the room if it's new, and print what to "
+        "paste into its session."
+    ),
+    group="agent",
+)
+@app.command("invite")
+@in_room()
+@acts_as("inviter", optional=True)
+@emits_json()
+def agent_invite(
+    ctx: typer.Context,
+    handle: str = typer.Argument(..., help="The member the session joins as, e.g. muse"),
+    minutes: int = typer.Option(
+        10,
+        "--minutes",
+        min=1,
+        max=24 * 60,
+        help="How long the code works, unused (at most a day). Keep it short.",
+    ),
+    room: str | None = None,
+    inviter: str | None = None,
+) -> None:
+    """Invite an agent session, on this machine or any other, into a room.
+
+    The hub adds the agent if it's new, owned by you, and gives a join code
+    for it. Paste what this prints into the session: it runs ``mycelium join``
+    with the code and is that member, with no login or config. The code works
+    once.
+
+    Examples:
+        mycelium agent invite muse --room design
+        mycelium agent invite muse --minutes 60
+    """
+    from datetime import datetime
+
+    config = MyceliumConfig.load()
+    room_name = str(room)
+    body: dict[str, object] = {"handle": handle.lstrip("@"), "ttl_minutes": minutes}
+    if inviter:
+        body["created_by"] = inviter
+    try:
+        with hub_client(config, timeout=15) as client:
+            resp = client.post(f"/api/rooms/{room_name}/invites", json=body)
+    except Exception as e:  # noqa: BLE001 - said plainly, not as a traceback
+        print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
+        return
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json().get("detail")
+        except ValueError:
+            detail = resp.text
+        console.print(f"[red]✗[/red] No code for @{handle.lstrip('@')}: {detail}")
+        raise typer.Exit(1)
+    invite = resp.json()
+    hub_url = config.server.api_url.rstrip("/")
+    until = datetime.fromisoformat(invite["expires_at"]).astimezone().strftime("%H:%M")
+    if minutes > 60:
+        until = datetime.fromisoformat(invite["expires_at"]).astimezone().strftime("%a %H:%M")
+    prompt = handoff_prompt(hub_url, room_name, invite["handle"], invite["code"], until)
+    if ctx.obj and ctx.obj.get("json"):
+        typer.echo(json_module.dumps({**invite, "hub": hub_url, "prompt": prompt}, indent=2))
+        return
+    console.print(
+        f"[green]✓[/green] Join code for @{invite['handle']} in {room_name}: "
+        f"[bold]{invite['code']}[/bold] [dim](works once, until {until})[/dim]"
+    )
+    console.print("  Paste this into the agent's session:\n")
+    typer.echo(prompt)
+
+
 # ── ls ───────────────────────────────────────────────────────────────────────
 
 

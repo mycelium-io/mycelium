@@ -9,9 +9,11 @@ const createEngine = vi.fn();
 const createMemories = vi.fn();
 const registerA2aAgent = vi.fn();
 const adoptRunnerAgent = vi.fn();
+const createInvite = vi.fn();
 vi.mock("@/lib/api", () => ({
   adoptRunnerAgent: (...a: unknown[]) => adoptRunnerAgent(...a),
   createEngine: (...a: unknown[]) => createEngine(...a),
+  createInvite: (...a: unknown[]) => createInvite(...a),
   createMemories: (...a: unknown[]) => createMemories(...a),
   registerA2aAgent: (...a: unknown[]) => registerA2aAgent(...a),
   launchRunnerAgent: vi.fn(),
@@ -109,6 +111,12 @@ describe("AddMemberDialog", () => {
     createMemories.mockReset().mockResolvedValue(undefined);
     registerA2aAgent.mockReset().mockResolvedValue({});
     adoptRunnerAgent.mockReset().mockResolvedValue({ id: "j1", status: "queued" });
+    createInvite.mockReset().mockResolvedValue({
+      code: "k7mq-2xpa-9vtd",
+      room: "atlas",
+      handle: "muse",
+      expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+    });
     machines = [];
   });
 
@@ -221,9 +229,16 @@ describe("AddMemberDialog", () => {
     expect(screen.getByText("Every agent running on julia-mbp is in a room already.")).toBeInTheDocument();
   });
 
-  it("hands an open session the setup to paste", () => {
+  it("hands an open session a join code to paste, lasting as long as asked", async () => {
     const { onOpenChange } = open("session");
-    expect(screen.getByText(/You are joining the Mycelium room `atlas`/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "10 minutes" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "muse" } });
+    fireEvent.click(screen.getByRole("radio", { name: "1 hour" }));
+    fireEvent.click(screen.getByRole("button", { name: "Get setup" }));
+
+    expect(await screen.findByText(/You are joining the Mycelium room `atlas`/)).toBeInTheDocument();
+    expect(createInvite).toHaveBeenCalledWith("atlas", { handle: "muse", ttl_minutes: 60, created_by: "julia" });
+    expect(screen.getByText(/mycelium join k7mq-2xpa-9vtd --hub/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
