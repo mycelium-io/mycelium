@@ -32,7 +32,17 @@ vi.mock("@/lib/runners", async (importOriginal) => ({
 }));
 
 import type { MachineUnenrolled, Runner } from "@/lib/api";
-import { AddMemberDialog, type MemberKind } from "./add-member-dialog";
+import { AddMemberDialog, isLocalAddress, type MemberKind } from "./add-member-dialog";
+
+describe("isLocalAddress", () => {
+  it("knows an address only this machine reaches", () => {
+    expect(isLocalAddress("http://localhost:3000")).toBe(true);
+    expect(isLocalAddress("http://127.0.0.1:8080")).toBe(true);
+    expect(isLocalAddress("http://[::1]:8000")).toBe(true);
+    expect(isLocalAddress("https://mycelium.example.com")).toBe(false);
+    expect(isLocalAddress("http://192.168.1.20:8000")).toBe(false);
+  });
+});
 
 function running(pane: string, over: Partial<MachineUnenrolled> = {}): MachineUnenrolled {
   return {
@@ -232,13 +242,21 @@ describe("AddMemberDialog", () => {
   it("hands an open session a join code to paste, lasting as long as asked", async () => {
     const { onOpenChange } = open("session");
     expect(screen.getByRole("radio", { name: "10 minutes" })).toHaveAttribute("aria-checked", "true");
+    // Pressable with no handle, and it says what's missing rather than looking dim.
+    fireEvent.click(screen.getByRole("button", { name: "Make the prompt" }));
+    expect(screen.getByText("Name the member the session joins as first.")).toBeInTheDocument();
+    expect(createInvite).not.toHaveBeenCalled();
+
     fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "muse" } });
     fireEvent.click(screen.getByRole("radio", { name: "1 hour" }));
-    fireEvent.click(screen.getByRole("button", { name: "Get setup" }));
+    fireEvent.click(screen.getByRole("button", { name: "Make the prompt" }));
 
     expect(await screen.findByText(/You are joining the Mycelium room `atlas`/)).toBeInTheDocument();
     expect(createInvite).toHaveBeenCalledWith("atlas", { handle: "muse", ttl_minutes: 60, created_by: "julia" });
     expect(screen.getByText(/mycelium join k7mq-2xpa-9vtd --hub/)).toBeInTheDocument();
+    // jsdom serves the page from localhost, which another machine can't reach.
+    expect(screen.getByText(/only works for a session on this machine/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy prompt" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

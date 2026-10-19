@@ -410,6 +410,17 @@ export const CODE_LIFETIMES: { minutes: number; label: string }[] = [
   { minutes: 24 * 60, label: "1 day" },
 ];
 
+/** Whether `url` names this machine only (localhost, 127.x, ::1), so a
+ *  session on another machine couldn't reach it. */
+export function isLocalAddress(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, "");
+    return host === "localhost" || host === "::1" || host.startsWith("127.");
+  } catch {
+    return false;
+  }
+}
+
 function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => void }) {
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
@@ -425,10 +436,19 @@ function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => v
   const [error, setError] = useState<string | null>(null);
 
   const trimmed = normHandle(handle);
-  const canSubmit = handleValid(handle) && !submitting;
 
+  // Enabled with nothing typed, and saying what's missing when pressed: a
+  // dimmed button over a dimmed page reads as pressable anyway.
   const submit = async () => {
-    if (!canSubmit) return;
+    if (submitting) return;
+    if (!handleValid(handle)) {
+      setError(
+        trimmed
+          ? "A handle is lowercase letters, digits, - and _, starting with a letter or digit."
+          : "Name the member the session joins as first.",
+      );
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -448,29 +468,33 @@ function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => v
   };
 
   if (invite) {
+    // With its zone: the session reading it is often on a machine in another.
     const until = new Date(invite.expires_at).toLocaleString(undefined, {
       weekday: minutes > 60 ? "short" : undefined,
       hour: "numeric",
       minute: "2-digit",
+      timeZoneName: "short",
     });
     const prompt = agentHandoffPrompt({ hubUrl, roomName, handle: invite.handle, code: invite.code, until });
     return (
       <>
         <div className="space-y-3 px-5 py-4">
+          {/* Whole, never scrolled: its last line, keeping `await` running, is
+              the point of it. */}
           <div className="rounded-lg border border-border bg-bg">
-            <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap px-4 py-3 font-mono text-micro leading-relaxed text-muted-foreground">
+            <pre className="whitespace-pre-wrap px-4 py-3 font-mono text-micro leading-relaxed text-muted-foreground">
               {prompt}
             </pre>
           </div>
           <p className="text-micro text-faint">
-            Paste it into the session, on this machine or another. The code works once, until {until}.
-            @{invite.handle} shows up in Members once it has joined.
+            Paste it into the session. @{invite.handle} shows up in Members once it has joined.
+            {isLocalAddress(hubUrl) && " This hub's address only works for a session on this machine."}
           </p>
         </div>
         <MemberFooter
           action={
             <div className="flex gap-2">
-              <CopyAction value={prompt} label="Copy setup" />
+              <CopyAction value={prompt} label="Copy prompt" />
               <Button onClick={onDone}>Done</Button>
             </div>
           }
@@ -517,15 +541,15 @@ function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => v
             ))}
           </div>
           <p className="mt-2 text-label text-muted-foreground">
-            Once, within that time. Keep it short unless the session starts later.
+            The code works once. Keep it short unless the session will start later.
           </p>
         </div>
         <ErrorLine error={error} />
       </div>
       <MemberFooter
         action={
-          <Button onClick={submit} disabled={!canSubmit}>
-            {submitting ? "Making a code…" : "Get setup"}
+          <Button onClick={submit} disabled={submitting}>
+            {submitting ? "Making the prompt…" : "Make the prompt"}
           </Button>
         }
       >

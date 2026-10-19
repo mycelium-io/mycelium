@@ -1060,6 +1060,7 @@ def agent_invite(
         mycelium agent invite muse --minutes 60
     """
     from datetime import datetime
+    from urllib.parse import urlparse
 
     config = MyceliumConfig.load()
     room_name = str(room)
@@ -1081,9 +1082,9 @@ def agent_invite(
         raise typer.Exit(1)
     invite = resp.json()
     hub_url = config.server.api_url.rstrip("/")
-    until = datetime.fromisoformat(invite["expires_at"]).astimezone().strftime("%H:%M")
-    if minutes > 60:
-        until = datetime.fromisoformat(invite["expires_at"]).astimezone().strftime("%a %H:%M")
+    # With its zone: the session reading it is often on a machine in another.
+    expires = datetime.fromisoformat(invite["expires_at"]).astimezone()
+    until = expires.strftime("%a %H:%M %Z" if minutes > 60 else "%H:%M %Z")
     prompt = handoff_prompt(hub_url, room_name, invite["handle"], invite["code"], until)
     if ctx.obj and ctx.obj.get("json"):
         typer.echo(json_module.dumps({**invite, "hub": hub_url, "prompt": prompt}, indent=2))
@@ -1092,6 +1093,12 @@ def agent_invite(
         f"[green]✓[/green] Join code for @{invite['handle']} in {room_name}: "
         f"[bold]{invite['code']}[/bold] [dim](works once, until {until})[/dim]"
     )
+    host = urlparse(hub_url).hostname or ""
+    if host in ("localhost", "::1") or host.startswith("127."):
+        console.print(
+            f"  [yellow]{hub_url} only works for a session on this machine.[/yellow] "
+            "Set server.api_url to an address other machines reach to invite one elsewhere."
+        )
     console.print("  Paste this into the agent's session:\n")
     typer.echo(prompt)
 
