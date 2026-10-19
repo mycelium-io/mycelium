@@ -13,6 +13,7 @@
  *   pnpm screenshots            # boot mock, capture all shots, publish
  *   pnpm screenshots --keep     # attach to an already-running dev:mock on $PORT
  *   pnpm screenshots room-board  # capture a subset by shot id
+ *   pnpm screenshots themes     # the themes repo's pictures, one per theme
  *   pnpm screenshots --offline  # don't wait on webfont CDNs
  *
  * The browser work belongs to `shotkit/`, the repo's screenshot utility: booting
@@ -112,7 +113,12 @@ function specFor(shot: Shot, baseUrl: string, offline: boolean) {
     // message box would leave a draft behind (drafts are kept per room), so
     // every shot starts those rooms empty.
     storage: {
-      theme: shot.theme,
+      theme: shot.custom ? "custom" : shot.theme,
+      // The app's own settings, which is where a custom theme is kept: the one
+      // a shot is in, or none, so a themed shot can't hand its theme on.
+      "mycelium.settings": shot.custom
+        ? JSON.stringify({ "appearance.custom-themes": [shot.custom], "appearance.custom-theme": shot.custom.id })
+        : "",
       ...(shot.fresh
         ? { "mycelium.principal": "", "mycelium.name-asked": "" }
         : { "mycelium.principal": "operator", "mycelium.name-asked": "1" }),
@@ -138,7 +144,9 @@ async function main(): Promise<void> {
   const keep = argv.includes("--keep");
   const offline = argv.includes("--offline");
   const ids = argv.filter((a) => !a.startsWith("--"));
-  const shots = ids.length ? SHOTS.filter((s) => ids.includes(s.id)) : SHOTS;
+  // `themes` is every shot of the themes repo.
+  const picked = (s: Shot) => ids.includes(s.id) || (ids.includes("themes") && !!s.custom);
+  const shots = ids.length ? SHOTS.filter(picked) : SHOTS;
   if (shots.length === 0) {
     throw new Error(`no shots matched ${JSON.stringify(ids)}`);
   }
