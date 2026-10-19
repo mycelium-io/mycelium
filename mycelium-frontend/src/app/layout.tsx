@@ -13,6 +13,7 @@ import { LoginGate } from "@/components/login-gate";
 import { NamePrompt } from "@/components/name-prompt";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
+import { StrayDropGuard } from "@/components/stray-drop-guard";
 import { SWRProvider } from "@/components/swr-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -52,6 +53,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 theme files, and the app follows the one picked there. */}
             <CustomThemeStyle />
             <ThemeFileSync />
+            {/* A file dropped outside the composer is ignored, not opened in
+                place of the app. */}
+            <StrayDropGuard />
             <CurrentUserProvider>
               <MachineFromUrl />
               <AuthSessionProvider>
