@@ -596,9 +596,11 @@ def _looks_like_key(value: str) -> bool:
 )
 @app.command(name="resolve")
 @in_room()
+@acts_as("actor", fallback="unknown")
 def board_resolve(
     row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, work/auth)"),
     room: str | None = None,
+    actor: str = "",
 ) -> None:
     """Resolve a row."""
     cfg = MyceliumConfig.load()
@@ -606,13 +608,11 @@ def board_resolve(
 
     item = _row(name, row_id)
     if item is not None and assignment.assignment_refusal(item) is None:
-        _write_assignment(
-            cfg, name, "resolve", key=_assignment_key(item), handle=cfg.get_current_identity()
-        )
+        _write_assignment(cfg, name, "resolve", key=_assignment_key(item), handle=actor)
         return
     # Not leasable, but still a row with frontmatter: `status` is a stage, and a
     # stage is a field write. Assignment stays out of it — that is the lease's.
-    _write_fields(cfg, name, row_id, {"status": "resolved"})
+    _write_fields(cfg, name, row_id, {"status": "resolved"}, actor=actor)
 
 
 @doc_ref(
@@ -626,6 +626,7 @@ def board_resolve(
 )
 @app.command(name="claim")
 @in_room()
+@acts_as("actor", fallback="unknown")
 def board_claim(
     row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. work/auth-spike)"),
     to: str | None = typer.Option(None, "--to", help="Handle to claim it for (default: you)"),
@@ -640,6 +641,7 @@ def board_claim(
         help="Take the row even while it waits on an unresolved dependency",
     ),
     room: str | None = None,
+    actor: str = "",
 ) -> None:
     """Claim a row nobody was given.
 
@@ -662,7 +664,7 @@ def board_claim(
         # with holders nobody can renew.
         console.print(f"[yellow]·[/yellow] {row_id} can't be claimed — {refusal}")
         raise typer.Exit(1)
-    handle = (to or cfg.get_current_identity()).lstrip("@")
+    handle = (to or actor).lstrip("@")
     _write_assignment(
         cfg,
         name,
@@ -685,6 +687,7 @@ def board_claim(
 )
 @app.command(name="assign")
 @in_room()
+@acts_as("actor", fallback="unknown")
 def board_assign(
     row_id: str = typer.Argument(..., help="Row id as shown on the board"),
     handle: str = typer.Argument(..., help="Who to give it to (@handle)"),
@@ -692,12 +695,15 @@ def board_assign(
         False, "--reassign", help="Take it from whoever holds it now, and say so"
     ),
     room: str | None = None,
+    actor: str = "",
 ) -> None:
     """Give a row to someone. A row given to someone is theirs: they hold it
     with no claim to make, until they resolve it or hand it back."""
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    _write_fields(cfg, name, row_id, {"assignee": handle.lstrip("@")}, reassign=reassign)
+    _write_fields(
+        cfg, name, row_id, {"assignee": handle.lstrip("@")}, actor=actor, reassign=reassign
+    )
 
 
 @doc_ref(
@@ -707,10 +713,12 @@ def board_assign(
 )
 @app.command(name="release")
 @in_room()
+@acts_as("actor", fallback="unknown")
 def board_release(
     row_id: str = typer.Argument(..., help="Row id as shown on the board"),
     note: str | None = typer.Option(None, "--note", help="Why you're handing it back"),
     room: str | None = None,
+    actor: str = "",
 ) -> None:
     """Release a row you hold."""
     cfg = MyceliumConfig.load()
@@ -727,7 +735,7 @@ def board_release(
         name,
         "release",
         key=_assignment_key(item),
-        handle=cfg.get_current_identity().lstrip("@"),
+        handle=actor.lstrip("@"),
         note=note,
     )
 
@@ -739,10 +747,12 @@ def board_release(
 )
 @app.command(name="block")
 @in_room()
+@acts_as("actor", fallback="unknown")
 def board_block(
     row_id: str = typer.Argument(..., help="Row id as shown on the board"),
     on: str | None = typer.Option(None, "--on", help="What it's waiting on (e.g. #502)"),
     room: str | None = None,
+    actor: str = "",
 ) -> None:
     """Say what a row is waiting on."""
     if not on:
@@ -752,7 +762,7 @@ def board_block(
         raise typer.Exit(1)
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    _write_fields(cfg, name, row_id, {assignment.BLOCKED_FIELD: on})
+    _write_fields(cfg, name, row_id, {assignment.BLOCKED_FIELD: on}, actor=actor)
 
 
 def _assignment_key(item: LiveItem) -> str:
@@ -902,7 +912,13 @@ def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) 
 
 
 def _write_fields(
-    cfg: MyceliumConfig, room: str, row_id: str, patch: dict, *, reassign: bool = False
+    cfg: MyceliumConfig,
+    room: str,
+    row_id: str,
+    patch: dict,
+    *,
+    actor: str,
+    reassign: bool = False,
 ) -> None:
     """Put an action's frontmatter on the row, and say what landed.
 
@@ -927,7 +943,7 @@ def _write_fields(
         )
         raise typer.Exit(1)
     key = board_fields.memory_key_of(item)
-    body: dict[str, Any] = {"key": key, "handle": cfg.get_current_identity(), "fields": patch}
+    body: dict[str, Any] = {"key": key, "handle": actor, "fields": patch}
     if reassign:
         body["reassign"] = True
     try:
@@ -973,6 +989,7 @@ def _write_fields(
     optional=True,
 )
 @in_room()
+@acts_as("actor", fallback="unknown")
 @emits_json()
 def board_new(
     ctx: typer.Context,
@@ -985,6 +1002,7 @@ def board_new(
         None, "--parent", help="Row this one decomposes, as a part-of relation"
     ),
     room: str | None = None,
+    actor: str = "",
 ) -> None:
     """Create a task.
 
@@ -1003,7 +1021,7 @@ def board_new(
     """
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    body: dict[str, Any] = {"title": title, "handle": cfg.get_current_identity()}
+    body: dict[str, Any] = {"title": title, "handle": actor}
     if content and content.strip():
         body["content"] = content
     if assign:

@@ -51,7 +51,7 @@ from rich.markdown import Markdown
 from rich.markup import escape
 from rich.panel import Panel
 
-from mycelium.cli_options import in_room
+from mycelium.cli_options import acts_as, in_room
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -745,6 +745,7 @@ def _ui_room_url(room: str) -> str:
     group="board",
 )
 @in_room("room")
+@acts_as("starter", optional=True)
 def swarm(
     task: str | None = typer.Argument(None, help="What the team should work on"),
     server: bool = typer.Option(
@@ -763,6 +764,7 @@ def swarm(
         "--repo",
         help="With --server: a repository for the hub to clone and the team to work on",
     ),
+    starter: str | None = None,
 ) -> None:
     """Put a team of agents on one task and watch them work it together.
 
@@ -780,7 +782,7 @@ def swarm(
     from mycelium.integrations.herdr import HerdrBridge, HerdrError
 
     config = MyceliumConfig.load()
-    me = sender_of(config)
+    me = starter or sender_of(config)
     room_name = str(room)
     if not task:
         task = typer.prompt("What should the agents work on?").strip()
