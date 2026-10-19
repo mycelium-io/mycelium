@@ -15,7 +15,7 @@ entry when the tag is cut.
 A room's views move into the sidebar, you can pause and resume your agents, and only an agent's owner can change who acts as it.
 
 ### Added
-- **Pause, resume and stop your agents:** one agent from its menu in Members, or all of yours at once from the ⌘K palette, the status rail or the desktop app's menu bar. A paused agent stops where it is, is told it's a pause and not a correction, and isn't woken until you resume it. Messages still arrive, and resuming hands it everything that came in. Only an agent's owner can pause, resume or stop it. CLI: `mycelium agent pause|resume|stop`, with `--room` or `--all` ([#1396](https://github.com/mycelium-io/mycelium/pull/1396))
+- **Pause, resume and stop your agents:** one agent from its menu in Members, or all of yours at once from the ⌘K palette or the desktop app's menu bar. A paused agent stops where it is, is told it's a pause and not a correction, and isn't woken until you resume it. Messages still arrive, and resuming hands it everything that came in. Only an agent's owner can pause, resume or stop it. CLI: `mycelium agent pause|resume|stop`, with `--room` or `--all` ([#1396](https://github.com/mycelium-io/mycelium/pull/1396))
 
 ### Changed
 - **A room's views live under the room in the sidebar:** Channel, Stream, Board, Files and Schedules sit under the room in the Rooms rail, and the tab strip only holds what you opened (a task's thread, a memory). A view can't be closed or lost among tabs. In the desktop app, ⌘1 to ⌘5 (Ctrl on Windows and Linux) pick them, and ⌘W closes the tab in front, never a view ([#1395](https://github.com/mycelium-io/mycelium/pull/1395))
