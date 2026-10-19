@@ -16,7 +16,9 @@
  */
 
 import type { ThemeMode } from "@/lib/themes";
-import { contrastProblems, type ContrastProblem } from "@/lib/theme-contrast";
+// Relative, with its extension: the screenshot job (`screenshots/themes.ts`)
+// checks theme files with this module under plain Node, which knows no `@/`.
+import { contrastProblems, type ContrastProblem } from "./theme-contrast.ts";
 
 /** next-themes' id for "the custom theme picked in settings". */
 export const CUSTOM_THEME = "custom";

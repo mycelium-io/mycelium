@@ -14,6 +14,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseCustomTheme, type CustomTheme } from "../src/lib/custom-themes.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -30,21 +31,32 @@ export interface ThemeFile {
   /** The file's name without `.json`, which its picture is named after. */
   file: string;
   /** The theme as the app keeps a custom one, id included. */
-  theme: { id: string; name: string; mode: "dark" | "light"; colors: Record<string, string> };
+  theme: CustomTheme;
 }
 
-/** The id the app gives a custom theme, as `lib/custom-themes.ts` makes it. */
-const idOf = (name: string) => `custom-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
+let found: ThemeFile[] | undefined;
 
-/** Every theme in the repo's `themes/`, or none when there is no checkout. */
+/**
+ * Every theme in the repo's `themes/` the app would load, or none when there
+ * is no checkout. Each file is checked by the app's own rules: one it would
+ * refuse is reported with the reasons and left out, never photographed as the
+ * default theme under its name, and never stops the shots of anything else.
+ * Read once, since the shot list and the targets both ask.
+ */
 export function themeFiles(): ThemeFile[] {
+  if (found) return found;
   const dir = join(THEMES_REPO, "themes");
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((name) => name.endsWith(".json"))
-    .sort()
-    .map((name) => {
-      const { name: title, mode, colors } = JSON.parse(readFileSync(join(dir, name), "utf8"));
-      return { file: name.slice(0, -".json".length), theme: { id: idOf(title), name: title, mode, colors } };
-    });
+  found = [];
+  if (!existsSync(dir)) return found;
+  for (const name of readdirSync(dir).filter((n) => n.endsWith(".json")).sort()) {
+    let parsed: ReturnType<typeof parseCustomTheme>;
+    try {
+      parsed = parseCustomTheme(readFileSync(join(dir, name), "utf8"));
+    } catch (err) {
+      parsed = { ok: false, errors: [String(err)] };
+    }
+    if (parsed.ok) found.push({ file: name.slice(0, -".json".length), theme: parsed.theme });
+    else process.stderr.write(`[screenshots] skipping themes/${name}, the app wouldn't load it: ${parsed.errors.join(" ")}\n`);
+  }
+  return found;
 }
