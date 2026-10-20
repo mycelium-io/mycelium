@@ -96,6 +96,31 @@ describe("guardApi", () => {
   });
 });
 
+describe("a token promised and missing", () => {
+  it("refuses every /api request, never skipping the check", () => {
+    // MYCELIUM_UI_TOKEN_STDIN=1 said a token would come; none did.
+    expect(guardApi(req("/api/rooms"), null, true)?.status).toBe(503);
+    expect(guardApi(req("/api/rooms", { headers: { [TOKEN_HEADER]: "unset" } }), null, true)?.status).toBe(503);
+    expect(guardApi(req("/api/auth/callback"), null, true)?.status).toBe(503);
+  });
+
+  it("reads no stand-in token from an empty or failed read", async () => {
+    const { readToken } = await import("@/instrumentation");
+    expect(readToken(() => "")).toBeNull();
+    expect(readToken(() => "  \n")).toBeNull();
+    expect(
+      readToken(() => {
+        throw new Error("EAGAIN");
+      }),
+    ).toBeNull();
+    expect(readToken(() => "tok\n")).toBe("tok");
+  });
+
+  it("never accepts 'unset' as a token", () => {
+    expect(guardApi(req("/api/rooms", { headers: { [TOKEN_HEADER]: "unset" } }), TOKEN)?.status).toBe(401);
+  });
+});
+
 describe("proxy matcher", () => {
   it("checks every /api path, whatever it ends in", async () => {
     const { config } = await import("@/proxy");

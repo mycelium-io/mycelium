@@ -140,6 +140,26 @@ def test_the_app_is_told_who_asked_as_the_system_says(config, app, monkeypatch) 
     assert caller["cwd"]  # the test process's own folder
 
 
+def test_a_command_asks_the_app_again_when_its_access_token_runs_out(config, app) -> None:
+    """The app keeps the refresh token and renews; a command holds an access
+    token alone, and asks the app for another when it runs out."""
+    import time
+
+    from mycelium import client
+
+    hub = "https://hub.example.com"
+    app.kept[hub] = {"access_token": "at-old", "issuer": "i", "client_id": "c",
+                     "expires_at": time.time() - 10}  # fmt: skip
+    session_store.load(config)  # this process now holds the expired one
+    app.kept[hub] = {"access_token": "at-new", "issuer": "i", "client_id": "c",
+                     "expires_at": time.time() + 600}  # fmt: skip
+    fresh = client.current_token(config)
+    assert fresh is not None
+    assert fresh.access_token == "at-new"
+    assert fresh.refresh_token is None
+    assert app.asked.count("get") == 2
+
+
 def test_a_command_reads_from_mycelium_on() -> None:
     from mycelium.desktop.session_relay import shown_command
 

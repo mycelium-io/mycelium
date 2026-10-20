@@ -11,7 +11,7 @@ import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
 import { oidcConfig } from "./auth-config";
 import { endpoints, refreshTokens, claimsOf, handleFromClaims } from "./oidc";
-import { launchToken } from "./ui-guard";
+import { tokenPromised } from "./ui-guard";
 
 export const SESSION_COOKIE = "myc_session";
 export const TX_COOKIE = "myc_oidc_tx";
@@ -64,7 +64,9 @@ export async function unseal<T = Record<string, unknown>>(token: string, secret:
 const held = globalThis as unknown as { __myceliumSession?: Session | null };
 
 function inMemory(): boolean {
-  return Boolean(launchToken());
+  // Promised counts, not only arrived: a desktop launch whose token went
+  // missing still never writes a cookie.
+  return tokenPromised();
 }
 
 export async function getSession(): Promise<Session | null> {

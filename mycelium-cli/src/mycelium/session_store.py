@@ -100,13 +100,18 @@ def _remembered() -> bool:
     return isinstance(data, dict) and bool(data.get(REMEMBER_KEY))
 
 
-def load(config: MyceliumConfig) -> tuple[StoredToken | None, str | None]:
+def load(config: MyceliumConfig, *, fresh: bool = False) -> tuple[StoredToken | None, str | None]:
     """The person's session for this hub and where it was kept; ``(None, None)``
-    when there is none, or when this is an agent's pane."""
+    when there is none, or when this is an agent's pane.
+
+    From the app it's an access token alone: the app keeps the refresh token
+    and renews it, so a process that got one never holds anything lasting.
+    ``fresh`` asks again rather than using what this process already got (an
+    access token that ran out)."""
     if caller.in_agent_pane():
         return None, None
     hub = _hub(config)
-    if hub in _cache:
+    if hub in _cache and not fresh:
         return _cache[hub]
     found: tuple[StoredToken | None, str | None] = (None, None)
     reply = _ask("get", hub)
@@ -161,13 +166,11 @@ def _write_file(token: StoredToken, *, remember: bool) -> None:
 
 
 def renewed(config: MyceliumConfig, token: StoredToken, where: str | None) -> None:
-    """Keep a renewed session where the old one was."""
-    hub = _hub(config)
-    if where == APP:
-        _ask("put", hub, token.to_dict())
-    elif where == FILE:
+    """Keep a session the CLI renewed itself (a ``--remember`` file's) where
+    the old one was. The app's sign-ins are renewed by the app."""
+    if where == FILE:
         _write_file(token, remember=_remembered())
-    _cache[hub] = (token, where)
+    _cache[_hub(config)] = (token, where)
 
 
 def clear(config: MyceliumConfig) -> bool:

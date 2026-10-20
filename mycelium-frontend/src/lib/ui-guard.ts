@@ -59,6 +59,12 @@ export function launchToken(): string | null {
   return token ? token : null;
 }
 
+/** Whether the desktop app started this server, so a token was promised
+ *  (`instrumentation.ts`), whether or not one arrived. */
+export function tokenPromised(): boolean {
+  return process.env.MYCELIUM_UI_TOKEN_STDIN === "1" || launchToken() !== null;
+}
+
 /** The public name this server is also reached by, when it has one. */
 export function publicHost(): string | null {
   const host = process.env.MYCELIUM_UI_HOST?.trim().toLowerCase();
@@ -128,8 +134,15 @@ function refuse(status: number, detail: string): Response {
  * Why an `/api` request is refused, as the response to send, or `null` when
  * it may go on. `token` is this launch's token, `null` where none is set.
  */
-export function guardApi(req: Request, token: string | null = launchToken()): Response | null {
+export function guardApi(
+  req: Request,
+  token: string | null = launchToken(),
+  promised: boolean = tokenPromised(),
+): Response | null {
   const url = new URL(req.url);
+  // The desktop app promised a token and none arrived: refuse everything,
+  // never fall back to treating this as a server with no token.
+  if (promised && !token) return refuse(503, "Mycelium's window token didn't arrive; restart Mycelium.");
   const host = req.headers.get("host");
   if (!hostAllowed(host)) return refuse(421, "This server doesn't answer to that name.");
 
