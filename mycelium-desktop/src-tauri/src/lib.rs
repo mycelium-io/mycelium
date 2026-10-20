@@ -465,7 +465,8 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let switch = MenuItem::with_id(app, "switch", "Hub and Connection…", true, None::<&str>)?;
     let health = MenuItem::with_id(app, "doctor", "Health check…", true, None::<&str>)?;
     // Where to look when something won't start: the app's own log, and the
-    // runner's, which says why an agent didn't.
+    // runner's, which says why an agent didn't. And the window's own console,
+    // for a page that misbehaves while it's open.
     let logs = Submenu::with_id_and_items(
         app,
         "logs",
@@ -477,6 +478,8 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             // Both logs' folders, with the runner's older logs beside it.
             &MenuItem::with_id(app, "log:folder", "Open the Mycelium folder", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, DEVTOOLS, "Developer Console", true, None::<&str>)?,
         ],
     )?;
     let updates = MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
@@ -640,6 +643,7 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             }
         }
         "quit" => quit(app),
+        DEVTOOLS => open_devtools(app),
         #[cfg(target_os = "macos")]
         "close:tab" => close_tab(app),
         "close:window" => {
@@ -661,6 +665,22 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
 /// The window in front, if one of the app's is.
 fn focused_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     app.webview_windows().into_values().find(|w| w.is_focused().unwrap_or(false))
+}
+
+/// The menus' Developer Console item.
+const DEVTOOLS: &str = "devtools";
+
+/// The web inspector (console, network, the live stream) for the window in
+/// front, or the main one when none is (from the tray). Only a person opens
+/// it, from a menu or its key: a page can't, and nothing in the UI offers it.
+fn open_devtools(app: &AppHandle) {
+    let window = focused_window(app).or_else(|| app.get_webview_window("main"));
+    if let Some(window) = window {
+        if window.label() == "main" {
+            show_main(app);
+        }
+        window.open_devtools();
+    }
 }
 
 /// Close Tab (⌘W): in the main window, the page's front tab, or the window
@@ -716,6 +736,16 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             let view = Submenu::with_items(app, "View", true, &[&actual, &zoom_in, &zoom_out])?;
             menu.append(&view)?;
         }
+    }
+    // The web inspector, at the bottom of View with a browser's key (⌥⌘I).
+    if let Some(view) = menu
+        .items()?
+        .into_iter()
+        .filter_map(|item| item.as_submenu().cloned())
+        .find(|sub| sub.text().is_ok_and(|t| t == "View"))
+    {
+        view.append(&PredefinedMenuItem::separator(app)?)?;
+        view.append(&MenuItem::with_id(app, DEVTOOLS, "Developer Console", true, Some("Alt+CmdOrCtrl+I"))?)?;
     }
     // ⌘W closes the room's front tab (`close.rs`): the first Close Window
     // becomes Close Tab with the key, and any other keeps its name without it.
