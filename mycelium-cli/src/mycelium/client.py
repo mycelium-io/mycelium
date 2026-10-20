@@ -198,15 +198,43 @@ def hub_client(
 ) -> httpx.Client:
     """A raw ``httpx`` client against the hub, authenticated when there's a credential.
 
-    ``base_url`` overrides the configured hub (``room clone`` reads from a
-    *remote* hub) and the credential still applies, since the token is the
-    caller's identity rather than a property of one address.
+    ``base_url`` points it at another hub (``room clone --from``, ``hub
+    settings --hub``). A credential goes only to the hub that issued it, so a
+    client for any other address carries none, and that hub's own gate decides
+    what it may read.
     """
     cfg = _resolve_config(config)
-    merged = {**auth_headers(cfg, handle=handle), **(headers or {})}
+    target = base_url or cfg.server.api_url
+    credentials = auth_headers(cfg, handle=handle) if issued_by(cfg, target) else {}
     return httpx.Client(
-        base_url=base_url or cfg.server.api_url,
+        base_url=target,
         timeout=timeout,
-        headers=merged,
+        headers={**credentials, **(headers or {})},
         **kwargs,
     )
+
+
+def issued_by(config: MyceliumConfig, url: str) -> bool:
+    """Whether ``url`` is the hub this caller's credentials were issued for: the
+    configured hub, or the hub this folder joined (``mycelium join``)."""
+    from mycelium import caller
+
+    hubs = [config.server.api_url]
+    member = caller.find_membership()
+    if member is not None:
+        hubs.append(member.hub)
+    return any(same_origin(url, hub) for hub in hubs if hub)
+
+
+def same_origin(a: str, b: str) -> bool:
+    """Whether two URLs name the same server: scheme, host and port."""
+
+    def origin(url: str) -> tuple[str, str, int | None]:
+        parsed = httpx.URL(url.strip())
+        port = parsed.port or {"http": 80, "https": 443}.get(parsed.scheme)
+        return parsed.scheme, parsed.host.lower(), port
+
+    try:
+        return origin(a) == origin(b)
+    except (httpx.InvalidURL, TypeError):
+        return False
