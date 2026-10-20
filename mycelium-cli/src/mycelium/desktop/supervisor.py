@@ -25,7 +25,10 @@ process and the same thing runs from a terminal with ``mycelium desktop
 serve``. A process that exits is started again, backing off, and one that
 keeps failing is left failed with the reason. A port something else already
 answers on counts as running, so the app sits beside a Docker stack rather
-than fighting it for its ports.
+than fighting it for its ports. The UI is the exception: the window opens on
+it, so one the supervisor didn't start is never used. When its port is taken
+the UI goes on another, said in its status, and it counts as running only
+once it proves it holds this launch's token (:func:`proves_token`).
 
 Each program's output is a pipe, drained by a thread per program. A program
 whose pipe nobody drains blocks on its next write, so a reader survives
@@ -50,8 +53,11 @@ bundle keeps its resources), then a checkout of the repository, then ``PATH``.
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import hmac
 import json
 import os
+import secrets
 import shlex
 import shutil
 import socket
@@ -275,7 +281,7 @@ class Locator:
         """
         return self._bundled("models") or Path.home() / ".mycelium" / "models"
 
-    def ui(self) -> tuple[list[str], Path | None]:
+    def ui(self, port: int = UI_PORT) -> tuple[list[str], Path | None]:
         node = os.environ.get("MYCELIUM_NODE") or self._program("node") or shutil.which("node")
         ui_dir = os.environ.get("MYCELIUM_UI_DIR") or self._bundled("ui")
         if ui_dir and node and runnable_ui(Path(ui_dir)):
@@ -290,7 +296,7 @@ class Locator:
             if shutil.which("pnpm"):
                 # `next dev` ignores HOSTNAME and listens on every interface
                 # unless told; the hub's UI stays on this machine.
-                argv = ["pnpm", "exec", "next", "dev", "-H", HOST, "-p", str(UI_PORT)]
+                argv = ["pnpm", "exec", "next", "dev", "-H", HOST, "-p", str(port)]
                 return argv, frontend
         raise LocateError(
             "This build doesn't include the UI, and there's no Mycelium checkout to run it from."
@@ -334,6 +340,48 @@ def http_ok(url: str, timeout: float = 1.0) -> bool:
         return False
 
 
+def port_free(port: int, host: str = HOST) -> bool:
+    """Whether nothing answers on ``port`` and it can be bound here."""
+    if port_open(port, host):
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def free_port(host: str = HOST) -> int:
+    """A port the system says is free now."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((host, 0))
+        return int(s.getsockname()[1])
+
+
+#: Where the UI server answers the readiness question (``lib/ui-guard.ts``).
+UI_READY_PATH = "/.mycelium/ready"
+
+
+def ui_proof(nonce: str, token: str) -> str:
+    """What the UI server holding ``token`` answers for ``nonce``."""
+    return hmac.new(token.encode(), f"ready\n{nonce}".encode(), hashlib.sha256).hexdigest()
+
+
+def proves_token(base_url: str, token: str, timeout: float = 1.0) -> bool:
+    """Whether the server at ``base_url`` holds ``token``: it answers a fresh
+    nonce with the HMAC only that token makes. The token never crosses the
+    wire, so a program that took the port learns nothing by being asked."""
+    nonce = secrets.token_hex(16)
+    try:
+        resp = httpx.get(f"{base_url}{UI_READY_PATH}", params={"nonce": nonce}, timeout=timeout)
+    except httpx.HTTPError:
+        return False
+    return resp.status_code == 200 and hmac.compare_digest(
+        resp.text.strip(), ui_proof(nonce, token)
+    )
+
+
 @dataclass
 class Component:
     """One program the supervisor keeps running, and what it last said about it."""
@@ -347,6 +395,10 @@ class Component:
     stdin: str | None = None
     #: A check that something outside the supervisor already provides this.
     external: Callable[[], bool] | None = None
+    #: Run before each start (the UI picks its port here).
+    prepare: Callable[[], None] | None = None
+    #: What its status says while it runs.
+    running_detail: str | None = None
     #: Left running when the supervisor stops (herdr: agents live in it).
     outlives: bool = False
     #: What to say when something outside provides it, in place of the default.
@@ -420,6 +472,9 @@ class Supervisor:
         # server alone, on its stdin: never in an environment, where herdr, the
         # runner and every agent pane would inherit it and `ps` would show it.
         self.ui_token = ui_token
+        #: The port the UI server listens on: :data:`UI_PORT` unless something
+        #: else holds it (:meth:`_choose_ui_port`).
+        self.ui_port = UI_PORT
         #: Whether the hub's settings came from config.toml, so a restart the
         #: Hub page asks for reads it again (an env passed in is kept as is).
         self._env_from_config = env is None
@@ -473,7 +528,26 @@ class Supervisor:
 
     @property
     def ui_url(self) -> str:
-        return f"http://{HOST}:{UI_PORT}" if self.mode == "hub" else str(self.hub_url)
+        return f"http://{HOST}:{self.ui_port}" if self.mode == "hub" else str(self.hub_url)
+
+    def _choose_ui_port(self, c: Component) -> None:
+        """Before each start of the UI: :data:`UI_PORT`, else the port it had,
+        else any free one. A UI already on a port is never used, since the
+        window and this launch's token would go to whatever answers there."""
+        if port_free(UI_PORT):
+            self.ui_port, c.running_detail = UI_PORT, None
+        else:
+            if self.ui_port == UI_PORT or not port_free(self.ui_port):
+                self.ui_port = free_port()
+            c.running_detail = f"on port {self.ui_port}: another program is using port {UI_PORT}"
+        c.env["PORT"] = str(self.ui_port)
+
+    def _ui_ready(self) -> bool:
+        """The UI answers, and (in the app) proves it's the one this
+        supervisor handed its token to."""
+        if self.ui_token:
+            return proves_token(self.ui_url, self.ui_token)
+        return http_ok(f"{self.ui_url}/")
 
     def _herdr(self) -> Component:
         """herdr's server, which agents run in: started when it isn't already.
@@ -535,6 +609,9 @@ class Supervisor:
             # Only read by `next dev` (a checkout); it refuses pages opened
             # from a host it wasn't told about.
             "MYCELIUM_ALLOWED_DEV_ORIGINS": f"{HOST},localhost",
+            # A build folder of its own in a checkout, so it runs beside a
+            # `pnpm dev` there (Next allows one dev server per build folder).
+            "MYCELIUM_UI_DIST_DIR": ".next/desktop",
             # This machine's themes (`mycelium theme`), which the app shows and
             # follows. Only a UI the desktop app runs for its own person reads
             # them; one serving many people never gets this.
@@ -544,6 +621,14 @@ class Supervisor:
             # What the UI server asks of every request (`lib/ui-guard.ts`),
             # handed over on its stdin (`instrumentation.ts` reads it once).
             ui_env[UI_TOKEN_STDIN_ENV] = "1"
+        ui = Component(
+            name="ui",
+            argv=lambda: loc.ui(self.ui_port),
+            ready=self._ui_ready,
+            env=ui_env,
+            stdin=self.ui_token,
+        )
+        ui.prepare = lambda: self._choose_ui_port(ui)
         return [
             Component(
                 name="slim",
@@ -559,14 +644,7 @@ class Supervisor:
                 external=lambda: http_ok(f"http://{HOST}:{HUB_PORT}/health"),
                 watch=True,
             ),
-            Component(
-                name="ui",
-                argv=loc.ui,
-                ready=lambda: http_ok(f"http://{HOST}:{UI_PORT}/"),
-                env=ui_env,
-                stdin=self.ui_token,
-                external=lambda: http_ok(f"http://{HOST}:{UI_PORT}/"),
-            ),
+            ui,
         ]
 
     # ── status ───────────────────────────────────────────────────────────────
@@ -642,6 +720,8 @@ class Supervisor:
         if c.external is not None and c.restarts == 0 and c.external():
             self._set(c, "running", c.adopted or "already running (not started by the app)")
             return
+        if c.prepare is not None:
+            c.prepare()
         try:
             argv, cwd = c.argv()
         except LocateError as e:
@@ -734,7 +814,7 @@ class Supervisor:
         if c.state == "starting":
             if c.ready():
                 c.restarts = 0
-                self._set(c, "running")
+                self._set(c, "running", c.running_detail)
             elif time.monotonic() - c.started_at > READY_TIMEOUT_S:
                 self._set(c, "failed", f"{c.name} did not answer within {READY_TIMEOUT_S:.0f}s")
                 self._terminate(c)

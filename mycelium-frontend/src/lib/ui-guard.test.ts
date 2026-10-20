@@ -3,7 +3,15 @@
 
 import { describe, expect, it } from "vitest";
 import { upstreamUrl } from "@/lib/backend";
-import { guardApi, hostAllowed, MEDIA_PARAM, mediaSignatureOk, TOKEN_HEADER, TOKEN_PARAM } from "@/lib/ui-guard";
+import {
+  guardApi,
+  hostAllowed,
+  MEDIA_PARAM,
+  mediaSignatureOk,
+  readyProof,
+  TOKEN_HEADER,
+  TOKEN_PARAM,
+} from "@/lib/ui-guard";
 import { mediaSignature } from "@/lib/ui-token";
 
 const TOKEN = "a".repeat(64);
@@ -105,7 +113,7 @@ describe("a token promised and missing", () => {
   });
 
   it("reads no stand-in token from an empty or failed read", async () => {
-    const { readToken } = await import("@/instrumentation");
+    const { readToken } = await import("@/lib/launch-token");
     expect(readToken(() => "")).toBeNull();
     expect(readToken(() => "  \n")).toBeNull();
     expect(
@@ -127,6 +135,21 @@ describe("proxy matcher", () => {
     // A path like /api/…/notes.txt is the hub's, not a static file the
     // extension exclusion below it is for.
     expect(config.matcher).toContain("/api/:path*");
+  });
+});
+
+describe("readyProof", () => {
+  it("is the HMAC the supervisor checks, and never the token", () => {
+    // The same vector as the supervisor's test (`test_desktop_supervisor.py`).
+    const proof = readyProof("0".repeat(32), TOKEN);
+    expect(proof).toBe("e09458aaecee116ce381f943381097f89f5e436f943082fc27346c2457188ff9");
+    expect(proof).not.toContain(TOKEN);
+  });
+
+  it("can't stand in for a media signature", () => {
+    const exp = Math.floor(Date.now() / 1000) + 600;
+    const sig = `${exp}.${readyProof(String(exp), TOKEN)}`;
+    expect(mediaSignatureOk(sig, "/api/rooms/r/uploads/a.png", TOKEN)).toBe(false);
   });
 });
 

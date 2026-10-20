@@ -126,6 +126,19 @@ export function mediaSignatureOk(
   return tokenMatches(sig, expected);
 }
 
+/** Where the supervisor asks this server to prove it holds this launch's token. */
+export const READY_PATH = "/.mycelium/ready";
+
+/**
+ * The answer to the supervisor's readiness question: an HMAC of its nonce
+ * keyed with this launch's token, so only the server it handed the token to
+ * can give it, and the token itself never crosses the wire. `ready\n` keeps it
+ * apart from a media signature, whose message starts with a path.
+ */
+export function readyProof(nonce: string, token: string): string {
+  return createHmac("sha256", token).update(`ready\n${nonce}`).digest("hex");
+}
+
 function refuse(status: number, detail: string): Response {
   return Response.json({ detail }, { status });
 }

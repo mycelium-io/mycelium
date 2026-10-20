@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-//! A person's sign-in, kept by the app, given to the CLI only with their yes.
+//! A person's sign-in, made and kept by the app, given to the CLI only with
+//! their yes.
 //!
 //! Every agent on this computer runs as the same user as the person, so a
 //! sign-in in a file the CLI reads is one any agent can act as. The app keeps
 //! it instead: in the macOS keychain, on an item only this app can read
 //! without asking, and in memory while the app runs elsewhere. The CLI asks
-//! for it through the supervisor (`mycelium.desktop.session_relay`), which
-//! passes each request here as a `session` event and takes the answer back on
-//! its stdin.
+//! through the supervisor (`mycelium.desktop.session_relay`), which passes
+//! each request here as a `session` event and takes the answer back on its
+//! stdin. `mycelium login` asks the app to sign in (`login`), and the app runs
+//! the browser sign-in itself (`signin.rs`), so the refresh token is never
+//! anywhere but here; a command gets an access token alone.
 //!
 //! Before the CLI gets it, the person is asked: Touch ID or their password on
 //! macOS, a dialog elsewhere, naming the command that asked and its folder (as
@@ -125,21 +128,19 @@ fn answer(app: &AppHandle, event: &Value) -> Value {
             };
             json!({ "ok": true, "session": handed_out(&current) })
         }
-        Some("put") => {
-            let Some(session) = event.get("session").filter(|s| s.is_object()) else {
-                return json!({ "ok": false, "error": "no sign-in to keep" });
+        Some("login") => {
+            let req = match crate::signin::Request::of(event.get("login").unwrap_or(&Value::Null)) {
+                Ok(req) => req,
+                Err(e) => return json!({ "ok": false, "error": e }),
             };
-            let new_handle = handle_of(session);
-            let old_handle = kept.as_ref().and_then(handle_of);
-            let account = new_handle.as_deref().map_or("an account it doesn't name".to_string(), |h| format!("@{h}"));
-            let what = match old_handle {
-                Some(old) if Some(&old) != new_handle.as_ref() => format!(
-                    "replace your sign-in for {hub} as @{old} with one as {account}, from “{}”, run in {}",
-                    caller.command, caller.cwd
+            let what = match kept.as_ref().and_then(handle_of) {
+                Some(old) => format!(
+                    "sign in to {hub} with {} in your browser, in place of your sign-in as @{old}, for “{}”, run in {}",
+                    req.issuer, caller.command, caller.cwd
                 ),
-                _ => format!(
-                    "keep a sign-in for {hub} as {account}, from “{}”, run in {}",
-                    caller.command, caller.cwd
+                None => format!(
+                    "sign in to {hub} with {} in your browser, for “{}”, run in {}",
+                    req.issuer, caller.command, caller.cwd
                 ),
             };
             // Always asked: whose account your commands act as is never covered
@@ -147,10 +148,23 @@ fn answer(app: &AppHandle, event: &Value) -> Value {
             if !approved(app, &sessions, None, &what) {
                 return refused();
             }
-            match store(&sessions, hub, &session.to_string()) {
-                Ok(()) => json!({ "ok": true }),
-                Err(e) => json!({ "ok": false, "error": e }),
+            let session = match crate::signin::sign_in(&req) {
+                Ok(session) => session,
+                Err(e) => return json!({ "ok": false, "error": e }),
+            };
+            if let Err(e) = store(&sessions, hub, &session.to_string()) {
+                return json!({ "ok": false, "error": e });
             }
+            // The person just said yes from this terminal, so the command that
+            // asked (which goes on to use it) isn't asked again at once.
+            if let Some(key) = caller.grace_key(hub) {
+                sessions.approved.lock().unwrap().insert(key, Instant::now());
+            }
+            json!({
+                "ok": true,
+                "session": handed_out(&session),
+                "refreshable": session.get("refresh_token").is_some_and(Value::is_string),
+            })
         }
         Some("delete") => {
             let Some(kept) = kept else { return json!({ "ok": false }) };

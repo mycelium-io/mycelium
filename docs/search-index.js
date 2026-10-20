@@ -1572,7 +1572,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-where-your-sign-in-is-kept",
     "t": "Where your sign-in is kept",
     "s": "Security › Authentication",
-    "x": "Every agent on your computer runs as you, so a sign-in in a file the CLI can read is one any agent could use to act as you. So the desktop app keeps it: With the desktop app running, mycelium login hands your sign-in to the app. When a command needs it, the app asks you first: Touch ID or your password on macOS, a dialog on Windows and Linux. After you say yes, commands for the next few minutes don't ask again, so ty",
+    "x": "Every agent on your computer runs as you, so a sign-in in a file the CLI can read is one any agent could use to act as you. So the desktop app keeps it: With the desktop app running, mycelium login asks the app to sign you in. The app asks you first, opens your browser to sign in, and keeps what comes back, so the CLI never holds the part of a sign-in that lasts (the refresh token). When a command needs your sign-in,",
     "p": "Guides"
   },
   {

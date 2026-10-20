@@ -16,6 +16,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import webbrowser
 
 import typer
@@ -60,20 +61,13 @@ def _container_running(name: str) -> bool:
 
 
 def _open_app_ui() -> None:
-    """Open the UI the desktop app serves, or the app itself when it isn't up."""
-    from mycelium.desktop.supervisor import HOST, UI_PORT, port_open
-
-    url = f"http://{HOST}:{UI_PORT}"
-    if port_open(UI_PORT):
-        typer.echo(f"Opening {url}")
-        webbrowser.open(url)
-        return
-    typer.secho("⚠ The Mycelium app isn't serving its UI.", fg=typer.colors.YELLOW)
-    if shutil.which("open"):
-        typer.echo("  Opening the Mycelium app…")
+    """Bring up the desktop app's window. Its UI answers only the app's own
+    window (it holds this launch's token), so a browser tab can't use it."""
+    if sys.platform == "darwin" and shutil.which("open"):
+        typer.echo("Opening Mycelium…")
         subprocess.run(["open", "-b", "io.mycelium.desktop"], check=False)  # noqa: S607
     else:
-        typer.echo("  Open the Mycelium app to start it.")
+        typer.echo("Open the Mycelium app; its window is where this hub's UI is.")
 
 
 @doc_ref(
@@ -88,8 +82,8 @@ def ui_open(
 ) -> None:
     """Open the frontend in your default browser.
 
-    When the desktop app runs this machine's hub, opens the app's UI (or the
-    app, when it isn't running). Otherwise, if the frontend container isn't
+    When the desktop app runs this machine's hub, opens the app's window
+    instead, the one place its UI answers. Otherwise, if the frontend container isn't
     running, offers to start the stack with `mycelium up` first. Pass `-y`
     to skip the prompt and start it automatically.
 

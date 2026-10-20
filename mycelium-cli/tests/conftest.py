@@ -353,6 +353,8 @@ def _no_ambient_agent_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     from mycelium import session_store
 
     session_store._cache.clear()
+    monkeypatch.setattr(session_store, "_warned", False)
+    monkeypatch.setattr(session_store, "_warned_impostor", False)
 
 
 @pytest.fixture

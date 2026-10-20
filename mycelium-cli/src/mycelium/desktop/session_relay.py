@@ -14,7 +14,15 @@ Any program running as this user can reach the socket, agents included. What
 it can't do is answer the app's question, which is why the question is asked
 on every read after a short grace (the app's to set).
 
-    request: {"op": "get" | "put" | "delete", "hub": "<origin>", "session": {...}}
+A sign-in is made by the app too (``login``): it runs the browser sign-in
+itself and keeps what it gets, so the CLI never holds or sends a refresh
+token. A command gets an access token alone.
+
+Any program can also listen where the socket is, so before the CLI believes
+an answer it checks who is listening (:func:`listener_is_app`): on macOS, a
+program signed by Mycelium whose parent is the signed app.
+
+    request: {"op": "get" | "login" | "delete", "hub": "<origin>", "login": {...}}
     reply:   {"ok": true, "session": {...} | null} or {"ok": false, "error": "..."}
 """
 
@@ -43,6 +51,14 @@ def socket_path() -> Path:
 
 #: How long a request waits for the person to answer the app.
 ANSWER_S = 120.0
+#: How long a sign-in may take, in the browser, after the question.
+LOGIN_S = 330.0
+#: Who signs the desktop app (its Developer ID team) and the app's own id.
+APP_TEAM = "4U24U28B5M"
+APP_ID = "io.mycelium.desktop"
+#: Set by someone running an unsigned build of the app (development), so the
+#: CLI talks to it without the signature check.
+UNSIGNED_APP_ENV = "MYCELIUM_DESKTOP_UNSIGNED"
 #: macOS's level and option for the peer's pid on a Unix socket.
 _SOL_LOCAL, _LOCAL_PEERPID = 0, 0x002
 #: How much of a command line the app's question shows.
@@ -61,6 +77,55 @@ def peer_pid(conn: socket.socket) -> int | None:
     except OSError:
         return None
     return None
+
+
+def _signed(pid: int, requirement: str) -> bool:
+    """Whether the running process ``pid`` satisfies a code requirement. The
+    system checks the code it is running, not a file that could be swapped;
+    its resources aren't checked, since the UI server's cache writes there."""
+    try:
+        done = subprocess.run(  # noqa: S603 - codesign by absolute path, a pid from the kernel
+            ["/usr/bin/codesign", "--verify", "--ignore-resources", f"-R={requirement}", str(pid)],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return done.returncode == 0
+
+
+def _parent(pid: int) -> int | None:
+    try:
+        out = subprocess.run(  # noqa: S603 - ps by absolute path, a pid from the kernel
+            ["/bin/ps", "-o", "ppid=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        ).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return int(out) if out.isdigit() else None
+
+
+def listener_is_app(conn: socket.socket) -> bool | None:
+    """Whether what listens on the other end of ``conn`` is the desktop app's
+    supervisor: a program Mycelium signed, started by the signed app.
+
+    ``True`` or ``False`` on macOS, where the system can tell; ``None`` where it
+    can't (the check is skipped there, and for an unsigned development build
+    when :data:`UNSIGNED_APP_ENV` is set)."""
+    if sys.platform != "darwin" or os.environ.get(UNSIGNED_APP_ENV) == "1":
+        return None
+    pid = peer_pid(conn)
+    if pid is None:
+        return False
+    team = f'anchor apple generic and certificate leaf[subject.OU] = "{APP_TEAM}"'
+    if not _signed(pid, team):
+        return False
+    parent = _parent(pid)
+    return parent is not None and _signed(parent, f'{team} and identifier "{APP_ID}"')
 
 
 def describe_peer(conn: socket.socket) -> dict[str, str | None]:
@@ -125,7 +190,15 @@ def _homed(path: str) -> str:
 
 
 #: The operations a request may name.
-OPS = frozenset({"get", "put", "delete"})
+OPS = frozenset({"get", "login", "delete"})
+#: What a ``login`` request may say, and the type each must be.
+LOGIN_FIELDS = {
+    "issuer": str,
+    "client_id": str,
+    "scope": str,
+    "audience": str,
+    "redirect_port": int,
+}
 
 
 class SessionRelay:
@@ -192,7 +265,8 @@ class SessionRelay:
 
     def _serve(self, conn: socket.socket) -> None:
         caller = describe_peer(conn)
-        with conn, conn.makefile("rw", encoding="utf-8") as stream:
+        # A caller that hung up (one only checking the app is here) gets nothing.
+        with contextlib.suppress(OSError), conn, conn.makefile("rw", encoding="utf-8") as stream:
             reply = self._handle(stream.readline(), caller)
             stream.write(json.dumps(reply) + "\n")
             stream.flush()
@@ -214,15 +288,19 @@ class SessionRelay:
         # Who's asking, as the system says (never as the request says): the app
         # names it in its question and keeps a yes to that one terminal.
         event["caller"] = caller or {"command": None, "cwd": None, "tty": None}
-        if op == "put":
-            event["session"] = request.get("session")
+        if op == "login":
+            asked = request.get("login") if isinstance(request.get("login"), dict) else {}
+            event["login"] = {
+                k: asked[k] for k, kind in LOGIN_FIELDS.items() if isinstance(asked.get(k), kind)
+            }
         self.emit(event)
         try:
-            if not done.wait(ANSWER_S):
+            if not done.wait(LOGIN_S if op == "login" else ANSWER_S):
                 return {"ok": False, "error": "Mycelium didn't answer in time"}
             reply = slot[0]
         finally:
             with self._lock:
                 self._waiting.pop(rid, None)
         return {"ok": bool(reply.get("ok")), "session": reply.get("session"),
+                "refreshable": bool(reply.get("refreshable")),
                 "error": reply.get("error")}  # fmt: skip

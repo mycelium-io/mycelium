@@ -4467,13 +4467,21 @@ want against a hub with auth off.
 Every agent on your computer runs as you, so a sign-in in a file the CLI can
 read is one any agent could use to act as you. So the desktop app keeps it:
 
-- **With the desktop app running,** `mycelium login` hands your sign-in to the
-  app. When a command needs it, the app asks you first: Touch ID or your
-  password on macOS, a dialog on Windows and Linux. After you say yes, commands
-  for the next few minutes don't ask again, so typing several in a row asks
-  once. An agent can't answer that question. On macOS the app keeps your
-  sign-in in the keychain; on Windows and Linux it keeps it while it runs, so
-  you sign in again after restarting it.
+- **With the desktop app running,** `mycelium login` asks the app to sign you
+  in. The app asks you first, opens your browser to sign in, and keeps what
+  comes back, so the CLI never holds the part of a sign-in that lasts (the
+  refresh token). When a command needs your sign-in, the app asks you again:
+  Touch ID or your password on macOS, a dialog on Windows and Linux. A yes
+  covers commands from that terminal for the next few minutes, so typing
+  several in a row asks once. An agent can't answer that question. The command
+  gets a token that runs out in minutes, and the app renews it. On macOS the
+  app keeps your sign-in in the keychain; on Windows and Linux it keeps it
+  while it runs, so you sign in again after restarting it.
+- **On macOS the CLI checks who it's asking.** It only talks to a program
+  that macOS confirms is signed by Mycelium and started by the Mycelium app.
+  A program listening in the app's place is ignored, with a warning. If you
+  build the app yourself, unsigned, set `MYCELIUM_DESKTOP_UNSIGNED=1` in your
+  own shell to skip the check.
 - **Inside an agent's terminal,** the CLI never uses your sign-in. A command
   there acts as that agent alone, and `--as` someone else is refused.
 - **Without the desktop app,** such as on a server over SSH, your sign-in isn't
@@ -4482,9 +4490,19 @@ read is one any agent could use to act as you. So the desktop app keeps it:
   only by you (`0600`), but readable by any program running as you, agents
   included. Make that choice only on a machine where that's acceptable.
 
-A `token.json` from an older version is moved into the app's keeping the first
-time the app is running to take it, then deleted. Until then, commands warn
-that it's readable by any program running as you. `MYCELIUM_TOKEN_FILE` still
+This keeps your sign-in from an agent doing ordinary things: running
+`mycelium`, reading and writing files in your folders, or starting a program
+that listens for connections. It can't keep it from a program that does
+anything at all as you, which could replace the `mycelium` program itself. If
+you run agents you don't trust that far, run them in a sandbox that limits
+what they can do on your computer, such as the one Codex has.
+
+A sign-in provider that needs a client secret (`login.client_secret`) is
+signed in by the CLI rather than the app, and kept only with `--remember`.
+
+A `token.json` from an older version still works, and commands warn that any
+program running as you can read it. Run `mycelium login` with the app open to
+have the app keep your sign-in, which deletes the file. `MYCELIUM_TOKEN_FILE` still
 moves the `--remember` file somewhere else, which helps on a CI runner with a
 shared home folder.
 

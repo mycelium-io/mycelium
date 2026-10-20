@@ -35,6 +35,10 @@ const nextConfig: NextConfig & { agentRules?: boolean } = {
   // reverse proxy in production anyway).
   compress: false,
   allowedDevOrigins,
+  // The desktop app's supervisor, run from a checkout, starts its own `next
+  // dev` here, so it runs beside a `pnpm dev` in the same folder (Next allows
+  // one dev server per build folder).
+  ...(process.env.MYCELIUM_UI_DIST_DIR ? { distDir: process.env.MYCELIUM_UI_DIST_DIR } : {}),
 };
 
 export default nextConfig;

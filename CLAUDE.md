@@ -252,11 +252,18 @@ module; read it before changing what a rule protects.
 - **The hub never fetches what a caller names.** Patterns load from a folder
   the operator provides (`app/services/patterns.py`).
 - **Agents run as the person, so a person's sign-in is never readable as a
-  file.** The desktop app keeps it and asks the person (Touch ID or password,
-  with a few minutes' grace) before the CLI gets it (`session_store.py`,
-  `desktop/session_relay.py`, `src-tauri/src/sessions.rs`); an agent's pane
-  never uses it (`caller.in_agent_pane`); `login --remember` is the warned
-  file. A credential goes only to the hub that issued it (`client.hub_client`).
+  file.** The desktop app runs the sign-in itself (`src-tauri/src/signin.rs`)
+  and keeps it, refresh token included, and asks the person (Touch ID or
+  password, with a few minutes' grace) before a command gets an access token
+  (`session_store.py`, `desktop/session_relay.py`, `src-tauri/src/sessions.rs`).
+  The CLI talks only to a listener macOS says is signed by Mycelium and started
+  by the app (`session_relay.listener_is_app`). An agent's pane never uses it
+  (`caller.in_agent_pane`); `login --remember` is the warned file. A credential
+  goes only to the hub that issued it (`client.hub_client`). The line these
+  hold is an agent doing ordinary things (running the CLI, reading and writing
+  files, listening on a socket or port); one that can run anything as the
+  person could replace the CLI itself, which only an OS sandbox around the
+  agent stops.
 - **The UI server answers only its own pages** (`src/proxy.ts`,
   `lib/ui-guard.ts`): a name it serves (loopback, an IP, `ui.public_host`),
   its own origin, JSON bodies, and in the desktop app a per-launch token the
@@ -264,6 +271,9 @@ module; read it before changing what a rule protects.
   → UI server on stdin, never in an environment (`ps` shows those to every
   program as the user); media and download URLs carry a short-lived signature
   for one path instead of it; and the UI proxy strips both before the hub.
+  The supervisor never adopts a UI it didn't start: a taken port moves the UI
+  to another, and the window opens only once the server answering proves it
+  holds the token (`supervisor.proves_token`, an HMAC of a fresh nonce).
 - **Usage counts carry kinds and outcomes, never a name, handle, room or
   text**, and sending them is off by default (`app/services/analytics.py`).
 - **Voice is opt-in**, and the hub never loads the speech model in its own
