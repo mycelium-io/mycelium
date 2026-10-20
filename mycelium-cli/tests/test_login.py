@@ -476,14 +476,10 @@ def test_login_caches_the_session_and_remembers_the_issuer(
         ),
     )
 
-    # No desktop app here, so only --remember keeps it (in a file).
-    result = runner.invoke(
-        app, ["login", "--remember", "--issuer", "https://idp.test/realms/mycelium"]
-    )
+    result = runner.invoke(app, ["login", "--issuer", "https://idp.test/realms/mycelium"])
 
     assert result.exit_code == 0
     assert "Signed in as @avery" in _flat(result.stdout)
-    assert "Any program running as you can read it" in _flat(result.stdout)
 
     cached = load_token()
     assert cached is not None
@@ -509,7 +505,7 @@ def test_login_device_flag_takes_the_device_path(monkeypatch: pytest.MonkeyPatch
     )
 
     result = runner.invoke(
-        app, ["login", "--device", "--remember", "--issuer", "https://idp.test/realms/mycelium"]
+        app, ["login", "--device", "--issuer", "https://idp.test/realms/mycelium"]
     )
 
     assert result.exit_code == 0
@@ -535,9 +531,7 @@ def test_login_falls_back_to_device_code_when_there_is_no_browser(
         lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": "avery"})),
     )
 
-    result = runner.invoke(
-        app, ["login", "--remember", "--issuer", "https://idp.test/realms/mycelium"]
-    )
+    result = runner.invoke(app, ["login", "--issuer", "https://idp.test/realms/mycelium"])
 
     assert result.exit_code == 0
     assert "falling back to the device-code flow" in _flat(result.stdout)
@@ -1051,10 +1045,6 @@ def test_a_refresh_carries_the_deadline_of_whichever_token_survives(
     assert renewed.refresh_expires_at is not None
     assert renewed.refresh_expires_at > original
 
-    # A new command, which looks the session up afresh.
-    from mycelium import session_store
-
-    session_store._cache.clear()
     save_token(
         _token(access_token="at-stale", expires_at=time.time() - 10, refresh_expires_at=original)
     )

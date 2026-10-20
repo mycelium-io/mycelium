@@ -46,15 +46,23 @@ struct Inner {
 
 pub struct Supervisor {
     inner: Mutex<Inner>,
-    /// This launch's token for the UI server (`sessions::launch_token`): in
-    /// memory, in the supervisor's environment and the window's fragment only.
+    /// This launch's token for the UI server to require of every request:
+    /// held in memory, handed to the supervisor on its stdin and to the window
+    /// in its URL fragment, never written down.
     launch_token: String,
 }
 
 impl Default for Supervisor {
     fn default() -> Self {
-        Self { inner: Mutex::default(), launch_token: crate::sessions::launch_token() }
+        Self { inner: Mutex::default(), launch_token: launch_token() }
     }
+}
+
+/// A fresh token for this launch: 32 random bytes, as hex.
+fn launch_token() -> String {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).expect("the system's random source");
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 impl Supervisor {
@@ -164,17 +172,6 @@ pub fn restart(app: &AppHandle, settings: Settings) {
     };
     let app = app.clone();
     thread::spawn(move || run(app, settings, generation));
-}
-
-/// A line for the supervisor's stdin: an answer to a request it passed up.
-pub fn reply(app: &AppHandle, line: &str) {
-    use std::io::Write;
-
-    let sup = app.state::<Supervisor>();
-    let mut inner = sup.inner.lock().unwrap();
-    if let Some(stdin) = inner.stdin.as_mut() {
-        let _ = writeln!(stdin, "{line}").and_then(|()| stdin.flush());
-    }
 }
 
 fn command(settings: &Settings) -> Result<Command, String> {
@@ -347,8 +344,6 @@ fn handle_line(app: &AppHandle, generation: u64, line: &str) {
         }
         Some("log") => crate::on_log(app, &value),
         Some("request") => crate::on_request(app, &value),
-        // The CLI asking for a person's sign-in (`sessions`).
-        Some("session") => crate::sessions::on_event(app, &value),
         _ => {}
     }
 }

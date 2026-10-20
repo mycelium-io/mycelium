@@ -71,11 +71,6 @@ def current_token(config: MyceliumConfig | None = None) -> StoredToken | None:
     stored, where = session_store.load(cfg)
     if stored is None or not stored.is_expired():
         return stored
-    if where == session_store.APP:
-        # The app keeps the refresh token and renews it; a command only ever
-        # holds an access token, so it asks the app again for a fresh one.
-        stored, where = session_store.load(cfg, fresh=True)
-        return stored if stored is not None and not stored.is_expired() else None
 
     refreshed = _refresh(stored, cfg)
     if refreshed is not None:

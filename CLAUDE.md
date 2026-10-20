@@ -251,21 +251,14 @@ module; read it before changing what a rule protects.
   plain HTTPS until `slima2a` stops pinning an older `a2a-sdk` (#726).
 - **The hub never fetches what a caller names.** Patterns load from a folder
   the operator provides (`app/services/patterns.py`).
-- **Agents run as the person, so a person's sign-in is never readable as a
-  file.** The desktop app runs the sign-in itself (`src-tauri/src/signin.rs`)
-  and keeps it, refresh token included, and asks the person (Touch ID or
-  password, with a few minutes' grace) before a command gets an access token
-  (`session_store.py`, `desktop/session_relay.py`, `src-tauri/src/sessions.rs`).
-  The CLI talks only to a listener macOS says is signed by Mycelium and started
-  by the app (`session_relay.listener_is_app`). An agent's pane never uses it
-  (`caller.in_agent_pane`); `login --remember` is the warned file. A credential
-  goes only to the hub that issued it (`client.hub_client`). The line these
-  hold is an agent doing ordinary things: running the CLI, reading the
-  person's files, writing files nothing runs or loads as code, listening on a
-  socket or port. Writing a file the person's programs later run or load
-  (shell startup files, anything on `PATH`, the CLI's install, the app bundle)
-  is running code as the person, which only an OS sandbox around the agent
-  stops.
+- **A person's sign-in is the normal flow, kept in the system keychain.**
+  `mycelium login` keeps the session, refresh token included, and commands
+  renew it quietly, like `gh` (`session_store.py`). It lives in the system
+  keychain, one entry per hub, and in a `0600` file only where there's no
+  keychain. Agents are treated as relatively trusted, so there's no prompt
+  before use. Two guard rails: an agent's pane never uses the person's sign-in
+  or acts as anyone else (`caller.in_agent_pane`), and a credential goes only
+  to the hub that issued it (`client.hub_client`).
 - **The UI server answers only its own pages** (`src/proxy.ts`,
   `lib/ui-guard.ts`): a name it serves (loopback, an IP, `ui.public_host`),
   its own origin, JSON bodies, and in the desktop app a per-launch token the

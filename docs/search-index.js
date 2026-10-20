@@ -1579,7 +1579,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-where-your-sign-in-is-kept",
     "t": "Where your sign-in is kept",
     "s": "Security › Authentication",
-    "x": "Every agent on your computer runs as you, so a sign-in in a file the CLI can read is one any agent could use to act as you. So the desktop app keeps it: With the desktop app running, mycelium login asks the app to sign you in. The app asks you first, opens your browser to sign in, and keeps what comes back, so the CLI never holds the part of a sign-in that lasts (the refresh token). When a command needs your sign-in,",
+    "x": "mycelium login keeps your sign-in in the system keychain: the macOS Keychain, Windows Credential Manager, or the Secret Service on Linux. There's one entry for each hub you sign in to. Where there's no keychain to use, such as a server with no Secret Service, it keeps it in ~/.mycelium/token.json, readable only by you (0600), and mycelium login says so. Inside an agent's terminal, the CLI never uses your sign-in. A c",
     "p": "Guides"
   },
   {

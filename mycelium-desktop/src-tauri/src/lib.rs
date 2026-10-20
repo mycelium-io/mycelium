@@ -14,10 +14,8 @@
 mod close;
 mod download;
 mod paths;
-mod sessions;
 mod settings;
 mod signature;
-mod signin;
 mod supervisor;
 mod terminal;
 mod updates;
@@ -270,7 +268,6 @@ pub(crate) fn on_status(app: &AppHandle, generation: u64, status: &Value) {
     }
     follow_ui(app, status);
     ask_about_integrations(app);
-    ask_about_old_sign_in(app, status);
     let sup = app.state::<Supervisor>();
     let Some(path) = sup.take_ready(generation) else { return };
     let Some(ui) = status.get("ui_url").and_then(Value::as_str) else { return };
@@ -361,43 +358,6 @@ fn ask_about_integrations(app: &AppHandle) {
         let answer: &[&str] = if install { &["--install", "--yes"] } else { &["--decline"] };
         if !machine_integrations(answer).is_some_and(|o| o.status.success()) {
             eprintln!("[mycelium] couldn't save the answer about herdr's integrations");
-        }
-    });
-}
-
-/// Once a launch, while a sign-in from before the app kept them is still in a
-/// file any program can read (`old_sign_in` in the status): offer to sign in
-/// again through the app. A yes runs `mycelium login`, which asks the app to
-/// sign in (its own question follows) and deletes the file once that works.
-fn ask_about_old_sign_in(app: &AppHandle, status: &Value) {
-    static ASKED: AtomicBool = AtomicBool::new(false);
-    let Some(file) = status.get("old_sign_in").and_then(Value::as_str).map(String::from) else { return };
-    if ASKED.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    let app = app.clone();
-    std::thread::spawn(move || {
-        let again = app
-            .dialog()
-            .message(format!(
-                "Your sign-in is saved in {file}, which any program on this {MACHINE} can read, \
-                 agents included.\n\nSign in again so Mycelium keeps it instead? The file is \
-                 deleted once you're signed in."
-            ))
-            .title("Keep your sign-in in Mycelium?")
-            .buttons(MessageDialogButtons::OkCancelCustom("Sign in".into(), "Not now".into()))
-            .blocking_show();
-        if !again {
-            return;
-        }
-        let Some(bin) = paths::resolve("mycelium") else { return };
-        let done = paths::command(bin).arg("login").env("PATH", paths::shell_path()).output();
-        if !done.is_ok_and(|o| o.status.success()) {
-            app.dialog()
-                .message("Signing in didn't finish, so the file is still there. Run `mycelium login` to try again.")
-                .title("Mycelium")
-                .kind(MessageDialogKind::Warning)
-                .blocking_show();
         }
     });
 }
@@ -1509,7 +1469,6 @@ pub fn run() {
         .on_menu_event(on_menu_event)
         .manage(Shell::default())
         .manage(Supervisor::default())
-        .manage(sessions::Sessions::default())
         .manage(Terminal::default())
         .manage(zoom::Zoom::default())
         .invoke_handler(tauri::generate_handler![

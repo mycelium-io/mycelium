@@ -99,10 +99,7 @@ class EventWriter:
             self._write(event)
 
     def _write(self, event: dict[str, Any]) -> None:
-        # A sign-in on its way to the app (``session_relay``) goes to stdout
-        # alone: the log is a file on disk that any program can read.
-        logged = {**event, "session": "(withheld)"} if "session" in event else event
-        lines = [self.line(logged)]
+        lines = [self.line(event)]
         if self.dropped:
             lost, self.dropped = self.dropped, 0
             lines.insert(0, f"(left out {lost} lines that couldn't be written in time)")

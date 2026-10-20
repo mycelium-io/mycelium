@@ -6,12 +6,11 @@
 
 The browser flow (Authorization Code + PKCE) is the default; ``--device`` is the
 fallback for a shell whose browser can't reach this machine's loopback address:
-SSH, CI, a container. With the desktop app running, the app runs the browser
-sign-in itself and keeps the session, asking the person before a command uses
-it (``mycelium.session_store``), so the refresh token never reaches the CLI.
-Without it, the CLI signs in, and keeps the session only with ``--remember``,
-in a ``0600`` file. Every later backend call carries
-it, because they all build their client through ``mycelium.client``. A successful
+SSH, CI, a container. Both end the same way: the session, refresh token
+included, is kept in the system keychain (or a ``0600`` file where there's no
+keychain, ``mycelium.session_store``), and every later backend call carries it
+and renews it quietly, because they all build their client through
+``mycelium.client``. An agent's pane can't sign in as a person. A successful
 login also points this machine's ``identity.name`` at the token's own handle,
 since a gated hub refuses a write that claims a different one.
 
@@ -41,7 +40,7 @@ from mycelium.oidc import (
     device_code_login,
     discover,
 )
-from mycelium.tokens import DEFAULT_LEEWAY_S, StoredToken, format_span, token_path
+from mycelium.tokens import DEFAULT_LEEWAY_S, StoredToken, format_span
 
 console = Console()
 
@@ -186,7 +185,6 @@ def _report(
     alignment: str,
     json_output: bool,
     kept: str,
-    refreshable: bool,
 ) -> None:
     from mycelium import session_store
 
@@ -201,14 +199,13 @@ def _report(
                     "issuer": token.issuer,
                     "client_id": token.client_id,
                     "expires_at": token.expires_at,
-                    "refreshable": refreshable,
+                    "refreshable": bool(token.refresh_token),
                     # Null means the issuer reported no refresh_expires_in, not
                     # that renewal is unlimited.
                     "refresh_expires_at": token.refresh_expires_at,
                     "renewal_leeway_s": DEFAULT_LEEWAY_S,
                     "identity": config.identity.name,
-                    # Where it's kept: the desktop app, a --remember file, or
-                    # nowhere (this command only).
+                    # Where it's kept: the system keychain, or a 0600 file.
                     "kept": kept,
                 },
                 indent=2,
@@ -219,9 +216,7 @@ def _report(
     console.print(f"[green]Signed in as[/green] [cyan]@{shown}[/cyan] [dim]({token.issuer})[/dim]")
     if remaining is not None:
         console.print(f"[dim]Access token valid for {format_span(remaining)}.[/dim]")
-    if refreshable and kept == session_store.APP:
-        console.print("[dim]Mycelium renews it when a command asks for it.[/dim]")
-    elif refreshable:
+    if token.refresh_token:
         # A short access-token lifetime reads as "sign in again in four minutes"
         # unless the renewal is stated with it. There is no schedule to state:
         # the next call that needs the token is what renews it.
@@ -241,21 +236,12 @@ def _report(
             "[dim]No refresh token was issued, so the session ends when this access token "
             "does; add the 'offline_access' scope if you want it renewed automatically.[/dim]"
         )
-    if kept == session_store.APP:
-        console.print(
-            "[dim]Kept by Mycelium. A command that uses it asks you first (Touch ID or your "
-            "password on macOS), so an agent running as you can't.[/dim]"
-        )
-    elif kept == session_store.FILE:
-        console.print(
-            f"[yellow]Kept in {token_path()}[/yellow] [dim](mode 0600). Any program running "
-            "as you can read it, agents included.[/dim]"
-        )
+    if kept == session_store.KEYCHAIN:
+        console.print("[dim]Kept in the system keychain.[/dim]")
     else:
         console.print(
-            "[yellow]Not kept:[/yellow] Mycelium isn't running here to keep it. Open "
-            "Mycelium and sign in again, or run [cyan]mycelium login --remember[/cyan] to keep "
-            "it in a file any program running as you can read."
+            f"[yellow]Kept in {session_store.where_described(kept)}[/yellow] [dim](mode 0600): "
+            "there's no system keychain to keep it in here.[/dim]"
         )
 
     if alignment in (_ALIGNED, _UNREGISTERED):
@@ -310,22 +296,11 @@ def login(
     timeout: float = typer.Option(
         300.0, "--timeout", "-t", help="Seconds to wait for you to finish signing in."
     ),
-    remember: bool = typer.Option(
-        False,
-        "--remember",
-        help=(
-            "Without the desktop app: keep the sign-in in a file. Any program running as "
-            "you can read it, agents included."
-        ),
-    ),
 ) -> None:
-    """Sign in to the hub, through the desktop app when it's running.
+    """Obtain an OIDC token for the hub and keep it for later commands.
 
-    The app asks you, signs in in your browser and keeps the sign-in, and asks
-    you again (Touch ID or your password on macOS) before a command uses it,
-    so an agent running as you can't. Without the app
-    it isn't kept, unless ``--remember`` writes it to a file. An agent's pane
-    can't sign in as a person.
+    It's kept in the system keychain (a ``0600`` file where there's none), and
+    renewed quietly when it runs out. An agent's pane can't sign in as a person.
 
     With neither ``--issuer`` nor ``login.issuer``, the hub named by
     ``server.api_url`` is asked for the issuer it trusts, and a single answer is
@@ -334,10 +309,9 @@ def login(
     Examples:
         mycelium login
         mycelium login --issuer https://sso.example.com/realms/mycelium
-        mycelium login --device             # headless / SSH / CI
-        mycelium login --device --remember  # a server with no desktop app
+        mycelium login --device        # headless / SSH / CI
     """
-    from mycelium import caller
+    from mycelium import caller, session_store
 
     config = MyceliumConfig.load()
     json_output = ctx.obj.get("json", False) if ctx.obj else False
@@ -359,58 +333,6 @@ def login(
     resolved_client_id = (client_id or config.login.client_id).strip()
     resolved_scope = (scope or config.login.scopes).strip()
     resolved_audience = audience or config.login.audience
-
-    from mycelium import session_store
-
-    def finish(token: StoredToken, *, kept: str, refreshable: bool) -> None:
-        _persist_login_config(
-            config,
-            # A discovered issuer is remembered like a passed one: it cost a round
-            # trip, and it is only written once the login it drove actually worked.
-            issuer=issuer or discovered,
-            client_id=client_id,
-            audience=audience,
-            scope=scope,
-            json_output=json_output,
-        )
-        handle = token.handle(config.auth.handle_claim) or token.handle()
-        alignment = _align_identity(config, handle) if handle else _SKIPPED
-        _report(
-            token,
-            config,
-            handle=handle,
-            alignment=alignment,
-            json_output=json_output,
-            kept=kept,
-            refreshable=refreshable,
-        )
-
-    # With the app here, the app signs in and keeps the result, so the refresh
-    # token never reaches this process (`session_store.login_in_app`). The app
-    # takes no client secret, so a client that needs one signs in here.
-    if not config.login.client_secret and session_store.app_running():
-        if not json_output:
-            if device:
-                console.print(
-                    "[dim]Mycelium signs you in in your browser; --device is for a "
-                    "machine without the app.[/dim]"
-                )
-            console.print("[dim]Mycelium asks you first, then opens your browser to sign in.[/dim]")
-        try:
-            made = session_store.login_in_app(
-                config,
-                issuer=resolved_issuer,
-                client_id=resolved_client_id,
-                scope=resolved_scope,
-                audience=resolved_audience,
-                redirect_port=config.login.redirect_port,
-            )
-        except session_store.LoginFailed as exc:
-            console.print(f"[red]Login failed:[/red] {exc}")
-            raise typer.Exit(1) from exc
-        if made is not None:
-            finish(made[0], kept=session_store.APP, refreshable=made[1])
-            return
 
     try:
         meta: ProviderMetadata = discover(resolved_issuer)
@@ -460,8 +382,22 @@ def login(
         token_endpoint=meta.token_endpoint,
         scope=grant.scope or resolved_scope,
     )
-    kept = session_store.save(config, token, remember=remember)
-    finish(token, kept=kept, refreshable=bool(token.refresh_token))
+    kept = session_store.save(config, token)
+
+    _persist_login_config(
+        config,
+        # A discovered issuer is remembered like a passed one: it cost a round
+        # trip, and it is only written once the login it drove actually worked.
+        issuer=issuer or discovered,
+        client_id=client_id,
+        audience=audience,
+        scope=scope,
+        json_output=json_output,
+    )
+
+    handle = token.handle(config.auth.handle_claim) or token.handle()
+    alignment = _align_identity(config, handle) if handle else _SKIPPED
+    _report(token, config, handle=handle, alignment=alignment, json_output=json_output, kept=kept)
 
 
 @doc_ref(
@@ -470,7 +406,7 @@ def login(
     group="setup",
 )
 def logout(ctx: typer.Context) -> None:
-    """Forget the sign-in, wherever it was kept."""
+    """Forget the session, wherever it was kept."""
     from mycelium import session_store
 
     json_output = ctx.obj.get("json", False) if ctx.obj else False
