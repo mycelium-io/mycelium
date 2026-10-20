@@ -31,6 +31,9 @@
     "allow-terminal-write",
     "allow-terminal-resize",
     "allow-terminal-close",
-    "allow-terminal-agents"
+    "allow-terminal-agents",
+    "allow-app-versions",
+    "allow-set-update-channel",
+    "allow-switch-version"
   ]
 }

@@ -159,6 +159,21 @@ reopens in its own conversation; if not, start them again from **Your agents…*
 You can also restart it later with `mycelium desktop restart-herdr`, and the
 health check says when it's needed.
 
+### Changing version, and release candidates
+
+**Settings → Version** shows the version you're running and lists releases you
+can switch to. Pick one and the app downloads it, checks its signature like any
+update, and restarts into it. The hub and CLI inside the app change with it.
+
+- **Release candidates.** Turn on **Offer release candidates** to list them
+  too. A release candidate is the next version, out early to try. While it's
+  on, updates also offer the newest release candidate. Turn it off to go back
+  to stable releases: you stay on what you have until the next stable release,
+  or switch back to one from the list.
+- **Going back to an older version.** The app asks twice. Rooms and settings
+  saved by a newer version may not open in an older one, and a hub elsewhere
+  that runs a newer version may not work with it.
+
 ## Logs
 
 Two logs say what went wrong. Both open from **Logs** in the menu, in whatever

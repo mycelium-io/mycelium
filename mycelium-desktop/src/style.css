@@ -458,6 +458,45 @@ select.field {
   background: var(--amber-soft);
 }
 
+/* Settings › Version: one dense row per release. */
+.versions {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+
+.version-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.version-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.version-date {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.version-row .version-warn {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--amber);
+}
+
+.button.small {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
 .hub-ask .hint {
   margin: 0;
   color: var(--muted-foreground);
