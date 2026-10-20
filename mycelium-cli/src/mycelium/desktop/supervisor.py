@@ -475,6 +475,8 @@ class Supervisor:
         #: The port the UI server listens on: :data:`UI_PORT` unless something
         #: else holds it (:meth:`_choose_ui_port`).
         self.ui_port = UI_PORT
+        #: Where a sign-in from before the app kept them is, if there is one.
+        self.old_sign_in: str | None = None
         #: Whether the hub's settings came from config.toml, so a restart the
         #: Hub page asks for reads it again (an env passed in is kept as is).
         self._env_from_config = env is None
@@ -673,6 +675,9 @@ class Supervisor:
             "existing_hub": self.adopted_hub,
             # A herdr server from before the app was updated.
             "stale_herdr": self.stale_herdr,
+            # A sign-in in a file from before the app kept them, which the app
+            # offers to replace (`session_store.unkept_file`).
+            "old_sign_in": self.old_sign_in,
         }
 
     def _publish(self) -> None:
@@ -1083,6 +1088,10 @@ class Supervisor:
             from mycelium.runner.daemon import runner_id
 
             self.runner_id = runner_id()
+        from mycelium import session_store
+
+        unkept = session_store.unkept_file()
+        self.old_sign_in = str(unkept) if unkept is not None else None
         self._publish()
         if self.mode == "hub":
             self._preflight()

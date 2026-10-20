@@ -149,18 +149,21 @@ read is one any agent could use to act as you. So the desktop app keeps it:
   included. Make that choice only on a machine where that's acceptable.
 
 This keeps your sign-in from an agent doing ordinary things: running
-`mycelium`, reading and writing files in your folders, or starting a program
-that listens for connections. It can't keep it from a program that does
-anything at all as you, which could replace the `mycelium` program itself. If
-you run agents you don't trust that far, run them in a sandbox that limits
-what they can do on your computer, such as the one Codex has.
+`mycelium`, reading your files, writing files that nothing runs as a program,
+or starting a program that listens for connections. It can't keep it from an
+agent that writes a file your programs later run: your shell's startup files,
+anything on your `PATH`, where `mycelium` is installed, or the Mycelium app
+itself. Writing one of those is the same as running a program as you. If you
+run agents you don't trust that far, run them in a sandbox that limits what
+they can do on your computer, such as the one Codex has.
 
 A sign-in provider that needs a client secret (`login.client_secret`) is
 signed in by the CLI rather than the app, and kept only with `--remember`.
 
 A `token.json` from an older version still works, and commands warn that any
-program running as you can read it. Run `mycelium login` with the app open to
-have the app keep your sign-in, which deletes the file. `MYCELIUM_TOKEN_FILE` still
+program running as you can read it. When you open the app, it offers to sign
+you in again so it keeps your sign-in instead, and deletes the file once that
+works. `mycelium login` with the app open does the same. `MYCELIUM_TOKEN_FILE` still
 moves the `--remember` file somewhere else, which helps on a CI runner with a
 shared home folder.
 

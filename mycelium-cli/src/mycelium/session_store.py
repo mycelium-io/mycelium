@@ -39,6 +39,8 @@ from mycelium import caller
 from mycelium.tokens import StoredToken, clear_token, load_token, save_token, token_path
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from mycelium.config import MyceliumConfig
 
 #: Where the session came from: the app, a remembered file, or this process.
@@ -122,6 +124,13 @@ def _remembered() -> bool:
     except (OSError, ValueError):
         return False
     return isinstance(data, dict) and bool(data.get(REMEMBER_KEY))
+
+
+def unkept_file() -> Path | None:
+    """A sign-in file written before the app kept sign-ins (not ``--remember``),
+    which the app offers to replace with a sign-in of its own."""
+    path = token_path()
+    return path if path.exists() and not _remembered() else None
 
 
 def load(config: MyceliumConfig, *, fresh: bool = False) -> tuple[StoredToken | None, str | None]:

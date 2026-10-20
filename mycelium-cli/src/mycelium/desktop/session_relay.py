@@ -81,13 +81,14 @@ def peer_pid(conn: socket.socket) -> int | None:
 
 def _signed(pid: int, requirement: str) -> bool:
     """Whether the running process ``pid`` satisfies a code requirement. The
-    system checks the code it is running, not a file that could be swapped;
-    its resources aren't checked, since the UI server's cache writes there."""
+    system checks the code it is running, not a file that could be swapped,
+    and its bundle's sealed resources, so an edited script in the app (the UI
+    server's own code) fails too."""
     try:
         done = subprocess.run(  # noqa: S603 - codesign by absolute path, a pid from the kernel
-            ["/usr/bin/codesign", "--verify", "--ignore-resources", f"-R={requirement}", str(pid)],
+            ["/usr/bin/codesign", "--verify", f"-R={requirement}", str(pid)],
             capture_output=True,
-            timeout=10,
+            timeout=30,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):

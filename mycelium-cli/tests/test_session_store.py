@@ -114,6 +114,16 @@ def test_a_file_from_before_is_used_with_a_warning_until_a_login_replaces_it(
     assert not token_path().exists()
 
 
+def test_only_a_file_from_before_is_offered_for_replacing(config) -> None:
+    """The app offers to replace a file written before it kept sign-ins, never
+    one kept on purpose with --remember."""
+    assert session_store.unkept_file() is None
+    save_token(_TOKEN)
+    assert session_store.unkept_file() == token_path()
+    session_store.save(config, _TOKEN, remember=True)
+    assert session_store.unkept_file() is None
+
+
 def test_without_the_app_nothing_is_kept_unless_remembered(config) -> None:
     assert session_store.login_in_app(config, **_LOGIN) is None
     assert session_store.save(config, _TOKEN) == session_store.HERE
