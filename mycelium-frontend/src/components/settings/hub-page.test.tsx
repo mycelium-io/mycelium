@@ -16,9 +16,10 @@ vi.mock("@/lib/api", () => ({
   updateHubSettings: vi.fn(),
   restartHub: vi.fn(),
 }));
-vi.mock("@/lib/use-status", () => ({ useHubHealth: () => ({ data: undefined }) }));
+const seen = vi.hoisted(() => ({ health: undefined as unknown, label: "This Mac" }));
+vi.mock("@/lib/use-status", () => ({ useHubHealth: () => ({ data: seen.health }) }));
 vi.mock("@/lib/room-data", () => ({ useNetworkStatus: () => ({ network: null }) }));
-vi.mock("@/components/title-bar", () => ({ useHubLabel: () => "This Mac" }));
+vi.mock("@/components/title-bar", () => ({ useHubLabel: () => seen.label }));
 vi.mock("@/lib/desktop", async (actual) => ({
   ...(await actual<typeof import("@/lib/desktop")>()),
   useIsDesktop: () => true,
@@ -148,5 +149,25 @@ describe("<HubPage /> for someone who may not", () => {
     expect(screen.queryAllByRole("switch")).toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     expect(within(row("hub.worker-turns")).getByText("60")).toBeInTheDocument();
+  });
+});
+
+describe("<HubPage /> version", () => {
+  beforeEach(() => vi.mocked(fetchHubSettings).mockResolvedValue(hub()));
+
+  it("offers Change version… for the app's own hub, which is the app's version", async () => {
+    seen.health = { status: "ok", version: "3.0.55rc2" };
+    seen.label = "This Mac";
+    renderPage();
+    const link = await screen.findByRole("link", { name: "Change version…" });
+    expect(link).toHaveAttribute("href", "mycelium://settings?section=version");
+  });
+
+  it("doesn't on a hub elsewhere, whose version the app's switch doesn't change", async () => {
+    seen.health = { status: "ok", version: "3.0.54" };
+    seen.label = "Team hub";
+    renderPage();
+    expect(await screen.findByText("3.0.54")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Change version…" })).toBeNull();
   });
 });

@@ -9,7 +9,7 @@ import { useHubLabel } from "@/components/title-bar";
 import { desktopMachine, inviteLink, settingsLink, useIsDesktop } from "@/lib/desktop";
 import { useHubAddress } from "@/lib/hub-address";
 import { useHubHealth } from "@/lib/use-status";
-import { Row, Section, SettingsPage, Value } from "./settings-ui";
+import { ChangeVersion, Row, Section, SettingsPage, Value } from "./settings-ui";
 
 /** Which hub this window is using, and how someone else joins it. Choosing a
  *  different hub happens where the window is opened: in the desktop app, its
@@ -41,6 +41,8 @@ export function ConnectionPage() {
         {health?.version && (
           <Row label="Version">
             <Value>{health.version}</Value>
+            {/* The app's own hub is the app's version, which Settings switches. */}
+            {ownHub && <ChangeVersion />}
           </Row>
         )}
         {origin && (

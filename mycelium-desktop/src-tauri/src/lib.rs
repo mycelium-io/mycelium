@@ -230,6 +230,12 @@ fn open_settings(app: &AppHandle) {
     }
 }
 
+/// The app's own Settings, at Version: which release it runs, and switching.
+fn open_version(app: &AppHandle) {
+    show_main(app);
+    show_local(app, "settings&section=version");
+}
+
 fn show_local(app: &AppHandle, view: &str) {
     if let Some(url) = local_url(app, &format!("index.html?view={view}")) {
         navigate_main(app, url);
@@ -548,6 +554,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &health,
             &logs,
             &updates,
+            &MenuItem::with_id(app, "version", "Version…", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &quit_item,
         ],
@@ -684,6 +691,7 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         "switch" => show_local(app, "onboarding"),
         "status" | "doctor" => show_local(app, "doctor"),
         "updates" => updates::check(app.clone(), updates::Check::Asked),
+        "version" => open_version(app),
         "log:desktop" => open_log_from_menu(app, &desktop_log()),
         "log:runner" => open_log_from_menu(app, &runner_log()),
         "log:folder" => {
@@ -758,13 +766,15 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         if let Some(app_submenu) = first.as_submenu() {
             let updates =
                 MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
+            let version = MenuItem::with_id(app, "version", "Version…", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
             let switch = MenuItem::with_id(app, "switch", "Hub and Connection…", true, None::<&str>)?;
             // After "About Mycelium" and its separator.
             app_submenu.insert(&updates, 2)?;
-            app_submenu.insert(&settings, 3)?;
-            app_submenu.insert(&switch, 4)?;
-            app_submenu.insert(&PredefinedMenuItem::separator(app)?, 5)?;
+            app_submenu.insert(&version, 3)?;
+            app_submenu.insert(&settings, 4)?;
+            app_submenu.insert(&switch, 5)?;
+            app_submenu.insert(&PredefinedMenuItem::separator(app)?, 6)?;
         }
     }
     // Zoom, at the top of View, where a browser keeps it.
@@ -834,6 +844,9 @@ fn handle_link(app: &AppHandle, link: &Url) {
     };
     match link.host_str() {
         Some("terminal") => open_terminal_window(app, param("pane").filter(|p| !p.is_empty())),
+        // Settings at Version, from the hub settings' "Change version…"; the
+        // one section a link may open, so a page can't steer the app further.
+        Some("settings") if param("section").as_deref() == Some("version") => open_version(app),
         Some("settings") => show_local(app, "onboarding"),
         // The room UI's "update available": Check for Updates…, which asks
         // before anything downloads, so a page can't restart the app.

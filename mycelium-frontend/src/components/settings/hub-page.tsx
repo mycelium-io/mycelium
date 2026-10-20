@@ -15,7 +15,7 @@ import { DOCS_URL } from "@/lib/install";
 import { useNetworkStatus } from "@/lib/room-data";
 import { useHubHealth } from "@/lib/use-status";
 import { HubSettingRow, useHubSettingControl } from "./hub-setting-control";
-import { Note, Row, Section, SettingsPage, Value } from "./settings-ui";
+import { ChangeVersion, Note, Row, Section, SettingsPage, Value } from "./settings-ui";
 import { VerifierSection } from "./verifier-section";
 
 /** What each channel identity tier means, in a line. */
@@ -130,6 +130,7 @@ export function HubPage() {
           {health.version && (
             <Row label="Version">
               <Value>{health.version}</Value>
+              {ownHub && <ChangeVersion />}
             </Row>
           )}
           {store && (

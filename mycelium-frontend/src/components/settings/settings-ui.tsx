@@ -5,6 +5,7 @@
 
 import { Check } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import { versionLink } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 
 /** A settings page: a title that stays put while the page scrolls, the one
@@ -263,6 +264,16 @@ export function Confirm({
         </button>
       </div>
     </div>
+  );
+}
+
+/** Beside the app's own hub's version: opens the app's Settings at Version,
+ *  where it switches to another release or a release candidate. */
+export function ChangeVersion() {
+  return (
+    <a href={versionLink()} className="ml-3 text-label text-accent hover:underline">
+      Change version…
+    </a>
   );
 }
 

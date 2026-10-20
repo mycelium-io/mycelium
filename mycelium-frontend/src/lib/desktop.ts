@@ -176,6 +176,11 @@ export function settingsLink(): string {
   return "mycelium://settings";
 }
 
+/** Opens the app's Settings at Version, where it switches to another release. */
+export function versionLink(): string {
+  return "mycelium://settings?section=version";
+}
+
 /** Opens the app joined to this hub, in a room. */
 export function appJoinLink(hubUrl: string, room?: string | null): string {
   const params = new URLSearchParams({ hub: hubUrl });
