@@ -31,10 +31,17 @@ class Codex(AgentKind):
         # runs, only without keeping what it can't write.
         with contextlib.suppress(OSError):
             state.mkdir(parents=True, exist_ok=True)
-        return ["-c", "sandbox_workspace_write.network_access=true", "--add-dir", str(state)]
+        args = ["-c", "sandbox_workspace_write.network_access=true", "--add-dir", str(state)]
+        # And its approvals go to its own automatic review instead of stopping
+        # to ask, inside that sandbox. Never the bypass that drops the sandbox.
+        if self.offers("--approve-for-me"):
+            args.append("--approve-for-me")
+        return args
 
     def session_note(self) -> str | None:
         # The sandbox is opened per session, where nobody sees it: say so where it's picked.
+        if self.offers("--approve-for-me"):
+            return "Codex runs in its auto mode, and can reach the hub and its own Mycelium state"
         return "Codex can reach the hub and its own Mycelium state"
 
     def blocked_hint(self) -> str | None:

@@ -13,7 +13,11 @@ resident agent, which every CLI shares unless its module says otherwise.
 
 from __future__ import annotations
 
+import functools
+import shutil
+import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from mycelium.integrations.base import AddOptions, Integration
@@ -59,6 +63,35 @@ class AgentKind:
         """The key that stops its current turn and keeps its session, as herdr names
         keys. Escape for the agent TUIs this table knows."""
         return "esc"
+
+    def offers(self, *words: str) -> bool:
+        """Whether the installed CLI's own ``--help`` mentions every one of ``words``.
+
+        A flag a CLI added in a recent release is passed only to an install that
+        has it: an older one would refuse to start over an option it doesn't
+        know, which is worse than starting without it.
+        """
+        found = next((p for b in self.binaries if (p := shutil.which(b))), None)
+        if not found:
+            return False
+        try:
+            stamp = Path(found).stat().st_mtime
+        except OSError:
+            return False
+        text = _help_text(found, stamp)
+        return all(w in text for w in words)
+
+
+@functools.cache
+def _help_text(binary: str, stamp: float) -> str:  # noqa: ARG001 - a new install is a new key
+    """What ``binary --help`` prints, read once per installed binary."""
+    try:
+        done = subprocess.run(  # noqa: S603 - the CLI's own path, from the scan's table
+            [binary, "--help"], capture_output=True, text=True, timeout=15, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return f"{done.stdout}\n{done.stderr}"
 
 
 class ResidentIntegration(Integration):

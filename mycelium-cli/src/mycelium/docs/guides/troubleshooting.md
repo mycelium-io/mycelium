@@ -110,6 +110,20 @@ enabled = true
 
 ---
 
+### An agent the app started still stops to ask
+
+**You see:** a Claude Code or Codex agent started from the app stops at a
+permission prompt before running a command.
+
+Agents the app starts run in their CLI's auto mode (see
+[Agents start in auto mode](#machines-agents-start-in-auto-mode)), which still asks when it judges an
+action risky. Answer it in the agent's terminal. If it asks for everything,
+its CLI may be older than the one with auto mode, and then it starts as it did
+before: update the CLI, then restart the agent from **Machines**. Add agent
+says "runs in its auto mode" next to the CLI when the installed version has it.
+
+---
+
 ### `mycelium: command not found`
 
 The CLI isn't installed or isn't on your `PATH`. Install it with the command
