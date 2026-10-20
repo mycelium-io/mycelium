@@ -30,6 +30,7 @@
     "allow-terminal-open",
     "allow-terminal-write",
     "allow-terminal-resize",
-    "allow-terminal-close"
+    "allow-terminal-close",
+    "allow-terminal-agents"
   ]
 }

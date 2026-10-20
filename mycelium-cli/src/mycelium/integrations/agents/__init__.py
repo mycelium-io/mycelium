@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from mycelium.integrations.agents.base import AgentKind, ResidentIntegration
 from mycelium.integrations.agents.claude import Claude
+from mycelium.integrations.agents.codex import Codex
 from mycelium.integrations.agents.cursor import Cursor, CursorIntegration
 
 __all__ = [
@@ -28,7 +29,7 @@ __all__ = [
 
 KNOWN: tuple[AgentKind, ...] = (
     Claude("claude", "Claude Code", ("claude",), "claude"),
-    AgentKind("codex", "Codex", ("codex",), "codex"),
+    Codex("codex", "Codex", ("codex",), "codex"),
     AgentKind("gemini", "Gemini CLI", ("gemini",), "gemini"),
     Cursor("cursor", "Cursor Agent", ("cursor-agent",), "cursor"),
     AgentKind("opencode", "OpenCode", ("opencode",), "opencode"),

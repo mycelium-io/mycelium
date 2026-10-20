@@ -614,6 +614,7 @@ function RunsOn({
 }) {
   const startable = launchable(runner);
   const roots = runner.roots.map(tildePath);
+  const sessionNote = startable.find((f) => f.id === frameworkId)?.note ?? null;
   return (
     <MemberFooter
       action={children}
@@ -663,6 +664,12 @@ function RunsOn({
                     </option>
                   ))}
                 </Select>
+                {/* What its session may do, when the runner says (Codex's opened sandbox). */}
+                {sessionNote && (
+                  <span className="min-w-0 truncate text-micro text-faint" title={sessionNote}>
+                    {sessionNote}
+                  </span>
+                )}
               </>
             )}
             <RescanButton runner={runner} iconOnly />
@@ -847,6 +854,29 @@ function LaunchProgress({
           </li>
         ))}
       </ol>
+      {/* Still waiting on the shell, and it's slow: say so and point at the
+          terminal, where whatever holds it up is showing. */}
+      {status === "running" && report.slow && (
+        <div className="mt-4 space-y-2 rounded-lg border border-yellow/30 bg-yellow/5 px-3 py-2 text-label text-text">
+          <p>
+            The terminal opened, but its shell hasn&apos;t shown a prompt yet. Something in your shell&apos;s
+            startup may be waiting for you, like a question or a password. Answer it there, and{" "}
+            {frameworkName} starts as soon as the prompt appears.
+          </p>
+          {terminal ? (
+            <a href={terminal} className={buttonVariants({ variant: "secondary", size: "sm" })}>
+              <SquareTerminal className="size-3.5" />
+              Open its terminal
+            </a>
+          ) : (
+            report.pane && (
+              <p className="text-micro text-muted-foreground">
+                Look at it on {machine}: herdr pane <span className="font-mono">{report.pane}</span>.
+              </p>
+            )
+          )}
+        </div>
+      )}
       {waiting && (
         <div className="mt-4 space-y-2 rounded-lg border border-yellow/30 bg-yellow/5 px-3 py-2 text-label text-text">
           <p className="whitespace-pre-line break-words">{waiting}</p>

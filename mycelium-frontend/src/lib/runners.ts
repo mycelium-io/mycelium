@@ -209,6 +209,8 @@ export interface StartReport {
   pane: string | null;
   /** What the host said, word for word, for whoever is debugging. */
   detail: string | null;
+  /** Still starting, but the terminal's shell is slow to reach a prompt. */
+  slow: boolean;
 }
 
 const STEPS: readonly string[] = ["terminal", "shell", "agent"];
@@ -225,6 +227,7 @@ export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): 
     why: why && WHYS.includes(why) ? (why as StartWhy) : null,
     pane: text(r.pane),
     detail: text(r.detail),
+    slow: r.slow === true,
   };
 }
 

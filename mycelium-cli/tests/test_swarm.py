@@ -474,6 +474,40 @@ def test_an_agent_is_started_again_while_its_pane_comes_up(monkeypatch: pytest.M
     assert len(attempts) == swarm.START_ATTEMPTS
 
 
+def test_a_slow_shell_is_said_once_and_still_waited_for(monkeypatch: pytest.MonkeyPatch):
+    from mycelium.integrations.herdr.bridge import NOT_A_SHELL
+
+    monkeypatch.setattr(swarm, "START_RETRY_S", 0)
+    monkeypatch.setattr(swarm, "SLOW_SHELL_S", 0)
+    told: list[str] = []
+    attempts: list[str] = []
+
+    class _Bridge:
+        def start_agent(self, handle: str, kind: str, pane: str, **_: object) -> dict:
+            attempts.append(pane)
+            if len(attempts) < 4:
+                raise HerdrError(f"agent target pane {pane} is {NOT_A_SHELL}")
+            return {}
+
+        def get_agent(self, pane: str) -> dict | None:
+            return None
+
+        def read_pane(self, *_: object, **__: object) -> str:
+            raise AssertionError("what a shell shows is never read for meaning")
+
+    came_up = swarm._start_when_ready(
+        _Bridge(),
+        "agent-1",
+        "claude",
+        "w9:p1",
+        room="eng",
+        on_slow_shell=lambda: told.append("slow"),
+    )
+    assert came_up is None
+    assert told == ["slow"]
+    assert len(attempts) == 4
+
+
 def test_an_older_hub_without_the_conductor_says_what_to_do():
     client = httpx.Client(
         base_url="http://hub",

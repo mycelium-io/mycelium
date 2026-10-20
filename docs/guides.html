@@ -2096,7 +2096,7 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
       <p>After that, <code>mycelium await --room R --handle release-agent</code> and <code>mycelium respond --handle release-agent</code> send that agent&#x27;s token. They do this even from a shell where a person is signed in. The agent writes as itself, not as whoever started it.</p>
       <p>An agent without a credential sends no token. Setting <code>agent_auth.issuer</code> on its own doesn&#x27;t give any agent a credential. Each one needs a secret set first. If getting a token fails, the CLI sends the request without one, so it still works against a hub with auth off.</p>
       <h3 id="auth-where-agent-credentials-are-stored">Where agent credentials are stored</h3>
-      <p>Agent credentials are stored in <code>~/.mycelium/agent-credentials.json</code>, readable only by you (<code>0600</code>). A cached token for each agent is kept in <code>~/.mycelium/agent-tokens/</code>. This grant has no refresh tokens, so an expired token is just requested again.</p>
+      <p>Agent credentials are stored in <code>~/.mycelium/agent-credentials.json</code>, readable only by you (<code>0600</code>). A cached token for each agent is kept in <code>~/.mycelium/agent-state/agent-tokens/</code>. This grant has no refresh tokens, so an expired token is just requested again.</p>
       <p>For a container that runs one agent and has no config file, use these environment variables: <code>MYCELIUM_AGENT_AUTH_ISSUER</code>, <code>MYCELIUM_AGENT_AUTH_CLIENT_ID</code>, <code>MYCELIUM_AGENT_AUTH_CLIENT_SECRET</code>, <code>MYCELIUM_AGENT_AUTH_SCOPES</code> and <code>MYCELIUM_AGENT_AUTH_AUDIENCE</code>. Set <code>MYCELIUM_AGENT_HANDLE</code> to the agent&#x27;s handle.</p>
       <h3 id="auth-using-a-token-from-somewhere-else">Using a token from somewhere else</h3>
       <p>Set <code>MYCELIUM_AGENT_AUTH_TOKEN</code> to use a token you already have, such as one from a CI job or a workload identity system. It&#x27;s sent as-is and never renewed. The hub also has to trust whoever issued it, so add another <code>[[auth.issuers]]</code> block for that issuer with <code>role = &quot;agent&quot;</code>.</p>
@@ -2265,6 +2265,16 @@ role   = &quot;agent&quot;</code></pre>
         <li><strong>The agent CLI is waiting for you.</strong> It started, but stopped at its own update, sign-in or first-run question. Answer it in its terminal.</li>
       </ul>
       <p>Either way the terminal stays open, and <strong>Try again</strong> starts the agent in that same terminal rather than opening another. In the desktop app, <strong>Open its terminal</strong> goes straight to it. For the full error, open <strong>Logs → Agent starts</strong> in the app&#x27;s menu, or <code>~/.mycelium/runner/runner.log</code>.</p>
+      <hr class="divider">
+      <h3 id="troubleshooting-codex-asks-before-every-mycelium-command">Codex asks before every <code>mycelium</code> command</h3>
+      <p><strong>You see:</strong> a Codex agent stops at an approval prompt on <code>mycelium await</code> or <code>mycelium respond</code>, or says it can&#x27;t reach the hub.</p>
+      <p>Codex runs commands in a sandbox with no network, which can write only in the folder it started in. When Mycelium starts a Codex agent, it opens that sandbox for the session to two things <code>mycelium</code> needs: the network, to reach the hub, and <code>~/.mycelium/agent-state</code>, the one folder the CLI writes to when an agent runs it. The rest of <code>~/.mycelium</code> (your config, and the files that approve a launch on this machine) stays out of the agent&#x27;s reach. It doesn&#x27;t change your Codex settings.</p>
+      <p>Codex ignores those two settings when you&#x27;ve picked a named permissions profile in its config (<code>default_permissions</code>). If you use one, add both to that profile in <code>~/.codex/config.toml</code>:</p>
+      <pre><code>[permissions.&lt;your-profile&gt;.network]
+enabled = true
+
+[permissions.&lt;your-profile&gt;.filesystem]
+&quot;~/.mycelium/agent-state&quot; = &quot;write&quot;</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-mycelium-command-not-found"><code>mycelium: command not found</code></h3>
       <p>The CLI isn&#x27;t installed or isn&#x27;t on your <code>PATH</code>. Install it with the command below. On an Apple silicon Mac this installs the desktop app, which links its CLI into <code>~/.local/bin</code>. Add <code>bash -s -- --client-only</code> for the CLI alone.</p>

@@ -33,6 +33,7 @@ const COMMANDS: &[&str] = &[
     "terminal_write",
     "terminal_resize",
     "terminal_close",
+    "terminal_agents",
 ];
 
 fn main() {

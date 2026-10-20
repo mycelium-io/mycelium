@@ -136,6 +136,46 @@ pub fn close(app: &AppHandle) {
     }
 }
 
+/// One agent herdr is running, as the window names it.
+#[derive(serde::Serialize, Debug, PartialEq)]
+pub struct Agent {
+    pub name: String,
+    pub status: String,
+    pub pane: String,
+}
+
+/// The agents herdr is running and whether each is working, idle or
+/// waiting for someone. Empty when herdr can't be asked.
+pub fn agents() -> Vec<Agent> {
+    let Ok(bin) = herdr() else { return Vec::new() };
+    let Ok(out) =
+        paths::command(&bin).args(["agent", "list"]).env("PATH", paths::shell_path()).output()
+    else {
+        return Vec::new();
+    };
+    parse_agents(&serde_json::from_slice(&out.stdout).unwrap_or(Value::Null))
+}
+
+fn parse_agents(value: &Value) -> Vec<Agent> {
+    let field = |a: &Value, k: &str| a.get(k).and_then(Value::as_str).map(String::from);
+    value
+        .pointer("/result/agents")
+        .and_then(Value::as_array)
+        .map(|agents| {
+            agents
+                .iter()
+                .filter_map(|a| {
+                    Some(Agent {
+                        name: field(a, "name").or_else(|| field(a, "agent"))?,
+                        status: field(a, "agent_status").unwrap_or_else(|| "unknown".into()),
+                        pane: field(a, "pane_id")?,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Bring a pane's workspace and tab to the front in the attached herdr.
 ///
 /// herdr focuses panes only by direction, so the tab the pane is in is the
@@ -265,5 +305,22 @@ mod tests {
         assert_eq!(agent_pane(&registry, "checkout", "odd"), None);
         assert_eq!(agent_pane(&dir.join("missing.json"), "checkout", "builder"), None);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn an_agent_is_named_by_its_handle_else_its_cli() {
+        let v = json!({"result":{"agents":[
+            {"agent":"claude","name":"builder","agent_status":"blocked","pane_id":"w1:p1"},
+            {"agent":"codex","agent_status":"idle","pane_id":"w1:p2"},
+            {"agent":"pi"}
+        ]}});
+        let got = parse_agents(&v);
+        assert_eq!(got.len(), 2);
+        assert_eq!(
+            got[0],
+            Agent { name: "builder".into(), status: "blocked".into(), pane: "w1:p1".into() }
+        );
+        assert_eq!(got[1].name, "codex");
+        assert!(parse_agents(&Value::Null).is_empty());
     }
 }

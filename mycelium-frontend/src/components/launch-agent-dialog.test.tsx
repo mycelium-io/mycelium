@@ -198,6 +198,23 @@ describe("LaunchAgentForm", () => {
     expect(await within(shell.closest("li")!).findByLabelText("in progress")).toBeInTheDocument();
     const terminal = screen.getByText("Open a terminal for it in herdr").closest("li")!;
     expect(within(terminal).getByLabelText("done")).toBeInTheDocument();
+    expect(screen.queryByText(/hasn't shown a prompt yet/)).not.toBeInTheDocument();
+  });
+
+  it("says a slow shell may be waiting for the person, while it still waits", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(
+      job({ status: "running", result: { step: "shell", slow: true, pane: "w5:p1" } }),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    expect(await screen.findByText(/hasn't shown a prompt yet/)).toBeInTheDocument();
+    // Outside the desktop app there's no terminal to open from here, so it says where it is.
+    expect(screen.getByText("w5:p1")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("walks the person through a terminal whose shell never got to a prompt", async () => {
