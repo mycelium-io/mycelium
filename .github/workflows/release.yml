@@ -240,6 +240,7 @@ jobs:
             --name mycelium \
             --collect-all mycelium \
             --collect-all pyfiglet \
+            --collect-all keyring \
             --hidden-import mycelium_backend_client \
             -p src \
             src/mycelium/cli.py

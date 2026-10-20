@@ -41,6 +41,10 @@ const nextConfig: NextConfig & { agentRules?: boolean } = {
   // has nothing to gain from it: images ship at the size they're shown.
   images: { unoptimized: true },
   allowedDevOrigins,
+  // The desktop app's supervisor, run from a checkout, starts its own `next
+  // dev` here, so it runs beside a `pnpm dev` in the same folder (Next allows
+  // one dev server per build folder).
+  ...(process.env.MYCELIUM_UI_DIST_DIR ? { distDir: process.env.MYCELIUM_UI_DIST_DIR } : {}),
 };
 
 export default nextConfig;

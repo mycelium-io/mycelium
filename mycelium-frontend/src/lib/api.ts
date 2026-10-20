@@ -9,6 +9,7 @@
 import type { SearchResponse } from "@/lib/search";
 import type { MessageSearchResponse } from "@/lib/message-search";
 import { encodeMemoryKeyPath } from "@/lib/memory-routes";
+import { uiTokenHeaders } from "@/lib/ui-token";
 import type { RoomStatus } from "@/lib/board/upstream";
 import type { RoomFolders } from "@/lib/room-folders";
 import type { LockRecord, TallyRecord } from "@/lib/conductor-line";
@@ -948,6 +949,8 @@ export function uploadFile(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${roomApiPath(roomName)}/uploads`);
+    // Not a fetch, so the launch's token is set here (`lib/ui-token.ts`).
+    for (const [name, value] of Object.entries(uiTokenHeaders())) xhr.setRequestHeader(name, value);
     xhr.responseType = "json";
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) opts.onProgress?.(e.loaded / e.total);

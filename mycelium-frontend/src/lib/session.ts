@@ -11,6 +11,7 @@ import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
 import { oidcConfig } from "./auth-config";
 import { endpoints, refreshTokens, claimsOf, handleFromClaims } from "./oidc";
+import { tokenPromised } from "./ui-guard";
 
 export const SESSION_COOKIE = "myc_session";
 export const TX_COOKIE = "myc_oidc_tx";
@@ -55,9 +56,23 @@ export async function unseal<T = Record<string, unknown>>(token: string, secret:
   }
 }
 
+// In the desktop app (a launch token is set, `lib/ui-guard.ts`) the server
+// is on 127.0.0.1, where a cookie goes to every port on the machine, so the
+// session is kept in this process's memory instead: one person, one window,
+// and only requests carrying the launch's token reach it. Kept on `globalThis`
+// so a dev server's reload doesn't drop it.
+const held = globalThis as unknown as { __myceliumSession?: Session | null };
+
+function inMemory(): boolean {
+  // Promised counts, not only arrived: a desktop launch whose token went
+  // missing still never writes a cookie.
+  return tokenPromised();
+}
+
 export async function getSession(): Promise<Session | null> {
   const cfg = oidcConfig();
   if (!cfg) return null;
+  if (inMemory()) return held.__myceliumSession ?? null;
   const jar = await cookies();
   const raw = jar.get(SESSION_COOKIE)?.value;
   if (!raw) return null;
@@ -67,12 +82,20 @@ export async function getSession(): Promise<Session | null> {
 export async function writeSession(s: Session): Promise<void> {
   const cfg = oidcConfig();
   if (!cfg) return;
+  if (inMemory()) {
+    held.__myceliumSession = s;
+    return;
+  }
   const sealed = await seal(s as unknown as Record<string, unknown>, cfg.sessionSecret, SESSION_TTL_S);
   const jar = await cookies();
   jar.set(SESSION_COOKIE, sealed, { ...cookieOpts, maxAge: SESSION_TTL_S });
 }
 
 export async function clearSession(): Promise<void> {
+  if (inMemory()) {
+    held.__myceliumSession = null;
+    return;
+  }
   const jar = await cookies();
   jar.set(SESSION_COOKIE, "", { ...cookieOpts, maxAge: 0 });
 }

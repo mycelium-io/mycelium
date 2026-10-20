@@ -39,6 +39,7 @@ import {
   type StreamEnvelope,
   type StreamStatus,
 } from "@/lib/sse";
+import { withUiToken } from "@/lib/ui-token";
 
 export type StreamHandler = (data: unknown) => void;
 
@@ -127,7 +128,8 @@ function closeConnection(url: string): void {
 
 function openConnection(url: string): void {
   cancelRetry(url);
-  const conn: Connection = { source: new EventSource(url), health: new Map() };
+  // An EventSource can't send a header, so the launch's token rides in the URL.
+  const conn: Connection = { source: new EventSource(withUiToken(url)), health: new Map() };
   connections.set(url, conn);
 
   conn.source.addEventListener(STREAM_STATUS_EVENT, (e) => {

@@ -207,6 +207,7 @@
           <a href="#config-rooms" class="nav-link sub">rooms</a>
           <a href="#config-slim" class="nav-link sub">slim</a>
           <a href="#config-engine" class="nav-link sub">engine</a>
+          <a href="#config-ui" class="nav-link sub">ui</a>
           <a href="#config-voice" class="nav-link sub">voice</a>
           <a href="#config-verifier" class="nav-link sub">verifier</a>
           <a href="#config-auth" class="nav-link sub">auth</a>
@@ -1253,6 +1254,12 @@
 
 <span class="comment"># Where registered engines run their drive (backend-only).</span>
 <span class="arg">runtime</span> = <span class="str">&quot;backend&quot;</span>
+
+<span class="comment"># The web app (the UI server in front of the hub).</span>
+<span class="cmd" id="config-ui">[ui]</span>
+
+<span class="comment"># The name the app is reached by besides this machine and its IP addresses, such as mycelium.example.com behind a proxy. The app refuses any other name, so a page that points its own name at this machine can&#x27;t reach it.</span>
+<span class="arg">public_host</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># The message box&#x27;s mic, transcribed on the hub, and notifications read aloud.</span>
 <span class="cmd" id="config-voice">[voice]</span>

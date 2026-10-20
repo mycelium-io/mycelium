@@ -51,6 +51,9 @@ struct Shell {
     tray: Mutex<Option<TrayItems>>,
     /// A pane the next terminal window should show.
     pending_pane: Mutex<Option<String>>,
+    /// The UI's address in the last status, so the window follows it when
+    /// the UI comes back on another port.
+    ui_url: Mutex<Option<Url>>,
 }
 
 struct TrayItems {
@@ -112,12 +115,15 @@ fn media_permission(app: &AppHandle, webview: &Webview, kind: PermissionKind) ->
 }
 
 /// Whether `webview` shows the app's own hub UI: the hub this app started,
-/// in hub mode. Never another hub's pages, which client mode shows.
+/// in hub mode, while the UI server it started is the one answering. Never
+/// another hub's pages, which client mode shows, and never whatever answers
+/// on the UI's port while that server is down.
 fn shows_own_ui(app: &AppHandle, webview: &Webview) -> bool {
     let status = app.state::<Supervisor>().status();
     let own_ui = status
         .as_ref()
         .filter(|s| s.get("mode").and_then(Value::as_str) == Some("hub"))
+        .filter(|s| supervisor::ready(s))
         .and_then(|s| s.get("ui_url").and_then(Value::as_str))
         .and_then(|u| Url::parse(u).ok());
     matches!((webview.url(), own_ui), (Ok(page), Some(ui)) if page.origin() == ui.origin())
@@ -154,11 +160,33 @@ fn show_main(app: &AppHandle) {
 }
 
 fn navigate_main(app: &AppHandle, url: Url) {
-    eprintln!("[mycelium] window: {url}");
+    eprintln!("[mycelium] window: {}", url.as_str().split('#').next().unwrap_or_default());
+    let url = with_launch_token(app, url);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.navigate(url);
     }
     show_main(app);
+}
+
+/// `url` carrying this launch's token in its fragment when it's a page of the
+/// UI server this app started: the server asks every request for it, and a
+/// fragment never reaches a server, a log or the disk. The page keeps it for
+/// its own requests. Any other page (a hub elsewhere) gets nothing.
+fn with_launch_token(app: &AppHandle, mut url: Url) -> Url {
+    let status = app.state::<Supervisor>().status();
+    let ours = status
+        .as_ref()
+        .filter(|s| s.get("mode").and_then(Value::as_str) == Some("hub"))
+        .filter(|s| supervisor::ready(s))
+        .and_then(|s| s.get("ui_url"))
+        .and_then(Value::as_str)
+        .and_then(|ui| Url::parse(ui).ok())
+        .is_some_and(|ui| ui.origin() == url.origin());
+    if ours {
+        let token = app.state::<Supervisor>().launch_token().to_string();
+        url.set_fragment(Some(&format!("mycelium-ui={token}")));
+    }
+    url
 }
 
 /// A page of the room UI for this Mac, once the supervisor says where the UI is.
@@ -238,6 +266,7 @@ pub(crate) fn on_status(app: &AppHandle, generation: u64, status: &Value) {
     if !supervisor::ready(status) {
         return;
     }
+    follow_ui(app, status);
     ask_about_integrations(app);
     let sup = app.state::<Supervisor>();
     let Some(path) = sup.take_ready(generation) else { return };
@@ -256,6 +285,28 @@ pub(crate) fn on_status(app: &AppHandle, generation: u64, status: &Value) {
         }
         navigate_main(app, url);
     }
+}
+
+/// When the UI came back on another port (its old one was taken while it was
+/// down), move a window still showing the old address to the same page at the
+/// new one, so it isn't left on whatever now answers there.
+fn follow_ui(app: &AppHandle, status: &Value) {
+    if status.get("mode").and_then(Value::as_str) != Some("hub") {
+        return;
+    }
+    let Some(now) = status.get("ui_url").and_then(Value::as_str).and_then(|u| Url::parse(u).ok()) else {
+        return;
+    };
+    let before = app.state::<Shell>().ui_url.lock().unwrap().replace(now.clone());
+    let Some(before) = before.filter(|b| b.origin() != now.origin()) else { return };
+    let Some(shown) = app.get_webview_window("main").and_then(|w| w.url().ok()) else { return };
+    if shown.origin() != before.origin() {
+        return;
+    }
+    let mut next = now;
+    next.set_path(shown.path());
+    next.set_query(shown.query());
+    navigate_main(app, next);
 }
 
 /// `mycelium machine integrations` with `args`: herdr's integrations for the

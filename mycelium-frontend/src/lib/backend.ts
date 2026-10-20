@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { MEDIA_PARAM, TOKEN_PARAM } from "./ui-guard";
 
 /**
  * Resolve the internal backend URL: SERVER-SIDE, at REQUEST time.
@@ -30,4 +31,19 @@ export function getBackendUrl(): string {
     /* no config; fall through */
   }
   return "http://localhost:8000";
+}
+
+/**
+ * Where a proxied request goes: the hub, with the launch's token and any media
+ * signature taken off the query, so the hub never sees them and its log never
+ * holds them (`lib/ui-guard.ts`). The backend serves health at the root
+ * (`/health`), while everything else it exposes is under `/api`, so the
+ * proxied `/api/health` maps onto the root for the health and fabric views.
+ */
+export function upstreamUrl(backend: string, requestUrl: string): string {
+  const url = new URL(requestUrl);
+  url.searchParams.delete(TOKEN_PARAM);
+  url.searchParams.delete(MEDIA_PARAM);
+  const path = url.pathname === "/api/health" ? "/health" : url.pathname;
+  return `${backend}${path}${url.search}`;
 }

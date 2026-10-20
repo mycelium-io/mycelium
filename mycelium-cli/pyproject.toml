@@ -43,6 +43,7 @@ dependencies = [
     # ES256 keypair + JWK for the SignerJwt-floor SLIM identity (#476). A member
     # mints/holds its own signing key locally, mirroring the backend module.
     "cryptography>=42,<47",
+    "keyring>=25.7.0",
 ]
 
 [project.optional-dependencies]

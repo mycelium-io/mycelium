@@ -144,6 +144,9 @@ services:
       # otherwise the browser silently drops them and login fails with "missing
       # code or state". Leave unset/true whenever TLS actually terminates.
       MYCELIUM_COOKIE_SECURE: ${MYCELIUM_COOKIE_SECURE:-}
+      # The public name the app is reached by (ui.public_host), when it has one.
+      # Loopback and IP addresses always work; any other name is refused.
+      MYCELIUM_UI_HOST: ${MYCELIUM_UI_HOST:-}
     depends_on:
       mycelium-backend:
         condition: service_healthy

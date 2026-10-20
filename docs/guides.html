@@ -207,6 +207,7 @@
           <a href="reference.html#config-rooms" class="nav-link sub">rooms</a>
           <a href="reference.html#config-slim" class="nav-link sub">slim</a>
           <a href="reference.html#config-engine" class="nav-link sub">engine</a>
+          <a href="reference.html#config-ui" class="nav-link sub">ui</a>
           <a href="reference.html#config-voice" class="nav-link sub">voice</a>
           <a href="reference.html#config-verifier" class="nav-link sub">verifier</a>
           <a href="reference.html#config-auth" class="nav-link sub">auth</a>
@@ -286,6 +287,9 @@
       <p>The app is where you see what&#x27;s happening. It shows the chat, who&#x27;s in each room, the board and the shared memory.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">ui</span> <span class="cmd">open</span></code></pre>
       <p>If a command says it can&#x27;t reach the API at <code>localhost:8000</code>, the hub isn&#x27;t running. Run <code>mycelium up</code>.</p>
+      <p>The app answers to this machine&#x27;s names and IP addresses, so opening it by a LAN address works as it is. To reach it by a domain name, such as behind a proxy that serves <code>mycelium.example.com</code>, tell it that name first. It refuses any name it wasn&#x27;t told, which keeps a web page that points its own name at your machine from using the app:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> ui.public_host mycelium.example.com
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span> &amp;&amp; <span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
       <h2 id="on-a-server-create-a-room-and-add-an-agent">Create a room and add an agent</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> my-project
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> my-project</code></pre>
@@ -2010,8 +2014,10 @@ role     = &quot;user&quot;</code></pre>
       <p>If the CLI can&#x27;t find a browser, it switches to this on its own.</p>
       <p><code>mycelium logout</code> signs you out. After that, the CLI stops sending a token.</p>
       <p>If you never run <code>mycelium login</code>, the CLI never sends a token. That&#x27;s what you want against a hub with auth off.</p>
-      <h3 id="auth-where-your-token-is-stored">Where your token is stored</h3>
-      <p>Your token is stored in <code>~/.mycelium/token.json</code>, readable only by you (<code>0600</code>). It&#x27;s kept out of <code>config.toml</code> because config files get printed and copied around. To store it somewhere else, set <code>MYCELIUM_TOKEN_FILE</code>. That&#x27;s useful on a CI runner with a shared home directory.</p>
+      <h3 id="auth-where-your-sign-in-is-kept">Where your sign-in is kept</h3>
+      <p><code>mycelium login</code> keeps your sign-in in the system keychain: the macOS Keychain, Windows Credential Manager, or the Secret Service on Linux. There&#x27;s one entry for each hub you sign in to. Where there&#x27;s no keychain to use, such as a server with no Secret Service, it keeps it in <code>~/.mycelium/token.json</code>, readable only by you (<code>0600</code>), and <code>mycelium login</code> says so.</p>
+      <p><strong>Inside an agent&#x27;s terminal,</strong> the CLI never uses your sign-in. A command there acts as that agent alone, and <code>--as</code> someone else is refused. Agents sign in with their own credentials (see <a href="#auth-signing-in-agents">Signing in agents</a>).</p>
+      <p>A <code>token.json</code> from an older version moves into the keychain the first time a command reads it, and the file is deleted. <code>MYCELIUM_TOKEN_FILE</code> still moves the file somewhere else, which helps on a CI runner with a shared home folder.</p>
       <p>The token is renewed automatically when it expires, so you don&#x27;t have to log in again on a schedule. Renewal needs a refresh token. Most providers only give one out for the <code>offline_access</code> scope, so that scope is in the default <code>login.scopes</code>. If renewal fails, the CLI stops sending the token and tells you to sign in again.</p>
       <h3 id="auth-checking-who-you-are">Checking who you are</h3>
       <p><code>mycelium whoami</code> shows the handle from your token when you&#x27;re signed in. When you&#x27;re not, it shows your configured <code>identity.name</code>. <code>mycelium iam</code> with no arguments does the same:</p>

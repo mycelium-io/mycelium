@@ -44,12 +44,32 @@ struct Inner {
     pending_path: Option<String>,
 }
 
-#[derive(Default)]
 pub struct Supervisor {
     inner: Mutex<Inner>,
+    /// This launch's token for the UI server to require of every request:
+    /// held in memory, handed to the supervisor on its stdin and to the window
+    /// in its URL fragment, never written down.
+    launch_token: String,
+}
+
+impl Default for Supervisor {
+    fn default() -> Self {
+        Self { inner: Mutex::default(), launch_token: launch_token() }
+    }
+}
+
+/// A fresh token for this launch: 32 random bytes, as hex.
+fn launch_token() -> String {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).expect("the system's random source");
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 impl Supervisor {
+    pub fn launch_token(&self) -> &str {
+        &self.launch_token
+    }
+
     pub fn status(&self) -> Option<Value> {
         self.inner.lock().unwrap().status.clone()
     }
@@ -163,7 +183,9 @@ fn command(settings: &Settings) -> Result<Command, String> {
         })?,
     };
     let mut cmd = paths::command(program);
-    cmd.args(["desktop", "serve", "--mode", settings.mode.as_str(), "--json"]);
+    // `--ui-token-stdin`: the launch's token is the first line written to its
+    // stdin (`run`), never its environment, which `ps` shows any program.
+    cmd.args(["desktop", "serve", "--mode", settings.mode.as_str(), "--json", "--ui-token-stdin"]);
     if let Some(hub) = &settings.hub_url {
         cmd.args(["--hub-url", hub]);
     }
@@ -232,7 +254,8 @@ fn run(app: AppHandle, settings: Settings, generation: u64) {
             return;
         }
         let started = Instant::now();
-        match command(&settings).and_then(|mut c| c.spawn().map_err(|e| e.to_string())) {
+        let spawned = command(&settings).and_then(|mut c| c.spawn().map_err(|e| e.to_string()));
+        match spawned {
             Ok(mut child) => {
                 let exited = Arc::new(AtomicBool::new(false));
                 {
@@ -244,6 +267,11 @@ fn run(app: AppHandle, settings: Settings, generation: u64) {
                     }
                     inner.pid = Some((child.id() as i32, Arc::clone(&exited)));
                     inner.stdin = child.stdin.take();
+                    // The launch's token, first thing, for the UI server alone.
+                    if let Some(stdin) = inner.stdin.as_mut() {
+                        use std::io::Write;
+                        let _ = writeln!(stdin, "{}", sup.launch_token()).and_then(|()| stdin.flush());
+                    }
                 }
                 if let Some(stderr) = child.stderr.take() {
                     thread::spawn(move || {

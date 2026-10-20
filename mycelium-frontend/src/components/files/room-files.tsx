@@ -26,7 +26,7 @@ import {
   type FileFilter,
   type Where,
 } from "@/lib/room-files";
-import { formatBytes } from "@/lib/uploads";
+import { formatBytes, mediaUrl } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -311,7 +311,7 @@ function FileCard({
         >
           {upload.kind === "image" ? (
             // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
-            <img src={upload.thumb_url || upload.url} alt="" loading="lazy" decoding="async" draggable={false} className="size-full object-cover" />
+            <img src={mediaUrl(upload.thumb_url || upload.url)} alt="" loading="lazy" decoding="async" draggable={false} className="size-full object-cover" />
           ) : (
             <span className="flex flex-col items-center gap-1.5 px-2 text-center">
               <Icon className="size-7 text-muted-foreground" strokeWidth={1.5} />

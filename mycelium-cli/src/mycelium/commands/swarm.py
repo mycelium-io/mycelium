@@ -437,7 +437,12 @@ def start_local(
     carried = {k: os.environ[k] for k in CARRIED_ENV if os.environ.get(k)} | (carry or {})
 
     def env(handle: str) -> dict[str, str]:
-        return {**carried, "MYCELIUM_AGENT_HANDLE": handle, "MYCELIUM_ROOM_ID": room}
+        return {
+            **carried,
+            "MYCELIUM_AGENT_HANDLE": handle,
+            "MYCELIUM_ROOM_ID": room,
+            "MYCELIUM_AGENT_PANE": handle,  # an agent's pane (``caller.in_agent_pane``)
+        }
 
     dirs = {h: (member_worktree(cwd, room, h) if worktree else cwd) for h in team}
 

@@ -178,7 +178,7 @@ stage_mycelium() {
       # Windows too, rather than the code page (cp1252).
       "$(venv_bin "$work/cli-venv" pyinstaller)" --noconfirm --onedir --name mycelium \
         --python-option "X utf8" \
-        --collect-all mycelium --collect-all pyfiglet \
+        --collect-all mycelium --collect-all pyfiglet --collect-all keyring \
         --hidden-import mycelium_backend_client \
         --distpath "$work/cli-dist" --workpath "$work/cli-build" --specpath "$work" \
         -p src src/mycelium/cli.py

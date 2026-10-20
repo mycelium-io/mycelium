@@ -625,6 +625,19 @@ class BoardConfig(BaseModel):
     )
 
 
+class UiConfig(BaseModel):
+    """The web app (the UI server in front of the hub)."""
+
+    public_host: str = Field(
+        default="",
+        description=(
+            "The name the app is reached by besides this machine and its IP addresses, "
+            "such as mycelium.example.com behind a proxy. The app refuses any other name, "
+            "so a page that points its own name at this machine can't reach it."
+        ),
+    )
+
+
 class VoiceConfig(BaseModel):
     """The message box's mic, transcribed on the hub, and notifications read aloud."""
 
@@ -860,6 +873,7 @@ class MyceliumConfig(BaseModel):
     synthesizer: SynthesizerConfig = Field(default_factory=SynthesizerConfig)
     worker: WorkerConfig = Field(default_factory=WorkerConfig)
     board: BoardConfig = Field(default_factory=BoardConfig)
+    ui: UiConfig = Field(default_factory=UiConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
     verifier: VerifierConfig = Field(default_factory=VerifierConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)

@@ -251,6 +251,24 @@ module; read it before changing what a rule protects.
   plain HTTPS until `slima2a` stops pinning an older `a2a-sdk` (#726).
 - **The hub never fetches what a caller names.** Patterns load from a folder
   the operator provides (`app/services/patterns.py`).
+- **A person's sign-in is the normal flow, kept in the system keychain.**
+  `mycelium login` keeps the session, refresh token included, and commands
+  renew it quietly, like `gh` (`session_store.py`). It lives in the system
+  keychain, one entry per hub, and in a `0600` file only where there's no
+  keychain. Agents are treated as relatively trusted, so there's no prompt
+  before use. Two guard rails: an agent's pane never uses the person's sign-in
+  or acts as anyone else (`caller.in_agent_pane`), and a credential goes only
+  to the hub that issued it (`client.hub_client`).
+- **The UI server answers only its own pages** (`src/proxy.ts`,
+  `lib/ui-guard.ts`): a name it serves (loopback, an IP, `ui.public_host`),
+  its own origin, JSON bodies, and in the desktop app a per-launch token the
+  app hands its window in the URL fragment. The token travels app → supervisor
+  → UI server on stdin, never in an environment (`ps` shows those to every
+  program as the user); media and download URLs carry a short-lived signature
+  for one path instead of it; and the UI proxy strips both before the hub.
+  The supervisor never adopts a UI it didn't start: a taken port moves the UI
+  to another, and the window opens only once the server answering proves it
+  holds the token (`supervisor.proves_token`, an HMAC of a fresh nonce).
 - **Usage counts carry kinds and outcomes, never a name, handle, room or
   text**, and sending them is off by default (`app/services/analytics.py`).
 - **Voice is opt-in**, and the hub never loads the speech model in its own

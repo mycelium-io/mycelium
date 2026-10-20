@@ -25,7 +25,7 @@ import { ZoomableImage, type ZoomKeys } from "@/components/uploads/zoomable-imag
 import { CopyNotice, FileMenu, useFileCopy } from "@/components/uploads/image-menu";
 import { Ago } from "@/lib/relative-time";
 import { fetchUploadText, type Upload, type UploadKind } from "@/lib/api";
-import { downloadUrl, formatBytes, kindLabel, parseDelimited, textViewFor } from "@/lib/uploads";
+import { downloadUrl, formatBytes, kindLabel, mediaUrl, parseDelimited, textViewFor } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
 const PdfPreview = dynamic(() => import("@/components/uploads/pdf-preview").then((m) => m.PdfPreview), {
@@ -139,20 +139,20 @@ export function UploadPreview({
     <div className={className}>
       {upload.kind === "image" &&
         (zoom ? (
-          <ZoomableImage ref={zoom} src={upload.url} alt={upload.filename} />
+          <ZoomableImage ref={zoom} src={mediaUrl(upload.url)} alt={upload.filename} />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
           <img
-            src={upload.url}
+            src={mediaUrl(upload.url)}
             alt={upload.filename}
             className="mx-auto block max-h-[70vh] max-w-full rounded-md object-contain"
           />
         ))}
-      {upload.kind === "pdf" && <PdfPreview url={upload.url} />}
+      {upload.kind === "pdf" && <PdfPreview url={mediaUrl(upload.url)} />}
       {upload.kind === "text" && <TextPreview upload={upload} onOpenMemory={onOpenMemory} />}
-      {upload.kind === "audio" && <audio controls preload="metadata" src={upload.url} className="w-full" />}
+      {upload.kind === "audio" && <audio controls preload="metadata" src={mediaUrl(upload.url)} className="w-full" />}
       {upload.kind === "video" && (
-        <video controls preload="metadata" src={upload.url} className="mx-auto block max-h-[70vh] max-w-full rounded-md" />
+        <video controls preload="metadata" src={mediaUrl(upload.url)} className="mx-auto block max-h-[70vh] max-w-full rounded-md" />
       )}
     </div>
   );
@@ -216,7 +216,7 @@ function Filmstrip({ set, current, onShow }: { set: Upload[]; current: Upload; o
           >
             {u.kind === "image" ? (
               // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
-              <img src={u.url} alt="" loading="lazy" className="size-full object-cover" />
+              <img src={mediaUrl(u.url)} alt="" loading="lazy" className="size-full object-cover" />
             ) : (
               <Icon className="size-5 text-muted-foreground" />
             )}
