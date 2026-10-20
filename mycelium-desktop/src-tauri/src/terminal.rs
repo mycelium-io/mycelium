@@ -166,10 +166,9 @@ pub fn focus_pane(pane: &str) {
 /// The page names an agent, never a pane: the pane is looked up in the herdr
 /// registry Mycelium keeps of its agents, so a page can't read the person's
 /// own shells or any other terminal, however it guesses at pane ids.
-pub fn screen(room: &str, handle: &str) -> Result<String, String> {
+pub fn screen(room: &str, handle: &str) -> Result<Screen, String> {
     let registry = paths::home().join(".mycelium").join("herdr").join("registry.json");
-    let pane = agent_pane(&registry, room, handle)
-        .ok_or("That agent isn't running in a terminal on this machine.")?;
+    let pane = agent_pane(&registry, room, handle).ok_or(NOT_HERE)?;
     let bin = herdr()?;
     let out = paths::command(&bin)
         .args(["pane", "read", &pane, "--source", "visible", "--format", "ansi"])
@@ -179,7 +178,18 @@ pub fn screen(room: &str, handle: &str) -> Result<String, String> {
     if !out.status.success() {
         return Err("herdr couldn't read that terminal. It may have closed.".into());
     }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    Ok(Screen { pane, text: String::from_utf8_lossy(&out.stdout).into_owned() })
+}
+
+/// What `screen` refuses with when the agent has no terminal on this machine;
+/// the page says where it runs instead (`agent-screen.tsx` matches it).
+pub const NOT_HERE: &str = "That agent isn't running in a terminal on this machine.";
+
+/// An agent's screen, and the pane it's in, for Open its terminal.
+#[derive(serde::Serialize)]
+pub struct Screen {
+    pub pane: String,
+    pub text: String,
 }
 
 /// The pane the registry at `registry` (`{"room/handle": {"pane": …}}`, written

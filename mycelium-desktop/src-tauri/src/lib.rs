@@ -1162,7 +1162,7 @@ async fn agent_screen(
     webview: Webview,
     room: String,
     handle: String,
-) -> Result<String, String> {
+) -> Result<terminal::Screen, String> {
     own_ui_only(&app, &webview)?;
     tauri::async_runtime::spawn_blocking(move || terminal::screen(&room, &handle))
         .await

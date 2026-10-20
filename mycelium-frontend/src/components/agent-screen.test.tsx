@@ -39,14 +39,23 @@ function runner(id: string, agents: { room: string; handle: string; pane: string
 
 const calls: [string, unknown][] = [];
 
-/** The desktop app's own hub UI: its user agent, and the command bridge it alone has. */
-function inTheApp() {
+/**
+ * The desktop app's own hub UI: its user agent, and the command bridge it
+ * alone has. Its registry of agents holds @builder of checkout; `machine` is
+ * what it answers for which machine it is, null when it has no runner id.
+ */
+function inTheApp(machine: string | null = "here", refuse?: string) {
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Macintosh) MyceliumDesktop/3.0.0");
   (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {
     invoke: async (command: string, args?: Record<string, unknown>) => {
       calls.push([command, args]);
-      if (command === "this_machine") return "here";
-      if (command === "agent_screen") return "\x1b[32m● Reading src/payments.ts\x1b[0m\r\n> ";
+      if (refuse) throw refuse;
+      if (command === "this_machine") return machine;
+      if (command === "agent_screen") {
+        if (args?.room === "checkout" && args?.handle === "builder")
+          return { pane: "w3:p1", text: "\x1b[32m● Reading src/payments.ts\x1b[0m\r\n> " };
+        throw "That agent isn't running in a terminal on this machine.";
+      }
       return null;
     },
   };
@@ -78,13 +87,27 @@ describe("an agent's terminal", () => {
     expect(calls).toContainEqual(["agent_screen", { room: "checkout", handle: "builder" }]);
   });
 
-  it("names your other machine rather than reading a terminal it can't", async () => {
+  it("shows the screen whatever the hub's list says, when the app has the agent", async () => {
+    // An app that hasn't got a runner id (its runner is someone else's, or
+    // not up yet) still knows its own agents.
+    inTheApp(null);
+    renderWithSWR(<AgentScreen room="checkout" handle="builder" />);
+    expect(await screen.findByText("● Reading src/payments.ts")).toBeInTheDocument();
+  });
+
+  it("names your other machine when the app says the agent isn't here", async () => {
     inTheApp();
     runners = [runner("elsewhere", [{ room: "checkout", handle: "api", pane: "w1:p1" }])];
     renderWithSWR(<AgentScreen room="checkout" handle="api" />);
 
     expect(await screen.findByText(/@api runs on sams-laptop/)).toBeInTheDocument();
-    expect(calls.some(([c]) => c === "agent_screen")).toBe(false);
+    expect(screen.queryByText(STREAMED_LOCALLY)).not.toBeInTheDocument();
+  });
+
+  it("in the app, on a page the app doesn't count as its own, says why", async () => {
+    inTheApp("here", "Not available to this page.");
+    renderWithSWR(<AgentScreen room="checkout" handle="builder" />);
+    expect(await screen.findByText(/connected to one elsewhere/)).toBeInTheDocument();
   });
 
   it("says someone else's agent's terminal is theirs", async () => {

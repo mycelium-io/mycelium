@@ -37,45 +37,43 @@ export function AgentScreen({ room, handle, runner: runnerOf }: Props) {
   const desktop = useIsDesktop();
   const thisMachine = useThisMachine();
   const { runners } = useRunners();
-  const place = placeOf(runners, thisMachine, room, handle, runnerOf);
-  // Read only while it's here and its pane is open; the app finds the pane itself.
-  const readable = place.kind === "here" && place.state !== "gone";
-  const screen = useAgentScreen(readable ? { room, handle } : null);
+  // The app is asked first: whether the agent has a terminal here is its
+  // answer, from its own registry of agents, not a guess from the hub's list.
+  const screen = useAgentScreen(desktop ? { room, handle } : null);
 
   if (!desktop) {
     return <Note>An agent&apos;s terminal shows in the desktop app, for agents on that computer.</Note>;
   }
-  if (!thisMachine) {
+  if (screen.unasked) {
     // In the app, but showing a hub elsewhere (client mode), whose pages can't
     // ask the app for anything. The agents terminal still opens from the app.
     return (
       <Note>
-        Terminals show here when this app runs your hub, not yet when it&apos;s connected to one elsewhere. To see
-        @{handle}, open the agents terminal from the bar at the bottom.
+        {`Terminals show here when this app runs your hub, not yet when it's connected to one elsewhere. ` +
+          `To see @${handle}, open the agents terminal from the bar at the bottom.`}
       </Note>
     );
   }
-  if (place.kind === "yours") {
-    return (
-      <Note>
-        @{handle} runs on {runnerName(place.runner)}. Its terminal shows in the desktop app there, never through the
-        hub.
-      </Note>
-    );
-  }
-  if (place.kind === "theirs") {
-    return <Note>@{handle} runs on someone else&apos;s machine. Its terminal is theirs, and shows only there.</Note>;
-  }
-  if (place.kind === "unseen") {
+  if (screen.notHere) {
+    // Not on this machine: say where it runs, from what the hub knows.
+    const place = placeOf(runners, thisMachine, room, handle, runnerOf);
+    if (place.kind === "yours") {
+      return (
+        <Note>
+          @{handle} runs on {runnerName(place.runner)}. Its terminal shows in the desktop app there, never through the
+          hub.
+        </Note>
+      );
+    }
+    if (place.kind === "theirs") {
+      return <Note>@{handle} runs on someone else&apos;s machine. Its terminal is theirs, and shows only there.</Note>;
+    }
     return (
       <Note>
         @{handle} isn&apos;t running in a terminal Mycelium can see on this machine. An agent started from Members → Add
         runs in one.
       </Note>
     );
-  }
-  if (place.state === "gone") {
-    return <Note>@{handle}&apos;s terminal is closed. Restart it from Machines to see it again.</Note>;
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -84,7 +82,7 @@ export function AgentScreen({ room, handle, runner: runnerOf }: Props) {
         <span>{STREAMED_LOCALLY}</span>
         <Updated at={screen.at} />
         <a
-          href={terminalLink(place.pane)}
+          href={terminalLink(screen.pane ?? undefined)}
           className={buttonVariants({
             variant: "secondary",
             size: "sm",
