@@ -1213,6 +1213,8 @@ export interface MessageQuery {
    * exactly what an offset does.
    */
   before?: string | null;
+  /** Only messages created at or after this stamp: what a view missed. */
+  since?: string | null;
 }
 
 export async function fetchMessages(
@@ -1224,6 +1226,7 @@ export async function fetchMessages(
   if (limit) params.set("limit", String(limit));
   if (query.episode) params.set("episode", query.episode);
   if (query.before) params.set("before", query.before);
+  if (query.since) params.set("since", query.since);
   const qs = params.toString();
   return apiFetch<MessagesResponse>(
     `${roomApiPath(roomName)}/messages${qs ? `?${qs}` : ""}`,

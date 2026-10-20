@@ -22,8 +22,12 @@ export interface Event {
   id: string;
   /** The backend's id for this message, where it has one. Stable across reads
    *  (the transcript derives it from the envelope id), which is what a search
-   *  result points at. */
+   *  result points at. A live frame names it as `read_id`, so a message that
+   *  arrived live and the same one read from history share it. */
   messageId: string | null;
+  /** A live frame's own id, the envelope id that an edit or a ping names the
+   *  message by; `null` for a message read from history. */
+  wireId: string | null;
   type: string;
   content: string;
   sender: string;
@@ -263,7 +267,9 @@ export function parseEvent(msg: Record<string, unknown>): Event {
 
   return {
     id: `${Date.now()}-${Math.random()}`,
-    messageId: typeof msg.id === "string" ? msg.id : null,
+    messageId:
+      typeof msg.read_id === "string" ? msg.read_id : typeof msg.id === "string" ? msg.id : null,
+    wireId: typeof msg.read_id === "string" && typeof msg.id === "string" ? msg.id : null,
     type: mtype,
     content,
     sender,

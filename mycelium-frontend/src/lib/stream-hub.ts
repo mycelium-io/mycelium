@@ -30,6 +30,7 @@
  */
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { reportToApp } from "@/lib/report-to-app";
 import {
   STREAM_CHANNELS,
   STREAM_RETRY_MS,
@@ -48,7 +49,14 @@ interface Subscription {
   /** Set on `room` subscriptions; frames for any other room are not delivered. */
   room: string | null;
   handler: StreamHandler;
+  /** Frames in a row its handler threw on. */
+  failures: number;
+  /** Told when its handler has failed on BROKEN_AFTER frames in a row. */
+  onBroken?: () => void;
 }
+
+/** How many frames in a row a handler may fail on before its subscriber is told. */
+export const BROKEN_AFTER = 3;
 
 interface Connection {
   source: EventSource;
@@ -106,8 +114,17 @@ function dispatch(channel: StreamChannel, raw: string): void {
     if (sub.room !== null && sub.room !== envelope.room) continue;
     try {
       sub.handler(envelope.data);
+      sub.failures = 0;
     } catch (err) {
-      console.error(`[mycelium] stream handler failed on the ${channel} channel`, err);
+      sub.failures += 1;
+      const what = `stream handler failed on the ${channel} channel${sub.room ? ` (${sub.room})` : ""}`;
+      console.error(`[mycelium] ${what}`, err);
+      // The released app has no console, so the app's own log hears it too.
+      reportToApp(`${what}: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
+      if (sub.failures >= BROKEN_AFTER) {
+        sub.failures = 0;
+        sub.onBroken?.();
+      }
     }
   }
 }
@@ -219,19 +236,37 @@ export function resetStreamHub(): void {
  * held in a ref, so a caller passing an inline function re-renders freely
  * without churning the subscription (and, through it, the connection).
  */
-function useStream(channel: StreamChannel, room: string | null, handler: StreamHandler): void {
+function useStream(channel: StreamChannel, room: string | null, handler: StreamHandler, options: StreamOptions = {}): void {
+  const { epoch = 0, onBroken } = options;
   const ref = useRef(handler);
+  const broken = useRef(onBroken);
   useEffect(() => {
     ref.current = handler;
+    broken.current = onBroken;
   });
   useEffect(() => {
-    return subscribe({ channel, room, handler: (data) => ref.current(data) });
-  }, [channel, room]);
+    return subscribe({
+      channel,
+      room,
+      handler: (data) => ref.current(data),
+      failures: 0,
+      onBroken: () => broken.current?.(),
+    });
+  }, [channel, room, epoch]);
 }
 
-/** Live messages for one room — the room feed and the wire. */
-export function useRoomStream(room: string, handler: StreamHandler): void {
-  useStream("room", room, handler);
+export interface StreamOptions {
+  /** A new value drops the subscription and makes it again. */
+  epoch?: number;
+  /** Called when the handler has thrown on BROKEN_AFTER frames in a row. */
+  onBroken?: () => void;
+}
+
+/** Live messages for one room — the room feed and the wire. The channel uses
+ *  `options` to subscribe again when it finds it missed messages, or when its
+ *  handler keeps failing. */
+export function useRoomStream(room: string, handler: StreamHandler, options: StreamOptions = {}): void {
+  useStream("room", room, handler, options);
 }
 
 /** Global app events: rooms created and deleted. */
