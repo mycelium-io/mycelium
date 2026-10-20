@@ -4,6 +4,11 @@
 "use client";
 
 import { SWRConfig } from "swr";
+import { installUiToken } from "@/lib/ui-token";
+
+// Before any request goes out: in the desktop app every `fetch` to this
+// server's `/api` carries the launch's token (`lib/ui-token.ts`).
+installUiToken();
 
 /**
  * App-wide defaults for the room data hooks (`@/lib/room-data`).

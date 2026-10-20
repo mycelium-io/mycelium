@@ -6,9 +6,10 @@
 
 The browser flow (Authorization Code + PKCE) is the default; ``--device`` is the
 fallback for a shell whose browser can't reach this machine's loopback address:
-SSH, CI, a container. Both end the same way: the session lands in the ``0600``
-token cache (``mycelium.tokens``) and every subsequent backend call carries it,
-because they all build their client through ``mycelium.client``. A successful
+SSH, CI, a container. Both end the same way: the session is kept by the desktop
+app, which asks the person before the CLI uses it (``mycelium.session_store``),
+or with ``--remember`` in a ``0600`` file, and every later backend call carries
+it, because they all build their client through ``mycelium.client``. A successful
 login also points this machine's ``identity.name`` at the token's own handle,
 since a gated hub refuses a write that claims a different one.
 
@@ -418,9 +419,7 @@ def login(
 
     handle = token.handle(config.auth.handle_claim) or token.handle()
     alignment = _align_identity(config, handle) if handle else _SKIPPED
-    _report(
-        token, config, handle=handle, alignment=alignment, json_output=json_output, kept=kept
-    )
+    _report(token, config, handle=handle, alignment=alignment, json_output=json_output, kept=kept)
 
 
 @doc_ref(

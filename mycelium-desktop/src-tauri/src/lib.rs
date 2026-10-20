@@ -14,6 +14,7 @@
 mod close;
 mod download;
 mod paths;
+mod sessions;
 mod settings;
 mod signature;
 mod supervisor;
@@ -154,11 +155,31 @@ fn show_main(app: &AppHandle) {
 }
 
 fn navigate_main(app: &AppHandle, url: Url) {
-    eprintln!("[mycelium] window: {url}");
+    eprintln!("[mycelium] window: {}", url.as_str().split('#').next().unwrap_or_default());
+    let url = with_launch_token(app, url);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.navigate(url);
     }
     show_main(app);
+}
+
+/// `url` carrying this launch's token in its fragment when it's a page of the
+/// UI server this app started: the server asks every request for it, and a
+/// fragment never reaches a server, a log or the disk. The page keeps it for
+/// its own requests. Any other page (a hub elsewhere) gets nothing.
+fn with_launch_token(app: &AppHandle, mut url: Url) -> Url {
+    let status = app.state::<Supervisor>().status();
+    let ours = status
+        .as_ref()
+        .and_then(|s| s.get("ui_url"))
+        .and_then(Value::as_str)
+        .and_then(|ui| Url::parse(ui).ok())
+        .is_some_and(|ui| ui.origin() == url.origin());
+    if ours {
+        let token = app.state::<Supervisor>().launch_token().to_string();
+        url.set_fragment(Some(&format!("mycelium-ui={token}")));
+    }
+    url
 }
 
 /// A page of the room UI for this Mac, once the supervisor says where the UI is.
@@ -1359,6 +1380,7 @@ pub fn run() {
         .on_menu_event(on_menu_event)
         .manage(Shell::default())
         .manage(Supervisor::default())
+        .manage(sessions::Sessions::default())
         .manage(Terminal::default())
         .manage(zoom::Zoom::default())
         .invoke_handler(tauri::generate_handler![

@@ -76,6 +76,8 @@ HOST = "127.0.0.1"
 SLIM_PORT = 46357
 HUB_PORT = 8000
 UI_PORT = 3717
+#: The app's token for this launch, which the UI server asks every request for.
+UI_TOKEN_ENV = "MYCELIUM_UI_TOKEN"
 #: How long a component may take to answer before it counts as failed.
 READY_TIMEOUT_S = 90.0
 #: Restarts after a crash wait this long, doubling, up to the last value.
@@ -409,6 +411,10 @@ class Supervisor:
         self.locator = locator or Locator()
         self.config = config
         self.env = env if env is not None else hub_env(config)
+        # The app's token for this launch, for the UI server alone: taken out
+        # of this process's environment so herdr, the runner and every agent
+        # pane they start (which inherit it) never see it.
+        self.ui_token = os.environ.pop(UI_TOKEN_ENV, None)
         #: Whether the hub's settings came from config.toml, so a restart the
         #: Hub page asks for reads it again (an env passed in is kept as is).
         self._env_from_config = env is None
@@ -529,6 +535,9 @@ class Supervisor:
             # them; one serving many people never gets this.
             "MYCELIUM_THEMES_DIR": str(themes.folder()),
         }
+        if self.ui_token:
+            # What the UI server asks of every request (`lib/ui-guard.ts`).
+            ui_env[UI_TOKEN_ENV] = self.ui_token
         return [
             Component(
                 name="slim",

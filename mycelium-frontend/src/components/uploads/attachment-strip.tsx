@@ -8,7 +8,7 @@ import { FileX, ImageOff } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Upload } from "@/lib/api";
 import { useRoomUploads } from "@/lib/room-data";
-import { formatBytes, kindLabel } from "@/lib/uploads";
+import { formatBytes, kindLabel, mediaUrl } from "@/lib/uploads";
 import { KIND_ICON } from "@/components/uploads/upload-preview";
 
 /**
@@ -127,7 +127,7 @@ function ImageThumb({ upload, onOpen }: { upload: Upload; onOpen: (upload: Uploa
       {state === "loading" && <Skeleton className="absolute inset-0 rounded-none" />}
       {/* eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset */}
       <img
-        src={upload.url}
+        src={mediaUrl(upload.url)}
         alt={upload.filename}
         loading="lazy"
         onLoad={(e) => {

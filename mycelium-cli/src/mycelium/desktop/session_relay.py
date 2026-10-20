@@ -32,9 +32,11 @@ from typing import Any
 
 from mycelium.config import MyceliumConfig
 
+
 def socket_path() -> Path:
     """The socket the CLI connects to, under this user's ``~/.mycelium``."""
     return MyceliumConfig.get_global_config_dir() / "desktop" / "session.sock"
+
 
 #: How long a request waits for the person to answer the app.
 ANSWER_S = 120.0

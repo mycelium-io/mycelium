@@ -44,12 +44,24 @@ struct Inner {
     pending_path: Option<String>,
 }
 
-#[derive(Default)]
 pub struct Supervisor {
     inner: Mutex<Inner>,
+    /// This launch's token for the UI server (`sessions::launch_token`): in
+    /// memory, in the supervisor's environment and the window's fragment only.
+    launch_token: String,
+}
+
+impl Default for Supervisor {
+    fn default() -> Self {
+        Self { inner: Mutex::default(), launch_token: crate::sessions::launch_token() }
+    }
 }
 
 impl Supervisor {
+    pub fn launch_token(&self) -> &str {
+        &self.launch_token
+    }
+
     pub fn status(&self) -> Option<Value> {
         self.inner.lock().unwrap().status.clone()
     }
@@ -154,7 +166,18 @@ pub fn restart(app: &AppHandle, settings: Settings) {
     thread::spawn(move || run(app, settings, generation));
 }
 
-fn command(settings: &Settings) -> Result<Command, String> {
+/// A line for the supervisor's stdin: an answer to a request it passed up.
+pub fn reply(app: &AppHandle, line: &str) {
+    use std::io::Write;
+
+    let sup = app.state::<Supervisor>();
+    let mut inner = sup.inner.lock().unwrap();
+    if let Some(stdin) = inner.stdin.as_mut() {
+        let _ = writeln!(stdin, "{line}").and_then(|()| stdin.flush());
+    }
+}
+
+fn command(settings: &Settings, launch_token: &str) -> Result<Command, String> {
     // A stand-in supervisor for development, run with the same arguments.
     let program = match std::env::var_os("MYCELIUM_DESKTOP_SUPERVISOR") {
         Some(p) => p.into(),
@@ -181,6 +204,9 @@ fn command(settings: &Settings) -> Result<Command, String> {
         cmd.env("MYCELIUM_SLIMCTL", slimctl);
     }
     without_appimage_env(&mut cmd);
+    // What the UI server asks of every request, so only this app's window
+    // (handed the token in its fragment) can use what the server can reach.
+    cmd.env("MYCELIUM_UI_TOKEN", launch_token);
     // stdin stays piped and open for the supervisor's whole life: it stops
     // when it closes, which is how it goes away even if this app is killed.
     cmd.env("PATH", paths::shell_path())
@@ -232,7 +258,9 @@ fn run(app: AppHandle, settings: Settings, generation: u64) {
             return;
         }
         let started = Instant::now();
-        match command(&settings).and_then(|mut c| c.spawn().map_err(|e| e.to_string())) {
+        let spawned = command(&settings, sup.launch_token())
+            .and_then(|mut c| c.spawn().map_err(|e| e.to_string()));
+        match spawned {
             Ok(mut child) => {
                 let exited = Arc::new(AtomicBool::new(false));
                 {
@@ -316,6 +344,8 @@ fn handle_line(app: &AppHandle, generation: u64, line: &str) {
         }
         Some("log") => crate::on_log(app, &value),
         Some("request") => crate::on_request(app, &value),
+        // The CLI asking for a person's sign-in (`sessions`).
+        Some("session") => crate::sessions::on_event(app, &value),
         _ => {}
     }
 }
