@@ -221,11 +221,16 @@
       </p>
       <p>To start it from the terminal:</p>
       <pre><code>mycelium board coordinate work/acme-renewal-offer conductor \
-  "concord @success @finance @sales @legal: Decide the renewal offer for Acme."</code></pre>
-      <p>Or type this in the task&#x27;s thread in the app: <code>@conductor concord @success @finance @sales @legal: …</code></p>
+  "concord @~success @~finance @~sales @~legal: Decide the renewal offer for Acme."</code></pre>
+      <p>Or type this in the task&#x27;s thread in the app: <code>@conductor concord @~success @~finance @~sales @~legal: …</code></p>
+      <p>
+        Write the members as <code>@~name</code>. That names each one for the flow without waking
+        them, and the conductor asks each in turn. A plain <code>@name</code> wakes all of them at
+        once, and replies that come before their turn are refused.
+      </p>
       <figure class="take">
-        <img src="l9-summon-concord.png" alt="The app's message box with '@conductor concord' typed. Above it, a hint reads '@conductor concord [@member…] <what…>' with Concord's one-line description.">
-        <figcaption>The message box helps write the summon. Once you name the flow, it shows what the flow needs and what it does. Concord has no fixed roles, so it takes any members you name.</figcaption>
+        <img src="l9-summon-concord.png" alt="The message box in a task's thread with '@conductor concord @~success @~finance @~sales @~legal' typed. Above it, a hint reads '@conductor concord [@~member…] <what…>' and says who takes part.">
+        <figcaption>The message box helps write the summon. Once you name the flow, it shows what the flow needs and what each part is for. Concord has no fixed roles, so it takes any members you name.</figcaption>
       </figure>
 
       <pre class="mermaid">
@@ -304,10 +309,10 @@ flowchart LR
         item in the summary.
       </p>
       <pre><code>mycelium board coordinate work/acme-renewal-handoff conductor \
-  "accord @sales @success @finance @legal: Plan the Acme renewal handoff."</code></pre>
-      <p>Every member named takes part the same way. In the app, type <code>@conductor accord @sales …</code> in the task&#x27;s thread.</p>
+  "accord @~sales @~success @~finance @~legal: Plan the Acme renewal handoff."</code></pre>
+      <p>Every member named takes part the same way. In the app, type <code>@conductor accord @~sales @~success …</code> in the task&#x27;s thread, with each member written as <code>@~name</code> so the conductor wakes them in turn.</p>
       <figure class="take">
-        <img src="l9-summon-accord.png" alt="The app's message box with '@conductor accord' typed. Above it, a hint reads '@conductor accord [@member…] <what…>' with Accord's one-line description.">
+        <img src="l9-summon-accord.png" alt="The message box in a task's thread with '@conductor accord @~sales @~success @~finance @~legal' typed. Above it, a hint reads '@conductor accord [@~member…] <what…>' and says who takes part.">
         <figcaption>The message box helps write the summon. Accord has no roles, so it takes any members you name.</figcaption>
       </figure>
 

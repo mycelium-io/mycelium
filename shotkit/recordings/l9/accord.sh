@@ -15,10 +15,10 @@ node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --do "caption:Before work starts, make sure everyone means the same thing by the task." \
   --do "hold:2600" \
   --do "click:Board" \
-  --do "click:[data-board-row=\"memory:work/acme-renewal-handoff\"]" \
+  --do "click:[data-board-row=\"work/acme-renewal-handoff\"]" \
   --do "caption:One message starts Accord. Nobody leads it." \
   --do "click:textarea[placeholder^=\"Reply in\"]" \
-  --do "typekeys:@conductor accord @sales @success @finance @legal: Plan the Acme renewal handoff." \
+  --do "typekeys:@conductor accord @~sales @~success @~finance @~legal: Plan the Acme renewal handoff." \
   --do "press:Enter" \
   --do "caption:Everyone labels what they think the task is: its aim, its limits, what's out of scope." \
   --do "speed:5" \

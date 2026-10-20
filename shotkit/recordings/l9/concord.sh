@@ -15,10 +15,10 @@ node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --do "caption:Four agents share one task, and they don't agree on the renewal offer." \
   --do "hold:2600" \
   --do "click:Board" \
-  --do "click:[data-board-row=\"memory:work/acme-renewal-offer\"]" \
+  --do "click:[data-board-row=\"work/acme-renewal-offer\"]" \
   --do "caption:Ask them to agree. One message starts the flow." \
   --do "click:textarea[placeholder^=\"Reply in\"]" \
-  --do "typekeys:@conductor concord @success @finance @sales @legal: Decide the renewal offer for Acme." \
+  --do "typekeys:@conductor concord @~success @~finance @~sales @~legal: Decide the renewal offer for Acme." \
   --do "press:Enter" \
   --do "caption:Everyone suggests an option, then rates every option from 0 to 100." \
   --do "speed:5" \
