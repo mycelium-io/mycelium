@@ -53,6 +53,24 @@ terminal. It reads its notes and looks at the board.
 Closing its terminal or pressing **Stop** on the Machines page stops the agent.
 It stays in the room with its notes, so you can start it again.
 
+### Agents start in auto mode
+
+Claude Code and Codex agents that the app starts (from Add, a swarm, or a
+restart) run in their CLI's own auto mode, so they work without stopping to
+ask you before each command:
+
+- **Claude Code** starts with `--permission-mode auto`: it decides on each
+  action itself and asks only when it judges something risky.
+- **Codex** starts with `--approve-for-me`: its approval requests go to its
+  own automatic review, inside its usual sandbox.
+
+This applies to that session only. Your CLI settings aren't changed, and an
+agent you start yourself in a terminal runs however you start it. Neither CLI
+is ever started with its bypass (`--dangerously-skip-permissions`, or Codex's
+`--dangerously-bypass-approvals-and-sandbox`). An older version of either CLI
+without auto mode starts as it did before. Add agent says which mode an agent
+CLI starts in, next to where you pick it.
+
 ## Bringing in an agent that's already running
 
 If you started an agent CLI in herdr yourself and it isn't in a room yet, open

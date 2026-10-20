@@ -685,6 +685,13 @@
       </ul>
       <p>Press <strong>Add to room</strong>. The agent is added to the room and opens in a herdr terminal. It reads its notes and looks at the board.</p>
       <p>Closing its terminal or pressing <strong>Stop</strong> on the Machines page stops the agent. It stays in the room with its notes, so you can start it again.</p>
+      <h3 id="machines-agents-start-in-auto-mode">Agents start in auto mode</h3>
+      <p>Claude Code and Codex agents that the app starts (from Add, a swarm, or a restart) run in their CLI&#x27;s own auto mode, so they work without stopping to ask you before each command:</p>
+      <ul>
+        <li><strong>Claude Code</strong> starts with <code>--permission-mode auto</code>: it decides on each action itself and asks only when it judges something risky.</li>
+        <li><strong>Codex</strong> starts with <code>--approve-for-me</code>: its approval requests go to its own automatic review, inside its usual sandbox.</li>
+      </ul>
+      <p>This applies to that session only. Your CLI settings aren&#x27;t changed, and an agent you start yourself in a terminal runs however you start it. Neither CLI is ever started with its bypass (<code>--dangerously-skip-permissions</code>, or Codex&#x27;s <code>--dangerously-bypass-approvals-and-sandbox</code>). An older version of either CLI without auto mode starts as it did before. Add agent says which mode an agent CLI starts in, next to where you pick it.</p>
       <h2 id="machines-bringing-in-an-agent-thats-already-running">Bringing in an agent that&#x27;s already running</h2>
       <p>If you started an agent CLI in herdr yourself and it isn&#x27;t in a room yet, open <strong>Members → Add → Running agent</strong>. The dialog lists every agent like that on your machines, with its CLI, its tab name and its folder. Pick one and edit the handle, which starts out as the tab name, then press <strong>Add to room</strong>.</p>
       <p>Your machine asks you first, because it is about to type into that agent&#x27;s terminal. After you say yes, the agent is added to the room. Once it&#x27;s idle, the runner types a short introduction into it that names the room and its handle and tells it to read the skill and the board. The agent keeps its own session. Pressing <strong>Stop</strong> for it later takes it out of the room&#x27;s sync but leaves its terminal open.</p>
@@ -2287,6 +2294,10 @@ enabled = true
 
 [permissions.&lt;your-profile&gt;.filesystem]
 &quot;~/.mycelium/agent-state&quot; = &quot;write&quot;</code></pre>
+      <hr class="divider">
+      <h3 id="troubleshooting-an-agent-the-app-started-still-stops-to-ask">An agent the app started still stops to ask</h3>
+      <p><strong>You see:</strong> a Claude Code or Codex agent started from the app stops at a permission prompt before running a command.</p>
+      <p>Agents the app starts run in their CLI&#x27;s auto mode (see <a href="#machines-agents-start-in-auto-mode">Agents start in auto mode</a>), which still asks when it judges an action risky. Answer it in the agent&#x27;s terminal. If it asks for everything, its CLI may be older than the one with auto mode, and then it starts as it did before: update the CLI, then restart the agent from <strong>Machines</strong>. Add agent says &quot;runs in its auto mode&quot; next to the CLI when the installed version has it.</p>
       <hr class="divider">
       <h3 id="troubleshooting-mycelium-command-not-found"><code>mycelium: command not found</code></h3>
       <p>The CLI isn&#x27;t installed or isn&#x27;t on your <code>PATH</code>. Install it with the command below. On an Apple silicon Mac this installs the desktop app, which links its CLI into <code>~/.local/bin</code>. Add <code>bash -s -- --client-only</code> for the CLI alone.</p>

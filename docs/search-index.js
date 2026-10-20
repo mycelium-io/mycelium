@@ -925,6 +925,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#machines-agents-start-in-auto-mode",
+    "t": "Agents start in auto mode",
+    "s": "Agents › Start Agents From the App",
+    "x": "Claude Code and Codex agents that the app starts (from Add, a swarm, or a restart) run in their CLI's own auto mode, so they work without stopping to ask you before each command: Claude Code starts with --permission-mode auto: it decides on each action itself and asks only when it judges something risky. Codex starts with --approve-for-me: its approval requests go to its own automatic review, inside its usual sandbox",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#machines-bringing-in-an-agent-thats-already-running",
     "t": "Bringing in an agent that's already running",
     "s": "Agents › Start Agents From the App",
@@ -1741,6 +1748,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Codex asks before every mycelium command",
     "s": "Help › Troubleshooting",
     "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network, which can write only in the folder it started in. When Mycelium starts a Codex agent, it opens that sandbox for the session to two things mycelium needs: the network, to reach the hub, and ~/.mycelium/agent-state, the one folder the CLI writes to w",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#troubleshooting-an-agent-the-app-started-still-stops-to-ask",
+    "t": "An agent the app started still stops to ask",
+    "s": "Help › Troubleshooting",
+    "x": "You see: a Claude Code or Codex agent started from the app stops at a permission prompt before running a command. Agents the app starts run in their CLI's auto mode (see Agents start in auto mode), which still asks when it judges an action risky. Answer it in the agent's terminal. If it asks for everything, its CLI may be older than the one with auto mode, and then it starts as it did before: update the CLI, then res",
     "p": "Guides"
   },
   {

@@ -17,7 +17,19 @@ class Claude(AgentKind):
         # agent stopped at a prompt on its first `mycelium await` never takes
         # its turn. So the one command it needs is allowed for this session
         # only, never in the person's settings.
-        return ["--allowedTools", "Bash(mycelium:*)"]
+        args = ["--allowedTools", "Bash(mycelium:*)"]
+        # And it runs in its own auto mode, which decides on each action itself
+        # rather than stopping to ask. Never --dangerously-skip-permissions.
+        if self.offers("--permission-mode", '"auto"'):
+            args += ["--permission-mode", "auto"]
+        return args
+
+    def session_note(self) -> str | None:
+        return (
+            "Claude Code runs in its auto mode"
+            if self.offers("--permission-mode", '"auto"')
+            else None
+        )
 
     def resume_args(self, session: str) -> list[str] | None:
         # The id herdr records for the pane through its Claude integration.
