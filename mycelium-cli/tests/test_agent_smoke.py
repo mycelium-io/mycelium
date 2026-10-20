@@ -59,3 +59,19 @@ def test_the_issue_names_the_cli_the_check_and_shows_its_screen(tmp_path) -> Non
     assert "Unknown option --x" in text
     assert "Claude Code" not in text
     assert smoke.markdown([good]).startswith("Every agent CLI started")
+
+
+def test_a_live_result_never_holds_a_key_it_was_given(monkeypatch) -> None:
+    """A result becomes an artifact and can open a public issue, so a key the
+    CLI echoed (its config, a header in an error) is taken out first."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-secret-value")
+    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+    result = smoke.Result(cli="claude", name="Claude Code", screen="key: sk-ant-secret-value")
+    result.check("answers in the room", ok=False, detail="401 for sk-ant-secret-value")
+    cleaned = smoke.redact(result, ["ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"])
+    assert cleaned.screen == "key: ***"
+    assert cleaned.checks[0].detail == "401 for ***"
+    # A model name isn't a secret, and stays readable.
+    assert smoke.redact(
+        smoke.Result(cli="c", name="c", screen="claude-haiku-4-5"), ["ANTHROPIC_MODEL"]
+    ).screen == ("claude-haiku-4-5")

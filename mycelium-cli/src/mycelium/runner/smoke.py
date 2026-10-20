@@ -219,6 +219,36 @@ LIVE_NOTES = (
 )
 
 
+#: Names of passed-through variables whose values never reach a result.
+SECRET_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD")
+
+
+def redact(result: Result, passthrough: list[str]) -> Result:
+    """``result`` with the value of every secret in ``passthrough`` replaced by
+    ``***``. A result is kept as an artifact and can open a public issue, and a
+    CLI that echoes its config or a header would otherwise publish the key."""
+    import os
+
+    secrets = [
+        os.environ[n]
+        for n in passthrough
+        if n.upper().endswith(SECRET_SUFFIXES) and len(os.environ.get(n, "")) >= 4  # noqa: PLR2004
+    ]
+
+    def clean(text: str | None) -> str | None:
+        if text is None:
+            return None
+        for value in secrets:
+            text = text.replace(value, "***")
+        return text
+
+    result.screen = clean(result.screen)
+    result.version = clean(result.version)
+    for check in result.checks:
+        check.detail = clean(check.detail) or ""
+    return result
+
+
 def live(
     cli: str,
     *,
@@ -232,8 +262,21 @@ def live(
 
     ``passthrough`` names environment variables (its key, its model) handed to
     its pane, and ``work`` is the folder it starts in (one the job trusted for
-    it). Signing it in, beyond the key, is the job's business.
+    it). Signing it in, beyond the key, is the job's business. Every secret
+    passed through is taken out of the result (:func:`redact`).
     """
+    return redact(_live(cli, api=api, passthrough=passthrough, work=work, answer_s=answer_s),
+                  passthrough)  # fmt: skip
+
+
+def _live(
+    cli: str,
+    *,
+    api: str,
+    passthrough: list[str],
+    work: str | None,
+    answer_s: float,
+) -> Result:
     import os
     from contextlib import nullcontext
 

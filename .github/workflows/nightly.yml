@@ -308,16 +308,17 @@ jobs:
       fail-fast: false
       matrix:
         cli: [claude, codex]
+    # The keys are given only to the steps that use them, never to the ones
+    # that run an installer or download something.
     env:
       HERDR_TAG: v0.9.3
       SLIMCTL_TAG: slimctl-v2.1.1
-      ANTHROPIC_API_KEY: ${{ secrets.NIGHTLY_ANTHROPIC_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.NIGHTLY_OPENAI_API_KEY }}
-      # Claude Code's cheapest model; Codex's is set in its config below.
-      ANTHROPIC_MODEL: claude-haiku-4-5
     steps:
       - name: Check for its key
         id: key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.NIGHTLY_ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.NIGHTLY_OPENAI_API_KEY }}
         run: |
           if [ "${{ matrix.cli }}" = claude ]; then key="$ANTHROPIC_API_KEY"; else key="$OPENAI_API_KEY"; fi
           if [ -n "$key" ]; then
@@ -359,6 +360,8 @@ jobs:
         if: steps.key.outputs.run == 'true'
         env:
           WORK: ${{ runner.temp }}/live-${{ matrix.cli }}
+          ANTHROPIC_API_KEY: ${{ secrets.NIGHTLY_ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.NIGHTLY_OPENAI_API_KEY }}
         run: |
           mkdir -p "$WORK"
           if [ "${{ matrix.cli }}" = claude ]; then
@@ -401,6 +404,11 @@ jobs:
       - name: Mention it and wait for its answer
         if: steps.key.outputs.run == 'true'
         working-directory: mycelium-cli
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.NIGHTLY_ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.NIGHTLY_OPENAI_API_KEY }}
+          # Claude Code's cheapest model; Codex's is set in its config above.
+          ANTHROPIC_MODEL: claude-haiku-4-5
         run: >-
           uv run python -m mycelium.runner.smoke live "${{ matrix.cli }}"
           --api http://127.0.0.1:8000
