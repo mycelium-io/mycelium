@@ -74,8 +74,9 @@ true, and `record.sh` moves on to the next room name.
 With the same room name, the same prompts and a fresh backend, runs often come
 out alike, but not reliably word for word: repeated Accord tries on one name
 gave different points each time. `acme-renewal-2027` gave the current Concord
-video (agreement on option F after two fixes, where `acme-renewal-q4` ended
-without one) and `acme-handoff` gave the Accord video.
+video (agreement on option C in the first round, with no fix needed; an
+earlier take under the same name took two fixes) and `acme-handoff` gave the
+Accord video.
 
 The backend restart before each try matters because persona teammates keep a
 model session per room and handle, so a room recreated under an old name would

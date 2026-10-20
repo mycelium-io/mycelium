@@ -203,10 +203,9 @@
       <table class="l9">
         <thead><tr><th>Step</th><th>What happened</th></tr></thead>
         <tbody>
-          <tr><td>Suggest and rate</td><td>Each member suggested one option (A to D) and rated all four. Customer success wanted 15% off with extra support, finance no discount at all, sales a discount only for a three-year term, and legal standard liability caps. The rule chose sales&#x27;s option C: 15% off for three years, or current terms with a 5% increase year to year. Finance rated C 40 and legal 55.</td></tr>
-          <tr><td>First fix</td><td>Finance was the least happy, so it was asked to improve C. Its version, E, kept C&#x27;s shape but capped the discount at 10%. E became the new choice. Legal rated it 68, just under the bar of 70.</td></tr>
-          <tr><td>Second fix</td><td>Legal improved E into F by adding mutual liability caps of twice the yearly value and updated data protection terms. Everyone rated F 76 or higher, and finance went from 40 to 82.</td></tr>
-          <tr><td>Done</td><td>Everyone was above the bar, so the run ended in agreement on F after six steps. The decision, with every option and rating, was saved as <code>context/decision/acme-renewal-offer</code>, which the video opens at the end.</td></tr>
+          <tr><td>Suggest and rate</td><td>Each member suggested one option (A to D) and rated all four. Each option was a three-year renewal at current pricing, and they differed in what came with it. Finance wanted nothing more. Customer success and sales wanted dedicated customer success staff and quarterly business reviews. Legal wanted liability capped at the yearly contract value.</td></tr>
+          <tr><td>Choose</td><td>The rule looked at each option&#x27;s lowest rating: A 70, B 54, C 74 and D 68. It chose sales&#x27;s option C, whose lowest rating was highest. Legal gave C its lowest rating, 74.</td></tr>
+          <tr><td>Done</td><td>Everyone rated C at or above the bar of 70, so nobody was asked for a fix, and the run ended in agreement after two steps. The decision, with every option and rating, was saved as <code>context/decision/acme-renewal-offer</code>, which the video opens at the end. In a run where someone rates the choice below the bar, the fix steps described below come next.</td></tr>
         </tbody>
       </table>
     </section>
@@ -221,11 +220,16 @@
       </p>
       <p>To start it from the terminal:</p>
       <pre><code>mycelium board coordinate work/acme-renewal-offer conductor \
-  "concord @success @finance @sales @legal: Decide the renewal offer for Acme."</code></pre>
-      <p>Or type this in the task&#x27;s thread in the app: <code>@conductor concord @success @finance @sales @legal: …</code></p>
+  "concord @~success @~finance @~sales @~legal: Decide the renewal offer for Acme."</code></pre>
+      <p>Or type this in the task&#x27;s thread in the app: <code>@conductor concord @~success @~finance @~sales @~legal: …</code></p>
+      <p>
+        Write the members as <code>@~name</code>. That names each one for the flow without waking
+        them, and the conductor asks each in turn. A plain <code>@name</code> wakes all of them at
+        once, and replies that come before their turn are refused.
+      </p>
       <figure class="take">
-        <img src="l9-summon-concord.png" alt="The app's message box with '@conductor concord' typed. Above it, a hint reads '@conductor concord [@member…] <what…>' with Concord's one-line description.">
-        <figcaption>The message box helps write the summon. Once you name the flow, it shows what the flow needs and what it does. Concord has no fixed roles, so it takes any members you name.</figcaption>
+        <img src="l9-summon-concord.png" alt="The message box in a task's thread with '@conductor concord @~success @~finance @~sales @~legal' typed. Above it, a hint reads '@conductor concord [@~member…] <what…>' and says who takes part.">
+        <figcaption>The message box helps write the summon. Once you name the flow, it shows what the flow needs and what each part is for. Concord has no fixed roles, so it takes any members you name.</figcaption>
       </figure>
 
       <pre class="mermaid">
@@ -271,16 +275,16 @@ flowchart LR
   "header": {"kind": "commit", "subkind": "converged",
     "participants": {"actors": [{"id": "conductor", "role": "coordinator"},
                                 {"id": "success", "role": "agent"}, …]},
-    "message": {"episode": "urn:ioc:mycelium:episode:acme-renewal-2027:de6f525f",
+    "message": {"episode": "urn:ioc:mycelium:episode:acme-renewal-2027:f2d1f368",
                 "parents": []}},
   "payload": {"type": "outcome", "data": {
-    "protocol": "concord", "steps": 6, "reason": "reached `agreed`",
-    "record": "log/episodes/00ea2514",
-    "select": {"outcome": "feasible", "pick": "F", "threshold": 70, "lowest": 76,
-               "ratings": {"success": 82, "finance": 82, "sales": 87, "legal": 76},
-               "options": [ …A to F, with authors… ], "table": { …every rating… }},
-    "metrics": {"satisfaction": {"success": 0.82, "finance": 0.82, "sales": 0.87, "legal": 0.76},
-                "min_satisfaction": 0.76},
+    "protocol": "concord", "steps": 2, "reason": "reached `agreed`",
+    "record": "log/episodes/e87a3522",
+    "select": {"outcome": "feasible", "pick": "C", "threshold": 70, "lowest": 74,
+               "ratings": {"success": 84, "finance": 93, "sales": 96, "legal": 74},
+               "options": [ …A to D, with authors… ], "table": { …every rating… }},
+    "metrics": {"satisfaction": {"success": 0.84, "finance": 0.93, "sales": 0.96, "legal": 0.74},
+                "min_satisfaction": 0.74},
     "memory": "context/decision/acme-renewal-offer"
   }}
 }</code></pre>
@@ -304,10 +308,10 @@ flowchart LR
         item in the summary.
       </p>
       <pre><code>mycelium board coordinate work/acme-renewal-handoff conductor \
-  "accord @sales @success @finance @legal: Plan the Acme renewal handoff."</code></pre>
-      <p>Every member named takes part the same way. In the app, type <code>@conductor accord @sales …</code> in the task&#x27;s thread.</p>
+  "accord @~sales @~success @~finance @~legal: Plan the Acme renewal handoff."</code></pre>
+      <p>Every member named takes part the same way. In the app, type <code>@conductor accord @~sales @~success …</code> in the task&#x27;s thread, with each member written as <code>@~name</code> so the conductor wakes them in turn.</p>
       <figure class="take">
-        <img src="l9-summon-accord.png" alt="The app's message box with '@conductor accord' typed. Above it, a hint reads '@conductor accord [@member…] <what…>' with Accord's one-line description.">
+        <img src="l9-summon-accord.png" alt="The message box in a task's thread with '@conductor accord @~sales @~success @~finance @~legal' typed. Above it, a hint reads '@conductor accord [@~member…] <what…>' and says who takes part.">
         <figcaption>The message box helps write the summon. Accord has no roles, so it takes any members you name.</figcaption>
       </figure>
 
@@ -346,10 +350,10 @@ flowchart LR
       <table class="l9">
         <thead><tr><th>Step</th><th>What happened</th></tr></thead>
         <tbody>
-          <tr><td>Describe</td><td>Each member labelled what they think the task is. The first round brought 20 points, each in the member&#x27;s own words. Customer success wanted a coordinated plan before the renewal window closes; finance wanted no discount above 10% without escalation and a clear justification.</td></tr>
-          <tr><td>What&#x27;s missing</td><td>The conductor showed the points so far and asked what was missing, and members added more, for 36 in all. Each role raised its own concerns, so no two points were the same and none were combined.</td></tr>
-          <tr><td>The words</td><td>Members defined the words they use in a specific sense, and gave 12 checks for how points would be confirmed. Sales and customer success meant different things by &quot;aggressive&quot;. Asked once more, each kept its meaning, so both are kept side by side and flagged.</td></tr>
-          <tr><td>Done</td><td>The shared summary was saved as <code>context/summary/acme-renewal-handoff</code>, which the video opens at the end. Its open items include that every point was stated by only one person and that &quot;aggressive&quot; is used in different senses.</td></tr>
+          <tr><td>Describe</td><td>Each member labelled what they think the task is. The first round brought 20 points, each in the member&#x27;s own words. Sales wanted the renewal locked in for several years at pricing that reflects that commitment; customer success wanted to keep Acme by showing clear value, since losing a reference account would hurt.</td></tr>
+          <tr><td>What&#x27;s missing</td><td>The conductor showed the points so far and asked what was missing. Nobody added anything new, so the summary kept its 20 points.</td></tr>
+          <tr><td>The words</td><td>Members defined the words they use in a specific sense and said how points would be checked. Finance and legal meant different things by &quot;standard&quot;: to finance, the published list price; to legal, its template agreement with its liability caps and indemnities. Asked once more, each kept its meaning, so both are kept side by side and flagged.</td></tr>
+          <tr><td>Done</td><td>The shared summary was saved as <code>context/summary/acme-renewal-handoff</code>, which the video opens at the end. Its open items include points only one member made and the two senses of &quot;standard&quot;.</td></tr>
         </tbody>
       </table>
     </section>
