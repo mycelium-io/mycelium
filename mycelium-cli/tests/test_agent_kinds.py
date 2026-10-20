@@ -20,9 +20,9 @@ def test_each_cli_is_listed_once():
 
 
 def test_a_cli_with_nothing_of_its_own_adds_nothing():
-    codex = agents.of_kind("codex")
-    assert codex.launch_args() == []
-    assert codex.blocked_hint() is None
+    gemini = agents.of_kind("gemini")
+    assert gemini.launch_args() == []
+    assert gemini.blocked_hint() is None
     unknown = agents.of_kind("someday")
     assert (unknown.id, unknown.launch_args(), unknown.adapter) == ("someday", [], "claude_code")
 
@@ -31,6 +31,21 @@ def test_claude_is_started_allowed_mycelium_and_says_what_it_waits_for():
     claude = agents.of_kind("claude")
     assert claude.launch_args() == ["--allowedTools", "Bash(mycelium:*)"]
     assert "Claude Code asks before" in (claude.blocked_hint() or "")
+
+
+def test_codex_sandbox_lets_mycelium_reach_the_hub_and_write_its_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    args = agents.of_kind("codex").launch_args()
+    assert args == [
+        "-c",
+        "sandbox_workspace_write.network_access=true",
+        "--add-dir",
+        str(tmp_path / ".mycelium"),
+    ]
+    # Never the bypass, and never a change to who approves what.
+    assert not any("dangerously" in a or a in ("-a", "--ask-for-approval") for a in args)
 
 
 @pytest.mark.parametrize(

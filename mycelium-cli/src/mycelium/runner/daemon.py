@@ -152,6 +152,12 @@ class _JobStart(StartHooks):
     def step(self, step: str) -> None:
         self._runner._report(self._job_id, "running", {"step": step}, None)  # noqa: SLF001 - the job's own report
 
+    def slow_shell(self, ref: str) -> None:
+        # The terminal to look at, never what it shows: that stays on the machine.
+        self._runner._report(  # noqa: SLF001 - the job's own report
+            self._job_id, "running", {"step": STEP_SHELL, "slow": True, "pane": ref}, None
+        )
+
     @contextlib.contextmanager
     def unlocked(self) -> Iterator[None]:
         # The pane is mapped by now, so a sync pass that runs meanwhile can't
