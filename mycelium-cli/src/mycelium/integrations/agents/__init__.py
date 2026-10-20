@@ -59,7 +59,14 @@ KNOWN: tuple[AgentKind, ...] = (
         "kimi",
         "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
     ),
-    AgentKind("grok", "Grok", ("grok",), "grok", f"{_NPM} grok-dev"),
+    # Runs on bun, which its package doesn't bring with it.
+    AgentKind(
+        "grok",
+        "Grok",
+        ("grok",),
+        "grok",
+        "curl -fsSL https://bun.sh/install | bash && ~/.bun/bin/bun add -g grok-dev",
+    ),
     AgentKind(
         "goose",
         "Goose",
