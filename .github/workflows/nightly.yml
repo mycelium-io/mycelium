@@ -8,6 +8,11 @@ on:
     # 04:00 UTC — after the day's merges, before anyone reads the result.
     - cron: "0 4 * * *"
   workflow_dispatch:
+    inputs:
+      only:
+        description: "Run one part: install-path, cognition or agent-clis (default: all)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -22,6 +27,7 @@ jobs:
     # tests run against temp directories and fakes, so compose topology drifting
     # from the CLI's view of it is invisible to them.
     name: Install path (full stack)
+    if: ${{ !inputs.only || inputs.only == 'install-path' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -142,6 +148,7 @@ jobs:
     # unanimity instead of the step cap. Costs tokens, so it needs a key; without
     # one it reports and passes, since a fork has no secrets.
     name: Cognition (live LLM)
+    if: ${{ !inputs.only || inputs.only == 'cognition' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -198,6 +205,256 @@ jobs:
           tests/test_cognition_live.py
           tests/test_task_compiler.py
           tests/test_synthesizer_live.py
+
+  agent-clis-plan:
+    # Every agent CLI the app can start (integrations/agents KNOWN), with the
+    # command that installs its latest release, as the matrix below.
+    name: Agent CLIs (plan)
+    if: ${{ !inputs.only || inputs.only == 'agent-clis' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      clis: ${{ steps.plan.outputs.clis }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json bash scripts/gen-mycelium-client.sh
+      - name: List the CLIs
+        id: plan
+        working-directory: mycelium-cli
+        run: echo "clis=$(uv run python -m mycelium.runner.smoke plan)" >> "$GITHUB_OUTPUT"
+
+  agent-clis:
+    # Each CLI at its latest release, started the way the runner starts it (a
+    # herdr pane, our launch arguments), with no key. Catches what a new user
+    # hits before the model is ever called: a flag a CLI stopped accepting, a
+    # shell that never reaches its prompt, herdr's first run in the way, a
+    # sign-in the runner can't report. Free; Linux, since herdr ships for it.
+    name: Agent CLI start-up (${{ matrix.cli.name }})
+    needs: agent-clis-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cli: ${{ fromJSON(needs.agent-clis-plan.outputs.clis) }}
+    env:
+      HERDR_TAG: v0.9.3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json bash scripts/gen-mycelium-client.sh
+      - name: Install ${{ matrix.cli.name }}, latest release
+        env:
+          INSTALL: ${{ matrix.cli.install }}
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          bash -c "$INSTALL"
+      # Started after the CLI is installed, so its panes' shells find it.
+      - name: Start herdr
+        run: |
+          curl -fsSL -o "$HOME/.local/bin/herdr" \
+            "https://github.com/herdrdev/herdr/releases/download/$HERDR_TAG/herdr-linux-x86_64"
+          chmod +x "$HOME/.local/bin/herdr"
+          nohup herdr server > "$RUNNER_TEMP/herdr.log" 2>&1 &
+          for _ in $(seq 1 30); do herdr workspace list > /dev/null 2>&1 && exit 0; sleep 1; done
+          echo "::error::herdr's server never answered"
+          cat "$RUNNER_TEMP/herdr.log"
+          exit 1
+      - name: Start it as the runner does
+        working-directory: mycelium-cli
+        run: >-
+          uv run python -m mycelium.runner.smoke run "${{ matrix.cli.cli }}"
+          --out "$RUNNER_TEMP/smoke-${{ matrix.cli.cli }}.json"
+      - name: Keep the result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: smoke-${{ matrix.cli.cli }}
+          path: ${{ runner.temp }}/smoke-${{ matrix.cli.cli }}.json
+          if-no-files-found: ignore
+
+  agent-clis-live:
+    # The paid half, for the two CLIs most people start: signed in with its
+    # cheapest model, started by the runner's host in a room on a throwaway
+    # hub, mentioned, and expected to answer there without stopping at a
+    # permission prompt. A few cents a night. Without its key a CLI reports
+    # and passes, since a fork has no secrets.
+    name: Agent CLI end to end (${{ matrix.cli }})
+    if: ${{ !inputs.only || inputs.only == 'agent-clis' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        cli: [claude, codex]
+    env:
+      HERDR_TAG: v0.9.3
+      SLIMCTL_TAG: slimctl-v2.1.1
+      ANTHROPIC_API_KEY: ${{ secrets.NIGHTLY_ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.NIGHTLY_OPENAI_API_KEY }}
+      # Claude Code's cheapest model; Codex's is set in its config below.
+      ANTHROPIC_MODEL: claude-haiku-4-5
+    steps:
+      - name: Check for its key
+        id: key
+        run: |
+          if [ "${{ matrix.cli }}" = claude ]; then key="$ANTHROPIC_API_KEY"; else key="$OPENAI_API_KEY"; fi
+          if [ -n "$key" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No key for ${{ matrix.cli }}; its end-to-end check was skipped."
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.key.outputs.run == 'true'
+      - name: Install uv
+        if: steps.key.outputs.run == 'true'
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Set up Python
+        if: steps.key.outputs.run == 'true'
+        run: uv python install 3.12
+      - name: Set up Node
+        if: steps.key.outputs.run == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Install the CLI, the agent CLI and herdr
+        if: steps.key.outputs.run == 'true'
+        run: |
+          SPEC_FILE=openapi.json bash scripts/gen-mycelium-client.sh
+          mkdir -p "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          uv tool install -e ./mycelium-cli --with mycelium-backend-client@./mycelium-client --force
+          bash -c "$(cd mycelium-cli && uv run python -c \
+            "from mycelium.integrations.agents import by_id; print(by_id('${{ matrix.cli }}').install)")"
+          curl -fsSL -o "$HOME/.local/bin/herdr" \
+            "https://github.com/herdrdev/herdr/releases/download/$HERDR_TAG/herdr-linux-x86_64"
+          chmod +x "$HOME/.local/bin/herdr"
+      # A machine where the person already signed in and trusted the folder:
+      # what's being checked is the work after that, not the first run (the
+      # start-up job above covers that).
+      - name: Sign it in
+        if: steps.key.outputs.run == 'true'
+        env:
+          WORK: ${{ runner.temp }}/live-${{ matrix.cli }}
+        run: |
+          mkdir -p "$WORK"
+          if [ "${{ matrix.cli }}" = claude ]; then
+            python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          key = os.environ["ANTHROPIC_API_KEY"]
+          Path.home().joinpath(".claude.json").write_text(json.dumps({
+              "hasCompletedOnboarding": True,
+              "customApiKeyResponses": {"approved": [key[-20:]], "rejected": []},
+              "projects": {os.environ["WORK"]: {"hasTrustDialogAccepted": True}},
+          }))
+          PY
+          else
+            printenv OPENAI_API_KEY | codex login --with-api-key
+            mkdir -p "$HOME/.codex"
+            printf 'model = "gpt-5-mini"\n\n[projects."%s"]\ntrust_level = "trusted"\n' "$WORK" \
+              >> "$HOME/.codex/config.toml"
+          fi
+      - name: Start a SLIM node, a hub and herdr
+        if: steps.key.outputs.run == 'true'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/slimctl.tgz" \
+            "https://github.com/agntcy/slim/releases/download/$SLIMCTL_TAG/slimctl-linux-amd64-gnu.tar.gz"
+          tar -xzf "$RUNNER_TEMP/slimctl.tgz" -C "$RUNNER_TEMP"
+          slimctl=$(find "$RUNNER_TEMP" -type f -name slimctl | head -n 1)
+          nohup "$slimctl" slim start --endpoint 127.0.0.1:46357 > "$RUNNER_TEMP/slim.log" 2>&1 &
+          (cd fastapi-backend && uv sync -q && \
+            MYCELIUM_DATA_DIR="$RUNNER_TEMP/hub" MYCELIUM_STUB_EMBEDDINGS=1 \
+            MYCELIUM_SLIM_ENDPOINT=http://127.0.0.1:46357 \
+            nohup uv run uvicorn app.main:app --port 8000 > "$RUNNER_TEMP/hub.log" 2>&1 &)
+          nohup herdr server > "$RUNNER_TEMP/herdr.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/health > /dev/null && herdr workspace list > /dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo "::error::the hub or herdr never answered"
+          tail -40 "$RUNNER_TEMP/hub.log" "$RUNNER_TEMP/herdr.log" "$RUNNER_TEMP/slim.log"
+          exit 1
+      - name: Mention it and wait for its answer
+        if: steps.key.outputs.run == 'true'
+        working-directory: mycelium-cli
+        run: >-
+          uv run python -m mycelium.runner.smoke live "${{ matrix.cli }}"
+          --api http://127.0.0.1:8000
+          --cwd "$RUNNER_TEMP/live-${{ matrix.cli }}"
+          --pass ANTHROPIC_API_KEY --pass ANTHROPIC_MODEL --pass OPENAI_API_KEY
+          --out "$RUNNER_TEMP/smoke-live-${{ matrix.cli }}.json"
+      - name: Hub log (on failure)
+        if: failure() && steps.key.outputs.run == 'true'
+        run: tail -60 "$RUNNER_TEMP/hub.log" || true
+      - name: Keep the result
+        if: always() && steps.key.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: smoke-live-${{ matrix.cli }}
+          path: ${{ runner.temp }}/smoke-live-${{ matrix.cli }}.json
+          if-no-files-found: ignore
+
+  agent-clis-report:
+    # One open issue for the agent CLIs, apart from the rest of the nightly,
+    # saying which CLI failed which check, with its pane's screen.
+    name: Report agent CLI failures
+    runs-on: ubuntu-latest
+    needs: [agent-clis, agent-clis-live]
+    if: ${{ always() && (needs.agent-clis.result == 'failure' || needs.agent-clis-live.result == 'failure') }}
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json bash scripts/gen-mycelium-client.sh
+      - name: Collect the results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: smoke-*
+          path: ${{ runner.temp }}/smoke
+          merge-multiple: true
+      - name: Open or update the agent CLI issue
+        working-directory: mycelium-cli
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: "Nightly agent CLI checks are failing"
+        run: |
+          {
+            echo "An agent CLI the app starts failed a nightly check: $RUN_URL"
+            echo
+            uv run python -m mycelium.runner.smoke report "$RUNNER_TEMP"/smoke/*.json
+          } > "$RUNNER_TEMP/body.md"
+          existing=$(gh issue list --repo "$GH_REPO" --state open --search "$TITLE in:title" \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GH_REPO" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh issue create --repo "$GH_REPO" --title "$TITLE" --body-file "$RUNNER_TEMP/body.md"
+          fi
 
   report:
     # One open issue, commented on each time the failure recurs, closed by hand

@@ -26,22 +26,49 @@ __all__ = [
     "of_kind",
 ]
 
+_NPM = "npm install -g"
+
 KNOWN: tuple[AgentKind, ...] = (
-    Claude("claude", "Claude Code", ("claude",), "claude"),
-    AgentKind("codex", "Codex", ("codex",), "codex"),
-    AgentKind("gemini", "Gemini CLI", ("gemini",), "gemini"),
-    Cursor("cursor", "Cursor Agent", ("cursor-agent",), "cursor"),
-    AgentKind("opencode", "OpenCode", ("opencode",), "opencode"),
-    AgentKind("pi", "Pi", ("pi",), "pi"),
-    AgentKind("copilot", "GitHub Copilot CLI", ("copilot",), "copilot"),
-    AgentKind("amp", "Amp", ("amp",), "amp"),
-    AgentKind("droid", "Droid", ("droid",), "droid"),
-    AgentKind("cline", "Cline", ("cline",), "cline"),
-    AgentKind("kiro", "Kiro", ("kiro-cli", "kiro"), "kiro"),
-    AgentKind("kimi", "Kimi", ("kimi",), "kimi"),
-    AgentKind("grok", "Grok", ("grok",), "grok"),
-    AgentKind("goose", "Goose", ("goose",), None),
-    AgentKind("aider", "Aider", ("aider",), None),
+    Claude("claude", "Claude Code", ("claude",), "claude", f"{_NPM} @anthropic-ai/claude-code"),
+    AgentKind("codex", "Codex", ("codex",), "codex", f"{_NPM} @openai/codex"),
+    AgentKind("gemini", "Gemini CLI", ("gemini",), "gemini", f"{_NPM} @google/gemini-cli"),
+    Cursor(
+        "cursor",
+        "Cursor Agent",
+        ("cursor-agent",),
+        "cursor",
+        "curl -fsS https://cursor.com/install | bash",
+    ),
+    AgentKind("opencode", "OpenCode", ("opencode",), "opencode", f"{_NPM} opencode-ai"),
+    AgentKind("pi", "Pi", ("pi",), "pi", f"{_NPM} @earendil-works/pi-coding-agent"),
+    AgentKind("copilot", "GitHub Copilot CLI", ("copilot",), "copilot", f"{_NPM} @github/copilot"),
+    AgentKind("amp", "Amp", ("amp",), "amp", f"{_NPM} @sourcegraph/amp"),
+    AgentKind("droid", "Droid", ("droid",), "droid", "curl -fsSL https://app.factory.ai/cli | sh"),
+    AgentKind("cline", "Cline", ("cline",), "cline", f"{_NPM} cline"),
+    AgentKind(
+        "kiro",
+        "Kiro",
+        ("kiro-cli", "kiro"),
+        "kiro",
+        "curl -fsSL https://cli.kiro.dev/install | bash",
+    ),
+    AgentKind(
+        "kimi",
+        "Kimi",
+        ("kimi",),
+        "kimi",
+        "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
+    ),
+    AgentKind("grok", "Grok", ("grok",), "grok", f"{_NPM} grok-dev"),
+    AgentKind(
+        "goose",
+        "Goose",
+        ("goose",),
+        None,
+        "curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh"
+        " | CONFIGURE=false bash",
+    ),
+    AgentKind("aider", "Aider", ("aider",), None, "uv tool install --python 3.12 aider-chat"),
 )
 
 

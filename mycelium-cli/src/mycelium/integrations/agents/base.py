@@ -33,6 +33,9 @@ class AgentKind:
     binaries: tuple[str, ...]
     #: The kind herdr starts it as, when herdr has one.
     herdr_kind: str | None
+    #: A shell command that installs its latest release on a clean Linux or
+    #: macOS machine (the nightly smoke test runs it); ``None`` when unknown.
+    install: str | None = None
 
     #: The manifest family its agents are recorded under (``AgentManifest.adapter``).
     adapter: ClassVar[str] = "claude_code"
