@@ -391,6 +391,11 @@ from app.services.telemetry import instrument_app as _instrument_app  # noqa: E4
 
 _instrument_app(app)
 
+# One spelling per room, whatever case a caller typed (``app/room_names.py``).
+from app.room_names import CanonicalRoomMiddleware  # noqa: E402
+
+app.add_middleware(CanonicalRoomMiddleware)  # ty: ignore[invalid-argument-type]
+
 # CORS — starlette types CORSMiddleware as a class but typeshed expects a factory.
 app.add_middleware(
     CORSMiddleware,  # ty: ignore[invalid-argument-type]

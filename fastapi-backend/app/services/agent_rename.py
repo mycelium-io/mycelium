@@ -39,6 +39,7 @@ from app.services.filesystem import (
     read_memory_file,
     read_room_meta,
     room_exists,
+    same_room,
     unmanaged_meta,
     write_room_meta,
 )
@@ -189,7 +190,7 @@ def restart_target(room: str, handle: str) -> str | None:
         if not runner.connected or runner.machine is None:
             continue
         for workspace in runner.machine.workspaces:
-            if any(a.room == room and a.handle == handle for a in workspace.agents):
+            if any(same_room(a.room, room) and a.handle == handle for a in workspace.agents):
                 return runner.id
     return None
 

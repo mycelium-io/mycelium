@@ -33,6 +33,7 @@ from __future__ import annotations
 import logging
 
 from app.services.agent_registry import norm_handle
+from app.services.filesystem import same_room
 from app.services.runners import RunnerError, registry
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,7 @@ def runner_for(room: str, handle: str) -> tuple[str, str | None] | None:
             continue
         for agent in runner.agents:
             if (
-                agent.room == room
+                same_room(agent.room, room)
                 and agent.handle == handle
                 and agent.status not in {"stopped", "failed"}
             ):
