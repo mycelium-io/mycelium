@@ -28,13 +28,16 @@ function Handle({ children }: { children: string }) {
 }
 
 /** Where a run saved what it settled to, as a link to the memory, or that it
- *  could not be saved (`null`). Nothing when the run saved nothing. */
+ *  could not be saved (`null`). Nothing when the run saved nothing. It never
+ *  shrinks: the row wraps it under the summary instead. */
 function Saved({ memory, onOpenMemory }: { memory: string | null | undefined; onOpenMemory?: (key: string) => void }) {
   if (memory === undefined) return null;
   if (memory === null) return <span className="flex-shrink-0 text-faint">could not be saved</span>;
   return (
-    <span className="flex flex-shrink-0 items-center gap-1 text-faint">
-      saved as
+    // In a thread too narrow even for the key, it breaks across lines rather
+    // than being cut, so it can still be read whole.
+    <span className="flex min-w-0 max-w-full flex-shrink-0 items-baseline gap-1 text-faint [overflow-wrap:anywhere] [&>*]:min-w-0 [&>*]:max-w-full">
+      <span className="flex-shrink-0">saved as</span>
       <MemoryKeyLink memoryKey={memory} onClick={onOpenMemory} />
     </span>
   );
@@ -168,12 +171,17 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
 
   return (
     <div data-testid="conductor-row" className="px-5 py-1">
-      <div className="flex items-center gap-2 text-micro text-muted-foreground">
-        <span className="flex w-7 flex-shrink-0 justify-center" aria-hidden>
+      <div className="flex items-start gap-2 text-micro text-muted-foreground">
+        <span className="flex h-[1lh] w-7 flex-shrink-0 items-center justify-center" aria-hidden>
           <Workflow className="size-3.5" />
         </span>
-        <span className="min-w-0 flex-1 truncate">{body}</span>
-        <Saved memory={saved} onOpenMemory={onOpenMemory} />
+        {/* The summary at its full width first; where it and the saved key
+            don't both fit, the key drops to a line of its own, whole, since
+            it's what people click and look for later in Memory. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
+          <span className="min-w-0 flex-auto truncate">{body}</span>
+          <Saved memory={saved} onOpenMemory={onOpenMemory} />
+        </div>
         {expandable && text.trim() && (
           <button
             type="button"
