@@ -34,10 +34,6 @@ const nextConfig: NextConfig & { agentRules?: boolean } = {
   // straight to the socket. Static assets remain unaffected (served by CDN /
   // reverse proxy in production anyway).
   compress: false,
-  // The optimizer writes its cache into the build folder, which in the
-  // desktop app is inside the signed app bundle, so a running app would break
-  // its own seal. Images are served as they are, sized for where they show.
-  images: { unoptimized: true },
   allowedDevOrigins,
   // The desktop app's supervisor, run from a checkout, starts its own `next
   // dev` here, so it runs beside a `pnpm dev` in the same folder (Next allows

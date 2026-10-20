@@ -40,6 +40,7 @@ LIMIT_BYTES = 400 * 1024
 # compress it, or to put it in LFS if it's a video.
 ALLOWED: dict[str, str] = {
     "docs/logo.png": "the 2048px logo master, already optimized; smaller only by resizing it",
+    "mycelium-frontend/public/logo.png": "a copy of the 2048px logo master the app serves",
     "mycelium-frontend/src/app/icon.png": "a copy of the 2048px logo master Next makes the favicons from",
     "docs/og.png": "the 1200x630 social card, a full-bleed gradient, already optimized",
     "mycelium-desktop/src-tauri/icons/icon.icns": "the macOS icon bundle `tauri icon` writes, every size up to 1024px",
