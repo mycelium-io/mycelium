@@ -152,6 +152,12 @@ class _JobStart(StartHooks):
     def step(self, step: str) -> None:
         self._runner._report(self._job_id, "running", {"step": step}, None)  # noqa: SLF001 - the job's own report
 
+    def slow_shell(self, ref: str) -> None:
+        # The terminal to look at, never what it shows: that stays on the machine.
+        self._runner._report(  # noqa: SLF001 - the job's own report
+            self._job_id, "running", {"step": STEP_SHELL, "slow": True, "pane": ref}, None
+        )
+
     @contextlib.contextmanager
     def unlocked(self) -> Iterator[None]:
         # The pane is mapped by now, so a sync pass that runs meanwhile can't
@@ -787,6 +793,9 @@ class Runner:
             "MYCELIUM_API_URL": self.config.server.api_url,
             "MYCELIUM_AGENT_HANDLE": handle,
             "MYCELIUM_ROOM_ID": room,
+            # Marks the pane as an agent's: the CLI never uses the person's
+            # sign-in here (``caller.in_agent_pane``).
+            "MYCELIUM_AGENT_PANE": handle,
         }
 
     def join_code(self, room: str, handle: str) -> str:
@@ -931,7 +940,6 @@ class Runner:
             "step": e.step,
             "why": why,
             "pane": e.ref,
-            "screen": e.screen,
             "detail": str(e),
         }
         return JobError(message, result={k: v for k, v in result.items() if v})

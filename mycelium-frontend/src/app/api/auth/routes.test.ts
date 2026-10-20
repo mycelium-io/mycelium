@@ -44,7 +44,8 @@ describe("signing in from the desktop app's UI", () => {
   beforeEach(() => {
     const g = globalThis as Record<string, unknown>;
     for (const k of ["__myceliumOidc", "__myceliumSession", "__myceliumSignIns"]) delete g[k];
-    vi.stubEnv("MYCELIUM_UI_SESSION", "memory");
+    // The desktop app's UI server: a launch token is promised.
+    vi.stubEnv("MYCELIUM_UI_TOKEN_STDIN", "1");
     vi.stubEnv("MYCELIUM_OIDC_ISSUER", "");
   });
   afterEach(() => {

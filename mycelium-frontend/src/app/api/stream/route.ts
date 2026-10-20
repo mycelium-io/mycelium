@@ -45,6 +45,13 @@ const SSE_HEADERS = {
 /** Idle upstreams still have to be held open, or an intermediary reaps them. */
 const HEARTBEAT_MS = 15_000;
 
+/** The hub sends a keep-alive every 15s on a quiet feed, so one that has sent
+ *  nothing for three of those is gone, even if its socket is still open. */
+const HUB_QUIET_MS = 45_000;
+
+/** How long the hub has to answer a feed's opening request before it's dialed again. */
+const OPEN_MS = 15_000;
+
 /** Rooms are a query parameter, so cap the fan-out a single request can ask
  *  the backend for. The UI opens one room at a time; this is the guard rail. */
 const MAX_ROOMS = 8;
@@ -54,6 +61,9 @@ interface Source {
   channel: StreamChannel;
   room: string | null;
   open: (signal: AbortSignal) => Promise<Response>;
+  /** How long it may send nothing before it counts as gone: set for the
+   *  hub's feeds, which send keep-alives, and never for a local one. */
+  quietMs?: number;
 }
 
 /**
@@ -78,6 +88,7 @@ function sources(rooms: string[], headers: Record<string, string>, viewer: strin
       open: mock
         ? async () => mockStream(room)
         : upstream(`/api/rooms/${encodeURIComponent(room)}/messages/stream`),
+      quietMs: mock ? undefined : HUB_QUIET_MS,
     }));
   }
   // Not the hub's: this machine's theme files, watched by this server.
@@ -86,7 +97,12 @@ function sources(rooms: string[], headers: Record<string, string>, viewer: strin
     ...(themes
       ? [{ channel: "themes" as const, room: null, open: async (signal: AbortSignal) => themeFileEvents(themes, signal) }]
       : []),
-    { channel: "app", room: null, open: mock ? idleStream : upstream("/api/events/stream") },
+    {
+      channel: "app",
+      room: null,
+      open: mock ? idleStream : upstream("/api/events/stream"),
+      quietMs: mock ? undefined : HUB_QUIET_MS,
+    },
     {
       channel: "notification",
       room: null,
@@ -95,6 +111,7 @@ function sources(rooms: string[], headers: Record<string, string>, viewer: strin
       open: mock
         ? async () => mockNotificationStream()
         : upstream(`/api/notifications/stream${viewer ? `?viewer=${encodeURIComponent(viewer)}` : ""}`),
+      quietMs: mock ? undefined : HUB_QUIET_MS,
     },
   ];
 }
@@ -159,8 +176,19 @@ export async function GET(req: Request): Promise<Response> {
 
       async function pump(source: Source) {
         while (!closed) {
+          // This attempt's own signal: the request's teardown ends it, and so
+          // does a hub that doesn't answer the opening request in time.
+          const attempt = new AbortController();
+          const stop = () => attempt.abort();
+          abort.signal.addEventListener("abort", stop, { once: true });
           try {
-            const res = await source.open(abort.signal);
+            const slow = setTimeout(stop, OPEN_MS);
+            let res: Response;
+            try {
+              res = await source.open(attempt.signal);
+            } finally {
+              clearTimeout(slow);
+            }
             if (res.status === 401) {
               // The token this request was built with has expired. End the
               // response so the browser reconnects and mints a fresh one.
@@ -170,7 +198,9 @@ export async function GET(req: Request): Promise<Response> {
             }
             if (res.ok && res.body) {
               report(source, true);
-              for await (const event of readSseEvents(res.body, abort.signal)) {
+              // A hub feed that goes silent ends here, and is reported down
+              // and dialed again below rather than waited on forever.
+              for await (const event of readSseEvents(res.body, attempt.signal, source.quietMs)) {
                 if (closed) break;
                 // Upstream's own open marker isn't news to the client.
                 if (event.event === "ping") continue;
@@ -189,6 +219,10 @@ export async function GET(req: Request): Promise<Response> {
             }
           } catch {
             // Unreachable or torn-down upstream: fall through and redial.
+          } finally {
+            // Release this attempt's socket, whatever ended it.
+            abort.signal.removeEventListener("abort", stop);
+            attempt.abort();
           }
           if (closed) break;
           report(source, false);

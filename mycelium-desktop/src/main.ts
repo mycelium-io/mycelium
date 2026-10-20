@@ -1098,9 +1098,163 @@ async function wizard() {
   show();
 }
 
+// ── Version: which release this app runs, and switching ─────────────────────
+
+/** A release the app can switch to (`versions.rs`). */
+interface AppRelease {
+  tag: string;
+  /** The app's version in it, as the updater compares them (`3.0.55-rc1`). */
+  version: string;
+  prerelease: boolean;
+  published: string;
+}
+
+interface VersionsView {
+  current: string;
+  releaseCandidates: boolean;
+  releases: AppRelease[];
+}
+
+/** Semver order, a prerelease (`3.0.55-rc1`) before its release: negative when `a` is older. */
+function compareVersions(a: string, b: string): number {
+  const split = (v: string) => {
+    const [main, pre = ""] = v.split("-", 2);
+    return { nums: main.split(".").map((n) => Number(n) || 0), pre };
+  };
+  const [x, y] = [split(a), split(b)];
+  for (let i = 0; i < 3; i++) if ((x.nums[i] ?? 0) !== (y.nums[i] ?? 0)) return (x.nums[i] ?? 0) - (y.nums[i] ?? 0);
+  if (x.pre === y.pre) return 0;
+  if (!x.pre) return 1;
+  if (!y.pre) return -1;
+  return x.pre.localeCompare(y.pre, undefined, { numeric: true });
+}
+
+const PREVIEW_VERSIONS: VersionsView = {
+  current: "3.0.54",
+  releaseCandidates: false,
+  releases: [
+    { tag: "v3.0.55rc1", version: "3.0.55-rc1", prerelease: true, published: "2026-10-20T10:00:00Z" },
+    { tag: "v3.0.54", version: "3.0.54", prerelease: false, published: "2026-10-20T00:06:41Z" },
+    { tag: "v3.0.53", version: "3.0.53", prerelease: false, published: "2026-10-19T20:51:19Z" },
+  ],
+};
+
+/**
+ * The version running, a switch for release candidates (which is also the
+ * channel updates follow), and the releases to switch to. Switching downloads
+ * that release's signed update and restarts, like any update.
+ */
+function versionPiece(): HTMLElement {
+  const lede = el("p", { class: "lede" }, "Reading which version this is…");
+  const list = el("div", { class: "versions" });
+  const error = el("p", { class: "error", role: "alert", hidden: "" });
+  let rc = false;
+
+  const toggle = checkbox("release-candidates", false, (on) => {
+    rc = on;
+    if (inApp) void invoke("set_update_channel", { releaseCandidates: on }).catch((e) => fail(e));
+    void load();
+  });
+  const fail = (e: unknown) => {
+    error.textContent = e instanceof Error ? e.message : String(e);
+    error.hidden = false;
+  };
+
+  const row = (r: AppRelease, current: string) => {
+    const older = compareVersions(r.version, current) < 0;
+    const here = r.version === current;
+    const tags = [
+      here ? el("span", { class: "tag" }, "this version") : null,
+      r.prerelease ? el("span", { class: "tag warn" }, "release candidate") : null,
+      older && !here ? el("span", { class: "tag" }, "older") : null,
+    ];
+    const warning = el(
+      "p",
+      { class: "hint version-warn", hidden: "" },
+      "This is older than the version you have. Rooms and settings a newer version saved may not open in it, and a hub elsewhere on a newer version may not work with it.",
+    );
+    const go = el("button", { class: "button ghost small", type: "button" }, older ? "Switch back" : "Switch");
+    let warned = false;
+    go.addEventListener("click", async () => {
+      if (older && !warned) {
+        warned = true;
+        warning.hidden = false;
+        go.textContent = `Switch to ${r.tag} anyway`;
+        return;
+      }
+      go.disabled = true;
+      error.hidden = true;
+      try {
+        if (inApp) await invoke("switch_version", { tag: r.tag });
+        go.textContent = "Downloading…";
+      } catch (e) {
+        fail(e);
+        go.disabled = false;
+      }
+    });
+    const date = r.published ? new Date(r.published).toLocaleDateString() : "";
+    return el(
+      "div",
+      { class: "version-row" },
+      el("div", { class: "version-name" }, el("strong", {}, r.tag.replace(/^v/, "")), ...tags),
+      el("span", { class: "version-date" }, date),
+      here ? el("span", {}) : go,
+      warning,
+    );
+  };
+
+  const load = async () => {
+    error.hidden = true;
+    list.replaceChildren(el("p", { class: "hint" }, "Reading releases…"));
+    try {
+      const view = inApp
+        ? await invoke<VersionsView>("app_versions", { withRc: rc })
+        : { ...PREVIEW_VERSIONS, releases: PREVIEW_VERSIONS.releases.filter((r) => rc || !r.prerelease) };
+      lede.textContent = `Mycelium ${view.current}. The hub and the CLI inside the app change with it. A mycelium you installed separately for your terminal keeps its own version.`;
+      list.replaceChildren(...view.releases.map((r) => row(r, view.current)));
+      if (!view.releases.length) list.replaceChildren(el("p", { class: "hint" }, "No releases to switch to."));
+    } catch (e) {
+      list.replaceChildren();
+      fail(e);
+    }
+  };
+
+  // The saved channel decides the switch's starting place, then the list.
+  void (async () => {
+    if (inApp) {
+      try {
+        rc = (await invoke<VersionsView>("app_versions", { withRc: false })).releaseCandidates;
+      } catch {
+        // Offline: load() says so.
+      }
+    }
+    toggle.checked = rc;
+    await load();
+  })();
+
+  return el(
+    "div",
+    { class: "piece" },
+    lede,
+    el(
+      "div",
+      { class: "share" },
+      el("label", { class: "share-label", for: "release-candidates" }, toggle, "Offer release candidates"),
+      el(
+        "p",
+        { class: "hint" },
+        "A release candidate is the next version, out early to try. With this on, they're listed here and updates offer the next one. Turn it off to go back to stable releases: you stay on what you have until the next stable one, or switch back below.",
+      ),
+    ),
+    el("div", { class: "label" }, "Switch to"),
+    list,
+    error,
+  );
+}
+
 // ── Settings: the same pieces, one section at a time ─────────────────────────
 
-type Section = "mac" | "model" | "agents" | "voice" | "experiences" | "privacy";
+type Section = "mac" | "model" | "agents" | "voice" | "experiences" | "privacy" | "version";
 
 async function settingsWindow(open: Section = "mac") {
   const snap = await snapshot();
@@ -1114,6 +1268,7 @@ async function settingsWindow(open: Section = "mac") {
     ["voice", "Voice"],
     ["experiences", "Experiences"],
     ["privacy", "Privacy"],
+    ["version", "Version"],
   ];
   let at: Section = sections().some(([s]) => s === open) ? open : "mac";
   // On a team's hub these are set there; asked once per window, and shown as is.
@@ -1168,6 +1323,10 @@ async function settingsWindow(open: Section = "mac") {
       nothingToSave = true;
     } else if (at === "voice") {
       body = el("div", { class: "piece" }, voicePiece(c));
+    } else if (at === "version") {
+      // Switching downloads and restarts on its own; there's nothing to save.
+      body = versionPiece();
+      nothingToSave = true;
     } else if (at === "agents") {
       body = agentsPiece(c, snap);
     } else if (at === "experiences") {

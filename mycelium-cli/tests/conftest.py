@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -337,7 +338,7 @@ AGENT_AUTH_ENV_VARS = (
 
 
 @pytest.fixture(autouse=True)
-def _no_ambient_agent_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+def _no_ambient_agent_auth(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Strip ambient agent credentials so no test inherits a real identity.
 
     Autouse and function-scoped: the tests that exercise the agent-auth path set
@@ -346,6 +347,19 @@ def _no_ambient_agent_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     for name in AGENT_AUTH_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
+    # Nor a pane: the developer's own terminal may be an agent's herdr pane.
+    for name in ("HERDR_PANE_ID", "MYCELIUM_AGENT_PANE"):
+        monkeypatch.delenv(name, raising=False)
+    # No test ever reaches the real keychain: by default there's none (so a
+    # person's sign-in goes to the test's file), and a test that wants one
+    # installs its own.
+    import keyring
+    from keyring.backends import fail
+
+    previous = keyring.get_keyring()
+    keyring.set_keyring(fail.Keyring())
+    yield
+    keyring.set_keyring(previous)
 
 
 @pytest.fixture

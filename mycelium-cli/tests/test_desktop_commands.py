@@ -13,6 +13,7 @@ command that does neither. CI doesn't build the app, so the check is here.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -20,8 +21,10 @@ import pytest
 
 SRC = Path(__file__).resolve().parents[2] / "mycelium-desktop" / "src-tauri" / "src"
 GUARDS = ("local_only(", "own_ui_only(")
-#: What ``own_ui_only`` may answer: nothing beyond these two.
-OWN_UI = {"this_machine", "choose_agent_folder"}
+#: What ``own_ui_only`` may answer: nothing beyond these three. ``agent_screen``
+#: hands the app's own hub UI what a terminal on this machine shows, which is
+#: why it's here and never a hub route: a screen doesn't leave the machine.
+OWN_UI = {"this_machine", "choose_agent_folder", "agent_screen"}
 
 _COMMAND = re.compile(r"#\[tauri::command\]\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)")
 
@@ -50,6 +53,28 @@ def test_every_app_command_refuses_a_page_it_does_not_answer() -> None:
 
 
 @pytest.mark.skipif(not SRC.is_dir(), reason="the desktop app's source isn't in this checkout")
-def test_only_the_folder_dialog_and_its_machine_answer_the_hubs_page() -> None:
+def test_only_the_folder_dialog_its_machine_and_its_screens_answer_the_hubs_page() -> None:
     open_to_hub = {name for name, body in _commands().items() if "own_ui_only(" in body}
     assert open_to_hub == OWN_UI
+
+
+def _allow(command: str) -> str:
+    return "allow-" + command.replace("_", "-")
+
+
+@pytest.mark.skipif(not SRC.is_dir(), reason="the desktop app's source isn't in this checkout")
+def test_tauri_lets_each_page_call_what_it_should_and_no_more() -> None:
+    # Tauri refuses the hub's UI (a remote origin) any app command no
+    # capability names, and once build.rs declares the commands it checks the
+    # app's own pages too. So: every command declared, all of them granted to
+    # the local pages, and exactly the own_ui_only ones to the hub's UI.
+    tauri = SRC.parent
+    declared = set(re.findall(r'^\s*"(\w+)",$', (tauri / "build.rs").read_text(), re.M))
+    assert declared == set(_commands()), "build.rs's COMMANDS must list every #[tauri::command]"
+
+    def granted(capability: str) -> set[str]:
+        data = json.loads((tauri / "capabilities" / f"{capability}.json").read_text())
+        return {p for p in data["permissions"] if isinstance(p, str) and p.startswith("allow-")}
+
+    assert granted("default") == {_allow(c) for c in declared}
+    assert granted("own-hub-ui") == {_allow(c) for c in OWN_UI}

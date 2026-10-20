@@ -43,6 +43,7 @@ from app.services.filesystem import (
     get_room_dir,
     list_memory_files,
     list_room_names,
+    same_room,
     system_meta,
 )
 
@@ -104,7 +105,9 @@ def pane_states(room: str, handle: str, *, heartbeat: bool = False) -> list[str]
         if heartbeat and registry.heartbeats(runner.id) < 1:
             continue
         for workspace in runner.machine.workspaces:
-            found += [a.state for a in workspace.agents if a.room == room and a.handle == handle]
+            found += [
+                a.state for a in workspace.agents if same_room(a.room, room) and a.handle == handle
+            ]
     return found
 
 

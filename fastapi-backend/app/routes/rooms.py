@@ -14,6 +14,7 @@ from app.schemas import RoomCreate, RoomRead
 from app.services import actor, pauses, room_access, room_channels, room_people
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import (
+    canonical_room_name,
     ensure_room_structure,
     get_room_dir,
     list_room_names,
@@ -68,6 +69,8 @@ async def create_room(room: RoomCreate, request: Request):
             detail="A private room needs an owner: who it's listed for. Say who you are first.",
         )
     members = sorted({h for h in (norm_handle(m) for m in room.members) if h and h != owner})
+    # Another spelling of a room's name is that room, never a second one.
+    room = room.model_copy(update={"name": canonical_room_name(room.name)})
     if room.name in RESERVED_ROOMS:
         raise HTTPException(status_code=400, detail=f"'{room.name}' is a reserved system name")
     if room_exists(room.name):

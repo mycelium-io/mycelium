@@ -83,6 +83,47 @@ starts** in the app's menu, or `~/.mycelium/runner/runner.log`.
 
 ---
 
+### Codex asks before every `mycelium` command
+
+**You see:** a Codex agent stops at an approval prompt on `mycelium await` or
+`mycelium respond`, or says it can't reach the hub.
+
+Codex runs commands in a sandbox with no network, which can write only in the
+folder it started in. When Mycelium starts a Codex agent, it opens that sandbox
+for the session to two things `mycelium` needs: the network, to reach the hub,
+and `~/.mycelium/agent-state`, the one folder the CLI writes to when an agent
+runs it. The rest of `~/.mycelium` (your config, and the files that approve a
+launch on this machine) stays out of the agent's reach. It doesn't change your
+Codex settings.
+
+Codex ignores those two settings when you've picked a named permissions
+profile in its config (`default_permissions`). If you use one, add both to that
+profile in `~/.codex/config.toml`:
+
+```toml
+[permissions.<your-profile>.network]
+enabled = true
+
+[permissions.<your-profile>.filesystem]
+"~/.mycelium/agent-state" = "write"
+```
+
+---
+
+### An agent the app started still stops to ask
+
+**You see:** a Claude Code or Codex agent started from the app stops at a
+permission prompt before running a command.
+
+Agents the app starts run in their CLI's auto mode (see
+[Agents start in auto mode](#machines-agents-start-in-auto-mode)), which still asks when it judges an
+action risky. Answer it in the agent's terminal. If it asks for everything,
+its CLI may be older than the one with auto mode, and then it starts as it did
+before: update the CLI, then restart the agent from **Machines**. Add agent
+says "runs in its auto mode" next to the CLI when the installed version has it.
+
+---
+
 ### `mycelium: command not found`
 
 The CLI isn't installed or isn't on your `PATH`. Install it with the command

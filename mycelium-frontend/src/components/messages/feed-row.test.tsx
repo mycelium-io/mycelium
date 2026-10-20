@@ -11,6 +11,7 @@ function event(over: Partial<Event>): Event {
   return {
     id: "e",
     messageId: null,
+    wireId: null,
     type: "broadcast",
     content: "",
     sender: "system",

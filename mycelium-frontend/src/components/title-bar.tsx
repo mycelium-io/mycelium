@@ -64,7 +64,7 @@ export function TitleBar({ crumb, right }: { crumb?: ReactNode; right?: ReactNod
         href="/"
         className="relative flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
       >
-        <Image src="/logo.png" alt="Mycelium" width={16} height={16} className="flex-shrink-0 opacity-90" />
+        <Image src="/logo-128.png" alt="Mycelium" width={16} height={16} className="flex-shrink-0 opacity-90" />
         <span className="truncate font-medium">{hub || "Mycelium"}</span>
         <KeyBadge action="nav.home" />
       </Link>

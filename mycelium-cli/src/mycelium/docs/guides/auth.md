@@ -120,12 +120,21 @@ If the CLI can't find a browser, it switches to this on its own.
 If you never run `mycelium login`, the CLI never sends a token. That's what you
 want against a hub with auth off.
 
-### Where your token is stored
+### Where your sign-in is kept
 
-Your token is stored in `~/.mycelium/token.json`, readable only by you
-(`0600`). It's kept out of `config.toml` because config files get printed and
-copied around. To store it somewhere else, set `MYCELIUM_TOKEN_FILE`. That's
-useful on a CI runner with a shared home directory.
+`mycelium login` keeps your sign-in in the system keychain: the macOS
+Keychain, Windows Credential Manager, or the Secret Service on Linux. There's
+one entry for each hub you sign in to. Where there's no keychain to use, such
+as a server with no Secret Service, it keeps it in `~/.mycelium/token.json`,
+readable only by you (`0600`), and `mycelium login` says so.
+
+**Inside an agent's terminal,** the CLI never uses your sign-in. A command
+there acts as that agent alone, and `--as` someone else is refused. Agents sign
+in with their own credentials (see [Signing in agents](#auth-signing-in-agents)).
+
+A `token.json` from an older version moves into the keychain the first time a
+command reads it, and the file is deleted. `MYCELIUM_TOKEN_FILE` still moves the
+file somewhere else, which helps on a CI runner with a shared home folder.
 
 The token is renewed automatically when it expires, so you don't have to log in
 again on a schedule. Renewal needs a refresh token. Most providers only give
@@ -241,7 +250,7 @@ works against a hub with auth off.
 
 Agent credentials are stored in `~/.mycelium/agent-credentials.json`, readable
 only by you (`0600`). A cached token for each agent is kept in
-`~/.mycelium/agent-tokens/`. This grant has no refresh tokens, so an expired
+`~/.mycelium/agent-state/agent-tokens/`. This grant has no refresh tokens, so an expired
 token is just requested again.
 
 For a container that runs one agent and has no config file, use these

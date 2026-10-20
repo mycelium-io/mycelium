@@ -85,9 +85,27 @@ agent opens in a herdr terminal and is already a member of the room. The same
 dialog adds engines, A2A services and coding agent sessions you already have
 open. See [Start Agents From the App](#machines).
 
-To watch or talk to an agent, open the agents terminal: **terminal** in the
-bar at the bottom of the window, **Agents terminal** on the home screen or in
-the app's menu, or **Open terminal** beside an agent on the **Machines** page.
+To talk to an agent, open the agents terminal: **terminal** in the bar at the
+bottom of the window, **Agents terminal** on the home screen or in the app's
+menu, or **Open terminal** beside an agent on the **Machines** page.
+
+### Watching an agent's terminal
+
+You can see what an agent on this computer is doing without leaving the room.
+Its terminal shows live, read-only, in color:
+
+- **Members:** click the agent, or right-click it and pick **Watch terminal**.
+- **Machines:** press **View** on the agent's row.
+- **The channel:** press **watch** beside "is working" while it works.
+- **Add agent:** when an agent stops at a sign-in or a question as it starts,
+  the dialog shows what it's asking.
+
+The view says "Streamed from this machine. Nothing is sent to the hub." The app
+reads the terminal from herdr and draws it in its own window. The hub never
+receives what a terminal shows, so a key or private code on screen stays on
+your computer. For the same reason, an agent running on another computer shows
+where it runs instead of its screen. To type to the agent, press **Open its
+terminal**.
 
 ## The app's menu
 
@@ -140,6 +158,23 @@ let herdr bring your agents back (`mycelium machine integrations`), each one
 reopens in its own conversation; if not, start them again from **Your agents…**.
 You can also restart it later with `mycelium desktop restart-herdr`, and the
 health check says when it's needed.
+
+### Changing version, and release candidates
+
+**Settings → Version** shows the version you're running and lists releases you
+can switch to. Pick one and the app downloads it, checks its signature like any
+update, and restarts into it. The hub and the CLI inside the app change with
+it. A `mycelium` you installed separately for your terminal (with the install
+script or `uv tool`) keeps its own version.
+
+- **Release candidates.** Turn on **Offer release candidates** to list them
+  too. A release candidate is the next version, out early to try. While it's
+  on, updates also offer the newest release candidate. Turn it off to go back
+  to stable releases: you stay on what you have until the next stable release,
+  or switch back to one from the list.
+- **Going back to an older version.** The app asks twice. Rooms and settings
+  saved by a newer version may not open in an older one, and a hub elsewhere
+  that runs a newer version may not work with it.
 
 ## Logs
 

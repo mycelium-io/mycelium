@@ -319,6 +319,8 @@ def generate_env_file(
         f"WORKER_PI_TIMEOUT_S={config.worker.pi_timeout_s}",
         f"WORKER_MAX_TURNS_PER_ROOM={config.worker.max_turns_per_room}",
         f"BOARD_DEPENDENCY_GATE={str(config.board.dependency_gate).lower()}",
+        # The web app's public name; it refuses any name it wasn't told (lib/ui-guard.ts).
+        f"MYCELIUM_UI_HOST={config.ui.public_host}",
         # The message box's mic; off unless turned on (services/voice.py).
         f"VOICE_ENABLED={str(config.voice.enabled).lower()}",
         f"VOICE_MODEL={config.voice.model}",

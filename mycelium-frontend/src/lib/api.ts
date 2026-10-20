@@ -9,6 +9,7 @@
 import type { SearchResponse } from "@/lib/search";
 import type { MessageSearchResponse } from "@/lib/message-search";
 import { encodeMemoryKeyPath } from "@/lib/memory-routes";
+import { uiTokenHeaders } from "@/lib/ui-token";
 import type { RoomStatus } from "@/lib/board/upstream";
 import type { RoomFolders } from "@/lib/room-folders";
 import type { LockRecord, TallyRecord } from "@/lib/conductor-line";
@@ -948,6 +949,8 @@ export function uploadFile(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${roomApiPath(roomName)}/uploads`);
+    // Not a fetch, so the launch's token is set here (`lib/ui-token.ts`).
+    for (const [name, value] of Object.entries(uiTokenHeaders())) xhr.setRequestHeader(name, value);
     xhr.responseType = "json";
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) opts.onProgress?.(e.loaded / e.total);
@@ -1210,6 +1213,8 @@ export interface MessageQuery {
    * exactly what an offset does.
    */
   before?: string | null;
+  /** Only messages created at or after this stamp: what a view missed. */
+  since?: string | null;
 }
 
 export async function fetchMessages(
@@ -1221,6 +1226,7 @@ export async function fetchMessages(
   if (limit) params.set("limit", String(limit));
   if (query.episode) params.set("episode", query.episode);
   if (query.before) params.set("before", query.before);
+  if (query.since) params.set("since", query.since);
   const qs = params.toString();
   return apiFetch<MessagesResponse>(
     `${roomApiPath(roomName)}/messages${qs ? `?${qs}` : ""}`,

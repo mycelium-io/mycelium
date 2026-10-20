@@ -704,7 +704,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#on-a-server-open-the-app",
     "t": "Open the app",
     "s": "Setup › Run It on a Server",
-    "x": "The app is where you see what's happening. It shows the chat, who's in each room, the board and the shared memory. mycelium ui open If a command says it can't reach the API at localhost:8000, the hub isn't running. Run mycelium up.",
+    "x": "The app is where you see what's happening. It shows the chat, who's in each room, the board and the shared memory. mycelium ui open If a command says it can't reach the API at localhost:8000, the hub isn't running. Run mycelium up. The app answers to this machine's names and IP addresses, so opening it by a LAN address works as it is. To reach it by a domain name, such as behind a proxy that serves mycelium.example.c",
     "p": "Guides"
   },
   {
@@ -753,7 +753,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop-adding-agents",
     "t": "Adding agents",
     "s": "Setup › The Desktop App",
-    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See Start Agents From the App. To watch or talk to an agent, open the agents terminal: terminal in the bar at the bottom of",
+    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See Start Agents From the App. To talk to an agent, open the agents terminal: terminal in the bar at the bottom of the wind",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#desktop-watching-an-agents-terminal",
+    "t": "Watching an agent's terminal",
+    "s": "Setup › The Desktop App",
+    "x": "You can see what an agent on this computer is doing without leaving the room. Its terminal shows live, read-only, in color: Members: click the agent, or right-click it and pick Watch terminal. Machines: press View on the agent's row. The channel: press watch beside \"is working\" while it works. Add agent: when an agent stops at a sign-in or a question as it starts, the dialog shows what it's asking. The view says \"Str",
     "p": "Guides"
   },
   {
@@ -768,6 +775,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Updates",
     "s": "Setup › The Desktop App",
     "x": "The app checks for a new release shortly after it opens, every few hours while it runs, and whenever you choose Check for Updates…. If one is out, it asks before installing it. While you haven't installed it yet, the app's header shows Update available, which asks the same question. Once you say yes, a small window shows the download until the app restarts into the new version. If your connection drops partway, the w",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#desktop-changing-version-and-release-candidates",
+    "t": "Changing version, and release candidates",
+    "s": "Setup › The Desktop App",
+    "x": "Settings → Version shows the version you're running and lists releases you can switch to. Pick one and the app downloads it, checks its signature like any update, and restarts into it. The hub and the CLI inside the app change with it. A mycelium you installed separately for your terminal (with the install script or uv tool) keeps its own version. Release candidates. Turn on Offer release candidates to list them too.",
     "p": "Guides"
   },
   {
@@ -908,6 +922,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Starting an agent",
     "s": "Agents › Start Agents From the App",
     "x": "In a room, open Members → Add → Your machine and fill in these fields: Start from a role. This picks starting instructions such as reviewer, implementer or tester, or a blank page. You can save instructions you write as a role of your own, which is kept in your browser. A handle, which the room uses to mention it, such as @scout. Instructions, which say how the agent should work. They're saved in the room's memory as",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#machines-agents-start-in-auto-mode",
+    "t": "Agents start in auto mode",
+    "s": "Agents › Start Agents From the App",
+    "x": "Claude Code and Codex agents that the app starts (from Add, a swarm, or a restart) run in their CLI's own auto mode, so they work without stopping to ask you before each command: Claude Code starts with --permission-mode auto: it decides on each action itself and asks only when it judges something risky. Codex starts with --approve-for-me: its approval requests go to its own automatic review, inside its usual sandbox",
     "p": "Guides"
   },
   {
@@ -1569,10 +1590,10 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
-    "u": "guides.html#auth-where-your-token-is-stored",
-    "t": "Where your token is stored",
+    "u": "guides.html#auth-where-your-sign-in-is-kept",
+    "t": "Where your sign-in is kept",
     "s": "Security › Authentication",
-    "x": "Your token is stored in ~/.mycelium/token.json, readable only by you (0600). It's kept out of config.toml because config files get printed and copied around. To store it somewhere else, set MYCELIUM_TOKEN_FILE. That's useful on a CI runner with a shared home directory. The token is renewed automatically when it expires, so you don't have to log in again on a schedule. Renewal needs a refresh token. Most providers onl",
+    "x": "mycelium login keeps your sign-in in the system keychain: the macOS Keychain, Windows Credential Manager, or the Secret Service on Linux. There's one entry for each hub you sign in to. Where there's no keychain to use, such as a server with no Secret Service, it keeps it in ~/.mycelium/token.json, readable only by you (0600), and mycelium login says so. Inside an agent's terminal, the CLI never uses your sign-in. A c",
     "p": "Guides"
   },
   {
@@ -1607,7 +1628,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-where-agent-credentials-are-stored",
     "t": "Where agent credentials are stored",
     "s": "Security › Authentication",
-    "x": "Agent credentials are stored in ~/.mycelium/agent-credentials.json, readable only by you (0600). A cached token for each agent is kept in ~/.mycelium/agent-tokens/. This grant has no refresh tokens, so an expired token is just requested again. For a container that runs one agent and has no config file, use these environment variables: MYCELIUM_AGENT_AUTH_ISSUER, MYCELIUM_AGENT_AUTH_CLIENT_ID, MYCELIUM_AGENT_AUTH_CLIE",
+    "x": "Agent credentials are stored in ~/.mycelium/agent-credentials.json, readable only by you (0600). A cached token for each agent is kept in ~/.mycelium/agent-state/agent-tokens/. This grant has no refresh tokens, so an expired token is just requested again. For a container that runs one agent and has no config file, use these environment variables: MYCELIUM_AGENT_AUTH_ISSUER, MYCELIUM_AGENT_AUTH_CLIENT_ID, MYCELIUM_AGE",
     "p": "Guides"
   },
   {
@@ -1720,6 +1741,20 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "An agent you added won't start",
     "s": "Help › Troubleshooting",
     "x": "You see: Add member (or /agent) adds the agent to the room, but it doesn't start on your machine. The dialog shows each step on the machine and says which one stopped, with what to do. The two most common: The terminal's shell didn't get to a prompt in time. The runner opens a terminal in herdr and waits up to 30 seconds for its shell. A shell whose startup files (~/.zshrc, ~/.bash_profile) are slow or fail never get",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#troubleshooting-codex-asks-before-every-mycelium-command",
+    "t": "Codex asks before every mycelium command",
+    "s": "Help › Troubleshooting",
+    "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network, which can write only in the folder it started in. When Mycelium starts a Codex agent, it opens that sandbox for the session to two things mycelium needs: the network, to reach the hub, and ~/.mycelium/agent-state, the one folder the CLI writes to w",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#troubleshooting-an-agent-the-app-started-still-stops-to-ask",
+    "t": "An agent the app started still stops to ask",
+    "s": "Help › Troubleshooting",
+    "x": "You see: a Claude Code or Codex agent started from the app stops at a permission prompt before running a command. Agents the app starts run in their CLI's auto mode (see Agents start in auto mode), which still asks when it judges an action risky. Answer it in the agent's terminal. If it asks for everything, its CLI may be older than the one with auto mode, and then it starts as it did before: update the CLI, then res",
     "p": "Guides"
   },
   {

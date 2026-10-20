@@ -218,7 +218,12 @@ def test_stopping_stops_the_children():
 def test_client_mode_runs_herdr_the_ui_and_the_runner_against_the_hub():
     events = Events()
     sup = Supervisor(
-        "client", hub_url="https://hub.example.com/", emit=events, env={}, start_runner=False
+        "client",
+        hub_url="https://hub.example.com/",
+        emit=events,
+        env={},
+        start_runner=False,
+        ui_token="launch-token",
     )
     status = sup.status()
     # The window shows this machine's own UI, which talks to the hub; never
@@ -234,9 +239,12 @@ def test_client_mode_runs_herdr_the_ui_and_the_runner_against_the_hub():
     }
     ui = next(c for c in sup.components if c.name == "ui")
     assert ui.env["MYCELIUM_INTERNAL_API_URL"] == "https://hub.example.com"
-    # Its sign-in is held in memory, with the CLI's client.
-    assert ui.env["MYCELIUM_UI_SESSION"] == "memory"
+    # It signs in with the CLI's client, and gets this launch's token on its
+    # stdin, as in hub mode: what keeps the sign-in to the hub in its memory
+    # and away from every other page on the machine.
     assert ui.env["MYCELIUM_OIDC_CLIENT_ID"] == "mycelium-cli"
+    assert ui.env["MYCELIUM_UI_TOKEN_STDIN"] == "1"
+    assert ui.stdin == "launch-token"
     # A UI already on the port is talking to some other hub, so it isn't used.
     assert ui.external is None
     with pytest.raises(ValueError, match="needs the hub's URL"):
@@ -374,6 +382,103 @@ def test_the_repo_checkout_is_found_from_this_code():
     root = sv.repo_root()
     assert root is not None
     assert (root / "fastapi-backend" / "app" / "main.py").exists()
+
+
+def test_the_launch_token_reaches_the_ui_server_on_its_stdin_never_an_environment():
+    """Any program running as this user can read another's environment (`ps
+    eww`, /proc), so the token goes to the UI server alone, on its stdin."""
+    sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None), ui_token="t0k")
+    components = sup._components()
+    [ui] = [c for c in components if c.name == "ui"]
+    assert ui.stdin == "t0k"
+    assert ui.env.get("MYCELIUM_UI_TOKEN_STDIN") == "1"
+    for c in components:
+        assert "t0k" not in c.env.values(), c.name
+        if c.name != "ui":
+            assert c.stdin is None, c.name
+
+
+def test_a_program_the_ui_server_starts_reads_nothing_from_its_stdin():
+    """The token is written once and the pipe closed: what the UI server reads
+    is gone from it, so a program it starts later inherits an empty stdin."""
+    grandchild = "import sys; print('child read', repr(sys.stdin.read()))"
+    script = (
+        "import subprocess, sys; sys.stdin.readline(); "
+        f"subprocess.run([sys.executable, '-c', {grandchild!r}])"
+    )
+    ui = Component(name="ui", argv=lambda: ([sys.executable, "-c", script], None),
+                   ready=lambda: False, stdin="t0k")  # fmt: skip
+    sup = hub(Events(), [ui])
+    sup._spawn(ui)
+    assert ui.proc is not None
+    ui.proc.wait(timeout=10)
+    assert ui.reader is not None
+    ui.reader.join(timeout=5)
+    assert list(ui.tail) == ["child read ''"]
+
+
+def test_the_ui_is_never_one_the_app_didnt_start():
+    sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None), ui_token="t0k")
+    [ui] = [c for c in sup._components() if c.name == "ui"]
+    assert ui.external is None
+
+
+def test_a_taken_ui_port_is_said_and_the_ui_goes_on_another(monkeypatch: pytest.MonkeyPatch):
+    import socket
+
+    with socket.socket() as taken:
+        taken.bind((sv.HOST, 0))
+        taken.listen(1)
+        port = taken.getsockname()[1]
+        monkeypatch.setattr(sv, "UI_PORT", port)
+        sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None), ui_token="t")
+        [ui] = [c for c in sup._components() if c.name == "ui"]
+        assert ui.prepare is not None
+        ui.prepare()
+        assert sup.ui_port != port
+        assert ui.env["PORT"] == str(sup.ui_port)
+        assert sup.ui_url == f"http://{sv.HOST}:{sup.ui_port}"
+        assert f"another program is using port {port}" in (ui.running_detail or "")
+    ui.prepare()  # free again: back on its own port
+    assert (sup.ui_port, ui.running_detail) == (port, None)
+
+
+def test_the_ui_counts_as_up_only_once_it_proves_it_holds_the_token():
+    """Whatever answers on the port must answer a fresh nonce with the HMAC
+    only this launch's token makes; a program that took the port can't."""
+    import http.server
+    from urllib.parse import parse_qs, urlparse
+
+    token = "a" * 64
+    # The same vector as the UI server's test (`ui-guard.test.ts`).
+    assert sv.ui_proof("0" * 32, token) == (
+        "e09458aaecee116ce381f943381097f89f5e436f943082fc27346c2457188ff9"
+    )
+
+    def serve(answer) -> http.server.HTTPServer:
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                nonce = parse_qs(urlparse(self.path).query).get("nonce", [""])[0]
+                body = answer(nonce).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+                pass
+
+        server = http.server.HTTPServer((sv.HOST, 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return server
+
+    for answer, proves in ((lambda n: "ok", False), (lambda n: sv.ui_proof(n, token), True)):
+        server = serve(answer)
+        try:
+            url = f"http://{sv.HOST}:{server.server_address[1]}"
+            assert sv.proves_token(url, token) is proves
+        finally:
+            server.shutdown()
 
 
 @pytest.mark.parametrize(("share", "sent"), [(True, "true"), (False, "false"), (None, None)])

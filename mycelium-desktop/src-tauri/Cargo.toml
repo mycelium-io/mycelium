@@ -13,7 +13,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+# `devtools`: the web inspector in release builds too, opened from the menus
+# (Developer Console), so a bug can be looked at while it's happening.
+tauri = { version = "2", features = ["tray-icon", "image-png", "devtools"] }
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-deep-link = "2"
 tauri-plugin-dialog = "2"
@@ -30,6 +32,7 @@ futures-util = "0.3"
 semver = "1"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tokio = { version = "1", features = ["time"] }
+getrandom = "0.3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

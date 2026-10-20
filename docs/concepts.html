@@ -207,6 +207,7 @@
           <a href="reference.html#config-rooms" class="nav-link sub">rooms</a>
           <a href="reference.html#config-slim" class="nav-link sub">slim</a>
           <a href="reference.html#config-engine" class="nav-link sub">engine</a>
+          <a href="reference.html#config-ui" class="nav-link sub">ui</a>
           <a href="reference.html#config-voice" class="nav-link sub">voice</a>
           <a href="reference.html#config-verifier" class="nav-link sub">verifier</a>
           <a href="reference.html#config-auth" class="nav-link sub">auth</a>
@@ -279,6 +280,7 @@
       <p>A room&#x27;s name can be up to 100 characters long and can include spaces, accents and ordinary punctuation. Put quotes around a name with spaces in the shell:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> <span class="str">&quot;CE-Area Team&quot;</span></code></pre>
       <p>A name can&#x27;t be blank, <code>.</code> or <code>..</code>. It can&#x27;t contain slashes, control characters or the text <code>:session:</code>, which Mycelium uses internally. The name is also the room&#x27;s folder on the hub, so it can&#x27;t be changed later. You can change its display title in the app.</p>
+      <p>Case doesn&#x27;t matter in a room&#x27;s name. A room keeps the spelling it was created with, and <code>--room &quot;ce-area team&quot;</code> finds <code>CE-Area Team</code>. Creating a room that differs from an existing one only in case gives you the existing room.</p>
       <h2 id="rooms-private-rooms">Private rooms</h2>
       <p>A private room is listed only for you and the members you add. It stays out of other people&#x27;s room lists, notifications and search.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> scratch <span class="flag">--private</span></code></pre>

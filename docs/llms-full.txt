@@ -486,6 +486,10 @@ characters or the text `:session:`, which Mycelium uses internally. The name is
 also the room's folder on the hub, so it can't be changed later. You can change
 its display title in the app.
 
+Case doesn't matter in a room's name. A room keeps the spelling it was created
+with, and `--room "ce-area team"` finds `CE-Area Team`. Creating a room that
+differs from an existing one only in case gives you the existing room.
+
 ## Private rooms
 
 A private room is listed only for you and the members you add. It stays out of
@@ -2166,6 +2170,17 @@ mycelium ui open
 If a command says it can't reach the API at `localhost:8000`, the hub isn't
 running. Run `mycelium up`.
 
+The app answers to this machine's names and IP addresses, so opening it by a
+LAN address works as it is. To reach it by a domain name, such as behind a
+proxy that serves `mycelium.example.com`, tell it that name first. It refuses
+any name it wasn't told, which keeps a web page that points its own name at
+your machine from using the app:
+
+```bash
+mycelium config set ui.public_host mycelium.example.com
+mycelium config apply && mycelium up
+```
+
 ## Create a room and add an agent
 
 ```bash
@@ -2304,9 +2319,27 @@ agent opens in a herdr terminal and is already a member of the room. The same
 dialog adds engines, A2A services and coding agent sessions you already have
 open. See [Start Agents From the App](#machines).
 
-To watch or talk to an agent, open the agents terminal: **terminal** in the
-bar at the bottom of the window, **Agents terminal** on the home screen or in
-the app's menu, or **Open terminal** beside an agent on the **Machines** page.
+To talk to an agent, open the agents terminal: **terminal** in the bar at the
+bottom of the window, **Agents terminal** on the home screen or in the app's
+menu, or **Open terminal** beside an agent on the **Machines** page.
+
+### Watching an agent's terminal
+
+You can see what an agent on this computer is doing without leaving the room.
+Its terminal shows live, read-only, in color:
+
+- **Members:** click the agent, or right-click it and pick **Watch terminal**.
+- **Machines:** press **View** on the agent's row.
+- **The channel:** press **watch** beside "is working" while it works.
+- **Add agent:** when an agent stops at a sign-in or a question as it starts,
+  the dialog shows what it's asking.
+
+The view says "Streamed from this machine. Nothing is sent to the hub." The app
+reads the terminal from herdr and draws it in its own window. The hub never
+receives what a terminal shows, so a key or private code on screen stays on
+your computer. For the same reason, an agent running on another computer shows
+where it runs instead of its screen. To type to the agent, press **Open its
+terminal**.
 
 ## The app's menu
 
@@ -2359,6 +2392,23 @@ let herdr bring your agents back (`mycelium machine integrations`), each one
 reopens in its own conversation; if not, start them again from **Your agents…**.
 You can also restart it later with `mycelium desktop restart-herdr`, and the
 health check says when it's needed.
+
+### Changing version, and release candidates
+
+**Settings → Version** shows the version you're running and lists releases you
+can switch to. Pick one and the app downloads it, checks its signature like any
+update, and restarts into it. The hub and the CLI inside the app change with
+it. A `mycelium` you installed separately for your terminal (with the install
+script or `uv tool`) keeps its own version.
+
+- **Release candidates.** Turn on **Offer release candidates** to list them
+  too. A release candidate is the next version, out early to try. While it's
+  on, updates also offer the newest release candidate. Turn it off to go back
+  to stable releases: you stay on what you have until the next stable release,
+  or switch back to one from the list.
+- **Going back to an older version.** The app asks twice. Rooms and settings
+  saved by a newer version may not open in an older one, and a hub elsewhere
+  that runs a newer version may not work with it.
 
 ## Logs
 
@@ -2660,6 +2710,24 @@ terminal. It reads its notes and looks at the board.
 
 Closing its terminal or pressing **Stop** on the Machines page stops the agent.
 It stays in the room with its notes, so you can start it again.
+
+### Agents start in auto mode
+
+Claude Code and Codex agents that the app starts (from Add, a swarm, or a
+restart) run in their CLI's own auto mode, so they work without stopping to
+ask you before each command:
+
+- **Claude Code** starts with `--permission-mode auto`: it decides on each
+  action itself and asks only when it judges something risky.
+- **Codex** starts with `--approve-for-me`: its approval requests go to its
+  own automatic review, inside its usual sandbox.
+
+This applies to that session only. Your CLI settings aren't changed, and an
+agent you start yourself in a terminal runs however you start it. Neither CLI
+is ever started with its bypass (`--dangerously-skip-permissions`, or Codex's
+`--dangerously-bypass-approvals-and-sandbox`). An older version of either CLI
+without auto mode starts as it did before. Add agent says which mode an agent
+CLI starts in, next to where you pick it.
 
 ## Bringing in an agent that's already running
 
@@ -4447,12 +4515,21 @@ If the CLI can't find a browser, it switches to this on its own.
 If you never run `mycelium login`, the CLI never sends a token. That's what you
 want against a hub with auth off.
 
-### Where your token is stored
+### Where your sign-in is kept
 
-Your token is stored in `~/.mycelium/token.json`, readable only by you
-(`0600`). It's kept out of `config.toml` because config files get printed and
-copied around. To store it somewhere else, set `MYCELIUM_TOKEN_FILE`. That's
-useful on a CI runner with a shared home directory.
+`mycelium login` keeps your sign-in in the system keychain: the macOS
+Keychain, Windows Credential Manager, or the Secret Service on Linux. There's
+one entry for each hub you sign in to. Where there's no keychain to use, such
+as a server with no Secret Service, it keeps it in `~/.mycelium/token.json`,
+readable only by you (`0600`), and `mycelium login` says so.
+
+**Inside an agent's terminal,** the CLI never uses your sign-in. A command
+there acts as that agent alone, and `--as` someone else is refused. Agents sign
+in with their own credentials (see [Signing in agents](#auth-signing-in-agents)).
+
+A `token.json` from an older version moves into the keychain the first time a
+command reads it, and the file is deleted. `MYCELIUM_TOKEN_FILE` still moves the
+file somewhere else, which helps on a CI runner with a shared home folder.
 
 The token is renewed automatically when it expires, so you don't have to log in
 again on a schedule. Renewal needs a refresh token. Most providers only give
@@ -4568,7 +4645,7 @@ works against a hub with auth off.
 
 Agent credentials are stored in `~/.mycelium/agent-credentials.json`, readable
 only by you (`0600`). A cached token for each agent is kept in
-`~/.mycelium/agent-tokens/`. This grant has no refresh tokens, so an expired
+`~/.mycelium/agent-state/agent-tokens/`. This grant has no refresh tokens, so an expired
 token is just requested again.
 
 For a container that runs one agent and has no config file, use these
@@ -4815,6 +4892,47 @@ Either way the terminal stays open, and **Try again** starts the agent in that
 same terminal rather than opening another. In the desktop app, **Open its
 terminal** goes straight to it. For the full error, open **Logs → Agent
 starts** in the app's menu, or `~/.mycelium/runner/runner.log`.
+
+---
+
+### Codex asks before every `mycelium` command
+
+**You see:** a Codex agent stops at an approval prompt on `mycelium await` or
+`mycelium respond`, or says it can't reach the hub.
+
+Codex runs commands in a sandbox with no network, which can write only in the
+folder it started in. When Mycelium starts a Codex agent, it opens that sandbox
+for the session to two things `mycelium` needs: the network, to reach the hub,
+and `~/.mycelium/agent-state`, the one folder the CLI writes to when an agent
+runs it. The rest of `~/.mycelium` (your config, and the files that approve a
+launch on this machine) stays out of the agent's reach. It doesn't change your
+Codex settings.
+
+Codex ignores those two settings when you've picked a named permissions
+profile in its config (`default_permissions`). If you use one, add both to that
+profile in `~/.codex/config.toml`:
+
+```toml
+[permissions.<your-profile>.network]
+enabled = true
+
+[permissions.<your-profile>.filesystem]
+"~/.mycelium/agent-state" = "write"
+```
+
+---
+
+### An agent the app started still stops to ask
+
+**You see:** a Claude Code or Codex agent started from the app stops at a
+permission prompt before running a command.
+
+Agents the app starts run in their CLI's auto mode (see
+[Agents start in auto mode](#machines-agents-start-in-auto-mode)), which still asks when it judges an
+action risky. Answer it in the agent's terminal. If it asks for everything,
+its CLI may be older than the one with auto mode, and then it starts as it did
+before: update the CLI, then restart the agent from **Machines**. Add agent
+says "runs in its auto mode" next to the CLI when the installed version has it.
 
 ---
 

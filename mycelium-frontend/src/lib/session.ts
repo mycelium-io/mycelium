@@ -6,9 +6,8 @@
 // proxy). The proxy calls `bearer()` to inject the access token; everything else
 // reads/writes the cookie through here.
 //
-// The desktop app's UI server serves one person, so it keeps their sign-in,
-// and the sign-in in progress, in its own memory instead (`heldInMemory`):
-// a cookie on 127.0.0.1 is sent to every other program listening there.
+// The desktop app's UI server keeps them in its own memory instead; see
+// `held` below.
 
 import { createHash } from "node:crypto";
 import { EncryptJWT, jwtDecrypt } from "jose";
@@ -66,9 +65,13 @@ export interface SignInTx {
   returnTo: string;
 }
 
-/** The one person's sign-in, and those under way by their state, in this
- *  process. On `globalThis`, since each route is bundled on its own. */
-const held = globalThis as {
+// In the desktop app (a launch token is set, `lib/ui-guard.ts`) the server
+// is on 127.0.0.1, where a cookie goes to every port on the machine, so the
+// session, and any sign-in under way, is kept in this process's memory
+// instead (`heldInMemory`): one person, one window, and only requests
+// carrying the launch's token reach it. Kept on `globalThis`, since each
+// route is bundled on its own and a dev server's reload mustn't drop it.
+const held = globalThis as unknown as {
   __myceliumSession?: Session | null;
   __myceliumSignIns?: Map<string, SignInTx & { until: number }>;
 };

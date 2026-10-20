@@ -22,6 +22,7 @@
 
 import { randomBytes } from "node:crypto";
 import { getBackendUrl } from "./backend";
+import { tokenPromised } from "./ui-guard";
 
 export interface OidcConfig {
   /** Public issuer the browser is redirected to and that stamps the token `iss`. */
@@ -63,12 +64,13 @@ export function oidcConfigured(): boolean {
 
 /**
  * Whether this UI server keeps one person's sign-in in its own memory, never
- * in a cookie: the desktop app's (`MYCELIUM_UI_SESSION=memory`), which serves
- * the person on this machine. A cookie on 127.0.0.1 would go to every other
- * program listening on it too.
+ * in a cookie: the desktop app's, which has a launch token (`lib/ui-guard.ts`).
+ * A cookie on 127.0.0.1 would go to every other program listening on it too.
+ * Promised counts, not only arrived: a launch whose token went missing still
+ * never writes a cookie.
  */
 export function heldInMemory(): boolean {
-  return process.env.MYCELIUM_UI_SESSION === "memory";
+  return tokenPromised();
 }
 
 /** How long a hub's answer about its sign-in is used before it's asked again. */

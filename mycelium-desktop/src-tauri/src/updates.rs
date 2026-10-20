@@ -40,6 +40,7 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::download::{self, Failed};
 use crate::signature;
+use crate::versions;
 
 /// The waits between tries after a dropped connection, in seconds; the last
 /// one repeats.
@@ -95,10 +96,7 @@ pub fn check(app: AppHandle, how: Check) {
         return;
     }
     tauri::async_runtime::spawn(async move {
-        let found = match app.updater() {
-            Ok(updater) => updater.check().await,
-            Err(e) => Err(e),
-        };
+        let found = find(&app).await;
         match found {
             Ok(Some(update)) => {
                 remember(&app, Some(update.version.clone()));
@@ -118,6 +116,46 @@ pub fn check(app: AppHandle, how: Check) {
             Err(_) => {}
         }
     });
+}
+
+/// A newer version on the chosen channel. Stable reads the app's own endpoint
+/// (`releases/latest`); release candidates read the newest release's own
+/// `latest.json`, RC or not, so a newer stable still wins.
+async fn find(app: &AppHandle) -> Result<Option<Update>, String> {
+    let updater = match versions::channel() {
+        versions::Channel::Stable => app.updater().map_err(|e| e.to_string())?,
+        versions::Channel::ReleaseCandidates => {
+            let Some(newest) = versions::releases(true).await?.into_iter().next() else {
+                return Ok(None);
+            };
+            app.updater_builder()
+                .endpoints(vec![versions::manifest(&newest.tag)?])
+                .and_then(|b| b.build())
+                .map_err(|e| e.to_string())?
+        }
+    };
+    updater.check().await.map_err(|e| e.to_string())
+}
+
+/// Install the release tagged `tag`, older or newer, which the person chose in
+/// Settings. The download is checked against the app's key like any update.
+pub async fn switch(app: AppHandle, tag: &str) -> Result<(), String> {
+    if UPDATING.load(Ordering::SeqCst) {
+        open_window(&app);
+        return Err("An update is already downloading.".into());
+    }
+    let update = app
+        .updater_builder()
+        .endpoints(vec![versions::manifest(tag)?])
+        // Any version but this one: going back is allowed here, as asked.
+        .and_then(|b| b.version_comparator(|current, remote| remote.version != current).build())
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| format!("couldn't read that release: {e}"))?
+        .ok_or("That's the version you have.")?;
+    tauri::async_runtime::spawn(install(app, update));
+    Ok(())
 }
 
 async fn offer(app: AppHandle, update: Update) {

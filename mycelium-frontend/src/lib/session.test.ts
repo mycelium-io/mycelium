@@ -32,7 +32,8 @@ const forget = () => {
 describe("the desktop app's UI server signing in to its hub", () => {
   beforeEach(() => {
     forget();
-    vi.stubEnv("MYCELIUM_UI_SESSION", "memory");
+    // The desktop app's UI server: a launch token is promised.
+    vi.stubEnv("MYCELIUM_UI_TOKEN_STDIN", "1");
     vi.stubEnv("MYCELIUM_OIDC_ISSUER", "");
     vi.stubEnv("MYCELIUM_OIDC_CLIENT_ID", "");
   });
