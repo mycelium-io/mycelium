@@ -781,7 +781,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop-changing-version-and-release-candidates",
     "t": "Changing version, and release candidates",
     "s": "Setup › The Desktop App",
-    "x": "Settings → Version shows the version you're running and lists releases you can switch to. Pick one and the app downloads it, checks its signature like any update, and restarts into it. The hub and CLI inside the app change with it. Release candidates. Turn on Offer release candidates to list them too. A release candidate is the next version, out early to try. While it's on, updates also offer the newest release candi",
+    "x": "Settings → Version shows the version you're running and lists releases you can switch to. Pick one and the app downloads it, checks its signature like any update, and restarts into it. The hub and the CLI inside the app change with it. A mycelium you installed separately for your terminal (with the install script or uv tool) keeps its own version. Release candidates. Turn on Offer release candidates to list them too.",
     "p": "Guides"
   },
   {

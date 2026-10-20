@@ -2397,7 +2397,9 @@ health check says when it's needed.
 
 **Settings → Version** shows the version you're running and lists releases you
 can switch to. Pick one and the app downloads it, checks its signature like any
-update, and restarts into it. The hub and CLI inside the app change with it.
+update, and restarts into it. The hub and the CLI inside the app change with
+it. A `mycelium` you installed separately for your terminal (with the install
+script or `uv tool`) keeps its own version.
 
 - **Release candidates.** Turn on **Offer release candidates** to list them
   too. A release candidate is the next version, out early to try. While it's

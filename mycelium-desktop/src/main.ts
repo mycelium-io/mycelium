@@ -1210,7 +1210,7 @@ function versionPiece(): HTMLElement {
       const view = inApp
         ? await invoke<VersionsView>("app_versions", { withRc: rc })
         : { ...PREVIEW_VERSIONS, releases: PREVIEW_VERSIONS.releases.filter((r) => rc || !r.prerelease) };
-      lede.textContent = `Mycelium ${view.current}. The hub and CLI on this ${MACHINE} come with the app, so they change with it.`;
+      lede.textContent = `Mycelium ${view.current}. The hub and the CLI inside the app change with it. A mycelium you installed separately for your terminal keeps its own version.`;
       list.replaceChildren(...view.releases.map((r) => row(r, view.current)));
       if (!view.releases.length) list.replaceChildren(el("p", { class: "hint" }, "No releases to switch to."));
     } catch (e) {
