@@ -10,7 +10,7 @@ import sys
 
 import typer
 
-from mycelium import __version__
+from mycelium import __version__, proxy_env
 from mycelium.commands import (
     agent,
     board,
@@ -101,6 +101,9 @@ def main(
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress non-essential output"),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
 ) -> None:
+    # Before any command opens a connection (a bracketed IPv6 entry stops
+    # httpx building a client at all).
+    proxy_env.repair()
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet

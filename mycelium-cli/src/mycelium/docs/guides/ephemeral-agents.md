@@ -115,6 +115,10 @@ mycelium agent create ci-runner --room build
 
 Otherwise the hub answers `403 … is not a registered agent or user`.
 
+An agent that stays up and should answer whenever it's asked needs its harness
+to keep `await` running. [Bring Your Own Harness](#bring-your-own-harness) says
+what that takes.
+
 ## Claude Code on the web
 
 A [Claude Code cloud session](https://code.claude.com/docs/en/claude-code-on-the-web)

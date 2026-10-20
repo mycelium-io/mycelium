@@ -3204,6 +3204,59 @@
         }
       }
     },
+    "/api/rooms/{room_name}/invites": {
+      "post": {
+        "tags": [
+          "joins"
+        ],
+        "summary": "Create Invite",
+        "description": "A join code for ``handle``, adding it to the room first if it's new.\n\nWhat the app's Open session and ``mycelium agent invite`` hand to an agent\nrunning anywhere: it redeems the code with ``mycelium join`` and is that\nmember. A handle that is a person, or an engine, gets no code.",
+        "operationId": "create_invite_api_rooms__room_name__invites_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/joins/redeem": {
       "post": {
         "tags": [
@@ -3357,7 +3410,7 @@
           "participate"
         ],
         "summary": "Await Message",
-        "description": "Long-poll for the next message addressed to ``handle`` (server-held member).\n\n``episode`` narrows the wake to one thread \u2014 a task being coordinated\nin, or a negotiation inside one. It narrows *only* the wake: the handle's\npresence lease stays room-scoped (a member of a thread is a member of the\nroom), and so does its room-wide delivery position, so scoping to a task\nnever eats mentions made to it elsewhere. The thread's own position is\npersisted the same way, so a restart mid-thread resumes rather than\nre-serving.",
+        "description": "Long-poll for the next message addressed to ``handle`` (server-held member).\n\n``episode`` narrows the wake to one thread \u2014 a task being coordinated\nin, or a negotiation inside one. It narrows *only* the wake: the handle's\npresence lease stays room-scoped (a member of a thread is a member of the\nroom), and so does its room-wide delivery position, so scoping to a task\nnever eats mentions made to it elsewhere. The thread's own position is\npersisted the same way, so a restart mid-thread resumes rather than\nre-serving.\n\nThe turn carries ``digest``: the text a herdr wake types into its agent\n(``wake_digest``), so an agent on any harness is told the same thing. With\n``confirm`` the read position stays put until the caller confirms the\nturn arrived (``await/confirm``, or ``confirmed`` on its next await);\nwithout it, handing the turn over moves it. Either way a\ncaller that hangs up while waiting is let go, so nothing is handed over to\na connection nobody is reading.",
         "operationId": "await_message_api_rooms__room_name__await_get",
         "parameters": [
           {
@@ -3405,8 +3458,89 @@
               "title": "Episode"
             },
             "description": "Wake only on this thread (an episode URN). Omit to wake on anything addressed to the handle anywhere in the room."
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Leave what is handed over unread until the caller confirms it (POST await/confirm with the turn's `delivered`), so a response lost on the way is handed over again by the next await.",
+              "default": false,
+              "title": "Confirm"
+            },
+            "description": "Leave what is handed over unread until the caller confirms it (POST await/confirm with the turn's `delivered`), so a response lost on the way is handed over again by the next await."
+          },
+          {
+            "name": "confirmed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A turn's `delivered.position` whose confirmation didn't land: confirmed here, before waiting, so a caller that can't reach await/confirm isn't handed the same turn forever.",
+              "title": "Confirmed"
+            },
+            "description": "A turn's `delivered.position` whose confirmation didn't land: confirmed here, before waiting, so a caller that can't reach await/confirm isn't handed the same turn forever."
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/await/confirm": {
+      "post": {
+        "tags": [
+          "participate"
+        ],
+        "summary": "Confirm Delivery",
+        "description": "Mark a turn from ``await?confirm=true`` read, now that it arrived.\n\nMoves the handle's read position (the thread's, for a thread-scoped await)\nto where the turn ended. It never moves back, so confirming twice, or late,\nis harmless.",
+        "operationId": "confirm_delivery_api_rooms__room_name__await_confirm_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmBody"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8335,6 +8469,38 @@
         ],
         "title": "ClaimBody"
       },
+      "ConfirmBody": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "The handle the turn was handed to"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "description": "The turn's `delivered.position`"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "The turn's `delivered.episode`"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "position"
+        ],
+        "title": "ConfirmBody"
+      },
       "ContextFile": {
         "properties": {
           "path": {
@@ -9750,6 +9916,55 @@
         ],
         "title": "HubWorkers"
       },
+      "InviteCreate": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Description",
+            "description": "What it does here, if it's new",
+            "default": ""
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By",
+            "description": "Who is inviting it; its owner if it's new"
+          },
+          "ttl_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1440.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Minutes",
+            "description": "How long the code lasts unused, in minutes (default 10, at most a day)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "InviteCreate",
+        "description": "Ask for a code for ``handle``, adding it to the room as an agent if it's new."
+      },
       "JoinCreate": {
         "properties": {
           "handle": {
@@ -9757,6 +9972,20 @@
             "maxLength": 64,
             "minLength": 1,
             "title": "Handle"
+          },
+          "ttl_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1440.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Minutes",
+            "description": "How long the code lasts unused, in minutes (default 10, at most a day)"
           }
         },
         "type": "object",

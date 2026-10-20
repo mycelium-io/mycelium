@@ -9,9 +9,11 @@ const createEngine = vi.fn();
 const createMemories = vi.fn();
 const registerA2aAgent = vi.fn();
 const adoptRunnerAgent = vi.fn();
+const createInvite = vi.fn();
 vi.mock("@/lib/api", () => ({
   adoptRunnerAgent: (...a: unknown[]) => adoptRunnerAgent(...a),
   createEngine: (...a: unknown[]) => createEngine(...a),
+  createInvite: (...a: unknown[]) => createInvite(...a),
   createMemories: (...a: unknown[]) => createMemories(...a),
   registerA2aAgent: (...a: unknown[]) => registerA2aAgent(...a),
   launchRunnerAgent: vi.fn(),
@@ -30,7 +32,17 @@ vi.mock("@/lib/runners", async (importOriginal) => ({
 }));
 
 import type { MachineUnenrolled, Runner } from "@/lib/api";
-import { AddMemberDialog, type MemberKind } from "./add-member-dialog";
+import { AddMemberDialog, isLocalAddress, type MemberKind } from "./add-member-dialog";
+
+describe("isLocalAddress", () => {
+  it("knows an address only this machine reaches", () => {
+    expect(isLocalAddress("http://localhost:3000")).toBe(true);
+    expect(isLocalAddress("http://127.0.0.1:8080")).toBe(true);
+    expect(isLocalAddress("http://[::1]:8000")).toBe(true);
+    expect(isLocalAddress("https://mycelium.example.com")).toBe(false);
+    expect(isLocalAddress("http://192.168.1.20:8000")).toBe(false);
+  });
+});
 
 function running(pane: string, over: Partial<MachineUnenrolled> = {}): MachineUnenrolled {
   return {
@@ -109,6 +121,12 @@ describe("AddMemberDialog", () => {
     createMemories.mockReset().mockResolvedValue(undefined);
     registerA2aAgent.mockReset().mockResolvedValue({});
     adoptRunnerAgent.mockReset().mockResolvedValue({ id: "j1", status: "queued" });
+    createInvite.mockReset().mockResolvedValue({
+      code: "k7mq-2xpa-9vtd",
+      room: "atlas",
+      handle: "muse",
+      expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+    });
     machines = [];
   });
 
@@ -221,9 +239,24 @@ describe("AddMemberDialog", () => {
     expect(screen.getByText("Every agent running on julia-mbp is in a room already.")).toBeInTheDocument();
   });
 
-  it("hands an open session the setup to paste", () => {
+  it("hands an open session a join code to paste, lasting as long as asked", async () => {
     const { onOpenChange } = open("session");
-    expect(screen.getByText(/You are joining the Mycelium room `atlas`/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "10 minutes" })).toHaveAttribute("aria-checked", "true");
+    // Pressable with no handle, and it says what's missing rather than looking dim.
+    fireEvent.click(screen.getByRole("button", { name: "Make the prompt" }));
+    expect(screen.getByText("Give the agent a handle first.")).toBeInTheDocument();
+    expect(createInvite).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "muse" } });
+    fireEvent.click(screen.getByRole("radio", { name: "1 hour" }));
+    fireEvent.click(screen.getByRole("button", { name: "Make the prompt" }));
+
+    expect(await screen.findByText(/You are joining the Mycelium room `atlas`/)).toBeInTheDocument();
+    expect(createInvite).toHaveBeenCalledWith("atlas", { handle: "muse", ttl_minutes: 60, created_by: "julia" });
+    expect(screen.getByText(/mycelium join k7mq-2xpa-9vtd --hub/)).toBeInTheDocument();
+    // jsdom serves the page from localhost, which another machine can't reach.
+    expect(screen.getByText(/only works for a session on this machine/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy prompt" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

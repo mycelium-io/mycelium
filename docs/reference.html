@@ -142,6 +142,7 @@
           <a href="guides.html#agents-on-a-machine" class="nav-link sub">Your Agents on a Machine</a>
           <a href="guides.html#herdr" class="nav-link sub">Persistent Agents (herdr)</a>
           <a href="guides.html#ephemeral-agents" class="nav-link sub">Ephemeral Agents</a>
+          <a href="guides.html#bring-your-own-harness" class="nav-link sub">Bring Your Own Harness</a>
           <a href="guides.html#omnigent" class="nav-link sub">Run Agents in Omnigent</a>
           <a href="guides.html#a2a-bridge" class="nav-link sub">A2A Bridge</a>
         </div>
@@ -776,6 +777,13 @@
           <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--adapter</span> <span class="arg">&lt;name&gt;</span> [<span class="flag">--cwd</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--card</span> <span class="arg">&lt;url&gt;</span>] [<span class="flag">--card-auth-env</span> <span class="arg">&lt;var&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Create a new, Mycelium-controlled agent in a room. <code>claude_code</code> and <code>cursor</code> agents are resident sessions the user keeps woken with <code>mycelium await --loop</code>. <code>--adapter a2a</code> instead registers a remote Agent2Agent endpoint given by <code>--card</code> (its Agent Card host, resolved at registration); <code>--card-auth-env</code> names a backend env var holding its bearer token, so only the var name is stored in the room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">invite</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--minutes</span> N] [<span class="flag">--json</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Make a join code for an agent, adding it to the room if it's new, and print what to paste into its session.</div>
       </div>
 
       <div class="cmd-ref">

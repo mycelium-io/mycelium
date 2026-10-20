@@ -33,6 +33,7 @@ commands, which is all a headless/allowlisted agent can safely issue.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -49,6 +50,7 @@ from app.services import (
     schedules,
     subscriptions,
     tasks,
+    wake_digest,
 )
 from app.services.agent_registry import norm_handle
 from app.services.asks import Wake, asks, wakes_for
@@ -56,6 +58,8 @@ from app.services.filesystem import room_exists
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content, serialize_envelope
 from app.services.persister import _conversational_text, read_id, record_episode
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}", tags=["participate"])
 
@@ -208,6 +212,26 @@ async def await_message(
             )
         ),
     ] = None,
+    confirm: Annotated[
+        bool,
+        Query(
+            description=(
+                "Leave what is handed over unread until the caller confirms it "
+                "(POST await/confirm with the turn's `delivered`), so a response lost "
+                "on the way is handed over again by the next await."
+            )
+        ),
+    ] = False,
+    confirmed: Annotated[
+        int | None,
+        Query(
+            description=(
+                "A turn's `delivered.position` whose confirmation didn't land: confirmed "
+                "here, before waiting, so a caller that can't reach await/confirm isn't "
+                "handed the same turn forever."
+            )
+        ),
+    ] = None,
 ):
     """Long-poll for the next message addressed to ``handle`` (server-held member).
 
@@ -218,6 +242,14 @@ async def await_message(
     never eats mentions made to it elsewhere. The thread's own position is
     persisted the same way, so a restart mid-thread resumes rather than
     re-serving.
+
+    The turn carries ``digest``: the text a herdr wake types into its agent
+    (``wake_digest``), so an agent on any harness is told the same thing. With
+    ``confirm`` the read position stays put until the caller confirms the
+    turn arrived (``await/confirm``, or ``confirmed`` on its next await);
+    without it, handing the turn over moves it. Either way a
+    caller that hangs up while waiting is let go, so nothing is handed over to
+    a connection nobody is reading.
     """
     import time as _time
 
@@ -258,6 +290,11 @@ async def await_message(
         else:
             persister.advance_cursor(handle, pos)
 
+    # A confirmation that couldn't be posted rides along on the next await:
+    # the read position moves forward to it (never back) before waiting.
+    if confirmed is not None:
+        _commit(confirmed)
+
     loop = asyncio.get_event_loop()
     deadline = loop.time() + (timeout if timeout > 0 else _MAX_WAIT_S)
     while True:
@@ -267,6 +304,12 @@ async def await_message(
         if scheduled is not None:
             room_channels.manager.refresh_lease(room_name, handle)
             activity.signal(room_name, handle, "responding", episode=scheduled.get("episode"))
+            wake = {
+                "handle": handle,
+                "reason": "schedule",
+                "title": scheduled["schedule"],
+                "episode": scheduled.get("episode"),
+            }
             return {
                 "room": room_name,
                 "handle": handle,
@@ -278,8 +321,10 @@ async def await_message(
                 "message_id": None,
                 "earlier": [],
                 "schedule": scheduled["schedule"],
+                "digest": _digest(room_name, wake, persister.log.records),
             }
         records = persister.log.records
+        read_from = _position()
         # Every unread message that asks for the handle, in one hand-over: the
         # wake shows them all, so the read takes them all, and the newest (the
         # one the wake leads with) is the turn. Handing them over one call at a
@@ -293,7 +338,7 @@ async def await_message(
         mine = [s for s in subscriptions.load(room_name) if s.handle == _norm(handle)]
         unread: list[tuple[int, Any]] = []
         watched: list[tuple[int, Any, Wake]] = []
-        for i in range(_position(), end):
+        for i in range(read_from, end):
             record = records[i]
             ep = record_episode(record)
             if scoped and ep != scoped:
@@ -318,7 +363,12 @@ async def await_message(
             else:
                 unread.append((i, record))
         if unread or watched:
-            _commit(end)
+            # Confirmed, the position moves when the caller says the turn
+            # arrived (``await/confirm``); until then the next await hands the
+            # same messages over again, so a response lost on the way loses
+            # nothing.
+            if not confirm:
+                _commit(end)
             # What it posts while answering these wakes none of their senders
             # by subscription (``subscriptions.answering``).
             subscriptions.answering(
@@ -358,6 +408,16 @@ async def await_message(
                 turn["reason"], turn["why"] = "subscribed", subscribed.why
             else:
                 turn["reason"], turn["why"] = asks(record.content, handle), None
+            wake = {
+                "handle": handle,
+                "reason": turn["reason"] or "mention",
+                "from": record.sender,
+                "episode": record_episode(record),
+                wake_digest.READ_FROM: read_from,
+            }
+            turn["digest"] = _digest(room_name, wake, records)
+            if confirm:
+                turn["delivered"] = {"position": end, "episode": scoped}
             return turn
         # Nothing addressed in the scanned range: consume it (advance past the
         # observer/broadcast turns this handle doesn't await) and keep polling.
@@ -370,8 +430,60 @@ async def await_message(
                 delivered=False,
             )
             return {"room": room_name, "handle": handle, "message": None}
+        if await _hung_up(request):
+            # Nobody is reading: a turn handed over now would be lost with the
+            # connection (a proxy that cuts idle requests, say).
+            return {"room": room_name, "handle": handle, "message": None}
         room_channels.manager.refresh_lease(room_name, handle)
         await asyncio.sleep(_POLL_INTERVAL_S)
+
+
+async def _hung_up(request: Request) -> bool:
+    """Whether the caller has gone; ``False`` when that can't be told (a bare
+    request in a unit test has no channel to ask)."""
+    try:
+        return await request.is_disconnected()
+    except Exception:  # no telling is not a hang-up
+        return False
+
+
+def _digest(room: str, wake: dict[str, Any], records: list[Any]) -> str | None:
+    """What a herdr wake would type for this turn, told it was handed over by
+    ``await`` (so it doesn't say to run ``await`` first); ``None`` if it can't
+    be built, since the turn itself still says what was asked."""
+    try:
+        return wake_digest.build(room, wake, records, awaited=True)
+    except Exception:
+        logger.exception("await digest failed for @%s in %s", wake.get("handle"), room)
+        return None
+
+
+class ConfirmBody(BaseModel):
+    handle: str = Field(..., description="The handle the turn was handed to")
+    position: int = Field(..., description="The turn's `delivered.position`")
+    episode: str | None = Field(None, description="The turn's `delivered.episode`")
+
+
+@router.post("/await/confirm")
+async def confirm_delivery(room_name: str, body: ConfirmBody, request: Request):
+    """Mark a turn from ``await?confirm=true`` read, now that it arrived.
+
+    Moves the handle's read position (the thread's, for a thread-scoped await)
+    to where the turn ended. It never moves back, so confirming twice, or late,
+    is harmless.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    actor.authorize_handle(request, room_name, body.handle)
+    managed = await room_channels.manager.provision(room_name)
+    if managed is None or managed.persister is None:
+        return {"room": room_name, "handle": body.handle, "confirmed": False}
+    persister = managed.persister
+    if body.episode and not message_format.is_live_episode(room_name, body.episode):
+        persister.advance_episode_cursor(body.handle, body.episode, body.position)
+    else:
+        persister.advance_cursor(body.handle, body.position)
+    return {"room": room_name, "handle": body.handle, "confirmed": True}
 
 
 class ReplyBody(BaseModel):
