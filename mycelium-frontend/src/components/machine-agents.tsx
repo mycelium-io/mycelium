@@ -18,13 +18,13 @@
  * job for the runner. Every other fix is shown as the command to run there.
  */
 
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { restartMachineAgents, type MachineAgent, type MachineProblem, type Runner } from "@/lib/api";
 import { signFor } from "@/lib/device-key";
 import { useThisMachine } from "@/lib/desktop";
-import { AgentScreen } from "@/components/agent-screen";
+import { AgentScreenDrawer } from "@/components/agent-screen";
 import { JOB_STATUS_LABEL, jobSettled, pairingNote, useRunnerJob, useRunnersRevalidate } from "@/lib/runners";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -59,9 +59,9 @@ function tilde(path: string | null): string {
 export function MachineAgents({ runner }: { runner: Runner }) {
   const report = runner.machine;
   const [restarting, setRestarting] = useState<MachineAgent[] | null>(null);
-  // The one row whose terminal is open under it. Only this machine's
-  // terminals can be shown, by the desktop app, so only its rows offer it.
-  const [viewing, setViewing] = useState<string | null>(null);
+  // The agent whose terminal is open, in the same drawer Members opens. Only
+  // this machine's terminals can be shown, by the desktop app, so only its rows offer it.
+  const [viewing, setViewing] = useState<MachineAgent | null>(null);
   const here = useThisMachine() === runner.id;
   if (!report) return null;
   const agents = report.workspaces.flatMap((w) => w.agents);
@@ -132,12 +132,9 @@ export function MachineAgents({ runner }: { runner: Runner }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {w.agents.map((a) => {
-                      const id = `${a.room}/${a.handle}`;
-                      const viewable = here && a.state !== "gone";
-                      return (
-                      <Fragment key={id}>
+                    {w.agents.map((a) => (
                       <tr
+                        key={`${a.room}/${a.handle}`}
                         className={cn(
                           "border-b border-hairline align-top last:border-b-0",
                           a.state === "stopped" && "bg-red/[0.04]",
@@ -171,14 +168,9 @@ export function MachineAgents({ runner }: { runner: Runner }) {
                           )}
                         </td>
                         <td className="whitespace-nowrap px-2.5 py-1.5 text-right">
-                          {viewable && (
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              aria-expanded={viewing === id}
-                              onClick={() => setViewing(viewing === id ? null : id)}
-                            >
-                              {viewing === id ? "Hide" : "View"}
+                          {here && a.state !== "gone" && (
+                            <Button size="xs" variant="ghost" onClick={() => setViewing(a)}>
+                              View
                             </Button>
                           )}
                           {a.restartable && (
@@ -188,18 +180,7 @@ export function MachineAgents({ runner }: { runner: Runner }) {
                           )}
                         </td>
                       </tr>
-                      {viewing === id && (
-                        <tr className="border-b border-hairline last:border-b-0">
-                          <td colSpan={5} className="p-0">
-                            <div className="flex h-80 flex-col">
-                              <AgentScreen room={a.room} handle={a.handle} />
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                      </Fragment>
-                      );
-                    })}
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -208,6 +189,9 @@ export function MachineAgents({ runner }: { runner: Runner }) {
         ))
       )}
       {restarting && <RestartDialog runner={runner} agents={restarting} onClose={() => setRestarting(null)} />}
+      {viewing && (
+        <AgentScreenDrawer open onClose={() => setViewing(null)} room={viewing.room} handle={viewing.handle} />
+      )}
     </div>
   );
 }
