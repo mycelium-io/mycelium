@@ -13,7 +13,11 @@ The room needs the conductor once. In the room's chat:
 
 Then start accord in the task's thread, naming who takes part:
 
-> @conductor accord @pm @web @api: what scheduled gift delivery is, before anyone starts
+> @conductor accord @~pm @~web @~api: what scheduled gift delivery is, before anyone starts
+
+Write the members as `@~name`. That names them for the flow without waking
+them; the conductor wakes each one when it's their turn. A plain `@` wakes
+all of them at once, and their early replies are refused.
 
 Or from a terminal:
 

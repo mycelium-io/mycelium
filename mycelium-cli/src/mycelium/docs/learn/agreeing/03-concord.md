@@ -7,7 +7,10 @@ from ratings, not chosen by a model.
 
 Start it in the task's thread, naming who takes part:
 
-> @conductor concord @pm @web @api: how should a gift order wait for its payment?
+> @conductor concord @~pm @~web @~api: how should a gift order wait for its payment?
+
+As with accord, `@~name` names a member without waking them, so the conductor
+can ask each one in turn.
 
 Or from a terminal:
 
@@ -35,8 +38,10 @@ It runs like this:
 When everyone's on board, the decision is saved to the room's memory as
 `context/decision/<task>`, here `context/decision/gift-payments`, and the
 thread ends with the option it went with. Later work on the task sees it, so
-nobody has to argue it again. A missing rating is never guessed: it counts
-against the option it's missing from.
+nobody has to argue it again. If two fixes still leave someone below 70, the
+run ends without a decision and says so, and nothing is saved as agreed. A
+missing rating is never guessed: it counts against the option it's missing
+from.
 
 Concord is for real alternatives. If the members don't yet agree on what the
 task is, their options won't be about the same thing; run accord first. And
