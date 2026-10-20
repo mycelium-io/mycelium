@@ -14,7 +14,7 @@
     "caption:Two agents, two different tasks|One builds a date picker, the other a subscription.",
     "hold:3200",
     "caption:Run accord before they go further",
-    "fill:Reply in Let customers schedule a gift delivery…=@conductor accord @pm @web @api: what scheduled gift delivery is, before anyone starts",
+    "fill:Reply in Let customers schedule a gift delivery…=@conductor accord @~pm @~web @~api: what scheduled gift delivery is, before anyone starts",
     "hold:700",
     "click:role=button[name=\"Send message\"] >> nth=-1",
     "wait-text:Running accord",

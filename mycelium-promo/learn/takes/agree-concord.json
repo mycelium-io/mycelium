@@ -14,7 +14,7 @@
     "caption:Real options, each with a cost|and the first agent to act would just pick.",
     "hold:3200",
     "caption:Run concord instead",
-    "fill:Reply in Stop gift orders shipping before the payment clears…=@conductor concord @pm @web @api: how should a gift order wait for its payment?",
+    "fill:Reply in Stop gift orders shipping before the payment clears…=@conductor concord @~pm @~web @~api: how should a gift order wait for its payment?",
     "hold:700",
     "click:role=button[name=\"Send message\"] >> nth=-1",
     "wait-text:Running concord",
