@@ -33,19 +33,33 @@ def test_claude_is_started_allowed_mycelium_and_says_what_it_waits_for():
     assert "Claude Code asks before" in (claude.blocked_hint() or "")
 
 
-def test_codex_sandbox_lets_mycelium_reach_the_hub_and_write_its_settings(
+def test_codex_sandbox_lets_mycelium_reach_the_hub_and_write_only_its_agent_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     args = agents.of_kind("codex").launch_args()
-    assert args == [
-        "-c",
-        "sandbox_workspace_write.network_access=true",
-        "--add-dir",
-        str(tmp_path / ".mycelium"),
-    ]
+    state = tmp_path / ".mycelium" / "agent-state"
+    assert args == ["-c", "sandbox_workspace_write.network_access=true", "--add-dir", str(state)]
+    assert state.is_dir()
+    # Never the whole folder: its config, herdr registry and the runner's
+    # approval files stay out of an agent's reach.
+    assert str(tmp_path / ".mycelium") not in args
     # Never the bypass, and never a change to who approves what.
     assert not any("dangerously" in a or a in ("-a", "--ask-for-approval") for a in args)
+
+
+def test_what_an_agent_writes_lives_in_the_agent_state_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium import agent_credentials
+    from mycelium.commands import participate
+    from mycelium.config import MyceliumConfig
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv(agent_credentials.CREDENTIAL_STORE_ENV, raising=False)
+    state = MyceliumConfig.get_agent_state_dir()
+    assert participate._pending_file().parent == state  # noqa: SLF001
+    assert agent_credentials.token_cache_path("scout").is_relative_to(state)
 
 
 @pytest.mark.parametrize(

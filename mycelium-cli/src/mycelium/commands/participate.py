@@ -144,7 +144,7 @@ def _confirm(config: MyceliumConfig, room_name: str, handle: str, turn: dict) ->
 
 def _pending_file() -> Path:
     """Where confirmations that didn't land wait for the next ``await``."""
-    return MyceliumConfig.get_global_config_dir() / "await-pending.json"
+    return MyceliumConfig.get_agent_state_dir() / "await-pending.json"
 
 
 def _pending_key(config: MyceliumConfig, room: str, handle: str, episode: str | None) -> str:

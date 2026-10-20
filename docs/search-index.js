@@ -1607,7 +1607,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-where-agent-credentials-are-stored",
     "t": "Where agent credentials are stored",
     "s": "Security › Authentication",
-    "x": "Agent credentials are stored in ~/.mycelium/agent-credentials.json, readable only by you (0600). A cached token for each agent is kept in ~/.mycelium/agent-tokens/. This grant has no refresh tokens, so an expired token is just requested again. For a container that runs one agent and has no config file, use these environment variables: MYCELIUM_AGENT_AUTH_ISSUER, MYCELIUM_AGENT_AUTH_CLIENT_ID, MYCELIUM_AGENT_AUTH_CLIE",
+    "x": "Agent credentials are stored in ~/.mycelium/agent-credentials.json, readable only by you (0600). A cached token for each agent is kept in ~/.mycelium/agent-state/agent-tokens/. This grant has no refresh tokens, so an expired token is just requested again. For a container that runs one agent and has no config file, use these environment variables: MYCELIUM_AGENT_AUTH_ISSUER, MYCELIUM_AGENT_AUTH_CLIENT_ID, MYCELIUM_AGE",
     "p": "Guides"
   },
   {
@@ -1726,7 +1726,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-codex-asks-before-every-mycelium-command",
     "t": "Codex asks before every mycelium command",
     "s": "Help › Troubleshooting",
-    "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network, which can write only in the folder it started in. When Mycelium starts a Codex agent, it opens that sandbox for the session to two things mycelium needs: the network, to reach the hub, and ~/.mycelium, where it keeps its settings. It doesn't change",
+    "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network, which can write only in the folder it started in. When Mycelium starts a Codex agent, it opens that sandbox for the session to two things mycelium needs: the network, to reach the hub, and ~/.mycelium/agent-state, the one folder the CLI writes to w",
     "p": "Guides"
   },
   {

@@ -93,8 +93,15 @@ def store_path() -> Path:
 
 
 def token_cache_path(handle: str) -> Path:
+    """Where a minted token is cached: beside a store named by the environment,
+    else in the agent-state folder, which an agent can write from a sandbox."""
     safe = _UNSAFE.sub("-", handle) or "agent"
-    return store_path().parent / "agent-tokens" / f"{safe}.json"
+    if os.environ.get(CREDENTIAL_STORE_ENV, "").strip():
+        return store_path().parent / "agent-tokens" / f"{safe}.json"
+
+    from mycelium.config import MyceliumConfig
+
+    return MyceliumConfig.get_agent_state_dir() / "agent-tokens" / f"{safe}.json"
 
 
 @dataclass(frozen=True)
