@@ -102,7 +102,17 @@ def test_a_crash_is_restarted_and_one_that_keeps_crashing_is_left_failed():
     run_until(hub(events, [crashing]), lambda: crashing.state == "failed")
     details = [s["components"]["slim"]["detail"] or "" for s in events.statuses()]
     assert any("starting again" in d for d in details)
-    assert "keeps exiting (last exit code 3)" in details[-1]
+    assert "keeps exiting (last time it exited with code 3)" in details[-1]
+    # Each exit is in the log as a line of its own, before it's started again.
+    said = [e["line"] for e in events.all if e["type"] == "log" and e.get("component") == "slim"]
+    assert "slim exited with code 3" in said
+
+
+def test_a_program_killed_by_a_signal_says_which():
+    assert sv.how_it_exited(-9) == "was stopped by SIGKILL"
+    assert sv.how_it_exited(-15) == "was stopped by SIGTERM"
+    assert sv.how_it_exited(1) == "exited with code 1"
+    assert sv.how_it_exited(-999) == "was stopped by signal 999"
 
 
 def test_a_crash_says_what_the_program_said():

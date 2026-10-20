@@ -164,7 +164,52 @@ def test_the_log_is_rotated_by_size(tmp_path: Path):
         writer.emit({"type": "log"})
     writer.close()
     assert (tmp_path / "desktop.log.1").exists()
-    assert log.stat().st_size <= 1_100
+    assert log.stat().st_size <= 1_200
+
+
+def test_a_relaunch_keeps_what_the_last_run_said(tmp_path: Path):
+    # A crashed run never closes its writer; the next one must not wipe it.
+    log = tmp_path / "desktop.log"
+    crashed = EventWriter(log, line=lambda e: e["line"])
+    crashed.emit({"type": "log", "line": "hub: the last thing before the crash"})
+    crashed.close()
+    for n in range(7):
+        run = EventWriter(log, line=lambda e: e["line"], keep=3)
+        run.emit({"type": "log", "line": f"run {n}"})
+        run.close()
+        if n == 0:
+            assert "the last thing before the crash" in (tmp_path / "desktop.log.1").read_text()
+    # Only the newest `keep` earlier runs are kept, each headed with its date.
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "desktop.log",
+        "desktop.log.1",
+        "desktop.log.2",
+        "desktop.log.3",
+    ]
+    assert "run 5" in (tmp_path / "desktop.log.1").read_text()
+    assert log.read_text().startswith("--- 2")
+
+
+def test_routine_requests_stay_out_of_the_file_and_errors_stay_in(tmp_path: Path):
+    log = tmp_path / "desktop.log"
+    out = io.StringIO()
+    writer = EventWriter(log, line=lambda e: e["line"], stdout=out)
+    hub = lambda line: {"type": "log", "component": "hub", "line": line}  # noqa: E731
+    sync = '127.0.0.1:53640 - "POST /api/rooms/general/sessions/herdr-presence HTTP/1.1" 204 No Content'
+    notes = '127.0.0.1:53616 - "GET /api/rooms/buddy/memory/agents/coder HTTP/1.1" 200 OK'
+    failed = '127.0.0.1:53641 - "GET /api/rooms/general/sessions/herdr-wakes HTTP/1.1" 500 Internal Server Error'
+    asked = '127.0.0.1:53650 - "POST /api/rooms/general/messages HTTP/1.1" 201 Created'
+    for line in (sync, notes, failed, asked, "Traceback (most recent call last):"):
+        writer.emit(hub(line))
+    writer.close()
+    text = log.read_text()
+    assert sync not in text
+    assert notes not in text
+    assert failed in text
+    assert asked in text
+    assert "Traceback" in text
+    # The app is still sent everything.
+    assert "herdr-presence" in out.getvalue()
 
 
 def test_a_full_disk_loses_lines_but_not_the_writer(tmp_path: Path, monkeypatch):
