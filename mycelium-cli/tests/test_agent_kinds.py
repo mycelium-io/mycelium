@@ -89,7 +89,9 @@ def test_codex_sandbox_lets_mycelium_reach_the_hub_and_write_only_its_agent_stat
     assert str(tmp_path / ".mycelium") not in args
     # Never the bypass, and never a change to who approves what.
     assert not any("dangerously" in a or a in ("-a", "--ask-for-approval") for a in args)
-    assert agents.of_kind("codex").session_note().startswith("Codex runs in its auto mode")
+    note = agents.of_kind("codex").session_note()
+    assert note is not None
+    assert note.startswith("Codex runs in its auto mode")
 
 
 def test_an_older_codex_without_auto_review_keeps_only_the_sandbox_settings(
