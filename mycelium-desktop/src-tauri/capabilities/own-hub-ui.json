@@ -1,10 +1,31 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "own-hub-ui",
-  "description": "The UI of the app's own hub in the main window may call three app commands, granted here by name since Tauri refuses a remote origin any command no capability names: which machine this is, the Add member folder dialog, and an agent's screen. Each answers only the hub this app started (own_ui_only), so another hub's pages, which client mode shows, get nothing.",
+  "description": "The app's own UI in the main window, granted these commands by name since Tauri refuses a remote origin any command no capability names. Which machine this is, the Add member folder dialog and an agent's screen; and the app's own Settings pages (this machine's hub or connection, start at login, the model, the agents' folders, experiences, the version, the health check, the log). Each answers only while the page is the UI this app started, by exact origin (own_ui_only, app_ui_only). The changes to what the app is (start with another hub or other folders, save_model, switch_version) also ask on the machine first (confirmed_here).",
   "windows": ["main"],
   "remote": {
     "urls": ["http://127.0.0.1:*", "http://localhost:*"]
   },
-  "permissions": ["allow-this-machine", "allow-choose-agent-folder", "allow-agent-screen"]
+  "permissions": [
+    "allow-this-machine",
+    "allow-choose-agent-folder",
+    "allow-agent-screen",
+    "allow-get-state",
+    "allow-start",
+    "allow-get-autostart",
+    "allow-set-autostart",
+    "allow-scan-agents",
+    "allow-pick-folder",
+    "allow-run-doctor",
+    "allow-open-log",
+    "allow-get-model",
+    "allow-save-model",
+    "allow-get-experiences",
+    "allow-add-experience",
+    "allow-remove-experience",
+    "allow-get-hub-settings",
+    "allow-app-versions",
+    "allow-set-update-channel",
+    "allow-switch-version"
+  ]
 }
