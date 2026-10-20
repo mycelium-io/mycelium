@@ -23,6 +23,8 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { restartMachineAgents, type MachineAgent, type MachineProblem, type Runner } from "@/lib/api";
 import { signFor } from "@/lib/device-key";
+import { useThisMachine } from "@/lib/desktop";
+import { AgentScreenDrawer } from "@/components/agent-screen";
 import { JOB_STATUS_LABEL, jobSettled, pairingNote, useRunnerJob, useRunnersRevalidate } from "@/lib/runners";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -57,6 +59,10 @@ function tilde(path: string | null): string {
 export function MachineAgents({ runner }: { runner: Runner }) {
   const report = runner.machine;
   const [restarting, setRestarting] = useState<MachineAgent[] | null>(null);
+  // The agent whose terminal is open, in the same drawer Members opens. Only
+  // this machine's terminals can be shown, by the desktop app, so only its rows offer it.
+  const [viewing, setViewing] = useState<MachineAgent | null>(null);
+  const here = useThisMachine() === runner.id;
   if (!report) return null;
   const agents = report.workspaces.flatMap((w) => w.agents);
   const restart = (handles: string[]) =>
@@ -161,7 +167,12 @@ export function MachineAgents({ runner }: { runner: Runner }) {
                             </span>
                           )}
                         </td>
-                        <td className="px-2.5 py-1.5 text-right">
+                        <td className="whitespace-nowrap px-2.5 py-1.5 text-right">
+                          {here && a.state !== "gone" && (
+                            <Button size="xs" variant="ghost" onClick={() => setViewing(a)}>
+                              View
+                            </Button>
+                          )}
                           {a.restartable && (
                             <Button size="xs" disabled={!runner.connected} onClick={() => setRestarting([a])}>
                               Restart
@@ -178,6 +189,9 @@ export function MachineAgents({ runner }: { runner: Runner }) {
         ))
       )}
       {restarting && <RestartDialog runner={runner} agents={restarting} onClose={() => setRestarting(null)} />}
+      {viewing && (
+        <AgentScreenDrawer open onClose={() => setViewing(null)} room={viewing.room} handle={viewing.handle} />
+      )}
     </div>
   );
 }

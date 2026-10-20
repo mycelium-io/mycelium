@@ -42,7 +42,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import typer
@@ -57,6 +57,9 @@ from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.names import who
 from mycelium.slim.message_format import payload_data_of, payload_type_of
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 console = Console()
 
@@ -311,10 +314,22 @@ SHELL_WAIT_S = 30.0
 #: A start that took this long got as far as running the agent CLI, which
 #: herdr then waited on: trying again would only wait again.
 SLOW_START_S = 10.0
+#: How long a shell may take before the person is told it's slow. A shell
+#: usually reaches its prompt in a second or two; one still starting after
+#: this is often stopped at something of its own (a question from its startup
+#: files, a password) that only the person can see and answer in its terminal.
+SLOW_SHELL_S = 5.0
 
 
 def _start_when_ready(
-    bridge: Any, handle: str, kind: str, pane: str, *, room: str, resume: str | None = None
+    bridge: Any,
+    handle: str,
+    kind: str,
+    pane: str,
+    *,
+    room: str,
+    resume: str | None = None,
+    on_slow_shell: Callable[[], None] | None = None,
 ) -> dict | None:
     """Start ``kind`` in ``pane``, giving a just-opened pane's shell time to come up.
 
@@ -328,7 +343,8 @@ def _start_when_ready(
     reports as failed with an agent on the pane all the same (one stopped at a
     prompt never reads as ready) is not tried again, since a second start would
     find the name taken: that agent is returned, for the caller to read its
-    state. ``None`` means it started and is ready.
+    state. ``None`` means it started and is ready. ``on_slow_shell`` is called
+    once if the shell is still starting after ``SLOW_SHELL_S``.
 
     Raises :class:`ShellNotReadyError` when the shell never reached its prompt,
     :class:`AgentNotReadyError` when the agent CLI ran but never came up as an
@@ -345,7 +361,9 @@ def _start_when_ready(
 
     known = of_kind(kind)
     args = known.launch_args() + ((known.resume_args(resume) or []) if resume else [])
-    deadline = time.monotonic() + SHELL_WAIT_S
+    opened = time.monotonic()
+    deadline = opened + SHELL_WAIT_S
+    slow = False
     failures = 0
     while True:
         began = time.monotonic()
@@ -357,6 +375,12 @@ def _start_when_ready(
             if time.monotonic() - began >= SLOW_START_S:
                 raise AgentNotReadyError(str(e)) from e
             if NOT_A_SHELL in str(e):
+                # Still waiting, but say so once it's slow: what holds a shell
+                # up is on its screen, which is the person's to read, never
+                # ours to parse.
+                if on_slow_shell and not slow and time.monotonic() - opened >= SLOW_SHELL_S:
+                    slow = True
+                    on_slow_shell()
                 if time.monotonic() >= deadline:
                     raise ShellNotReadyError(str(e)) from e
             else:

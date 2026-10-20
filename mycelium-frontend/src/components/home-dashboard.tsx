@@ -147,7 +147,7 @@ export function HomeDashboard() {
         {/* The mark, the name, one line: stacked and centered, the way an
             editor greets you, above lists that read left to right. */}
         <header className="mb-10 flex flex-col items-center text-center">
-          <Image src="/logo.png" alt="" width={40} height={40} className="opacity-90" />
+          <Image src="/logo-128.png" alt="" width={40} height={40} className="opacity-90" />
           <h1
             className="mt-3 text-[40px] leading-none text-text"
             style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontStyle: "italic", fontWeight: 600 }}

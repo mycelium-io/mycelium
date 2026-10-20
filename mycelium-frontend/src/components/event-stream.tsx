@@ -53,7 +53,9 @@ import {
   nameActivity,
   useFeedContext,
 } from "@/components/messages/feed-row";
-import { Loader2, MessageSquare, MessagesSquare } from "lucide-react";
+import { Loader2, MessageSquare, MessagesSquare, SquareTerminal } from "lucide-react";
+import { useThisMachine } from "@/lib/desktop";
+import { AgentScreenDrawer } from "@/components/agent-screen";
 import { Shimmer, SporeMark } from "@/components/responding-mark";
 
 /** Stable empties: find writes these back on every close, and a fresh array
@@ -112,12 +114,30 @@ function RespondingLine({
   room,
   threads,
   onOpenThread,
+  onWatch,
 }: {
   entries: Responding[];
   room: string;
   threads: Map<string, ThreadOwner>;
   onOpenThread?: (episode: string) => void;
+  /** Opens an agent's terminal, read-only; only where this machine's terminals can be shown. */
+  onWatch?: (handle: string) => void;
 }) {
+  const watch = (group: Responding[]) =>
+    onWatch &&
+    group.map((r) => (
+      <button
+        key={r.handle}
+        type="button"
+        onClick={() => onWatch(r.handle)}
+        aria-label={`Watch @${r.handle}'s terminal`}
+        title={`Watch @${r.handle}'s terminal`}
+        className="inline-flex shrink-0 items-center gap-1 rounded px-1 text-faint transition-colors hover:bg-hairline hover:text-text"
+      >
+        <SquareTerminal className="size-3" strokeWidth={1.9} />
+        {group.length > 1 ? r.handle : "watch"}
+      </button>
+    ));
   const { here, elsewhere } = splitActivity(entries, (episode) => !episode || isLiveEpisode(room, episode));
   return (
     <div
@@ -135,6 +155,7 @@ function RespondingLine({
       {here.length > 0 && (
         <RespondingRow>
           <Shimmer className="truncate">{respondingLabel(here)}</Shimmer>
+          {watch(here)}
         </RespondingRow>
       )}
       {[...elsewhere.entries()].map(([thread, group], i) => {
@@ -154,6 +175,7 @@ function RespondingLine({
               <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
               <span className="truncate">{title}</span>
             </button>
+            {watch(group)}
           </RespondingRow>
         );
       })}
@@ -543,6 +565,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // handle's next message ends it too, whether or not the ending frame arrived;
   // and an entry nobody has heard from within its TTL expires on the tick below.
   const [responding, setResponding] = useState<Responding[]>([]);
+  // An agent at work, watched in its terminal: held here, so the drawer stays
+  // open after its turn ends and the line under the channel goes away.
+  const [watching, setWatching] = useState<string | null>(null);
+  // Only the desktop app's own hub UI can show this machine's terminals.
+  const canWatch = useThisMachine() !== null;
   useEffect(() => {
     if (responding.length === 0) return;
     const tick = setInterval(() => setResponding((prev) => expireActivity(prev, Date.now())), 1_000);
@@ -1026,7 +1053,16 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       {/* Outside the scroll, so it stays over the composer wherever the
           channel is scrolled to, and sending a message can't push it away. */}
       {responding.length > 0 && (
-        <RespondingLine entries={responding} room={roomName} threads={threads} onOpenThread={onOpenThread} />
+        <RespondingLine
+          entries={responding}
+          room={roomName}
+          threads={threads}
+          onOpenThread={onOpenThread}
+          onWatch={canWatch ? setWatching : undefined}
+        />
+      )}
+      {watching && (
+        <AgentScreenDrawer open onClose={() => setWatching(null)} room={roomName} handle={watching} />
       )}
     </div>
   );

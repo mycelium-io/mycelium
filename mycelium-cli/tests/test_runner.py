@@ -238,6 +238,16 @@ def test_herdr_decides_what_can_be_started(herdr: Herdr):
     assert [f.installed for f in frameworks.scan(None)][:3] == [True, True, True]
 
 
+def test_a_startable_cli_says_what_its_session_may_do(
+    herdr: Herdr, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(frameworks.shutil, "which", lambda name: f"/usr/bin/{name}")
+    found = {f.id: f for f in frameworks.scan({"codex", "claude"})}
+    assert found["codex"].launchable
+    assert found["codex"].note == "Codex can reach the hub and its own Mycelium state"
+    assert found["claude"].note is None
+
+
 def test_without_herdr_nothing_is_startable(herdr: Herdr):
     found = frameworks.scan(None)
     assert not any(f.launchable for f in found)
@@ -519,7 +529,9 @@ def test_an_agent_cli_that_never_comes_up_says_what_it_may_be_waiting_on(
     assert "update, a sign-in or a first-run question" in str(failed.value)
     assert failed.value.result is not None
     assert failed.value.result["why"] == "cli"
-    assert "2. No, exit" in failed.value.result["screen"]
+    # Where to look, never what it shows: that stays on this machine.
+    assert failed.value.result["pane"] == "w9:p1"
+    assert "No, exit" not in json.dumps(failed.value.result)
     # Started once, not again into a CLI that is waiting on the person.
     assert len(herdr.of("agent start")) == 1
     assert herdr.of("pane close") == []
@@ -569,7 +581,7 @@ def test_a_launch_stopped_at_a_prompt_keeps_its_pane_and_waits_for_the_person(
     assert herdr.of("agent prompt") == []
     agent = r.hello_body()["agents"][0]
     assert agent["status"] == "blocked"
-    assert "2. No, exit" in agent["detail"]
+    assert "No, exit" not in agent["detail"]
     assert "Claude Code asks before" in agent["detail"]
     assert "herdr agent focus w9:p1" in agent["detail"]
     assert r.bridge.registry.get("eng", "scout") is not None
@@ -1755,5 +1767,44 @@ def test_a_rename_the_hub_refuses_leaves_the_agent_running(
     with pytest.raises(daemon.JobError, match="already a member"):
         r.rename_agent({"room": "eng", "handle": "scout", "to": "lookout"}, job_id="j1")
     assert pane in herdr.panes
+
+
+def test_nothing_a_pane_shows_ever_reaches_the_hub(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    # A terminal can show keys and private code. The app shows it live on this
+    # machine; the hub gets where to look and what state it's in, never what's
+    # on the screen. This fails if any path to the hub starts carrying it.
+    secret = "sk-live-4f2a9c Do you trust the files in this folder?"
+    herdr.screen = secret
+    monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
+    r = make_runner()
+
+    herdr.start_leaves = "blocked"
+    r.take(
+        {
+            "id": "b1b1b1",
+            "kind": "launch",
+            "spec": {"room": "eng", "handle": "scout", "framework": "claude"},
+        }
+    )
+    _until(lambda: _report(hub, "b1b1b1", "done"))
+    herdr.start_leaves = None
+    herdr.fail_start = True
+    r.take(
+        {
+            "id": "c2c2c2",
+            "kind": "launch",
+            "spec": {"room": "eng", "handle": "lookout", "framework": "claude"},
+        }
+    )
+    _until(lambda: _report(hub, "c2c2c2", "failed"))
+    r.hello()
+
+    sent = json.dumps([body for _m, _p, body in hub.seen])
+    assert "sk-live-4f2a9c" not in sent
+    assert "trust the files" not in sent
+    # By construction: the runner doesn't read a screen at all.
+    assert herdr.of("pane read") == []
     assert list(r.state.agents) == ["eng/scout"]
     assert r.bridge.registry.get("eng", "scout") is not None

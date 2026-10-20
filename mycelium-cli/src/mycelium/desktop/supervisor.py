@@ -558,6 +558,7 @@ class Supervisor:
         agents' sessions.
         """
         from mycelium.integrations.herdr import HerdrBridge
+        from mycelium.integrations.herdr.bridge import skip_first_run
 
         def up() -> bool:
             try:
@@ -565,9 +566,15 @@ class Supervisor:
             except Exception:  # noqa: BLE001 - "can't tell" reads as not up
                 return False
 
+        def argv() -> tuple[list[str], None]:
+            # Set up the first time, so the agents' terminals aren't behind
+            # herdr's own first-run screens.
+            skip_first_run()
+            return self.locator.herdr(), None
+
         return Component(
             name="herdr",
-            argv=lambda: (self.locator.herdr(), None),
+            argv=argv,
             ready=up,
             external=up,
             outlives=True,

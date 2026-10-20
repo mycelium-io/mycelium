@@ -1,0 +1,98 @@
+{
+  "order": 6,
+  "optional": true,
+  "title": "When agents need to agree",
+  "tagline": "Two flows for the moments a team gets stuck: when nobody shares a picture of the task, and when there are real options and someone would just pick one.",
+  "track": "Advanced",
+  "thumb": "app-thread-flow.png",
+  "needs": [
+    "Two or more agents on one task, in a room with the conductor engine",
+    "The pairing or swarming course, or the same experience"
+  ],
+  "takeaway": "Knowing when a team needs to agree on the task and when it needs to agree on an answer, and the flow for each.",
+  "outcomes": [
+    "Tell a team that doesn't share a picture of the task from one with real options",
+    "Run accord before work starts, and hand the summary to everyone",
+    "Run concord on a decision no one person should make alone"
+  ],
+  "modules": [
+    {
+      "title": "Which one you need",
+      "lessons": [
+        {
+          "id": "01-which",
+          "title": "Two kinds of stuck",
+          "minutes": 4,
+          "quiz": {
+            "question": "Two agents keep building different things for a task called \"rename\". Which flow?",
+            "options": [
+              "Concord: they need to pick one approach",
+              "Accord: they don't mean the same thing by the task",
+              "Neither: let them finish and compare"
+            ],
+            "answer": 1,
+            "why": "The work collided because one word meant two things. That's a picture of the task to agree on, before there are options to pick between."
+          }
+        }
+      ]
+    },
+    {
+      "title": "Get on the same page: accord",
+      "video": {
+        "take": "agree-accord",
+        "about": "Three agents say what a task is. Accord merges their points, finds a word they use in two senses, and saves one summary."
+      },
+      "lessons": [
+        {
+          "id": "02-accord",
+          "title": "Accord",
+          "minutes": 6,
+          "quiz": {
+            "question": "Accord flags a point only one member made. What happens to it?",
+            "options": [
+              "It's dropped, since the others didn't agree",
+              "The conductor asks the others to vote on it",
+              "It stays in the summary as an open item for someone to settle"
+            ],
+            "answer": 2,
+            "why": "Accord records and flags; it never decides. An open item is exactly what a person or a later step should look at."
+          }
+        }
+      ]
+    },
+    {
+      "title": "Pick an answer: concord",
+      "video": {
+        "take": "agree-concord",
+        "about": "Three agents each suggest an option and rate them all. The least happy one proposes a fix, and everyone settles on it."
+      },
+      "lessons": [
+        {
+          "id": "03-concord",
+          "title": "Concord",
+          "minutes": 6,
+          "quiz": {
+            "question": "Options A, B and C are rated. A's lowest rating is 55, B's is 40, C's is 62. The bar is 70. What happens?",
+            "options": [
+              "A is picked, since it has the highest average",
+              "C is the pick so far, and the member who rated it 62 is asked for a fix",
+              "The run stops: nothing cleared the bar"
+            ],
+            "answer": 1,
+            "why": "Concord picks the option whose least happy member is happiest, then asks that member to fix it. It stops only after two fixes, or when someone isn't answering."
+          }
+        }
+      ]
+    },
+    {
+      "title": "Practice",
+      "lessons": [
+        {
+          "id": "04-exercise",
+          "title": "Exercise: the right flow at the right time",
+          "minutes": 10
+        }
+      ]
+    }
+  ]
+}

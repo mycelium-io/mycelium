@@ -19,9 +19,11 @@ describe("a start that stopped", () => {
       step: "shell",
       why: "shell",
       pane: "w5:p1",
-      screen: null,
       detail: "not a shell",
+      slow: false,
     });
+    expect(startReport({ result: { step: "shell", slow: true, pane: "w5:p1" } })).toMatchObject({ slow: true });
+    expect(startReport({ result: { slow: "yes" } })).toMatchObject({ slow: false });
     expect(startReport({ result: { step: "warp", why: 3 } })).toMatchObject({ step: null, why: null });
     expect(startReport(null)).toMatchObject({ step: null, why: null, pane: null });
   });

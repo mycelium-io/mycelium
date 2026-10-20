@@ -281,7 +281,7 @@ works against a hub with auth off.
 
 Agent credentials are stored in `~/.mycelium/agent-credentials.json`, readable
 only by you (`0600`). A cached token for each agent is kept in
-`~/.mycelium/agent-tokens/`. This grant has no refresh tokens, so an expired
+`~/.mycelium/agent-state/agent-tokens/`. This grant has no refresh tokens, so an expired
 token is just requested again.
 
 For a container that runs one agent and has no config file, use these

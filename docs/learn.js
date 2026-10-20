@@ -175,10 +175,14 @@
         "</div></div></a>"
       );
     }
-    var last = COURSES.length > 2 && COURSES[COURSES.length - 1].track === "Capstone" ? COURSES[COURSES.length - 1] : null;
+    // An optional course (`"optional": true` in its course.json) is advanced
+    // material a newcomer can skip: it sits after the path, under its own head.
+    var path = COURSES.filter(function (c) { return !c.optional; });
+    var extra = COURSES.filter(function (c) { return c.optional; });
+    var last = path.length > 2 && path[path.length - 1].track === "Capstone" ? path[path.length - 1] : null;
     var featured = first ? wide(first, 0, false) : "";
-    var capstone = last ? wide(last, COURSES.length - 1, true) : "";
-    var middle = COURSES.slice(1, last ? -1 : undefined);
+    var capstone = last ? wide(last, path.length - 1, true) : "";
+    var middle = path.slice(1, last ? -1 : undefined);
     var rest = middle.map(function (c, i) {
       return (
         '<a class="card glass" href="#/c/' + esc(c.id) + '">' + tile(c, i + 1) +
@@ -186,10 +190,15 @@
         '<div class="foot">' + stateFoot(c) + "</div></div></a>"
       );
     }).join("");
+    var further = extra.length
+      ? '<div class="section-head further"><h2>Going further</h2><span class="label">Optional · when you need it</span></div>' +
+        extra.map(function (c, i) { return wide(c, path.length + i, i % 2 === 0); }).join("")
+      : "";
     return (
       hero +
-      '<div class="section-head"><h2>Courses</h2><span class="label">' + COURSES.length + " to start</span></div>" +
-      featured + '<div class="grid' + (middle.length % 3 && middle.length % 2 === 0 ? " two" : "") + '">' + rest + "</div>" + capstone
+      '<div class="section-head"><h2>Courses</h2><span class="label">' + path.length + " to start</span></div>" +
+      featured + '<div class="grid' + (middle.length % 3 && middle.length % 2 === 0 ? " two" : "") + '">' + rest + "</div>" + capstone +
+      further
     );
   }
 
@@ -235,7 +244,8 @@
         ? '<div class="finished glass"><i data-lucide="badge-check"></i><div><h3>You finished this course</h3>' +
           "<p>Every lesson is marked done. Run the exercise on real work if you haven't yet.</p></div></div>"
         : "") +
-      '<div class="course-hero"><div class="veil"><div class="label">' + esc(course.track || "Course") + " · Course " + (i + 1) +
+      '<div class="course-hero"><div class="veil"><div class="label">' + esc(course.track || "Course") +
+      (course.optional ? " · Optional" : " · Course " + (i + 1)) +
       "</div><h1>" + esc(course.title) + '</h1><p class="lede">' + esc(course.tagline) + "</p>" + metaLine(course) +
       (course.takeaway
         ? '<div class="take" style="margin-top:18px"><i data-lucide="sparkles"></i><p><strong>You\'ll come away with:</strong> ' +

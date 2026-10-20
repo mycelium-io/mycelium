@@ -1,10 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "own-hub-ui",
-  "description": "The UI of the app's own hub in the main window may call the app, for the Add member window's folder dialog. Every command refuses any page but the app's own (local_only), except this_machine and choose_agent_folder, which answer only the hub this app started (own_ui_only). Another hub's pages, which client mode shows, get nothing.",
+  "description": "The UI of the app's own hub in the main window may call three app commands, granted here by name since Tauri refuses a remote origin any command no capability names: which machine this is, the Add member folder dialog, and an agent's screen. Each answers only the hub this app started (own_ui_only), so another hub's pages, which client mode shows, get nothing.",
   "windows": ["main"],
   "remote": {
     "urls": ["http://127.0.0.1:*", "http://localhost:*"]
   },
-  "permissions": []
+  "permissions": ["allow-this-machine", "allow-choose-agent-folder", "allow-agent-screen"]
 }

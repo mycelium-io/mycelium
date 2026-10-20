@@ -28,11 +28,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mycelium.filesystem import get_mycelium_dir
@@ -40,7 +42,6 @@ from mycelium.runner.log import ms, slow
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 #: herdr agent lifecycle states that mean "safe to wake now" — the agent is idle
 #: and will observe a fresh lifecycle change. ``working``/``blocked`` are held
@@ -90,6 +91,44 @@ def too_old(version: str | None) -> bool:
     """Whether ``version`` is older than :data:`MIN_VERSION` (unknown is not too old)."""
     have, need = version_tuple(version), version_tuple(MIN_VERSION)
     return bool(have and need and have < need)
+
+
+def config_path() -> Path:
+    """Where herdr reads its settings: ``HERDR_CONFIG_PATH``, else ``~/.config/herdr/config.toml``."""
+    override = os.environ.get("HERDR_CONFIG_PATH")
+    return (
+        Path(override).expanduser()
+        if override
+        else Path.home() / ".config" / "herdr" / "config.toml"
+    )
+
+
+FIRST_RUN_CONFIG = (
+    "# Written by Mycelium when it set up herdr, which runs your agents' terminals.\n"
+    "# herdr shows its first-run screens until this says false.\n"
+    "onboarding = false\n"
+)
+
+
+def skip_first_run() -> bool:
+    """Start herdr past its first-run screens when nobody has set herdr up yet.
+
+    Someone who installed Mycelium has never seen herdr, and its onboarding
+    screens stood in front of the agents' terminals. Only when there's no herdr
+    config at all is one written; an existing one is the person's and is never
+    changed. ``True`` when it wrote one.
+    """
+    path = config_path()
+    if path.exists():
+        return False
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(FIRST_RUN_CONFIG)
+    except OSError as e:
+        _log.warning("couldn't write herdr's settings at %s: %s", path, e)
+        return False
+    _log.info("wrote %s so herdr starts past its first-run screens", path)
+    return True
 
 
 class HerdrError(RuntimeError):

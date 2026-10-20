@@ -300,6 +300,79 @@ describe("GET /api/stream", () => {
         { event: "room", room: "sprint", data: { id: "after-reconnect" } },
       ]);
     });
+
+    // A socket can stay open while nothing comes down it. The hub sends a
+    // keep-alive every 15s, so silence for 45s is a feed that's gone.
+    it("reports a silent upstream down and dials it again", async () => {
+      const silent = upstream();
+      const second = upstream();
+      let dialed = 0;
+      serve({ room: () => (++dialed === 1 ? silent : second).response });
+
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const frames = collect(res, 4);
+      await vi.advanceTimersByTimeAsync(45_000);
+      expect(silent.canceled).toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(5000);
+      second.push({ id: "after-silence" });
+
+      expect(envelopes(await frames)).toEqual([
+        { event: "status", channel: "room", room: "sprint", up: true },
+        { event: "status", channel: "room", room: "sprint", up: false },
+        { event: "status", channel: "room", room: "sprint", up: true },
+        { event: "room", room: "sprint", data: { id: "after-silence" } },
+      ]);
+    });
+
+    it("keeps a quiet upstream that sends its keep-alives", async () => {
+      const quiet = upstream();
+      let dialed = 0;
+      serve({
+        room: () => {
+          dialed += 1;
+          return quiet.response;
+        },
+      });
+
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const frames = collect(res, 2);
+      for (let i = 0; i < 6; i++) {
+        await vi.advanceTimersByTimeAsync(15_000);
+        quiet.raw(": keep-alive\n\n");
+      }
+      quiet.push({ id: "still-here" });
+
+      expect(envelopes(await frames)).toEqual([
+        { event: "status", channel: "room", room: "sprint", up: true },
+        { event: "room", room: "sprint", data: { id: "still-here" } },
+      ]);
+      expect(dialed).toBe(1);
+    });
+
+    it("dials again when the hub never answers the opening request", async () => {
+      const second = upstream();
+      let dialed = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_url: string, init: { signal: AbortSignal }) => {
+          dialed += 1;
+          if (dialed > 1) return Promise.resolve(second.response);
+          return new Promise<Response>((_resolve, reject) => {
+            init.signal.addEventListener("abort", () => reject(new Error("aborted")));
+          });
+        }),
+      );
+
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const frames = collect(res, 2);
+      await vi.advanceTimersByTimeAsync(15_000 + 5000);
+
+      expect(envelopes(await frames)).toEqual([
+        { event: "status", channel: "room", room: "sprint", up: false },
+        { event: "status", channel: "room", room: "sprint", up: true },
+      ]);
+      expect(dialed).toBe(2);
+    });
   });
 
   describe("lifecycle", () => {

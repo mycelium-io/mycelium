@@ -55,23 +55,15 @@ STEP_TERMINAL, STEP_SHELL, STEP_AGENT = "terminal", "shell", "agent"
 class HostError(Exception):
     """A host couldn't do what it was asked; the message says why, for a person.
 
-    A start that got partway also says which step it stopped at (``step``), the
-    terminal it left open for the person to look at (``ref``) and what that
-    terminal showed (``screen``).
+    A start that got partway also says which step it stopped at (``step``) and
+    the terminal it left open for the person to look at (``ref``). Never what
+    that terminal shows: it goes to the hub, and a screen stays on this machine.
     """
 
-    def __init__(
-        self,
-        message: str,
-        *,
-        step: str | None = None,
-        ref: str | None = None,
-        screen: str | None = None,
-    ) -> None:
+    def __init__(self, message: str, *, step: str | None = None, ref: str | None = None) -> None:
         super().__init__(message)
         self.step = step
         self.ref = ref
-        self.screen = screen
 
 
 class StartHooks:
@@ -79,6 +71,13 @@ class StartHooks:
 
     def step(self, step: str) -> None:
         """The start reached ``step`` (``STEP_TERMINAL``, ``STEP_SHELL``...)."""
+
+    def slow_shell(self, ref: str) -> None:
+        """The terminal ``ref`` opened, but its shell is slow to reach a prompt.
+
+        The start keeps waiting; this is for telling the person, who can look
+        at that terminal for what's holding it up.
+        """
 
     def unlocked(self) -> AbstractContextManager[None]:
         """Held while the host waits on the agent, with nothing of the runner's locked."""
@@ -162,8 +161,12 @@ class AgentHost(Protocol):
         ...
 
     def blocker(self, ref: str, kind: str) -> str | None:
-        """What a person needs to answer the ``blocked`` agent at ``ref``: what its
-        screen shows and how to get to it. ``None`` when the host can't say."""
+        """What a person needs to answer the ``blocked`` agent at ``ref``: what it
+        commonly waits for and how to get to it. ``None`` when the host can't say.
+
+        Never what its screen shows: this goes to the hub, and a screen stays on
+        this machine, where the app shows it live.
+        """
         ...
 
     def wake(self, ref: str, text: str) -> None:
@@ -201,8 +204,6 @@ class AgentHost(Protocol):
 
 #: herdr states as the app reads them.
 _HERDR_STATUS = {"idle": "idle", "done": "idle", "working": "working", "blocked": "blocked"}
-#: How many of a blocked agent's last screen lines the app is shown.
-_BLOCKER_LINES = 6
 
 
 class HerdrHost:
@@ -311,7 +312,14 @@ class HerdrHost:
         hooks.step(STEP_SHELL)
         try:
             with hooks.unlocked():
-                came_up = _start_when_ready(self.bridge, handle, kind, pane, room=room)
+                came_up = _start_when_ready(
+                    self.bridge,
+                    handle,
+                    kind,
+                    pane,
+                    room=room,
+                    on_slow_shell=lambda: hooks.slow_shell(pane),
+                )
         except HerdrError as e:
             # The pane stays open: whatever it shows (a shell still starting, an
             # update or sign-in the agent CLI asks for first) is the person's to
@@ -320,7 +328,6 @@ class HerdrHost:
                 str(e),
                 step=STEP_SHELL if isinstance(e, ShellNotReadyError) else STEP_AGENT,
                 ref=pane,
-                screen=self.bridge.read_pane(pane, lines=_BLOCKER_LINES),
             ) from e
         if came_up is not None:
             # It started but never read as ready, most often stopped at a prompt.
@@ -357,8 +364,7 @@ class HerdrHost:
     def blocker(self, ref: str, kind: str) -> str | None:
         from mycelium.integrations.agents import of_kind
 
-        parts = [self.bridge.read_pane(ref, lines=_BLOCKER_LINES), of_kind(kind).blocked_hint()]
-        parts.append(f"Answer it in its pane: herdr agent focus {ref}")
+        parts = [of_kind(kind).blocked_hint(), f"Answer it in its pane: herdr agent focus {ref}"]
         return "\n".join(p for p in parts if p)
 
     def wake(self, ref: str, text: str) -> None:
