@@ -92,6 +92,8 @@ else
 fi
 codesign --verify --deep --strict "$app"
 echo "signature verified"
+# And it still holds once the UI has run from inside the app.
+bash "$here/scripts/check-ui-writes.sh" "$app"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
