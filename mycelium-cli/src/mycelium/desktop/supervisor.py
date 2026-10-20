@@ -60,6 +60,7 @@ import os
 import secrets
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -98,6 +99,8 @@ HUB_RESTART_MARKER = ".hub-restart-requested"
 TICK_S = 0.5
 #: How many lines of each component's output are kept to explain a crash.
 TAIL_LINES = 40
+#: How many of a program's last lines the log repeats when it stops on its own.
+LAST_LINES = 8
 #: Everything the supervisor says, for when something goes wrong.
 LOG_PATH = Path.home() / ".mycelium" / "logs" / "desktop.log"
 #: How often the running herdr server is checked for a replaced program.
@@ -119,6 +122,17 @@ WATCH_S = 15.0
 HUNG_S = 60.0
 #: How many of its last lines the question about restarting it shows.
 HUNG_LINES = 8
+
+
+def how_it_exited(code: int) -> str:
+    """An exit status said plainly: its code, or the signal that ended it
+    (a negative return code, as `subprocess` reports one)."""
+    if code < 0:
+        try:
+            return f"was stopped by {signal.Signals(-code).name}"
+        except ValueError:
+            return f"was stopped by signal {-code}"
+    return f"exited with code {code}"
 
 
 def hung_warning(name: str) -> str:
@@ -714,6 +728,14 @@ class Supervisor:
         except (OSError, ValueError):
             return  # the pipe closed with the program
 
+    def _last_lines(self, c: Component, code: int) -> None:
+        """Say in the log that ``c`` stopped on its own, how, and the last lines
+        it wrote, so a crash reads plainly there even when its output was long."""
+        said = list(c.tail)[-LAST_LINES:]
+        self.emit({"type": "log", "component": c.name, "line": f"{c.name} {how_it_exited(code)}"})
+        for line in said:
+            self.emit({"type": "log", "component": c.name, "line": f"  last: {line}"})
+
     def _read(self, c: Component) -> None:
         """Start a thread draining ``c``'s output."""
         if c.proc is None or c.proc.stdout is None:
@@ -788,12 +810,14 @@ class Supervisor:
         if code is not None:
             c.proc = None
             c.restarts += 1
+            self._last_lines(c, code)
             if c.restarts > MAX_RESTARTS:
                 why = c.last_words()
                 self._set(
                     c,
                     "failed",
-                    f"{c.name} keeps exiting (last exit code {code})" + (f": {why}" if why else ""),
+                    f"{c.name} keeps exiting (last time it {how_it_exited(code)})"
+                    + (f": {why}" if why else ""),
                 )
                 return False
             wait = BACKOFF_S[min(c.restarts, len(BACKOFF_S)) - 1]
@@ -802,7 +826,7 @@ class Supervisor:
             self._set(
                 c,
                 "starting",
-                f"exited with code {code}"
+                how_it_exited(code)
                 + (f" ({why})" if why else "")
                 + f"; starting again in {wait:.0f}s",
             )
