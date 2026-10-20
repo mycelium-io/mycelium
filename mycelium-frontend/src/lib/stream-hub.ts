@@ -215,21 +215,23 @@ export function resetStreamHub(): void {
 /**
  * Subscribe to a feed for as long as the component is mounted. The handler is
  * held in a ref, so a caller passing an inline function re-renders freely
- * without churning the subscription (and, through it, the connection).
+ * without churning the subscription (and, through it, the connection). A new
+ * `epoch` drops the subscription and makes it again.
  */
-function useStream(channel: StreamChannel, room: string | null, handler: StreamHandler): void {
+function useStream(channel: StreamChannel, room: string | null, handler: StreamHandler, epoch = 0): void {
   const ref = useRef(handler);
   useEffect(() => {
     ref.current = handler;
   });
   useEffect(() => {
     return subscribe({ channel, room, handler: (data) => ref.current(data) });
-  }, [channel, room]);
+  }, [channel, room, epoch]);
 }
 
-/** Live messages for one room — the room feed and the wire. */
-export function useRoomStream(room: string, handler: StreamHandler): void {
-  useStream("room", room, handler);
+/** Live messages for one room — the room feed and the wire. A new `epoch`
+ *  subscribes again (the channel does when it finds it missed messages). */
+export function useRoomStream(room: string, handler: StreamHandler, epoch = 0): void {
+  useStream("room", room, handler, epoch);
 }
 
 /** Global app events: rooms created and deleted. */
