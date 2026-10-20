@@ -260,8 +260,10 @@ module; read it before changing what a rule protects.
 - **The UI server answers only its own pages** (`src/proxy.ts`,
   `lib/ui-guard.ts`): a name it serves (loopback, an IP, `ui.public_host`),
   its own origin, JSON bodies, and in the desktop app a per-launch token the
-  app hands its window in the URL fragment. The supervisor gives that token to
-  the UI server alone, never to herdr or an agent's pane.
+  app hands its window in the URL fragment. The token travels app → supervisor
+  → UI server on stdin, never in an environment (`ps` shows those to every
+  program as the user); media and download URLs carry a short-lived signature
+  for one path instead of it; and the UI proxy strips both before the hub.
 - **Usage counts carry kinds and outcomes, never a name, handle, room or
   text**, and sending them is off by default (`app/services/analytics.py`).
 - **Voice is opt-in**, and the hub never loads the speech model in its own

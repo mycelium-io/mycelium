@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import type { Upload, UploadKind } from "@/lib/api";
-import { withUiToken } from "@/lib/ui-token";
+import { signedMediaUrl } from "@/lib/ui-token";
 
 /** The memory namespace uploads live in; `[[uploads/<name>]]` links one. */
 export const UPLOADS_PREFIX = "uploads/";
@@ -125,14 +125,14 @@ export function kindLabel(kind: UploadKind): string {
 }
 
 export function downloadUrl(upload: Pick<Upload, "url">): string {
-  return withUiToken(`${upload.url}?download=1`);
+  return signedMediaUrl(`${upload.url}?download=1`);
 }
 
 /** An upload's bytes (or its thumbnail) for an `<img>`, `<audio>` or `<video>`,
- *  which can't send a header: in the desktop app it carries the launch's
- *  token as a query parameter (`lib/ui-token.ts`). */
+ *  which can't send a header: in the desktop app it carries a short-lived
+ *  signature for that one file, never the launch's token (`lib/ui-token.ts`). */
 export function mediaUrl(url: string): string;
 export function mediaUrl(url: string | null | undefined): string | null | undefined;
 export function mediaUrl(url: string | null | undefined): string | null | undefined {
-  return withUiToken(url);
+  return signedMediaUrl(url);
 }

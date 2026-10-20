@@ -20,11 +20,13 @@ export function proxy(req: NextRequest): NextResponse | Response {
   return NextResponse.next();
 }
 
-// Static files (the app's own scripts, styles, images and fonts) hold nothing
-// of the person's, and Next's image optimizer fetches public images from this
-// server itself, so they're left out.
+// Every `/api` path, whatever it ends in (`/api/…/notes.txt` is the hub's, not a
+// static file). Elsewhere, static files (the app's own scripts, styles, images
+// and fonts) hold nothing of the person's, and Next's image optimizer fetches
+// public images from this server itself, so they're left out.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|.*\\.(?:png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|css|js|map|txt)$).*)",
+    "/api/:path*",
+    "/((?!api/|_next/static|_next/image|.*\\.(?:png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|css|js|map|txt)$).*)",
   ],
 };

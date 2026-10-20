@@ -366,6 +366,20 @@ def test_the_repo_checkout_is_found_from_this_code():
     assert (root / "fastapi-backend" / "app" / "main.py").exists()
 
 
+def test_the_launch_token_reaches_the_ui_server_on_its_stdin_never_an_environment():
+    """Any program running as this user can read another's environment (`ps
+    eww`, /proc), so the token goes to the UI server alone, on its stdin."""
+    sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None), ui_token="t0k")
+    components = sup._components()
+    [ui] = [c for c in components if c.name == "ui"]
+    assert ui.stdin == "t0k"
+    assert ui.env.get("MYCELIUM_UI_TOKEN_STDIN") == "1"
+    for c in components:
+        assert "t0k" not in c.env.values(), c.name
+        if c.name != "ui":
+            assert c.stdin is None, c.name
+
+
 @pytest.mark.parametrize(("share", "sent"), [(True, "true"), (False, "false"), (None, None)])
 def test_the_apps_answer_on_usage_stats_reaches_the_hub(share: bool | None, sent: str | None):
     sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None), share_usage=share)

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { getBackendUrl } from "@/lib/backend";
+import { getBackendUrl, upstreamUrl } from "@/lib/backend";
 import { bearer } from "@/lib/session";
+import { TOKEN_HEADER } from "@/lib/ui-guard";
 import { MOCK_HEADER, handleMock, isMockMode } from "@/mocks";
 
 /**
@@ -29,15 +30,13 @@ async function proxy(req: Request): Promise<Response> {
   }
 
   const backend = getBackendUrl();
-  const { pathname, search } = new URL(req.url);
-  // The backend serves health at the root (`/health`), while everything else it
-  // exposes is under `/api`. Map the proxied `/api/health` onto the root path so
-  // the health/fabric views can read it through the same proxy.
-  const backendPath = pathname === "/api/health" ? "/health" : pathname;
-  const target = `${backend}${backendPath}${search}`;
+  const target = upstreamUrl(backend, req.url);
 
   const headers = new Headers(req.headers);
   for (const h of STRIP_REQUEST) headers.delete(h);
+  // The app's own proof stays here: the hub never sees it, so it never lands
+  // in the hub's log, on this machine or another (`lib/ui-guard.ts`).
+  headers.delete(TOKEN_HEADER);
   // Ask upstream for plain bytes so we can stream the response straight through
   // without a content-encoding/content-length mismatch.
   headers.delete("accept-encoding");

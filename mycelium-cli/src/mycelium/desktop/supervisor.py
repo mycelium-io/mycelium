@@ -76,8 +76,9 @@ HOST = "127.0.0.1"
 SLIM_PORT = 46357
 HUB_PORT = 8000
 UI_PORT = 3717
-#: The app's token for this launch, which the UI server asks every request for.
-UI_TOKEN_ENV = "MYCELIUM_UI_TOKEN"
+#: Tells the UI server its launch token is on its stdin. Only the flag is in the
+#: environment; the token is never in one (any program as this user can read it).
+UI_TOKEN_STDIN_ENV = "MYCELIUM_UI_TOKEN_STDIN"
 #: How long a component may take to answer before it counts as failed.
 READY_TIMEOUT_S = 90.0
 #: Restarts after a crash wait this long, doubling, up to the last value.
@@ -341,6 +342,9 @@ class Component:
     argv: Callable[[], tuple[list[str], Path | None]]
     ready: Callable[[], bool]
     env: dict[str, str] = field(default_factory=dict)
+    #: Written to its stdin when it starts, then closed: how a secret reaches
+    #: it without sitting in an environment any program as this user can read.
+    stdin: str | None = None
     #: A check that something outside the supervisor already provides this.
     external: Callable[[], bool] | None = None
     #: Left running when the supervisor stops (herdr: agents live in it).
@@ -397,6 +401,7 @@ class Supervisor:
         share_usage: bool | None = None,
         voice: bool | None = None,
         voice_model: str | None = None,
+        ui_token: str | None = None,
         look: Callable[[], list[Any]] | None = None,
         stale_herdr: Callable[[], Any] | None = None,
         restart_herdr: Callable[[Any], None] | None = None,
@@ -411,10 +416,10 @@ class Supervisor:
         self.locator = locator or Locator()
         self.config = config
         self.env = env if env is not None else hub_env(config)
-        # The app's token for this launch, for the UI server alone: taken out
-        # of this process's environment so herdr, the runner and every agent
-        # pane they start (which inherit it) never see it.
-        self.ui_token = os.environ.pop(UI_TOKEN_ENV, None)
+        # The app's token for this launch (read from our stdin), for the UI
+        # server alone, on its stdin: never in an environment, where herdr, the
+        # runner and every agent pane would inherit it and `ps` would show it.
+        self.ui_token = ui_token
         #: Whether the hub's settings came from config.toml, so a restart the
         #: Hub page asks for reads it again (an env passed in is kept as is).
         self._env_from_config = env is None
@@ -536,8 +541,9 @@ class Supervisor:
             "MYCELIUM_THEMES_DIR": str(themes.folder()),
         }
         if self.ui_token:
-            # What the UI server asks of every request (`lib/ui-guard.ts`).
-            ui_env[UI_TOKEN_ENV] = self.ui_token
+            # What the UI server asks of every request (`lib/ui-guard.ts`),
+            # handed over on its stdin (`instrumentation.ts` reads it once).
+            ui_env[UI_TOKEN_STDIN_ENV] = "1"
         return [
             Component(
                 name="slim",
@@ -558,6 +564,7 @@ class Supervisor:
                 argv=loc.ui,
                 ready=lambda: http_ok(f"http://{HOST}:{UI_PORT}/"),
                 env=ui_env,
+                stdin=self.ui_token,
                 external=lambda: http_ok(f"http://{HOST}:{UI_PORT}/"),
             ),
         ]
@@ -648,7 +655,7 @@ class Supervisor:
                 env={**os.environ, **c.env},
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL,
+                stdin=subprocess.PIPE if c.stdin is not None else subprocess.DEVNULL,
                 text=True,
                 # Not the code page Windows would otherwise decode with.
                 encoding="utf-8",
@@ -658,6 +665,10 @@ class Supervisor:
         except OSError as e:
             self._set(c, "failed", f"could not start {c.name}: {e}")
             return
+        if c.stdin is not None and c.proc.stdin is not None:
+            with contextlib.suppress(OSError):
+                c.proc.stdin.write(c.stdin + "\n")
+                c.proc.stdin.close()
         c.started_at = time.monotonic()
         c.unanswered_since = 0.0
         self._read(c)

@@ -177,7 +177,7 @@ pub fn reply(app: &AppHandle, line: &str) {
     }
 }
 
-fn command(settings: &Settings, launch_token: &str) -> Result<Command, String> {
+fn command(settings: &Settings) -> Result<Command, String> {
     // A stand-in supervisor for development, run with the same arguments.
     let program = match std::env::var_os("MYCELIUM_DESKTOP_SUPERVISOR") {
         Some(p) => p.into(),
@@ -186,7 +186,9 @@ fn command(settings: &Settings, launch_token: &str) -> Result<Command, String> {
         })?,
     };
     let mut cmd = paths::command(program);
-    cmd.args(["desktop", "serve", "--mode", settings.mode.as_str(), "--json"]);
+    // `--ui-token-stdin`: the launch's token is the first line written to its
+    // stdin (`run`), never its environment, which `ps` shows any program.
+    cmd.args(["desktop", "serve", "--mode", settings.mode.as_str(), "--json", "--ui-token-stdin"]);
     if let Some(hub) = &settings.hub_url {
         cmd.args(["--hub-url", hub]);
     }
@@ -204,9 +206,6 @@ fn command(settings: &Settings, launch_token: &str) -> Result<Command, String> {
         cmd.env("MYCELIUM_SLIMCTL", slimctl);
     }
     without_appimage_env(&mut cmd);
-    // What the UI server asks of every request, so only this app's window
-    // (handed the token in its fragment) can use what the server can reach.
-    cmd.env("MYCELIUM_UI_TOKEN", launch_token);
     // stdin stays piped and open for the supervisor's whole life: it stops
     // when it closes, which is how it goes away even if this app is killed.
     cmd.env("PATH", paths::shell_path())
@@ -258,8 +257,7 @@ fn run(app: AppHandle, settings: Settings, generation: u64) {
             return;
         }
         let started = Instant::now();
-        let spawned = command(&settings, sup.launch_token())
-            .and_then(|mut c| c.spawn().map_err(|e| e.to_string()));
+        let spawned = command(&settings).and_then(|mut c| c.spawn().map_err(|e| e.to_string()));
         match spawned {
             Ok(mut child) => {
                 let exited = Arc::new(AtomicBool::new(false));
@@ -272,6 +270,11 @@ fn run(app: AppHandle, settings: Settings, generation: u64) {
                     }
                     inner.pid = Some((child.id() as i32, Arc::clone(&exited)));
                     inner.stdin = child.stdin.take();
+                    // The launch's token, first thing, for the UI server alone.
+                    if let Some(stdin) = inner.stdin.as_mut() {
+                        use std::io::Write;
+                        let _ = writeln!(stdin, "{}", sup.launch_token()).and_then(|()| stdin.flush());
+                    }
                 }
                 if let Some(stderr) = child.stderr.take() {
                     thread::spawn(move || {

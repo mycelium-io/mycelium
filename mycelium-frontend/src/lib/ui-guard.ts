@@ -26,13 +26,28 @@
  *   is nothing to take, since the hub answers callers directly.
  */
 
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const TOKEN_HEADER = "x-mycelium-ui";
 export const TOKEN_PARAM = "mycelium-ui";
+export const MEDIA_PARAM = "mycelium-media";
+/** The longest a media signature may still have to run when it's checked. */
+const MEDIA_MAX_S = 30 * 60;
 
-/** `/api` routes reached by a top-level navigation, which can carry nothing. */
-const NAVIGATION_PATHS = ["/api/auth/login", "/api/auth/callback"];
+/**
+ * `/api` routes reached by a top-level navigation, which can carry nothing:
+ * the identity provider's redirect back, and a sign-in started as a `GET`.
+ * A sign-in that starts as a `POST` from the page (#1412) carries the token
+ * like any request; once no `GET` is left on that route, drop it here.
+ */
+const NAVIGATIONS: { path: string; methods: string[] }[] = [
+  { path: "/api/auth/callback", methods: ["GET"] },
+  { path: "/api/auth/login", methods: ["GET"] },
+];
+
+function isNavigation(req: Request, path: string): boolean {
+  return NAVIGATIONS.some((n) => n.path === path && n.methods.includes(req.method));
+}
 /** Routes whose body is raw bytes the hub reads as such: an open mic's audio. */
 const RAW_BODY_PATHS = [/^\/api\/voice\/sessions\/[^/]+$/];
 
@@ -75,12 +90,34 @@ function tokenMatches(given: string | null, expected: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** Whether the request carries this launch's token. */
+/** Whether the request carries this launch's token, or (for reading one file)
+ *  a signature made with it for that file's path (`mediaSignatureOk`). */
 export function carriesToken(req: Request, expected: string | null = launchToken()): boolean {
   if (!expected) return false;
+  const url = new URL(req.url);
   const header = req.headers.get(TOKEN_HEADER);
-  const param = new URL(req.url).searchParams.get(TOKEN_PARAM);
-  return tokenMatches(header, expected) || tokenMatches(param, expected);
+  const param = url.searchParams.get(TOKEN_PARAM);
+  if (tokenMatches(header, expected) || tokenMatches(param, expected)) return true;
+  const media = url.searchParams.get(MEDIA_PARAM);
+  return (req.method === "GET" || req.method === "HEAD") && mediaSignatureOk(media, url.pathname, expected);
+}
+
+/**
+ * A media signature (`<exp>.<hex>`, `lib/ui-token.ts`'s `signedMediaUrl`): an
+ * HMAC of the path and expiry keyed with the launch's token. Good for that one
+ * path, until its expiry, which can't be more than `MEDIA_MAX_S` away.
+ */
+export function mediaSignatureOk(
+  given: string | null,
+  path: string,
+  token: string,
+  now: number = Math.floor(Date.now() / 1000),
+): boolean {
+  const [expRaw, sig] = (given ?? "").split(".", 2);
+  const exp = Number(expRaw);
+  if (!sig || !Number.isInteger(exp) || exp <= now || exp > now + MEDIA_MAX_S) return false;
+  const expected = createHmac("sha256", token).update(`${path}\n${exp}`).digest("hex");
+  return tokenMatches(sig, expected);
 }
 
 function refuse(status: number, detail: string): Response {
@@ -110,7 +147,7 @@ export function guardApi(req: Request, token: string | null = launchToken()): Re
   }
   const site = req.headers.get("sec-fetch-site");
   if (site && site !== "same-origin" && site !== "none") {
-    if (!NAVIGATION_PATHS.includes(url.pathname)) {
+    if (!isNavigation(req, url.pathname)) {
       return refuse(403, "Requests from another site aren't accepted.");
     }
   }
@@ -124,7 +161,7 @@ export function guardApi(req: Request, token: string | null = launchToken()): Re
     if (!ok) return refuse(415, "A request body must be JSON.");
   }
 
-  if (token && !NAVIGATION_PATHS.includes(url.pathname) && !carriesToken(req, token)) {
+  if (token && !isNavigation(req, url.pathname) && !carriesToken(req, token)) {
     return refuse(401, "This request didn't come from Mycelium's own window.");
   }
   return null;

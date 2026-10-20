@@ -14,6 +14,10 @@
  * and all of this does nothing (`lib/ui-guard.ts` says what applies there).
  */
 
+import { hmac } from "@noble/hashes/hmac";
+import { sha256 } from "@noble/hashes/sha2";
+import { bytesToHex } from "@noble/hashes/utils";
+
 export const TOKEN_HEADER = "x-mycelium-ui";
 export const TOKEN_PARAM = "mycelium-ui";
 const STORE_KEY = "mycelium-ui-token";
@@ -59,7 +63,9 @@ function isOwnApi(url: string): boolean {
   }
 }
 
-/** `url` with the token as a query parameter, for what can't send a header. */
+/** `url` with the token as a query parameter, for the one request that can't
+ *  send a header and never shows its URL to anyone: the `EventSource`. Media
+ *  and downloads use `signedMediaUrl`. */
 export function withUiToken(url: string): string;
 export function withUiToken(url: string | null | undefined): string | null | undefined;
 export function withUiToken(url: string | null | undefined): string | null | undefined {
@@ -68,6 +74,34 @@ export function withUiToken(url: string | null | undefined): string | null | und
   const u = new URL(url, window.location.href);
   u.searchParams.set(TOKEN_PARAM, t);
   return url.startsWith("http") ? u.toString() : u.pathname + u.search + u.hash;
+}
+
+export const MEDIA_PARAM = "mycelium-media";
+/** How long a media signature lasts: to the end of the next window of this many seconds. */
+const MEDIA_WINDOW_S = 600;
+
+/**
+ * `url` signed for an `<img>`, `<video>`, a PDF or a download: a signature of
+ * its path and an expiry, keyed with the launch's token, so the token itself
+ * never sits in a link someone could copy, and a signature is good for that one
+ * file for 10 to 20 minutes. Stable within a window, so a re-render doesn't
+ * reload the image. The server checks it (`lib/ui-guard.ts`, `mediaSignatureOk`).
+ */
+export function signedMediaUrl(url: string): string;
+export function signedMediaUrl(url: string | null | undefined): string | null | undefined;
+export function signedMediaUrl(url: string | null | undefined): string | null | undefined {
+  const t = uiToken();
+  if (!url || !t || !isOwnApi(url)) return url;
+  const u = new URL(url, window.location.href);
+  const exp = (Math.floor(Date.now() / 1000 / MEDIA_WINDOW_S) + 2) * MEDIA_WINDOW_S;
+  u.searchParams.set(MEDIA_PARAM, `${exp}.${mediaSignature(t, u.pathname, exp)}`);
+  return url.startsWith("http") ? u.toString() : u.pathname + u.search + u.hash;
+}
+
+/** HMAC-SHA256 of `path` and `exp`, keyed with the launch's token, in hex. */
+export function mediaSignature(token: string, path: string, exp: number): string {
+  const enc = new TextEncoder();
+  return bytesToHex(hmac(sha256, enc.encode(token), enc.encode(`${path}\n${exp}`)));
 }
 
 /** The header to set on a request made some other way than `fetch`. */

@@ -103,6 +103,12 @@ def serve(
         "--voice-model",
         help="The speech model, fast or accurate (default: config.toml's voice.model)",
     ),
+    ui_token_stdin: bool = typer.Option(
+        False,
+        "--ui-token-stdin",
+        hidden=True,
+        help="Read the app's launch token from the first line of stdin (the app passes it)",
+    ),
 ) -> None:
     """Run Mycelium here and keep it running until stopped.
 
@@ -141,6 +147,9 @@ def serve(
         emit({"type": "log", "component": "app", "line": f"removed the old daemon's job {unit}"})
 
     roots = [p.expanduser().resolve() for p in (root or [Path.home()])]
+    # The app's token for this launch arrives on stdin, never in an environment,
+    # which any program running as this user can read (`ps eww`, /proc).
+    ui_token = sys.stdin.readline().strip() or None if ui_token_stdin else None
     sup = Supervisor(
         cast("Mode", mode),
         hub_url=hub_url,
@@ -149,6 +158,7 @@ def serve(
         share_usage=share_usage,
         voice=voice,
         voice_model=voice_model,
+        ui_token=ui_token,
     )
 
     def _stop(*_: object) -> None:

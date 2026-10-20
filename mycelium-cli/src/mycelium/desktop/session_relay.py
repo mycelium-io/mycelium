@@ -25,6 +25,9 @@ import itertools
 import json
 import os
 import socket
+import struct
+import subprocess
+import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -40,6 +43,87 @@ def socket_path() -> Path:
 
 #: How long a request waits for the person to answer the app.
 ANSWER_S = 120.0
+#: macOS's level and option for the peer's pid on a Unix socket.
+_SOL_LOCAL, _LOCAL_PEERPID = 0, 0x002
+#: How much of a command line the app's question shows.
+COMMAND_CHARS = 80
+
+
+def peer_pid(conn: socket.socket) -> int | None:
+    """The pid of the process on the other end of ``conn``, as the kernel says."""
+    try:
+        if sys.platform == "darwin":
+            return struct.unpack("i", conn.getsockopt(_SOL_LOCAL, _LOCAL_PEERPID, 4))[0]
+        so_peercred = getattr(socket, "SO_PEERCRED", None)
+        if so_peercred is not None:
+            raw = conn.getsockopt(socket.SOL_SOCKET, so_peercred, struct.calcsize("3i"))
+            return struct.unpack("3i", raw)[0]
+    except OSError:
+        return None
+    return None
+
+
+def describe_peer(conn: socket.socket) -> dict[str, str | None]:
+    """What's asking: its command (from ``mycelium`` on), its folder and its
+    terminal. A process that has no terminal (an agent's background job, a
+    script) gets ``tty: None``, which the app never gives grace to."""
+    pid = peer_pid(conn)
+    if pid is None:
+        return {"command": None, "cwd": None, "tty": None}
+    command = tty = cwd = None
+    try:
+        out = subprocess.run(  # noqa: S603 - ps by absolute path, a pid from the kernel
+            ["/bin/ps", "-o", "tty=", "-o", "command=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        ).stdout.strip()
+        if out:
+            first, _, rest = out.partition(" ")
+            tty = None if first.strip("?-") == "" else first
+            command = shown_command(rest.strip())
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    cwd = _cwd_of(pid)
+    return {"command": command, "cwd": cwd, "tty": tty}
+
+
+def shown_command(command_line: str) -> str:
+    """A command line as a person reads it: from ``mycelium`` on, without the
+    interpreter and path in front, cut to :data:`COMMAND_CHARS`."""
+    words = command_line.split()
+    for i, word in enumerate(words):
+        if Path(word).name == "mycelium":
+            words = ["mycelium", *words[i + 1 :]]
+            break
+    shown = " ".join(words)
+    return shown if len(shown) <= COMMAND_CHARS else shown[: COMMAND_CHARS - 1] + "…"
+
+
+def _cwd_of(pid: int) -> str | None:
+    proc = Path(f"/proc/{pid}/cwd")
+    try:
+        if proc.exists():
+            return _homed(str(proc.resolve()))
+        out = subprocess.run(  # noqa: S603 - lsof by absolute path, a pid from the kernel
+            ["/usr/sbin/lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    folder = next((line[1:] for line in out.splitlines() if line.startswith("n")), None)
+    return _homed(folder) if folder else None
+
+
+def _homed(path: str) -> str:
+    home = str(Path.home())
+    return "~" + path[len(home) :] if path == home or path.startswith(home + "/") else path
+
+
 #: The operations a request may name.
 OPS = frozenset({"get", "put", "delete"})
 
@@ -107,12 +191,13 @@ class SessionRelay:
             threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
 
     def _serve(self, conn: socket.socket) -> None:
+        caller = describe_peer(conn)
         with conn, conn.makefile("rw", encoding="utf-8") as stream:
-            reply = self._handle(stream.readline())
+            reply = self._handle(stream.readline(), caller)
             stream.write(json.dumps(reply) + "\n")
             stream.flush()
 
-    def _handle(self, line: str) -> dict[str, Any]:
+    def _handle(self, line: str, caller: dict[str, str | None] | None = None) -> dict[str, Any]:
         try:
             request = json.loads(line)
         except ValueError:
@@ -126,6 +211,9 @@ class SessionRelay:
         with self._lock:
             self._waiting[rid] = (done, slot)
         event: dict[str, Any] = {"type": "session", "id": rid, "op": op, "hub": hub}
+        # Who's asking, as the system says (never as the request says): the app
+        # names it in its question and keeps a yes to that one terminal.
+        event["caller"] = caller or {"command": None, "cwd": None, "tty": None}
         if op == "put":
             event["session"] = request.get("session")
         self.emit(event)

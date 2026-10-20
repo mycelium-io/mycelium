@@ -12,11 +12,12 @@
 //! its stdin.
 //!
 //! Before the CLI gets it, the person is asked: Touch ID or their password on
-//! macOS, a dialog elsewhere. An agent can't answer either. After a yes, reads
-//! for the same hub go through for [`GRACE`], so a person typing several
-//! commands isn't asked each time; an agent running as them could use that
-//! window too, which is why it is short, and why the CLI never asks from an
-//! agent's pane at all.
+//! macOS, a dialog elsewhere, naming the command that asked and its folder (as
+//! the supervisor read them from the socket's peer, never from the request).
+//! An agent can't answer either. After a yes, reads for the same hub from the
+//! same terminal go through for [`GRACE`], so a person typing several commands
+//! isn't asked each time, while an agent in its own pane (another terminal) or
+//! a program with no terminal is still asked.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -61,10 +62,39 @@ pub fn on_event(app: &AppHandle, event: &Value) {
     });
 }
 
+/// Who's asking, as the supervisor read it from the socket (never from the
+/// request): the command, its folder, and its terminal.
+struct Caller {
+    command: String,
+    cwd: String,
+    tty: Option<String>,
+}
+
+impl Caller {
+    fn of(event: &Value) -> Self {
+        let field = |k: &str| {
+            event.get("caller").and_then(|c| c.get(k)).and_then(Value::as_str).map(String::from)
+        };
+        Self {
+            command: field("command").unwrap_or_else(|| "a program".into()),
+            cwd: field("cwd").unwrap_or_else(|| "an unknown folder".into()),
+            tty: field("tty").filter(|t| !t.is_empty()),
+        }
+    }
+
+    /// What a yes covers for [`GRACE`]: this hub, from this terminal only. A
+    /// program with no terminal (an agent's background job, a script) gets
+    /// none, and is asked every time.
+    fn grace_key(&self, hub: &str) -> Option<String> {
+        self.tty.as_ref().map(|tty| format!("{hub}\n{tty}"))
+    }
+}
+
 fn answer(app: &AppHandle, event: &Value) -> Value {
     let Some(hub) = event.get("hub").and_then(Value::as_str) else {
         return json!({ "ok": false, "error": "no hub" });
     };
+    let caller = Caller::of(event);
     let sessions = app.state::<Sessions>();
     match event.get("op").and_then(Value::as_str) {
         Some("get") => {
@@ -72,7 +102,11 @@ fn answer(app: &AppHandle, event: &Value) -> Value {
                 // Nothing kept: nothing to ask about.
                 return json!({ "ok": true, "session": null });
             };
-            if !approved(app, &sessions, hub, &format!("use your sign-in for {hub}")) {
+            let what = format!(
+                "give your sign-in for {hub} to “{}”, run in {}",
+                caller.command, caller.cwd
+            );
+            if !approved(app, &sessions, caller.grace_key(hub), &what) {
                 return json!({ "ok": false, "error": "you said no, or didn't answer" });
             }
             json!({ "ok": true, "session": serde_json::from_str::<Value>(&kept).unwrap_or(Value::Null) })
@@ -81,7 +115,11 @@ fn answer(app: &AppHandle, event: &Value) -> Value {
             let Some(session) = event.get("session").filter(|s| s.is_object()) else {
                 return json!({ "ok": false, "error": "no sign-in to keep" });
             };
-            if !approved(app, &sessions, hub, &format!("keep your sign-in for {hub}")) {
+            let what = format!(
+                "keep your sign-in for {hub}, from “{}”, run in {}",
+                caller.command, caller.cwd
+            );
+            if !approved(app, &sessions, caller.grace_key(hub), &what) {
                 return json!({ "ok": false, "error": "you said no, or didn't answer" });
             }
             match store(&sessions, hub, &session.to_string()) {
@@ -90,24 +128,26 @@ fn answer(app: &AppHandle, event: &Value) -> Value {
             }
         }
         Some("delete") => {
-            sessions.approved.lock().unwrap().remove(hub);
+            let prefix = format!("{hub}\n");
+            sessions.approved.lock().unwrap().retain(|k, _| !k.starts_with(&prefix));
             json!({ "ok": remove(&sessions, hub) })
         }
         _ => json!({ "ok": false, "error": "unknown request" }),
     }
 }
 
-/// Whether the person says yes, or said yes for this hub within [`GRACE`].
-fn approved(app: &AppHandle, sessions: &Sessions, hub: &str, what: &str) -> bool {
-    {
+/// Whether the person says yes, or said yes for this key (hub and terminal)
+/// within [`GRACE`]. With no key there's no grace: it asks.
+fn approved(app: &AppHandle, sessions: &Sessions, key: Option<String>, what: &str) -> bool {
+    if let Some(key) = &key {
         let approved = sessions.approved.lock().unwrap();
-        if approved.get(hub).is_some_and(|at| at.elapsed() < GRACE) {
+        if approved.get(key).is_some_and(|at| at.elapsed() < GRACE) {
             return true;
         }
     }
     let yes = ask(app, what);
-    if yes {
-        sessions.approved.lock().unwrap().insert(hub.to_string(), Instant::now());
+    if let (true, Some(key)) = (yes, key) {
+        sessions.approved.lock().unwrap().insert(key, Instant::now());
     }
     yes
 }
@@ -122,7 +162,8 @@ fn ask(_app: &AppHandle, what: &str) -> bool {
     use std::sync::mpsc;
 
     let (tx, rx) = mpsc::channel::<bool>();
-    let reason = NSString::from_str(&format!("A mycelium command wants to {what}."));
+    // The system shows it as "Mycelium is trying to <reason>."
+    let reason = NSString::from_str(what);
     let reply = RcBlock::new(move |ok: Bool, _error: *mut NSError| {
         let _ = tx.send(ok.as_bool());
     });
@@ -143,7 +184,7 @@ fn ask(app: &AppHandle, what: &str) -> bool {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
     app.dialog()
-        .message(format!("A mycelium command wants to {what}. Allow it?"))
+        .message(format!("Mycelium is asked to {what}. Allow it?"))
         .title("Mycelium")
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::OkCancelCustom("Allow".into(), "Don't allow".into()))

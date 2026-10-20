@@ -2,7 +2,9 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { guardApi, hostAllowed, TOKEN_HEADER, TOKEN_PARAM } from "@/lib/ui-guard";
+import { upstreamUrl } from "@/lib/backend";
+import { guardApi, hostAllowed, MEDIA_PARAM, mediaSignatureOk, TOKEN_HEADER, TOKEN_PARAM } from "@/lib/ui-guard";
+import { mediaSignature } from "@/lib/ui-token";
 
 const TOKEN = "a".repeat(64);
 
@@ -68,7 +70,48 @@ describe("guardApi", () => {
     expect(guardApi(req("/api/rooms", { headers: { [TOKEN_HEADER]: TOKEN } }), TOKEN)).toBeNull();
     // What can't set a header (an EventSource, an image) carries it in the URL.
     expect(guardApi(req(`/api/stream?${TOKEN_PARAM}=${TOKEN}`), TOKEN)).toBeNull();
-    // Sign-in starts with a navigation, which can carry nothing.
+    // Sign-in started as a navigation can carry nothing; one started from the
+    // page (a POST) carries the token like everything else.
     expect(guardApi(req("/api/auth/login"), TOKEN)).toBeNull();
+    expect(guardApi(req("/api/auth/callback"), TOKEN)).toBeNull();
+    const post = { method: "POST", headers: { "content-type": "application/json" } };
+    expect(guardApi(req("/api/auth/login", post), TOKEN)?.status).toBe(401);
+  });
+
+  it("lets a file be read with a signature for its own path, never another's", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const exp = now + 900;
+    const path = "/api/rooms/r/uploads/a.png";
+    const media = `${exp}.${mediaSignature(TOKEN, path, exp)}`;
+    expect(guardApi(req(`${path}?${MEDIA_PARAM}=${media}`), TOKEN)).toBeNull();
+    // The same signature for any other file, or to write, is refused.
+    expect(guardApi(req(`/api/rooms/r/uploads/b.png?${MEDIA_PARAM}=${media}`), TOKEN)?.status).toBe(401);
+    expect(guardApi(req(`/api/rooms?${MEDIA_PARAM}=${media}`), TOKEN)?.status).toBe(401);
+    const del = guardApi(req(`${path}?${MEDIA_PARAM}=${media}`, { method: "DELETE" }), TOKEN);
+    expect(del?.status).toBe(401);
+    // And it runs out.
+    expect(mediaSignatureOk(media, path, TOKEN, exp + 1)).toBe(false);
+    const far = now + 7200;
+    expect(mediaSignatureOk(`${far}.${mediaSignature(TOKEN, path, far)}`, path, TOKEN, now)).toBe(false);
+  });
+});
+
+describe("proxy matcher", () => {
+  it("checks every /api path, whatever it ends in", async () => {
+    const { config } = await import("@/proxy");
+    // A path like /api/…/notes.txt is the hub's, not a static file the
+    // extension exclusion below it is for.
+    expect(config.matcher).toContain("/api/:path*");
+  });
+});
+
+describe("upstreamUrl", () => {
+  it("never passes the token or a media signature on to the hub", () => {
+    const url = upstreamUrl(
+      "http://hub:8000",
+      `http://127.0.0.1:3717/api/rooms/r/uploads/a.png?download=1&${TOKEN_PARAM}=t&${MEDIA_PARAM}=1.ab`,
+    );
+    expect(url).toBe("http://hub:8000/api/rooms/r/uploads/a.png?download=1");
+    expect(upstreamUrl("http://hub:8000", "http://127.0.0.1:3717/api/health")).toBe("http://hub:8000/health");
   });
 });

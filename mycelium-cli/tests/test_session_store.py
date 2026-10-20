@@ -126,3 +126,23 @@ def test_the_log_never_holds_the_sign_in(tmp_path: Path) -> None:
     writer.close()
     assert "at-x" not in (tmp_path / "desktop.log").read_text()
     assert "at-x" in out.getvalue()  # the app still gets it
+
+
+def test_the_app_is_told_who_asked_as_the_system_says(config, app, monkeypatch) -> None:
+    """The question names the command and its folder, read from the socket's
+    peer rather than from anything the request claims."""
+    seen: list[dict] = []
+    original = app.relay.emit
+    app.relay.emit = lambda e: (seen.append(e), original(e))
+    session_store.save(config, _TOKEN)
+    caller = seen[0]["caller"]
+    assert set(caller) == {"command", "cwd", "tty"}
+    assert caller["cwd"]  # the test process's own folder
+
+
+def test_a_command_reads_from_mycelium_on() -> None:
+    from mycelium.desktop.session_relay import shown_command
+
+    line = "/usr/bin/python3 /Users/x/.local/bin/mycelium room messages checkout --limit 5"
+    assert shown_command(line) == "mycelium room messages checkout --limit 5"
+    assert len(shown_command("mycelium " + "x" * 200)) == 80
