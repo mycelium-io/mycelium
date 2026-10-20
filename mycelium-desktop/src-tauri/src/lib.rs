@@ -825,8 +825,13 @@ fn same_hub(a: &str, b: &str) -> bool {
     a.trim_end_matches('/').eq_ignore_ascii_case(b.trim_end_matches('/'))
 }
 
+/// A link to the app itself (`mycelium://terminal`, `…/update`, `…/join`).
+fn is_app_link(url: &Url) -> bool {
+    url.scheme() == "mycelium"
+}
+
 fn handle_link(app: &AppHandle, link: &Url) {
-    if link.scheme() != "mycelium" {
+    if !is_app_link(link) {
         return;
     }
     let param = |name: &str| {
@@ -1458,6 +1463,18 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
         .on_navigation({
             let app = app.clone();
             move |url| {
+                // A `mycelium://` link the page follows (Open its terminal,
+                // the Agents terminal, Update) is the app's own: handled here,
+                // the same as one macOS hands over, and never loaded. Left to
+                // WebKit it fails as an unsupported address, and handing it to
+                // macOS can reach another copy of the app registered for the
+                // scheme (a mounted disk image, an old build).
+                if is_app_link(url) {
+                    let app = app.clone();
+                    let link = url.clone();
+                    let _ = app.clone().run_on_main_thread(move || handle_link(&app, &link));
+                    return false;
+                }
                 if close::is_close_address(url) {
                     let app = app.clone();
                     let _ = app.clone().run_on_main_thread(move || {
@@ -1613,4 +1630,19 @@ pub fn run() {
         RunEvent::Reopen { .. } => show_main(app),
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_window_keeps_its_own_links_and_lets_pages_load() {
+        for link in ["mycelium://terminal?pane=w3%3Ap1", "mycelium://terminal", "mycelium://update"] {
+            assert!(is_app_link(&Url::parse(link).unwrap()), "{link}");
+        }
+        for page in ["http://127.0.0.1:3717/room/x", "https://example.com/", "tauri://localhost/terminal.html"] {
+            assert!(!is_app_link(&Url::parse(page).unwrap()), "{page}");
+        }
+    }
 }
