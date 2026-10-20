@@ -5,7 +5,7 @@
 // screen: is the backend gate on, is OIDC configured here, and are we signed in.
 
 import { NextResponse } from "next/server";
-import { oidcConfig } from "@/lib/auth-config";
+import { resolveOidcConfig } from "@/lib/auth-config";
 import { getBackendUrl } from "@/lib/backend";
 import { getSession } from "@/lib/session";
 import { isMockMode } from "@/mocks";
@@ -29,7 +29,7 @@ export async function GET(): Promise<Response> {
     // `authRequired` comes from the backend's own /health auth block — the gate
     // is the source of truth, so the UI can't disagree with it.
     authRequired: await gateOn(),
-    oidcConfigured: oidcConfig() != null,
+    oidcConfigured: (await resolveOidcConfig()) != null,
     signedIn: session != null,
     handle: session?.handle ?? null,
   });

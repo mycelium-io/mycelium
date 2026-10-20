@@ -100,10 +100,10 @@ fn local_url(app: &AppHandle, page: &str) -> Option<Url> {
     base.join(page).ok()
 }
 
-/// The microphone goes only to this Mac's own hub UI. In client mode the
-/// window shows another hub's pages, and once macOS has let the app use the
-/// mic, a page granted it here could record without anyone pressing the mic.
-/// The camera and anything else not handled here keep WebKit's own prompt.
+/// The microphone goes only to the app's own UI. Any other page the window
+/// reaches, once macOS has let the app use the mic, could record without
+/// anyone pressing the mic. The camera and anything else not handled here
+/// keep WebKit's own prompt.
 fn media_permission(app: &AppHandle, webview: &Webview, kind: PermissionKind) -> PermissionResponse {
     if !matches!(kind, PermissionKind::Microphone) {
         return PermissionResponse::Default;
@@ -115,15 +115,15 @@ fn media_permission(app: &AppHandle, webview: &Webview, kind: PermissionKind) ->
     }
 }
 
-/// Whether `webview` shows the app's own hub UI: the hub this app started,
-/// in hub mode, while the UI server it started is the one answering. Never
-/// another hub's pages, which client mode shows, and never whatever answers
-/// on the UI's port while that server is down.
+/// Whether `webview` shows the app's own UI: the UI server this app runs on
+/// this machine, in either mode (a joined hub is reached through it), while
+/// that server is the one answering. Compared by exact origin, so no other
+/// page on this machine counts, nor whatever answers on the UI's port while
+/// that server is down.
 fn shows_own_ui(app: &AppHandle, webview: &Webview) -> bool {
     let status = app.state::<Supervisor>().status();
     let own_ui = status
         .as_ref()
-        .filter(|s| s.get("mode").and_then(Value::as_str) == Some("hub"))
         .filter(|s| supervisor::ready(s))
         .and_then(|s| s.get("ui_url").and_then(Value::as_str))
         .and_then(|u| Url::parse(u).ok());
@@ -172,12 +172,12 @@ fn navigate_main(app: &AppHandle, url: Url) {
 /// `url` carrying this launch's token in its fragment when it's a page of the
 /// UI server this app started: the server asks every request for it, and a
 /// fragment never reaches a server, a log or the disk. The page keeps it for
-/// its own requests. Any other page (a hub elsewhere) gets nothing.
+/// its own requests. In both modes, since a joined hub is reached through this
+/// UI too. Any other page gets nothing.
 fn with_launch_token(app: &AppHandle, mut url: Url) -> Url {
     let status = app.state::<Supervisor>().status();
     let ours = status
         .as_ref()
-        .filter(|s| s.get("mode").and_then(Value::as_str) == Some("hub"))
         .filter(|s| supervisor::ready(s))
         .and_then(|s| s.get("ui_url"))
         .and_then(Value::as_str)
@@ -290,11 +290,9 @@ pub(crate) fn on_status(app: &AppHandle, generation: u64, status: &Value) {
 
 /// When the UI came back on another port (its old one was taken while it was
 /// down), move a window still showing the old address to the same page at the
-/// new one, so it isn't left on whatever now answers there.
+/// new one, so it isn't left on whatever now answers there. In both modes,
+/// since the app runs its own UI in both.
 fn follow_ui(app: &AppHandle, status: &Value) {
-    if status.get("mode").and_then(Value::as_str) != Some("hub") {
-        return;
-    }
     let Some(now) = status.get("ui_url").and_then(Value::as_str).and_then(|u| Url::parse(u).ok()) else {
         return;
     };

@@ -82,11 +82,25 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("mycelium:auth-required", onUnauthorized);
   }, [refresh]);
 
-  const login = useCallback(() => {
+  const login = useCallback(async () => {
     const returnTo = window.location.pathname + window.location.search;
-    // Full-page navigation: the server sets the auth cookies on the callback URL.
+    // Asked for by this page (a navigation couldn't prove it came from the
+    // app), then a full-page navigation to the IdP, which comes back to the
+    // callback, where the session is kept.
+    let to: string;
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ return_to: returnTo }),
+      });
+      const body = (await res.json()) as { url?: string; detail?: string };
+      to = body.url ?? `/?auth_error=${encodeURIComponent(body.detail ?? "sign-in could not start")}`;
+    } catch {
+      to = `/?auth_error=${encodeURIComponent("sign-in could not start")}`;
+    }
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.href = `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`;
+    window.location.href = to;
   }, []);
 
   const logout = useCallback(async () => {

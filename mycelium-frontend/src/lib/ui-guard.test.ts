@@ -78,12 +78,16 @@ describe("guardApi", () => {
     expect(guardApi(req("/api/rooms", { headers: { [TOKEN_HEADER]: TOKEN } }), TOKEN)).toBeNull();
     // What can't set a header (an EventSource, an image) carries it in the URL.
     expect(guardApi(req(`/api/stream?${TOKEN_PARAM}=${TOKEN}`), TOKEN)).toBeNull();
-    // Sign-in started as a navigation can carry nothing; one started from the
-    // page (a POST) carries the token like everything else.
-    expect(guardApi(req("/api/auth/login"), TOKEN)).toBeNull();
+    // The identity provider's redirect back can carry nothing, and is the one
+    // exemption. A sign-in starts from the page, carrying the token like
+    // everything else, so one started any other way is refused.
     expect(guardApi(req("/api/auth/callback"), TOKEN)).toBeNull();
+    expect(guardApi(req("/api/auth/login"), TOKEN)?.status).toBe(401);
     const post = { method: "POST", headers: { "content-type": "application/json" } };
     expect(guardApi(req("/api/auth/login", post), TOKEN)?.status).toBe(401);
+    expect(
+      guardApi(req("/api/auth/login", { ...post, headers: { ...post.headers, [TOKEN_HEADER]: TOKEN } }), TOKEN),
+    ).toBeNull();
   });
 
   it("lets a file be read with a signature for its own path, never another's", () => {

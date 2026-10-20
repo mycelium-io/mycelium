@@ -334,8 +334,8 @@ def desktop_checks() -> list[tuple[str, list[CheckResult]]]:
         services.append(slim_node())
     services.append(hub(api_url) if api_url else app_setting())
     services.append(hubs_here(client=client))
-    if not client:
-        services.append(ui())
+    # The app's own UI runs in both modes; a joined hub is reached through it.
+    services.append(ui())
     if api_url:
         services.append(runner(api_url))
     agents = [herdr(), agent_clis(), on_path()]

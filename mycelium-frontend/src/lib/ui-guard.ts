@@ -36,13 +36,12 @@ const MEDIA_MAX_S = 30 * 60;
 
 /**
  * `/api` routes reached by a top-level navigation, which can carry nothing:
- * the identity provider's redirect back, and a sign-in started as a `GET`.
- * A sign-in that starts as a `POST` from the page (#1412) carries the token
- * like any request; once no `GET` is left on that route, drop it here.
+ * only the identity provider's redirect back, which finishes nothing but a
+ * sign-in this server started. A sign-in starts as a `POST` from the page,
+ * carrying the token like any request.
  */
 const NAVIGATIONS: { path: string; methods: string[] }[] = [
   { path: "/api/auth/callback", methods: ["GET"] },
-  { path: "/api/auth/login", methods: ["GET"] },
 ];
 
 function isNavigation(req: Request, path: string): boolean {

@@ -5,13 +5,15 @@
 // they never reach the browser bundle. SERVER-SIDE only (route handlers + the
 // proxy). The proxy calls `bearer()` to inject the access token; everything else
 // reads/writes the cookie through here.
+//
+// The desktop app's UI server keeps them in its own memory instead; see
+// `held` below.
 
 import { createHash } from "node:crypto";
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
-import { oidcConfig } from "./auth-config";
+import { heldInMemory, resolveOidcConfig } from "./auth-config";
 import { endpoints, refreshTokens, claimsOf, handleFromClaims } from "./oidc";
-import { tokenPromised } from "./ui-guard";
 
 export const SESSION_COOKIE = "myc_session";
 export const TX_COOKIE = "myc_oidc_tx";
@@ -56,23 +58,29 @@ export async function unseal<T = Record<string, unknown>>(token: string, secret:
   }
 }
 
-// In the desktop app (a launch token is set, `lib/ui-guard.ts`) the server
-// is on 127.0.0.1, where a cookie goes to every port on the machine, so the
-// session is kept in this process's memory instead: one person, one window,
-// and only requests carrying the launch's token reach it. Kept on `globalThis`
-// so a dev server's reload doesn't drop it.
-const held = globalThis as unknown as { __myceliumSession?: Session | null };
-
-function inMemory(): boolean {
-  // Promised counts, not only arrived: a desktop launch whose token went
-  // missing still never writes a cookie.
-  return tokenPromised();
+/** A sign-in on its way: what the callback needs to finish it. */
+export interface SignInTx {
+  verifier: string;
+  state: string;
+  returnTo: string;
 }
 
+// In the desktop app (a launch token is set, `lib/ui-guard.ts`) the server
+// is on 127.0.0.1, where a cookie goes to every port on the machine, so the
+// session, and any sign-in under way, is kept in this process's memory
+// instead (`heldInMemory`): one person, one window, and only requests
+// carrying the launch's token reach it. Kept on `globalThis`, since each
+// route is bundled on its own and a dev server's reload mustn't drop it.
+const held = globalThis as unknown as {
+  __myceliumSession?: Session | null;
+  __myceliumSignIns?: Map<string, SignInTx & { until: number }>;
+};
+const TX_TTL_S = 600;
+
 export async function getSession(): Promise<Session | null> {
-  const cfg = oidcConfig();
+  const cfg = await resolveOidcConfig();
   if (!cfg) return null;
-  if (inMemory()) return held.__myceliumSession ?? null;
+  if (heldInMemory()) return held.__myceliumSession ?? null;
   const jar = await cookies();
   const raw = jar.get(SESSION_COOKIE)?.value;
   if (!raw) return null;
@@ -80,9 +88,9 @@ export async function getSession(): Promise<Session | null> {
 }
 
 export async function writeSession(s: Session): Promise<void> {
-  const cfg = oidcConfig();
+  const cfg = await resolveOidcConfig();
   if (!cfg) return;
-  if (inMemory()) {
+  if (heldInMemory()) {
     held.__myceliumSession = s;
     return;
   }
@@ -92,12 +100,41 @@ export async function writeSession(s: Session): Promise<void> {
 }
 
 export async function clearSession(): Promise<void> {
-  if (inMemory()) {
+  if (heldInMemory()) {
     held.__myceliumSession = null;
     return;
   }
   const jar = await cookies();
   jar.set(SESSION_COOKIE, "", { ...cookieOpts, maxAge: 0 });
+}
+
+/** Keep a sign-in that's starting until its callback: in memory, or sealed in a cookie. */
+export async function saveSignIn(tx: SignInTx, secret: string): Promise<void> {
+  if (heldInMemory()) {
+    const now = Date.now();
+    const pending = (held.__myceliumSignIns ??= new Map());
+    for (const [state, t] of pending) if (t.until < now) pending.delete(state);
+    pending.set(tx.state, { ...tx, until: now + TX_TTL_S * 1000 });
+    return;
+  }
+  const jar = await cookies();
+  jar.set(TX_COOKIE, await seal({ ...tx }, secret, TX_TTL_S), { ...cookieOpts, maxAge: TX_TTL_S });
+}
+
+/** The sign-in a callback's `state` belongs to, taken so it's used once. Null
+ *  when there's none, it has expired, or the state doesn't match. */
+export async function takeSignIn(state: string, secret: string): Promise<SignInTx | null> {
+  if (heldInMemory()) {
+    const tx = held.__myceliumSignIns?.get(state);
+    held.__myceliumSignIns?.delete(state);
+    return tx && tx.until >= Date.now() ? tx : null;
+  }
+  const jar = await cookies();
+  const raw = jar.get(TX_COOKIE)?.value;
+  jar.set(TX_COOKIE, "", { path: "/", maxAge: 0 });
+  if (!raw) return null;
+  const tx = await unseal<SignInTx>(raw, secret);
+  return tx && tx.state === state ? tx : null;
 }
 
 /**
@@ -123,7 +160,7 @@ export async function upstreamSseHeaders(): Promise<Record<string, string>> {
  * as before this existed.
  */
 export async function bearer(): Promise<string | null> {
-  const cfg = oidcConfig();
+  const cfg = await resolveOidcConfig();
   if (!cfg) return null;
   const s = await getSession();
   if (!s) return null;

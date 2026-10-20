@@ -225,20 +225,38 @@ def test_stopping_stops_the_children():
     assert events.state("slim") == "stopped"
 
 
-def test_client_mode_runs_herdr_and_the_runner_against_the_hub():
+def test_client_mode_runs_herdr_the_ui_and_the_runner_against_the_hub():
     events = Events()
     sup = Supervisor(
-        "client", hub_url="https://hub.example.com/", emit=events, env={}, start_runner=False
+        "client",
+        hub_url="https://hub.example.com/",
+        emit=events,
+        env={},
+        start_runner=False,
+        ui_token="launch-token",
     )
     status = sup.status()
-    assert status["ui_url"] == status["api_url"] == "https://hub.example.com"
+    # The window shows this machine's own UI, which talks to the hub; never
+    # the hub's own pages.
+    assert status["api_url"] == "https://hub.example.com"
+    assert status["ui_url"] == "http://127.0.0.1:3717"
     assert {k: v["state"] for k, v in status["components"].items()} == {
         "herdr": "stopped",
         "slim": "disabled",
         "hub": "disabled",
-        "ui": "disabled",
+        "ui": "stopped",
         "runner": "stopped",
     }
+    ui = next(c for c in sup.components if c.name == "ui")
+    assert ui.env["MYCELIUM_INTERNAL_API_URL"] == "https://hub.example.com"
+    # It signs in with the CLI's client, and gets this launch's token on its
+    # stdin, as in hub mode: what keeps the sign-in to the hub in its memory
+    # and away from every other page on the machine.
+    assert ui.env["MYCELIUM_OIDC_CLIENT_ID"] == "mycelium-cli"
+    assert ui.env["MYCELIUM_UI_TOKEN_STDIN"] == "1"
+    assert ui.stdin == "launch-token"
+    # A UI already on the port is talking to some other hub, so it isn't used.
+    assert ui.external is None
     with pytest.raises(ValueError, match="needs the hub's URL"):
         Supervisor("client", emit=events, env={})
 

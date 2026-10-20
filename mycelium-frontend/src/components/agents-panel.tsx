@@ -57,6 +57,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { nameOf, useNames } from "@/lib/people";
 import { usePrincipal } from "@/components/current-user";
+import { useHubAddress } from "@/lib/hub-address";
 
 interface Props {
   roomName: string;
@@ -615,9 +616,10 @@ export function AgentsPanel({
  *  when they have it, and offers the download or the browser when they don't. */
 function InviteButton({ roomName }: { roomName: string }) {
   const [copied, setCopied] = useState(false);
+  const hub = useHubAddress();
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(inviteLink(window.location.origin, roomName));
+      await navigator.clipboard.writeText(inviteLink(hub, roomName));
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {

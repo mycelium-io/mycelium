@@ -8,8 +8,9 @@ Two modes, which are what the desktop app offers on its first screen:
 - **hub**: this machine runs the hub. herdr's server, a SLIM node
   (``slimctl slim start``), the hub's API, the UI server, and the runner, each
   started in order once the one before it answers.
-- **client**: another machine runs the hub. herdr's server and the runner,
-  pointed at it.
+- **client**: another machine runs the hub. herdr's server, the UI server and
+  the runner, pointed at it. The window shows this machine's own UI in both
+  modes; a hub elsewhere is reached through it, never by showing its pages.
 
 herdr's server is started only when none is running, and is left running
 when the supervisor stops: agents live in its panes. So after the app is
@@ -533,6 +534,8 @@ class Supervisor:
         self.components: list[Component] = [self._herdr()]
         if mode == "hub":
             self.components += self._components()
+        else:
+            self.components.append(self._ui())
 
     # ── what runs ────────────────────────────────────────────────────────────
 
@@ -542,7 +545,8 @@ class Supervisor:
 
     @property
     def ui_url(self) -> str:
-        return f"http://{HOST}:{self.ui_port}" if self.mode == "hub" else str(self.hub_url)
+        """The app's own UI, on this machine, whichever hub it talks to."""
+        return f"http://{HOST}:{self.ui_port}"
 
     def _choose_ui_port(self, c: Component) -> None:
         """Before each start of the UI: :data:`UI_PORT`, else the port it had,
@@ -620,13 +624,17 @@ class Supervisor:
             hub_env_vars["ALIGNER_PI_BINARY"] = pi
         return hub_env_vars
 
-    def _components(self) -> list[Component]:
-        loc = self.locator
-        hub_env_vars = self._hub_env_vars()
+    def _ui(self) -> Component:
+        """The app's own UI server, talking to the hub this app uses.
+
+        In both modes: a hub elsewhere is reached through this machine's UI,
+        never by showing that hub's own pages. One already answering on the
+        port is never used (:meth:`_choose_ui_port`).
+        """
         ui_env = {
             "PORT": str(UI_PORT),
             "HOSTNAME": HOST,
-            "MYCELIUM_INTERNAL_API_URL": f"http://{HOST}:{HUB_PORT}",
+            "MYCELIUM_INTERNAL_API_URL": self.api_url,
             # Only read by `next dev` (a checkout); it refuses pages opened
             # from a host it wasn't told about.
             "MYCELIUM_ALLOWED_DEV_ORIGINS": f"{HOST},localhost",
@@ -637,6 +645,7 @@ class Supervisor:
             # follows. Only a UI the desktop app runs for its own person reads
             # them; one serving many people never gets this.
             "MYCELIUM_THEMES_DIR": str(themes.folder()),
+            **self._login_env(),
         }
         if self.ui_token:
             # What the UI server asks of every request (`lib/ui-guard.ts`),
@@ -644,12 +653,35 @@ class Supervisor:
             ui_env[UI_TOKEN_STDIN_ENV] = "1"
         ui = Component(
             name="ui",
-            argv=lambda: loc.ui(self.ui_port),
+            argv=lambda: self.locator.ui(self.ui_port),
             ready=self._ui_ready,
             env=ui_env,
             stdin=self.ui_token,
         )
         ui.prepare = lambda: self._choose_ui_port(ui)
+        return ui
+
+    def _login_env(self) -> dict[str, str]:
+        """How the UI signs in to a hub that asks: the same client as `mycelium login`.
+
+        The issuer is the one the hub names in ``/health``, found by the UI
+        when it's needed. The client is the CLI's, which an issuer already
+        lets sign in through this machine's loopback address.
+        """
+        from mycelium.config import MyceliumConfig
+
+        try:
+            login = (self.config or MyceliumConfig.load()).login
+        except Exception:  # noqa: BLE001 - an unreadable config leaves the defaults
+            return {}
+        env = {"MYCELIUM_OIDC_CLIENT_ID": login.client_id}
+        if login.audience:
+            env["MYCELIUM_OIDC_AUDIENCE"] = login.audience
+        return env
+
+    def _components(self) -> list[Component]:
+        loc = self.locator
+        hub_env_vars = self._hub_env_vars()
         return [
             Component(
                 name="slim",
@@ -665,7 +697,7 @@ class Supervisor:
                 external=lambda: http_ok(f"http://{HOST}:{HUB_PORT}/health"),
                 watch=True,
             ),
-            ui,
+            self._ui(),
         ]
 
     # ── status ───────────────────────────────────────────────────────────────

@@ -72,8 +72,9 @@ def test_a_client_mac_skips_what_runs_elsewhere(setting):
     setting({"mode": "client", "hubUrl": "https://hub.example.com", "roots": []})
     names = _names(checks.desktop_checks())
     assert "slim_node" not in names
-    assert "ui" not in names
     assert "embedding_model" not in names
+    # The app's own UI runs here in both modes: a joined hub is reached through it.
+    assert "ui" in names
     assert checks.app_setting().message == "joins https://hub.example.com"
 
 

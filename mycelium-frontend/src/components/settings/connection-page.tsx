@@ -3,15 +3,13 @@
 
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { CopyField } from "@/components/ui/copy-field";
 import { hubSummary, StatusDot, TONE_COLOR } from "@/components/status-items";
 import { useHubLabel } from "@/components/title-bar";
 import { desktopMachine, inviteLink, settingsLink, useIsDesktop } from "@/lib/desktop";
+import { useHubAddress } from "@/lib/hub-address";
 import { useHubHealth } from "@/lib/use-status";
 import { Row, Section, SettingsPage, Value } from "./settings-ui";
-
-const noSubscribe = () => () => {};
 
 /** Which hub this window is using, and how someone else joins it. Choosing a
  *  different hub happens where the window is opened: in the desktop app, its
@@ -21,7 +19,7 @@ export function ConnectionPage() {
   const desktop = useIsDesktop();
   const hub = useHubLabel();
   const { data: health } = useHubHealth();
-  const origin = useSyncExternalStore(noSubscribe, () => window.location.origin, () => "");
+  const origin = useHubAddress();
   const summary = hubSummary(health);
   const ownHub = desktop && hub === `This ${desktopMachine()}`;
 
