@@ -367,57 +367,6 @@ function mergePage(existing: Event[], page: Event[]): Event[] {
   return [...existing, ...fresh].sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0));
 }
 
-/** How often the channel checks, while it's in front, that it missed nothing. */
-const CATCH_UP_MS = 30_000;
-/** How long a message may be on the hub before its live frame counts as lost. */
-const LIVE_GRACE_MS = 10_000;
-
-/** What makes two copies of one message the same: its live frame and its
- *  stored row carry different ids (the row's is derived from the frame's), but
- *  the same sender, stamp and text. */
-function saidKey(e: Event): string {
-  return `${e.sender}\n${Date.parse(e.at) || 0}\n${e.content}`;
-}
-
-/** A test for whether a message is already among `events`, by id or as the
- *  same message, built once for a batch. */
-function haveOf(events: Event[]): (e: Event) => boolean {
-  const ids = new Set(events.map((x) => x.messageId).filter(Boolean));
-  const keys = new Set(events.filter((x) => CHAT_TYPES.has(x.type)).map(saidKey));
-  return (e) => (e.messageId !== null && ids.has(e.messageId)) || keys.has(saidKey(e));
-}
-
-/** The newest stamp of anything said in the channel: where a catch-up reads from. */
-function newestSaidAt(events: Event[]): string | null {
-  let newest: string | null = null;
-  let newestMs = -Infinity;
-  for (const e of events) {
-    if (!CHAT_TYPES.has(e.type)) continue;
-    const ms = Date.parse(e.at);
-    if (Number.isFinite(ms) && ms > newestMs) {
-      newestMs = ms;
-      newest = e.at;
-    }
-  }
-  return newest;
-}
-
-/** Every message said since `since`, newest page first, walking back a page at
- *  a time so a long gap is read whole. */
-async function readSince(room: string, since: string): Promise<Event[]> {
-  const out: Event[] = [];
-  let before: string | null = null;
-  for (let pages = 0; pages < 10; pages++) {
-    const data = await fetchMessages(room, CHANNEL_PAGE, { since, before });
-    const page = (data.messages || []).map((m) => parseEvent(m));
-    out.push(...page);
-    if (page.length === 0 || (data.total ?? page.length) <= page.length) break;
-    before = oldestAt(page);
-    if (!before) break;
-  }
-  return out;
-}
-
 /** The earliest stamp in a page — the cursor the page before it is fetched by. */
 function oldestAt(page: Event[]): string | null {
   let oldest: string | null = null;
@@ -600,65 +549,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     return () => clearInterval(tick);
   }, [responding.length]);
 
-  // Catching up: what the room said that this view didn't get live. Run when
-  // the room's feed comes back after a drop, when the window comes to the
-  // front, and every CATCH_UP_MS while it's in front, so the channel can't go
-  // quiet on its own while the room keeps talking. A check that finds messages
-  // the live feed never delivered also subscribes again (`epoch`).
-  const eventsRef = useRef<Event[]>([]);
-  useEffect(() => {
-    eventsRef.current = events;
-  }, [events]);
-  const [epoch, setEpoch] = useState(0);
-  const catchUp = useCallback(
-    async (afterDrop: boolean) => {
-      const since = newestSaidAt(eventsRef.current);
-      if (!since) return;
-      let page: Event[];
-      try {
-        page = await readSince(roomName, since);
-      } catch (err) {
-        logFetchError("fetchMessages")(err);
-        return;
-      }
-      const have = haveOf(eventsRef.current);
-      const missed = page.filter((e) => !have(e));
-      if (missed.length === 0) return;
-      setEvents((prev) => {
-        const had = haveOf(prev);
-        return mergePage(prev, missed.filter((e) => !had(e)));
-      });
-      // A message can be on the hub a moment before its live frame lands, so
-      // only one older than that says the live feed lost it.
-      const lost = missed.some((e) => Date.now() - (Date.parse(e.at) || 0) > LIVE_GRACE_MS);
-      if (!afterDrop && lost) {
-        console.warn(`[mycelium] the channel missed ${missed.length} live message(s) in ${roomName}; subscribing again`);
-        setEpoch((n) => n + 1);
-      }
-    },
-    [roomName],
-  );
-  const wasConnected = useRef(connected);
-  useEffect(() => {
-    const back = connected && !wasConnected.current;
-    wasConnected.current = connected;
-    if (back && historyLoaded) void catchUp(true);
-  }, [connected, historyLoaded, catchUp]);
-  useEffect(() => {
-    if (!historyLoaded) return;
-    const check = () => {
-      if (document.visibilityState === "visible") void catchUp(false);
-    };
-    const timer = setInterval(check, CATCH_UP_MS);
-    document.addEventListener("visibilitychange", check);
-    window.addEventListener("focus", check);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", check);
-      window.removeEventListener("focus", check);
-    };
-  }, [historyLoaded, catchUp]);
-
   // Live room messages, off the app's one multiplexed connection.
   useRoomStream(roomName, (data) => {
     const msg = data as Record<string, unknown>;
@@ -675,18 +565,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       return;
     }
     setResponding((prev) => settleActivity(prev, event.sender));
-    setEvents((prev) => {
-      if (event.amends) return foldAmendment(prev, event);
-      // A catch-up may have read it from the hub before its live frame landed.
-      if (CHAT_TYPES.has(event.type)) {
-        const key = saidKey(event);
-        const twin = (x: Event) =>
-          (event.messageId !== null && x.messageId === event.messageId) ||
-          (CHAT_TYPES.has(x.type) && saidKey(x) === key);
-        if (prev.some(twin)) return prev;
-      }
-      return [...prev, event];
-    });
+    setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));
     if (event.type === "memory_changed") onMemoryChanged?.();
     // A consensus compiles the negotiation into work rows, so nudge the
     // room's caches to refetch and surface them immediately.
@@ -697,7 +576,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     if (event.type === "coordination_join" || event.type === "coordination_leave") {
       onMemoryChanged?.();
     }
-  }, epoch);
+  });
 
   // The room's own timeline, split by what it is: a thread's prose is dropped
   // (it is not lost, it is placed, and the pane the ping opens is where it
