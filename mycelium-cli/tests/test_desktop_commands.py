@@ -20,8 +20,10 @@ import pytest
 
 SRC = Path(__file__).resolve().parents[2] / "mycelium-desktop" / "src-tauri" / "src"
 GUARDS = ("local_only(", "own_ui_only(")
-#: What ``own_ui_only`` may answer: nothing beyond these two.
-OWN_UI = {"this_machine", "choose_agent_folder"}
+#: What ``own_ui_only`` may answer: nothing beyond these three. ``agent_screen``
+#: hands the app's own hub UI what a terminal on this machine shows, which is
+#: why it's here and never a hub route: a screen doesn't leave the machine.
+OWN_UI = {"this_machine", "choose_agent_folder", "agent_screen"}
 
 _COMMAND = re.compile(r"#\[tauri::command\]\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)")
 
@@ -50,6 +52,6 @@ def test_every_app_command_refuses_a_page_it_does_not_answer() -> None:
 
 
 @pytest.mark.skipif(not SRC.is_dir(), reason="the desktop app's source isn't in this checkout")
-def test_only_the_folder_dialog_and_its_machine_answer_the_hubs_page() -> None:
+def test_only_the_folder_dialog_its_machine_and_its_screens_answer_the_hubs_page() -> None:
     open_to_hub = {name for name, body in _commands().items() if "own_ui_only(" in body}
     assert open_to_hub == OWN_UI

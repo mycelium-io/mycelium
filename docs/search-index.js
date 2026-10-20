@@ -753,7 +753,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop-adding-agents",
     "t": "Adding agents",
     "s": "Setup › The Desktop App",
-    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See Start Agents From the App. To watch or talk to an agent, open the agents terminal: terminal in the bar at the bottom of",
+    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See Start Agents From the App. To talk to an agent, open the agents terminal: terminal in the bar at the bottom of the wind",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#desktop-watching-an-agents-terminal",
+    "t": "Watching an agent's terminal",
+    "s": "Setup › The Desktop App",
+    "x": "You can see what an agent on this computer is doing without leaving the room. Its terminal shows live, read-only, in color: Members: click the agent, or right-click it and pick Watch terminal. Machines: press View on the agent's row. The channel: press watch beside \"is working\" while it works. Add agent: when an agent stops at a sign-in or a question as it starts, the dialog shows what it's asking. The view says \"Str",
     "p": "Guides"
   },
   {

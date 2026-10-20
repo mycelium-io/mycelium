@@ -13,12 +13,14 @@ interface Props {
   subtitle?: ReactNode;
   /** Header actions (e.g. an Edit button), rendered before the close button. */
   actions?: ReactNode;
+  /** Wide enough for a terminal's 80 to 120 columns. */
+  wide?: boolean;
   children: ReactNode;
 }
 
 /** A right-side slide-over for reviewing/auditing a record (memory, episode)
  *  without leaving the workspace — the editor-native "open a file" gesture. */
-export function DetailDrawer({ open, onClose, title, subtitle, actions, children }: Props) {
+export function DetailDrawer({ open, onClose, title, subtitle, actions, wide = false, children }: Props) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -36,7 +38,10 @@ export function DetailDrawer({ open, onClose, title, subtitle, actions, children
         onClick={onClose}
         aria-hidden
       />
-      <aside className="relative flex h-full w-[560px] max-w-[92vw] flex-col border-l border-border bg-elevated shadow-2xl data-open:animate-in data-open:slide-in-from-right-4" data-open>
+      <aside
+        className={`relative flex h-full ${wide ? "w-[880px]" : "w-[560px]"} max-w-[92vw] flex-col border-l border-border bg-elevated shadow-2xl data-open:animate-in data-open:slide-in-from-right-4`}
+        data-open
+      >
         <header className="flex items-start gap-3 border-b border-border px-5 py-3.5">
           <div className="min-w-0 flex-1">
             <div className="truncate font-mono text-label font-semibold text-text">{title}</div>

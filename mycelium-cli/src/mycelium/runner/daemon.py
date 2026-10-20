@@ -931,7 +931,6 @@ class Runner:
             "step": e.step,
             "why": why,
             "pane": e.ref,
-            "screen": e.screen,
             "detail": str(e),
         }
         return JobError(message, result={k: v for k, v in result.items() if v})

@@ -5,10 +5,12 @@
 // its web view's user agent with `MyceliumDesktop/<version>`. The page asks
 // for things by `mycelium://` link, which the app alone answers, so a hub's
 // page can open an agent's terminal but can never run anything on the machine
-// itself. The one exception is the app's own hub UI, which may call two
-// commands: which machine this is, and a folder dialog (`chooseFolderHere`).
+// itself. The one exception is the app's own hub UI, which may call three
+// commands: which machine this is, a folder dialog (`chooseFolderHere`), and
+// what an agent's terminal here shows (`useAgentScreen`).
 
 import { useEffect, useState, useSyncExternalStore } from "react";
+import useSWR from "swr";
 
 const MARK = /\bMyceliumDesktop\/[\w.+-]+/;
 
@@ -94,6 +96,45 @@ export async function chooseFolderHere(start?: string): Promise<string | null> {
   if (!invoke) return null;
   const picked = await invoke("choose_agent_folder", { start: start ?? null });
   return typeof picked === "string" ? picked : null;
+}
+
+/** How often an open terminal view asks the app for the screen again. */
+export const SCREEN_EVERY_MS = 1000;
+
+export interface AgentScreen {
+  /** What the terminal shows, with its colors. */
+  text: string | null;
+  /** When it was last read, for "updated 2s ago". */
+  at: number | null;
+  /** Why it can't be read, said for a person. */
+  error: string | null;
+}
+
+/**
+ * What the terminal at herdr `pane` on this machine shows, read by the app
+ * about once a second while `pane` is set. The app reads it from herdr and
+ * hands it to this page; it is never sent to the hub. Null `pane` reads nothing.
+ */
+export function useAgentScreen(pane: string | null): AgentScreen {
+  const { data, error } = useSWR(
+    pane && appInvoke() ? ["agent-screen", pane] : null,
+    async ([, p]: [string, string]) => {
+      const text = await appInvoke()!("agent_screen", { pane: p });
+      return { text: typeof text === "string" ? text : "", at: Date.now() };
+    },
+    {
+      refreshInterval: SCREEN_EVERY_MS,
+      refreshWhenHidden: false,
+      revalidateOnFocus: true,
+      dedupingInterval: SCREEN_EVERY_MS / 2,
+      keepPreviousData: true,
+    },
+  );
+  return {
+    text: data?.text ?? null,
+    at: data?.at ?? null,
+    error: error ? String(error instanceof Error ? error.message : error) : null,
+  };
 }
 
 /** Asks the app to update: its Check for Updates…, which asks before it downloads. */

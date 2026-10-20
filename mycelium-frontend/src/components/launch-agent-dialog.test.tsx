@@ -229,7 +229,7 @@ describe("LaunchAgentForm", () => {
     expect(within(shell).getByLabelText("failed")).toBeInTheDocument();
   });
 
-  it("says an agent CLI that didn't come up is likely waiting on the person, and shows its screen", async () => {
+  it("says an agent CLI that didn't come up is likely waiting on the person, never with a screen from the hub", async () => {
     connected = [runner()];
     launchRunnerAgent.mockResolvedValue(job());
     fetchRunnerJob.mockResolvedValue(
@@ -245,8 +245,9 @@ describe("LaunchAgentForm", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("an update, a sign-in, or a first-run question");
-    expect(alert).toHaveTextContent("Its terminal shows");
-    expect(alert).toHaveTextContent("Update now? [Y/n]");
+    // A screen only ever shows live from this machine, in the desktop app. Even
+    // an older runner's job that carried one through the hub isn't shown.
+    expect(alert).not.toHaveTextContent("Update now? [Y/n]");
   });
 
   it("tries a failed start again without going back to the form", async () => {

@@ -158,6 +158,32 @@ pub fn focus_pane(pane: &str) {
     }
 }
 
+/// What an agent's terminal shows right now, in color, read from herdr on this
+/// machine for the app's own pages to draw. It goes nowhere else: no hub, no
+/// network, so a screen with a key or private code on it stays here.
+pub fn screen(pane: &str) -> Result<String, String> {
+    if !is_pane_id(pane) {
+        return Err("That isn't a terminal herdr knows.".into());
+    }
+    let bin = herdr()?;
+    let out = paths::command(&bin)
+        .args(["pane", "read", pane, "--source", "visible", "--format", "ansi"])
+        .env("PATH", paths::shell_path())
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err("herdr couldn't read that terminal. It may have closed.".into());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// A herdr pane id as herdr writes one (`w2:p3D`): a page can name a pane, but
+/// never slip an option or anything else into herdr's arguments.
+fn is_pane_id(pane: &str) -> bool {
+    let ok = |s: &str| !s.is_empty() && s.len() <= 16 && s.chars().all(|c| c.is_ascii_alphanumeric());
+    matches!(pane.split_once(':'), Some((w, p)) if w.starts_with('w') && p.starts_with('p') && ok(w) && ok(p))
+}
+
 fn find_str(value: &Value, key: &str) -> Option<String> {
     match value {
         Value::Object(map) => map
@@ -180,5 +206,15 @@ mod tests {
         let v = json!({"id":"cli:pane:get","result":{"pane":{"pane_id":"w2:p9","tab_id":"w2:t9"}}});
         assert_eq!(find_str(&v, "tab_id").as_deref(), Some("w2:t9"));
         assert_eq!(find_str(&v, "workspace_id"), None);
+    }
+
+    #[test]
+    fn only_a_pane_id_reaches_herdr() {
+        assert!(is_pane_id("w2:p3D"));
+        assert!(is_pane_id("w15:p1"));
+        for bad in ["", "w2", "--help:p1", "w2:p1 --raw", "w2:p1;ls", "x2:p1", "w2:t1", "w2:p1:p2"] {
+            assert!(!is_pane_id(bad), "{bad}");
+        }
+        assert!(screen("--source").is_err());
     }
 }
