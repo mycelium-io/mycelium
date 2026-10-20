@@ -20,6 +20,7 @@ node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --do "click:textarea[placeholder^=\"Reply in\"]" \
   --do "typekeys:@conductor concord @~success @~finance @~sales @~legal: Decide the renewal offer for Acme." \
   --do "press:Enter" \
+  --do "eval:(window.__follow ||= setInterval(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Jump to latest')); if (b) b.click(); }, 1000), 'following the thread')" \
   --do "caption:Everyone suggests an option, then rates every option from 0 to 100." \
   --do "speed:5" \
   --do "wait:table[aria-label^=\"Ratings\"]" \
@@ -28,14 +29,14 @@ node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --do "zoom:table[aria-label^=\"Ratings\"]@1.5" \
   --do "hold:3800" \
   --do "zoomout" \
-  --do "caption:Whoever is least happy suggests a fix, and everyone rates it." \
+  --do "caption:If anyone is below the bar, the least happy suggests a fix, and everyone rates it." \
   --do "speed:5" \
-  --do "wait:text=/Everyone's on board|Couldn't get everyone there/" \
+  --do "wait:text=/concord\\s*(converged|rejected)/" \
   --do "speed:1" \
   --do "caption:It stops once everyone clears the bar, and says what it went with." \
-  --do "zoom:text=/Everyone's on board|Couldn't get everyone there/@1.4" \
+  --do "zoom:text=/pick: .+, everyone at \\d+\\+/ >> nth=-1@1.4" \
   --do "hold:3800" \
   --do "zoomout" \
   --do "caption:The decision is saved to the room's memory, next to the task." \
-  --do "click:context/decision/acme-renewal-offer" \
+  --do "click:text=/^acme-renewal-offer\\.md$/" \
   --do "hold:5000"

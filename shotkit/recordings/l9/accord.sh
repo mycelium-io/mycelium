@@ -20,6 +20,7 @@ node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --do "click:textarea[placeholder^=\"Reply in\"]" \
   --do "typekeys:@conductor accord @~sales @~success @~finance @~legal: Plan the Acme renewal handoff." \
   --do "press:Enter" \
+  --do "eval:(window.__follow ||= setInterval(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Jump to latest')); if (b) b.click(); }, 1000), 'following the thread')" \
   --do "caption:Everyone labels what they think the task is: its aim, its limits, what's out of scope." \
   --do "speed:5" \
   --do "wait:text=/Round 1: \\d+ new point/" \
@@ -34,14 +35,14 @@ node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --do "hold:1500" \
   --do "caption:Then the words: a word two people mean differently is flagged, not settled." \
   --do "speed:5" \
-  --do "wait:text=/accord (done|rejected)/" \
+  --do "wait:text=/accord\\s*(resolved|rejected)/" \
   --do "speed:1" \
   --do "hold:1500" \
   --do "caption:Nobody leads and nobody votes. What doesn't line up becomes an open item." \
-  --do "zoom:text=/Shared summary: /@1.4" \
+  --do "zoom:text=/^words: /@1.4" \
   --do "hold:4000" \
   --do "zoomout" \
   --do "caption:The shared summary is saved to the room's memory, next to the task." \
-  --do "click:context/summary/acme-renewal-handoff" \
+  --do "click:text=context/summary/acme-renewal-handoff >> nth=-1" \
   --do "hold:5000" \
   --do "hold:2500"
