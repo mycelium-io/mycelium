@@ -34,6 +34,9 @@ const COMMANDS: &[&str] = &[
     "terminal_resize",
     "terminal_close",
     "terminal_agents",
+    "app_versions",
+    "set_update_channel",
+    "switch_version",
 ];
 
 fn main() {

@@ -19,6 +19,7 @@ mod signature;
 mod supervisor;
 mod terminal;
 mod updates;
+mod versions;
 mod zoom;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1317,6 +1318,48 @@ fn update_retry(app: AppHandle, webview: Webview) -> Result<(), String> {
     Ok(())
 }
 
+/// Settings' Version section: the version running, the channel, and the
+/// releases it can switch to (release candidates too, with `with_rc`).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VersionsView {
+    current: String,
+    release_candidates: bool,
+    releases: Vec<versions::Release>,
+}
+
+#[tauri::command]
+async fn app_versions(
+    app: AppHandle,
+    webview: Webview,
+    with_rc: bool,
+) -> Result<VersionsView, String> {
+    local_only(&app, &webview)?;
+    Ok(VersionsView {
+        current: app.package_info().version.to_string(),
+        release_candidates: versions::channel() == versions::Channel::ReleaseCandidates,
+        releases: versions::releases(with_rc).await?,
+    })
+}
+
+/// Whether updates offer release candidates too. Saved at once; no restart.
+#[tauri::command]
+fn set_update_channel(app: AppHandle, webview: Webview, release_candidates: bool) -> Result<(), String> {
+    local_only(&app, &webview)?;
+    versions::set_channel(if release_candidates {
+        versions::Channel::ReleaseCandidates
+    } else {
+        versions::Channel::Stable
+    })
+}
+
+/// Install the release tagged `tag`, older or newer, chosen in Settings.
+#[tauri::command]
+async fn switch_version(app: AppHandle, webview: Webview, tag: String) -> Result<(), String> {
+    local_only(&app, &webview)?;
+    updates::switch(app, &tag).await
+}
+
 #[tauri::command]
 fn terminal_open(
     app: AppHandle,
@@ -1498,7 +1541,10 @@ pub fn run() {
             terminal_write,
             terminal_resize,
             terminal_close,
-            terminal_agents
+            terminal_agents,
+            app_versions,
+            set_update_channel,
+            switch_version
         ])
         .setup(|app| {
             let handle = app.handle().clone();
