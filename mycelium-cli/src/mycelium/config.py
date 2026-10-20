@@ -898,6 +898,17 @@ class MyceliumConfig(BaseModel):
         return Path.home() / ".mycelium"
 
     @classmethod
+    def get_agent_state_dir(cls) -> Path:
+        """What the CLI writes when an agent runs it: ``await``'s pending
+        confirmations and minted agent tokens, and nothing else.
+
+        Kept apart from the rest of ``~/.mycelium`` so a sandboxed agent (Codex)
+        can be given this folder alone, never the config, the herdr registry or
+        the runner's approval files beside it.
+        """
+        return cls.get_global_config_dir() / "agent-state"
+
+    @classmethod
     def get_global_config_path(cls) -> Path:
         return cls.get_global_config_dir() / "config.toml"
 

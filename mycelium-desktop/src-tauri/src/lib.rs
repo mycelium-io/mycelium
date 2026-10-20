@@ -1281,6 +1281,18 @@ fn terminal_close(app: AppHandle, webview: Webview) -> Result<(), String> {
     Ok(())
 }
 
+/// The agents herdr is running, so the window can say when there are none
+/// and when one is waiting for you. Runs in the background: herdr answers
+/// over a socket, and the window asks again while it's open.
+#[tauri::command]
+async fn terminal_agents(
+    app: AppHandle,
+    webview: Webview,
+) -> Result<Vec<terminal::Agent>, String> {
+    local_only(&app, &webview)?;
+    tauri::async_runtime::spawn_blocking(terminal::agents).await.map_err(|e| e.to_string())
+}
+
 // ── the app ─────────────────────────────────────────────────────────────────
 
 /// The webview's own user agent on this platform, which the pages read to
@@ -1416,7 +1428,8 @@ pub fn run() {
             terminal_open,
             terminal_write,
             terminal_resize,
-            terminal_close
+            terminal_close,
+            terminal_agents
         ])
         .setup(|app| {
             let handle = app.handle().clone();

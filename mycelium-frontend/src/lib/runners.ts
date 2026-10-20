@@ -210,6 +210,8 @@ export interface StartReport {
   screen: string | null;
   /** What the host said, word for word, for whoever is debugging. */
   detail: string | null;
+  /** Still starting, but the terminal's shell is slow to reach a prompt. */
+  slow: boolean;
 }
 
 const STEPS: readonly string[] = ["terminal", "shell", "agent"];
@@ -227,6 +229,7 @@ export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): 
     pane: text(r.pane),
     screen: text(r.screen),
     detail: text(r.detail),
+    slow: r.slow === true,
   };
 }
 

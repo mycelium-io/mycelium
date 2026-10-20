@@ -10,8 +10,9 @@
  *
  *   <MachinesScreen />            Add machine: pair a remote one, or add one by id
  *     └─ <MachineCard /> per runner
- *          ├─ frameworks   the scan, with Rescan
- *          ├─ agents       started from the app, each with Stop
+ *          ├─ agents       what runs there, first, each with Stop or Restart
+ *          ├─ frameworks   the agent CLIs it can start new ones with, with Rescan
+ *          ├─ roots        the folders they may start in
  *          ├─ pairings     devices that start agents here without asking
  *          └─ jobs         the recent queue, newest first
  */
@@ -151,21 +152,31 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
         </div>
       )}
 
-      <Section title="Folders agents may start in">
-        {runner.roots.length === 0 ? (
-          <p className="text-label text-muted-foreground">None. Start the runner with --root &lt;folder&gt;.</p>
-        ) : (
-          <ul className="flex flex-wrap gap-x-4 gap-y-0.5">
-            {runner.roots.map((root) => (
-              <li key={root} className="font-mono text-micro text-text">
-                {root}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+      {/* Your agents first: who is running here, where and doing what. The
+          CLIs and folders after them are what a new one can start with.
+          Every agent on the machine when its runner reports them; a runner
+          from before that, the ones it started. */}
+      {runner.machine ? (
+        <Section title="Agents on this machine">
+          <MachineAgents runner={runner} />
+        </Section>
+      ) : (
+        <Section title="Agents running here">
+          {runner.agents.length === 0 ? (
+            <p className="text-label text-muted-foreground">
+              None yet. Start one from a room&apos;s Members panel, under Invite.
+            </p>
+          ) : (
+            <ul>
+              {runner.agents.map((a) => (
+                <AgentLine key={`${a.room}/${a.handle}`} runner={runner} agent={a} />
+              ))}
+            </ul>
+          )}
+        </Section>
+      )}
 
-      <Section title="Agent CLIs" action={<RescanButton runner={runner} />}>
+      <Section title="Agent CLIs to start new agents with" action={<RescanButton runner={runner} />}>
         {frameworks.length === 0 ? (
           <p className="text-label text-muted-foreground">The machine has not reported a scan yet.</p>
         ) : (
@@ -192,27 +203,19 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
         )}
       </Section>
 
-      {/* Every agent on the machine when its runner reports them; a runner
-          from before that, the ones it started. */}
-      {runner.machine ? (
-        <Section title="Agents on this machine">
-          <MachineAgents runner={runner} />
-        </Section>
-      ) : (
-        <Section title="Agents running here">
-          {runner.agents.length === 0 ? (
-            <p className="text-label text-muted-foreground">
-              None yet. Start one from a room&apos;s Members panel, under Invite.
-            </p>
-          ) : (
-            <ul>
-              {runner.agents.map((a) => (
-                <AgentLine key={`${a.room}/${a.handle}`} runner={runner} agent={a} />
-              ))}
-            </ul>
-          )}
-        </Section>
-      )}
+      <Section title="Folders agents may start in">
+        {runner.roots.length === 0 ? (
+          <p className="text-label text-muted-foreground">None. Start the runner with --root &lt;folder&gt;.</p>
+        ) : (
+          <ul className="flex flex-wrap gap-x-4 gap-y-0.5">
+            {runner.roots.map((root) => (
+              <li key={root} className="font-mono text-micro text-text">
+                {root}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
 
       <Section title="Paired computers">
         <Pairings runner={runner} keyId={keyId} />

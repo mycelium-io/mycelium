@@ -80,6 +80,13 @@ class StartHooks:
     def step(self, step: str) -> None:
         """The start reached ``step`` (``STEP_TERMINAL``, ``STEP_SHELL``...)."""
 
+    def slow_shell(self, ref: str) -> None:
+        """The terminal ``ref`` opened, but its shell is slow to reach a prompt.
+
+        The start keeps waiting; this is for telling the person, who can look
+        at that terminal for what's holding it up.
+        """
+
     def unlocked(self) -> AbstractContextManager[None]:
         """Held while the host waits on the agent, with nothing of the runner's locked."""
         return nullcontext()
@@ -311,7 +318,14 @@ class HerdrHost:
         hooks.step(STEP_SHELL)
         try:
             with hooks.unlocked():
-                came_up = _start_when_ready(self.bridge, handle, kind, pane, room=room)
+                came_up = _start_when_ready(
+                    self.bridge,
+                    handle,
+                    kind,
+                    pane,
+                    room=room,
+                    on_slow_shell=lambda: hooks.slow_shell(pane),
+                )
         except HerdrError as e:
             # The pane stays open: whatever it shows (a shell still starting, an
             # update or sign-in the agent CLI asks for first) is the person's to

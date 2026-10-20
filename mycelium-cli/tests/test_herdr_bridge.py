@@ -818,6 +818,22 @@ def test_herdr_older_than_the_minimum_is_too_old(version: str | None, old: bool)
     assert too_old(version) is old
 
 
+def test_herdr_starts_past_its_first_run_screens_only_when_nobody_set_it_up(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mycelium.integrations.herdr.bridge import skip_first_run
+
+    path = tmp_path / "herdr" / "config.toml"
+    monkeypatch.setenv("HERDR_CONFIG_PATH", str(path))
+    # A machine where herdr was never set up: its screens are skipped.
+    assert skip_first_run() is True
+    assert "onboarding = false" in path.read_text()
+    # Someone's own herdr settings are theirs: never rewritten.
+    path.write_text('[ui]\ntheme = "mine"\n')
+    assert skip_first_run() is False
+    assert path.read_text() == '[ui]\ntheme = "mine"\n'
+
+
 # ── sync presence collection ────────────────────────────────────────────────────
 
 

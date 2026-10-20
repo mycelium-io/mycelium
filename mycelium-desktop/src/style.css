@@ -927,6 +927,45 @@ select.field {
   inset: 8px 0 0 8px;
 }
 
+/* One line over herdr: what this window is, or who is waiting in it. */
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.terminal-bar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-bar[data-tone="waiting"] {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.terminal-bar button {
+  flex: none;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.terminal-bar:not([hidden]) + #terminal {
+  top: 40px;
+}
+
 .terminal-note {
   position: absolute;
   inset: auto 16px 16px 16px;
