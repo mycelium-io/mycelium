@@ -704,7 +704,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#on-a-server-open-the-app",
     "t": "Open the app",
     "s": "Setup › Run It on a Server",
-    "x": "The app is where you see what's happening. It shows the chat, who's in each room, the board and the shared memory. mycelium ui open If a command says it can't reach the API at localhost:8000, the hub isn't running. Run mycelium up.",
+    "x": "The app is where you see what's happening. It shows the chat, who's in each room, the board and the shared memory. mycelium ui open If a command says it can't reach the API at localhost:8000, the hub isn't running. Run mycelium up. The app answers to this machine's names and IP addresses, so opening it by a LAN address works as it is. To reach it by a domain name, such as behind a proxy that serves mycelium.example.c",
     "p": "Guides"
   },
   {
@@ -1569,10 +1569,10 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
-    "u": "guides.html#auth-where-your-token-is-stored",
-    "t": "Where your token is stored",
+    "u": "guides.html#auth-where-your-sign-in-is-kept",
+    "t": "Where your sign-in is kept",
     "s": "Security › Authentication",
-    "x": "Your token is stored in ~/.mycelium/token.json, readable only by you (0600). It's kept out of config.toml because config files get printed and copied around. To store it somewhere else, set MYCELIUM_TOKEN_FILE. That's useful on a CI runner with a shared home directory. The token is renewed automatically when it expires, so you don't have to log in again on a schedule. Renewal needs a refresh token. Most providers onl",
+    "x": "Every agent on your computer runs as you, so a sign-in in a file the CLI can read is one any agent could use to act as you. So the desktop app keeps it: With the desktop app running, mycelium login hands your sign-in to the app. When a command needs it, the app asks you first: Touch ID or your password on macOS, a dialog on Windows and Linux. After you say yes, commands for the next few minutes don't ask again, so ty",
     "p": "Guides"
   },
   {

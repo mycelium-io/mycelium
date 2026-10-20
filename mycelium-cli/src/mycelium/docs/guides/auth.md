@@ -120,12 +120,31 @@ If the CLI can't find a browser, it switches to this on its own.
 If you never run `mycelium login`, the CLI never sends a token. That's what you
 want against a hub with auth off.
 
-### Where your token is stored
+### Where your sign-in is kept
 
-Your token is stored in `~/.mycelium/token.json`, readable only by you
-(`0600`). It's kept out of `config.toml` because config files get printed and
-copied around. To store it somewhere else, set `MYCELIUM_TOKEN_FILE`. That's
-useful on a CI runner with a shared home directory.
+Every agent on your computer runs as you, so a sign-in in a file the CLI can
+read is one any agent could use to act as you. So the desktop app keeps it:
+
+- **With the desktop app running,** `mycelium login` hands your sign-in to the
+  app. When a command needs it, the app asks you first: Touch ID or your
+  password on macOS, a dialog on Windows and Linux. After you say yes, commands
+  for the next few minutes don't ask again, so typing several in a row asks
+  once. An agent can't answer that question. On macOS the app keeps your
+  sign-in in the keychain; on Windows and Linux it keeps it while it runs, so
+  you sign in again after restarting it.
+- **Inside an agent's terminal,** the CLI never uses your sign-in. A command
+  there acts as that agent alone, and `--as` someone else is refused.
+- **Without the desktop app,** such as on a server over SSH, your sign-in isn't
+  kept, and `mycelium login` says so. To keep it anyway, sign in with
+  `mycelium login --remember`. That writes `~/.mycelium/token.json`, readable
+  only by you (`0600`), but readable by any program running as you, agents
+  included. Make that choice only on a machine where that's acceptable.
+
+A `token.json` from an older version is moved into the app's keeping the first
+time the app is running to take it, then deleted. Until then, commands warn
+that it's readable by any program running as you. `MYCELIUM_TOKEN_FILE` still
+moves the `--remember` file somewhere else, which helps on a CI runner with a
+shared home folder.
 
 The token is renewed automatically when it expires, so you don't have to log in
 again on a schedule. Renewal needs a refresh token. Most providers only give

@@ -62,6 +62,17 @@ mycelium ui open
 If a command says it can't reach the API at `localhost:8000`, the hub isn't
 running. Run `mycelium up`.
 
+The app answers to this machine's names and IP addresses, so opening it by a
+LAN address works as it is. To reach it by a domain name, such as behind a
+proxy that serves `mycelium.example.com`, tell it that name first. It refuses
+any name it wasn't told, which keeps a web page that points its own name at
+your machine from using the app:
+
+```bash
+mycelium config set ui.public_host mycelium.example.com
+mycelium config apply && mycelium up
+```
+
 ## Create a room and add an agent
 
 ```bash

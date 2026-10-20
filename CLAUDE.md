@@ -251,6 +251,17 @@ module; read it before changing what a rule protects.
   plain HTTPS until `slima2a` stops pinning an older `a2a-sdk` (#726).
 - **The hub never fetches what a caller names.** Patterns load from a folder
   the operator provides (`app/services/patterns.py`).
+- **Agents run as the person, so a person's sign-in is never readable as a
+  file.** The desktop app keeps it and asks the person (Touch ID or password,
+  with a few minutes' grace) before the CLI gets it (`session_store.py`,
+  `desktop/session_relay.py`, `src-tauri/src/sessions.rs`); an agent's pane
+  never uses it (`caller.in_agent_pane`); `login --remember` is the warned
+  file. A credential goes only to the hub that issued it (`client.hub_client`).
+- **The UI server answers only its own pages** (`src/proxy.ts`,
+  `lib/ui-guard.ts`): a name it serves (loopback, an IP, `ui.public_host`),
+  its own origin, JSON bodies, and in the desktop app a per-launch token the
+  app hands its window in the URL fragment. The supervisor gives that token to
+  the UI server alone, never to herdr or an agent's pane.
 - **Usage counts carry kinds and outcomes, never a name, handle, room or
   text**, and sending them is off by default (`app/services/analytics.py`).
 - **Voice is opt-in**, and the hub never loads the speech model in its own
