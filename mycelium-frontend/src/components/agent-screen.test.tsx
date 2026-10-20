@@ -96,7 +96,16 @@ describe("an agent's terminal", () => {
   it("outside the desktop app, points there and reads nothing", () => {
     runners = [runner("here", [{ room: "checkout", handle: "builder", pane: "w3:p1" }])];
     renderWithSWR(<AgentScreen room="checkout" handle="builder" />);
-    expect(screen.getByText(/shows here in the desktop app/)).toBeInTheDocument();
+    expect(screen.getByText(/shows in the desktop app, for agents on that computer/)).toBeInTheDocument();
     expect(screen.queryByText(STREAMED_LOCALLY)).not.toBeInTheDocument();
+  });
+
+  it("in the app on a hub elsewhere, says why and never to open the app", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Macintosh) MyceliumDesktop/3.0.0");
+    // Client mode: the page is another hub's, so it has no way to ask the app.
+    runners = [runner("here", [{ room: "checkout", handle: "builder", pane: "w3:p1" }])];
+    renderWithSWR(<AgentScreen room="checkout" handle="builder" />);
+    expect(await screen.findByText(/connected to one elsewhere/)).toBeInTheDocument();
+    expect(screen.queryByText(/desktop app/)).not.toBeInTheDocument();
   });
 });

@@ -42,11 +42,16 @@ export function AgentScreen({ room, handle, runner: runnerOf }: Props) {
   const readable = place.kind === "here" && place.state !== "gone";
   const screen = useAgentScreen(readable ? { room, handle } : null);
 
-  if (!desktop || !thisMachine) {
+  if (!desktop) {
+    return <Note>An agent&apos;s terminal shows in the desktop app, for agents on that computer.</Note>;
+  }
+  if (!thisMachine) {
+    // In the app, but showing a hub elsewhere (client mode), whose pages can't
+    // ask the app for anything. The agents terminal still opens from the app.
     return (
       <Note>
-        An agent&apos;s terminal shows here in the desktop app, for agents running on that computer. Open Mycelium there
-        to watch @{handle}.
+        Terminals show here when this app runs your hub, not yet when it&apos;s connected to one elsewhere. To see
+        @{handle}, open the agents terminal from the bar at the bottom.
       </Note>
     );
   }
