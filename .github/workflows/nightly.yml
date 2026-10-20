@@ -264,10 +264,12 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           bash -c "$INSTALL"
           # An installer that puts the CLI in a folder of its own adds that
-          # folder to the shell's startup file, as a person's new terminal
-          # would read it. Take what it added under $HOME.
-          env -i HOME="$HOME" bash -ic 'printf "%s" "$PATH"' 2>/dev/null \
-            | tr ':' '\n' | grep "^$HOME/" >> "$GITHUB_PATH" || true
+          # folder to a shell startup file (~/.bashrc or ~/.bash_profile), as a
+          # person's new terminal would read it. Take what it added under $HOME.
+          for shell in -ic -lic; do
+            env -i HOME="$HOME" bash "$shell" 'printf "%s" "$PATH"' 2>/dev/null \
+              | tr ':' '\n' | grep "^$HOME/" >> "$GITHUB_PATH" || true
+          done
       # Started after the CLI is installed, so its panes' shells find it.
       - name: Start herdr
         run: |
