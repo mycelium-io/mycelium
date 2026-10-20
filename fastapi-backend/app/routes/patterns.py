@@ -49,7 +49,12 @@ from app.schemas import (
 )
 from app.services import actor, patterns, protocols
 from app.services.agent_registry import norm_handle
-from app.services.filesystem import get_data_dir, read_room_meta, write_room_meta
+from app.services.filesystem import (
+    canonical_room_name,
+    get_data_dir,
+    read_room_meta,
+    write_room_meta,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +212,10 @@ def _claim_room(wanted: str, *, exact: bool) -> str:
     for n in range(1, MAX_NAME_ATTEMPTS + 1):
         name = wanted if n == 1 else f"{wanted}-{n}"
         try:
+            # A name a room has under another spelling is taken too, on a
+            # disk that keeps case apart as well as one that doesn't.
+            if canonical_room_name(name) != name:
+                raise FileExistsError(name)
             (rooms / name).mkdir()
         except FileExistsError:
             if exact:

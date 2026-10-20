@@ -43,7 +43,12 @@ from app.schemas import (
 )
 from app.services import actor
 from app.services.agent_registry import norm_handle, write_agent_manifest
-from app.services.filesystem import get_room_dir, read_memory_file, room_exists
+from app.services.filesystem import (
+    canonical_room_name,
+    get_room_dir,
+    read_memory_file,
+    room_exists,
+)
 from app.services.runners import (
     RunnerError,
     check_cwd,
@@ -335,6 +340,8 @@ async def launch_agent(
     The runner asks the person at its machine before it starts it.
     """
     runner = _runner_or_404(runner_id, request)
+    # The body names the room, so the request's path isn't where it's spelled.
+    payload.room = canonical_room_name(payload.room)
     if not room_exists(payload.room):
         raise HTTPException(status_code=404, detail="Room not found")
     handle = norm_handle(payload.handle)
@@ -402,6 +409,8 @@ async def adopt_agent(runner_id: str, payload: RunnerAgentAdopt, request: Reques
     agent once it's idle.
     """
     runner = _runner_or_404(runner_id, request)
+    # The body names the room, so the request's path isn't where it's spelled.
+    payload.room = canonical_room_name(payload.room)
     if not room_exists(payload.room):
         raise HTTPException(status_code=404, detail="Room not found")
     handle = norm_handle(payload.handle)

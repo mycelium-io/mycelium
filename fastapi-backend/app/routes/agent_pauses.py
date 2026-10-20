@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from app.schemas import AgentsControl, AgentsControlRead, PauseRead
 from app.services import actor, agent_control, pauses
 from app.services.agent_registry import norm_handle
-from app.services.filesystem import room_exists
+from app.services.filesystem import canonical_room_name, room_exists
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -23,8 +23,10 @@ def _owner(payload: AgentsControl, request: Request) -> str:
     owner = norm_handle(actor.bind_optional_actor(request, payload.by, field="by"))
     if not owner:
         raise HTTPException(status_code=422, detail="Say whose agents (`by`).")
-    if payload.room and not room_exists(payload.room):
-        raise HTTPException(status_code=404, detail="Room not found")
+    if payload.room:
+        payload.room = canonical_room_name(payload.room)
+        if not room_exists(payload.room):
+            raise HTTPException(status_code=404, detail="Room not found")
     return owner
 
 
