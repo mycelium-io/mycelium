@@ -62,16 +62,19 @@ def current_token(config: MyceliumConfig | None = None) -> StoredToken | None:
 
     Returns ``None`` when logged out, and also when the session is expired and
     can't be refreshed; an expired token is worse than no token, since it turns
-    a working call against an ungated hub into a 401.
+    a working call against an ungated hub into a 401. Where it's kept, and that
+    an agent's pane never gets it, is ``session_store``'s business.
     """
-    from mycelium.tokens import load_token
+    from mycelium import session_store
 
-    stored = load_token()
+    cfg = _resolve_config(config)
+    stored, where = session_store.load(cfg)
     if stored is None or not stored.is_expired():
         return stored
 
-    refreshed = _refresh(stored, _resolve_config(config))
+    refreshed = _refresh(stored, cfg)
     if refreshed is not None:
+        session_store.renewed(cfg, refreshed, where)
         return refreshed
 
     global _refresh_warned  # noqa: PLW0603, process-wide "say this once" latch
@@ -87,7 +90,6 @@ def current_token(config: MyceliumConfig | None = None) -> StoredToken | None:
 def _refresh(stored: StoredToken, config: MyceliumConfig) -> StoredToken | None:
     """Renew an expired session with its refresh token. ``None`` if it can't be."""
     from mycelium import oidc
-    from mycelium.tokens import save_token
 
     if not stored.refresh_token:
         return None
@@ -128,7 +130,6 @@ def _refresh(stored: StoredToken, config: MyceliumConfig) -> StoredToken | None:
         token_endpoint=endpoint,
         scope=resp.scope or stored.scope,
     )
-    save_token(renewed)
     return renewed
 
 

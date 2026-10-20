@@ -787,6 +787,9 @@ class Runner:
             "MYCELIUM_API_URL": self.config.server.api_url,
             "MYCELIUM_AGENT_HANDLE": handle,
             "MYCELIUM_ROOM_ID": room,
+            # Marks the pane as an agent's: the CLI never uses the person's
+            # sign-in here (``caller.in_agent_pane``).
+            "MYCELIUM_AGENT_PANE": handle,
         }
 
     def join_code(self, room: str, handle: str) -> str:

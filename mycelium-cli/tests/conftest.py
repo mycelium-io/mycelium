@@ -346,6 +346,13 @@ def _no_ambient_agent_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     for name in AGENT_AUTH_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
+    # Nor a pane: the developer's own terminal may be an agent's herdr pane.
+    for name in ("HERDR_PANE_ID", "MYCELIUM_AGENT_PANE"):
+        monkeypatch.delenv(name, raising=False)
+    # A person's sign-in is looked up once per process; each test is its own.
+    from mycelium import session_store
+
+    session_store._cache.clear()
 
 
 @pytest.fixture

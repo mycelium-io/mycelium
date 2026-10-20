@@ -156,17 +156,27 @@ def serve(
 
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
+    relay = None
     if json_out and stat.S_ISFIFO(os.fstat(sys.stdin.fileno()).st_mode):
+        # The app keeps a person's sign-in, so the CLI asks it through here,
+        # and the app answers on our stdin (``desktop.session_relay``).
+        from mycelium.desktop.session_relay import SessionRelay
+
+        relay = SessionRelay(emit)
+        relay.start()
+
         # The app holds a pipe to our stdin; when it goes away, so do we.
         def watch_parent() -> None:
-            for _ in sys.stdin:
-                pass
+            for line in sys.stdin:
+                relay.answer(line)
             sup.stop()
 
         threading.Thread(target=watch_parent, daemon=True).start()
     try:
         sup.run()
     finally:
+        if relay is not None:
+            relay.stop()
         writer.close()
 
 

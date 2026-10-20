@@ -261,6 +261,7 @@ def test_each_member_gets_a_pane_an_agent_and_its_own_identity(
             ("MYCELIUM_API_URL", "http://127.0.0.1:8000"),
             ("MYCELIUM_AGENT_HANDLE", h),
             ("MYCELIUM_ROOM_ID", "fix-tests"),
+            ("MYCELIUM_AGENT_PANE", h),
         )
     ]
     assert [c[2:6] for c in herdr.of("agent start")] == [

@@ -38,15 +38,7 @@ from mycelium.oidc import (
     device_code_login,
     discover,
 )
-from mycelium.tokens import (
-    DEFAULT_LEEWAY_S,
-    StoredToken,
-    clear_token,
-    format_span,
-    load_token,
-    save_token,
-    token_path,
-)
+from mycelium.tokens import DEFAULT_LEEWAY_S, StoredToken, format_span, token_path
 
 console = Console()
 
@@ -190,7 +182,10 @@ def _report(
     handle: str | None,
     alignment: str,
     json_output: bool,
+    kept: str,
 ) -> None:
+    from mycelium import session_store
+
     shown = handle or "(unknown)"
     remaining = token.expires_in()
 
@@ -208,6 +203,9 @@ def _report(
                     "refresh_expires_at": token.refresh_expires_at,
                     "renewal_leeway_s": DEFAULT_LEEWAY_S,
                     "identity": config.identity.name,
+                    # Where it's kept: the desktop app, a --remember file, or
+                    # nowhere (this command only).
+                    "kept": kept,
                 },
                 indent=2,
             )
@@ -237,7 +235,22 @@ def _report(
             "[dim]No refresh token was issued, so the session ends when this access token "
             "does; add the 'offline_access' scope if you want it renewed automatically.[/dim]"
         )
-    console.print(f"[dim]Session cached at {token_path()} (mode 0600).[/dim]")
+    if kept == session_store.APP:
+        console.print(
+            "[dim]Kept by Mycelium. A command that uses it asks you first (Touch ID or your "
+            "password on macOS), so an agent running as you can't.[/dim]"
+        )
+    elif kept == session_store.FILE:
+        console.print(
+            f"[yellow]Kept in {token_path()}[/yellow] [dim](mode 0600). Any program running "
+            "as you can read it, agents included.[/dim]"
+        )
+    else:
+        console.print(
+            "[yellow]Not kept:[/yellow] Mycelium isn't running here to keep it. Open "
+            "Mycelium and sign in again, or run [cyan]mycelium login --remember[/cyan] to keep "
+            "it in a file any program running as you can read."
+        )
 
     if alignment in (_ALIGNED, _UNREGISTERED):
         console.print(f"[dim]This machine now writes as @{shown} (identity.name).[/dim]")
@@ -291,8 +304,21 @@ def login(
     timeout: float = typer.Option(
         300.0, "--timeout", "-t", help="Seconds to wait for you to finish signing in."
     ),
+    remember: bool = typer.Option(
+        False,
+        "--remember",
+        help=(
+            "Without the desktop app: keep the sign-in in a file. Any program running as "
+            "you can read it, agents included."
+        ),
+    ),
 ) -> None:
-    """Obtain an OIDC token for the hub and cache it for subsequent commands.
+    """Sign in to the hub, and keep the sign-in with the desktop app.
+
+    The desktop app keeps it and asks you (Touch ID or your password on macOS)
+    before the CLI uses it, so an agent running as you can't. Without the app
+    it isn't kept, unless ``--remember`` writes it to a file. An agent's pane
+    can't sign in as a person.
 
     With neither ``--issuer`` nor ``login.issuer``, the hub named by
     ``server.api_url`` is asked for the issuer it trusts, and a single answer is
@@ -301,10 +327,19 @@ def login(
     Examples:
         mycelium login
         mycelium login --issuer https://sso.example.com/realms/mycelium
-        mycelium login --device        # headless / SSH / CI
+        mycelium login --device             # headless / SSH / CI
+        mycelium login --device --remember  # a server with no desktop app
     """
+    from mycelium import caller
+
     config = MyceliumConfig.load()
     json_output = ctx.obj.get("json", False) if ctx.obj else False
+    if pane := caller.in_agent_pane():
+        console.print(
+            f"[red]Error:[/red] this is @{pane}'s pane. An agent can't sign in as a person; "
+            "run mycelium login in your own terminal."
+        )
+        raise typer.Exit(1)
 
     resolved_issuer = (issuer or config.login.issuer or "").strip().rstrip("/")
     discovered = None
@@ -366,7 +401,9 @@ def login(
         token_endpoint=meta.token_endpoint,
         scope=grant.scope or resolved_scope,
     )
-    save_token(token)
+    from mycelium import session_store
+
+    kept = session_store.save(config, token, remember=remember)
 
     _persist_login_config(
         config,
@@ -381,7 +418,9 @@ def login(
 
     handle = token.handle(config.auth.handle_claim) or token.handle()
     alignment = _align_identity(config, handle) if handle else _SKIPPED
-    _report(token, config, handle=handle, alignment=alignment, json_output=json_output)
+    _report(
+        token, config, handle=handle, alignment=alignment, json_output=json_output, kept=kept
+    )
 
 
 @doc_ref(
@@ -390,10 +429,11 @@ def login(
     group="setup",
 )
 def logout(ctx: typer.Context) -> None:
-    """Forget the cached session."""
+    """Forget the sign-in, wherever it was kept."""
+    from mycelium import session_store
+
     json_output = ctx.obj.get("json", False) if ctx.obj else False
-    existed = load_token() is not None
-    clear_token()
+    existed = session_store.clear(MyceliumConfig.load())
 
     if json_output:
         typer.echo(json_module.dumps({"logged_out": existed}))

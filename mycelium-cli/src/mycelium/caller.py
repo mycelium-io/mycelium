@@ -52,6 +52,8 @@ ROOM_ENVS = ("MYCELIUM_ROOM_ID", "MYCELIUM_CHANNEL_ID")
 HUB_ENV = "MYCELIUM_API_URL"
 #: What herdr sets in each of its panes, and keeps across its server's restarts.
 PANE_ENV = "HERDR_PANE_ID"
+#: What the runner sets in each pane it starts an agent in.
+AGENT_PANE_ENV = "MYCELIUM_AGENT_PANE"
 
 FLAG, ENVIRONMENT, PANE, MEMBERSHIP, MACHINE, DEFAULT = (
     "flag",
@@ -339,11 +341,19 @@ def credential(config: MyceliumConfig, acting_as: str | None = None) -> Answer:
     An agent's own credential comes first (``agent_credentials``: a token or a
     client from the environment, or one stored for that handle), then the
     membership's token when the call is made as that member, then this
-    machine's ``mycelium login`` session.
+    machine's ``mycelium login`` session, which an agent's pane never gets.
+    In an agent's pane, acting as anyone but that agent is refused.
     """
     from mycelium import agent_credentials
     from mycelium.client import current_token
 
+    pane = in_agent_pane()
+    if pane and acting_as and not _same_handle(acting_as, pane):
+        msg = (
+            f"this is @{pane}'s pane, so commands here act as @{pane} only, "
+            f"not as @{acting_as.lstrip('@')}"
+        )
+        raise ActingAsOtherError(msg)
     agent_token = agent_credentials.access_token(config, acting_as)
     if agent_token:
         return Answer(agent_token, ENVIRONMENT if _env_credential() else MACHINE)
@@ -359,6 +369,28 @@ def credential(config: MyceliumConfig, acting_as: str | None = None) -> Answer:
     if session is not None:
         return Answer(session.access_token, MACHINE)
     return Answer(None, DEFAULT)
+
+
+class ActingAsOtherError(Exception):
+    """A command in an agent's pane asked to act as someone else."""
+
+
+def in_agent_pane() -> str | None:
+    """The agent whose pane this is, when it's one the runner started or herdr's
+    registry maps to an agent; ``None`` in a person's own terminal.
+
+    In an agent's pane the person's sign-in is never used and commands act as
+    the agent alone (``credential``, ``session_store``). The marks are in the
+    environment, which an agent can strip; what holds then is that reading the
+    person's sign-in asks the person (``session_store``).
+    """
+    marked = os.environ.get(AGENT_PANE_ENV, "").strip()
+    if marked:
+        return (os.environ.get(HANDLE_ENV, "").strip() or marked).lstrip("@")
+    agent = pane_agent()
+    if agent is not None:
+        return (agent.handle or os.environ.get(HANDLE_ENV, "").strip() or "agent").lstrip("@")
+    return None
 
 
 def _env_credential() -> bool:
