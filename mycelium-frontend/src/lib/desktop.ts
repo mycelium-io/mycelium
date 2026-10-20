@@ -111,15 +111,16 @@ export interface AgentScreen {
 }
 
 /**
- * What the terminal at herdr `pane` on this machine shows, read by the app
- * about once a second while `pane` is set. The app reads it from herdr and
- * hands it to this page; it is never sent to the hub. Null `pane` reads nothing.
+ * What @`agent.handle`'s terminal on this machine shows, read by the app about
+ * once a second while `agent` is set. The app finds its pane itself and reads
+ * it from herdr, so a page names an agent and never a terminal; it is never
+ * sent to the hub. Null `agent` reads nothing.
  */
-export function useAgentScreen(pane: string | null): AgentScreen {
+export function useAgentScreen(agent: { room: string; handle: string } | null): AgentScreen {
   const { data, error } = useSWR(
-    pane && appInvoke() ? ["agent-screen", pane] : null,
-    async ([, p]: [string, string]) => {
-      const text = await appInvoke()!("agent_screen", { pane: p });
+    agent && appInvoke() ? ["agent-screen", agent.room, agent.handle] : null,
+    async ([, room, handle]: [string, string, string]) => {
+      const text = await appInvoke()!("agent_screen", { room, handle });
       return { text: typeof text === "string" ? text : "", at: Date.now() };
     },
     {

@@ -38,8 +38,9 @@ export function AgentScreen({ room, handle, runner: runnerOf }: Props) {
   const thisMachine = useThisMachine();
   const { runners } = useRunners();
   const place = placeOf(runners, thisMachine, room, handle, runnerOf);
-  const pane = place.kind === "here" && place.state !== "gone" ? place.pane : null;
-  const screen = useAgentScreen(pane);
+  // Read only while it's here and its pane is open; the app finds the pane itself.
+  const readable = place.kind === "here" && place.state !== "gone";
+  const screen = useAgentScreen(readable ? { room, handle } : null);
 
   if (!desktop || !thisMachine) {
     return (

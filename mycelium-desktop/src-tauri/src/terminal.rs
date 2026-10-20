@@ -158,16 +158,21 @@ pub fn focus_pane(pane: &str) {
     }
 }
 
-/// What an agent's terminal shows right now, in color, read from herdr on this
-/// machine for the app's own pages to draw. It goes nowhere else: no hub, no
-/// network, so a screen with a key or private code on it stays here.
-pub fn screen(pane: &str) -> Result<String, String> {
-    if !is_pane_id(pane) {
-        return Err("That isn't a terminal herdr knows.".into());
-    }
+/// What @`handle`'s terminal in `room` shows right now, in color, read from
+/// herdr on this machine for the app's own pages to draw. It goes nowhere
+/// else: no hub, no network, so a screen with a key or private code on it
+/// stays here.
+///
+/// The page names an agent, never a pane: the pane is looked up in the herdr
+/// registry Mycelium keeps of its agents, so a page can't read the person's
+/// own shells or any other terminal, however it guesses at pane ids.
+pub fn screen(room: &str, handle: &str) -> Result<String, String> {
+    let registry = paths::home().join(".mycelium").join("herdr").join("registry.json");
+    let pane = agent_pane(&registry, room, handle)
+        .ok_or("That agent isn't running in a terminal on this machine.")?;
     let bin = herdr()?;
     let out = paths::command(&bin)
-        .args(["pane", "read", pane, "--source", "visible", "--format", "ansi"])
+        .args(["pane", "read", &pane, "--source", "visible", "--format", "ansi"])
         .env("PATH", paths::shell_path())
         .output()
         .map_err(|e| e.to_string())?;
@@ -177,8 +182,20 @@ pub fn screen(pane: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// A herdr pane id as herdr writes one (`w2:p3D`): a page can name a pane, but
-/// never slip an option or anything else into herdr's arguments.
+/// The pane the registry at `registry` (`{"room/handle": {"pane": …}}`, written
+/// by the runner and `mycelium herdr`) maps @`handle` of `room` to, if it's a
+/// well-formed one.
+fn agent_pane(registry: &std::path::Path, room: &str, handle: &str) -> Option<String> {
+    if room.is_empty() || handle.is_empty() || room.contains('/') || handle.contains('/') {
+        return None;
+    }
+    let raw: Value = serde_json::from_str(&std::fs::read_to_string(registry).ok()?).ok()?;
+    let pane = raw.get(format!("{room}/{handle}"))?.get("pane")?.as_str()?;
+    is_pane_id(pane).then(|| pane.to_string())
+}
+
+/// A herdr pane id as herdr writes one (`w2:p3D`), so nothing from the
+/// registry can be slipped into herdr's arguments as an option.
 fn is_pane_id(pane: &str) -> bool {
     let ok = |s: &str| !s.is_empty() && s.len() <= 16 && s.chars().all(|c| c.is_ascii_alphanumeric());
     matches!(pane.split_once(':'), Some((w, p)) if w.starts_with('w') && p.starts_with('p') && ok(w) && ok(p))
@@ -215,6 +232,28 @@ mod tests {
         for bad in ["", "w2", "--help:p1", "w2:p1 --raw", "w2:p1;ls", "x2:p1", "w2:t1", "w2:p1:p2"] {
             assert!(!is_pane_id(bad), "{bad}");
         }
-        assert!(screen("--source").is_err());
+    }
+
+    #[test]
+    fn only_an_agents_own_pane_is_ever_read() {
+        let dir = std::env::temp_dir().join(format!("myc-registry-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let registry = dir.join("registry.json");
+        std::fs::write(
+            &registry,
+            r#"{"checkout/builder": {"pane": "w3:p1", "kind": "claude"},
+                "checkout/odd": {"pane": "--raw"}}"#,
+        )
+        .unwrap();
+        assert_eq!(agent_pane(&registry, "checkout", "builder").as_deref(), Some("w3:p1"));
+        // Not an agent of that room, or not in the registry at all: the
+        // person's own shells can't be named.
+        assert_eq!(agent_pane(&registry, "storefront", "builder"), None);
+        assert_eq!(agent_pane(&registry, "checkout", "w1:p1"), None);
+        // A key can't be built to reach another entry, and a bad pane is refused.
+        assert_eq!(agent_pane(&registry, "checkout/builder", ""), None);
+        assert_eq!(agent_pane(&registry, "checkout", "odd"), None);
+        assert_eq!(agent_pane(&dir.join("missing.json"), "checkout", "builder"), None);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

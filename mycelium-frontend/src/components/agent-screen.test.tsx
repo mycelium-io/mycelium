@@ -74,8 +74,8 @@ describe("an agent's terminal", () => {
       "href",
       "mycelium://terminal?pane=w3%3Ap1",
     );
-    // Read from the app, by pane, and from nowhere else.
-    expect(calls).toContainEqual(["agent_screen", { pane: "w3:p1" }]);
+    // Read from the app by naming the agent, never a pane, and from nowhere else.
+    expect(calls).toContainEqual(["agent_screen", { room: "checkout", handle: "builder" }]);
   });
 
   it("names your other machine rather than reading a terminal it can't", async () => {
