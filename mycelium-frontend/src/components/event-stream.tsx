@@ -30,6 +30,7 @@ import {
   type Responding,
 } from "@/lib/activity";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
+import { reportToApp } from "@/lib/report-to-app";
 import { usePendingMessages, type Landed } from "@/lib/pending-messages";
 import { PendingMessageRows } from "@/components/pending-message-rows";
 import { ChatFindBar } from "@/components/chat-find-bar";
@@ -367,6 +368,47 @@ function mergePage(existing: Event[], page: Event[]): Event[] {
   return [...existing, ...fresh].sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0));
 }
 
+/** How long a message may be on the hub before its live copy counts as lost. */
+const LIVE_GRACE_MS = 10_000;
+
+/** A test for whether a message is already among `events`, by its id (a live
+ *  frame carries the id the history read gives it), built once for a batch. */
+function haveOf(events: Event[]): (e: Event) => boolean {
+  const ids = new Set(events.map((x) => x.messageId).filter(Boolean));
+  return (e) => e.messageId !== null && ids.has(e.messageId);
+}
+
+/** The newest stamp of anything said in the channel: where a catch-up reads from. */
+function newestSaidAt(events: Event[]): string | null {
+  let newest: string | null = null;
+  let newestMs = -Infinity;
+  for (const e of events) {
+    if (!CHAT_TYPES.has(e.type)) continue;
+    const ms = Date.parse(e.at);
+    if (Number.isFinite(ms) && ms > newestMs) {
+      newestMs = ms;
+      newest = e.at;
+    }
+  }
+  return newest;
+}
+
+/** Every message said since `since`, newest page first, walking back a page at
+ *  a time so a long gap is read whole. */
+async function readSince(room: string, since: string): Promise<Event[]> {
+  const out: Event[] = [];
+  let before: string | null = null;
+  for (let pages = 0; pages < 10; pages++) {
+    const data = await fetchMessages(room, CHANNEL_PAGE, { since, before });
+    const page = (data.messages || []).map((m) => parseEvent(m));
+    out.push(...page);
+    if (page.length === 0 || (data.total ?? page.length) <= page.length) break;
+    before = oldestAt(page);
+    if (!before) break;
+  }
+  return out;
+}
+
 /** The earliest stamp in a page — the cursor the page before it is fetched by. */
 function oldestAt(page: Event[]): string | null {
   let oldest: string | null = null;
@@ -387,7 +429,7 @@ function oldestAt(page: Event[]): string | null {
 function foldAmendment(events: Event[], amendment: Event): Event[] {
   const target = events.findIndex(
     (e) =>
-      e.messageId === amendment.amends &&
+      (e.messageId === amendment.amends || (e.wireId !== null && e.wireId === amendment.amends)) &&
       e.sender === amendment.sender &&
       e.amends === null,
   );
@@ -549,6 +591,68 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     return () => clearInterval(tick);
   }, [responding.length]);
 
+  // Catching up: what the room said that this view didn't get live, read from
+  // the hub on events rather than on a timer:
+  // - the room's feed comes back after a drop ("back");
+  // - the window comes to the front ("check");
+  // - something sent from here wasn't echoed live within LIVE_GRACE_MS ("check",
+  //   below, once the pending rows are known);
+  // - the live handler failed on several frames in a row ("broken").
+  // A check that finds a message the live feed lost, or a broken handler, also
+  // subscribes again (`epoch`).
+  const eventsRef = useRef<Event[]>([]);
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
+  const [epoch, setEpoch] = useState(0);
+  const catchUp = useCallback(
+    async (why: "back" | "check" | "broken") => {
+      if (why === "broken") setEpoch((n) => n + 1);
+      const since = newestSaidAt(eventsRef.current);
+      if (!since) return;
+      let page: Event[];
+      try {
+        page = await readSince(roomName, since);
+      } catch (err) {
+        logFetchError("fetchMessages")(err);
+        return;
+      }
+      const have = haveOf(eventsRef.current);
+      const missed = page.filter((e) => !have(e));
+      if (missed.length === 0) return;
+      setEvents((prev) => {
+        const had = haveOf(prev);
+        return mergePage(prev, missed.filter((e) => !had(e)));
+      });
+      // A message can be on the hub a moment before its live frame lands, so
+      // only one older than that says the live feed lost it.
+      const lost = missed.some((e) => Date.now() - (Date.parse(e.at) || 0) > LIVE_GRACE_MS);
+      if (why === "check" && lost) {
+        reportToApp(`the channel in ${roomName} missed ${missed.length} live message(s); subscribing again`);
+        setEpoch((n) => n + 1);
+      }
+    },
+    [roomName],
+  );
+  const wasConnected = useRef(connected);
+  useEffect(() => {
+    const back = connected && !wasConnected.current;
+    wasConnected.current = connected;
+    if (back && historyLoaded) void catchUp("back");
+  }, [connected, historyLoaded, catchUp]);
+  useEffect(() => {
+    if (!historyLoaded) return;
+    const check = () => {
+      if (document.visibilityState === "visible") void catchUp("check");
+    };
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    return () => {
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+    };
+  }, [historyLoaded, catchUp]);
+
   // Live room messages, off the app's one multiplexed connection.
   useRoomStream(roomName, (data) => {
     const msg = data as Record<string, unknown>;
@@ -565,7 +669,12 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       return;
     }
     setResponding((prev) => settleActivity(prev, event.sender));
-    setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));
+    setEvents((prev) => {
+      if (event.amends) return foldAmendment(prev, event);
+      // A catch-up may have read it from the hub before its live frame landed.
+      if (event.messageId !== null && prev.some((x) => x.messageId === event.messageId)) return prev;
+      return [...prev, event];
+    });
     if (event.type === "memory_changed") onMemoryChanged?.();
     // A consensus compiles the negotiation into work rows, so nudge the
     // room's caches to refetch and surface them immediately.
@@ -576,7 +685,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     if (event.type === "coordination_join" || event.type === "coordination_leave") {
       onMemoryChanged?.();
     }
-  });
+  }, { epoch, onBroken: () => void catchUp("broken") });
 
   // The room's own timeline, split by what it is: a thread's prose is dropped
   // (it is not lost, it is placed, and the pane the ping opens is where it
@@ -607,9 +716,28 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   );
   const pending = usePendingMessages(roomName, null, saidHere);
 
+  // Something sent from here that the hub took but the live feed hasn't
+  // echoed within LIVE_GRACE_MS: the feed has gone quiet for this view, so
+  // catch up (and subscribe again if it really lost it). Once per message.
+  const unechoed = pending.find((p) => p.state === "sent")?.id ?? null;
+  const unechoedAt = pending.find((p) => p.state === "sent")?.at ?? 0;
+  useEffect(() => {
+    if (!unechoed) return;
+    // A little past the grace, so the message counts as lost when it's read.
+    const wait = Math.max(0, unechoedAt + LIVE_GRACE_MS + 2_000 - Date.now());
+    const timer = setTimeout(() => void catchUp("check"), wait);
+    return () => clearTimeout(timer);
+  }, [unechoed, unechoedAt, catchUp]);
+
   const saidById = useMemo(() => {
     const said = new Map<string, Event>();
-    for (const ev of events) if (ev.messageId && CHAT_TYPES.has(ev.type)) said.set(ev.messageId, ev);
+    for (const ev of events) {
+      if (!CHAT_TYPES.has(ev.type)) continue;
+      if (ev.messageId) said.set(ev.messageId, ev);
+      // A ping names a thread message by its envelope id, which only a copy
+      // that arrived live carries.
+      if (ev.wireId) said.set(ev.wireId, ev);
+    }
     return said;
   }, [events]);
 

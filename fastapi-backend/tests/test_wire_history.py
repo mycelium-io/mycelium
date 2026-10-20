@@ -66,6 +66,40 @@ async def test_message_history_replays_frames_with_envelope(client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_frame_names_the_id_the_history_read_gives_its_message(client) -> None:
+    """A message's frame and its history row are told apart by nothing but id
+    otherwise, so the frame carries the row's id too."""
+    await _create_room(client, "wire")
+    reply = TranscriptRecord(
+        message_id="m1",
+        sender="avery",
+        kind="exchange",
+        subkind=None,
+        content={
+            "content": "cap at 30%",
+            "l9": {
+                "header": {
+                    "kind": "exchange",
+                    "message": {
+                        "id": "m1",
+                        "parents": [],
+                        "episode": "urn:ioc:mycelium:episode:wire:live",
+                    },
+                },
+                "payload": {"type": "reply", "data": {"action": "reply"}},
+            },
+        },
+        recorded_at="2026-01-01T00:00:00+00:00",
+    )
+    append_transcript("wire", reply)
+
+    frame = (await client.get("/api/rooms/wire/messages/wire")).json()[0]
+    row = (await client.get("/api/rooms/wire/messages")).json()["messages"][0]
+    assert frame["id"] == "m1"
+    assert frame["read_id"] == row["id"]
+
+
+@pytest.mark.asyncio
 async def test_message_history_orders_oldest_first_and_limits(client) -> None:
     await _create_room(client, "wire")
     for i in range(5):

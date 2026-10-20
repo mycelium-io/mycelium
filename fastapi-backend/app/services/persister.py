@@ -807,6 +807,9 @@ def bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
     return {
         "id": record.message_id,
+        # The id the room's history read gives the same message, so a client
+        # holding both copies can tell they're one.
+        "read_id": str(read_id(record)),
         "sender_handle": record.sender or message_format.SYSTEM_ACTOR_ID,
         "message_type": f"l9_{record.kind}",
         "content": json.dumps(record.content),
