@@ -5,11 +5,15 @@
 // they never reach the browser bundle. SERVER-SIDE only (route handlers + the
 // proxy). The proxy calls `bearer()` to inject the access token; everything else
 // reads/writes the cookie through here.
+//
+// The desktop app's UI server serves one person, so it keeps their sign-in,
+// and the sign-in in progress, in its own memory instead (`heldInMemory`):
+// a cookie on 127.0.0.1 is sent to every other program listening there.
 
 import { createHash } from "node:crypto";
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
-import { oidcConfig } from "./auth-config";
+import { heldInMemory, resolveOidcConfig } from "./auth-config";
 import { endpoints, refreshTokens, claimsOf, handleFromClaims } from "./oidc";
 
 export const SESSION_COOKIE = "myc_session";
@@ -55,9 +59,25 @@ export async function unseal<T = Record<string, unknown>>(token: string, secret:
   }
 }
 
+/** A sign-in on its way: what the callback needs to finish it. */
+export interface SignInTx {
+  verifier: string;
+  state: string;
+  returnTo: string;
+}
+
+/** The one person's sign-in, and those under way by their state, in this
+ *  process. On `globalThis`, since each route is bundled on its own. */
+const held = globalThis as {
+  __myceliumSession?: Session | null;
+  __myceliumSignIns?: Map<string, SignInTx & { until: number }>;
+};
+const TX_TTL_S = 600;
+
 export async function getSession(): Promise<Session | null> {
-  const cfg = oidcConfig();
+  const cfg = await resolveOidcConfig();
   if (!cfg) return null;
+  if (heldInMemory()) return held.__myceliumSession ?? null;
   const jar = await cookies();
   const raw = jar.get(SESSION_COOKIE)?.value;
   if (!raw) return null;
@@ -65,16 +85,53 @@ export async function getSession(): Promise<Session | null> {
 }
 
 export async function writeSession(s: Session): Promise<void> {
-  const cfg = oidcConfig();
+  const cfg = await resolveOidcConfig();
   if (!cfg) return;
+  if (heldInMemory()) {
+    held.__myceliumSession = s;
+    return;
+  }
   const sealed = await seal(s as unknown as Record<string, unknown>, cfg.sessionSecret, SESSION_TTL_S);
   const jar = await cookies();
   jar.set(SESSION_COOKIE, sealed, { ...cookieOpts, maxAge: SESSION_TTL_S });
 }
 
 export async function clearSession(): Promise<void> {
+  if (heldInMemory()) {
+    held.__myceliumSession = null;
+    return;
+  }
   const jar = await cookies();
   jar.set(SESSION_COOKIE, "", { ...cookieOpts, maxAge: 0 });
+}
+
+/** Keep a sign-in that's starting until its callback: in memory, or sealed in a cookie. */
+export async function saveSignIn(tx: SignInTx, secret: string): Promise<void> {
+  if (heldInMemory()) {
+    const now = Date.now();
+    const pending = (held.__myceliumSignIns ??= new Map());
+    for (const [state, t] of pending) if (t.until < now) pending.delete(state);
+    pending.set(tx.state, { ...tx, until: now + TX_TTL_S * 1000 });
+    return;
+  }
+  const jar = await cookies();
+  jar.set(TX_COOKIE, await seal({ ...tx }, secret, TX_TTL_S), { ...cookieOpts, maxAge: TX_TTL_S });
+}
+
+/** The sign-in a callback's `state` belongs to, taken so it's used once. Null
+ *  when there's none, it has expired, or the state doesn't match. */
+export async function takeSignIn(state: string, secret: string): Promise<SignInTx | null> {
+  if (heldInMemory()) {
+    const tx = held.__myceliumSignIns?.get(state);
+    held.__myceliumSignIns?.delete(state);
+    return tx && tx.until >= Date.now() ? tx : null;
+  }
+  const jar = await cookies();
+  const raw = jar.get(TX_COOKIE)?.value;
+  jar.set(TX_COOKIE, "", { path: "/", maxAge: 0 });
+  if (!raw) return null;
+  const tx = await unseal<SignInTx>(raw, secret);
+  return tx && tx.state === state ? tx : null;
 }
 
 /**
@@ -100,7 +157,7 @@ export async function upstreamSseHeaders(): Promise<Record<string, string>> {
  * as before this existed.
  */
 export async function bearer(): Promise<string | null> {
-  const cfg = oidcConfig();
+  const cfg = await resolveOidcConfig();
   if (!cfg) return null;
   const s = await getSession();
   if (!s) return null;

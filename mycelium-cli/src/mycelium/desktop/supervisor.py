@@ -8,8 +8,9 @@ Two modes, which are what the desktop app offers on its first screen:
 - **hub**: this machine runs the hub. herdr's server, a SLIM node
   (``slimctl slim start``), the hub's API, the UI server, and the runner, each
   started in order once the one before it answers.
-- **client**: another machine runs the hub. herdr's server and the runner,
-  pointed at it.
+- **client**: another machine runs the hub. herdr's server, the UI server and
+  the runner, pointed at it. The window shows this machine's own UI in both
+  modes; a hub elsewhere is reached through it, never by showing its pages.
 
 herdr's server is started only when none is running, and is left running
 when the supervisor stops: agents live in its panes. So after the app is
@@ -453,6 +454,8 @@ class Supervisor:
         self.components: list[Component] = [self._herdr()]
         if mode == "hub":
             self.components += self._components()
+        else:
+            self.components.append(self._ui())
 
     # ── what runs ────────────────────────────────────────────────────────────
 
@@ -462,7 +465,8 @@ class Supervisor:
 
     @property
     def ui_url(self) -> str:
-        return f"http://{HOST}:{UI_PORT}" if self.mode == "hub" else str(self.hub_url)
+        """The app's own UI, on this machine, whichever hub it talks to."""
+        return f"http://{HOST}:{UI_PORT}"
 
     def _herdr(self) -> Component:
         """herdr's server, which agents run in: started when it isn't already.
@@ -514,13 +518,18 @@ class Supervisor:
             hub_env_vars["ALIGNER_PI_BINARY"] = pi
         return hub_env_vars
 
-    def _components(self) -> list[Component]:
-        loc = self.locator
-        hub_env_vars = self._hub_env_vars()
+    def _ui(self) -> Component:
+        """The app's own UI server, talking to the hub this app uses.
+
+        In both modes: a hub elsewhere is reached through this machine's UI,
+        never by showing that hub's own pages. One already answering on the
+        port is used in hub mode, as every other part is, but never in client
+        mode, where it would be talking to some other hub.
+        """
         ui_env = {
             "PORT": str(UI_PORT),
             "HOSTNAME": HOST,
-            "MYCELIUM_INTERNAL_API_URL": f"http://{HOST}:{HUB_PORT}",
+            "MYCELIUM_INTERNAL_API_URL": self.api_url,
             # Only read by `next dev` (a checkout); it refuses pages opened
             # from a host it wasn't told about.
             "MYCELIUM_ALLOWED_DEV_ORIGINS": f"{HOST},localhost",
@@ -528,7 +537,42 @@ class Supervisor:
             # follows. Only a UI the desktop app runs for its own person reads
             # them; one serving many people never gets this.
             "MYCELIUM_THEMES_DIR": str(themes.folder()),
+            # One person's UI: their sign-in to the hub is kept in this
+            # server's memory, never in a cookie, which every other port on
+            # 127.0.0.1 would be sent too.
+            "MYCELIUM_UI_SESSION": "memory",
+            **self._login_env(),
         }
+        answering = lambda: http_ok(f"http://{HOST}:{UI_PORT}/")  # noqa: E731
+        return Component(
+            name="ui",
+            argv=self.locator.ui,
+            ready=answering,
+            env=ui_env,
+            external=answering if self.mode == "hub" else None,
+        )
+
+    def _login_env(self) -> dict[str, str]:
+        """How the UI signs in to a hub that asks: the same client as `mycelium login`.
+
+        The issuer is the one the hub names in ``/health``, found by the UI
+        when it's needed. The client is the CLI's, which an issuer already
+        lets sign in through this machine's loopback address.
+        """
+        from mycelium.config import MyceliumConfig
+
+        try:
+            login = (self.config or MyceliumConfig.load()).login
+        except Exception:  # noqa: BLE001 - an unreadable config leaves the defaults
+            return {}
+        env = {"MYCELIUM_OIDC_CLIENT_ID": login.client_id}
+        if login.audience:
+            env["MYCELIUM_OIDC_AUDIENCE"] = login.audience
+        return env
+
+    def _components(self) -> list[Component]:
+        loc = self.locator
+        hub_env_vars = self._hub_env_vars()
         return [
             Component(
                 name="slim",
@@ -544,13 +588,7 @@ class Supervisor:
                 external=lambda: http_ok(f"http://{HOST}:{HUB_PORT}/health"),
                 watch=True,
             ),
-            Component(
-                name="ui",
-                argv=loc.ui,
-                ready=lambda: http_ok(f"http://{HOST}:{UI_PORT}/"),
-                env=ui_env,
-                external=lambda: http_ok(f"http://{HOST}:{UI_PORT}/"),
-            ),
+            self._ui(),
         ]
 
     # ── status ───────────────────────────────────────────────────────────────

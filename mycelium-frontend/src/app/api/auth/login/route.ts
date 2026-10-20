@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-// Start the Authorization Code + PKCE flow: stash the verifier/state in a
-// short-lived httpOnly cookie and redirect the browser to the IdP.
+// Start the Authorization Code + PKCE flow: stash the verifier/state (in a
+// short-lived httpOnly cookie, or the desktop app's UI server's memory) and
+// redirect the browser to the IdP.
 
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { oidcConfig } from "@/lib/auth-config";
+import { resolveOidcConfig } from "@/lib/auth-config";
 import { endpoints, pkce, randomState, requestOrigin } from "@/lib/oidc";
-import { seal, TX_COOKIE } from "@/lib/session";
+import { saveSignIn } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request): Promise<Response> {
-  const cfg = oidcConfig();
+  const cfg = await resolveOidcConfig();
   if (!cfg) {
     return NextResponse.json({ detail: "Browser OIDC login is not configured" }, { status: 400 });
   }
@@ -32,15 +32,7 @@ export async function GET(req: Request): Promise<Response> {
 
   const { verifier, challenge } = pkce();
   const state = randomState();
-  const tx = await seal({ verifier, state, returnTo }, cfg.sessionSecret, 600);
-  const jar = await cookies();
-  jar.set(TX_COOKIE, tx, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.MYCELIUM_COOKIE_SECURE !== "false",
-    path: "/",
-    maxAge: 600,
-  });
+  await saveSignIn({ verifier, state, returnTo }, cfg.sessionSecret);
 
   const auth = new URL(ep.authorizationEndpoint);
   auth.searchParams.set("response_type", "code");

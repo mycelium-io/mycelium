@@ -333,20 +333,10 @@ fn report_error(app: &AppHandle, generation: u64, component: &str, message: &str
     crate::on_error(app, &json!({ "component": component, "message": message }));
 }
 
-/// Whether a status says the window has something to show: the UI in hub
-/// mode, the runner in client mode (the UI is the remote hub's).
+/// Whether a status says the window has something to show: the app's own UI,
+/// which runs in both modes (in client mode it talks to the joined hub).
 pub fn ready(status: &Value) -> bool {
-    let state = |name: &str| {
-        status
-            .pointer(&format!("/components/{name}/state"))
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            == "running"
-    };
-    match status.get("mode").and_then(Value::as_str) {
-        Some("hub") => state("ui"),
-        _ => state("runner"),
-    }
+    status.pointer("/components/ui/state").and_then(Value::as_str) == Some("running")
 }
 
 #[cfg(test)]
@@ -354,12 +344,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_hub_is_ready_when_its_ui_is_and_a_client_when_its_runner_is() {
+    fn the_window_is_ready_when_the_apps_own_ui_is_in_either_mode() {
         let hub = json!({"mode":"hub","components":{"ui":{"state":"running"},"runner":{"state":"starting"}}});
         assert!(ready(&hub));
-        let client = json!({"mode":"client","components":{"ui":{"state":"disabled"},"runner":{"state":"starting"}}});
+        let client = json!({"mode":"client","components":{"ui":{"state":"starting"},"runner":{"state":"running"}}});
         assert!(!ready(&client));
-        let client = json!({"mode":"client","components":{"runner":{"state":"running"}}});
+        let client = json!({"mode":"client","components":{"ui":{"state":"running"},"runner":{"state":"starting"}}});
         assert!(ready(&client));
     }
 }

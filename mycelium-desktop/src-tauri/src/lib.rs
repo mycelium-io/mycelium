@@ -96,10 +96,10 @@ fn local_url(app: &AppHandle, page: &str) -> Option<Url> {
     base.join(page).ok()
 }
 
-/// The microphone goes only to this Mac's own hub UI. In client mode the
-/// window shows another hub's pages, and once macOS has let the app use the
-/// mic, a page granted it here could record without anyone pressing the mic.
-/// The camera and anything else not handled here keep WebKit's own prompt.
+/// The microphone goes only to the app's own UI. Any other page the window
+/// reaches, once macOS has let the app use the mic, could record without
+/// anyone pressing the mic. The camera and anything else not handled here
+/// keep WebKit's own prompt.
 fn media_permission(app: &AppHandle, webview: &Webview, kind: PermissionKind) -> PermissionResponse {
     if !matches!(kind, PermissionKind::Microphone) {
         return PermissionResponse::Default;
@@ -111,13 +111,13 @@ fn media_permission(app: &AppHandle, webview: &Webview, kind: PermissionKind) ->
     }
 }
 
-/// Whether `webview` shows the app's own hub UI: the hub this app started,
-/// in hub mode. Never another hub's pages, which client mode shows.
+/// Whether `webview` shows the app's own UI: the UI server this app runs on
+/// this machine, in either mode (a joined hub is reached through it). Compared
+/// by exact origin, so no other page on this machine counts.
 fn shows_own_ui(app: &AppHandle, webview: &Webview) -> bool {
     let status = app.state::<Supervisor>().status();
     let own_ui = status
         .as_ref()
-        .filter(|s| s.get("mode").and_then(Value::as_str) == Some("hub"))
         .and_then(|s| s.get("ui_url").and_then(Value::as_str))
         .and_then(|u| Url::parse(u).ok());
     matches!((webview.url(), own_ui), (Ok(page), Some(ui)) if page.origin() == ui.origin())

@@ -1,25 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-// Finish the flow: verify state, exchange the code for tokens, and seal them
-// into the session cookie. Then bounce back to where login started.
+// Finish the flow: verify state, exchange the code for tokens, and keep them as
+// the session (a sealed cookie, or the desktop app's UI server's memory). Then
+// bounce back to where login started.
 
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { oidcConfig } from "@/lib/auth-config";
+import { resolveOidcConfig } from "@/lib/auth-config";
 import { claimsOf, endpoints, exchangeCode, handleFromClaims, requestOrigin } from "@/lib/oidc";
-import { TX_COOKIE, unseal, writeSession, type Session } from "@/lib/session";
+import { takeSignIn, writeSession, type Session } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-interface Tx {
-  verifier: string;
-  state: string;
-  returnTo: string;
-}
-
 export async function GET(req: Request): Promise<Response> {
-  const cfg = oidcConfig();
+  const cfg = await resolveOidcConfig();
   if (!cfg) {
     return NextResponse.json({ detail: "Browser OIDC login is not configured" }, { status: 400 });
   }
@@ -30,16 +24,12 @@ export async function GET(req: Request): Promise<Response> {
   const state = url.searchParams.get("state");
   const idpError = url.searchParams.get("error");
 
-  const jar = await cookies();
-  const txRaw = jar.get(TX_COOKIE)?.value;
-  // The transaction cookie is single-use — clear it regardless of outcome.
-  jar.set(TX_COOKIE, "", { path: "/", maxAge: 0 });
+  // The sign-in under way is single-use: taken whatever happens next.
+  const tx = state ? await takeSignIn(state, cfg.sessionSecret) : null;
 
   if (idpError) return loginError(origin, `identity provider returned: ${idpError}`);
-  if (!code || !state || !txRaw) return loginError(origin, "missing code or state");
-
-  const tx = await unseal<Tx>(txRaw, cfg.sessionSecret);
-  if (!tx || tx.state !== state) return loginError(origin, "state mismatch");
+  if (!code || !state) return loginError(origin, "missing code or state");
+  if (!tx) return loginError(origin, "state mismatch");
 
   try {
     const ep = await endpoints(cfg);

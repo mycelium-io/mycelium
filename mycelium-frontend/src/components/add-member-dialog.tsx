@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { Cpu, Globe, Laptop, Play, SquareTerminal, type LucideIcon } from "lucide-react";
 import {
   createEngine,
@@ -28,6 +28,7 @@ import {
   normHandle,
 } from "@/components/launch-agent-dialog";
 import { RunningAgentMember } from "@/components/running-agent-member";
+import { useHubAddress } from "@/lib/hub-address";
 import { cn } from "@/lib/utils";
 
 /** The ways a member can join a room, in the order the dialog offers them. */
@@ -424,11 +425,7 @@ export function isLocalAddress(url: string): boolean {
 function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => void }) {
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
-  const hubUrl = useSyncExternalStore(
-    () => () => {},
-    () => window.location.origin,
-    () => "<this-hub-url>",
-  );
+  const hubUrl = useHubAddress("<this-hub-url>");
   const [handle, setHandle] = useState("");
   const [minutes, setMinutes] = useState(CODE_LIFETIMES[0].minutes);
   const [invite, setInvite] = useState<JoinCode | null>(null);

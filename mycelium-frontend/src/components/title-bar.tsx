@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -15,8 +15,7 @@ import { iconButtonClass } from "@/components/ui/icon-button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { settingHref } from "@/lib/client-settings";
 import { desktopMachine, useIsDesktop } from "@/lib/desktop";
-
-const noSubscribe = () => () => {};
+import { useHubAddress } from "@/lib/hub-address";
 
 /**
  * Which hub this is, as the title bar names it: a hub on this computer by
@@ -31,8 +30,8 @@ export function hubLabel(host: string, desktop: boolean, machine: string = deskt
 
 export function useHubLabel(): string {
   const desktop = useIsDesktop();
-  const host = useSyncExternalStore(noSubscribe, () => window.location.host, () => "");
-  return hubLabel(host, desktop);
+  const address = useHubAddress();
+  return hubLabel(address.replace(/^[a-z]+:\/\//, ""), desktop);
 }
 
 /** The way into Settings from every screen. Lit while a settings page is open. */

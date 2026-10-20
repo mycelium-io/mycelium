@@ -8,6 +8,7 @@ import { Terminal } from "lucide-react";
 import { CopyAction } from "@/components/ui/copy-field";
 import { useBackendHealth } from "@/lib/use-status";
 import { useCurrentUser } from "@/components/current-user";
+import { useHubAddress } from "@/lib/hub-address";
 import { useNetworkStatus } from "@/lib/room-data";
 import {
   DOCS_URL,
@@ -74,11 +75,7 @@ export function InstallPanel({ className }: Props) {
     () => detectPlatform(navigator.userAgent) as Platform,
     () => "unknown" as Platform,
   );
-  const hubUrl = useSyncExternalStore(
-    noSubscribe,
-    () => window.location.origin,
-    () => "<this-hub-url>",
-  );
+  const hubUrl = useHubAddress("<this-hub-url>");
   const note = PLATFORMS.find(p => p.id === detectedPlatform)?.note;
 
   // This is a choice of recipient, not a platform picker: a running coding
