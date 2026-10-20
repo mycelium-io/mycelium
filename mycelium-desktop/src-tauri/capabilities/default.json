@@ -1,7 +1,35 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "local-pages",
-  "description": "The app's own bundled pages: first run, loading, the agents terminal and the update's download. The hub's UI gets only what own-hub-ui.json grants.",
+  "description": "The app's own bundled pages: first run, loading, the agents terminal and the update's download. They may call every app command; each command still refuses a page that isn't the app's own (local_only). The hub's UI gets only what own-hub-ui.json grants.",
   "windows": ["main", "terminal", "update"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "allow-get-state",
+    "allow-scan-agents",
+    "allow-pick-folder",
+    "allow-this-machine",
+    "allow-choose-agent-folder",
+    "allow-agent-screen",
+    "allow-run-doctor",
+    "allow-herdr-integrations",
+    "allow-get-model",
+    "allow-save-model",
+    "allow-get-experiences",
+    "allow-get-hub-settings",
+    "allow-add-experience",
+    "allow-remove-experience",
+    "allow-open-experience",
+    "allow-get-autostart",
+    "allow-set-autostart",
+    "allow-open-room",
+    "allow-open-log",
+    "allow-start",
+    "allow-update-progress",
+    "allow-update-retry",
+    "allow-terminal-open",
+    "allow-terminal-write",
+    "allow-terminal-resize",
+    "allow-terminal-close"
+  ]
 }
