@@ -37,6 +37,10 @@ characters or the text `:session:`, which Mycelium uses internally. The name is
 also the room's folder on the hub, so it can't be changed later. You can change
 its display title in the app.
 
+Case doesn't matter in a room's name. A room keeps the spelling it was created
+with, and `--room "ce-area team"` finds `CE-Area Team`. Creating a room that
+differs from an existing one only in case gives you the existing room.
+
 ## Private rooms
 
 A private room is listed only for you and the members you add. It stays out of

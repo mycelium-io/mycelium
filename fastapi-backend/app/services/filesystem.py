@@ -530,6 +530,35 @@ def room_exists(room_name: str) -> bool:
         return False
 
 
+def canonical_room_name(room_name: str) -> str:
+    """The spelling a room was made with, for any spelling of its name.
+
+    A room's name ignores case: ``marc`` finds the room made as ``Marc``. On
+    macOS and Windows, whose disks ignore case, both spellings are one folder,
+    so anything keyed by the string (its live channel, its stream) has to use
+    one spelling too, or a message sent to one never reaches a reader of the
+    other. A name that matches no room, or more than one (two spellings made
+    on a disk that keeps case apart), is returned as given.
+    """
+    rooms_dir = get_data_dir() / "rooms"
+    try:
+        names = [child.name for child in rooms_dir.iterdir() if child.is_dir()]
+    except OSError:
+        return room_name
+    if room_name in names:
+        return room_name
+    folded = room_name.casefold()
+    matches = [n for n in names if n.casefold() == folded]
+    return matches[0] if len(matches) == 1 else room_name
+
+
+def same_room(a: str | None, b: str | None) -> bool:
+    """Whether two spellings name one room (``canonical_room_name``)."""
+    if a is None or b is None:
+        return a == b
+    return a == b or canonical_room_name(a) == canonical_room_name(b)
+
+
 def list_room_names() -> list[str]:
     """Names of all real rooms (excludes coordination-session sub-rooms)."""
     rooms_dir = get_data_dir() / "rooms"
