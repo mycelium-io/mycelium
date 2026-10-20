@@ -5,10 +5,12 @@
 // its web view's user agent with `MyceliumDesktop/<version>`. The page asks
 // for things by `mycelium://` link, which the app alone answers, so a hub's
 // page can open an agent's terminal but can never run anything on the machine
-// itself. The one exception is the app's own hub UI, which may call two
-// commands: which machine this is, and a folder dialog (`chooseFolderHere`).
+// itself. The one exception is the app's own hub UI, which may call three
+// commands: which machine this is, a folder dialog (`chooseFolderHere`), and
+// what an agent's terminal here shows (`useAgentScreen`).
 
 import { useEffect, useState, useSyncExternalStore } from "react";
+import useSWR from "swr";
 
 const MARK = /\bMyceliumDesktop\/[\w.+-]+/;
 
@@ -94,6 +96,69 @@ export async function chooseFolderHere(start?: string): Promise<string | null> {
   if (!invoke) return null;
   const picked = await invoke("choose_agent_folder", { start: start ?? null });
   return typeof picked === "string" ? picked : null;
+}
+
+/** How often an open terminal view asks the app for the screen again. */
+export const SCREEN_EVERY_MS = 1000;
+
+/** What the app answers when the agent has no terminal on this machine (`terminal::NOT_HERE`). */
+const NOT_HERE = "That agent isn't running in a terminal on this machine.";
+/** What the app answers a page that isn't its own hub UI (`own_ui_only`). */
+const NOT_OURS = "Not available to this page.";
+
+export interface AgentScreen {
+  /** What the terminal shows, with its colors. */
+  text: string | null;
+  /** The herdr pane it's in, for Open its terminal. */
+  pane: string | null;
+  /** When it was last read, for "updated 2s ago". */
+  at: number | null;
+  /** The app can't be asked from this page: no app, or a hub's page that isn't its own. */
+  unasked: boolean;
+  /** The app answered that the agent has no terminal on this machine. */
+  notHere: boolean;
+  /** Any other reason it can't be read, said for a person. */
+  error: string | null;
+}
+
+/**
+ * What @`agent.handle`'s terminal on this machine shows, read by the app about
+ * once a second while `agent` is set. The app finds its pane itself, in the
+ * registry of its agents, and reads it from herdr: a page names an agent and
+ * never a terminal, and whether the agent is on this machine is the app's
+ * answer, not a guess from the hub. Never sent to the hub. Null `agent` reads nothing.
+ */
+export function useAgentScreen(agent: { room: string; handle: string } | null): AgentScreen {
+  const invoke = appInvoke();
+  const { data, error } = useSWR(
+    agent && invoke ? ["agent-screen", agent.room, agent.handle] : null,
+    async ([, room, handle]: [string, string, string]) => {
+      const got = (await appInvoke()!("agent_screen", { room, handle })) as { pane?: unknown; text?: unknown } | null;
+      return {
+        text: typeof got?.text === "string" ? got.text : "",
+        pane: typeof got?.pane === "string" ? got.pane : null,
+        at: Date.now(),
+      };
+    },
+    {
+      // Keep reading while it answers; one that's refused isn't asked again.
+      refreshInterval: (latest) => (latest ? SCREEN_EVERY_MS : 0),
+      refreshWhenHidden: false,
+      revalidateOnFocus: true,
+      shouldRetryOnError: false,
+      dedupingInterval: SCREEN_EVERY_MS / 2,
+      keepPreviousData: true,
+    },
+  );
+  const said = error ? String(error instanceof Error ? error.message : error) : null;
+  return {
+    text: data?.text ?? null,
+    pane: data?.pane ?? null,
+    at: data?.at ?? null,
+    unasked: !invoke || said === NOT_OURS,
+    notHere: said === NOT_HERE,
+    error: said === NOT_OURS || said === NOT_HERE ? null : said,
+  };
 }
 
 /** Asks the app to update: its Check for Updates…, which asks before it downloads. */

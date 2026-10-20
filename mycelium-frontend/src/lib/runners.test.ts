@@ -19,7 +19,6 @@ describe("a start that stopped", () => {
       step: "shell",
       why: "shell",
       pane: "w5:p1",
-      screen: null,
       detail: "not a shell",
       slow: false,
     });

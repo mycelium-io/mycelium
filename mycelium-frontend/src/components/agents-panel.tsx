@@ -15,6 +15,7 @@ import {
   Play,
   Plus,
   Square,
+  SquareTerminal,
   UserMinus,
   UserPlus,
   Users,
@@ -46,6 +47,7 @@ import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
 import { RenameAgentDialog } from "@/components/rename-agent-dialog";
+import { AgentScreenDrawer } from "@/components/agent-screen";
 import { Button } from "@/components/ui/button";
 import { Monogram, type AvatarKind } from "@/components/ui/monogram";
 import { HerdrRam } from "@/components/ui/herdr-ram";
@@ -79,6 +81,7 @@ function MemberMenu({
   handle,
   agent,
   onOpenMemory,
+  onWatch,
   onRename,
   onControl,
   canStop = false,
@@ -91,6 +94,8 @@ function MemberMenu({
   handle: string;
   agent: boolean;
   onOpenMemory?: (key: string) => void;
+  /** Agents that run in a terminal: opens it, live and read-only. */
+  onWatch?: () => void;
   /** Agents an engine isn't: opens the form for `agent rename`. */
   onRename?: () => void;
   /** Your own agents, or one nobody owns: pause or resume it. */
@@ -116,6 +121,11 @@ function MemberMenu({
         {agent && onOpenMemory && (
           <ContextMenuItem icon={FileText} onClick={() => onOpenMemory(`agents/${handle}`)}>
             Open profile
+          </ContextMenuItem>
+        )}
+        {agent && onWatch && (
+          <ContextMenuItem icon={SquareTerminal} onClick={onWatch}>
+            Watch terminal
           </ContextMenuItem>
         )}
         <ContextMenuItem icon={AtSign} onClick={() => void copyText(`@${handle}`)}>
@@ -310,6 +320,8 @@ export function AgentsPanel({
   const [addKind, setAddKind] = useState<MemberKind>("machine");
   const [unregistering, setUnregistering] = useState<UnregisterTarget | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  // The agent whose terminal is open in the drawer, with the machine its manifest names.
+  const [watching, setWatching] = useState<{ handle: string; runner: string | null } | null>(null);
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
   // manifests, people from the hub's record of who joined, others who hold a
@@ -448,6 +460,15 @@ export function AgentsPanel({
           onClose={() => setRenaming(null)}
           onRenamed={refresh}
         />
+        {watching && (
+          <AgentScreenDrawer
+            open
+            onClose={() => setWatching(null)}
+            room={roomName}
+            handle={watching.handle}
+            runner={watching.runner}
+          />
+        )}
       </div>
 
       <FadeScroll className="flex-1">
@@ -524,12 +545,18 @@ export function AgentsPanel({
                     a.runner && runnersById.has(a.runner)
                       ? runnerName(runnersById.get(a.runner), a.runner)
                       : null;
+                  // Engines and A2A members answer from the hub, with no terminal to watch.
+                  const watch =
+                    a.adapter === "engine" || a.adapter === "a2a"
+                      ? undefined
+                      : () => setWatching({ handle: a.handle, runner: a.runner ?? null });
                   return (
                     <MemberMenu
                       key={`agent-${a.handle}`}
                       handle={a.handle}
                       agent
                       onOpenMemory={onOpenMemory}
+                      onWatch={watch}
                       onRename={a.adapter === "engine" ? undefined : () => setRenaming(a.handle)}
                       onControl={controls(a) ? (verb) => control(a.handle, verb) : undefined}
                       canStop={controls(a)?.includes("stop") ?? false}
@@ -552,6 +579,7 @@ export function AgentsPanel({
                       schedules={scheduled.get(a.handle.toLowerCase()) ?? 0}
                       marked={marked}
                       rowRef={marked ? highlightRow : undefined}
+                      onOpen={watch}
                     />
                     </MemberMenu>
                   );
@@ -792,6 +820,7 @@ function AgentRow({
   marked,
   rowRef,
   machine = null,
+  onOpen,
 }: {
   agent: AgentSummary;
   /** The owner shared by the row's group, if any — omitted from the row itself. */
@@ -808,6 +837,8 @@ function AgentRow({
   rowRef?: React.Ref<HTMLDivElement>;
   /** The machine the app started this agent on, by name. */
   machine?: string | null;
+  /** Opens its terminal, for an agent that runs in one. */
+  onOpen?: () => void;
 }) {
   // A pause says why it isn't answering, which beats what it was doing.
   const meta = paused ? "paused" : rowMeta(a, memberPresence, floor, machine);
@@ -857,9 +888,14 @@ function AgentRow({
     >
       <div
         ref={rowRef}
+        role={onOpen ? "button" : undefined}
+        tabIndex={onOpen ? 0 : undefined}
+        aria-label={onOpen ? `Watch @${a.handle}'s terminal` : undefined}
+        onClick={onOpen}
+        onKeyDown={onOpen ? (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen()) : undefined}
         className={`flex h-7 items-center gap-2 px-3 transition-colors hover:bg-hairline ${
-          marked ? "bg-accent/15" : ""
-        }`}
+          onOpen ? "cursor-pointer" : ""
+        } ${marked ? "bg-accent/15" : ""}`}
       >
         <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence kind={a.adapter === "engine" ? "engine" : "agent"} />
         <span className={NAME_COLUMN}>

@@ -39,6 +39,7 @@ import { useCurrentUser } from "@/components/current-user";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Monogram } from "@/components/ui/monogram";
+import { AgentScreen } from "@/components/agent-screen";
 import { Select } from "@/components/ui/select";
 import { FolderPicker } from "@/components/folder-picker";
 import {
@@ -877,9 +878,16 @@ function LaunchProgress({
         </div>
       )}
       {waiting && (
-        <p className="mt-4 whitespace-pre-line break-words rounded-lg border border-yellow/30 bg-yellow/5 px-3 py-2 text-label text-text">
-          {waiting}
-        </p>
+        <div className="mt-4 space-y-2 rounded-lg border border-yellow/30 bg-yellow/5 px-3 py-2 text-label text-text">
+          <p className="whitespace-pre-line break-words">{waiting}</p>
+          {/* What it's waiting on, as its terminal shows it now: a sign-in, a
+              question. Read on this machine, never sent through the hub. */}
+          {terminal && (
+            <div className="flex h-44 flex-col overflow-hidden rounded border border-border">
+              <AgentScreen room={room} handle={handle} />
+            </div>
+          )}
+        </div>
       )}
       {failed && help && (
         <div role="alert" className="mt-4 space-y-3 rounded-lg border border-red/30 bg-red/5 px-3 py-3 text-label text-text">
@@ -892,12 +900,12 @@ function LaunchProgress({
               ))}
             </ol>
           </div>
-          {report.screen && (
+          {terminal && (
             <div>
               <p className="font-medium">Its terminal shows</p>
-              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-bg px-2 py-1.5 font-mono text-micro text-muted-foreground">
-                {report.screen}
-              </pre>
+              <div className="mt-1 flex h-44 flex-col overflow-hidden rounded border border-border">
+                <AgentScreen room={room} handle={handle} />
+              </div>
             </div>
           )}
           {report.detail && (

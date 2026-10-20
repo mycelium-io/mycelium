@@ -1182,6 +1182,23 @@ async fn pick_folder(
         .map(|p| p.to_string_lossy().to_string()))
 }
 
+/// What an agent's terminal on this machine shows right now, for the app's own
+/// hub UI to draw live. Streamed from this machine: it never goes to the hub,
+/// and another hub's pages, which client mode shows, get nothing. The page
+/// names an agent, never a pane, so no other terminal can be read.
+#[tauri::command]
+async fn agent_screen(
+    app: AppHandle,
+    webview: Webview,
+    room: String,
+    handle: String,
+) -> Result<terminal::Screen, String> {
+    own_ui_only(&app, &webview)?;
+    tauri::async_runtime::spawn_blocking(move || terminal::screen(&room, &handle))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// This machine's runner id, for the app's own hub UI: the machine `choose_agent_folder`
 /// picks on, so the page offers the dialog only for an agent starting here.
 #[tauri::command]
@@ -1409,6 +1426,7 @@ pub fn run() {
             pick_folder,
             this_machine,
             choose_agent_folder,
+            agent_screen,
             run_doctor,
             herdr_integrations,
             get_model,

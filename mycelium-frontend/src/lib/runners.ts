@@ -204,10 +204,9 @@ export type StartWhy = "shell" | "cli" | "host";
 export interface StartReport {
   step: StartStep | null;
   why: StartWhy | null;
-  /** The terminal the start left open, for the person to look at. */
+  /** The terminal the start left open, for the person to look at. What it
+   *  shows never comes through the hub: the desktop app shows it live. */
   pane: string | null;
-  /** The last lines that terminal showed. */
-  screen: string | null;
   /** What the host said, word for word, for whoever is debugging. */
   detail: string | null;
   /** Still starting, but the terminal's shell is slow to reach a prompt. */
@@ -227,7 +226,6 @@ export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): 
     step: step && STEPS.includes(step) ? (step as StartStep) : null,
     why: why && WHYS.includes(why) ? (why as StartWhy) : null,
     pane: text(r.pane),
-    screen: text(r.screen),
     detail: text(r.detail),
     slow: r.slow === true,
   };
