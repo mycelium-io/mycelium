@@ -3,10 +3,10 @@
 
 """A room's name ignores case: any spelling is the room made under one.
 
-On a Mac the disk gave ``Marc`` and ``marc`` one folder and one transcript,
-while the hub gave them two live channels, so a message an agent sent to
-``marc`` showed in Stream (read from the transcript) but never reached a
-Channel open on ``Marc``.
+On macOS and Windows, whose disks ignore case, ``Marc`` and ``marc`` were one
+folder and one transcript while the hub gave them two live channels, so a
+message an agent sent to ``marc`` showed in Stream (read from the transcript)
+but never reached a Channel open on ``Marc``.
 """
 
 from __future__ import annotations
@@ -16,7 +16,14 @@ from fastapi import HTTPException
 
 from app.room_names import canonical_path
 from app.routes import patterns as patterns_route
-from app.services.filesystem import canonical_room_name, get_data_dir, get_room_dir
+from app.schemas import RoomFolder, RoomFolders
+from app.services import room_folders
+from app.services.filesystem import (
+    canonical_room_name,
+    get_data_dir,
+    get_room_dir,
+    same_room,
+)
 
 
 def test_any_spelling_finds_the_room_as_it_was_made() -> None:
@@ -67,6 +74,25 @@ async def test_making_a_room_under_another_spelling_gives_the_one_there(client) 
     assert again.json()["name"] == "Marc"
     rooms = sorted(p.name for p in (get_data_dir() / "rooms").iterdir() if p.is_dir())
     assert [r for r in rooms if r.casefold() == "marc"] == ["Marc"]
+
+
+def test_a_room_a_runner_spells_its_own_way_is_the_same_room() -> None:
+    get_room_dir("Marc")
+    assert same_room("marc", "Marc")
+    assert not same_room("marc", "other")
+
+
+def test_room_folders_file_each_room_under_its_own_spelling() -> None:
+    get_room_dir("Marc")
+    layout = room_folders.normalize(
+        RoomFolders(
+            folders=[
+                RoomFolder(id="a", name="Work", rooms=["marc", "nowhere"]),
+                RoomFolder(id="b", name="Again", rooms=["MARC"]),
+            ]
+        )
+    )
+    assert [f.rooms for f in layout.folders] == [["Marc", "nowhere"], []]
 
 
 def test_a_pattern_cannot_claim_another_spelling_of_a_room() -> None:

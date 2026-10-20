@@ -22,7 +22,12 @@ from typing import Any
 
 from app.schemas import HANDLE_PATTERN, RoomFolders
 from app.services.agent_registry import norm_handle
-from app.services.filesystem import UnsafePathError, contained, get_data_dir
+from app.services.filesystem import (
+    UnsafePathError,
+    canonical_room_name,
+    contained,
+    get_data_dir,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,13 +48,16 @@ def normalize(layout: RoomFolders) -> RoomFolders:
     """File each room once, in the first folder that names it, and trim names.
 
     The client sends the whole layout, so a room dragged between two folders in
-    a racing pair of writes can't end up in both.
+    a racing pair of writes can't end up in both. Each room is filed under its
+    own spelling (``canonical_room_name``), so a folder written with another
+    spelling still holds the room the rooms list shows.
     """
     seen: set[str] = set()
     folders = []
     for folder in layout.folders:
         rooms = []
-        for room in folder.rooms:
+        for named in folder.rooms:
+            room = canonical_room_name(named) if named else named
             if room and room not in seen:
                 seen.add(room)
                 rooms.append(room)
@@ -70,7 +78,9 @@ def load(handle: str) -> RoomFolders:
         return RoomFolders()
     try:
         data: Any = json.loads(path.read_text())
-        return RoomFolders.model_validate(data)
+        # Normalized on the way out too, so a list saved before rooms
+        # ignored case reads with each room's own spelling.
+        return normalize(RoomFolders.model_validate(data))
     except FileNotFoundError:
         return RoomFolders()
     except (OSError, ValueError):

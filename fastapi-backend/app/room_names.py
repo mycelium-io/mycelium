@@ -7,8 +7,9 @@ A room's name ignores case (``filesystem.canonical_room_name``). This puts the
 room's own spelling into the path of every ``/api/rooms/<name>/…`` request
 before a route sees it, so the live channel, the stream, the transcript and
 every key built from the name agree whichever spelling a caller typed. Without
-it, ``marc`` and ``Marc`` were one folder on a Mac but two live channels, and a
-message sent to one never reached a Channel open on the other.
+it, on macOS and Windows, whose disks ignore case, ``marc`` and ``Marc`` were
+one folder but two live channels, and a message sent to one never reached a
+Channel open on the other.
 """
 
 from __future__ import annotations

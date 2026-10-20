@@ -48,6 +48,7 @@ from app.services.filesystem import (
     get_room_dir,
     read_memory_file,
     room_exists,
+    same_room,
 )
 from app.services.runners import (
     RunnerError,
@@ -477,9 +478,11 @@ async def stop_agent(
     except RunnerError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     h = norm_handle(handle) or ""
-    if not any(a.room == room_name and a.handle == h for a in runner.agents):
+    found = next((a for a in runner.agents if same_room(a.room, room_name) and a.handle == h), None)
+    if found is None:
         raise HTTPException(
             status_code=404, detail=f"{runner.label} isn't running @{h} in {room_name}"
         )
     me = actor.bind_optional_actor(request, None, field="created_by")
-    return registry.enqueue(runner_id, "stop", {"room": room_name, "handle": h}, created_by=me)
+    # The room as the runner spelled it, which is what it looks its agents up by.
+    return registry.enqueue(runner_id, "stop", {"room": found.room, "handle": h}, created_by=me)
