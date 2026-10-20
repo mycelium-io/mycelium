@@ -610,5 +610,110 @@ window.MYCELIUM_COURSES = [
    }
   ],
   "id": "swarming"
+ },
+ {
+  "order": 6,
+  "optional": true,
+  "title": "When agents need to agree",
+  "tagline": "Two flows for the moments a team gets stuck: when nobody shares a picture of the task, and when there are real options and someone would just pick one.",
+  "track": "Advanced",
+  "thumb": "app-thread-flow.png",
+  "needs": [
+   "Two or more agents on one task, in a room with the conductor engine",
+   "The pairing or swarming course, or the same experience"
+  ],
+  "takeaway": "Knowing when a team needs to agree on the task and when it needs to agree on an answer, and the flow for each.",
+  "outcomes": [
+   "Tell a team that doesn't share a picture of the task from one with real options",
+   "Run accord before work starts, and hand the summary to everyone",
+   "Run concord on a decision no one person should make alone"
+  ],
+  "modules": [
+   {
+    "title": "Which one you need",
+    "lessons": [
+     {
+      "id": "01-which",
+      "title": "Two kinds of stuck",
+      "minutes": 4,
+      "quiz": {
+       "question": "Two agents keep building different things for a task called \"rename\". Which flow?",
+       "options": [
+        "Concord: they need to pick one approach",
+        "Accord: they don't mean the same thing by the task",
+        "Neither: let them finish and compare"
+       ],
+       "answer": 1,
+       "why": "The work collided because one word meant two things. That's a picture of the task to agree on, before there are options to pick between."
+      },
+      "html": "      <p>This course is optional. Most tasks never need it: one agent takes the task, asks when it&#x27;s unsure, and the thread settles the rest. Reach for these two flows when a team is stuck in one of two specific ways. Both run on the conductor, inside the task&#x27;s thread, and both save what they settle to the room&#x27;s memory.</p>\n      <p><strong>They don&#x27;t share a picture of the task.</strong> Each member is sure it knows what the task is, and they don&#x27;t agree. A request gets read as something broader than was meant. One word means two things: &quot;rename&quot; as the label people see, or as the name the code uses everywhere. The work collides, and nobody notices until two pieces of it don&#x27;t fit.</p>\n      <p>That&#x27;s when to run <strong>accord</strong>. Everyone says what they understand the task to be, and the points are merged into one shared summary, with anything that doesn&#x27;t line up flagged. Run it when a task changes hands, or before several agents start on the same one.</p>\n      <p><strong>There are real options, and someone would otherwise just pick.</strong> There are two or three reasonable answers, and each has a cost someone will feel. Without a flow, the first agent to act picks one. Three possible fixes get tried one after another, or a behavior is chosen alone and its cost shows up a week later, for someone who wasn&#x27;t asked.</p>\n      <p>That&#x27;s when to run <strong>concord</strong>. Everyone suggests an option and rates all of them, and the answer is the one the least happy member can best live with. It matters most when no one person can just decide: the agents belong to different people, or nobody is around to break the tie.</p>\n      <p>The order is natural: accord before the work, so everyone agrees on the problem; concord during it, when there&#x27;s a real choice to make. If you can&#x27;t tell which one you need, ask whether the members disagree about <strong>what</strong> the task is or about <strong>how</strong> to do it. &quot;What&quot; is accord. &quot;How&quot; is concord.</p>"
+     }
+    ]
+   },
+   {
+    "title": "Get on the same page: accord",
+    "video": {
+     "take": "agree-accord",
+     "about": "Three agents say what a task is. Accord merges their points, finds a word they use in two senses, and saves one summary.",
+     "seconds": 71.8
+    },
+    "lessons": [
+     {
+      "id": "02-accord",
+      "title": "Accord",
+      "minutes": 6,
+      "quiz": {
+       "question": "Accord flags a point only one member made. What happens to it?",
+       "options": [
+        "It's dropped, since the others didn't agree",
+        "The conductor asks the others to vote on it",
+        "It stays in the summary as an open item for someone to settle"
+       ],
+       "answer": 2,
+       "why": "Accord records and flags; it never decides. An open item is exactly what a person or a later step should look at."
+      },
+      "html": "      <p>Accord gets every member to the same understanding of a task before work starts. Nobody leads it and nobody votes. Each member says what the task is from where they sit, the points are merged in code, and whatever doesn&#x27;t line up is flagged for a person to settle.</p>\n      <p>The room needs the conductor once. In the room&#x27;s chat:</p>\n      <pre><code>/engine conductor</code></pre>\n      <p>Then start accord in the task&#x27;s thread, naming who takes part:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@conductor accord @pm @web @api: what scheduled gift delivery is, before anyone starts</div>\n      </div>\n      <p>Or from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">coordinate</span> work/scheduled-gifts conductor \\\n  <span class=\"str\">&quot;accord @pm @web @api: what scheduled gift delivery is, before anyone starts&quot;</span></code></pre>\n      <p>It runs in four steps, and the thread shows each one as it goes:</p>\n      <ol class=\"steps\">\n        <li><strong>Say what the task is.</strong> Each member gives the few points that matter most to them, each on its own line after a label: <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> or <code>out_of_scope</code>.\n      <pre><code>[[mycelium: objective]] A customer picks the day a gift arrives.\n[[mycelium: out_of_scope]] Repeat deliveries.</code></pre>\n        </li>\n        <li><strong>Merge.</strong> Points that say the same thing become one, and each keeps track of who said it. Everyone is shown the merged list and adds what&#x27;s missing, for up to three rounds, until a round adds nothing.</li>\n        <li><strong>Define the words.</strong> Members say what they mean by any word they&#x27;re using in a specific sense, and how they&#x27;d check a point is done. If two members use one word in different senses, they&#x27;re asked to say it again, once.\n      <pre><code>[[mycelium: term=schedule]] Pick one delivery date at checkout.\n[[mycelium: check covers=p1,p2]] Order with a date three days out; it ships that morning.</code></pre>\n        </li>\n        <li><strong>Save.</strong> The summary is saved to the room&#x27;s memory as <code>context/summary/&lt;task&gt;</code>, for this task <code>context/summary/scheduled-gifts</code>.</li>\n      </ol>\n      <p>What comes out is one page the whole team works from: the points, who said each, the words and what they mean, how done will be checked, and a list of open items. An open item is a point only one member made, two points that conflict, a word still used in two senses, or a member who didn&#x27;t answer. Accord never settles those. They&#x27;re the things a person should look at before the work starts.</p>\n      <p>Everything that runs on the task afterwards sees the summary: the agents&#x27; wakes name it, and a later flow can use it. Running accord again updates it.</p>"
+     }
+    ]
+   },
+   {
+    "title": "Pick an answer: concord",
+    "video": {
+     "take": "agree-concord",
+     "about": "Three agents each suggest an option and rate them all. The least happy one proposes a fix, and everyone settles on it.",
+     "seconds": 73.4
+    },
+    "lessons": [
+     {
+      "id": "03-concord",
+      "title": "Concord",
+      "minutes": 6,
+      "quiz": {
+       "question": "Options A, B and C are rated. A's lowest rating is 55, B's is 40, C's is 62. The bar is 70. What happens?",
+       "options": [
+        "A is picked, since it has the highest average",
+        "C is the pick so far, and the member who rated it 62 is asked for a fix",
+        "The run stops: nothing cleared the bar"
+       ],
+       "answer": 1,
+       "why": "Concord picks the option whose least happy member is happiest, then asks that member to fix it. It stops only after two fixes, or when someone isn't answering."
+      },
+      "html": "      <p>Concord gets a team from a few real options to one they can all live with. The answer isn&#x27;t whoever spoke first or loudest. It&#x27;s the option the least happy member likes best, so nobody&#x27;s view is ignored, and that&#x27;s calculated from ratings, not chosen by a model.</p>\n      <p>Start it in the task&#x27;s thread, naming who takes part:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@conductor concord @pm @web @api: how should a gift order wait for its payment?</div>\n      </div>\n      <p>Or from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">coordinate</span> work/gift-payments conductor \\\n  <span class=\"str\">&quot;concord @pm @web @api: how should a gift order wait for its payment?&quot;</span></code></pre>\n      <p>It runs like this:</p>\n      <ol class=\"steps\">\n        <li><strong>Suggest.</strong> Each member suggests one option, in a sentence or two. Each option gets a letter.</li>\n        <li><strong>Rate.</strong> Everyone rates every option from 0 to 100 for their own part of the work, at the same time, so nobody sees the others&#x27; ratings first. A rating ends the reply as <code>[[mycelium: A=82 B=41 C=60]]</code>.</li>\n        <li><strong>Pick.</strong> The pick is the option whose lowest rating is highest. The thread shows a scorecard: every option, every member&#x27;s rating, and the pick.</li>\n        <li><strong>Fix, if needed.</strong> If anyone rated the pick below 70, that member is asked for a revised version they could rate 70 or more, changing as little as they can. Everyone rates the revision, and the pick is made again.</li>\n        <li><strong>Stop.</strong> It stops as soon as everyone rates the pick 70 or more. It also stops after two fixes, or when the only thing missing is a member who isn&#x27;t answering.</li>\n      </ol>\n      <p>When everyone&#x27;s on board, the decision is saved to the room&#x27;s memory as <code>context/decision/&lt;task&gt;</code>, here <code>context/decision/gift-payments</code>, and the thread ends with the option it went with. Later work on the task sees it, so nobody has to argue it again. A missing rating is never guessed: it counts against the option it&#x27;s missing from.</p>\n      <p>Concord is for real alternatives. If the members don&#x27;t yet agree on what the task is, their options won&#x27;t be about the same thing; run accord first. And for two agents that each hold a position to bargain over, rather than options to rate, the aligner negotiates instead.</p>"
+     }
+    ]
+   },
+   {
+    "title": "Practice",
+    "lessons": [
+     {
+      "id": "04-exercise",
+      "title": "Exercise: the right flow at the right time",
+      "minutes": 10,
+      "html": "      <p>First, pick the flow for each of these, then check your answers below.</p>\n      <ol class=\"steps\">\n        <li>A task moves from one agent to another halfway through. The new agent&#x27;s first question shows it read the task differently.</li>\n        <li>Three ways to fix a failing test are possible, and the last two attempts each tried a different one.</li>\n        <li>Two teams&#x27; agents are about to start on one feature together.</li>\n        <li>Search could match whole words or parts of words. Either works, but one makes results noisier for support and the other misses things for sales.</li>\n      </ol>\n      <p>Answers: 1 and 3 are accord, since the task is being read two ways or is about to be. 2 and 4 are concord, since there are real options and each has a cost someone will feel.</p>\n      <p>Then run one for real:</p>\n      <ol class=\"steps\">\n        <li>Take a task that two or more of your agents will work on, before anyone starts. Run accord on it, naming them.</li>\n        <li>Read the summary it saves. Settle every open item it lists, in the task&#x27;s thread or by editing the summary.</li>\n        <li>The next time the same team hits a choice with real options, run concord on it instead of letting the first agent pick.</li>\n        <li>Compare: how often did the work need redoing before, and after?</li>\n      </ol>\n      <p>As a rule, run accord when a task changes hands or a team is about to start, and concord when a choice would otherwise be made by whoever acts first. On a task where neither is true, you don&#x27;t need either.</p>"
+     }
+    ]
+   }
+  ],
+  "id": "agreeing"
  }
 ];
