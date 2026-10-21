@@ -199,21 +199,21 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#board-add-a-task",
     "t": "Add a task",
     "s": "Board",
-    "x": "In the app, type the task into the line at the top of the board, \"Hand something off to the room\", or type /task and the task into the message box. From the command line: mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" Every task gets its own thread when it's created and keeps it for life. Any command tha",
+    "x": "In the app, type the task into the line at the top of the board, \"Hand something off to the room\", or type /task and the task into the message box. From the command line: mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" Every task keeps its thread for life. Any command that takes a task accepts its key (wo",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#board-talk-inside-a-task",
     "t": "Talk inside a task",
     "s": "Board",
-    "x": "In the app, opening a task shows its body and fields at the top and its thread underneath. From the command line: mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board messages work/ship-passkey-login The room's chat never shows a thread's messages. It shows a line when a task is filed, claimed, handed back or resolved. Click the line to open the thread. These lines wake nobody. Us",
+    "x": "In the app, opening a task shows its body and fields at the top and its thread underneath. From the command line: mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board messages work/ship-passkey-login The room's chat never shows a thread's messages. It shows one line when a task moves, for example when it's filed or resolved. Clicking the line opens the thread, and the line wakes n",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#board-split-a-task",
     "t": "Split a task",
     "s": "Board",
-    "x": "mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec mycelium board new \"Migrate existing sessions\" --parent work/ship-passkey-login --parent links the new task to its parent so the parent lists its parts. If the parent doesn't exist, the command fails instead of leaving a broken link. When one piece can't start until another is resolved, add a depends-on field. The board shows the r",
+    "x": "mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec mycelium board new \"Migrate existing sessions\" --parent work/ship-passkey-login --parent links the new task to its parent, which then lists its parts. When one piece can't start until another is resolved, give it a depends-on field. The board shows it as waiting until then: mycelium memory set work/run-the-migration \"Run the migrat",
     "p": "Concepts"
   },
   {
@@ -732,70 +732,49 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop",
     "t": "The Desktop App",
     "s": "Setup",
-    "x": "The desktop app is the quickest way to get going. It runs everything Mycelium needs on your computer, with no Docker and no setup in a terminal. It also starts your coding agents for you when you ask. Your computer Download Needs Mac Mycelium for Mac Apple silicon, macOS 13 or later Linux (preview) Linux AppImage x86-64, glibc 2.35 or later (Ubuntu 22.04, Fedora 36, Debian 12 or newer) Windows (preview) Windows insta",
+    "x": "The desktop app is the quickest way to get going. It runs everything Mycelium needs on your computer, with no Docker and no setup in a terminal, and starts your coding agents for you when you ask. Your computer Download Needs Mac Mycelium for Mac Apple silicon, macOS 13 or later Linux (preview) Linux AppImage x86-64, glibc 2.35 or later (Ubuntu 22.04, Fedora 36, Debian 12 or newer) Windows (preview) Windows installer",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-install",
     "t": "Install",
     "s": "Setup › The Desktop App",
-    "x": "Mac: open the download and drag Mycelium into Applications, then open it from there. The first time, macOS asks whether to open an app downloaded from the internet. Choose Open. Linux: make the file executable (chmod +x Mycelium-linux-x86_64.AppImage) and run it. It runs from that one file, so there's nothing to install. Windows: run the installer. It installs for you alone, with no administrator prompt. The installe",
+    "x": "Mac: drag Mycelium into Applications and open it. The first time, macOS asks whether to open an app from the internet. Choose Open. Linux: make the file executable (chmod +x Mycelium-linux-x86_64.AppImage) and run it. Windows: run the installer. It installs for you alone, with no administrator prompt. The installer isn't code-signed, so Windows asks before running it. Choose More info, then Run anyway. The app then a",
     "p": "Guides"
   },
   {
-    "u": "guides.html#desktop-whats-inside",
-    "t": "What's inside",
+    "u": "guides.html#desktop-adding-and-watching-agents",
+    "t": "Adding and watching agents",
     "s": "Setup › The Desktop App",
-    "x": "The app includes everything, at versions tested together: the Mycelium hub and its UI; a SLIM node for the rooms' messages; herdr, where your agents run as terminals you can watch and type to; the mycelium CLI, which agents use to work in rooms; the runner, which starts your agents and wakes them; Pi, which the engines use to call the model; the small model behind memory search, so search works offline. It doesn't in",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#desktop-adding-agents",
-    "t": "Adding agents",
-    "s": "Setup › The Desktop App",
-    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See Start Agents From the App. To talk to an agent, open the agents terminal: terminal in the bar at the bottom of the wind",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#desktop-watching-an-agents-terminal",
-    "t": "Watching an agent's terminal",
-    "s": "Setup › The Desktop App",
-    "x": "You can see what an agent on this computer is doing without leaving the room. Its terminal shows live, read-only, in color: Members: click the agent, or right-click it and pick Watch terminal. Machines: press View on the agent's row. The channel: press watch beside \"is working\" while it works. Add agent: when an agent stops at a sign-in or a question as it starts, the dialog shows what it's asking. The view says \"Str",
+    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. See Start Agents From the App. To type to an agent, open the agents terminal. terminal in the bar at the bottom of the window opens it, and so does Open terminal beside an agent on Machines. To watch an agent withou",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-the-apps-menu",
     "t": "The app's menu",
     "s": "Setup › The Desktop App",
-    "x": "While it runs, Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running, and Quit Mycelium stops the hub. Agents you started keep running in herdr either way and pick up again when the hub is back. The menu shows the state of the hub, the SLIM node and the runner. It also has these items: Open Mycelium, Agents terminal and Your agents… Start at l",
+    "x": "Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running. Quit Mycelium stops the hub. Agents keep running in herdr either way and pick up again when the hub is back. The menu shows whether each part of Mycelium is running. Health check… runs the same checks as mycelium doctor --mode desktop and says what to do about anything that's wrong. The me",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-updates",
     "t": "Updates",
     "s": "Setup › The Desktop App",
-    "x": "The app checks for a new release shortly after it opens, every few hours while it runs, and whenever you choose Check for Updates…. If one is out, it asks before installing it. While you haven't installed it yet, the app's header shows Update available, which asks the same question. Once you say yes, a small window shows the download until the app restarts into the new version. If your connection drops partway, the w",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#desktop-changing-version-and-release-candidates",
-    "t": "Changing version, and release candidates",
-    "s": "Setup › The Desktop App",
-    "x": "Settings → Version shows the version you're running and lists releases you can switch to. Pick one, say yes when the app asks, and the app downloads it, checks its signature like any update, and restarts into it. The hub and the CLI inside the app change with it. A mycelium you installed separately for your terminal (with the install script or uv tool) keeps its own version. Release candidates. Turn on Offer release ",
+    "x": "The app checks for a new release when it opens and every few hours. It asks before installing one, and it installs only an update the project signed. herdr keeps running through an update, so your agents aren't interrupted. On a Mac, macOS can then refuse the old herdr access to folders like Documents, and commands there fail with \"Operation not permitted\". The app notices and asks whether to restart herdr. Restartin",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-logs",
     "t": "Logs",
     "s": "Setup › The Desktop App",
-    "x": "Two logs say what went wrong. Both open from Logs in the menu, in whatever opens log files on your computer (Console, on a Mac). App log (~/.mycelium/logs/desktop.log): everything the app runs, and why a part of it stopped. Earlier runs are in desktop.log.1 to desktop.log.5 beside it. Agent starts (~/.mycelium/runner/runner.log): every agent a room asked this computer to start, and whether it started, is waiting for ",
+    "x": "Both open from Logs in the menu: App log (~/.mycelium/logs/desktop.log). It records everything the app runs, and why a part of it stopped. Earlier runs are kept beside it. Agent starts (~/.mycelium/runner/runner.log). It records every agent a room asked this computer to start, and what happened. Look here first when an agent won't start.",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-the-command-line",
     "t": "The command line",
     "s": "Setup › The Desktop App",
-    "x": "On an Apple silicon Mac, the installer on the docs site installs the app too. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash puts it in Applications, links its mycelium CLI into ~/.local/bin and opens it. mycelium desktop serve runs the same hub without the window.",
+    "x": "On an Apple silicon Mac, the install script installs the app and puts its mycelium CLI on your path: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium desktop serve runs the same hub without the window.",
     "p": "Guides"
   },
   {
@@ -1299,7 +1278,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#working-the-board-the-board-in-the-app",
     "t": "The board in the app",
     "s": "Work › Working the Board",
-    "x": "The app's board is for the people in a room. Its first line says what's going on, such as \"2 things need you. builder and reviewer are on 4 tasks. 3 are up next.\" Under it is a line to hand something off: say what you need and press Enter, and it files a task for an agent to pick up. Then come the rows. Every row is the same: who it's with, its title, the latest thing a person or an agent said in its thread, its stat",
+    "x": "The app's board opens with a line that says what's going on, such as \"2 things need you. builder and reviewer are on 4 tasks. 3 are up next.\" Under it is a line where you hand something off. The rows come in the three groups the board page describes. Each row shows who has the task, the latest thing said in its thread, and where it stands. It also shows how long ago the task last moved. A row that has been quiet for ",
     "p": "Guides"
   },
   {
@@ -1338,24 +1317,17 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
-    "u": "guides.html#working-the-board-filing-a-task",
-    "t": "Filing a task",
+    "u": "guides.html#working-the-board-writing-a-tasks-body",
+    "t": "Writing a task's body",
     "s": "Work › Working the Board",
-    "x": "A task has a title and a body. The title is what the board shows on its row. The body says what the task is: what's wanted, what's out of scope, links to the memories and PRs it's about. Write it when you file the task, in markdown: mycelium board new \"Ship passkey login\" \"Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]].\" mycelium board new \"Ship passkey login\" --file brief.md --as",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#working-the-board-actions",
-    "t": "Actions",
-    "s": "Work › Working the Board",
-    "x": "claim · release · resolve · block · promote · dismiss These are how agents move work, from the command line. claim, release, resolve and block are mycelium board commands; the others are fields an agent writes on the row. block records what a task is waiting on. promote resolves a row here and marks it as tracked somewhere longer-lived, such as a GitHub issue you've filed. It doesn't file the issue for you. dismiss c",
+    "x": "The title is what the board shows. The body says what's wanted and what isn't. It should link to the memories and pull requests the task is about. The body's links work, and search finds it. You can edit it as the plan changes: mycelium board new \"Ship passkey login\" \"Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]].\" mycelium board new \"Ship passkey login\" --file brief.md --assign ",
     "p": "Guides"
   },
   {
     "u": "guides.html#working-the-board-github",
     "t": "GitHub",
     "s": "Work › Working the Board",
-    "x": "The board is for what's happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it instead of copying it. Mention a pull request in a task's body or its thread as owner/repo#123 or by its URL, and give the hub a GitHub token. The task's row in mycelium board then shows the pull request's live state, such as approved, changes requested, CI failing or merged. In the app, the",
+    "x": "Anything that needs to outlast the work belongs in GitHub, and the board links to it. To link a pull request, mention it in a task's body or thread as owner/repo#123 or by its URL. Once the hub has a GitHub token, the row shows the pull request's live state. See live pull request status. A bare #123 isn't linked, and neither is one written as code. Mention a pull request that way when it's only on the side.",
     "p": "Guides"
   },
   {
@@ -1569,13 +1541,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
-    "u": "guides.html#auth-always-set-an-audience",
-    "t": "Always set an audience",
-    "s": "Security › Authentication",
-    "x": "The audience is technically optional, but set it. Without one, the hub accepts any token your provider has issued. That includes tokens meant for other applications that use the same provider. The audience limits the hub to tokens issued for it. If auth is on with no audience, the backend logs a warning at startup and shows it under auth in /health.",
-    "p": "Guides"
-  },
-  {
     "u": "guides.html#auth-settings",
     "t": "Settings",
     "s": "Security › Authentication",
@@ -1586,21 +1551,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-signing-in-from-the-cli",
     "t": "Signing in from the CLI",
     "s": "Security › Authentication",
-    "x": "mycelium config set login.audience mycelium # same as the hub's auth.audience mycelium login Your browser opens and you sign in with your provider. From then on every command sends your token, including mycelium memory, mycelium room, await and respond. You don't need to set login.issuer. The CLI asks the hub which issuer it trusts and uses that. It won't guess in these cases: The hub can't be reached. It asks you to",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#auth-where-your-sign-in-is-kept",
-    "t": "Where your sign-in is kept",
-    "s": "Security › Authentication",
-    "x": "mycelium login keeps your sign-in in the system keychain: the macOS Keychain, Windows Credential Manager, or the Secret Service on Linux. There's one entry for each hub you sign in to. Where there's no keychain to use, such as a server with no Secret Service, it keeps it in ~/.mycelium/token.json, readable only by you (0600), and mycelium login says so. Inside an agent's terminal, the CLI never uses your sign-in. A c",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#auth-checking-who-you-are",
-    "t": "Checking who you are",
-    "s": "Security › Authentication",
-    "x": "mycelium whoami shows the handle from your token when you're signed in. When you're not, it shows your configured identity.name. mycelium iam with no arguments does the same: acting as @avery (avery#a8f3) signed in (https://sso.example.com/realms/mycelium, expires in 42 min) When auth is on, the hub attributes your writes to the handle in your token. See Who wrote it. A different identity.name would get your writes r",
+    "x": "mycelium config set login.audience mycelium # same as the hub's auth.audience mycelium login Your browser opens and you sign in with your provider. From then on, every command sends your token. You don't need to set login.issuer, because the CLI asks the hub which issuer it trusts. If the hub trusts more than one, the CLI asks you to pick one with --issuer. On a machine without a browser, run mycelium login --device.",
     "p": "Guides"
   },
   {
@@ -1621,14 +1572,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-signing-in-agents",
     "t": "Signing in agents",
     "s": "Security › Authentication",
-    "x": "mycelium login is for people. Agents have three ways in: Joined with a code. An agent that joined a room with mycelium join gets a token from the hub itself, valid for 30 days. There's nothing to register with your provider. See Joining a room from anywhere. Its own client. The agent signs in with its own OIDC client using the client_credentials grant. The client id becomes the agent's handle. A token from somewhere ",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#auth-where-agent-credentials-are-stored",
-    "t": "Where agent credentials are stored",
-    "s": "Security › Authentication",
-    "x": "Agent credentials are stored in ~/.mycelium/agent-credentials.json, readable only by you (0600). A cached token for each agent is kept in ~/.mycelium/agent-state/agent-tokens/. This grant has no refresh tokens, so an expired token is just requested again. For a container that runs one agent and has no config file, use these environment variables: MYCELIUM_AGENT_AUTH_ISSUER, MYCELIUM_AGENT_AUTH_CLIENT_ID, MYCELIUM_AGE",
+    "x": "mycelium login is for people. Agents have three ways in: Joined with a code. mycelium join gives the agent a token from the hub itself, valid for 30 days. There's nothing to register with your provider. See Joining a room from anywhere. Its own client. The agent signs in with its own OIDC client, using the client_credentials grant. The client id becomes the agent's handle, and you can revoke one agent without affecti",
     "p": "Guides"
   },
   {
@@ -1649,49 +1593,42 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-people-and-agents-from-different-issuers",
     "t": "People and agents from different issuers",
     "s": "Security › Authentication",
-    "x": "The hub works with any OIDC provider. It only needs each issuer's URL and signing keys. It's common for people and agents to come from different issuers. Add a block for each: [[auth.issuers]] issuer = \"https://sso.example.com/realms/people\" role = \"user\" [[auth.issuers]] issuer = \"https://sso.example.com/realms/agents\" role = \"agent\" A token is checked against the keys of the issuer it names in iss. One issuer's tok",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#auth-how-a-token-becomes-a-handle-and-a-role",
-    "t": "How a token becomes a handle and a role",
-    "s": "Security › Authentication",
-    "x": "When a token is accepted, the hub reads two things from it: The handle, from auth.handle_claim (sub by default). It's lowercased and any leading @ is removed. An agent client called release-agent shows up as @release-agent. The role, from auth.role_claim if the token has it. Otherwise it comes from the role on the issuer's block. People and agents usually come from different issuers, so most setups never need a role ",
+    "x": "The hub works with any OIDC provider. People and agents often come from different issuers. Add a block for each: [[auth.issuers]] issuer = \"https://sso.example.com/realms/people\" role = \"user\" [[auth.issuers]] issuer = \"https://sso.example.com/realms/agents\" role = \"agent\" A token is checked against the keys of the issuer it names. One issuer's tokens can't pass as another's. The hub reads the caller's handle from th",
     "p": "Guides"
   },
   {
     "u": "guides.html#auth-who-wrote-it",
     "t": "Who wrote it",
     "s": "Security › Authentication",
-    "x": "With auth on, a write is attributed to the handle in the token. That covers memory authorship (created_by, updated_by), message senders and message attribution. The handle in the request itself only matters if it disagrees: If the request leaves the handle out or gives the same one, the token's handle is used. @Alice and alice count as the same. If the request names a different handle, it's rejected with a 403 instea",
+    "x": "With auth on, every write is recorded under the handle in the token. That covers who wrote a memory and who sent a message. If a request names a different handle, it's refused with a 403. A per-machine suffix such as alice#a8f3 is kept, but it can't be used to act as someone else. With auth off, the handle in the request is used as it is.",
     "p": "Guides"
   },
   {
     "u": "guides.html#auth-acting-for-an-agent",
     "t": "Acting for an agent",
     "s": "Security › Authentication",
-    "x": "Two calls take a handle for something other than recording who wrote what: mycelium await reads and consumes that handle's queue of messages. Joining a room records that handle as present. Without a check, anyone with a valid token could read another member's messages by awaiting as them. So with auth on, these calls are only allowed in two cases: The handle is your own. A per-machine suffix like alice#a8f3 still cou",
+    "x": "mycelium await reads a handle's messages, and joining a room marks a handle as present. With auth on, you can only do either for your own handle, or for an agent whose record lists you as its owner or in its allow_from. Anything else is refused with a 403. An agent's record belongs to one room. Owning @bot in one room gives you nothing in another. An agent with its own credential awaits as itself and needs none of th",
     "p": "Guides"
   },
   {
     "u": "guides.html#auth-rotating-signing-keys",
     "t": "Rotating signing keys",
     "s": "Security › Authentication",
-    "x": "The hub caches your provider's signing keys for auth.jwks_ttl_s. When a token arrives signed with a key it hasn't seen, it fetches the keys again right away, with a rate limit. You don't need to restart Mycelium after rotating keys. If your provider is briefly unreachable, the hub keeps using the keys it already has. An outage at the provider doesn't take the hub down with it.",
+    "x": "The hub caches your provider's signing keys. When a token is signed with a key it hasn't seen, it fetches the keys again. You don't need to restart anything after rotating keys. If the provider is briefly unreachable, the hub keeps using the keys it already has.",
     "p": "Guides"
   },
   {
     "u": "guides.html#auth-requests-from-the-hubs-own-machine",
     "t": "Requests from the hub's own machine",
     "s": "Security › Authentication",
-    "x": "With auth.localhost_bypass on, which is the default, requests from the hub's own machine (127.0.0.0/8 or ::1) don't need a token. That way, turning auth on can't lock you out. The hub only looks at the connection's real address. It ignores X-Forwarded-For, because a caller can set that to anything. This doesn't work when the backend runs in Docker. Requests through a published port come from Docker's network rather t",
+    "x": "By default, requests from the hub's own machine need no token. That way, turning auth on can't lock you out. Set auth.localhost_bypass to false to change that. The hub checks the connection's real address and ignores X-Forwarded-For, which a caller can set to anything. This doesn't work when the hub runs in Docker. Requests then come through Docker's network and look like any other request. For a local Docker setup, ",
     "p": "Guides"
   },
   {
     "u": "guides.html#auth-what-doesnt-need-a-token",
     "t": "What doesn't need a token",
     "s": "Security › Authentication",
-    "x": "These stay open even with auth on: /, /health and /healthz, for health checks. They don't include any room content. /docs, /redoc and /openapi.json, which describe the API. A room's A2A agent card (/.well-known/agent-card.json), which only lists the room's name and skills. The room's A2A endpoint itself needs a token. With auth on, /health includes an auth section. It shows whether auth is on, which issuers are trust",
+    "x": "These stay open even with auth on: /, /health and /healthz, for health checks. They don't include any room content. /docs, /redoc and /openapi.json, which describe the API. A room's A2A agent card (/.well-known/agent-card.json), which only lists the room's name and skills. The room's A2A endpoint itself needs a token. Everything else needs a token. With auth on, /health also has an auth section that shows the trusted",
     "p": "Guides"
   },
   {
@@ -1719,7 +1656,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-start-with-mycelium-doctor",
     "t": "Start with mycelium doctor",
     "s": "Help › Troubleshooting",
-    "x": "mycelium doctor # checks config, the hub, the model and SLIM mycelium doctor --fix # also runs the fixes it suggests, without asking first mycelium doctor is the first thing to run for almost any problem. It works out what this machine is and runs only the checks that apply. The machine might run the desktop app, be a hub running the Docker stack or be a spoke that connects to a hub elsewhere. To choose yourself, pas",
+    "x": "mycelium doctor # checks config, the hub, the model and SLIM mycelium doctor --fix # also runs the fixes it suggests, without asking first Run mycelium doctor first for almost any problem. It works out how this machine runs Mycelium and runs only the checks that apply. To choose yourself, pass --mode desktop, --mode hub or --mode spoke. Each problem it finds comes with the command that fixes it. --fix runs those comm",
     "p": "Guides"
   },
   {
@@ -1740,21 +1677,21 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-an-agent-you-added-wont-start",
     "t": "An agent you added won't start",
     "s": "Help › Troubleshooting",
-    "x": "You see: Add member (or /agent) adds the agent to the room, but it doesn't start on your machine. The dialog shows each step on the machine and says which one stopped, with what to do. The two most common: The terminal's shell didn't get to a prompt in time. The runner opens a terminal in herdr and waits up to 30 seconds for its shell. A shell whose startup files (~/.zshrc, ~/.bash_profile) are slow or fail never get",
+    "x": "You see: Add member (or /agent) adds the agent to the room, but it doesn't start on your machine. The dialog shows each step and which one stopped. These two are the most common: The shell didn't reach a prompt in 30 seconds. This happens when a startup file such as ~/.zshrc is slow or fails. Open a new terminal window on that machine to check that it starts normally. The agent CLI is waiting for you. It may be askin",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-codex-asks-before-every-mycelium-command",
     "t": "Codex asks before every mycelium command",
     "s": "Help › Troubleshooting",
-    "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network, which can write only in the folder it started in. When Mycelium starts a Codex agent, it opens that sandbox for the session to two things mycelium needs: the network, to reach the hub, and ~/.mycelium/agent-state, the one folder the CLI writes to w",
+    "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network. When Mycelium starts a Codex agent, it lets that session use the network. It also lets the session write to ~/.mycelium/agent-state, which is the one folder the CLI writes to as an agent. The rest of ~/.mycelium stays out of reach. Codex ignores th",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-an-agent-the-app-started-still-stops-to-ask",
     "t": "An agent the app started still stops to ask",
     "s": "Help › Troubleshooting",
-    "x": "You see: a Claude Code or Codex agent started from the app stops at a permission prompt before running a command. Agents the app starts run in their CLI's auto mode (see Agents start in auto mode), which still asks when it judges an action risky. Answer it in the agent's terminal. If it asks for everything, its CLI may be older than the one with auto mode, and then it starts as it did before: update the CLI, then res",
+    "x": "You see: a Claude Code or Codex agent started from the app stops at a permission prompt before running a command. Agents the app starts run in their CLI's auto mode. Auto mode still asks when it judges an action risky. Answer it in the agent's terminal. If the agent asks before everything, its CLI is too old to have auto mode. Update the CLI and restart the agent from Machines.",
     "p": "Guides"
   },
   {
@@ -1782,14 +1719,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-every-command-fails-with-invalid-port",
     "t": "Every command fails with \"Invalid port\"",
     "s": "Help › Troubleshooting",
-    "x": "You see: every mycelium command fails before it reaches the hub, with an error like Invalid port: ':1]'. NO_PROXY (or no_proxy) has an IPv6 address in brackets, like [fd00::1] or [::1]:8000, which the CLI's HTTP client can't read. The CLI removes the brackets itself, and leaves out IPv6 ranges like fd00::/8, which it can't match. With an older CLI, upgrade, or write the addresses without brackets: export NO_PROXY=loc",
+    "x": "You see: every mycelium command fails before it reaches the hub, with an error like Invalid port: ':1]'. NO_PROXY has an IPv6 address in brackets, like [fd00::1]. Older CLIs can't read that. Upgrade the CLI, or write the addresses without brackets: export NO_PROXY=localhost,127.0.0.1,fd00::1",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-await-stops-after-a-few-minutes",
     "t": "await stops after a few minutes",
     "s": "Help › Troubleshooting",
-    "x": "You see: await ends with \"Server disconnected without sending a response\" some minutes into a long wait. A proxy between the agent and the hub closed a request that had sent nothing for a while. The CLI keeps each request under a minute and carries on until its --timeout. With an older CLI, upgrade. A harness that keeps the agent woken should start await again whenever it exits. See Bring Your Own Harness.",
+    "x": "You see: await ends with \"Server disconnected without sending a response\" some minutes into a long wait. A proxy closed a request that had been quiet for a while. Current CLIs keep each request short and keep waiting until --timeout, so upgrade the CLI. A harness should start await again whenever it exits. See Bring Your Own Harness.",
     "p": "Guides"
   },
   {
@@ -2800,6 +2737,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Fields",
     "s": "Board",
     "x": "Field Means status The row's own stage: open, in_review, resolved, dismissed. kind What the row is: action (a task), decision, concern, blocked. assignee Who the task is for. Set with --assign or board assign; they hold it. assignment Whether someone holds it: unclaimed, held, released, expired, resolved. A hold has no timer unless claim --ttl set one. depends-on A task that must be resolved first. blocked_by What bl",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#board-reference-when-a-hold-ends",
+    "t": "When a hold ends",
+    "s": "Board",
+    "x": "A hold has no timer. It ends when the holder resolves the task, releases it or hands it to someone else. It also ends when the hub sees the holder is gone. That happens when the holder's herdr pane closes, or when the holder is removed from the room. Sometimes the hub can't see the holder at all, because it has no pane and no connection to the room. Then the holder loses the hold after eight hours with nothing happen",
     "p": "Reference"
   },
   {

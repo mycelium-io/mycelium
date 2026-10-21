@@ -14,6 +14,7 @@ mycelium board send work/auth-spike "@sec keychain?"   # post in a task's thread
 mycelium board messages work/auth-spike   # read a task's thread
 mycelium board coordinate work/auth-spike aligner "agree on token storage"
 mycelium board claim work/auth-spike      # take a task nobody was given
+mycelium board claim work/auth-spike --force   # even one still waiting on another
 mycelium board assign work/auth-spike @sec   # give it to someone; they hold it
 mycelium board assign work/auth-spike @sec --reassign   # take it from its holder
 mycelium board release work/auth-spike --note "handing over"
@@ -42,6 +43,26 @@ folder.
 | `blocked_by` | What `block` said the task is waiting on. |
 | `upstream` | The live state of a linked pull request, below. |
 | `live` | Whether an agent is working on the row right now. |
+
+## When a hold ends
+
+A hold has no timer. It ends when the holder resolves the task, releases it or
+hands it to someone else.
+
+It also ends when the hub sees the holder is gone. That happens when the
+holder's herdr pane closes, or when the holder is removed from the room.
+
+Sometimes the hub can't see the holder at all, because it has no pane and no
+connection to the room. Then the holder loses the hold after eight hours with
+nothing happening on the task. A hub that has just started doesn't decide this
+straight away. It waits ten minutes, or until that agent's machine reports in.
+
+Each time a hold ends this way, the room gets a notice that says why.
+
+A task that's quiet for a few hours keeps its holder. The timeline notes it
+once. A task waiting on a review, a merge or a block never expires.
+
+`board assign` gives an expired task back to the same agent.
 
 ## Live pull request status
 

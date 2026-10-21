@@ -44,7 +44,7 @@ import {
 } from "@/lib/mentions";
 import { RECENT_MENTIONS_CHANGED, readRecentMentions, recordMentions } from "@/lib/recent-mentions";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
-import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
+import { draftKey, loadDraft, loadSent, rememberSent, saveDraft } from "@/lib/drafts";
 import { sendPending } from "@/lib/pending-messages";
 import { Clock, FileText, ListTodo, Paperclip, Plus, UserPlus, X } from "lucide-react";
 import { NewScheduleDialog } from "@/components/schedules/new-schedule-dialog";
@@ -296,6 +296,9 @@ export function RoomChatBox({
   receivesInserts = false,
 }: Props) {
   const [content, setContent] = useState("");
+  // Stepping back through what you've sent here: which one is in the box, and
+  // what was typed before the first Up, put back by Down past the newest.
+  const [recall, setRecall] = useState<{ index: number; draft: string } | null>(null);
   // What's typed is kept per room (and per thread) until it's sent, so moving
   // to another room and back finds it where it was. Read after mount, since the
   // server render has no browser storage; `draftFor` says whose text `content`
@@ -437,6 +440,8 @@ export function RoomChatBox({
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    // Editing a recalled message makes it yours to send; Up starts from the newest again.
+    setRecall(null);
     let next = e.target.value;
     let at = e.target.selectionStart ?? next.length;
     // A space (or a new line) typed after a whole `:name:` turns it into its emoji.
@@ -796,6 +801,8 @@ export function RoomChatBox({
       // free again; sending, and saying when it couldn't, is the pending row's.
       setError(null);
       setNotice(null);
+      if (body) rememberSent(roomName, body);
+      setRecall(null);
       cleared();
       attachments.clear();
       // Whoever this names goes to the top of the next `@` list.
@@ -893,6 +900,8 @@ export function RoomChatBox({
           break;
         }
       }
+      if (body) rememberSent(roomName, body);
+      setRecall(null);
       cleared();
       onSent?.();
     } catch (err) {
@@ -944,6 +953,36 @@ export function RoomChatBox({
       if (e.key === "Escape") {
         e.preventDefault();
         setTrigger(null);
+        return;
+      }
+    }
+    // Up on the box's first line steps back through what you've sent in this
+    // room, and Down on its last line steps forward, back to what you'd typed.
+    // Anywhere else the arrows move the cursor as they always do.
+    const plain = !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.nativeEvent.isComposing;
+    if (plain && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      const box = e.currentTarget;
+      const caret = box.selectionStart;
+      const collapsed = caret === box.selectionEnd;
+      const sent = loadSent(roomName);
+      let next: { index: number; draft: string } | null | undefined;
+      if (e.key === "ArrowUp" && collapsed && !box.value.slice(0, caret).includes("\n")) {
+        const index = (recall ? recall.index : sent.length) - 1;
+        if (index >= 0) next = { index, draft: recall ? recall.draft : content };
+      } else if (e.key === "ArrowDown" && recall && collapsed && !box.value.slice(caret).includes("\n")) {
+        next = recall.index + 1 < sent.length ? { ...recall, index: recall.index + 1 } : null;
+      }
+      if (next !== undefined) {
+        e.preventDefault();
+        const text = next ? sent[next.index] : (recall?.draft ?? "");
+        setRecall(next);
+        setContent(text);
+        setCursor(text.length);
+        setTrigger(null);
+        requestAnimationFrame(() => {
+          const node = inputRef.current;
+          if (node && node.value === text) node.setSelectionRange(text.length, text.length);
+        });
         return;
       }
     }

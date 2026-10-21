@@ -259,6 +259,56 @@ describe("<RoomChatBox /> drafts", () => {
   });
 });
 
+describe("<RoomChatBox /> sent history", () => {
+  beforeEach(() => {
+    sendRoomMessage.mockClear();
+    window.localStorage.clear();
+  });
+
+  it("steps back through what you sent with Up, and forward to your draft with Down", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    for (const text of ["first", "second"]) {
+      await userEvent.type(box, `${text}{Enter}`);
+      await waitFor(() => expect(box).toHaveValue(""));
+      await waitFor(() => expect(box).toBeEnabled());
+    }
+    expect(JSON.parse(window.localStorage.getItem("mycelium.sent:demo") ?? "[]")).toEqual(["first", "second"]);
+    await userEvent.type(box, "half typed");
+
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("second");
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("first");
+    // Nothing older: it stays put.
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("first");
+
+    await userEvent.keyboard("{ArrowDown}");
+    expect(box).toHaveValue("second");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(box).toHaveValue("half typed");
+  });
+
+  it("moves the cursor as usual when it isn't on the first line", async () => {
+    window.localStorage.setItem("mycelium.sent:demo", JSON.stringify(["earlier"]));
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.type(box, "line one{Shift>}{Enter}{/Shift}line two");
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("line one\nline two");
+  });
+
+  it("keeps each room's history apart", async () => {
+    window.localStorage.setItem("mycelium.sent:other", JSON.stringify(["over there"]));
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("");
+  });
+});
+
 describe("<RoomChatBox /> composer triggers", () => {
   beforeEach(() => {
     sendRoomMessage.mockClear();
