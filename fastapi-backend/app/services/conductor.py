@@ -373,7 +373,7 @@ class Run:
         at = (pick.get("standing") or {}).get(least)
         why = ((pick.get("reasons") or {}).get(pick.get("pick"), {}) or {}).get(least, "")
         said = choosing.verdict(at, self.bar())
-        because = f", because {why}" if why else ""
+        because = f", because {choosing.mid_sentence(why)}" if why else ""
         return (
             f"For you, {pick.get('pick')} is {said}{because}. You're the one furthest from the bar."
         )

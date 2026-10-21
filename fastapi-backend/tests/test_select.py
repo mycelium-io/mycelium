@@ -145,6 +145,17 @@ def test_a_rating_is_said_in_words_against_the_bar():
     assert choosing.verdict(0.95, 0.6) == "close to the ideal"
 
 
+def test_a_reason_reads_mid_sentence_without_mangling_i_or_acronyms():
+    assert choosing.mid_sentence("Too slow") == "too slow"
+    assert (
+        choosing.mid_sentence("I can't refund big orders blind")
+        == "I can't refund big orders blind"
+    )
+    assert choosing.mid_sentence("I'd sign off") == "I'd sign off"
+    assert choosing.mid_sentence("SLA is too loose") == "SLA is too loose"
+    assert choosing.mid_sentence("iOS breaks") == "iOS breaks"
+
+
 def test_who_is_short_is_said_with_their_reason():
     options = _options("Ship on Friday")
     ratings = {"success": {"A": 90}, "finance": {"A": 70}, "legal": {"A": 20}}

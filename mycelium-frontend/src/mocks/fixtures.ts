@@ -567,62 +567,109 @@ const checkoutReleaseEpisode: EpisodeSummary = {
 
 // "Help them agree" (concord) run on the double-charge decision: reviewer
 // wants refunds automatic, builder wants support to check first, and Morgan
-// is least happy with the first pick. Morgan's fix clears the bar for all
-// three, and the run ends agreed. Scorecards and the close carry structured
-// lines, so the thread draws them as tables and a result line.
+// is least happy with the first pick. Morgan's fix answers everyone's
+// objection and meets the bar for all three, and the run ends agreed.
+// Scorecards and the close carry structured lines, so the thread draws each
+// member's view in words, with the numbers behind a toggle.
 const REFUND_THREAD = checkoutEpisode("a1c3e5");
 const REFUND_CAST = ["builder", "reviewer", "operator"];
 const refundOptions = [
-  { label: "A", text: "Refund the second charge automatically, right away.", authors: ["reviewer"] },
-  { label: "B", text: "Send every double charge to support to check before refunding.", authors: ["builder"] },
+  {
+    label: "A",
+    text: "Refund the second charge automatically, right away.",
+    authors: ["reviewer"],
+    why: { reviewer: "The customer did nothing wrong and shouldn't have to wait." },
+  },
+  {
+    label: "B",
+    text: "Send every double charge to support to check before refunding.",
+    authors: ["builder"],
+    why: { builder: "Some double charges are two real orders, and refunding those loses money." },
+  },
   {
     label: "C",
     text: "Refund automatically when the second charge is under $50; support checks anything larger within a day.",
     authors: ["operator"],
+    why: { operator: "Small ones are nearly always the button bug, and big ones are worth a look." },
   },
 ];
+const refundTable = {
+  A: { builder: 60, reviewer: 90, operator: 40 },
+  B: { builder: 80, reviewer: 35, operator: 75 },
+  C: { builder: 78, reviewer: 85, operator: 88 },
+};
+const refundReasons = {
+  A: {
+    builder: "Risks refunding real repeat orders",
+    reviewer: "Fast, and the customer isn't blamed",
+    operator: "I can't refund big orders blind",
+  },
+  B: {
+    builder: "Safe, though slow for the customer",
+    reviewer: "Makes a customer wait on something that's our fault",
+    operator: "Slow, but nothing goes out unchecked",
+  },
+  C: {
+    builder: "Most real repeat orders are over $50, so this covers my worry",
+    reviewer: "Fast for nearly everyone, and a day is fine for the rest",
+    operator: "This is what I'd sign off on",
+  },
+};
+/** Every member rated the two reference outcomes 0 and 100, so a rating is
+ *  placed where it reads. */
+const refundPlaced = Object.fromEntries(
+  Object.entries(refundTable).map(([label, row]) => [
+    label,
+    Object.fromEntries(Object.entries(row).map(([h, r]) => [h, r / 100])),
+  ]),
+);
 const refundFirstPick = {
   outcome: "infeasible" as const,
   pick: "A",
   text: refundOptions[0].text,
-  threshold: 70,
+  threshold: 60,
   options: refundOptions.slice(0, 2),
-  table: {
-    A: { builder: 60, reviewer: 90, operator: 40 },
-    B: { builder: 80, reviewer: 35, operator: 75 },
-  },
+  table: { A: refundTable.A, B: refundTable.B },
+  placed: { A: refundPlaced.A, B: refundPlaced.B },
+  reasons: { A: refundReasons.A, B: refundReasons.B },
   cast: REFUND_CAST,
-  ratings: { builder: 60, reviewer: 90, operator: 40 },
-  lowest: 40,
+  ratings: refundTable.A,
+  lowest: 0.4,
   missing: [],
   least_happy: "operator",
+  short: [{ member: "operator", placed: 0.4, why: refundReasons.A.operator }],
 };
 const refundAgreed = {
   outcome: "feasible" as const,
   pick: "C",
   text: refundOptions[2].text,
-  threshold: 70,
+  threshold: 60,
   options: refundOptions,
-  table: { ...refundFirstPick.table, C: { builder: 78, reviewer: 85, operator: 88 } },
+  table: refundTable,
+  placed: refundPlaced,
+  reasons: refundReasons,
   cast: REFUND_CAST,
-  ratings: { builder: 78, reviewer: 85, operator: 88 },
-  lowest: 78,
+  ratings: refundTable.C,
+  lowest: 0.78,
   missing: [],
   least_happy: null,
+  short: [],
 };
 const concordSteps: FlowStep[] = [
+  { id: "anchor", to: "all", collect: "anchors", next: "propose" },
   { id: "propose", to: "all", collect: "options", next: "score" },
   { id: "score", to: "all", collect: "scores", next: "pick" },
   {
     id: "pick",
     kind: "select",
-    threshold: 0.7,
-    max_repairs: 2,
-    next: { feasible: "agreed", infeasible: "repair", stuck: "no_deal" },
+    threshold: 0.6,
+    max_repairs: 5,
+    next: { feasible: "agreed", infeasible: "repair", stuck: "best", nothing: "no_deal" },
   },
   { id: "repair", to: "bottleneck", collect: "options", next: "rescore" },
   { id: "rescore", to: "all", collect: "scores", next: "pick" },
   { id: "agreed", end: "converged" },
+  { id: "best", end: "resolved" },
   { id: "no_deal", end: "rejected" },
 ];
 const checkoutConcordEpisode: EpisodeSummary = {
@@ -645,30 +692,31 @@ const checkoutConcordEpisode: EpisodeSummary = {
   flow: {
     name: "concord",
     description:
-      "Help them agree. Everyone suggests, everyone rates, the least happy agent suggests a fix, until one option clears the bar for all.",
+      "Help them agree. Everyone rates two shared reference outcomes, proposes an option and says why, and rates every option with a reason; the member least happy with the best one proposes something new that answers the objections, until it meets everyone's bar or the best found stands.",
     roles: [],
-    max_steps: 9,
+    max_steps: 20,
     bound: {},
     cast: REFUND_CAST,
     ask: "when someone is charged twice, refund it automatically or send it to support first?",
     steps: concordSteps,
   },
   trace: [
-    { step: "propose", turn: 1, asked: REFUND_CAST, stances: {}, stance: null, next: "score", at: iso(5.2) },
-    { step: "score", turn: 2, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(4.6) },
+    { step: "anchor", turn: 1, asked: REFUND_CAST, stances: {}, stance: null, next: "propose", at: iso(5.4) },
+    { step: "propose", turn: 2, asked: REFUND_CAST, stances: {}, stance: null, next: "score", at: iso(5.2) },
+    { step: "score", turn: 3, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(4.6) },
     {
       step: "pick",
-      turn: 2,
-      select: { outcome: "infeasible", pick: "A", lowest: 40, missing: [], least_happy: "operator" },
+      turn: 3,
+      select: { outcome: "infeasible", pick: "A", lowest: 0.4, missing: [], least_happy: "operator" },
       next: "repair",
       at: iso(4.5),
     },
-    { step: "repair", turn: 3, asked: ["operator"], stances: {}, stance: null, next: "rescore", at: iso(3.8) },
-    { step: "rescore", turn: 4, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(2.8) },
+    { step: "repair", turn: 4, asked: ["operator"], stances: {}, stance: null, next: "rescore", at: iso(3.8) },
+    { step: "rescore", turn: 5, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(2.8) },
     {
       step: "pick",
-      turn: 4,
-      select: { outcome: "feasible", pick: "C", lowest: 78, missing: [], least_happy: null },
+      turn: 5,
+      select: { outcome: "feasible", pick: "C", lowest: 0.78, missing: [], least_happy: null },
       next: "agreed",
       at: iso(2.7),
     },
@@ -690,47 +738,54 @@ function refundThread(): MockMessage[] {
     ...(conductor ? { metadata: { conductor } } : {}),
   });
   const turn = (step: string, to: string, turnNo: number, mins: number) =>
-    post("conductor", `concord · ${step} · turn ${turnNo} of 9 · ${to}`, mins, {
+    post("conductor", `concord · ${step} · turn ${turnNo} of 20 · ${to}`, mins, {
       event: "turn",
       protocol: "concord",
       step,
       to,
       turn: turnNo,
-      cap: 9,
+      cap: 20,
     });
+  const rated = (label: "A" | "B" | "C") => (h: keyof typeof refundReasons.A) =>
+    `${label}: ${refundTable[label][h]} - ${refundReasons[label][h]}`;
   return [
-    post("conductor", "Running concord with builder, reviewer, operator as members.", 5.5, {
+    post("conductor", "Running concord with builder, reviewer, operator as members.", 5.6, {
       event: "open",
       protocol: "concord",
       roles: {},
       members: REFUND_CAST,
       steps: concordSteps,
     }),
-    ...REFUND_CAST.map((h) => turn("propose", h, 1, 5.4)),
-    post("builder", "Send them to support first. Some double charges are two real orders, and refunding those loses money.", 5.3),
-    post("reviewer", "Refund automatically, right away. The customer did nothing wrong and shouldn't have to wait.", 5.3),
-    post("operator", "Refund automatically, right away.", 5.2),
-    ...REFUND_CAST.map((h) => turn("score", h, 2, 5.0)),
-    post("builder", "A risks refunding real repeat orders; B is safe but slow for the customer.", 4.8),
-    post("reviewer", "B makes a customer wait on something that's our fault.", 4.7),
-    post("operator", "A is right for small amounts but I'm not comfortable refunding big orders blind. B is slow.", 4.6),
-    post("conductor", "pick: A, @operator at 40", 4.5, { event: "select", step: "pick", next: "repair", select: refundFirstPick }),
-    turn("repair", "operator", 3, 4.4),
-    post(
-      "operator",
-      "Refund automatically when the second charge is under $50; support checks anything larger within a day. Small ones are nearly always the button bug, and big ones are worth a look.",
-      3.8,
-    ),
-    ...REFUND_CAST.map((h) => turn("rescore", h, 4, 3.6)),
-    post("builder", "Most real repeat orders are over $50, so this covers my worry.", 3.2),
-    post("reviewer", "Fast for nearly everyone, and a day is fine for the rest.", 3.0),
-    post("operator", "This is what I'd sign off on.", 2.9),
-    post("conductor", "pick: C, everyone at 70+", 2.7, { event: "select", step: "pick", next: "agreed", select: refundAgreed }),
-    post("conductor", "✓ Everyone's on board: going with C.", 2.6, {
+    ...REFUND_CAST.map((h) => turn("anchor", h, 1, 5.55)),
+    post("builder", "bad: 0 - customers charged twice and nobody notices\nideal: 100 - every real double charge refunded the same day, nothing else", 5.5),
+    post("reviewer", "bad: 0 - customers wait days for our mistake\nideal: 100 - refunded before they notice", 5.5),
+    post("operator", "bad: 0 - we refund real orders and lose the money\nideal: 100 - only true duplicates go back, fast", 5.45),
+    ...REFUND_CAST.map((h) => turn("propose", h, 2, 5.4)),
+    post("builder", `${refundOptions[1].text}\nwhy: ${refundOptions[1].why.builder}`, 5.3),
+    post("reviewer", `${refundOptions[0].text}\nwhy: ${refundOptions[0].why.reviewer}`, 5.3),
+    post("operator", "Refund the second charge automatically, right away.", 5.2),
+    ...REFUND_CAST.map((h) => turn("score", h, 3, 5.0)),
+    post("builder", [rated("A")("builder"), rated("B")("builder")].join("\n"), 4.8),
+    post("reviewer", [rated("A")("reviewer"), rated("B")("reviewer")].join("\n"), 4.7),
+    post("operator", [rated("A")("operator"), rated("B")("operator")].join("\n"), 4.6),
+    post("conductor", "pick: A: operator is short of the bar, because i can't refund big orders blind", 4.5, {
+      event: "select",
+      step: "pick",
+      next: "repair",
+      select: refundFirstPick,
+    }),
+    turn("repair", "operator", 4, 4.4),
+    post("operator", `${refundOptions[2].text}\nwhy: ${refundOptions[2].why.operator}`, 3.8),
+    ...REFUND_CAST.map((h) => turn("rescore", h, 5, 3.6)),
+    post("builder", rated("C")("builder"), 3.2),
+    post("reviewer", rated("C")("reviewer"), 3.0),
+    post("operator", rated("C")("operator"), 2.9),
+    post("conductor", "pick: C: everyone meets the bar", 2.7, { event: "select", step: "pick", next: "agreed", select: refundAgreed }),
+    post("conductor", "✓ Everyone meets the bar: going with C.", 2.6, {
       event: "close",
       protocol: "concord",
       outcome: "converged",
-      steps: 4,
+      steps: 5,
       reason: "reached `agreed`",
       pick: "C",
       text: refundOptions[2].text,

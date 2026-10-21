@@ -104,19 +104,79 @@ export interface LockRecord {
 /** One pick among the options, as a select step records it: the ratings
  *  table, the pick, and who is short of the bar. */
 export interface PickRecord {
-  outcome: "feasible" | "infeasible" | "stuck";
+  outcome: "feasible" | "infeasible" | "stuck" | "nothing";
   pick: string | null;
   text: string;
-  /** The bar, 0-100. */
+  /** The bar, 0-100: how far from each member's bad outcome to its ideal the
+   *  pick has to be. */
   threshold: number;
-  options: { label: string; text: string; authors: string[] }[];
-  /** `{letter: {member: rating}}`; a member who gave none is absent. */
+  /** Each option, with why the members who proposed it did. */
+  options: { label: string; text: string; authors: string[]; why?: Record<string, string> }[];
+  /** `{letter: {member: rating}}`, on each member's own scale; a member who
+   *  gave none is absent. */
   table: Record<string, Record<string, number>>;
+  /** `{letter: {member: 0-1}}`: each rating placed between the member's bad
+   *  and ideal outcomes. Absent on records made before ratings were placed. */
+  placed?: Record<string, Record<string, number>>;
+  /** `{letter: {member: why}}`, the reason each rating came with. */
+  reasons?: Record<string, Record<string, string>>;
   cast: string[];
   ratings: Record<string, number>;
   lowest: number | null;
   missing: string[];
   least_happy: string | null;
+  /** The members short of the bar on the pick, least happy first, with why. */
+  short?: { member: string; placed: number; why: string }[];
+}
+
+/** From here a rating reads as close to the member's ideal. */
+const NEAR_IDEAL = 0.9;
+
+/** Where `member`'s rating of option `label` stands, 0-1: placed between its
+ *  own bad and ideal outcomes, or out of 100 on a record from before that. */
+export function placedOf(record: PickRecord, label: string, member: string): number | undefined {
+  const at = record.placed?.[label]?.[member];
+  if (at !== undefined) return at;
+  const raw = record.table[label]?.[member];
+  return raw === undefined ? undefined : Math.max(0, Math.min(1, raw / 100));
+}
+
+/** What a placed rating means against the bar (both 0-1), in words. */
+export function verdict(value: number | undefined, bar: number): string {
+  if (value === undefined) return "gave no rating";
+  if (value <= 0) return "no better than the bad outcome";
+  if (value < bar) return "short of the bar";
+  if (value >= NEAR_IDEAL) return "close to the ideal";
+  return "meets the bar";
+}
+
+/** `text` as it reads after a comma: its first letter lowered, unless the
+ *  first word is "I" or reads as a name or an acronym (`SLA`, `iOS`). */
+export function midSentence(text: string): string {
+  const first = text.trim().split(/\s+/)[0] ?? "";
+  const keep = first === "I" || first.startsWith("I'") || first.startsWith("I’") || /[A-Z]/.test(first.slice(1));
+  return keep || !text ? text : text[0].toLowerCase() + text.slice(1);
+}
+
+function because(why: string | undefined): string {
+  return why ? `, because ${midSentence(why)}` : "";
+}
+
+/** Each member's view of one option: what their rating means, and why. */
+export function views(
+  record: PickRecord,
+  label: string,
+): { member: string; verdict: string; why: string; short: boolean }[] {
+  const bar = record.threshold / 100;
+  return record.cast.map((member) => {
+    const at = placedOf(record, label, member);
+    return {
+      member,
+      verdict: verdict(at, bar),
+      why: record.reasons?.[label]?.[member] ?? "",
+      short: at !== undefined && at < bar,
+    };
+  });
 }
 
 /** An agreement a pick certified reads as success, like a flow that resolved. */
@@ -189,8 +249,10 @@ export function describeConductorLine(line: ConductorLine): string {
       if (line.pick) {
         said =
           line.outcome === "converged"
-            ? `Everyone's on board: going with ${line.pick}`
-            : `Couldn't get everyone there · best was ${line.pick}`;
+            ? `Everyone meets the bar: going with ${line.pick}`
+            : line.outcome === "resolved"
+              ? `Best found: ${line.pick}, below the bar for some`
+              : `Couldn't get everyone there · best was ${line.pick}`;
       } else {
         said = isSuccess(line.outcome)
           ? `${line.protocol} done · ${line.steps} step${line.steps === 1 ? "" : "s"}`
@@ -236,14 +298,22 @@ export function lockSummary(lock: LockRecord): string {
   return `Shared summary: ${parts.join(", ")}${quiet}`;
 }
 
-/** Where a pick stands, in plain words: "B, everyone at 70+" or "B, @finance at 55". */
+/** Where a pick stands, in words: "B: everyone meets the bar", or who is
+ *  short and why: "B: finance is short of the bar, because margin drops". */
 export function pickSummary(record: PickRecord): string {
   if (!record.pick) return "nothing to pick yet";
-  if (record.outcome === "feasible") return `${record.pick}, everyone at ${record.threshold}+`;
-  const short = Object.entries(record.ratings)
-    .filter(([, r]) => r < record.threshold)
-    .sort((a, b) => a[1] - b[1])
-    .map(([h, r]) => `@${h} at ${r}`);
-  if (record.missing.length) short.push(`no rating from ${record.missing.map((h) => `@${h}`).join(", ")}`);
-  return `${record.pick}, ${short.join("; ") || "short of the bar"}`;
+  if (record.outcome === "feasible") return `${record.pick}: everyone meets the bar`;
+  const short = (
+    record.short ??
+    views(record, record.pick)
+      .filter((v) => v.short)
+      .map((v) => ({ member: v.member, placed: placedOf(record, record.pick!, v.member) ?? 0, why: v.why }))
+      .sort((a, b) => a.placed - b.placed)
+  ).map((s) =>
+    s.placed > 0
+      ? `${s.member} is short of the bar${because(s.why)}`
+      : `${s.member} finds it no better than the bad outcome${because(s.why)}`,
+  );
+  if (record.missing.length) short.push(`no rating from ${record.missing.join(", ")}`);
+  return `${record.pick}: ${short.join("; ") || "short of the bar"}`;
 }

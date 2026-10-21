@@ -219,8 +219,16 @@ def pick(
     }
 
 
+def mid_sentence(text: str) -> str:
+    """``text`` as it reads after a comma: its first letter lowered, unless the
+    first word is "I" or reads as a name or an acronym (``SLA``, ``iOS``)."""
+    first = text.split(maxsplit=1)[0] if text.strip() else ""
+    keep = first == "I" or first.startswith("I'") or any(c.isupper() for c in first[1:])
+    return text if keep or not text else text[0].lower() + text[1:]
+
+
 def _because(why: str) -> str:
-    return f", because {why[0].lower() + why[1:]}" if why else ", with no reason given"
+    return f", because {mid_sentence(why)}" if why else ", with no reason given"
 
 
 def views(record: dict[str, Any], label: str) -> list[str]:

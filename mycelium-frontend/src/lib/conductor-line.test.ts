@@ -5,6 +5,8 @@ import {
   describeConductorLine,
   isSuccess,
   pickSummary,
+  verdict,
+  views,
   type ConductorLine,
   type PickRecord,
 } from "./conductor-line";
@@ -73,15 +75,35 @@ const pick: PickRecord = {
 };
 
 describe("an agreement's lines", () => {
-  it("reads a pick line off the payload, and says where it stands", () => {
+  it("reads a pick line off the payload, and says where it stands in words", () => {
     const line = { event: "select", step: "pick", next: "repair", select: pick };
     expect(conductorLineOf({ metadata: { conductor: line } })).toEqual(line);
+    // A record from before ratings carried reasons still reads.
     expect(describeConductorLine(line as ConductorLine)).toBe(
-      "pick: B, @success at 55; no rating from @legal",
+      "pick: B: success is short of the bar; no rating from legal",
     );
     expect(pickSummary({ ...pick, outcome: "feasible", missing: [], ratings: { a: 80 } })).toBe(
-      "B, everyone at 70+",
+      "B: everyone meets the bar",
     );
+  });
+
+  it("leads with each member's reason, placed on their own scale", () => {
+    const reasoned: PickRecord = {
+      ...pick,
+      placed: { A: { success: 0.95, finance: 0.1 }, B: { success: 0.4, finance: 0.95 } },
+      reasons: { B: { success: "Ten percent won't keep them", finance: "margin holds" } },
+      short: [{ member: "success", placed: 0.4, why: "Ten percent won't keep them" }],
+    };
+    expect(pickSummary(reasoned)).toBe(
+      "B: success is short of the bar, because ten percent won't keep them; no rating from legal",
+    );
+    expect(views(reasoned, "B")).toEqual([
+      { member: "success", verdict: "short of the bar", why: "Ten percent won't keep them", short: true },
+      { member: "finance", verdict: "close to the ideal", why: "margin holds", short: false },
+      { member: "legal", verdict: "gave no rating", why: "", short: false },
+    ]);
+    expect(verdict(0, 0.6)).toBe("no better than the bad outcome");
+    expect(verdict(0.6, 0.6)).toBe("meets the bar");
   });
 
   it("says an agreement is an agreement, and counts it a success", () => {
@@ -94,7 +116,10 @@ describe("an agreement's lines", () => {
       pick: "C",
       text: "15% off for two years",
     };
-    expect(describeConductorLine(agreed)).toBe("Everyone's on board: going with C");
+    expect(describeConductorLine(agreed)).toBe("Everyone meets the bar: going with C");
+    expect(describeConductorLine({ ...agreed, outcome: "resolved" })).toBe(
+      "Best found: C, below the bar for some",
+    );
     expect(describeConductorLine({ ...agreed, outcome: "rejected" })).toBe(
       "Couldn't get everyone there · best was C",
     );
