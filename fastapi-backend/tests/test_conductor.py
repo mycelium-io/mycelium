@@ -1262,12 +1262,12 @@ async def test_with_no_outcomes_in_the_summon_no_agreement_and_your_own_pick_are
     assert outcome == "converged"
     assert [s for s, _to, _p in channel.ticks()][:3] == ["anchor"] * 3, "no drafting turn"
     ends = (
-        "bad: nothing is agreed and Decide the renewal offer stays open\n"
-        "ideal: the outcome you'd choose for Decide the renewal offer if it were up to you alone"
+        "bad: no agreement: nothing is decided and the task stays open\n"
+        "ideal: your own pick: the option you'd choose if it were up to you alone"
     )
     assert ends in channel.ticks()[0][2]
     assert (
-        "at least 60% of the way from *nothing is agreed and Decide the renewal offer stays open*"
+        "at least 60% of the way from no agreement to each member's own pick, for every member"
     ) in channel.said()[0]
 
     # One end named in the summon replaces only that end.
@@ -1276,7 +1276,8 @@ async def test_with_no_outcomes_in_the_summon_no_agreement_and_your_own_pick_are
         settings="bad: Acme leaves",
     )
     await engine.run(ROOM, episode=THREAD, directive=directive, named=CAST)
-    assert "bad: Acme leaves\nideal: the outcome you'd choose" in channel.ticks()[0][2]
+    assert "bad: Acme leaves\nideal: your own pick" in channel.ticks()[0][2]
+    assert "from *Acme leaves* to *your own pick" in channel.said()[0]
 
 
 @pytest.mark.asyncio

@@ -303,21 +303,58 @@ export function lockSummary(lock: LockRecord): string {
 /** How many of an option's first words make its name. */
 const NAME_WORDS = 5;
 
-/** An option's name, for a reader who sees only its letter: its first few
- *  words, cut at the end of its first sentence or clause, with `…` when cut.
- *  The hub names options the same way in the lines members fill in. */
-export function shortName(text: string): string {
+/** The words of a text's first sentence or clause, brackets dropped, and
+ *  whether that is the whole text. */
+function firstWords(text: string): { words: string[]; whole: boolean } {
   const trimmed = text.trim();
   const first = trimmed.split(/(?<=[.;:])\s/)[0].replace(/[.;:]+$/, "");
-  const words = first.replace(/[()[\]]/g, "").split(/\s+/).filter(Boolean);
-  const cut = words.slice(0, NAME_WORDS);
-  const whole = cut.length === words.length && first === trimmed.replace(/\.+$/, "");
-  return cut.join(" ").replace(/,$/, "") + (whole ? "" : "…");
+  return {
+    words: first.replace(/[()[\]]/g, "").split(/\s+/).filter(Boolean),
+    whole: first === trimmed.replace(/\.+$/, ""),
+  };
 }
 
-/** `D (Hold a gift order until…)`: a letter a reader can follow. */
-export function named(label: string, text: string): string {
-  return text ? `${label} (${shortName(text)})` : label;
+/** An option's name, for a reader who sees only its letter: a few words of
+ *  its first sentence or clause, with `…` where it's cut. `skip` starts past
+ *  words other options share. The hub names options the same way in the lines
+ *  members fill in. */
+export function shortName(text: string, skip = 0): string {
+  const { words, whole } = firstWords(text);
+  const from = skip >= words.length ? 0 : skip;
+  const cut = words.slice(from, from + NAME_WORDS);
+  const head = from ? "…" : "";
+  const tail = whole && from + cut.length === words.length ? "" : "…";
+  return head + cut.join(" ").replace(/,$/, "") + tail;
+}
+
+/** `{label: name}` for options, each name different from the others where
+ *  the texts allow: options whose first words are the same are named by the
+ *  words after the ones they share. The hub names them the same way. */
+export function optionNames(options: { label: string; text: string }[]): Record<string, string> {
+  const first = Object.fromEntries(options.map((o) => [o.label, shortName(o.text)]));
+  const names = { ...first };
+  const norm = (text: string) => firstWords(text).words.map((w) => w.replace(/[,;]+$/, "").toLowerCase());
+  for (const o of options) {
+    const twins = options.filter((t) => t.label !== o.label && first[t.label] === first[o.label]);
+    if (!twins.length) continue;
+    const words = norm(o.text);
+    let shared = 0;
+    for (const t of twins) {
+      const other = norm(t.text);
+      let same = 0;
+      while (same < Math.min(words.length, other.length) && words[same] === other[same]) same++;
+      shared = Math.max(shared, same);
+    }
+    names[o.label] = shortName(o.text, shared);
+  }
+  return names;
+}
+
+/** `D (Hold a gift order until…)`: a letter a reader can follow, by its name
+ *  among `names` when given (`optionNames`). */
+export function named(label: string, text: string, names?: Record<string, string>): string {
+  const name = names?.[label] ?? (text ? shortName(text) : "");
+  return name ? `${label} (${name})` : label;
 }
 
 /** Concord's and accord's steps as what the members are doing, by step id:
@@ -388,7 +425,7 @@ export function turnRuns(events: { id: string; conductor: ConductorLine | null }
  *  who is short and why: "B (10% off): finance is short of the bar, because margin drops". */
 export function pickSummary(record: PickRecord): string {
   if (!record.pick) return "nothing to pick yet";
-  const pick = named(record.pick, record.text);
+  const pick = named(record.pick, record.text, optionNames(record.options));
   if (record.outcome === "feasible") return `${pick}: everyone meets the bar`;
   const short = (
     record.short ??

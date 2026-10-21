@@ -5,6 +5,7 @@ import {
   describeConductorLine,
   isSuccess,
   named,
+  optionNames,
   pickSummary,
   shortName,
   stepSentence,
@@ -21,6 +22,22 @@ describe("a concord or accord step, as a reader follows it", () => {
     expect(shortName("Ship at once, and cancel the delivery if the payment fails.")).toBe("Ship at once, and cancel…");
     expect(shortName("Hold it. Then ship (maybe).")).toBe("Hold it…");
     expect(shortName("Three-year renewal at list price")).toBe("Three-year renewal at list price");
+  });
+
+  it("names options that start alike by what tells them apart, as the hub does", () => {
+    expect(
+      optionNames([
+        { label: "A", text: "Three-year renewal at 15% off list price, with an expansion review." },
+        { label: "B", text: "Three-year renewal at list price, with a dedicated success manager." },
+        { label: "C", text: "Three-year renewal at list price with standard liability caps." },
+        { label: "D", text: "10% off" },
+      ]),
+    ).toEqual({
+      A: "Three-year renewal at 15% off…",
+      B: "…a dedicated success manager",
+      C: "…standard liability caps",
+      D: "10% off",
+    });
   });
 
   it("says what the members are doing, and leaves other flows' steps alone", () => {

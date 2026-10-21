@@ -60,20 +60,61 @@ class Option:
 NAME_WORDS = 5
 
 
-def short_name(text: str) -> str:
-    """An option's name, for a reader who sees only its letter: its first few
-    words, cut at the end of its first sentence or clause, with ``…`` when cut.
-    Brackets are dropped, since the name sits inside a pair."""
+def _first_words(text: str) -> tuple[list[str], bool]:
+    """The words of ``text``'s first sentence or clause, brackets dropped, and
+    whether that is the whole of ``text``."""
     first = re.split(r"(?<=[.;:])\s", text.strip(), maxsplit=1)[0].rstrip(".;:")
-    words = re.sub(r"[()\[\]]", "", first).split()
-    cut = words[:NAME_WORDS]
-    whole = len(cut) == len(words) and first == text.strip().rstrip(".")
-    return " ".join(cut).rstrip(",") + ("" if whole else "…")
+    return re.sub(r"[()\[\]]", "", first).split(), first == text.strip().rstrip(".")
 
 
-def named(label: str, text: str) -> str:
-    """``B (Ship at once, and cancel…)``: a letter a reader can follow."""
-    return f"{label} ({short_name(text)})"
+def short_name(text: str, skip: int = 0) -> str:
+    """An option's name, for a reader who sees only its letter: a few words of
+    its first sentence or clause, with ``…`` where it's cut. ``skip`` starts
+    past words other options share, so the name is what tells it apart.
+    Brackets are dropped, since the name sits inside a pair."""
+    words, whole = _first_words(text)
+    if skip >= len(words):
+        skip = 0
+    cut = words[skip : skip + NAME_WORDS]
+    head = "…" if skip else ""
+    tail = "" if whole and skip + len(cut) == len(words) else "…"
+    return head + " ".join(cut).rstrip(",") + tail
+
+
+def option_names(options: list[tuple[str, str]]) -> dict[str, str]:
+    """``{label: name}`` for ``(label, text)`` options, each name different
+    from the others where the texts allow: options whose first words are the
+    same are named by the words after the ones they share."""
+    first = {label: short_name(text) for label, text in options}
+    names = dict(first)
+    for label, text in options:
+        twins = [t for lab, t in options if lab != label and first[lab] == first[label]]
+        if not twins:
+            continue
+        words = [w.rstrip(",;").lower() for w in _first_words(text)[0]]
+        shared = 0
+        for twin in twins:
+            other = [w.rstrip(",;").lower() for w in _first_words(twin)[0]]
+            same = next(
+                (i for i, (a, b) in enumerate(zip(words, other, strict=False)) if a != b),
+                min(len(words), len(other)),
+            )
+            shared = max(shared, same)
+        names[label] = short_name(text, skip=shared)
+    return names
+
+
+def named(label: str, text: str, names: dict[str, str] | None = None) -> str:
+    """``B (Ship at once, and cancel…)``: a letter a reader can follow, by its
+    name among ``names`` when given (``option_names``)."""
+    return f"{label} ({(names or {}).get(label) or short_name(text)})"
+
+
+def pick_named(record: dict[str, Any]) -> str:
+    """A pick record's option, named as it was among the options rated."""
+    label = str(record.get("pick") or "")
+    options = [(str(o.get("label")), str(o.get("text"))) for o in record.get("options") or []]
+    return named(label, str(record.get("text") or ""), option_names(options))
 
 
 def same_text(a: str, b: str) -> bool:
@@ -284,9 +325,7 @@ def scorecard(record: dict[str, Any]) -> str:
         lines += [f"- {v}" for v in views(record, o["label"])]
         blocks.append("\n".join(lines))
     if chosen:
-        blocks.append(
-            f"Where {named(chosen, str(record.get('text') or ''))} stands: {summary(record)}"
-        )
+        blocks.append(f"Where {pick_named(record)} stands: {summary(record)}")
     blocks.append(numbers(record))
     return "\n\n".join(blocks)
 

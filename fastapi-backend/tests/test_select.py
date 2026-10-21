@@ -158,6 +158,24 @@ def test_an_option_is_named_by_its_first_words_so_a_letter_can_be_followed():
     )
 
 
+def test_options_that_start_alike_are_named_by_what_tells_them_apart():
+    names = choosing.option_names(
+        [
+            ("A", "Three-year renewal at 15% off list price, with an expansion review."),
+            ("B", "Three-year renewal at list price, with a dedicated success manager."),
+            ("C", "Three-year renewal at list price with standard liability caps."),
+            ("D", "10% off"),
+        ]
+    )
+    assert names == {
+        "A": "Three-year renewal at 15% off…",
+        "B": "…a dedicated success manager",
+        "C": "…standard liability caps",
+        "D": "10% off",
+    }
+    assert len(set(names.values())) == 4
+
+
 def test_a_reason_reads_mid_sentence_without_mangling_i_or_acronyms():
     assert choosing.mid_sentence("Too slow") == "too slow"
     assert (

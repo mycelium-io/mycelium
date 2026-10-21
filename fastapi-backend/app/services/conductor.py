@@ -127,6 +127,11 @@ class Settings:
     terms: list[str] = field(default_factory=list)
 
 
+#: The two ends a concord is measured between when the summon names none:
+#: no agreement at all, and each member's own choice.
+DEFAULT_BAD = "no agreement: nothing is decided and the task stays open"
+DEFAULT_IDEAL = "your own pick: the option you'd choose if it were up to you alone"
+
 _BAR = re.compile(r"\bbar\s*[=:]\s*(\d{1,3})\s*%?", re.IGNORECASE)
 _FIXES = re.compile(r"\bfixes\s*[=:]\s*(\d{1,2})\b", re.IGNORECASE)
 #: ``bad: …``, ``ideal: …`` and ``terms: …``, each running to the next of them.
@@ -280,6 +285,11 @@ class Run:
 
     def bar_said(self) -> str:
         """The bar in terms of the two reference outcomes, never as a bare number."""
+        if self.settings.bad in ("", DEFAULT_BAD) and self.settings.ideal in ("", DEFAULT_IDEAL):
+            return (
+                f"The bar: the option picked has to be at least {round(self.bar() * 100)}% of the "
+                "way from no agreement to each member's own pick, for every member."
+            )
         bad = self.settings.bad or "the bad outcome"
         ideal = self.settings.ideal or "the ideal one"
         return (
@@ -332,8 +342,8 @@ class Run:
             new_labels=" ".join(f"{o.label}=.." for o in fresh),
             # Each line carries the option's name, so a reply reads as what it
             # rates, not as a bare letter.
-            rating_lines=_rating_lines(self.options),
-            new_rating_lines=_rating_lines(fresh),
+            rating_lines=_rating_lines(self.options, self.options),
+            new_rating_lines=_rating_lines(fresh, self.options),
             scores=choosing.scorecard(self.last_pick) if self.last_pick else "",
             standing="\n".join(f"- {v}" for v in choosing.views(pick, pick["pick"]))
             if pick.get("pick")
@@ -374,7 +384,7 @@ class Run:
         said = choosing.verdict(at, self.bar())
         because = f", because {choosing.mid_sentence(why)}" if why else ""
         return (
-            f"For you, {choosing.named(str(pick.get('pick')), str(pick.get('text') or ''))} is "
+            f"For you, {choosing.pick_named(pick)} is "
             f"{said}{because}. You're the one furthest from the bar."
         )
 
@@ -463,9 +473,11 @@ def bind_roles(protocol: Protocol, handles: list[str]) -> dict[str, str] | None:
     return dict(zip(protocol.roles, handles, strict=False))
 
 
-def _rating_lines(options: list[choosing.Option]) -> str:
-    """The lines a member fills in to rate ``options``, each naming its option."""
-    return "\n".join(f"{choosing.named(o.label, o.text)}: <0-100> - <why>" for o in options)
+def _rating_lines(options: list[choosing.Option], every: list[choosing.Option]) -> str:
+    """The lines a member fills in to rate ``options``, each naming its option
+    by a name no other option in ``every`` (the run's options) shares."""
+    names = choosing.option_names([(o.label, o.text) for o in every])
+    return "\n".join(f"{choosing.named(o.label, o.text, names)}: <0-100> - <why>" for o in options)
 
 
 def _sentence(text: str) -> str:
@@ -727,11 +739,8 @@ class ConductorEngine:
         # The two ends any agreement is measured between: no agreement at all,
         # and each member's own choice. They need nobody to write them; a
         # summon's `bad:` / `ideal:` names others in their place.
-        about = run.title or run.task or "this task"
-        run.settings.bad = run.settings.bad or f"nothing is agreed and {about} stays open"
-        run.settings.ideal = (
-            run.settings.ideal or f"the outcome you'd choose for {about} if it were up to you alone"
-        )
+        run.settings.bad = run.settings.bad or DEFAULT_BAD
+        run.settings.ideal = run.settings.ideal or DEFAULT_IDEAL
         if not run.similar:
             run.frame.similarity = False
         # What the team agreed earlier in this task, so a later flow builds on it.
@@ -1496,7 +1505,7 @@ class ConductorEngine:
             # Restate what's being rated: the re-ask arrives on its own, and a
             # member can't rate options it can't see.
             fresh = run.new_options()
-            lines = _rating_lines(fresh)
+            lines = _rating_lines(fresh, run.options)
             ask = (
                 "I couldn't read a rating with a reason for each of these options:\n\n"
                 f"{run._listed(fresh)}\n\nRate each for your role, on the scale you rated "

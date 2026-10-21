@@ -1256,9 +1256,6 @@ const CONCORD_STEPS = [
   { id: "no_deal", end: "rejected" },
 ];
 
-// The two ends every concord is measured between, as the hub words them.
-const BAD = `nothing is agreed and ${PAYMENTS_TITLE} stays open`;
-const IDEAL = `the outcome you'd choose for ${PAYMENTS_TITLE} if it were up to you alone`;
 const ANCHORS: Record<string, string> = {
   pm: "bad: 0 - gifts keep shipping on cards that fail, all season\nideal: 100 - my pick: safe for us, and most gifts never wait",
   web: "bad: 0 - nothing changes, and we're still arguing in December\nideal: 100 - my pick: nobody waits for a gift",
@@ -1377,7 +1374,7 @@ async function concord(d: Director, thread: string): Promise<void> {
     d.say("conductor", text, thread, { event, ...line });
   say(
     "open",
-    `Running concord with pm, web, api as members. The bar: the option picked has to be at least 60% of the way from *${BAD}* to *${IDEAL}* for every member. That's the default bar; \`bar=NN\` in the summon sets another. Up to 5 fixes; then the best option found stands, saying who is still short and why.`,
+    `Running concord with pm, web, api as members. The bar: the option picked has to be at least 60% of the way from no agreement to each member's own pick, for every member. That's the default bar; \`bar=NN\` in the summon sets another. Up to 5 fixes; then the best option found stands, saying who is still short and why.`,
     {
       protocol: "concord",
       description:
