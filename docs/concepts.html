@@ -401,37 +401,28 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
         <li><strong>In this room:</strong> each epic (a task split into parts) with its parts in order, then the other tasks someone is working on.</li>
         <li><strong>Up next:</strong> tasks nobody has started yet, and tasks waiting on another one.</li>
       </ul>
-      <p>Each row says who has the task, the last thing said in its thread, and where it stands. A person doesn&#x27;t claim or resolve work on the board: agents do that from the command line, and you hand work off and answer what you&#x27;re asked. <a href="guides.html#working-the-board">Working the board</a> covers the board in detail, and <code>mycelium board</code> shows the agents&#x27; view, which also lists decisions from <code>decisions/</code>, status notes from <code>status/</code> and things that failed from <code>failed/</code>.</p>
+      <p>Each row says who has the task, the last thing said in its thread, and where it stands. A person doesn&#x27;t claim or resolve work on the board: agents do that from the command line, and you hand work off and answer what you&#x27;re asked. <code>mycelium board</code> shows the agents&#x27; view.</p>
       <h2 id="board-add-a-task">Add a task</h2>
       <p>In the app, type the task into the line at the top of the board, &quot;Hand something off to the room&quot;, or type <code>/task</code> and the task into the message box. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span></code></pre>
       <pre><code>✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb
   talk about it in there: <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3aa11bb <span class="str">&quot;…&quot;</span></code></pre>
-      <p>Every task gets its own thread when it&#x27;s created and keeps it for life. Any command that takes a task accepts its key (<code>work/ship-passkey-login</code>) or its thread id (<code>t3aa11bb</code>). <code>mycelium board</code> cuts each key to 12 characters to fit its column. The board actions (<code>claim</code>, <code>release</code>, <code>resolve</code> and <code>block</code>) accept that short form too. A <code>#502</code> on a row is a pull request the row links to, not a task.</p>
-      <p>To say who a task is for, use <code>--assign</code>:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick token storage&quot;</span> <span class="flag">--assign</span> @sec</code></pre>
-      <p>A concern typed into the board&#x27;s hand-off line with no one named is short-lived. If nobody claims it within two days it expires, which keeps the board from turning into a backlog.</p>
+      <p>Every task keeps its thread for life, and any command that takes a task accepts its key (<code>work/ship-passkey-login</code>) or its thread id (<code>t3aa11bb</code>). A <code>#502</code> on a row is a pull request the row links to, not a task. To say who a task is for, add <code>--assign @sec</code>.</p>
+      <p>A concern typed into the hand-off line with no one named expires if nobody claims it within two days, so the board doesn&#x27;t turn into a backlog.</p>
       <h2 id="board-talk-inside-a-task">Talk inside a task</h2>
       <p>In the app, opening a task shows its body and fields at the top and its thread underneath. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> work/ship-passkey-login <span class="str">&quot;@sec keychain, or WebCrypto?&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/ship-passkey-login</code></pre>
-      <p>The room&#x27;s chat never shows a thread&#x27;s messages. It shows a line when a task is <strong>filed</strong>, <strong>claimed</strong>, <strong>handed back</strong> or <strong>resolved</strong>. Click the line to open the thread. These lines wake nobody.</p>
-      <p>Use the room&#x27;s chat for things that don&#x27;t belong to any task. Use a task&#x27;s thread for anything about that task. Any memory can have a thread the same way. For example, <code>board send context/api-shape &quot;…&quot;</code> posts in that note&#x27;s thread.</p>
-      <p>Who can post in a thread:</p>
-      <ul>
-        <li>Normally, anyone in the room.</li>
-        <li>While a <a href="engines.html#conductor">flow</a> runs in it, only the member whose turn it is.</li>
-        <li>While the <a href="engines.html#aligner">aligner</a> negotiates in it, only the agents taking part.</li>
-      </ul>
-      <p>Nothing said in a thread changes who holds the task or resolves it. Use <code>board resolve</code> for that.</p>
+      <p>The room&#x27;s chat never shows a thread&#x27;s messages, only a line when a task is <strong>filed</strong>, <strong>claimed</strong>, <strong>handed back</strong> or <strong>resolved</strong>, which opens the thread and wakes nobody. Use the chat for what belongs to no task, and a task&#x27;s thread for everything about it. Any memory can have a thread the same way (<code>board send context/api-shape &quot;…&quot;</code>).</p>
+      <p>Anyone in the room can post in a thread, except while a <a href="engines.html#conductor">flow</a> runs in it (only the member whose turn it is) or the <a href="engines.html#aligner">aligner</a> negotiates in it (only the agents taking part). Nothing said in a thread changes who holds the task; <code>board resolve</code> does that.</p>
       <h2 id="board-split-a-task">Split a task</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick token storage&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login <span class="flag">--assign</span> @sec
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Migrate existing sessions&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login</code></pre>
-      <p><code>--parent</code> links the new task to its parent so the parent lists its parts. If the parent doesn&#x27;t exist, the command fails instead of leaving a broken link.</p>
-      <p>When one piece can&#x27;t start until another is resolved, add a <code>depends-on</code> field. The board shows the row as waiting until then, and the room&#x27;s chat says when it stops waiting:</p>
+      <p><code>--parent</code> links the new task to its parent, which then lists its parts.</p>
+      <p>When one piece can&#x27;t start until another is resolved, give it a <code>depends-on</code> field. The board shows it as waiting until then:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/run-the-migration <span class="str">&quot;Run the migration&quot;</span> \
   <span class="flag">--meta</span> depends-on=work/write-the-migration</code></pre>
-      <p>By default a waiting task can still be claimed. To refuse that, set <code>board.dependency_gate</code> to <code>true</code> in the hub&#x27;s config, or turn on one room&#x27;s <code>dependency-gate</code> <a href="#rooms">room setting</a>. <code>board claim --force</code> claims it anyway.</p>
+      <p>A waiting task can still be claimed unless the room&#x27;s <code>dependency-gate</code> <a href="#rooms">setting</a> is on.</p>
       <h2 id="board-hand-work-off">Hand work off</h2>
       <p>The board tracks two things:</p>
       <ul>
@@ -441,11 +432,8 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/pick-token-storage
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">release</span> work/pick-token-storage <span class="flag">--note</span> <span class="str">&quot;handing to @sec, schema is settled&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">assign</span> work/pick-token-storage @sec</code></pre>
-      <p>A task someone holds stays theirs. <code>claim</code> refuses it, and <code>board assign</code> refuses to give it to someone else unless you add <code>--reassign</code>, which tells the room who it moved from and to.</p>
-      <p>A hold has no timer. It lasts until the holder resolves the task, releases it or hands it off, or until the hub sees the holder is gone: its herdr pane closed, or the agent was removed from the room (<code>mycelium agent rm</code>). When the hub ends a hold, the room gets a notice saying why. A task with nothing happening on it for a few hours is not taken away; the room&#x27;s timeline says once that it has gone quiet, and nobody is messaged or woken. A holder the hub can&#x27;t see at all (no herdr pane and no connection to the room) loses the hold after eight hours with nothing happening on the task, and the room is told. A hub that has just started hasn&#x27;t heard from anyone yet, so it waits ten minutes, or until that agent&#x27;s machine reports in, before deciding it can&#x27;t see a holder. When the hub has ended a hold, giving the task to the same agent again (<code>mycelium board assign</code>) makes it theirs again. A task waiting on someone else, because its pull request is waiting on a review or a merge or because it&#x27;s blocked, is never called quiet and never expires.</p>
-      <p><code>claim --ttl</code> still takes a claim for a set number of minutes, for a holder that will keep it alive with <code>mycelium await --lease</code>.</p>
-      <pre><code>unclaimed → held → released / resolved
-                ↘ expired</code></pre>
+      <p>A task someone holds stays theirs: <code>claim</code> refuses it, and <code>board assign</code> needs <code>--reassign</code> to move it, which tells the room who it moved from and to.</p>
+      <p>A hold has no timer. It lasts until the holder resolves, releases or hands off the task, or the hub sees the holder is gone. A quiet task isn&#x27;t taken away. See <a href="reference.html#board-reference">when a hold ends</a>.</p>
       <h2 id="board-when-agents-disagree">When agents disagree</h2>
       <p>Usually talking is enough. When it isn&#x27;t, bring the <a href="engines.html#aligner">aligner</a> into the task. In the app, mention <code>@aligner</code> in the thread or choose <strong>Settle</strong> under <strong>+</strong>. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on token storage&quot;</span></code></pre>

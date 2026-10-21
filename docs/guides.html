@@ -378,7 +378,7 @@
 
     <section class="doc-section" id="desktop">
       <h1>The Desktop App</h1>
-      <p>The desktop app is the quickest way to get going. It runs everything Mycelium needs on your computer, with no Docker and no setup in a terminal. It also starts your coding agents for you when you ask.</p>
+      <p>The desktop app is the quickest way to get going. It runs everything Mycelium needs on your computer, with no Docker and no setup in a terminal, and starts your coding agents for you when you ask.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -407,83 +407,55 @@
           </tbody>
         </table>
       </div>
-      <p>The Linux and Windows builds are previews: every release builds them, and they get less testing than the Mac build.</p>
+      <p>The Linux and Windows builds are previews and get less testing than the Mac build.</p>
       <h2 id="desktop-install">Install</h2>
       <ul>
-        <li><strong>Mac:</strong> open the download and drag <strong>Mycelium</strong> into <strong>Applications</strong>, then open it from there. The first time, macOS asks whether to open an app downloaded from the internet. Choose <strong>Open</strong>.</li>
-        <li><strong>Linux:</strong> make the file executable (<code>chmod +x Mycelium-linux-x86_64.AppImage</code>) and run it. It runs from that one file, so there&#x27;s nothing to install.</li>
-        <li><strong>Windows:</strong> run the installer. It installs for you alone, with no administrator prompt. The installer isn&#x27;t code-signed, so the first time Windows asks before running it: choose <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+        <li><strong>Mac:</strong> drag <strong>Mycelium</strong> into <strong>Applications</strong> and open it. The first time, macOS asks whether to open an app from the internet: choose <strong>Open</strong>.</li>
+        <li><strong>Linux:</strong> make the file executable (<code>chmod +x Mycelium-linux-x86_64.AppImage</code>) and run it.</li>
+        <li><strong>Windows:</strong> run the installer. It installs for you alone, with no administrator prompt. It isn&#x27;t code-signed, so Windows asks first: choose <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
       </ul>
-      <p>The app then walks you through a few short steps. The app calls your computer &quot;this Mac&quot; on a Mac and &quot;this computer&quot; elsewhere; this page says &quot;this computer&quot;.</p>
+      <p>The app then asks a few questions:</p>
       <ul>
-        <li><strong>Where your rooms live.</strong> <strong>On this computer</strong> runs a hub here. <strong>On my team&#x27;s hub</strong> joins rooms someone else runs. Paste the hub&#x27;s address or open an invite link a teammate sent you.</li>
-        <li><strong>A model</strong>, for a hub on this computer. Pick a provider and paste its key. The <a href="engines.html#engines">engines</a> use it. You can skip this and add it later.</li>
-        <li><strong>Agents on this computer.</strong> This shows the agent CLIs it found and the folder that agents started from Mycelium may work in. It also asks whether herdr should bring your agents back after it restarts. That adds a hook to each agent CLI&#x27;s settings, so it&#x27;s your choice.</li>
-        <li><strong>Usage stats</strong>, for a hub on this computer. This decides whether the hub may send anonymous counts of tasks, flows and agents to an analytics address. It&#x27;s off unless you tick it. Nothing is sent until an address is set in the hub&#x27;s config (<code>telemetry.analytics_destination</code>), and the app doesn&#x27;t set one. See <a href="reference.html#metrics">Metrics</a> for exactly what would be sent.</li>
-        <li><strong>Ready to start.</strong> This shows what you chose. Then press <strong>Start Mycelium</strong>.</li>
+        <li><strong>Where your rooms live.</strong> <strong>On this computer</strong> runs a hub here. <strong>On my team&#x27;s hub</strong> joins rooms someone else runs: paste the hub&#x27;s address or open an invite link a teammate sent you.</li>
+        <li><strong>A model</strong>, for a hub on this computer. The <a href="engines.html#engines">engines</a> use it, and you can add it later.</li>
+        <li><strong>Agents on this computer:</strong> the agent CLIs it found, the folder agents may work in, and whether herdr should bring your agents back after it restarts.</li>
+        <li><strong>Usage stats</strong>, off unless you tick it. See <a href="reference.html#metrics">Metrics</a> for what would be sent.</li>
       </ul>
       <figure class="doc-figure"><img class="doc-img" src="desktop-onboarding.png" alt="The first step: where your rooms live" loading="lazy">
       </figure>
-      <p>Before you start, <strong>What this sets up</strong> lists every change it makes. Your settings and rooms live in <code>~/.mycelium</code> (on Windows, <code>.mycelium</code> in your user folder). On a Mac or Linux, <code>mycelium</code> and <code>herdr</code> are linked into <code>~/.local/bin</code> so agents can run them, and the links follow the app when it updates; on Windows, the app adds its own folders to your PATH, so agents and the terminals you open next can run them. It needs no administrator password and writes nothing outside your home folder.</p>
+      <p>Your settings and rooms live in <code>~/.mycelium</code> (on Windows, <code>.mycelium</code> in your user folder), and the app writes nothing outside your home folder. <strong>What this sets up</strong> lists every change before you start.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>A hub on this computer is yours alone.</strong> It runs only while the app is running, and only this computer can reach it, so teammates can&#x27;t join rooms on it. To share rooms, run the hub on a server and have everyone choose <strong>On my team&#x27;s hub</strong>. See <a href="#hub-and-spoke">Hub &amp; Spoke</a>.</div>
+        <div class="callout-body"><strong>A hub on this computer is yours alone.</strong> It runs only while the app is running, and only this computer can reach it. To share rooms, run the hub on a server and have everyone choose <strong>On my team&#x27;s hub</strong>. See <a href="#hub-and-spoke">Hub &amp; Spoke</a>.</div>
       </div>
-      <h2 id="desktop-whats-inside">What&#x27;s inside</h2>
-      <p>The app includes everything, at versions tested together:</p>
+      <p>The app includes the hub and its UI, a <a href="concepts.html#slim">SLIM</a> node, <a href="#herdr">herdr</a>, the <code>mycelium</code> CLI, the <a href="#machines">runner</a> and Pi, at versions tested together. It doesn&#x27;t include an agent CLI: install the one you use, such as Claude Code, Codex or OpenCode, and the app finds it.</p>
+      <h2 id="desktop-adding-and-watching-agents">Adding and watching agents</h2>
+      <p>In a room, open <strong>Members</strong>, press <strong>Add</strong> and pick <strong>Your machine</strong>. Start from a role or write your own instructions, then press <strong>Add to room</strong>. The agent opens in a herdr terminal, already a member of the room. See <a href="#machines">Start Agents From the App</a>.</p>
+      <p>To type to an agent, open the agents terminal: <strong>terminal</strong> in the bar at the bottom of the window, or <strong>Open terminal</strong> beside an agent on <strong>Machines</strong>.</p>
+      <p>To watch one without leaving the room, open its terminal read-only:</p>
       <ul>
-        <li>the Mycelium hub and its UI;</li>
-        <li>a <a href="concepts.html#slim">SLIM</a> node for the rooms&#x27; messages;</li>
-        <li><a href="#herdr">herdr</a>, where your agents run as terminals you can watch and type to;</li>
-        <li>the <code>mycelium</code> CLI, which agents use to work in rooms;</li>
-        <li>the <a href="#machines">runner</a>, which starts your agents and wakes them;</li>
-        <li>Pi, which the engines use to call the model;</li>
-        <li>the small model behind memory search, so search works offline.</li>
+        <li><strong>Members:</strong> click the agent.</li>
+        <li><strong>Machines:</strong> press <strong>View</strong> on its row.</li>
+        <li><strong>The channel:</strong> while it&#x27;s responding, click its name on the &quot;is responding&quot; line. Rest the pointer on the name to see its last few lines.</li>
       </ul>
-      <p>It doesn&#x27;t include an agent CLI. Install the one you use, such as Claude Code, Codex or OpenCode, and the app finds it.</p>
-      <h2 id="desktop-adding-agents">Adding agents</h2>
-      <p>In a room, open <strong>Members</strong>, press <strong>Add</strong> and pick <strong>Your machine</strong>. Start from a role or write your own instructions, then press <strong>Add to room</strong>. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See <a href="#machines">Start Agents From the App</a>.</p>
-      <p>To talk to an agent, open the agents terminal: <strong>terminal</strong> in the bar at the bottom of the window, <strong>Agents terminal</strong> on the home screen or in the app&#x27;s menu, or <strong>Open terminal</strong> beside an agent on the <strong>Machines</strong> page.</p>
-      <h3 id="desktop-watching-an-agents-terminal">Watching an agent&#x27;s terminal</h3>
-      <p>You can see what an agent on this computer is doing without leaving the room. Its terminal shows live, read-only, in color:</p>
-      <ul>
-        <li><strong>Members:</strong> click the agent, or right-click it and pick <strong>Watch terminal</strong>.</li>
-        <li><strong>Machines:</strong> press <strong>View</strong> on the agent&#x27;s row.</li>
-        <li><strong>The channel:</strong> press <strong>watch</strong> beside &quot;is working&quot; while it works.</li>
-        <li><strong>Add agent:</strong> when an agent stops at a sign-in or a question as it starts, the dialog shows what it&#x27;s asking.</li>
-      </ul>
-      <p>The view says &quot;Streamed from this machine. Nothing is sent to the hub.&quot; The app reads the terminal from herdr and draws it in its own window. The hub never receives what a terminal shows, so a key or private code on screen stays on your computer. For the same reason, an agent running on another computer shows where it runs instead of its screen. To type to the agent, press <strong>Open its terminal</strong>.</p>
+      <p>The view says &quot;Streamed from this machine. Nothing is sent to the hub.&quot; The app reads the terminal from herdr itself, so a key or private code on screen never leaves your computer. An agent on another computer shows where it runs instead.</p>
       <h2 id="desktop-the-apps-menu">The app&#x27;s menu</h2>
-      <p>While it runs, Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running, and <strong>Quit Mycelium</strong> stops the hub. Agents you started keep running in herdr either way and pick up again when the hub is back.</p>
-      <p>The menu shows the state of the hub, the SLIM node and the runner. It also has these items:</p>
-      <ul>
-        <li><strong>Open Mycelium</strong>, <strong>Agents terminal</strong> and <strong>Your agents…</strong></li>
-        <li><strong>Start at login</strong></li>
-        <li><strong>Health check…</strong>, which opens Settings at the health check: each part the app runs and whether it&#x27;s working. When something isn&#x27;t, it says what to do. It runs the same checks as <code>mycelium doctor --mode desktop</code>.</li>
-        <li><strong>Logs</strong>, which opens the app&#x27;s log, the runner&#x27;s log or the folder they&#x27;re in. See <a href="#logs">Logs</a>.</li>
-        <li><strong>Settings…</strong> (⌘, on a Mac, Ctrl+, elsewhere). Beside your own settings and the hub&#x27;s, Settings has the app&#x27;s pages under <strong>This Mac</strong> (or <strong>This computer</strong>): <strong>Hub and Connection</strong> (where rooms live, and starting at login), <strong>Model</strong> (see <a href="#models">models</a>), <strong>Agents</strong> (the folder they work in), <strong>Voice</strong>, <strong>Experiences</strong>, <strong>Privacy</strong> (usage stats), <strong>Version</strong> and the <strong>Health check</strong>. Saving a change there restarts Mycelium with it. A change to the hub the app uses, the agents&#x27; folder, the model or the version asks you first in the app&#x27;s own dialog.</li>
-        <li><strong>Check for Updates…</strong></li>
-      </ul>
-      <p>To make the window bigger or smaller, zoom it as you would a browser: ⌘+ and ⌘− (Ctrl+ and Ctrl− on Windows and Linux), and ⌘0 or Ctrl+0 for actual size. On a Mac these are also in the <strong>View</strong> menu. The app remembers the size you chose the next time it opens.</p>
+      <p>Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running; <strong>Quit Mycelium</strong> stops the hub. Agents keep running in herdr either way and pick up again when the hub is back.</p>
+      <p>The menu shows whether the hub, the SLIM node and the runner are up, and has <strong>Health check…</strong> (the same checks as <code>mycelium doctor --mode desktop</code>, each saying what to do when something&#x27;s wrong), <strong>Logs</strong>, <strong>Settings…</strong> (⌘, or Ctrl+,), <strong>Start at login</strong> and <strong>Check for Updates…</strong>.</p>
       <figure class="doc-figure"><img class="doc-img" src="desktop-health.png" alt="The health check" loading="lazy">
       </figure>
       <h2 id="desktop-updates">Updates</h2>
-      <p>The app checks for a new release shortly after it opens, every few hours while it runs, and whenever you choose <strong>Check for Updates…</strong>. If one is out, it asks before installing it. While you haven&#x27;t installed it yet, the app&#x27;s header shows <strong>Update available</strong>, which asks the same question. Once you say yes, a small window shows the download until the app restarts into the new version. If your connection drops partway, the window says so and the download carries on from where it stopped once the connection is back, for up to ten minutes without progress. If you quit in the middle, the next <strong>Check for Updates…</strong> picks up the same download. An update installs only if it has the release&#x27;s signature, so the app never installs anything the project didn&#x27;t publish.</p>
-      <p>herdr keeps running through an update, so your agents aren&#x27;t interrupted, and the herdr still running is the one from before it. On a Mac, macOS can then refuse herdr and its terminals access to folders like Documents, and commands there fail with &quot;Operation not permitted&quot;. When the app sees this, it asks whether to restart herdr. Restarting stops the agents running in it. If you&#x27;ve let herdr bring your agents back (<code>mycelium machine integrations</code>), each one reopens in its own conversation; if not, start them again from <strong>Your agents…</strong>. You can also restart it later with <code>mycelium desktop restart-herdr</code>, and the health check says when it&#x27;s needed.</p>
-      <h3 id="desktop-changing-version-and-release-candidates">Changing version, and release candidates</h3>
-      <p><strong>Settings → Version</strong> shows the version you&#x27;re running and lists releases you can switch to. Pick one, say yes when the app asks, and the app downloads it, checks its signature like any update, and restarts into it. The hub and the CLI inside the app change with it. A <code>mycelium</code> you installed separately for your terminal (with the install script or <code>uv tool</code>) keeps its own version.</p>
-      <ul>
-        <li><strong>Release candidates.</strong> Turn on <strong>Offer release candidates</strong> to list them too. A release candidate is the next version, out early to try. While it&#x27;s on, updates also offer the newest release candidate. Turn it off to go back to stable releases: you stay on what you have until the next stable release, or switch back to one from the list.</li>
-        <li><strong>Going back to an older version.</strong> The app asks twice. Rooms and settings saved by a newer version may not open in an older one, and a hub elsewhere that runs a newer version may not work with it.</li>
-      </ul>
+      <p>The app checks for a new release when it opens and every few hours, and asks before installing one. It installs only an update signed by the project.</p>
+      <p>herdr keeps running through an update, so your agents aren&#x27;t interrupted. On a Mac, the old herdr can then be refused access to folders like Documents (&quot;Operation not permitted&quot;). The app notices and asks whether to restart herdr, which stops the agents in it. Agents herdr may bring back reopen in their own conversations; start the others again from <strong>Your agents…</strong>. You can also run <code>mycelium desktop restart-herdr</code>.</p>
+      <p><strong>Settings → Version</strong> switches to another release. Turn on <strong>Offer release candidates</strong> to try the next version early. Going back to an older version asks twice, because rooms saved by a newer version may not open in an older one. A <code>mycelium</code> you installed separately for your terminal keeps its own version.</p>
       <h2 id="desktop-logs">Logs</h2>
-      <p>Two logs say what went wrong. Both open from <strong>Logs</strong> in the menu, in whatever opens log files on your computer (Console, on a Mac).</p>
+      <p>Both open from <strong>Logs</strong> in the menu:</p>
       <ul>
-        <li><strong>App log</strong> (<code>~/.mycelium/logs/desktop.log</code>): everything the app runs, and why a part of it stopped. Earlier runs are in <code>desktop.log.1</code> to <code>desktop.log.5</code> beside it.</li>
-        <li><strong>Agent starts</strong> (<code>~/.mycelium/runner/runner.log</code>): every agent a room asked this computer to start, and whether it started, is waiting for your yes, or failed and why. Look here first when an agent won&#x27;t start. Older entries are in <code>runner.log.1</code> to <code>runner.log.3</code> beside it.</li>
+        <li><strong>App log</strong> (<code>~/.mycelium/logs/desktop.log</code>): everything the app runs, and why a part of it stopped. Earlier runs are in <code>desktop.log.1</code> to <code>desktop.log.5</code>.</li>
+        <li><strong>Agent starts</strong> (<code>~/.mycelium/runner/runner.log</code>): every agent a room asked this computer to start, and whether it started, is waiting for your yes, or failed and why. Look here first when an agent won&#x27;t start.</li>
       </ul>
       <h2 id="desktop-the-command-line">The command line</h2>
-      <p>On an Apple silicon Mac, the installer on the docs site installs the app too. <code>curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash</code> puts it in Applications, links its <code>mycelium</code> CLI into <code>~/.local/bin</code> and opens it. <code>mycelium desktop serve</code> runs the same hub without the window.</p>
+      <p>On an Apple silicon Mac, <code>curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash</code> installs the app, links its <code>mycelium</code> CLI into <code>~/.local/bin</code> and opens it. <code>mycelium desktop serve</code> runs the same hub without the window.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/desktop.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="desktop" aria-label="Previous and next sections">
