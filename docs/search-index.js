@@ -1579,7 +1579,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-signing-in-from-the-cli",
     "t": "Signing in from the CLI",
     "s": "Security › Authentication",
-    "x": "mycelium config set login.audience mycelium # same as the hub's auth.audience mycelium login Your browser opens to sign in with your provider, and every command then sends your token. The CLI asks the hub which issuer it trusts, so you don't set login.issuer unless the hub can't be reached or trusts more than one (then pick with --issuer). Without a browser (SSH, CI, a container), mycelium login --device prints a URL",
+    "x": "mycelium config set login.audience mycelium # same as the hub's auth.audience mycelium login Your browser opens and you sign in with your provider. From then on, every command sends your token. You don't need to set login.issuer, because the CLI asks the hub which issuer it trusts. If the hub trusts more than one, the CLI asks you to pick one with --issuer. On a machine without a browser, run mycelium login --device.",
     "p": "Guides"
   },
   {
@@ -1600,7 +1600,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-signing-in-agents",
     "t": "Signing in agents",
     "s": "Security › Authentication",
-    "x": "mycelium login is for people. Agents have three ways in: Joined with a code. mycelium join gives the agent a 30-day token from the hub, with nothing to register. See Joining a room from anywhere. Its own client, with the client_credentials grant; the client id is its handle. Each agent can be revoked on its own. A token from somewhere else, below. For its own client, point the machine at your agents' issuer and give ",
+    "x": "mycelium login is for people. Agents have three ways in: Joined with a code. mycelium join gives the agent a token from the hub itself, valid for 30 days. There's nothing to register with your provider. See Joining a room from anywhere. Its own client. The agent signs in with its own OIDC client, using the client_credentials grant. The client id becomes the agent's handle, and you can revoke one agent without affecti",
     "p": "Guides"
   },
   {
@@ -1621,42 +1621,42 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-people-and-agents-from-different-issuers",
     "t": "People and agents from different issuers",
     "s": "Security › Authentication",
-    "x": "The hub works with any OIDC provider. People and agents often come from different issuers; add a block for each: [[auth.issuers]] issuer = \"https://sso.example.com/realms/people\" role = \"user\" [[auth.issuers]] issuer = \"https://sso.example.com/realms/agents\" role = \"agent\" A token is checked against the keys of the issuer it names, so one issuer's tokens can't pass as another's. The hub takes the handle from auth.han",
+    "x": "The hub works with any OIDC provider. People and agents often come from different issuers. Add a block for each: [[auth.issuers]] issuer = \"https://sso.example.com/realms/people\" role = \"user\" [[auth.issuers]] issuer = \"https://sso.example.com/realms/agents\" role = \"agent\" A token is checked against the keys of the issuer it names. One issuer's tokens can't pass as another's. The hub reads the caller's handle from th",
     "p": "Guides"
   },
   {
     "u": "guides.html#auth-who-wrote-it",
     "t": "Who wrote it",
     "s": "Security › Authentication",
-    "x": "With auth on, every write (memory authorship, message senders) is attributed to the handle in the token. A request naming a different handle gets a 403 rather than being quietly saved under the token's. A per-machine suffix, like alice#a8f3, is kept and can't be used to act as someone else. With auth off, the request's handle is used as-is.",
+    "x": "With auth on, every write is recorded under the handle in the token. That covers who wrote a memory and who sent a message. If a request names a different handle, it's refused with a 403. A per-machine suffix such as alice#a8f3 is kept, but it can't be used to act as someone else. With auth off, the handle in the request is used as it is.",
     "p": "Guides"
   },
   {
     "u": "guides.html#auth-acting-for-an-agent",
     "t": "Acting for an agent",
     "s": "Security › Authentication",
-    "x": "mycelium await reads that handle's messages, and joining a room records it as present, so with auth on both need the handle to be your own, or the agent's record (agents/<handle> in the room) to list you as its owner or in allow_from. Anything else gets a 403, and owning @bot in one room gives nothing in another. An agent with its own credential awaits as itself. To drive an agent's loop from your own session: myceli",
+    "x": "mycelium await reads a handle's messages, and joining a room marks a handle as present. With auth on, you can only do either for your own handle, or for an agent whose record lists you as its owner or in its allow_from. Anything else is refused with a 403. An agent's record belongs to one room. Owning @bot in one room gives you nothing in another. An agent with its own credential awaits as itself and needs none of th",
     "p": "Guides"
   },
   {
     "u": "guides.html#auth-rotating-signing-keys",
     "t": "Rotating signing keys",
     "s": "Security › Authentication",
-    "x": "The hub caches signing keys for auth.jwks_ttl_s and fetches them again when a token uses a key it hasn't seen, so rotating keys needs no restart. If the provider is briefly unreachable, the hub keeps using the keys it has.",
+    "x": "The hub caches your provider's signing keys. When a token is signed with a key it hasn't seen, it fetches the keys again. You don't need to restart anything after rotating keys. If the provider is briefly unreachable, the hub keeps using the keys it already has.",
     "p": "Guides"
   },
   {
     "u": "guides.html#auth-requests-from-the-hubs-own-machine",
     "t": "Requests from the hub's own machine",
     "s": "Security › Authentication",
-    "x": "With auth.localhost_bypass on (the default), requests from the hub's own machine (127.0.0.0/8 or ::1) need no token, so turning auth on can't lock you out. The hub checks the connection's real address and ignores X-Forwarded-For. This doesn't work in Docker, where requests come from Docker's network like any other; for a local Docker setup, leave auth off.",
+    "x": "By default, requests from the hub's own machine need no token. That way, turning auth on can't lock you out. Set auth.localhost_bypass to false to change that. The hub checks the connection's real address and ignores X-Forwarded-For, which a caller can set to anything. This doesn't work when the hub runs in Docker. Requests then come through Docker's network and look like any other request. For a local Docker setup, ",
     "p": "Guides"
   },
   {
     "u": "guides.html#auth-what-doesnt-need-a-token",
     "t": "What doesn't need a token",
     "s": "Security › Authentication",
-    "x": "These stay open even with auth on: /, /health and /healthz, for health checks. They don't include any room content. /docs, /redoc and /openapi.json, which describe the API. A room's A2A agent card (/.well-known/agent-card.json), which only lists the room's name and skills. The room's A2A endpoint itself needs a token. Everything else needs a token. With auth on, /health has an auth section: whether it's on, the trust",
+    "x": "These stay open even with auth on: /, /health and /healthz, for health checks. They don't include any room content. /docs, /redoc and /openapi.json, which describe the API. A room's A2A agent card (/.well-known/agent-card.json), which only lists the room's name and skills. The room's A2A endpoint itself needs a token. Everything else needs a token. With auth on, /health also has an auth section that shows the trusted",
     "p": "Guides"
   },
   {

@@ -4443,15 +4443,17 @@ jwks_url = "https://sso.example.com/realms/mycelium/protocol/openid-connect/cert
 role     = "user"
 ```
 
-Run `mycelium config apply` again, then `mycelium up` to restart the hub. On a
-Docker hub, run `mycelium login` on the hub's own machine too: its requests
-come through Docker's network, so
+Run `mycelium config apply` again, then `mycelium up` to restart the hub.
+
+On a Docker hub, also run `mycelium login` on the hub's own machine. Requests
+from that machine come through Docker's network, so
 [the localhost exception](#auth-requests-from-the-hubs-own-machine) doesn't
-apply.
+cover them.
 
 **Always set an audience.** Without one, the hub accepts any token your
-provider issued, including tokens meant for other applications. With auth on
-and no audience, the backend warns at startup and in `/health`.
+provider has issued. That includes tokens meant for other applications. If
+auth is on without an audience, the hub warns about it at startup and in
+`/health`.
 
 ### Settings
 
@@ -4481,26 +4483,31 @@ mycelium config set login.audience mycelium      # same as the hub's auth.audien
 mycelium login
 ```
 
-Your browser opens to sign in with your provider, and every command then sends
-your token. The CLI asks the hub which issuer it trusts, so you don't set
-`login.issuer` unless the hub can't be reached or trusts more than one (then
-pick with `--issuer`).
+Your browser opens and you sign in with your provider. From then on, every
+command sends your token.
 
-Without a browser (SSH, CI, a container), `mycelium login --device` prints a
-URL and a code to enter elsewhere; the CLI switches to it on its own when it
-finds no browser. `mycelium logout` signs you out. If you never sign in, the
-CLI never sends a token, which is right for a hub with auth off.
+You don't need to set `login.issuer`, because the CLI asks the hub which
+issuer it trusts. If the hub trusts more than one, the CLI asks you to pick one
+with `--issuer`.
 
-Your sign-in is kept in the system keychain (macOS Keychain, Windows
-Credential Manager or the Secret Service on Linux), one entry per hub, or in a
-`0600` `~/.mycelium/token.json` where there's no keychain. It renews itself, so
-you don't sign in on a schedule; that needs the `offline_access` scope, which
-is in the default `login.scopes`. `MYCELIUM_TOKEN_FILE` moves the file, which
-helps on a CI runner with a shared home folder.
+On a machine without a browser, run `mycelium login --device`. It prints a URL
+and a code to enter on another device. The CLI also switches to this on its
+own when it can't find a browser.
 
-**Inside an agent's terminal,** the CLI never uses your sign-in: commands act
-as that agent alone, and `--as` someone else is refused. Agents sign in with
-their own credentials (see [Signing in agents](#auth-signing-in-agents)).
+`mycelium logout` signs you out. If you never sign in, the CLI never sends a
+token, which is what you want with a hub that has auth off.
+
+Your sign-in is kept in the system keychain, with one entry for each hub. Where
+there's no keychain, it's kept in `~/.mycelium/token.json`, which only you can
+read. Set `MYCELIUM_TOKEN_FILE` to keep that file somewhere else.
+
+The sign-in renews itself, so you don't have to sign in again on a schedule.
+Renewal needs the `offline_access` scope, which is in the default
+`login.scopes`.
+
+**Inside an agent's terminal, the CLI never uses your sign-in.** Commands there
+act as that agent alone, and `--as` someone else is refused. Agents sign in
+with their own credentials. See [Signing in agents](#auth-signing-in-agents).
 
 `mycelium whoami` shows who you're acting as and when your sign-in expires:
 
@@ -4509,8 +4516,8 @@ acting as @avery  (avery#a8f3)
   signed in (https://sso.example.com/realms/mycelium, expires in 42 min)
 ```
 
-With auth on, the hub writes as the handle in your token, so `login` also sets
-`identity.name` to it and registers you as a user.
+With auth on, the hub records your writes under the handle in your token. So
+`login` also sets your `identity.name` to that handle.
 
 ### Login settings
 
@@ -4546,23 +4553,25 @@ export AUTH_SESSION_SECRET=$(openssl rand -hex 32)
 mycelium up
 ```
 
-The app then shows a **Sign in** screen when the hub's sign-in is on, and keeps
-your token in a cookie its scripts can't read. Without `MYCELIUM_OIDC_ISSUER`
-and `AUTH_SESSION_SECRET`, it can't load rooms on such a hub.
+The app then shows a **Sign in** screen whenever the hub has sign-in on. It
+keeps your token in a cookie that the page's scripts can't read. Without
+`MYCELIUM_OIDC_ISSUER` and `AUTH_SESSION_SECRET`, the app can't load rooms
+from a hub that has sign-in on.
 
 ## Signing in agents
 
 `mycelium login` is for people. Agents have three ways in:
 
-- **Joined with a code.** `mycelium join` gives the agent a 30-day token from
-  the hub, with nothing to register. See
-  [Joining a room from anywhere](#users-joining-a-room-from-anywhere).
-- **Its own client**, with the `client_credentials` grant; the client id is
-  its handle. Each agent can be revoked on its own.
-- **A token from somewhere else**, below.
+- **Joined with a code.** `mycelium join` gives the agent a token from the hub
+  itself, valid for 30 days. There's nothing to register with your provider.
+  See [Joining a room from anywhere](#users-joining-a-room-from-anywhere).
+- **Its own client.** The agent signs in with its own OIDC client, using the
+  `client_credentials` grant. The client id becomes the agent's handle, and
+  you can revoke one agent without affecting the others.
+- **A token from somewhere else.** See below.
 
-For its own client, point the machine at your agents' issuer and give each
-agent its client secret:
+To give agents their own clients, point the machine at the issuer your agents
+use. Then set each agent's client secret:
 
 ```bash
 mycelium config set agent_auth.issuer https://sso.example.com/realms/agents
@@ -4572,15 +4581,18 @@ mycelium config apply
 mycelium agent credential set release-agent --secret-stdin < secret.txt
 ```
 
-The client id is the handle unless you pass `--client-id`. `agent credential
-show`, `ls` and `rm` inspect and remove them (never showing a secret); to cut
-an agent off, revoke its client with your provider. From then on, `await` and
-`respond` as that handle send its token, even from a shell where a person is
-signed in. An agent without a credential sends no token.
+The client id is the handle unless you pass `--client-id`. From then on,
+`await` and `respond` with that handle send the agent's own token. They do this
+even in a shell where a person is signed in. An agent without a credential
+sends no token.
 
-Credentials are kept in a `0600` `~/.mycelium/agent-credentials.json`, with
-cached tokens in `~/.mycelium/agent-state/agent-tokens/`. For a container that
-runs one agent with no config file, use `MYCELIUM_AGENT_AUTH_ISSUER`,
+`mycelium agent credential ls` lists the agents with a credential on this
+machine, and `show` and `rm` look at or remove one. None of them shows a
+secret. To cut an agent off for good, revoke its client with your provider.
+
+Credentials are kept in `~/.mycelium/agent-credentials.json`, which only you
+can read. For a container that runs one agent and has no config file, use
+`MYCELIUM_AGENT_AUTH_ISSUER`,
 `MYCELIUM_AGENT_AUTH_CLIENT_ID`, `MYCELIUM_AGENT_AUTH_CLIENT_SECRET`,
 `MYCELIUM_AGENT_AUTH_SCOPES` and `MYCELIUM_AGENT_AUTH_AUDIENCE`. Set
 `MYCELIUM_AGENT_HANDLE` to the agent's handle.
@@ -4603,7 +4615,7 @@ block for that issuer with `role = "agent"`.
 ## People and agents from different issuers
 
 The hub works with any OIDC provider. People and agents often come from
-different issuers; add a block for each:
+different issuers. Add a block for each:
 
 ```toml
 [[auth.issuers]]
@@ -4615,50 +4627,61 @@ issuer = "https://sso.example.com/realms/agents"
 role   = "agent"
 ```
 
-A token is checked against the keys of the issuer it names, so one issuer's
-tokens can't pass as another's. The hub takes the handle from
-`auth.handle_claim` (`sub` by default, lowercased, without a leading `@`) and
-the role from `auth.role_claim`, or else from the issuer block's `role`.
+A token is checked against the keys of the issuer it names. One issuer's
+tokens can't pass as another's.
+
+The hub reads the caller's handle from the `auth.handle_claim` claim, which is
+`sub` by default. It reads the role from `auth.role_claim` when the token has
+one, and otherwise from the `role` on the issuer's block.
 
 ## Who wrote it
 
-With auth on, every write (memory authorship, message senders) is attributed
-to the handle in the token. A request naming a different handle gets a **403**
-rather than being quietly saved under the token's. A per-machine suffix, like
-`alice#a8f3`, is kept and can't be used to act as someone else. With auth off,
-the request's handle is used as-is.
+With auth on, every write is recorded under the handle in the token. That
+covers who wrote a memory and who sent a message. If a request names a
+different handle, it's refused with a **403**. A per-machine suffix such as
+`alice#a8f3` is kept, but it can't be used to act as someone else.
+
+With auth off, the handle in the request is used as it is.
 
 ## Acting for an agent
 
-`mycelium await` reads that handle's messages, and joining a room records it as
-present, so with auth on both need the handle to be your own, or the agent's
-record (`agents/<handle>` in the room) to list you as its `owner` or in
-`allow_from`. Anything else gets a **403**, and owning `@bot` in one room gives
-nothing in another. An agent with its own credential awaits as itself. To drive
-an agent's loop from your own session:
+`mycelium await` reads a handle's messages, and joining a room marks a handle
+as present. With auth on, you can only do either for your own handle, or for an
+agent whose record lists you as its `owner` or in its `allow_from`. Anything
+else is refused with a **403**.
+
+An agent's record belongs to one room. Owning `@bot` in one room gives you
+nothing in another. An agent with its own credential awaits as itself and needs
+none of this. To drive an agent's loop from your own session, add yourself to
+its record:
 
 ```bash
 mycelium agent create bot --owner alice          # alice can await --handle bot
 mycelium agent create bot --allow-from ops-lead  # and so can @ops-lead
 ```
 
-`await --loop` stops on a 401 or 403 rather than retrying. With auth off,
-anyone can await as any handle, another reason to turn auth on for a hub other
-people can reach.
+`await --loop` stops on a 401 or 403 instead of retrying.
+
+With auth off, anyone can await as any handle. That's another reason to turn
+auth on for a hub other people can reach.
 
 ## Rotating signing keys
 
-The hub caches signing keys for `auth.jwks_ttl_s` and fetches them again when a
-token uses a key it hasn't seen, so rotating keys needs no restart. If the
-provider is briefly unreachable, the hub keeps using the keys it has.
+The hub caches your provider's signing keys. When a token is signed with a key
+it hasn't seen, it fetches the keys again. You don't need to restart anything
+after rotating keys. If the provider is briefly unreachable, the hub keeps
+using the keys it already has.
 
 ## Requests from the hub's own machine
 
-With `auth.localhost_bypass` on (the default), requests from the hub's own
-machine (`127.0.0.0/8` or `::1`) need no token, so turning auth on can't lock
-you out. The hub checks the connection's real address and ignores
-`X-Forwarded-For`. **This doesn't work in Docker**, where requests come from
-Docker's network like any other; for a local Docker setup, leave auth off.
+By default, requests from the hub's own machine need no token. That way,
+turning auth on can't lock you out. Set `auth.localhost_bypass` to `false` to
+change that. The hub checks the connection's real address and ignores
+`X-Forwarded-For`, which a caller can set to anything.
+
+**This doesn't work when the hub runs in Docker.** Requests then come through
+Docker's network and look like any other request. For a local Docker setup,
+leave auth off.
 
 ## What doesn't need a token
 
@@ -4670,8 +4693,8 @@ These stay open even with auth on:
 - A room's A2A agent card (`/.well-known/agent-card.json`), which only lists the
   room's name and skills. The room's A2A endpoint itself needs a token.
 
-Everything else needs a token. With auth on, `/health` has an `auth` section:
-whether it's on, the trusted issuers, and any warnings.
+Everything else needs a token. With auth on, `/health` also has an `auth`
+section that shows the trusted issuers and any warnings.
 
 ## Errors
 
@@ -4681,8 +4704,10 @@ whether it's on, the trusted issuers, and any warnings.
 | `403` | The token is valid, but it's trying to act as a different handle: a write naming someone else, or an `await` or join for a handle that hasn't granted it access. |
 | `503` | Auth is on but can't work: no trusted issuers are configured, or the issuer's signing keys can't be fetched and none are cached. |
 
-Only asymmetric signatures (`RS*`, `PS*`, `ES*`) are accepted; `none` and
-`HS*` are refused, so the provider's public key can't be misused to forge one.
+The hub accepts only tokens with asymmetric signatures (`RS*`, `PS*` or
+`ES*`). It refuses `none` and `HS*` before checking anything else. That stops
+anyone from using the provider's public key as a shared secret to forge a
+token.
 
 ## Trying it locally
 
