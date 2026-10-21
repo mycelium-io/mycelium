@@ -1460,7 +1460,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-turning-it-on",
     "t": "Turning it on",
     "s": "Security › Authentication",
-    "x": "You need an OIDC identity provider such as Keycloak, Dex, ZITADEL, Authentik or your company's SSO. To try it without one, see Trying it locally. Enable auth and set an audience: mycelium config set auth.enabled true mycelium config set auth.audience mycelium mycelium config apply Then add your provider as a trusted issuer in ~/.mycelium/config.toml: [auth] enabled = true audience = \"mycelium\" [[auth.issuers]] issuer",
+    "x": "You need an OIDC identity provider such as Keycloak, Dex, ZITADEL, Authentik or your company's SSO. To try it without one, see Keycloak / OIDC setup. Enable auth and set an audience: mycelium config set auth.enabled true mycelium config set auth.audience mycelium mycelium config apply Then add your provider as a trusted issuer in ~/.mycelium/config.toml: [auth] enabled = true audience = \"mycelium\" [[auth.issuers]] is",
     "p": "Guides"
   },
   {
@@ -1565,7 +1565,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-trying-it-locally",
     "t": "Trying it locally",
     "s": "Security › Authentication",
-    "x": "To try sign-in on one machine before setting up a real provider, see Keycloak / OIDC setup in the source. It runs a local Keycloak with a ready-made realm and needs a checkout of the Mycelium source.",
+    "x": "To try sign-in on one machine before setting up a real provider, see Keycloak / OIDC setup in the source. It runs a local Keycloak with a ready-made realm from a checkout of the repository.",
     "p": "Guides"
   },
   {

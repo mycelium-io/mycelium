@@ -4027,7 +4027,8 @@ up separately. See [Running a Shared Hub](#security-planes).
 ## Turning it on
 
 You need an OIDC identity provider such as Keycloak, Dex, ZITADEL, Authentik or
-your company's SSO. To try it without one, see [Trying it locally](#auth-trying-it-locally).
+your company's SSO. To try it without one, see
+[Keycloak / OIDC setup](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md).
 
 Enable auth and set an audience:
 
@@ -4328,8 +4329,8 @@ token.
 
 To try sign-in on one machine before setting up a real provider, see
 [Keycloak / OIDC setup](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md)
-in the source. It runs a local Keycloak with a ready-made realm and needs a
-checkout of the Mycelium source.
+in the source. It runs a local Keycloak with a ready-made realm from a checkout
+of the repository.
 
 
 ---
