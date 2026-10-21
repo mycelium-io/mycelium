@@ -34,7 +34,7 @@ function key(secret: string): Uint8Array {
 }
 
 // Secure by default; self-hosted deployments with no TLS in front (the
-// appliance path — see docs/guides/keycloak-oidc.md) opt out explicitly. Tying
+// appliance path — see mycelium-cli/src/mycelium/docker/keycloak/README.md) opt out explicitly. Tying
 // this to NODE_ENV instead would break every non-TLS deployment, since the
 // built Docker image always runs with NODE_ENV=production regardless of
 // whether the operator terminates TLS.

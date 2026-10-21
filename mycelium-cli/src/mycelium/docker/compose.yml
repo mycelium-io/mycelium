@@ -133,7 +133,7 @@ services:
       # turn the backend gate on) to require a real sign-in. MYCELIUM_OIDC_ISSUER is
       # the public issuer the browser reaches; MYCELIUM_OIDC_INTERNAL_ISSUER is the
       # in-network base the frontend server uses for discovery/token exchange (e.g.
-      # http://keycloak:8080/realms/mycelium) — see docs/guides/keycloak-oidc.md.
+      # http://keycloak:8080/realms/mycelium) — see keycloak/README.md.
       MYCELIUM_OIDC_ISSUER: ${MYCELIUM_OIDC_ISSUER:-}
       MYCELIUM_OIDC_INTERNAL_ISSUER: ${MYCELIUM_OIDC_INTERNAL_ISSUER:-}
       MYCELIUM_OIDC_CLIENT_ID: ${MYCELIUM_OIDC_CLIENT_ID:-mycelium-web}

@@ -24,7 +24,7 @@
 #   `localhost` (that is the backend container itself) — so the gate is pointed at
 #   jwks_url http://keycloak:8080/realms/mycelium/protocol/openid-connect/certs
 #   for key fetch while still matching iss by exact string. See
-#   docs/guides/keycloak-oidc.md.
+#   keycloak/README.md.
 
 services:
   keycloak:

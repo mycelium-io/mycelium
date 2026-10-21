@@ -1460,7 +1460,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-turning-it-on",
     "t": "Turning it on",
     "s": "Security › Authentication",
-    "x": "You need an OIDC identity provider such as Keycloak, Dex, ZITADEL, Authentik or your company's SSO. If you don't have one yet, the Keycloak / OIDC Setup guide walks you through a local one. Enable auth and set an audience: mycelium config set auth.enabled true mycelium config set auth.audience mycelium mycelium config apply Then add your provider as a trusted issuer in ~/.mycelium/config.toml: [auth] enabled = true a",
+    "x": "You need an OIDC identity provider such as Keycloak, Dex, ZITADEL, Authentik or your company's SSO. To try it without one, see Trying it locally. Enable auth and set an audience: mycelium config set auth.enabled true mycelium config set auth.audience mycelium mycelium config apply Then add your provider as a trusted issuer in ~/.mycelium/config.toml: [auth] enabled = true audience = \"mycelium\" [[auth.issuers]] issuer",
     "p": "Guides"
   },
   {
@@ -1565,7 +1565,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-trying-it-locally",
     "t": "Trying it locally",
     "s": "Security › Authentication",
-    "x": "To try sign-in on one machine before setting up a real provider, see the Keycloak / OIDC Setup guide. It runs a local Keycloak with a ready-made realm and needs a checkout of the Mycelium source.",
+    "x": "To try sign-in on one machine before setting up a real provider, see Keycloak / OIDC setup in the source. It runs a local Keycloak with a ready-made realm and needs a checkout of the Mycelium source.",
     "p": "Guides"
   },
   {
@@ -2805,76 +2805,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Files",
     "s": "Observability › Metrics",
     "x": "Under $MYCELIUM_DATA_DIR (~/.mycelium/ by default): usage/events.jsonl: the hub's usage events. It's rotated at 5 MB and keeps one previous file. usage/hub_id: the hub's id, when the hub made its own. metrics/metrics.json: the collector's combined snapshot. metrics/traces.db: the OTLP traces the collector received. [telemetry] enabled = false # export backend traces and metrics over OTLP otlp_endpoint = \"\" # where to",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#status-providers",
-    "t": "Adding a Status Provider",
-    "s": "Contributing",
-    "x": "For contributors working on the Mycelium source. A status provider lets board rows show the live state of something in another tool. Live pull request status does this for GitHub. Providers run only on the hub, where the token is, so the whole room shares one cache. A provider is a small class in fastapi-backend/app/services/status/providers/. providers/github.py is a good one to copy. It sets a few options and imple",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#keycloak-oidc",
-    "t": "Keycloak / OIDC Setup",
-    "s": "Contributing",
-    "x": "<!-- SPDX-License-Identifier: Apache-2.0 --> For contributors working on the Mycelium source. The commands below run from a checkout of the repository and use its development compose files. An installed Mycelium doesn't have those. To turn on sign-in for a real hub, see Authentication. This guide gets authentication working end to end on your machine with Keycloak as the identity provider. When you're done, the hub w",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#keycloak-oidc-start-keycloak",
-    "t": "Start Keycloak",
-    "s": "Contributing › Keycloak / OIDC Setup",
-    "x": "Mycelium comes with a Keycloak setup you can add to the stack. It's a separate compose file, so it isn't part of the normal install. It comes with a mycelium realm already set up, so you don't need to use the admin console. cd mycelium-cli/src/mycelium/docker docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \\ up -d keycloak It's ready when this prints the issuer URL: curl -s http://localhost:8",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#keycloak-oidc-whats-in-the-realm",
-    "t": "What's in the realm",
-    "s": "Contributing › Keycloak / OIDC Setup",
-    "x": "The realm is defined in docker/keycloak/mycelium-realm.json. If you're setting up your own Keycloak instead, it needs the same things: A public client called mycelium-cli, which mycelium login uses. It has no secret because the CLI uses PKCE. It allows the redirect http://127.0.0.1:*/callback for browser sign-in, and it has the device grant enabled for signing in without a browser. An audience mapper that adds myceli",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#keycloak-oidc-point-the-hub-at-keycloak",
-    "t": "Point the hub at Keycloak",
-    "s": "Contributing › Keycloak / OIDC Setup",
-    "x": "The backend runs in a container, but your browser and the CLI run on your machine. So they reach Keycloak at different addresses: Your browser and the CLI reach it at localhost:8080. Keycloak puts http://localhost:8080/realms/mycelium in every token's iss, so that's the issuer the hub checks tokens against. Inside the backend container, localhost is the container itself. The backend reaches Keycloak at keycloak:8080 ",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#keycloak-oidc-sign-in",
-    "t": "Sign in",
-    "s": "Contributing › Keycloak / OIDC Setup",
-    "x": "mycelium login # opens Keycloak in your browser mycelium login --device # no browser: prints a URL and a code to enter on another device Sign in as demo with the password demo. Every command after that sends your token: mycelium whoami # acting as @demo # signed in (http://localhost:8080/realms/mycelium, expires in 4 min) mycelium room ls mycelium logout signs you out, and the CLI then stops sending a token.",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#keycloak-oidc-check-that-its-enforced",
-    "t": "Check that it's enforced",
-    "s": "Contributing › Keycloak / OIDC Setup",
-    "x": "Get a token for the demo user. Then try the API three times: with no token, with the real one and with a fake one: TOKEN=$(curl -s -X POST \\ http://localhost:8080/realms/mycelium/protocol/openid-connect/token \\ -d 'grant_type=password&client_id=mycelium-cli&username=demo&password=demo&scope=openid profile' \\ | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"access_token\"])') curl -s -o /dev/null -w '%{http_c",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#keycloak-oidc-signing-in-to-the-app",
-    "t": "Signing in to the app",
-    "s": "Contributing › Keycloak / OIDC Setup",
-    "x": "The app can use the same Keycloak. With auth off, nothing changes and you just pick a handle. With auth on, the app shows a Sign in screen and sends you to Keycloak. After you sign in, the app sends your token with every request. The app's server keeps the token in an httpOnly cookie and adds it to requests, so JavaScript in the browser never sees it. The realm has a second public client for this called mycelium-web.",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#keycloak-oidc-agents-and-more-than-one-issuer",
-    "t": "Agents, and more than one issuer",
-    "s": "Contributing › Keycloak / OIDC Setup",
-    "x": "This guide covers people. Agents sign in with their own Keycloak client using the client_credentials grant. See \"Signing in agents\" under Authentication. People and agents are often in separate realms. Add a [[auth.issuers]] block for each, one with role = \"user\" and one with role = \"agent\". A token only passes against the issuer it came from. To also give each agent its own identity on the SLIM channel, see Running ",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#keycloak-oidc-not-for-production",
-    "t": "Not for production",
-    "s": "Contributing › Keycloak / OIDC Setup",
-    "x": "This Keycloak setup is for development. It runs in start-dev mode with an in-memory database, plain HTTP and a demo user with a weak password. The tokens it issues are real, using RS256 with real signing keys. That makes it fine for building and testing against, but don't use it for a real deployment. For production, run your own Keycloak over TLS with a persistent database and real users. Then point the same three s",
     "p": "Reference"
   }
 ];

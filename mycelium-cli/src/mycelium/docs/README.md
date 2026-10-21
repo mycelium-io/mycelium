@@ -14,7 +14,15 @@ file for giving to a model. Edit the markdown here, not the generated HTML.
 | `concepts/` | How it works, rooms, the board, memory, episodes, swarms, identity, SLIM |
 | `engines/` | The engines a room runs: conductor, aligner, synthesizer, persona, worker, hello |
 | `guides/` | Step-by-step guides, from the quick start to sign-in and troubleshooting |
-| `reference/` | Architecture, board and flow reference, messages, metrics, and contributor notes |
+| `reference/` | Architecture, board and flow reference, messages and metrics |
+
+Notes for contributors aren't on the site. They live beside the code they're
+about:
+
+- [Keycloak / OIDC setup](../docker/keycloak/README.md): sign-in end to end on
+  a development stack.
+- [Adding a status provider](../../../../fastapi-backend/app/services/status/providers/README.md):
+  live status on board rows from a tracker other than GitHub.
 
 The site reads in this order: Get Started, Walkthrough, Concepts, Engines,
 Guides, Reference. Learn (`learn.html`) is its own place beside them, linked
