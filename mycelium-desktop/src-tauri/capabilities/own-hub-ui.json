@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "own-hub-ui",
-  "description": "The app's own UI in the main window, granted these commands by name since Tauri refuses a remote origin any command no capability names. Which machine this is, the Add member folder dialog and an agent's screen; and the app's own Settings pages (this machine's hub or connection, start at login, the model, the agents' folders, experiences, the version, the health check, the log). Each answers only while the page is the UI this app started, by exact origin (own_ui_only, app_ui_only). The changes to what the app is (start with another hub or other folders, save_model, switch_version) also ask on the machine first (confirmed_here).",
+  "description": "The app's own UI in the main window, granted these commands by name since Tauri refuses a remote origin any command no capability names. Which machine this is, the Add member folder dialog and an agent's screen; and the app's own Settings pages (this machine's hub or connection, start at login, the model, the agents' folders, experiences, the version, the health check, the log). Each answers only while the page is the UI this app started, by exact origin (own_ui_only); the Settings ones answer the app's bundled pages too (local_only), for first run. The changes to what the app is (start with another hub or other folders, save_model, switch_version) also ask on the machine first (confirmed_here).",
   "windows": ["main"],
   "remote": {
     "urls": ["http://127.0.0.1:*", "http://localhost:*"]

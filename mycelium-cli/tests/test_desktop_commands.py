@@ -21,10 +21,37 @@ import pytest
 
 SRC = Path(__file__).resolve().parents[2] / "mycelium-desktop" / "src-tauri" / "src"
 GUARDS = ("local_only(", "own_ui_only(")
-#: What ``own_ui_only`` may answer: nothing beyond these three. ``agent_screen``
+#: What ``own_ui_only`` may answer, and nothing beyond it. ``agent_screen``
 #: hands the app's own hub UI what a terminal on this machine shows, which is
 #: why it's here and never a hub route: a screen doesn't leave the machine.
 OWN_UI = {"this_machine", "choose_agent_folder", "agent_screen"}
+#: The app's own Settings pages, which are pages of the UI's Settings: where
+#: rooms live and start at login, the model, the agents' folder, experiences,
+#: the version, the health check and its log. Each answers the app's bundled
+#: pages too (first run), and the ones that change what the app is (``start``
+#: with another hub or folder, ``save_model``, ``switch_version``) ask on the
+#: machine first, in a dialog no page can answer (``confirmed_here``).
+OWN_UI |= {
+    "get_state",
+    "start",
+    "get_autostart",
+    "set_autostart",
+    "scan_agents",
+    "pick_folder",
+    "run_doctor",
+    "open_log",
+    "get_model",
+    "save_model",
+    "get_experiences",
+    "add_experience",
+    "remove_experience",
+    "get_hub_settings",
+    "app_versions",
+    "set_update_channel",
+    "switch_version",
+}
+#: Of those, the ones that ask on the machine before they act from the UI.
+ASKS_FIRST = {"start", "save_model", "switch_version"}
 
 _COMMAND = re.compile(r"#\[tauri::command\]\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)")
 
@@ -53,9 +80,18 @@ def test_every_app_command_refuses_a_page_it_does_not_answer() -> None:
 
 
 @pytest.mark.skipif(not SRC.is_dir(), reason="the desktop app's source isn't in this checkout")
-def test_only_the_folder_dialog_its_machine_and_its_screens_answer_the_hubs_page() -> None:
+def test_only_the_folder_dialog_its_machine_its_screens_and_the_apps_settings_answer_the_ui() -> (
+    None
+):
     open_to_hub = {name for name, body in _commands().items() if "own_ui_only(" in body}
     assert open_to_hub == OWN_UI
+
+
+@pytest.mark.skipif(not SRC.is_dir(), reason="the desktop app's source isn't in this checkout")
+def test_a_change_to_what_the_app_is_asks_on_the_machine_first() -> None:
+    commands = _commands()
+    asks = {name for name in OWN_UI if "confirmed_here(" in commands[name]}
+    assert asks == ASKS_FIRST
 
 
 def _allow(command: str) -> str:

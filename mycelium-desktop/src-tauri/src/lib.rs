@@ -130,8 +130,12 @@ fn shows_own_ui(app: &AppHandle, webview: &Webview) -> bool {
     matches!((webview.url(), own_ui), (Ok(page), Some(ui)) if page.origin() == ui.origin())
 }
 
-/// The two commands the hub's page may call (`capabilities/own-hub-ui.json`),
-/// and only the app's own hub UI: which machine this is, and a folder dialog.
+/// What the main window's UI may call (`capabilities/own-hub-ui.json`, pinned
+/// by `mycelium-cli/tests/test_desktop_commands.py`), and only while it's the UI
+/// this app started: which machine this is, the folder dialog, an agent's
+/// screen, and the app's own Settings pages. Those Settings commands answer the
+/// app's bundled pages too, for first run, so they call
+/// `local_only(..).or_else(|_| own_ui_only(..))`, written out in each one.
 fn own_ui_only(app: &AppHandle, webview: &Webview) -> Result<(), String> {
     if shows_own_ui(app, webview) {
         Ok(())
@@ -150,14 +154,6 @@ fn local_only(app: &AppHandle, webview: &Webview) -> Result<(), String> {
     } else {
         Err("Not available to this page.".into())
     }
-}
-
-/// The app's Settings commands (this machine's hub or connection, the model,
-/// the agents' folders, voice, experiences, privacy, the version, the health
-/// check): the app's own bundled pages, for first run, or the main window's
-/// own UI, whose Settings has the app's pages beside the hub's.
-fn app_ui_only(app: &AppHandle, webview: &Webview) -> Result<(), String> {
-    local_only(app, webview).or_else(|_| own_ui_only(app, webview))
 }
 
 /// A yes on this machine, in the app's own dialog, for a change to what the
@@ -682,13 +678,13 @@ fn set_autostart_to(app: &AppHandle, on: bool) -> bool {
 /// Whether Mycelium starts at login, for Settings' This Mac section.
 #[tauri::command]
 fn get_autostart(app: AppHandle, webview: Webview) -> Result<bool, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     Ok(app.autolaunch().is_enabled().unwrap_or(false))
 }
 
 #[tauri::command]
 fn set_autostart(app: AppHandle, webview: Webview, on: bool) -> Result<bool, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     Ok(set_autostart_to(&app, on))
 }
 
@@ -950,7 +946,7 @@ struct Snapshot {
 
 #[tauri::command]
 fn get_state(app: AppHandle, webview: Webview) -> Result<Snapshot, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     let sup = app.state::<Supervisor>();
     Ok(Snapshot {
         settings: settings::load(),
@@ -965,7 +961,7 @@ fn get_state(app: AppHandle, webview: Webview) -> Result<Snapshot, String> {
 /// What `mycelium runner scan --json` finds: the agent CLIs here, and herdr.
 #[tauri::command]
 async fn scan_agents(app: AppHandle, webview: Webview) -> Result<Value, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
         paths::command(bin)
@@ -985,7 +981,7 @@ async fn scan_agents(app: AppHandle, webview: Webview) -> Result<Value, String> 
 /// `mycelium doctor --mode desktop`, as JSON: every check of what the app runs.
 #[tauri::command]
 async fn run_doctor(app: AppHandle, webview: Webview) -> Result<Value, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
         paths::command(bin)
@@ -1006,7 +1002,7 @@ async fn run_doctor(app: AppHandle, webview: Webview) -> Result<Value, String> {
 /// never in the answer, only whether one is saved and its last four characters.
 #[tauri::command]
 async fn get_model(app: AppHandle, webview: Webview) -> Result<Value, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     model_cli(None).await
 }
 
@@ -1015,7 +1011,7 @@ async fn get_model(app: AppHandle, webview: Webview) -> Result<Value, String> {
 /// keeps its saved value.
 #[tauri::command]
 async fn save_model(app: AppHandle, webview: Webview, model: Value) -> Result<Value, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     if !model.is_object() {
         return Err("The model settings must be an object.".into());
     }
@@ -1074,7 +1070,7 @@ async fn model_cli(input: Option<String>) -> Result<Value, String> {
 /// ones it could add.
 #[tauri::command]
 async fn get_experiences(app: AppHandle, webview: Webview) -> Result<Value, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     experiences_cli(vec![]).await
 }
 
@@ -1083,7 +1079,7 @@ async fn get_experiences(app: AppHandle, webview: Webview) -> Result<Value, Stri
 #[tauri::command]
 async fn add_experience(app: AppHandle, webview: Webview, id: String) -> Result<Option<Value>, String> {
     // The file comes from the app's own picker, chosen by the person.
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     let dialog = app
         .dialog()
         .file()
@@ -1104,7 +1100,7 @@ async fn add_experience(app: AppHandle, webview: Webview, id: String) -> Result<
 /// `mycelium desktop experiences --remove`. Rooms it made stay.
 #[tauri::command]
 async fn remove_experience(app: AppHandle, webview: Webview, id: String) -> Result<Value, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     let list = experiences_cli(vec!["--remove".into(), id]).await?;
     refresh_experiences(app);
     Ok(list)
@@ -1134,7 +1130,7 @@ async fn experiences_cli(args: Vec<String>) -> Result<Value, String> {
 /// against the team's hub (or this Mac's). No key is ever in the answer.
 #[tauri::command]
 async fn get_hub_settings(app: AppHandle, webview: Webview) -> Result<Value, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     let hub = settings::load().filter(|s| s.mode == Mode::Client).and_then(|s| s.hub_url);
     hub_settings_cli(hub).await
 }
@@ -1244,7 +1240,7 @@ fn open_log_from_menu(app: &AppHandle, log: &std::path::Path) {
 /// Open the supervisor's log (`~/.mycelium/logs/desktop.log`).
 #[tauri::command]
 fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     open_log_file(&desktop_log())
 }
 
@@ -1268,7 +1264,7 @@ async fn pick_folder(
 ) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
     // The folder comes from the app's own picker; saving it is `start`'s to confirm.
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     let mut dialog = app
         .dialog()
         .file()
@@ -1345,7 +1341,7 @@ async fn choose_agent_folder(
 /// Returns what happened to PATH.
 #[tauri::command]
 async fn start(app: AppHandle, webview: Webview, settings: Settings) -> Result<paths::PathSetup, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     let settings = settings.validate()?;
     if let Some(question) = settings::load().and_then(|saved| changed_trust(&saved, &settings)) {
         confirmed_here(&app, &webview, question.0, question.1, "Change").await?;
@@ -1421,7 +1417,7 @@ async fn app_versions(
     webview: Webview,
     with_rc: bool,
 ) -> Result<VersionsView, String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     Ok(VersionsView {
         current: app.package_info().version.to_string(),
         release_candidates: versions::channel() == versions::Channel::ReleaseCandidates,
@@ -1433,7 +1429,7 @@ async fn app_versions(
 #[tauri::command]
 fn set_update_channel(app: AppHandle, webview: Webview, release_candidates: bool) -> Result<(), String> {
     // Only which updates are offered: each one still asks before it installs.
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     versions::set_channel(if release_candidates {
         versions::Channel::ReleaseCandidates
     } else {
@@ -1444,7 +1440,7 @@ fn set_update_channel(app: AppHandle, webview: Webview, release_candidates: bool
 /// Install the release tagged `tag`, older or newer, chosen in Settings.
 #[tauri::command]
 async fn switch_version(app: AppHandle, webview: Webview, tag: String) -> Result<(), String> {
-    app_ui_only(&app, &webview)?;
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     let now = app.package_info().version.to_string();
     confirmed_here(
         &app,
