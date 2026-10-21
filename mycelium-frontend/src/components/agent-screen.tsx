@@ -15,13 +15,14 @@
  */
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { SquareTerminal } from "lucide-react";
+import { Lock, SquareTerminal } from "lucide-react";
 import { parseAnsi, type AnsiStyle } from "@/lib/ansi";
 import { placeOf } from "@/lib/agent-place";
 import { terminalLink, useAgentScreen, useIsDesktop, useThisMachine } from "@/lib/desktop";
 import { runnerName, useRunners } from "@/lib/runners";
 import { buttonVariants } from "@/components/ui/button";
 import { DetailDrawer } from "@/components/detail-drawer";
+import { Monogram } from "@/components/ui/monogram";
 
 /** The footer's promise, which the code keeps: the runner sends the hub no screen. */
 export const STREAMED_LOCALLY = "Streamed from this machine. Nothing is sent to the hub.";
@@ -78,16 +79,15 @@ export function AgentScreen({ room, handle, runner: runnerOf }: Props) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Screen text={screen.text} error={screen.error} />
-      <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-4 py-2 text-micro text-muted-foreground">
+      {/* One quiet line, padded like the header: where the screen comes from,
+          how fresh it is, and the way to type to it. */}
+      <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-5 py-2 text-micro text-faint">
+        <Lock className="size-3 shrink-0" strokeWidth={2} aria-hidden />
         <span>{STREAMED_LOCALLY}</span>
         <Updated at={screen.at} />
         <a
           href={terminalLink(screen.pane ?? undefined)}
-          className={buttonVariants({
-            variant: "secondary",
-            size: "sm",
-            className: "ml-auto",
-          })}
+          className={buttonVariants({ variant: "ghost", size: "xs", className: "-mr-2 ml-auto" })}
         >
           <SquareTerminal className="size-3.5" />
           Open its terminal
@@ -184,7 +184,13 @@ function Updated({ at }: { at: number | null }) {
   }, []);
   if (at === null) return null;
   const s = Math.max(0, Math.round((now - at) / 1000));
-  return <span className="text-faint">{s <= 1 ? "live" : `updated ${s}s ago`}</span>;
+  if (s > 1) return <span>updated {s}s ago</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+      <span aria-hidden className="size-1.5 rounded-full bg-green motion-safe:animate-pulse" />
+      live
+    </span>
+  );
 }
 
 export function AgentScreenDrawer({ open, onClose, ...props }: Props & { open: boolean; onClose: () => void }) {
@@ -193,8 +199,15 @@ export function AgentScreenDrawer({ open, onClose, ...props }: Props & { open: b
       open={open}
       onClose={onClose}
       wide
-      title={`@${props.handle}`}
-      subtitle={`Its terminal, in ${props.room}`}
+      // The agent as Members draws it, in the app's own type rather than mono.
+      title={
+        <span className="flex items-center gap-2 font-sans">
+          <Monogram handle={props.handle} kind="agent" className="size-5 text-[9px]" />
+          <span className="truncate">@{props.handle}</span>
+        </span>
+      }
+      // Under the name, past the avatar's width and gap.
+      subtitle={<span className="block pl-7">Live terminal · {props.room}</span>}
     >
       <div className="flex h-full flex-col">
         <AgentScreen {...props} />
