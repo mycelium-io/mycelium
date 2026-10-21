@@ -1,22 +1,20 @@
 # Voice
 
-You can talk instead of type. Turn on the mic in any message box, in the room
-or in a task's thread, and what you say is typed into the box as you say it.
-The mic stays on until you turn it off, so you can think out loud, pause, and
-keep going. Nothing is sent until you send it: what you said is a draft you
-can read and fix first.
+You can talk instead of type. Turn on the mic in any message box, and what you
+say is typed into the box as you say it. The mic stays on until you turn it
+off, so you can pause and keep going. Nothing is sent until you send it, so you
+can read what you said and fix it first.
 
 Voice is off unless you turn it on, because the speech model takes space and
-memory. There are two to choose from (see [Choosing a speech model](#choosing-a-speech-model)).
-The default takes about 150 MB on disk and about 500 MB of memory while anyone
-is talking.
+memory. The default model takes about 150 MB on disk and about 500 MB of memory
+while anyone is talking.
 
 ## Turning it on
 
 In the desktop app, turn on **Talk instead of type** in the first-run screens or
-in Settings, under Voice. Mycelium restarts and downloads the speech model.
+in **Settings → Voice**. Mycelium restarts and downloads the speech model.
 
-On a Docker hub, or any hub you run with the CLI:
+On a hub you run with the CLI:
 
 ```bash
 mycelium config set voice.enabled true
@@ -24,15 +22,13 @@ mycelium config apply
 mycelium up
 ```
 
-The hub downloads the speech model when it starts, into its data folder, so
-it's downloaded once and kept across restarts. Before using the download, the
-hub checks that it matches the expected file. With `voice.download` set to false the
-hub never downloads anything, and you put the files in the data folder under
-`models/voice` yourself.
+The hub downloads the speech model into its data folder when it starts, and
+keeps it across restarts. It checks the download matches the expected file
+before using it. To stop the hub downloading anything, set `voice.download` to
+`false` and put the files in the data folder under `models/voice` yourself.
 
-Turning voice off again (`voice.enabled false`, or the switch in the desktop app)
-removes the mic from every message box. The downloaded model stays in the data
-folder, and you can delete `models/voice` to get the space back.
+Turning voice off removes the mic from every message box. The downloaded model
+stays in `models/voice` until you delete it.
 
 ## Choosing a speech model
 
@@ -40,20 +36,13 @@ folder, and you can delete `models/voice` to get the space back.
 | --- | --- | --- |
 | Model | Moonshine v2 base | NVIDIA Parakeet TDT 0.6B v2 |
 | Download | about 150 MB, when the hub starts | about 480 MB, the first time a mic is turned on |
-| On disk | about 150 MB | about 630 MB |
 | Memory while anyone talks | about 500 MB | about 1.4 GB |
-| Speed | a few hundredths of a second per sentence | about a fifth of a second per second of speech |
 | Mistakes, on our test recordings | about 1 word in 16 | about half as many |
-| Languages | English only | English only |
 
-Both run on the hub's CPU, and both give their memory back a few minutes after
-the last mic is turned off. `accurate` also waits for a longer pause (about a
-second) before it types what you said, since it transcribes a whole sentence
-more accurately than part of one. With `fast`, a stretch of speech is cut into pieces of at most
-five and a half seconds, because longer pieces come back empty from the
-version of the speech runtime the hub uses. `accurate` has no such limit.
+Both run on the hub's CPU, and both are English only. `accurate` waits for a
+longer pause, about a second, before it types what you said.
 
-To switch on a Docker hub, or any hub you run with the CLI:
+To switch, run this and restart the hub:
 
 ```bash
 mycelium config set voice.model accurate
@@ -61,71 +50,52 @@ mycelium config apply
 mycelium up
 ```
 
-The hub reads the choice when it starts, so a switch takes effect after that
-restart. In the desktop app, pick **Fast** or **Accurate** under Voice in Settings
-and save, which restarts Mycelium.
+In the desktop app, pick **Fast** or **Accurate** under **Settings → Voice** and
+save. Mycelium restarts.
 
-The first time you turn on a mic with `accurate`, the hub downloads it, which
-can take a few minutes. The line under the box says it's getting ready
-meanwhile. Turn the mic on once to start the download, and talk once your first
-words appear. The download is checked the same way as the default model's, and
-a download that fails is tried again a minute later. With `voice.download` set
-to false, put the model's folder (`sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`)
-in `models/voice` yourself.
-
-Switching back to `fast` leaves the larger model in `models/voice`. Delete its
-folder to get the space back.
+The first time you turn on a mic with `accurate`, the hub downloads the model,
+which can take a few minutes. The line under the box says it's getting ready.
+With `voice.download` set to `false`, put the model's folder
+(`sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`) in `models/voice` yourself.
 
 ## Using it
 
-Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux),
-which works while you're typing. The key acts on the message box you're in,
-or the room's own box when you're in none. The first time, your browser or the
-desktop app asks to use the microphone. While it's on, the button is lit, the line
-under the box says it's listening, and a ring around the button pulses while it
-hears you speak.
+Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux). The
+key works while you're typing, and acts on the message box you're in. The first
+time, your browser or the desktop app asks to use the microphone.
 
-Each time you pause, what you just said is added to the end of the draft. Keep
-talking, type a fix, or send the message, and the mic stays on. Press the
-button again to turn it off; anything you were in the middle of saying still
-lands in the draft.
+Each time you pause, what you just said is added to the end of the draft. You
+can keep talking, type a fix or send the message, and the mic stays on. Press
+the button again to turn it off. Anything you were in the middle of saying
+still lands in the draft.
 
-Voice is English only for now.
+After the mic has been off for a while, turning it on takes about a second.
+Keep the mic on until your words appear. What you say meanwhile is transcribed
+once it's ready.
 
 ## Where it's transcribed
 
-Your hub turns speech into text, on its own CPU, with a speech model (Moonshine,
-or Parakeet when you chose `accurate`) and a voice activity detector (Silero)
-that detects when you start and stop speaking. Neither sends audio anywhere else. In
-the desktop app the hub runs on your machine, so your audio never leaves it.
-With a shared hub, your audio goes to that hub the way your messages do.
+Your hub turns speech into text on its own CPU. No audio is sent anywhere else.
+In the desktop app the hub runs on your computer, so your audio never leaves
+it. With a shared hub, your audio goes to that hub the way your messages do.
 
-Audio is never saved. The hub keeps only the few seconds it is transcribing and
+Audio is never saved. The hub keeps only the few seconds it's transcribing and
 discards them once they're text.
 
-The model runs in a separate process that the hub starts when someone turns on
-a mic and that stops about five minutes after the last mic is turned off. That's
-when its memory is given back. Starting it takes about a second, during which
-the line under the box says it's getting ready. Keep the mic on until your words
-appear: what you say meanwhile is held and transcribed once it's ready, but
-turning the mic off before then drops it.
-
-The mic button is missing when voice is off or the hub can't run it (it has no
-model and can't download one), and in the desktop app when it's connected to
-another hub. The app gives the microphone only to the hub it runs itself, so a
-remote hub's pages can't listen; use that hub in a browser to talk to it.
+The mic button is missing when voice is off, or when the hub has no model and
+can't download one. It's also missing in the desktop app when the app is
+connected to another hub. To talk to a remote hub, open it in a browser.
 
 ## Reading messages aloud
 
 The app can also read messages to you. It says who sent each one and where,
-then the message, while a popover on the bell shows the words with the
-sentence being said lit. Click the
-popover to open the message, press **Read all** for the rest, or press ✕ (or
-Esc, when you aren't typing) to stop it.
+then reads the message. A popover on the bell shows the words as they're read.
+Click the popover to open the message, press **Read all** for the rest, or press
+✕ or Esc to stop.
 
-It needs a speech server on the hub. Mycelium ships no speech model: whoever
-runs the hub points it at an OpenAI-style text-to-speech server they run, such
-as one serving Qwen's or Kokoro's voices:
+Mycelium ships no text-to-speech model. Whoever runs the hub points it at an
+OpenAI-style text-to-speech server they run, such as one serving Kokoro's
+voices:
 
 ```bash
 mycelium config set voice.speech_url http://127.0.0.1:8880/v1
@@ -134,33 +104,24 @@ mycelium config apply
 mycelium up
 ```
 
-`/audio/speech` is added to the address unless it ends with it already.
-`voice.speech_model` names the model when the server expects one, and
-`voice.speech_api_key` is sent as a bearer token when it asks for a key. All
-four can be set on the Hub settings page too. The app asks the hub and the
-hub asks the server, so the server needs no CORS headers, it can be on plain
-http while the app is on https, and its key stays on the hub. It's separate
-from the mic: a hub can read aloud without transcribing, and the other way
-round.
+If the server expects a model name, set `voice.speech_model`. If it asks for a
+key, set `voice.speech_api_key`. You can also set all four on the Hub settings
+page. The key stays on the hub, because the app asks the hub and the hub asks
+the server. Reading aloud doesn't need the mic to be on, and the mic doesn't
+need reading aloud.
 
-Then each person sets it up for themselves in Settings, under **Read aloud**.
-It's off until they turn it on, and **Try it** reads a sample line. Every
-other choice there is theirs too, starting from the first option listed:
+Each person then turns it on for themselves under **Settings → Read aloud**.
+**Try it** reads a sample line. The other choices there are:
 
 | Setting | Choices |
 | --- | --- |
-| What it reads | Mentions of you and messages sent to you, or everything said in rooms you pick (and mentions anywhere) |
+| What it reads | Mentions of you and messages sent to you, or everything in rooms you pick |
 | Skip what's in front of me | The thread you have open, the room you have open, or nothing |
-| How much | The start (the first paragraph or about twenty seconds, with **Read all** for the rest), or all of it |
+| How much | The start, with **Read all** for the rest, or all of it |
 | Voice | The hub's voice, or another the speech server lists |
 | Speed | Normal, slower or faster |
 
-"In front of me" means what the window you're working in shows: its room, and
-the Channel or the task threads it has open (a split can show several). The
-bell's ping has the same choice of its own, under Notifications.
-
-Only a window you can see reads aloud, and only one window does when you
-have several open. It waits while a mic is open in any of them, so what it says
-never lands in your draft, and goes on once the mic is off. Do not disturb and
-muted rooms keep it quiet. A browser plays nothing until you have clicked or
-typed in the page once, so the first message after opening the app isn't read.
+Only a window you can see reads aloud, and only one at a time. It waits while a
+mic is open, so what it says never lands in your draft. Do not disturb and muted
+rooms keep it quiet. A browser plays nothing until you've clicked or typed in
+the page once, so the first message after you open the app isn't read.
