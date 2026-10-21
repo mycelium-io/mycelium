@@ -11,6 +11,7 @@ import {
   FolderOpen,
   GitBranch,
   Loader2,
+  RefreshCw,
   Sparkles,
   SquareTerminal,
   Undo2,
@@ -19,6 +20,7 @@ import {
 import {
   draftMemberNotes,
   launchRunnerAgent,
+  rescanRunner,
   type NotesKind,
   type Runner,
   type RunnerJob,
@@ -266,7 +268,8 @@ export function LaunchAgentForm({
         onFolder={setFolderTyped}
         onWorktree={setWorktreePick}
       >
-        <Button onClick={() => void submit()} disabled={!canSubmit}>
+        <Button onClick={() => void submit()} disabled={!canSubmit} className="h-10">
+          {/* As tall as the row's other controls, so the strip reads as one line. */}
           {/* A fixed label: the handle is in the field above, and a button that
               grows with each keystroke moves under the pointer. */}
           {submitting ? "Adding…" : "Add to room"}
@@ -626,29 +629,24 @@ function RunsOn({
           {!runner.herdr ? (
             <HostMissing runner={runner} />
           ) : startable.length === 0 ? (
-            <p className="text-micro text-muted-foreground">
+            <div className="flex items-center gap-1 text-micro text-muted-foreground">
               No agent CLI on this machine that {hostOf(runner).name} can start. Install one, then rescan.
-            </p>
-          ) : null}
-          {/* First line: the agent CLI, each by its own mark, and the machine
-              it starts on as a quiet note: always this one, never a choice. */}
-          <div className="flex min-w-0 items-center gap-1.5">
-            {startable.length > 0 && (
-              <HarnessPicker frameworks={startable} value={frameworkId} onChange={onFramework} />
-            )}
-            <span className="ml-auto flex min-w-0 items-center gap-1 text-micro text-faint">
-              <span className="truncate" title={runnerName(runner)}>
-                on {runnerName(runner)}
-              </span>
               <RescanButton runner={runner} iconOnly />
-            </span>
-          </div>
+            </div>
+          ) : null}
         </>
       }
     >
-      {/* Second line: the folder it works in, and whether it gets a branch of its own. */}
-      <div className={cn(fieldClass, "flex min-w-0 flex-1 items-center gap-1.5 py-0 focus-within:border-accent")}>
+      {/* One row: which agent CLI, the folder it works in on this machine (named
+          before the path, never a choice), and whether it gets a branch of its own. */}
+      {startable.length > 0 && (
+        <HarnessPicker runner={runner} frameworks={startable} value={frameworkId} onChange={onFramework} />
+      )}
+      <div className={cn(fieldClass, "flex h-10 min-w-0 flex-1 items-center gap-1.5 py-0 focus-within:border-accent")}>
         <FolderOpen className="size-3.5 flex-shrink-0 text-faint" aria-hidden />
+        <span className="max-w-28 flex-shrink-0 truncate text-faint" title={`On ${runnerName(runner)}, this machine`}>
+          {runnerName(runner)}
+        </span>
         <label htmlFor="launch-folder" className="sr-only">
           Folder
         </label>
@@ -682,7 +680,7 @@ function RunsOn({
           title="Start it in a git worktree of this folder, on a branch of its own"
           onClick={() => onWorktree(!worktree)}
           className={cn(
-            "flex h-8 flex-shrink-0 items-center gap-1.5 rounded-md border px-2 text-label transition-colors",
+            "flex h-10 flex-shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-label transition-colors",
             worktree
               ? "border-accent bg-accent/10 text-text"
               : "border-border text-muted-foreground hover:border-border2 hover:text-text",
@@ -712,33 +710,58 @@ function HarnessLabel({ framework, active = true }: { framework: Runner["framewo
   );
 }
 
-/** Which agent CLI to start: a dropdown that shows each one by its mark. */
+/**
+ * Which agent CLI to start: a dropdown that shows each one by its mark, and
+ * at its foot a rescan, for a CLI installed since the machine last looked.
+ */
 function HarnessPicker({
+  runner,
   frameworks,
   value,
   onChange,
 }: {
+  runner: Runner;
   frameworks: Runner["frameworks"];
   value: string | null;
   onChange: (id: string) => void;
 }) {
   const current = frameworks.find((f) => f.id === value) ?? frameworks[0];
+  const [scanId, setScanId] = useState<string | null>(null);
+  const { job: scan } = useRunnerJob(runner.id, scanId);
+  const scanning = scanId !== null && !jobSettled(scan);
+  const revalidate = useRunnersRevalidate();
+  const settled = jobSettled(scan);
+  useEffect(() => {
+    if (settled) revalidate();
+  }, [settled, revalidate]);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={`Agent CLI: ${current.name}`}
-        className="flex min-w-0 items-center gap-2 rounded-lg border border-border py-1 pr-2 pl-2 transition-colors hover:border-border2 hover:bg-hairline data-[popup-open]:border-accent"
+        className="flex h-10 min-w-0 flex-shrink-0 items-center gap-2 rounded-md border border-border pr-2 pl-2 transition-colors hover:border-border2 hover:bg-hairline data-[popup-open]:border-accent"
       >
         <HarnessLabel framework={current} />
-        <ChevronDown className="ml-1 size-3.5 flex-shrink-0 text-faint" aria-hidden />
+        {scanning ? (
+          <Loader2 className="ml-1 size-3.5 flex-shrink-0 animate-spin text-faint" aria-label="Scanning for agent CLIs" />
+        ) : (
+          <ChevronDown className="ml-1 size-3.5 flex-shrink-0 text-faint" aria-hidden />
+        )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-48">
+      <DropdownMenuContent align="start" className="min-w-52">
         {frameworks.map((f) => (
           <DropdownMenuItem key={f.id} onClick={() => onChange(f.id)} className="gap-2 py-1.5">
             <HarnessLabel framework={f} active={f.id === current.id} />
             {f.id === current.id && <Check className="ml-auto size-3.5 text-accent" aria-label="chosen" />}
           </DropdownMenuItem>
         ))}
+        <DropdownMenuItem
+          disabled={scanning || !runner.connected}
+          onClick={() => void rescanRunner(runner.id).then((queued) => setScanId(queued.id), () => {})}
+          className="mt-1 gap-2 border-t border-border pt-1.5 text-muted-foreground"
+        >
+          <RefreshCw className="size-3.5" aria-hidden />
+          Rescan for agent CLIs
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -60,7 +60,8 @@ describe("LaunchAgentForm", () => {
     connected = [runner(), runner({ id: "studio", label: "studio" })];
     thisMachine = "studio";
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
-    expect(screen.getByText("on studio")).toBeInTheDocument();
+    // Named before the folder, as where the path is.
+    expect(screen.getByTitle("On studio, this machine")).toHaveTextContent("studio");
     expect(screen.queryByLabelText("Machine")).not.toBeInTheDocument();
   });
 
@@ -79,6 +80,7 @@ describe("LaunchAgentForm", () => {
     expect((await screen.findAllByRole("menuitem")).map((o) => o.textContent)).toEqual([
       "Claude Code2.4.1",
       "opencode0.9.3",
+      "Rescan for agent CLIs",
     ]);
   });
 
