@@ -15,12 +15,14 @@ run conductor flows. From the command line:
 mycelium engine create conductor --kind conductor --room sprint-plan
 
 mycelium board coordinate work/rotate-signing-key conductor \
-  "gated @api @sec: rotate the signing key without downtime"
+  "gated @~api @~sec: rotate the signing key without downtime"
 ```
 
 The message starts with the flow's name. Then come the members in the order of
 the flow's roles, and then the question. Here `api` is the proposer and `sec`
-is the guardian. A flow always runs on a task in that task's thread. To see the
+is the guardian. Write the members as `@~name`: that names them for the flow
+without waking them, and the conductor wakes each one when it's their turn. A
+plain `@` wakes all of them at once, and their early replies are refused. A flow always runs on a task in that task's thread. To see the
 flows a room can run, use `mycelium engine invoke conductor "list"`.
 
 ## Built-in flows
@@ -56,7 +58,7 @@ options. `concord` gets them to one they can all live with:
 
 ```bash
 mycelium board coordinate decisions/double-charge-refunds conductor \
-  "concord @builder @reviewer @julia: refund double charges automatically, or send them to support? bad: customers wait days and we refund real orders ideal: true duplicates go back the same day and nothing else does"
+  "concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support? bad: customers wait days and we refund real orders ideal: true duplicates go back the same day and nothing else does"
 ```
 
 `bad:` and `ideal:` go after the question. They're two outcomes everyone
@@ -100,7 +102,7 @@ task:
 
 ```bash
 mycelium board coordinate work/acme-renewal conductor \
-  "accord @success @finance @legal: agree what the Acme renewal is before we start terms: renewal, discount"
+  "accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount"
 ```
 
 1. **Fix the key terms.** These are the words the team could easily mean

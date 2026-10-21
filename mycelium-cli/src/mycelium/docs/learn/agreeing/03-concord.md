@@ -19,7 +19,7 @@ Or from a terminal:
 
 ```bash
 mycelium board coordinate work/gift-payments conductor \
-  "concord @pm @web @api: how should a gift order wait for its payment? bad: gifts ship unpaid or arrive late ideal: every gift ships on its date, paid"
+  "concord @~pm @~web @~api: how should a gift order wait for its payment? bad: gifts ship unpaid or arrive late ideal: every gift ships on its date, paid"
 ```
 
 Leave out `bad:` and `ideal:` and the first member drafts them. `bar=70` in

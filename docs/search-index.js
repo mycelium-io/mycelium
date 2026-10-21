@@ -302,7 +302,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#episodes-starting-one",
     "t": "Starting one",
     "s": "Episodes",
-    "x": "In a task's thread in the app, choose Review or Settle under +, or mention the engine. Review is a conductor flow and Settle is an aligner negotiation. From the command line: mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" mycelium board coordinate work/pick-token-storage conductor \"review @builder @reviewer: the storage change\" The engine has to be in the room first. Add it with my",
+    "x": "In a task's thread in the app, choose Review or Settle under +, or mention the engine. Review is a conductor flow and Settle is an aligner negotiation. From the command line: mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" mycelium board coordinate work/pick-token-storage conductor \"review @~builder @~reviewer: the storage change\" The engine has to be in the room first. Add it with ",
     "p": "Concepts"
   },
   {
@@ -451,14 +451,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#conductor-helping-members-agree",
     "t": "Helping members agree",
     "s": "Conductor",
-    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @builder @reviewer @julia: refund double charges automatically, or send them to support? bad: customers wait days and we refund real orders ideal: true duplicates go back the same day and nothing else does\" ",
+    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support? bad: customers wait days and we refund real orders ideal: true duplicates go back the same day and nothing else doe",
     "p": "Engines"
   },
   {
     "u": "engines.html#conductor-getting-on-the-same-page",
     "t": "Getting on the same page",
     "s": "Conductor",
-    "x": "Before work starts, accord gets everyone to the same understanding of the task: mycelium board coordinate work/acme-renewal conductor \\ \"accord @success @finance @legal: agree what the Acme renewal is before we start terms: renewal, discount\" Fix the key terms. These are the words the team could easily mean different things by. Name them after terms: in the message. Otherwise each member names up to three, and the on",
+    "x": "Before work starts, accord gets everyone to the same understanding of the task: mycelium board coordinate work/acme-renewal conductor \\ \"accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount\" Fix the key terms. These are the words the team could easily mean different things by. Name them after terms: in the message. Otherwise each member names up to three, and the",
     "p": "Engines"
   },
   {
@@ -546,7 +546,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#persona-in-a-flow",
     "t": "In a flow",
     "s": "Persona",
-    "x": "A persona can take a role in a conductor flow, so you can run a whole review with no one else in the room: mycelium engine create api --kind persona --room sprint-plan mycelium memory set agents/api/notes -r sprint-plan \\ \"You are the API engineer. You want to ship today.\" mycelium board coordinate work/rotate-signing-key conductor \\ \"gated @api @sec: rotate the signing key without downtime\" The gated flow has two ro",
+    "x": "A persona can take a role in a conductor flow, so you can run a whole review with no one else in the room: mycelium engine create api --kind persona --room sprint-plan mycelium memory set agents/api/notes -r sprint-plan \\ \"You are the API engineer. You want to ship today.\" mycelium board coordinate work/rotate-signing-key conductor \\ \"gated @~api @~sec: rotate the signing key without downtime\" The gated flow has two ",
     "p": "Engines"
   },
   {

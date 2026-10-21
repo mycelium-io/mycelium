@@ -345,8 +345,8 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> conductor <span class="flag">--kind</span> conductor <span class="flag">--room</span> sprint-plan
 
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
-  <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
-      <p>The message starts with the flow&#x27;s name. Then come the members in the order of the flow&#x27;s roles, and then the question. Here <code>api</code> is the proposer and <code>sec</code> is the guardian. A flow always runs on a task in that task&#x27;s thread. To see the flows a room can run, use <code>mycelium engine invoke conductor &quot;list&quot;</code>.</p>
+  <span class="str">&quot;gated @~api @~sec: rotate the signing key without downtime&quot;</span></code></pre>
+      <p>The message starts with the flow&#x27;s name. Then come the members in the order of the flow&#x27;s roles, and then the question. Here <code>api</code> is the proposer and <code>sec</code> is the guardian. Write the members as <code>@~name</code>: that names them for the flow without waking them, and the conductor wakes each one when it&#x27;s their turn. A plain <code>@</code> wakes all of them at once, and their early replies are refused. A flow always runs on a task in that task&#x27;s thread. To see the flows a room can run, use <code>mycelium engine invoke conductor &quot;list&quot;</code>.</p>
       <h2 id="conductor-built-in-flows">Built-in flows</h2>
       <div class="table-wrap">
         <table>
@@ -402,7 +402,7 @@
       <h2 id="conductor-helping-members-agree">Helping members agree</h2>
       <p>Sometimes members disagree about how to do a task and there are a few clear options. <code>concord</code> gets them to one they can all live with:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> decisions/double-charge-refunds conductor \
-  <span class="str">&quot;concord @builder @reviewer @julia: refund double charges automatically, or send them to support? bad: customers wait days and we refund real orders ideal: true duplicates go back the same day and nothing else does&quot;</span></code></pre>
+  <span class="str">&quot;concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support? bad: customers wait days and we refund real orders ideal: true duplicates go back the same day and nothing else does&quot;</span></code></pre>
       <p><code>bad:</code> and <code>ideal:</code> go after the question. They&#x27;re two outcomes everyone rates, so a member&#x27;s ratings can be read on their own scale. Leave them out and the first member drafts them. <code>bar=70</code> sets the bar (60 if you don&#x27;t) and <code>fixes=3</code> how many fixes to try (5 if you don&#x27;t).</p>
       <ol class="steps">
         <li><strong>Rate the two outcomes.</strong> Everyone says how good the bad and the ideal outcome would be for their part of the work, from 0 to 100, with why. Every later rating is placed between those two, so a member who rates everything low isn&#x27;t read as unhappy.</li>
@@ -417,7 +417,7 @@
       <h2 id="conductor-getting-on-the-same-page">Getting on the same page</h2>
       <p>Before work starts, <code>accord</code> gets everyone to the same understanding of the task:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/acme-renewal conductor \
-  <span class="str">&quot;accord @success @finance @legal: agree what the Acme renewal is before we start terms: renewal, discount&quot;</span></code></pre>
+  <span class="str">&quot;accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount&quot;</span></code></pre>
       <ol class="steps">
         <li><strong>Fix the key terms.</strong> These are the words the team could easily mean different things by. Name them after <code>terms:</code> in the message. Otherwise each member names up to three, and the ones named most are used.</li>
         <li><strong>Say what the task is.</strong> Each member gives the points that matter most to them, one per line, starting with what kind of point it is:
@@ -601,7 +601,7 @@ check p1, p2: Finance signs the order form.</code></pre>
   <span class="str">&quot;You are the API engineer. You want to ship today.&quot;</span>
 
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
-  <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
+  <span class="str">&quot;gated @~api @~sec: rotate the signing key without downtime&quot;</span></code></pre>
       <p>The <code>gated</code> flow has two roles. Here <code>api</code> is the proposer and <code>sec</code> is the guardian. <code>sec</code> keeps rejecting until the proposal includes a rollback plan. Everything happens in the task&#x27;s thread.</p>
       <h2 id="persona-things-to-know">Things to know</h2>
       <ul>

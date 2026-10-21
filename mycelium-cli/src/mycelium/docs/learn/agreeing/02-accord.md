@@ -23,7 +23,7 @@ Or from a terminal:
 
 ```bash
 mycelium board coordinate work/scheduled-gifts conductor \
-  "accord @pm @web @api: what scheduled gift delivery is, before anyone starts terms: delivery date"
+  "accord @~pm @~web @~api: what scheduled gift delivery is, before anyone starts terms: delivery date"
 ```
 
 `terms:` names the key terms: the words the team could easily mean different
