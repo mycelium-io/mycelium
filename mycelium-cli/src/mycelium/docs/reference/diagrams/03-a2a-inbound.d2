@@ -54,4 +54,4 @@ hub.mod -> slim: "6. publish (MLS ciphertext)" {class: slim}
 slim -> room_members: "7. delivered as a normal room message" {class: slim}
 hub.rpc -> ext: "8. ack: Delivered to room" {class: a2a}
 
-boundary: What this call is\n\nInbound A2A is fire-and-ack (card advertises streaming=false). The external client\ngets an acknowledgement, not the room's eventual reply. As in the outbound direction,\nthe hub terminates the HTTPS JSON-RPC in plaintext, then republishes it onto MLS itself. {class: note; near: bottom-center}
+boundary: What this call is\n\nInbound A2A is fire-and-ack (card advertises streaming=false). The external client\ngets an acknowledgment, not the room's eventual reply. As in the outbound direction,\nthe hub terminates the HTTPS JSON-RPC in plaintext, then republishes it onto MLS itself. {class: note; near: bottom-center}

@@ -80,7 +80,7 @@ POST /api/rooms/{room}/a2a
 ```
 
 The message is posted in the room like any other. The call returns only an
-acknowledgement, not an answer. If the message mentions an agent in the room,
+acknowledgment, not an answer. If the message mentions an agent in the room,
 that agent answers in the room as usual.
 
 Anyone who can reach the hub can read any room's card, as the A2A spec

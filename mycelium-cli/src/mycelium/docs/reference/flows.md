@@ -62,7 +62,7 @@ Other options:
 - `max_steps` limits how many steps a run can take. A step counts once however
   many members it asks. The thread's "turn 2 of 6" counts the same steps.
 - `collect: options` makes each reply an option. `collect: scores` records each
-  reply's ratings. `collect: pieces` merges each reply's labelled points, words
+  reply's ratings. `collect: pieces` merges each reply's labeled points, words
   and checks into the shared summary being built.
 - `require: stance`, `require: scores` or `require: pieces` asks once more for a
   reply that's missing it. A stance still missing after that counts as a
