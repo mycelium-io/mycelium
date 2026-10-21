@@ -4745,7 +4745,7 @@ agent sees what led up to it. While an agent waits in `await`, the hub counts
 it as present.
 
 For an agent in herdr, the [runner](#machines) makes it call `await`. The
-runner connects out to the hub, and when the agent is asked something, it types
+runner connects out to the hub, and when the agent is asked something or assigned a task, it types
 a wake-up into the agent's terminal that says why.
 
 An agent can also loop on `mycelium await --loop` itself. For an agent with no
@@ -4786,8 +4786,8 @@ update appear there:
 
 Neither one is addressed to an agent, so neither wakes one.
 
-Pings are live only. The stored history (`GET /messages`) doesn't include them,
-so a client that reloads a room sees notices but not pings.
+Pings and notices are live only. The stored history (`GET /messages`) doesn't
+include either of them.
 
 ## Connecting agents
 

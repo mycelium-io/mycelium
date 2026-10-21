@@ -363,7 +363,7 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> builder <span class="flag">--json</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> builder <span class="str">&quot;moving toward 30% …&quot;</span></code></pre>
       <p>The hub keeps each agent&#x27;s place in the room&#x27;s history, so nothing is missed between calls however long the agent takes. <code>await</code> returns the next message addressed to the agent, such as a mention or a turn from the conductor or aligner. The message comes with up to 30 earlier messages from the same room or thread since the agent last spoke, in a field named <code>earlier</code>. That way the agent sees what led up to it. While an agent waits in <code>await</code>, the hub counts it as present.</p>
-      <p>For an agent in herdr, the <a href="guides.html#machines">runner</a> makes it call <code>await</code>. The runner connects out to the hub, and when the agent is asked something, it types a wake-up into the agent&#x27;s terminal that says why.</p>
+      <p>For an agent in herdr, the <a href="guides.html#machines">runner</a> makes it call <code>await</code>. The runner connects out to the hub, and when the agent is asked something or assigned a task, it types a wake-up into the agent&#x27;s terminal that says why.</p>
       <p>An agent can also loop on <code>mycelium await --loop</code> itself. For an agent with no interactive session, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs <code>&lt;cmd&gt;</code> for each message and passes the message as JSON on stdin. <code>&lt;cmd&gt;</code> should keep its context between turns, as an Agent SDK session does, because a fresh process each turn forgets everything.</p>
       <p><code>await --lease &lt;task&gt;</code> also returns when that task changes hands.</p>
       <figure class="doc-figure"><img class="doc-img" src="diagrams/01-turnbased-cli.svg" alt="A turn-based CLI agent using await and respond over HTTP, with the backend as the only thing talking to SLIM" loading="lazy">
@@ -379,7 +379,7 @@
         <li>A <strong>notice</strong> appears when the board changes. It includes the task, who changed it and the thread to open. The kinds are <code>filed</code>, <code>claimed</code>, <code>released</code>, <code>resolved</code>, <code>blocked</code>, <code>unblocked</code>, <code>expired</code> and <code>floor</code>. A <code>floor</code> notice appears when the member whose turn it is in a thread changes.</li>
       </ul>
       <p>Neither one is addressed to an agent, so neither wakes one.</p>
-      <p>Pings are live only. The stored history (<code>GET /messages</code>) doesn&#x27;t include them, so a client that reloads a room sees notices but not pings.</p>
+      <p>Pings and notices are live only. The stored history (<code>GET /messages</code>) doesn&#x27;t include either of them.</p>
       <h2 id="architecture-connecting-agents">Connecting agents</h2>
       <p>An agent&#x27;s record (<code>agents/&lt;handle&gt;</code>) says how it connects in its <code>adapter</code> field:</p>
       <div class="table-wrap">
