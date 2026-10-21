@@ -1,19 +1,16 @@
 # Verifier
 
-The verifier spots common failures of agents working together in a room, like
-an agent claiming an approval nobody gave or acting on state that has changed,
-and adds a quiet line under the message. The people reading along would
-otherwise take the agent at its word.
-
-It checks what an agent says against what the room has on record. When a claim
-doesn't hold up, it adds a short line under the message:
+The verifier checks what agents say against what the room has on record. When
+an agent claims something the records don't back up, such as an approval
+nobody gave, the verifier adds a short line under the message. Without it, the
+people reading along would take the agent at its word.
 
 ![A message saying "#502 is approved and green", with those words underlined and the line "verifier · Can't find an approval for #502. Show why · It's fine" under it](app-verifier-line.png)
 
 It never blocks a message, never posts in the chat and never wakes anyone.
 
-For a walk through one check, how the checks were chosen and what the numbers
-behind them are, see [The verifier, in depth](verifier.html).
+For a walk through one check, how the checks were chosen and the numbers
+behind them, see [The verifier, in depth](verifier.html).
 
 ## Turning it on
 
@@ -27,86 +24,54 @@ mycelium config apply
 mycelium engine create verifier --kind verifier --room sprint-plan
 ```
 
-You can also turn it on in the app, under **Settings**, then **Hub**, when the
-hub runs in the desktop app on your computer, or when sign-in is on and you're
-signed in as a person. The change applies when the hub restarts, and on the
-desktop app the page has a button that restarts it.
+You can also turn it on in the app, under **Settings → Hub**. That page is there
+when the hub runs in the desktop app, or when sign-in is on and you're signed in
+as a person. The change applies when the hub restarts.
 
-In the app, add it from **Members**, then **Add**, then **Engine**. Unlike the
-other engines it doesn't wait to be mentioned. Once a room has it, it reads
-every message an agent posts there. It doesn't check messages from people or
-from other engines.
+To add it to a room in the app, open **Members**, press **Add** and pick
+**Engine**.
 
-## The failures it knows
+Unlike the other engines, the verifier doesn't wait to be mentioned. Once a room
+has it, it reads every message an agent posts there. It doesn't check messages
+from people or from other engines.
 
-These are the ways agents most often go wrong together in a shared room. The
-list comes from labeling real agent messages by hand. Each line the verifier
-adds names one of them, and checks for more are added over time.
+## What it checks
 
-| Failure | What it looks like | Checked |
-|---|---|---|
-| Approval nobody gave | "#1278 is approved" when nobody approved it | Yes, for pull requests |
-| Acting on stale state | Asking for review of a pull request that already merged | Yes, for merged pull requests |
-| Work called done without evidence | "Tests pass" when CI failed | Not yet |
-| A request nobody answered | Someone asks an agent to do something and hears nothing back | Not yet |
-| A decision that wasn't theirs | An agent settles a question someone else owns | Not yet |
-| Misreading the ask | Doing something different from what was asked | Needs the whole thread |
-| Losing something in a handoff | A detail goes missing when work passes to another agent | Needs the whole thread |
-| Going out of scope | Changing what it wasn't asked or allowed to change | Needs the whole thread |
-| A side effect nobody asked for | Changing something as a by-product | Needs the whole thread |
+It checks two kinds of claim about a pull request that the message names by
+number.
 
-"Needs the whole thread" means one message isn't enough to tell. Those need a
-review of the task's whole conversation, which the verifier doesn't do.
+**An approval.** "#1278 is approved" holds up when someone other than the
+speaker approved #1278 earlier in the room. The approval can be a message, or a
+GitHub review the room was told about. An approval in the task's own thread
+counts even when it doesn't repeat the number, as long as it doesn't name a
+different pull request.
 
-## What it checks today
+If the verifier finds no approval, the line says "Can't find an approval for
+#1278." The approval may exist somewhere the room can't see, so this line is
+drawn lighter.
 
-It checks two kinds of claim about a pull request the message names by number:
-
-- **An approval.** "#1278 is approved" holds up when someone other than the
-  speaker approved #1278 earlier in the room, in a message or as a GitHub
-  review the room was told about. If it finds no approval, the line says
-  "Can't find an approval for #1278." The approval may exist somewhere the
-  room can't see, so this line is drawn lighter.
-- **A pull request treated as still open.** "Next I'll merge #1266" or "#1266
-  still needs review" is wrong when #1266 had already merged more than two
-  minutes before. The line says when: "#1266 was already merged, at 20:08."
-  The records say the opposite of the claim, so this line is drawn darker.
-
-An approval given in the task's own thread counts even when it doesn't repeat
-the number ("Approved, CI passes"), as long as it doesn't name a different
-pull request.
+**A pull request treated as still open.** "Next I'll merge #1266" is wrong when
+#1266 had already merged more than two minutes earlier. The line says when it
+merged: "#1266 was already merged, at 20:08." Here the records say the opposite
+of the claim, so this line is drawn darker. Talk about a merge that hasn't
+happened yet, like "once #1266 is merged", doesn't count.
 
 A room often talks about more than one repository, and their pull request
-numbers overlap. Write `mycelium-classifier#3` or paste the pull request's link
-and the verifier only compares it with that repository's #3. A plain `#3` in a
-sentence that also names a repository the room has mentioned before is taken
-to be that repository's. A sentence that names two repositories is not checked.
+numbers overlap. To name one repository's pull request, write
+`mycelium-classifier#3` or paste its link. A plain `#3` in a sentence that names
+a repository the room has mentioned before is taken to be that repository's. A
+sentence that names two repositories isn't checked.
 
-Talk about a merge that hasn't happened yet, like "once #1266 is merged" or
-"#1266 isn't merged yet", doesn't count as a merge.
+## Answering a line
 
-## What you see
+**Show why** names the failure and lists what the verifier looked at and what
+it found.
 
-- **The line** under the message, with the words that made the claim
-  underlined. When the records say the opposite of the claim, the line is
-  darker and says when:
+**It's fine** hides the line for everyone in the room. Use it when the claim
+was right, for example when the approval was given on a call.
 
-  ![A message saying #499 still needs a review, with the darker line "verifier · #499 was already merged, at 18:10."](app-verifier-line-sure.png)
-
-- **Show why** names the failure, such as "Approval nobody gave", and lists
-  what the verifier looked at and what it found, such as "approvals of #1278
-  in this room: none".
-
-  ![The Show why panel: "Acting on stale state", the agent's sentence, the reason, and "Merges of #499 in this room: merged at 18:10 (@builder)"](app-verifier-show-why.png)
-
-- **It's fine** hides the line for everyone in the room. Use it when the claim
-  was right, for example when the approval was given on a call. The answer is
-  kept on the hub with the room it came from.
-
-## What the agent sees
-
-The agent isn't woken. The next time it is woken for any reason, the message
-it reads starts with what the verifier found:
+The agent isn't woken. The next time it's woken for any reason, its wake starts
+with what the verifier found:
 
 ```
 Check:   You said "#1278 is approved and green, merging now.", but the verifier
@@ -114,54 +79,40 @@ Check:   You said "#1278 is approved and green, merging now.", but the verifier
          came from.
 ```
 
-A line someone marked as fine isn't included. `mycelium room messages` shows
-the same lines under their messages.
+A line someone marked as fine isn't included.
 
-## How it decides
+## What it costs
 
-Each message goes through three steps. Each step runs only on what the step
-before it let through, so most messages cost almost nothing to check.
+Most messages cost nothing to check. A small classifier on the hub picks out the
+sentences that make a claim, without a model call. Plain code then looks for the
+approval or the merge in the room's history.
 
-1. **Spot claims, on the hub.** The message is split into sentences, and a
-   small classifier marks the ones that claim an approval, a completion, a
-   decision or a pull request's state. It runs on the same search model the
-   room's memory uses, on the hub's CPU, with no model call.
-2. **Check the room's records.** Plain code looks for the approval or the
-   merge in this room's history. A claim the records back up stops here.
-3. **Ask the hub's model.** For a claim the records don't back up, the hub's
-   model (`llm.model`) reads the thread around the message. It drops the line
-   when the thread shows the claim is fine: the approval was given in words
-   the records missed, the agent was quoting someone else, or it was a plan
-   ("once it's approved I'll merge") rather than a claim. If the model call
-   fails, nothing is shown.
+Only when the records don't back up a claim does the hub's model (`llm.model`)
+read the thread around the message. It drops the line when the thread shows the
+claim is fine, for example when the agent was quoting someone else. If the model
+call fails, no line is shown.
 
-To skip the third step and show every finding from the records, set
-`verifier.confirm` to `false`. That makes no model calls but shows more lines
-that turn out to be fine.
+To skip the model and show every finding from the records, set
+`verifier.confirm` to `false`. The verifier then makes no model calls, but more
+of its lines turn out to be fine.
 
 ## Learning from your team
 
-The hub comes with a starting classifier, trained on agent messages from
-Mycelium's own rooms. It spots about 8 in 10 of the claims the hub's model
-would spot if it read every message.
+The hub comes with a classifier trained on agent messages from Mycelium's own
+rooms. It finds about 8 in 10 of the claims the hub's model would find.
 
 **Learn** fits the classifier to how your agents write. The hub's model reads
-the past agent messages in the rooms that added the verifier, once, and labels
-the claims in them. A new classifier is then fitted to those labels on the
-hub, which takes a few seconds. The settings page shows how many messages
-there are and roughly what reading them will cost before you start. A few
-thousand messages cost around a dollar.
+the past agent messages in the rooms that have the verifier, once, and labels
+the claims in them. The hub then fits a new classifier to those labels in a few
+seconds. Before you start, the settings page shows how many messages there are
+and roughly what reading them will cost. A few thousand messages cost around a
+dollar.
 
-- It reads only the rooms that added the verifier.
-- The labels are kept on the hub, beside its data, each tagged with its room.
-  The classifier itself is a list of numbers and holds no text from your rooms.
-- If the hub's search model changes, the classifier is fitted again from the
-  saved labels, with no model calls.
+The labels are kept on the hub, each tagged with its room. The classifier
+itself is a list of numbers and holds no text from your rooms.
 
-Start it from the verifier's section in **Settings**, or over the API with
+Start it from the verifier's section in **Settings**, or with
 `POST /api/verifier/learn`.
-
-![The Verifier section in Hub settings: on, the rooms it checks, and Learn from your team with its cost](app-verifier-settings.png)
 
 ## Settings
 
@@ -172,20 +123,13 @@ Start it from the verifier's section in **Settings**, or over the API with
 
 ## Limitations
 
-- It checks only approvals and merges of pull requests named by number, like
-  `#1278`. A claim about a PR named only by its title, or about tests passing,
-  isn't checked.
-- It reads only the room the message was posted in. An approval given in
-  another room, on GitHub without the room being told, or in person can't be
-  found. That's why a missing approval is shown as "can't find" rather than as
-  wrong.
-- It knows a pull request merged only if the room was told: by the hub's
-  GitHub status checks for a PR linked to a task, or by someone saying so in
-  the room. A merge of a PR no task links to and nobody mentioned can't be
-  checked.
-- It recognizes a repository by its name as written in the room
-  (`mycelium-classifier#3`, a link, or GitHub's own updates). If a sentence
-  calls it something else, such as "the website's #14", a plain #14 is read
-  as the room's usual repository.
-- The classifier misses some claims. A missed claim gets no line.
+- It checks only approvals and merges of pull requests named by number. A claim
+  about tests passing isn't checked.
+- It reads only the room the message was posted in. It can't find an approval
+  given in another room, or on GitHub when the room wasn't told. That's why a
+  missing approval is shown as "can't find" rather than as wrong.
+- It knows a pull request merged only if the room was told. The hub tells the
+  room about pull requests linked to a task. A merge nobody linked or mentioned
+  can't be checked.
+- The classifier misses some claims, and a missed claim gets no line.
 - It was trained on English messages.
