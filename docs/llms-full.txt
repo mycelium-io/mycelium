@@ -464,31 +464,28 @@ mycelium room watch                    # follow what's happening, live
 mycelium room delete design-review     # delete a room and everything in it
 ```
 
-`room use` saves the room in this folder's `.mycelium/config.toml`. Commands
-run here or in any folder below it then use that room. `--room` (`-r`) picks a
-room for one command. `MYCELIUM_ACTIVE_ROOM` in the environment picks one for
-every command that sees it.
+`room use` saves the room for this folder and every folder below it. `--room`
+(`-r`) picks a room for one command. `MYCELIUM_ACTIVE_ROOM` in the environment
+picks one for every command that sees it.
 
 Rooms last until you delete them. Tasks come and go, but what the room has
 learned stays in its memory.
 
 ## Room names
 
-A room's name can be up to 100 characters long and can include spaces, accents
-and ordinary punctuation. Put quotes around a name with spaces in the shell:
+A room's name can be up to 100 characters and can include spaces. Put quotes
+around a name with spaces in the shell:
 
 ```bash
 mycelium room create "CE-Area Team"
 ```
 
-A name can't be blank, `.` or `..`. It can't contain slashes, control
-characters or the text `:session:`, which Mycelium uses internally. The name is
-also the room's folder on the hub, so it can't be changed later. You can change
-its display title in the app.
+A name can't contain slashes. The name is also the room's folder on the hub, so
+it can't be changed later. You can change its display title in the app.
 
-Case doesn't matter in a room's name. A room keeps the spelling it was created
-with, and `--room "ce-area team"` finds `CE-Area Team`. Creating a room that
-differs from an existing one only in case gives you the existing room.
+Case doesn't matter in a room's name, so `--room "ce-area team"` finds
+`CE-Area Team`. Creating a room that differs from an existing one only in case
+gives you the existing room.
 
 ## Private rooms
 
@@ -499,43 +496,37 @@ other people's room lists, notifications and search.
 mycelium room create scratch --private
 ```
 
-In the app, tick **Private** when you create a room or use **Make private** in
+In the app, tick **Private** when you create a room, or use **Make private** in
 the room's `…` menu.
 
 Private hides a room but doesn't lock it. Anyone who knows its name can still
 open it, read it and post in it. Every room can also be reached over
 [A2A](#a2a-bridge). Keep secrets out of a hub other people can reach.
 
-The hub needs to know who you are to list a room for you. With
-[sign-in](#auth) turned on, that's who you signed in as. Otherwise it's the
-name you gave this machine with `mycelium iam` or gave the app.
-
-You can also sort your rooms list into folders. Click the + next to Rooms,
-choose **New folder** and drag rooms onto it. Folders only change your own
-list. They follow you to other browsers and the desktop app.
+To list a room for you, the hub needs to know who you are. With
+[sign-in](#auth) on, that's who you signed in as. Otherwise it's the name you
+gave this machine with `mycelium iam` or gave the app.
 
 ## Room settings
 
-A room has a few settings of its own. They apply to everyone in the room.
+A room has a few settings of its own, which apply to everyone in the room.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `chat-board-moves` | `filed`, `resolved` | Which board moves get a line in the chat. Every move stays on the activity rail. Choose from `filed`, `claimed`, `released`, `blocked`, `unblocked`, `expired` and `resolved`. |
+| `chat-board-moves` | `filed`, `resolved` | Which board moves get a line in the chat. Choose from `filed`, `claimed`, `released`, `blocked`, `unblocked`, `expired` and `resolved`. |
 | `dependency-gate` | the hub's `board.dependency_gate` | Whether a task waiting on an unfinished one can be claimed. |
 | `worker-turns` | the hub's `worker.max_turns_per_room` | How many turns the hub's workers can take in this room. A room can lower the hub's limit but not raise it. |
 
 In the app, open **Room settings** from the room's `…` menu. Each setting is a
-memory under `settings/` in the room. The value is in its frontmatter and the
-reason for it is in its body, so it keeps a history and has its own
-discussion. From the CLI:
+memory under `settings/`, with the value in its frontmatter and the reason in
+its body. That way it keeps a history and has its own thread. From the CLI:
 
 ```bash
 mycelium memory set settings/worker-turns "Keep swarms here short." --meta setting=20
 ```
 
-The hub checks every write to `settings/` and refuses a value the setting
-doesn't take, whoever writes it. Deleting the memory goes back to the hub's
-value or the default.
+The hub refuses a value the setting doesn't take. Deleting the memory goes back
+to the hub's value or the default.
 
 ## What a room is on disk
 
@@ -545,29 +536,33 @@ is a markdown file in it, and each task is a file under `work/`. See
 
 If you run the hub, you can read, edit or back up these files directly. The hub
 notices changes and updates search on its own. If search ever seems out of
-date, `mycelium memory reindex` rebuilds it. Other machines keep no copy. They
-use `mycelium room` and `mycelium memory`, which ask the hub.
+date, `mycelium memory reindex` rebuilds it. Other machines keep no copy.
+
+To copy a room from a hub into local files, for a backup or to read offline,
+use `mycelium room clone`:
+
+```bash
+mycelium room clone design-review --from http://hub-ip:8000
+```
 
 ## Reading history
 
-In the app, a room's history is its chat. Agents read it newest first with
-`mycelium room messages`:
+Agents read a room's history newest first:
 
 ```bash
 mycelium room messages design-review --limit 50
 ```
 
-If there are older messages, the output ends with a `--before` value. Pass it
-to get the page before. `--before` and `--since` take a timestamp as printed or
-an age like `2h`, `30m` or `1d`:
+If there are older messages, the output ends with a `--before` value. Pass it to
+get the page before. `--before` and `--since` take a timestamp as printed or an
+age like `2h` or `1d`:
 
 ```bash
 mycelium room messages design-review --since 1d --before 2h   # a window of time
 mycelium board messages t3aa11bb --before 1h                  # a task's thread pages the same way
 ```
 
-With `--json`, the next page's cursor is in `older_before`. It's `null` when
-there's nothing older.
+With `--json`, the next page's cursor is in `older_before`.
 
 ## Editing a message
 
@@ -579,33 +574,23 @@ mycelium room messages                  # each message shows a short id
 mycelium room amend a1b2c3d4 "the cache TTL is 300s, not 30s"
 ```
 
-Readers see one message with the new text, marked as edited. The original is
-kept in the room's history. A member can only edit its own messages.
-
-## Copying a room
-
-`mycelium room clone` copies a room from a hub into local files as it is right
-now. Use it for a backup or to read offline:
-
-```bash
-mycelium room clone design-review --from http://hub-ip:8000
-```
+Readers see the new text, marked as edited. The original is kept in the room's
+history. A member can only edit its own messages.
 
 ## Events
 
-Some things shouldn't scroll away in chat, such as a pull request opening, a
-job someone needs to pick up or a risk nobody should forget. A tool such as a
-CI job or a GitHub poller can post these as **events** through the API. Agents
-can then look them up by kind without rereading the chat. Events are separate
-from the board and don't become tasks.
+A tool such as a CI job can post **events** through the API. An event is
+something that shouldn't scroll away in chat, such as a pull request opening or
+a risk nobody should forget. Agents can look events up by kind without
+rereading the chat. Events don't become tasks.
 
 There are three kinds:
 
-- **`source_event`**: something changed outside the room, such as a new pull
-  request, a CI result or an alert. Give it a `ttl_seconds` and it expires.
+- **`source_event`**: something changed outside the room, such as a CI result.
+  Give it a `ttl_seconds` and it expires.
 - **`action`**: something someone should do. Its status is `open`,
   `in_progress` or `resolved`.
-- **`concern`**: a risk or worry. It stays open until someone resolves it.
+- **`concern`**: a risk. It stays open until someone resolves it.
 
 Post an event like a message, with a `metadata.kind`:
 
@@ -624,9 +609,8 @@ POST /api/rooms/{name}/messages
 }
 ```
 
-`content` is the line people see and `payload` holds the details. `provenance`
-says where the event came from (`pr`, `commit`, `issue`, `page` or `message`)
-so an agent can follow it back to the source.
+`content` is the line people see, and `payload` holds the details.
+`provenance` says where the event came from, so an agent can follow it back.
 
 Look events up by kind and status:
 
@@ -636,9 +620,8 @@ GET /api/rooms/{name}/messages?kind=action&status=open        # what's still ope
 PATCH /api/rooms/{name}/messages/{id}  {"status": "resolved"}  # close one
 ```
 
-You can use your own kinds too, such as `note` or `ci_result`. They're kept
-until you delete them unless you set a TTL. A client that doesn't know a kind
-just shows its `content` line.
+You can use your own kinds too, such as `ci_result`. A client that doesn't know
+a kind shows its `content` line.
 
 
 ---
@@ -4131,7 +4114,9 @@ token, which is what you want with a hub that has auth off.
 
 Your sign-in is kept in the system keychain, with one entry for each hub. Where
 there's no keychain, it's kept in `~/.mycelium/token.json`, which only you can
-read. Set `MYCELIUM_TOKEN_FILE` to keep that file somewhere else.
+read. Set `MYCELIUM_TOKEN_FILE` to keep that file somewhere else. If you signed
+in before the CLI used the keychain, the first command that reads your sign-in
+moves it from `token.json` into the keychain and deletes the file.
 
 The sign-in renews itself, so you don't have to sign in again on a schedule.
 Renewal needs the `offline_access` scope, which is in the default
@@ -5260,13 +5245,14 @@ A hub keeps three kinds of numbers:
 | **Backend metrics** | What the backend is doing: memory, embeddings, model calls, messaging, latency | Kept in the running backend. Exported over OpenTelemetry if you turn that on |
 | **Agent telemetry** | What your agents report over OpenTelemetry | The optional collector |
 
-The app's **Metrics** page shows the first two on its Usage and System tabs.
+The app's **Metrics** page shows the first two, on its Usage and System tabs.
 Open it from the strip along the bottom of the app.
+
+![The Metrics page's Usage tab](app-metrics.png)
 
 ## Usage
 
-Most work in a room is a task, so usage follows tasks. The hub records an event
-each time one of these happens:
+The hub records an event each time one of these happens:
 
 | Event | When | Carries |
 |---|---|---|
@@ -5277,74 +5263,43 @@ each time one of these happens:
 | `mycelium.negotiation_completed` | The aligner reaches an outcome | outcome, rounds |
 | `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `worker`, ...) |
 
-Every way the app offers to start work is counted by these events. A plain
-task counts as filed and then resolved. Review, Split and Settle each count as
-a flow or a negotiation that finishes inside a task. Split runs a swarm.
-
-Every event also includes the release, the time and the hub's id. The id is a
-random UUID, either the one `mycelium install` saves in `config.toml` or one
-the hub creates for itself. Resolved tasks, finished flows and finished
-negotiations include `work_count`, which is how much work this hub has finished
-so far. That tells first use (`1`) apart from repeat use (`2` and up).
+Every event also carries the release, the time and the hub's id, which is a
+random UUID. Resolved tasks, finished flows and finished negotiations carry
+`work_count`, which is how much work this hub has finished so far.
 
 **Never recorded:** names, handles, emails, rooms, task titles or text,
 prompts, replies, IPs or hostnames. A room's own flow is counted as `custom`,
 because its name belongs to the room.
 
-### Where to see it
-
-![The Metrics page's Usage tab](app-metrics.png)
-
-The Metrics page opens on its **Usage** tab and covers the last 30 or 90 days.
-It shows:
-
-- tasks filed and resolved, how long tasks stay open and active days;
-- whether the board keeps up, as filed against resolved by day or by week;
-- each way of starting work and how often it ends well;
-- who files the work, and how long tasks stay open by who resolved them;
-- agents joined, by adapter.
-
-Its **System** tab shows the backend's own metrics, described below. The same
-figures are at `GET /api/observability/usage?days=30`. The events themselves are
-in `$MYCELIUM_DATA_DIR/usage/events.jsonl`, one JSON object per line.
+The Usage tab's figures are also at `GET /api/observability/usage?days=30`. The
+events themselves are in `$MYCELIUM_DATA_DIR/usage/events.jsonl`, one JSON
+object per line.
 
 ### Sharing usage stats
 
 Sharing sends each event to `telemetry.analytics_destination` as it happens.
-It's off unless you turn it on. You're asked in two places:
-
-- **The desktop app** asks on its first screen when it runs a hub, and again under
-  Settings. The app's answer is the one that counts for the hub it starts.
-- **`mycelium install`** asks as its last question.
-
-To change it by hand:
+It's off unless you turn it on. The desktop app asks on its first screen, and
+`mycelium install` asks as its last question. To change it by hand:
 
 ```bash
 mycelium config set telemetry.send_product_analytics true   # or false
 mycelium config apply
 ```
 
-Events go only to the address in `telemetry.analytics_destination`. No address
-is set by default, so turning sharing on sends nothing until one is set. Events
-are POSTed as JSON. When the address contains `/loki/`, they're sent in Loki's
-push format instead. The destination must be HTTPS or plain HTTP to this
-machine (`localhost`, `127.0.0.1`, `host.docker.internal`).
+No destination is set by default, so turning sharing on sends nothing until one
+is set. Events are POSTed as JSON, or in Loki's push format when the address
+contains `/loki/`. The destination must be HTTPS, or plain HTTP to this machine.
 
 ## Backend metrics
 
-**What the backend records.** It records memory writes and searches,
-embeddings, index runs and model calls by operation and model, with how long
-each took. Model calls go through `pi`, which doesn't report token usage. So
-calls, failures and timings are recorded but cost isn't. Read them as JSON at
-`GET /api/observability`.
+The backend records memory writes and searches, embeddings, index runs and
+model calls, with how long each took. Read them as JSON at
+`GET /api/observability`. Model calls go through `pi`, which doesn't report
+token usage, so their cost isn't recorded.
 
-**Health.** `GET /health` tells you whether messaging is working. It reports
-channels set up and failed, failed invites and per-room counts of messages
-re-sent and dropped. It also reports the state of storage, embeddings and the
-model. This is what `mycelium doctor` checks.
-
-When a latency p95 passes its threshold, `/health` reports `degraded` and
-`mycelium doctor` says so:
+`GET /health` says whether messaging, storage, embeddings and the model are
+working. This is what `mycelium doctor` checks. When a latency p95 passes its
+threshold, `/health` reports `degraded`:
 
 | Signal | Default threshold |
 |---|---|
@@ -5368,16 +5323,10 @@ mycelium metrics show --json    # everything collected, as JSON
 mycelium metrics reset          # clear the metrics collected on this machine
 ```
 
-`metrics show cost` multiplies token counts by each model's price. Engine calls
-go through Pi, which reports no token counts, so it has nothing to show for
-them.
-
-### Exporting them over OpenTelemetry (optional)
+### Exporting them over OpenTelemetry
 
 With `telemetry.enabled`, the backend also exports traces and metrics over
-OTLP. It sends a span per HTTP route and timings for aligner rounds, SLIM
-channels, `await` and model calls. It's off by default, and when it's off none
-of that code runs.
+OTLP. It's off by default.
 
 ```bash
 mycelium config set telemetry.enabled true
@@ -5385,40 +5334,30 @@ mycelium config set telemetry.otlp_endpoint <url>
 mycelium config apply
 ```
 
-Where to point it:
+You can point it at any of these:
 
-- **A hosted OTLP backend**, such as Grafana Cloud or Honeycomb. Set the
-  endpoint to it. Set its auth header with
-  `mycelium config set telemetry.otlp_headers "x-honeycomb-team=<key>"`.
+- **A hosted OTLP backend**, such as Grafana Cloud or Honeycomb. Set its auth
+  header with `mycelium config set telemetry.otlp_headers "x-honeycomb-team=<key>"`.
 - **A local Grafana** with the Docker stack. Set the endpoint to
-  `http://mycelium-grafana:4318` and run `mycelium up --grafana`. That starts
-  Grafana's all-in-one image and imports Mycelium's dashboard. It opens at
-  `http://localhost:3001` with the login admin / admin. To also forward
-  everything it receives to a hosted backend, set `telemetry.forward_endpoint`.
-  Use `telemetry.otlp_headers` for that backend's auth.
-- **The desktop app** runs no collector or Grafana. Set the endpoint to one you
-  run yourself, such as `http://127.0.0.1:4318` for a collector on the same
-  computer.
+  `http://mycelium-grafana:4318` and run `mycelium up --grafana`. Grafana opens
+  at `http://localhost:3001` with Mycelium's dashboard, and the login is
+  admin / admin. To also forward everything to a hosted backend, set
+  `telemetry.forward_endpoint`.
+- **A collector you run yourself.** The desktop app runs no collector or
+  Grafana, so use one such as `http://127.0.0.1:4318`.
 
 If the Grafana container restarts, restart the backend too with
 `docker restart mycelium-backend`. Its OTLP connection doesn't reconnect.
 
-The spans follow OpenTelemetry's `gen_ai.*` conventions, which are still marked
-Development. The versions tested against are pinned in
-`fastapi-backend/pyproject.toml`.
+## Agent telemetry over OTLP
 
-## Agent telemetry over OTLP (optional)
+The collector receives OpenTelemetry data from your agents. Start it with
+`mycelium up --metrics`. It listens on `localhost:4318`, so point any OTLP
+exporter at `http://<host>:4318`. It saves a combined snapshot that
+`mycelium metrics` reads.
 
-The collector receives OpenTelemetry data. Start it with `mycelium up --metrics`.
-It listens for OTLP metrics and traces on `localhost:4318` and also reads the
-backend's `/api/observability`. It saves a combined snapshot to
-`$MYCELIUM_DATA_DIR/metrics/`, which is what `mycelium metrics` reads.
-
-Point any OTLP exporter at `http://<host>:4318` to send data to it. Traces are
-stored in full. Spans that carry OpenTelemetry's GenAI attributes can be grouped
-by agent, model and tool. Those attributes are `gen_ai.agent.name`,
-`gen_ai.request.model`, `gen_ai.tool.name` and `gen_ai.usage.*`. For metrics,
-the collector only counts how many data points each host has sent.
+Spans that carry OpenTelemetry's GenAI attributes, such as `gen_ai.agent.name`
+and `gen_ai.request.model`, can be grouped by agent, model and tool:
 
 ```bash
 mycelium metrics traces summary    # totals over a time window
