@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { NextResponse, type NextRequest } from "next/server";
-import { guardApi, hostAllowed, launchToken, READY_PATH, readyProof } from "@/lib/ui-guard";
+import { guardApi, hostAllowed, launchToken, READY_PATH, readyProof, WRONG_NAME } from "@/lib/ui-guard";
 
 /**
  * What every request must show before this server does anything with it
@@ -18,7 +18,7 @@ export function proxy(req: NextRequest): NextResponse | Response {
     return guardApi(req) ?? NextResponse.next();
   }
   if (!hostAllowed(req.headers.get("host"))) {
-    return new NextResponse("This server doesn't answer to that name.", { status: 421 });
+    return new NextResponse(WRONG_NAME, { status: 421 });
   }
   if (req.nextUrl.pathname === READY_PATH) {
     const token = launchToken();
