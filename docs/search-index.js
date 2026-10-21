@@ -1250,7 +1250,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#a2a-bridge-talking-to-a-room-over-a2a",
     "t": "Talking to a room over A2A",
     "s": "Agents › A2A Bridge",
-    "x": "Every room can be found and called as an A2A agent with no setup. Its Agent Card is at: GET /api/rooms/{room}/.well-known/agent-card.json The card lists the room's name and its skills, which come from the room's skills/ memories. An A2A client sends the room a message with A2A JSON-RPC (message/send) at: POST /api/rooms/{room}/a2a The message is posted in the room like any other. The call returns only an acknowledgem",
+    "x": "Every room can be found and called as an A2A agent with no setup. Its Agent Card is at: GET /api/rooms/{room}/.well-known/agent-card.json The card lists the room's name and its skills, which come from the room's skills/ memories. An A2A client sends the room a message with A2A JSON-RPC (message/send) at: POST /api/rooms/{room}/a2a The message is posted in the room like any other. The call returns only an acknowledgme",
     "p": "Guides"
   },
   {

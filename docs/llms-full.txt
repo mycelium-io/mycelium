@@ -3505,7 +3505,7 @@ POST /api/rooms/{room}/a2a
 ```
 
 The message is posted in the room like any other. The call returns only an
-acknowledgement, not an answer. If the message mentions an agent in the room,
+acknowledgment, not an answer. If the message mentions an agent in the room,
 that agent answers in the room as usual.
 
 Anyone who can reach the hub can read any room's card, as the A2A spec
@@ -5317,7 +5317,7 @@ Other options:
 - `max_steps` limits how many steps a run can take. A step counts once however
   many members it asks. The thread's "turn 2 of 6" counts the same steps.
 - `collect: options` makes each reply an option. `collect: scores` records each
-  reply's ratings. `collect: pieces` merges each reply's labelled points, words
+  reply's ratings. `collect: pieces` merges each reply's labeled points, words
   and checks into the shared summary being built.
 - `require: stance`, `require: scores` or `require: pieces` asks once more for a
   reply that's missing it. A stance still missing after that counts as a
@@ -5401,7 +5401,7 @@ gets posted. This table lists every marker Mycelium reads:
 | `[[mycelium: stance=accept]]` / `stance=reject` | Approving or rejecting, in a flow step or a negotiation. `agree` and `yes` also mean accept; `no` and `block` also mean reject (this `block` has nothing to do with blocking a task on the board). |
 | `[[mycelium: confidence=0.8]]` | How sure the agent is, from 0 to 1. Can be combined: `confidence=0.8 stance=accept`. |
 | `[[mycelium: A=82 B=41]]` | Rating options from 0 to 100, in `concord`. |
-| `[[mycelium: objective]] …` | Labelling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
+| `[[mycelium: objective]] …` | Labeling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
 | `[[mycelium: term=renewal]] …` | Saying what a word means, in `accord`. |
 | `[[mycelium: check covers=p1,p2]] …` | Saying how points will be checked, in `accord`. The point numbers are the ones the thread shows. |
 | `[[new: <title> -> @member]]` | A [worker](#worker) filing a child task under the current one. Only workers' replies are read for this. |

@@ -20,7 +20,7 @@ gets posted. This table lists every marker Mycelium reads:
 | `[[mycelium: stance=accept]]` / `stance=reject` | Approving or rejecting, in a flow step or a negotiation. `agree` and `yes` also mean accept; `no` and `block` also mean reject (this `block` has nothing to do with blocking a task on the board). |
 | `[[mycelium: confidence=0.8]]` | How sure the agent is, from 0 to 1. Can be combined: `confidence=0.8 stance=accept`. |
 | `[[mycelium: A=82 B=41]]` | Rating options from 0 to 100, in `concord`. |
-| `[[mycelium: objective]] …` | Labelling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
+| `[[mycelium: objective]] …` | Labeling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
 | `[[mycelium: term=renewal]] …` | Saying what a word means, in `accord`. |
 | `[[mycelium: check covers=p1,p2]] …` | Saying how points will be checked, in `accord`. The point numbers are the ones the thread shows. |
 | `[[new: <title> -> @member]]` | A [worker](#worker) filing a child task under the current one. Only workers' replies are read for this. |

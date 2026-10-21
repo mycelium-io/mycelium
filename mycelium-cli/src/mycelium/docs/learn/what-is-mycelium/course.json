@@ -35,7 +35,7 @@
               "A log of every message"
             ],
             "answer": 1,
-            "why": "Memory holds preferences, behaviours and procedures. That makes a worker that arrives cold useful at once. It isn't there to make an agent someone."
+            "why": "Memory holds preferences, behaviors and procedures. That makes a worker that arrives cold useful at once. It isn't there to make an agent someone."
           }
         },
         {
