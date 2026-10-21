@@ -4,7 +4,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Circle, FolderOpen, GitBranch, Loader2, Sparkles, SquareTerminal, Undo2, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Circle,
+  FolderOpen,
+  GitBranch,
+  Loader2,
+  Sparkles,
+  SquareTerminal,
+  Undo2,
+  X,
+} from "lucide-react";
 import {
   draftMemberNotes,
   launchRunnerAgent,
@@ -41,6 +52,7 @@ import { Monogram } from "@/components/ui/monogram";
 import { AgentScreen } from "@/components/agent-screen";
 import { FolderPicker } from "@/components/folder-picker";
 import { HarnessIcon } from "@/components/harness-icon";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   ConnectMachine,
   HostMissing,
@@ -629,37 +641,7 @@ function RunsOn({
               it starts on as a quiet note (a choice only when there is one). */}
           <div className="flex min-w-0 items-center gap-1.5">
             {startable.length > 0 && (
-              <div role="radiogroup" aria-label="Agent CLI" className="flex min-w-0 flex-wrap gap-1.5">
-                {startable.map((f) => {
-                  const active = f.id === frameworkId;
-                  const version = shortVersion(f.version);
-                  return (
-                    <button
-                      key={f.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      aria-label={f.name}
-                      title={f.version ?? f.name}
-                      onClick={() => onFramework(f.id)}
-                      className={cn(
-                        "flex items-center gap-2 rounded-lg border py-1 pr-3 pl-2 text-left transition-colors",
-                        active
-                          ? "border-accent bg-accent/10"
-                          : "border-border hover:border-border2 hover:bg-hairline",
-                      )}
-                    >
-                      <HarnessIcon id={f.id} name={f.name} className="size-5" />
-                      <span className="leading-tight">
-                        <span className={cn("block text-label", active ? "text-text" : "text-muted-foreground")}>
-                          {f.name}
-                        </span>
-                        {version && <span className="block font-mono text-micro text-faint">{version}</span>}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+              <HarnessPicker frameworks={startable} value={frameworkId} onChange={onFramework} />
             )}
             <span className="ml-auto flex flex-shrink-0 items-center gap-1 text-micro text-faint">
               on
@@ -734,6 +716,54 @@ function RunsOn({
         </button>
       )}
     </MemberFooter>
+  );
+}
+
+/** An agent CLI's mark, its name, and its version under it, as smaller type. */
+function HarnessLabel({ framework, active = true }: { framework: Runner["frameworks"][number]; active?: boolean }) {
+  const version = shortVersion(framework.version);
+  return (
+    <>
+      <HarnessIcon id={framework.id} name={framework.name} className="size-5" />
+      <span className="min-w-0 text-left leading-tight">
+        <span className={cn("block truncate text-label", active ? "text-text" : "text-muted-foreground")}>
+          {framework.name}
+        </span>
+        {version && <span className="block font-mono text-micro text-faint">{version}</span>}
+      </span>
+    </>
+  );
+}
+
+/** Which agent CLI to start: a dropdown that shows each one by its mark. */
+function HarnessPicker({
+  frameworks,
+  value,
+  onChange,
+}: {
+  frameworks: Runner["frameworks"];
+  value: string | null;
+  onChange: (id: string) => void;
+}) {
+  const current = frameworks.find((f) => f.id === value) ?? frameworks[0];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Agent CLI: ${current.name}`}
+        className="flex min-w-0 items-center gap-2 rounded-lg border border-border py-1 pr-2 pl-2 transition-colors hover:border-border2 hover:bg-hairline data-[popup-open]:border-accent"
+      >
+        <HarnessLabel framework={current} />
+        <ChevronDown className="ml-1 size-3.5 flex-shrink-0 text-faint" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-48">
+        {frameworks.map((f) => (
+          <DropdownMenuItem key={f.id} onClick={() => onChange(f.id)} className="gap-2 py-1.5">
+            <HarnessLabel framework={f} active={f.id === current.id} />
+            {f.id === current.id && <Check className="ml-auto size-3.5 text-accent" aria-label="chosen" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

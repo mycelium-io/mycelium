@@ -56,17 +56,16 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByDisplayValue("mycelium runner")).toBeInTheDocument();
   });
 
-  it("offers only the agent CLIs the machine can start", () => {
+  it("offers only the agent CLIs the machine can start", async () => {
     connected = [runner()];
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
 
-    // Each by name, with its version under it.
-    const cli = screen.getByRole("radiogroup", { name: "Agent CLI" });
-    expect(within(cli).getAllByRole("radio").map((o) => o.textContent)).toEqual([
+    // The first is picked; the dropdown lists each by name, with its version under it.
+    fireEvent.click(screen.getByRole("button", { name: "Agent CLI: Claude Code" }));
+    expect((await screen.findAllByRole("menuitem")).map((o) => o.textContent)).toEqual([
       "Claude Code2.4.1",
       "opencode0.9.3",
     ]);
-    expect(within(cli).getByRole("radio", { name: "Claude Code" })).toHaveAttribute("aria-checked", "true");
   });
 
   it("starts from a role, filling the handle until you type one", () => {
@@ -106,7 +105,9 @@ describe("LaunchAgentForm", () => {
     const onLaunched = vi.fn();
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={onLaunched} />);
 
-    fireEvent.click(screen.getByRole("radio", { name: "opencode" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agent CLI: Claude Code" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /opencode/ }));
+    expect(screen.getByRole("button", { name: "Agent CLI: opencode" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "@Reviewer" } });
     fireEvent.change(screen.getByLabelText("Instructions"), {
       target: { value: "  Review every change for correctness.  " },
