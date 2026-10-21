@@ -5,7 +5,9 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { useHasAppSettings } from "@/lib/desktop-app";
 import { useAuthSession } from "./auth-session";
+import { AppConnection } from "./settings/app-connection";
 
 /**
  * Renders the app when the gate is off or the user is signed in; otherwise a
@@ -35,7 +37,7 @@ function SignInScreen({
   const authError = useAuthError();
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-bg px-6">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-bg px-6">
       <div className="w-full max-w-sm rounded-lg border border-border bg-surface/40 p-8 text-center">
         <p className="font-serif text-3xl italic text-text">mycelium</p>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -62,7 +64,36 @@ function SignInScreen({
           <p className="mt-4 text-left text-xs text-red">Sign-in failed: {authError}</p>
         )}
       </div>
+      <OtherHub />
     </main>
+  );
+}
+
+/**
+ * In the desktop app, a way past a hub you can't sign in to: this screen
+ * stands in for the whole app, Settings included, so the app's own Hub and
+ * Connection is offered here (it asks only the app, never the hub).
+ */
+function OtherHub() {
+  const inApp = useHasAppSettings();
+  const [open, setOpen] = useState(false);
+  if (!inApp) return null;
+  return (
+    <div className="mt-4 w-full max-w-xl text-left">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="mx-auto block text-micro text-muted-foreground hover:text-text"
+      >
+        Use a different hub, or this computer
+      </button>
+      {open && (
+        <div className="mt-3">
+          <AppConnection />
+        </div>
+      )}
+    </div>
   );
 }
 
