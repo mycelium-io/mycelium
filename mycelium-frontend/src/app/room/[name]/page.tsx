@@ -16,6 +16,7 @@ import { AppShell } from "@/components/app-shell";
 import { RoomDock, type RoomDockHandle } from "@/components/room-dock";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
+import { AgentOpenerProvider } from "@/components/agent-opener";
 import { CELL, StatusButton, StatusDot } from "@/components/status-items";
 import { episodeUrn } from "@/lib/threads";
 import { loadView, parsePanelId, saveView, type View } from "@/lib/room-dock";
@@ -59,8 +60,18 @@ function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string;
 export default function RoomPage() {
   return (
     <Suspense fallback={null}>
-      <RoomWorkspace />
+      <RoomWithOpener />
     </Suspense>
+  );
+}
+
+/** Every agent's @ tag in the room opens it, as a click in Members does. */
+function RoomWithOpener() {
+  const params = useParams();
+  return (
+    <AgentOpenerProvider roomName={parseRoomNameParam(params.name as string)}>
+      <RoomWorkspace />
+    </AgentOpenerProvider>
   );
 }
 

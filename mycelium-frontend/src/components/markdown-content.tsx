@@ -10,6 +10,7 @@ import remarkBreaks from "remark-breaks";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useHighlighter, type Highlight } from "@/components/ui/highlight-text";
 import { INTERRUPT_MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
+import { AgentTag } from "@/components/agent-opener";
 import { typeset } from "@/lib/typeset";
 
 // Mentions, memory links, transclusions, and skill references, in one pass so a
@@ -209,7 +210,7 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
           return (
             <Tooltip key={i} content={SILENT_HINT}>
               <span aria-description={SILENT_HINT} className="text-muted-foreground font-semibold">
-                {marked(part)}
+                <AgentTag handle={part}>{marked(part)}</AgentTag>
               </span>
             </Tooltip>
           );
@@ -218,16 +219,16 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
           return (
             <Tooltip key={i} content={INTERRUPT_HINT}>
               <span aria-description={INTERRUPT_HINT} className="text-accent font-semibold">
-                {marked(part)}
+                <AgentTag handle={part}>{marked(part)}</AgentTag>
               </span>
             </Tooltip>
           );
         }
         if (part.startsWith("@")) {
           return (
-            <span key={i} className="text-accent font-semibold">
+            <AgentTag key={i} handle={part} className="text-accent font-semibold">
               {marked(part)}
-            </span>
+            </AgentTag>
           );
         }
         // A `/name` skill reference. A skill is a `skills/name` memory, so render
