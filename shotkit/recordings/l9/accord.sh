@@ -39,7 +39,7 @@ node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --do "speed:1" \
   --do "hold:1500" \
   --do "caption:Nobody leads and nobody votes. What doesn't line up becomes an open item." \
-  --do "zoom:text=/^words: /@1.4" \
+  --do "zoom:text=/used in different senses/ >> nth=-1@1.4" \
   --do "hold:4000" \
   --do "zoomout" \
   --do "caption:The shared summary is saved to the room's memory, next to the task." \

@@ -43,6 +43,11 @@ Similar = Callable[[str, str], float]
 #: high: folding two different points into one hides a disagreement, while
 #: leaving a near-duplicate unfolded costs one extra line.
 SIMILARITY_THRESHOLD = 0.92
+#: How alike two meanings of a key term must be to count as one sense. Lower
+#: than for points: members define a term in their own words, with their own
+#: example, so one sense said four ways scored 0.85-0.92 in real runs, while
+#: two senses (a list price against a contract template) scored 0.53-0.80.
+MEANING_THRESHOLD = 0.85
 
 #: Bounds on what one run keeps. Over a bound is dropped with a note.
 PER_REPLY = 12
@@ -121,7 +126,9 @@ class Frame:
             + len(self.checks)
         )
 
-    def alike(self, a: str, b: str, similar: Similar | None) -> bool:
+    def alike(
+        self, a: str, b: str, similar: Similar | None, threshold: float = SIMILARITY_THRESHOLD
+    ) -> bool:
         """Whether two texts say the same thing: equal, or similar enough."""
         if _norm(a) == _norm(b):
             return True
@@ -135,7 +142,7 @@ class Frame:
                 logger.warning("similarity unavailable; folding equal text only", exc_info=True)
                 self.similarity = False
                 return False
-        return self._seen[pair] >= SIMILARITY_THRESHOLD
+        return self._seen[pair] >= threshold
 
 
 @dataclass
@@ -227,12 +234,15 @@ def add_statement(frame: Frame, who: str, text: str, *, similar: Similar | None)
 
 def senses(frame: Frame, word: str, similar: Similar | None) -> list[tuple[str, list[str]]]:
     """A word's meanings grouped by sense: ``[(meaning, [members])]``, in cast
-    order of first use. More than one group means the word is contested."""
+    order of first use. More than one group means the word is contested.
+
+    A meaning joins a sense when it says the same as any meaning already in
+    it, so four members saying one thing four ways land together."""
     _shown, meanings = frame.terms[word]
     groups: list[tuple[str, list[str]]] = []
     for who, meaning in meanings.items():
-        for text, members in groups:
-            if frame.alike(text, meaning, similar):
+        for _text, members in groups:
+            if any(frame.alike(meanings[m], meaning, similar, MEANING_THRESHOLD) for m in members):
                 members.append(who)
                 break
         else:
