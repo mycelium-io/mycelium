@@ -23,6 +23,19 @@ A point is one of :data:`POINT_TYPES` (and may say what it is ``about``),
 ``term=<word>`` is the writer's meaning of that word, and ``check`` is how
 points would be confirmed. The label is lifted onto the payload as
 ``pieces``; the labelled text stays in the prose where it was written.
+
+**Plain lines say the same things without the marker**, and are what the
+flows ask for, since a model writes them reliably:
+
+    B: 20 - the Friday window breaks certification     (a rating, and why)
+    bad: 10 - nothing ships this quarter               (a reference outcome's rating)
+    why: it keeps every refund inside a day             (why an option is proposed)
+    constraint: refunds above 5000 need a person's approval
+    refund window: 14 calendar days from delivery      (a key term the run named)
+    check p2, p4: finance signs off the limits
+    conflict: the build needs 30 days, the summary says 14
+
+The markers keep working beside them.
 """
 
 from __future__ import annotations
@@ -143,6 +156,143 @@ def labelled(text: str) -> list[dict[str, Any]]:
     return pieces
 
 
+# ── plain lines ─────────────────────────────────────────────────────────────
+
+#: What may start a line before its label: a list bullet, or bold.
+_LEAD = r"^[ \t]*(?:[-*•][ \t]+)?\**"
+#: What may sit between a label's value and the reason after it: a hyphen, an
+#: en or em dash, a colon, a comma or a semicolon.
+_THEN = r"[ \t]*(?:[-–—:,;][ \t]*)?"  # noqa: RUF001
+
+#: ``B: 20 - why``, ``B (Ship at once…): 20 - why`` or ``B = 20, why``: one
+#: option's rating and its reason, with the option's name in brackets if given.
+_RATING_LINE = re.compile(
+    _LEAD
+    + r"(?:option[ \t]+)?([A-Z])\**(?:[ \t]*\([^)\n]*\))?\**[ \t]*[:=][ \t]*(\d{1,3})\b(?!%)"
+    + _THEN
+    + r"(.*)$",
+    re.MULTILINE,
+)
+#: ``bad: 10 - why`` / ``ideal: 95``: a reference outcome's rating.
+_ANCHOR_LINE = re.compile(
+    _LEAD + r"(bad|ideal)\**[ \t]*[:=][ \t]*(\d{1,3})\b" + _THEN + r"(.*)$",
+    re.MULTILINE | re.IGNORECASE,
+)
+#: ``why: <reason>``: why an option is proposed; the option is what comes before.
+_WHY_LINE = re.compile(_LEAD + r"why\**[ \t]*:[ \t]*", re.MULTILINE | re.IGNORECASE)
+#: ``constraint: text`` or ``constraint (pricing): text``: a typed point.
+_POINT_LINE = re.compile(
+    _LEAD
+    + r"(objective|constraint|assumption|sub[ _-]?goal|deliverable|out[ _-]of[ _-]scope)\**"
+    + r"[ \t]*(?:\(([^)\n]*)\))?[ \t]*:[ \t]*(.+)$",
+    re.MULTILINE | re.IGNORECASE,
+)
+#: ``check p2, p4: how``: a check of the points it names.
+_CHECK_LINE = re.compile(
+    _LEAD + r"check\**[ \t]+((?:p\d+[ \t]*,?[ \t]*)+)\**[ \t]*:[ \t]*(.+)$",
+    re.MULTILINE | re.IGNORECASE,
+)
+#: ``term <word>: meaning``: a meaning for a word the run didn't name.
+_TERM_LINE = re.compile(
+    _LEAD + r"term[ \t]+([^:\n]{1,60}?)\**[ \t]*:[ \t]*(.+)$", re.MULTILINE | re.IGNORECASE
+)
+#: ``conflict: what``: work that doesn't fit what was agreed.
+_CONFLICT_LINE = re.compile(_LEAD + r"conflict\**[ \t]*:[ \t]*(.+)$", re.MULTILINE | re.IGNORECASE)
+
+
+def _reason(text: str) -> str:
+    return text.strip().strip("*").strip()
+
+
+def rating_lines(text: str) -> dict[str, tuple[int, str]]:
+    """Every ``B: 20 - why`` line in ``text``: ``{letter: (rating, reason)}``.
+
+    The last line for a letter wins. A rating over 100 is dropped, never
+    clamped; a reason may be empty."""
+    found: dict[str, tuple[int, str]] = {}
+    for match in _RATING_LINE.finditer(text):
+        value = _rating(match.group(2))
+        if value is not None:
+            found[match.group(1)] = (value, _reason(match.group(3)))
+    return found
+
+
+def anchor_lines(text: str) -> dict[str, tuple[int, str]]:
+    """``{"bad": (rating, reason), "ideal": (rating, reason)}`` as far as ``text`` says."""
+    found: dict[str, tuple[int, str]] = {}
+    for match in _ANCHOR_LINE.finditer(text):
+        value = _rating(match.group(2))
+        if value is not None:
+            found[match.group(1).lower()] = (value, _reason(match.group(3)))
+    return found
+
+
+def split_why(text: str) -> tuple[str, str]:
+    """``(the option, why it's proposed)``: what comes before a ``why:`` line,
+    and that line to the end. No ``why:`` line is all option and no reason."""
+    match = _WHY_LINE.search(text)
+    if match is None:
+        return text.strip(), ""
+    return text[: match.start()].strip(), _reason(text[match.end() :])
+
+
+#: ``term: <word>``: a key term named, with no meaning yet.
+_NAMED_TERM = re.compile(_LEAD + r"term\**[ \t]*:[ \t]*(.+)$", re.MULTILINE | re.IGNORECASE)
+
+
+def term_names(text: str) -> list[str]:
+    """The key terms ``text`` names on ``term: <word>`` lines, as written.
+    A name is a word or a short phrase, so anything long is left out."""
+    names = [_reason(m.group(1)).strip("`\"'") for m in _NAMED_TERM.finditer(text)]
+    return [n for n in names if n and len(n) <= 60]
+
+
+def conflict_lines(text: str) -> list[str]:
+    """What each ``conflict:`` line in ``text`` says."""
+    return [_reason(m.group(1)) for m in _CONFLICT_LINE.finditer(text) if _reason(m.group(1))]
+
+
+def _point_type(raw: str) -> str:
+    word = re.sub(r"[ -]+", "_", raw.strip().lower())
+    return "sub_goal" if word in ("subgoal", "sub_goal") else word
+
+
+def plain_pieces(text: str, terms: list[str] | None = None) -> list[dict[str, Any]]:
+    """The pieces ``text`` states in plain lines, in the order written: typed
+    points, checks, and meanings of the run's key ``terms`` (or of any word
+    after ``term``)."""
+    found: list[tuple[int, dict[str, Any]]] = []
+    for m in _POINT_LINE.finditer(text):
+        piece: dict[str, Any] = {"label": _point_type(m.group(1)), "text": _reason(m.group(3))}
+        about = (m.group(2) or "").strip()
+        if about:
+            piece["about"] = about
+        found.append((m.start(), piece))
+    for m in _CHECK_LINE.finditer(text):
+        covers = [c.lower() for c in re.findall(r"p\d+", m.group(1), re.IGNORECASE)]
+        found.append((m.start(), {"label": "check", "covers": covers, "text": _reason(m.group(2))}))
+    for m in _TERM_LINE.finditer(text):
+        found.append(
+            (m.start(), {"label": "term", "term": m.group(1).strip(), "text": _reason(m.group(2))})
+        )
+    named: list[str] = [t.strip() for t in (terms or []) if t.strip()]
+    if named:
+        longest_first = sorted(named, key=lambda t: len(t), reverse=True)
+        alternatives = "|".join(re.escape(t) for t in longest_first)
+        line = re.compile(
+            _LEAD + rf"({alternatives})\**[ \t]*:[ \t]*(.+)$", re.MULTILINE | re.IGNORECASE
+        )
+        taken = {start for start, _p in found}
+        for m in line.finditer(text):
+            if m.start() in taken:
+                continue
+            word = next(t for t in named if t.strip().lower() == m.group(1).strip().lower())
+            found.append(
+                (m.start(), {"label": "term", "term": word.strip(), "text": _reason(m.group(2))})
+            )
+    return [p for _start, p in sorted(found, key=lambda sp: sp[0]) if p["text"]]
+
+
 #: The opening of a marker, where it can't be one: what is defanged in stored text.
 _OPENING_RE = re.compile(r"\[\[(?=\s*mycelium\s*:)", re.IGNORECASE)
 
@@ -223,23 +373,39 @@ def _a_piece(raw: Any) -> dict[str, Any] | None:
     return None
 
 
-def pieces_of(content: dict[str, Any]) -> list[dict[str, Any]]:
+def pieces_of(content: dict[str, Any], terms: list[str] | None = None) -> list[dict[str, Any]]:
     """The labelled pieces a transcript record states, in the order written.
 
-    Read like :func:`scores_of`: the message payload first (the reply route lifted
-    the labels there), then the markers still in the prose (a person typing
-    into the thread). Only well-formed pieces count.
+    The markers' pieces come from the message payload (the reply route lifted
+    them there) or, failing that, from markers still in the prose (a person
+    typing into the thread). The plain lines in the prose are added to those,
+    with meanings of the run's key ``terms``. Only well-formed pieces count.
     """
     payload = ((content.get("l9") or {}).get("payload") or {}).get("data") or {}
     lifted = payload.get("pieces") if isinstance(payload, dict) else None
-    if isinstance(lifted, list):
-        found = [p for p in (_a_piece(raw) for raw in lifted) if p is not None]
-        if found:
-            return found
     text = content.get("content")
-    if not isinstance(text, str):
-        return []
-    return labelled(text)
+    text = text if isinstance(text, str) else ""
+    found = (
+        [p for p in (_a_piece(raw) for raw in lifted) if p is not None]
+        if isinstance(lifted, list)
+        else []
+    )
+    if not found and text:
+        found = labelled(text)
+    seen = {(p["label"], p["text"]) for p in found}
+    found += [p for p in plain_pieces(text, terms) if (p["label"], p["text"]) not in seen]
+    return found
+
+
+def rated_of(content: dict[str, Any]) -> dict[str, tuple[int, str]]:
+    """The option ratings a transcript record states, each with its reason:
+    ``{letter: (0-100, why)}``. A marker's rating carries no reason; a plain
+    ``B: 20 - why`` line does, and wins over a marker for the same letter."""
+    found = {k: (v, "") for k, v in scores_of(content).items()}
+    text = content.get("content")
+    if isinstance(text, str):
+        found.update(rating_lines(text))
+    return found
 
 
 def scores_of(content: dict[str, Any]) -> dict[str, int]:
@@ -261,13 +427,16 @@ def scores_of(content: dict[str, Any]) -> dict[str, int]:
             and not isinstance(v, bool)
             and 0 <= v <= 100
         }
-        if found:
-            return found
+    else:
+        found = {}
     text = content.get("content")
     if not isinstance(text, str):
-        return {}
-    parsed, _clean = parse_marker(text)
-    return dict(parsed.get("scores") or {})
+        return found
+    if not found:
+        parsed, _clean = parse_marker(text)
+        found = dict(parsed.get("scores") or {})
+    found.update({k: v for k, (v, _why) in rating_lines(text).items()})
+    return found
 
 
 def stance_of(content: dict[str, Any]) -> str | None:

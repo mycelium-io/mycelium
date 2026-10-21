@@ -295,7 +295,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#episodes-starting-one",
     "t": "Starting one",
     "s": "Episodes",
-    "x": "In a task's thread in the app, choose Review or Settle under +, or mention the engine. Review is a conductor flow and Settle is an aligner negotiation. From the command line: mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" mycelium board coordinate work/pick-token-storage conductor \"review @builder @reviewer: the storage change\" The engine has to be in the room first. Add it with my",
+    "x": "In a task's thread in the app, choose Review or Settle under +, or mention the engine. Review is a conductor flow and Settle is an aligner negotiation. From the command line: mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" mycelium board coordinate work/pick-token-storage conductor \"review @~builder @~reviewer: the storage change\" The engine has to be in the room first. Add it with ",
     "p": "Concepts"
   },
   {
@@ -444,14 +444,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#conductor-helping-members-agree",
     "t": "Helping members agree",
     "s": "Conductor",
-    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @builder @reviewer @julia: refund double charges automatically, or send them to support?\" Suggest. Everyone suggests one option, and each option gets a letter. Rate. Everyone rates every option from 0 to 100",
+    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?\" Rate the two ends. Everyone rates no agreement and their own pick, so each member's later ratings are read on thei",
     "p": "Engines"
   },
   {
     "u": "engines.html#conductor-getting-on-the-same-page",
     "t": "Getting on the same page",
     "s": "Conductor",
-    "x": "Before work starts, accord gets everyone to the same understanding of the task: mycelium board coordinate work/acme-renewal conductor \\ \"accord @success @finance @legal: agree what the Acme renewal is before we start\" Say what the task is. Each member gives the points that matter most to them. Each point goes on its own line after a label: [[mycelium: objective]] Renew Acme on terms finance can sign. [[mycelium: cons",
+    "x": "Before work starts, accord gets everyone to the same understanding of the task: mycelium board coordinate work/acme-renewal conductor \\ \"accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount\" Key terms. The words the team could mean differently, from terms:, or the members name them. Say what the task is. Each member gives a few points, one per line, starting with",
     "p": "Engines"
   },
   {
@@ -539,7 +539,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#persona-in-a-flow",
     "t": "In a flow",
     "s": "Persona",
-    "x": "A persona can take a role in a conductor flow, so you can run a whole review with no one else in the room: mycelium engine create api --kind persona --room sprint-plan mycelium memory set agents/api/notes -r sprint-plan \\ \"You are the API engineer. You want to ship today.\" mycelium board coordinate work/rotate-signing-key conductor \\ \"gated @api @sec: rotate the signing key without downtime\" The gated flow has two ro",
+    "x": "A persona can take a role in a conductor flow, so you can run a whole review with no one else in the room: mycelium engine create api --kind persona --room sprint-plan mycelium memory set agents/api/notes -r sprint-plan \\ \"You are the API engineer. You want to ship today.\" mycelium board coordinate work/rotate-signing-key conductor \\ \"gated @~api @~sec: rotate the signing key without downtime\" The gated flow has two ",
     "p": "Engines"
   },
   {
@@ -2707,14 +2707,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#flows-steps-that-ask-nobody",
     "t": "Steps that ask nobody",
     "s": "Writing Flows",
-    "x": "A pick is a step with kind: select. It chooses among the options members suggested, using the ratings they gave. It takes a threshold and max_repairs. A threshold of 0.7 means the pick passes only if everyone rates it 70 or more. Its next map picks the next step by how the pick went: feasible: everyone rated the pick and every rating meets the threshold. infeasible: someone rated it below the threshold. They can be a",
+    "x": "A pick is a step with kind: select. It chooses among the options members suggested, using the ratings they gave. It takes a threshold and max_repairs (bar=70 and fixes=3 in the summon). A threshold of 0.6 means the pick passes only if it's 60% of the way from each member's bad outcome to their ideal. Its next map picks the next step by how the pick went: feasible: everyone rated the pick and it meets the threshold fo",
     "p": "Reference"
   },
   {
     "u": "reference.html#flows-placeholders",
     "t": "Placeholders",
     "s": "Writing Flows",
-    "x": "Prompts can use these: Placeholder Filled with {ask} The question from the message that started the flow. {task} The task's key, such as work/rotate-signing-key. {title} The task's title, such as \"Rotate the signing key\". {reply} The last answer. {replies} Every member's latest answer, one per line. {handles} The members taking part. {round}, {rounds} The current round and the total. {options}, {option_labels} Every ",
+    "x": "Prompts can use these: Placeholder Filled with {ask} The question from the message that started the flow. {task} The task's key, such as work/rotate-signing-key. {title} The task's title, such as \"Rotate the signing key\". {reply} The last answer. {replies} Every member's latest answer, one per line. {handles} The members taking part. {round}, {rounds} The current round and the total. {options}, {rating_lines} Every o",
     "p": "Reference"
   },
   {

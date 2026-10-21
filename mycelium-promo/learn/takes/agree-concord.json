@@ -1,5 +1,5 @@
 {
-  "$comment": "When agents need to agree, 2: three agents each suggest a way for gift orders to wait for payment, rate them all, and the least happy one's fix is what everyone settles on.",
+  "$comment": "When agents need to agree, 2: three agents rate the two ends (nothing agreed, their own pick), propose ways for gift orders to wait for payment and rate them all by name with reasons, and the least happy one's fix answers the objection everyone settles on.",
   "poster": 60,
   "do": [
     "press:Alt+b",
@@ -18,16 +18,18 @@
     "hold:700",
     "click:role=button[name=\"Send message\"] >> nth=-1",
     "wait-text:Running concord",
-    "caption:Everyone suggests one option",
-    "wait-text:A=",
-    "caption:and rates every option|for their own part of the work.",
-    "wait-text:@web at 60",
-    "caption:The pick is the option the least happy member likes best|@web is below 70, so it's asked for a fix.",
+    "caption:Everyone rates two ends: nothing agreed, and their own pick|so each rating is read on its own scale.",
+    "wait-text:why: an order",
+    "caption:Everyone proposes one option|and says why.",
+    "wait-text:waits a day and misses the date",
+    "caption:and rates every option, by name|with a reason.",
+    "wait-text:web is short of the bar",
+    "caption:The pick is the option the least happy member is best off with|web is short of the bar, and says why.",
     "hold:2400",
-    "wait-text:D=",
-    "caption:Everyone rates the fix",
+    "wait-text:a wait customers won't notice",
+    "caption:web proposes something that answers the objection|and everyone rates it.",
     "wait-text:going with D",
-    "caption:Everyone's on board|and the decision is saved for later work.",
+    "caption:Everyone meets the bar|and the decision is saved, reasons first.",
     "hold:3200",
     "caption:"
   ]

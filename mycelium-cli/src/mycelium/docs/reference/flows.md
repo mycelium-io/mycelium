@@ -61,9 +61,11 @@ Other options:
 - `wait: none` asks without waiting for an answer.
 - `max_steps` limits how many steps a run can take. A step counts once however
   many members it asks. The thread's "turn 2 of 6" counts the same steps.
-- `collect: options` makes each reply an option. `collect: scores` records each
-  reply's ratings. `collect: pieces` merges each reply's labeled points, words
-  and checks into the shared summary being built.
+- `collect: options` makes each reply an option, with its `why:` line.
+  `collect: scores` records each reply's ratings and their reasons.
+  `collect: anchors` records the ratings of the two ends. `collect: keywords`
+  records the key terms members name. `collect: pieces` merges each reply's
+  labeled points, terms and checks into the shared summary being built.
 - `require: stance`, `require: scores` or `require: pieces` asks once more for a
   reply that's missing it. A stance still missing after that counts as a
   rejection. A reply that still has no labels is kept as written.
@@ -72,14 +74,17 @@ Other options:
 
 A **pick** is a step with `kind: select`. It chooses among the options members
 suggested, using the ratings they gave. It takes a `threshold` and
-`max_repairs`. A threshold of 0.7 means the pick passes only if everyone rates
-it 70 or more. Its `next` map picks the next step by how the pick went:
+`max_repairs` (`bar=70` and `fixes=3` in the summon). A threshold of 0.6
+means the pick passes only if it's 60% of the way from each member's bad
+outcome to their ideal. Its `next` map picks the next step by how the pick
+went:
 
-- `feasible`: everyone rated the pick and every rating meets the threshold.
-- `infeasible`: someone rated it below the threshold. They can be asked for a
-  fix (`to: bottleneck`).
+- `feasible`: everyone rated the pick and it meets the threshold for each.
+- `infeasible`: someone is short of it. The least happy can be asked for a fix
+  (`to: bottleneck`).
 - `stuck`: a fix can't help. Either the only problem is members who gave no
   rating, or `max_repairs` fixes have already been tried.
+- `nothing`: there are no options to pick from.
 - `default`.
 
 A step with `end: converged` is only allowed right after a pick, as its
@@ -112,11 +117,12 @@ Prompts can use these:
 | `{replies}` | Every member's latest answer, one per line. |
 | `{handles}` | The members taking part. |
 | `{round}`, `{rounds}` | The current round and the total. |
-| `{options}`, `{option_labels}` | Every option so far, as `A. …` lines, and the marker to rate them with, such as `A=.. B=..`. |
-| `{new_options}`, `{new_labels}` | The options no one has rated yet, and the marker to rate them with. |
+| `{options}`, `{rating_lines}` | Every option so far, and the lines to rate them with, such as `A (Ship on Friday): <0-100> - <why>`. |
+| `{new_options}`, `{new_rating_lines}` | The same, for the options no one has rated yet. |
 | `{pick}`, `{scores}` | The best option so far, and the last pick's scorecard. |
-| `{shortfall}` | What the least happy member is short by, such as "You rated option B 38; the bar is 70". |
+| `{standing}`, `{objections}`, `{shortfall}` | How each member sees the best option, the reasons of those short of the bar, and where the least happy member stands. |
+| `{bad}`, `{ideal}`, `{bar_said}` | The two ends, and the bar said in terms of them. |
 | `{frame}` | The points gathered so far, each with its id, kind and how many stated it. |
-| `{terms}` | The words members defined, with any used in different senses side by side. |
+| `{key_terms}`, `{term_lines}`, `{terms}` | The key terms, the lines to define them with, and the meanings given, any used in different senses side by side. |
 | `{checks}` | The checks members gave, with the points each covers. |
 | `{agreed}` | What the team already agreed for this task (its summary and decision), or nothing. |

@@ -2200,9 +2200,10 @@ export interface FlowStep {
   prompt?: string;
   wait?: "reply" | "none";
   rounds?: number;
-  /** What the replies add to the run: suggestions, ratings of them, or
-   *  pieces of the shared summary (points and the meanings of words). */
-  collect?: "options" | "scores" | "pieces" | null;
+  /** What the replies add to the run: suggestions, ratings of them, ratings
+   *  of the two reference outcomes, the key terms, or pieces of the shared
+   *  summary (points and the meanings of words). */
+  collect?: "options" | "scores" | "anchors" | "keywords" | "pieces" | null;
   /** What every reply must carry; a reply without it is asked once more. */
   require?: "stance" | "scores" | "pieces" | null;
   /** A select step's bar, 0-1, and how many fixes it sends for. */
@@ -2243,7 +2244,7 @@ export interface FlowTraceEntry {
   stance?: string | null;
   /** A select step's pick: how it went, and who is short. */
   select?: {
-    outcome: "feasible" | "infeasible" | "stuck";
+    outcome: "feasible" | "infeasible" | "stuck" | "nothing";
     pick: string | null;
     lowest: number | null;
     missing: string[];

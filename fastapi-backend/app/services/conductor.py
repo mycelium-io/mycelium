@@ -88,6 +88,10 @@ _NOT_A_REPLY = frozenset(
     }
 )
 
+#: How alike a fix and an option already on the table can be before the fix
+#: counts as the same option (with the embedding model; without it, equal text).
+REPEAT_SIMILARITY = 0.92
+
 #: A handle named in a summon, loud, silent (``@~``) or interrupting (``@!``).
 _MENTION = re.compile(r"@[~!]?[\w.@-]+")
 _LEADING_PUNCT = re.compile(r"^[\s:,;\u2014\u2013-]+")
@@ -109,6 +113,62 @@ def split_directive(text: str) -> tuple[str, str]:
     name = words[0].strip(":,;").lower()
     ask = _LEADING_PUNCT.sub("", " ".join(words[1:])).strip()
     return name, ask
+
+
+@dataclass
+class Settings:
+    """What a summon sets for its run, beside the question: the bar (0-1), how
+    many fixes, the two reference outcomes, and the key terms."""
+
+    bar: float | None = None
+    fixes: int | None = None
+    bad: str = ""
+    ideal: str = ""
+    terms: list[str] = field(default_factory=list)
+
+
+#: The two ends a concord is measured between when the summon names none:
+#: no agreement at all, and each member's own choice.
+DEFAULT_BAD = "no agreement: nothing is decided and the task stays open"
+DEFAULT_IDEAL = "your own pick: the option you'd choose if it were up to you alone"
+
+_BAR = re.compile(r"\bbar\s*[=:]\s*(\d{1,3})\s*%?", re.IGNORECASE)
+_FIXES = re.compile(r"\bfixes\s*[=:]\s*(\d{1,2})\b", re.IGNORECASE)
+#: ``bad: …``, ``ideal: …`` and ``terms: …``, each running to the next of them.
+_LABELLED = re.compile(r"\b(bad|ideal|terms)\s*:\s*", re.IGNORECASE)
+
+
+def run_settings(ask: str) -> tuple[str, Settings]:
+    """``(the question, what the summon set)`` from a summon's ask.
+
+    ``bar=60`` (a percentage) and ``fixes=3`` can sit anywhere in it.
+    ``bad: …``, ``ideal: …`` and ``terms: a, b`` run to the next of them or the
+    end, so they go after the question: ``decide the renewal offer bad: we lose
+    Acme ideal: Acme renews for three years at full price``.
+    """
+    found = Settings()
+    if m := _BAR.search(ask):
+        value = int(m.group(1))
+        if 0 < value <= 100:
+            found.bar = value / 100
+        ask = ask[: m.start()] + ask[m.end() :]
+    if m := _FIXES.search(ask):
+        found.fixes = int(m.group(1))
+        ask = ask[: m.start()] + ask[m.end() :]
+    marks = list(_LABELLED.finditer(ask))
+    if marks:
+        for i, mark in enumerate(marks):
+            stop = marks[i + 1].start() if i + 1 < len(marks) else len(ask)
+            value = ask[mark.end() : stop].strip().rstrip(".,;")
+            kind = mark.group(1).lower()
+            if kind == "terms":
+                found.terms = [t.strip() for t in re.split(r"[,;]", value) if t.strip()][:5]
+            elif kind == "bad":
+                found.bad = value
+            else:
+                found.ideal = value
+        ask = ask[: marks[0].start()]
+    return re.sub(r"\s+", " ", ask).strip().rstrip(",;"), found
 
 
 class _Fields(dict[str, str]):
@@ -144,6 +204,16 @@ class Run:
     #: ``{member: {letter: 0-100}}``, the ratings given so far; a later rating
     #: of the same option replaces the earlier one.
     ratings: dict[str, dict[str, int]] = field(default_factory=dict)
+    #: ``{member: {letter: why}}``, the reason each rating came with.
+    reasons: dict[str, dict[str, str]] = field(default_factory=dict)
+    #: What the summon set: the bar, the fixes, the reference outcomes, the terms.
+    settings: Settings = field(default_factory=Settings)
+    #: ``{member: (bad, ideal)}``, each member's ratings of the two reference outcomes.
+    anchors: dict[str, tuple[int, int]] = field(default_factory=dict)
+    #: The key terms of an accord run, from the summon or as members named them.
+    key_terms: list[str] = field(default_factory=list)
+    #: Members who were refused a fix that repeated an option, so it's once each.
+    repeat_refused: set[str] = field(default_factory=set)
     #: Options before this index have been put to a rating round already.
     rated_upto: int = 0
     #: The latest select step's result, and how many picks the run has made.
@@ -151,9 +221,9 @@ class Run:
     picks: int = 0
     #: How many times each select step has sent it back for a fix.
     repairs: dict[str, int] = field(default_factory=dict)
-    #: Who was least happy at the first sending back, and their rating then,
-    #: so an agreement can say how far a fix moved them.
-    first_short: tuple[str, int] | None = None
+    #: Who was least happy at the first sending back, and their objection then,
+    #: so an agreement can say what the fixes answered.
+    first_short: tuple[str, str] | None = None
     #: Who didn't answer the last step taken, for the close to name.
     quiet: list[str] = field(default_factory=list)
     #: The points, words and checks members labelled, merged as they arrive.
@@ -197,9 +267,64 @@ class Run:
         """Options no rating round has seen yet."""
         return self.options[self.rated_upto :]
 
+    def bar(self) -> float:
+        """The bar this run holds every member to, 0-1: the summon's, else the
+        flow's select step's, else the default. Fixed for the run."""
+        if self.settings.bar is not None:
+            return self.settings.bar
+        select = next((s for s in self.protocol.steps if s.kind == "select"), None)
+        if select is not None and select.threshold is not None:
+            return select.threshold
+        return protocols.DEFAULT_THRESHOLD
+
+    def fixes(self, step: Step) -> int:
+        """How many fixes a select step may send for: the summon's, else its own."""
+        if self.settings.fixes is not None:
+            return self.settings.fixes
+        return step.max_repairs if step.max_repairs is not None else protocols.DEFAULT_MAX_REPAIRS
+
+    def bar_said(self) -> str:
+        """The bar in terms of the two reference outcomes, never as a bare number."""
+        if self.settings.bad in ("", DEFAULT_BAD) and self.settings.ideal in ("", DEFAULT_IDEAL):
+            return (
+                f"The bar: the option picked has to be at least {round(self.bar() * 100)}% of the "
+                "way from no agreement to each member's own pick, for every member."
+            )
+        bad = self.settings.bad or "the bad outcome"
+        ideal = self.settings.ideal or "the ideal one"
+        return (
+            f"The bar: the option picked has to be at least {round(self.bar() * 100)}% of the "
+            f"way from *{bad}* to *{ideal}* for every member."
+        )
+
+    def _listed(self, options: list[choosing.Option]) -> str:
+        """Options as raters read them: each with why its proposers proposed it."""
+        lines = []
+        for o in options:
+            lines.append(f"{o.label}. {o.text}")
+            lines += [f"   why ({h}): {w}" for h, w in o.why.items() if w]
+        return "\n".join(lines)
+
+    def objections(self) -> str:
+        """What the members short of the bar said about the pick, in their words."""
+        pick = self.last_pick or {}
+        label = pick.get("pick")
+        why = (pick.get("reasons") or {}).get(label, {}) if label else {}
+        lines = [
+            f"- {s['member']}: {s.get('why') or 'gave no reason'}" for s in pick.get("short") or []
+        ]
+        others = [
+            h
+            for h in self.handles
+            if h in why and h not in {s["member"] for s in pick.get("short") or []}
+        ]
+        lines += [f"- {h} (meets the bar): {why[h]}" for h in others]
+        return "\n".join(lines) or "- (no reasons given)"
+
     def fields(self, *, round_n: int = 1, rounds: int = 1) -> _Fields:
         said = [(h, self.replies[h]) for h in self.handles if self.replies.get(h)]
         fresh = self.new_options()
+        pick = self.last_pick or {}
         return _Fields(
             ask=self.ask,
             reply=self.recent,
@@ -212,10 +337,25 @@ class Run:
             option_labels=" ".join(f"{o.label}=.." for o in self.options),
             round=str(round_n),
             rounds=str(rounds),
-            options="\n".join(f"{o.label}. {o.text}" for o in self.options) or "(none yet)",
-            new_options="\n".join(f"{o.label}. {o.text}" for o in fresh) or "(none)",
+            options=self._listed(self.options) or "(none yet)",
+            new_options=self._listed(fresh) or "(none)",
             new_labels=" ".join(f"{o.label}=.." for o in fresh),
+            # Each line carries the option's name, so a reply reads as what it
+            # rates, not as a bare letter.
+            rating_lines=_rating_lines(self.options, self.options),
+            new_rating_lines=_rating_lines(fresh, self.options),
             scores=choosing.scorecard(self.last_pick) if self.last_pick else "",
+            standing="\n".join(f"- {v}" for v in choosing.views(pick, pick["pick"]))
+            if pick.get("pick")
+            else "",
+            objections=self.objections(),
+            bad=self.settings.bad or "the bad outcome",
+            ideal=self.settings.ideal or "the ideal outcome",
+            bar=str(round(self.bar() * 100)),
+            bar_said=self.bar_said(),
+            key_terms=", ".join(self.key_terms) or "(none named)",
+            term_lines="\n".join(f"{t}: <what you mean, with units>" for t in self.key_terms)
+            or "term <word>: <what you mean, with units>",
             # The best option so far in full: a fix revises it, so it has to
             # see what earlier fixes put in.
             pick=(
@@ -223,7 +363,7 @@ class Run:
                 if self.last_pick and self.last_pick.get("pick")
                 else ""
             ),
-            threshold=str((self.last_pick or {}).get("threshold", 70)),
+            threshold=str(round(self.bar() * 100)),
             shortfall=self.shortfall(),
             frame=framing.show_points(self.frame, self.handles),
             # Grouping meanings can call the embedding model, so the words are
@@ -234,13 +374,19 @@ class Run:
         )
 
     def shortfall(self) -> str:
-        """What the least happy member is short by, said to them."""
+        """Where the least happy member stands on the pick, said to them in words."""
         pick = self.last_pick or {}
         least = pick.get("least_happy")
         if not least:
             return ""
-        rating = (pick.get("ratings") or {}).get(least)
-        return f"You rated option {pick.get('pick')} {rating}; the bar is {pick.get('threshold')}"
+        at = (pick.get("standing") or {}).get(least)
+        why = ((pick.get("reasons") or {}).get(pick.get("pick"), {}) or {}).get(least, "")
+        said = choosing.verdict(at, self.bar())
+        because = f", because {choosing.mid_sentence(why)}" if why else ""
+        return (
+            f"For you, {choosing.pick_named(pick)} is "
+            f"{said}{because}. You're the one furthest from the bar."
+        )
 
     def flow(self) -> dict[str, Any]:
         """The flow as the episode record carries it: the graph plus the cast."""
@@ -325,6 +471,13 @@ def bind_roles(protocol: Protocol, handles: list[str]) -> dict[str, str] | None:
     if len(handles) < len(protocol.roles):
         return None
     return dict(zip(protocol.roles, handles, strict=False))
+
+
+def _rating_lines(options: list[choosing.Option], every: list[choosing.Option]) -> str:
+    """The lines a member fills in to rate ``options``, each naming its option
+    by a name no other option in ``every`` (the run's options) shares."""
+    names = choosing.option_names([(o.label, o.text) for o in every])
+    return "\n".join(f"{choosing.named(o.label, o.text, names)}: <0-100> - <why>" for o in options)
 
 
 def _sentence(text: str) -> str:
@@ -570,6 +723,7 @@ class ConductorEngine:
         # episode of its own — the same slice, with the flow and the trace on
         # it — so the task stays one row and one thread.
         row = tasks.row_of_episode(room, thread)
+        ask, set_by_summon = run_settings(ask)
         run = Run(
             protocol=protocol,
             ask=ask,
@@ -579,7 +733,14 @@ class ConductorEngine:
             task=row[0] if row else "",
             title=row[1] if row else "",
             similar=self.similarity(),
+            settings=set_by_summon,
+            key_terms=list(set_by_summon.terms),
         )
+        # The two ends any agreement is measured between: no agreement at all,
+        # and each member's own choice. They need nobody to write them; a
+        # summon's `bad:` / `ideal:` names others in their place.
+        run.settings.bad = run.settings.bad or DEFAULT_BAD
+        run.settings.ideal = run.settings.ideal or DEFAULT_IDEAL
         if not run.similar:
             run.frame.similarity = False
         # What the team agreed earlier in this task, so a later flow builds on it.
@@ -668,8 +829,32 @@ class ConductorEngine:
 
     @classmethod
     def _opening(cls, run: Run) -> str:
-        """The first line of a run: who plays what, and the graph about to be walked."""
-        return f"Running {run.protocol.name} with {cls._cast(run)}.\n\n{protocols.describe(run.protocol)}"
+        """The first line of a run: who plays what, what it holds them to, and
+        the graph about to be walked.
+
+        A run that picks says its bar here, before anyone rates, in terms of
+        the two reference outcomes, and how many fixes it allows; a run that
+        fixes key terms names them, or says the members will."""
+        said = [f"Running {run.protocol.name} with {cls._cast(run)}."]
+        select = next((s for s in run.protocol.steps if s.kind == "select"), None)
+        if select is not None:
+            said.append(run.bar_said())
+            default = run.settings.bar is None and select.threshold == protocols.DEFAULT_THRESHOLD
+            if default:
+                said.append(
+                    "That's the default bar; `bar=NN` in the summon sets another. It stays "
+                    "the same for the whole run."
+                )
+            said.append(
+                f"Up to {run.fixes(select)} fixes; then the best option found stands, saying "
+                "who is still short and why."
+            )
+        if any(s.collect == "keywords" for s in run.protocol.steps):
+            if run.key_terms:
+                said.append(f"The key terms: {', '.join(run.key_terms)}.")
+            else:
+                said.append("The members will name the key terms first.")
+        return " ".join(said) + f"\n\n{protocols.describe(run.protocol)}"
 
     async def _walk(
         self, managed: ManagedRoomChannel, run: Run, ep: episode_state.EpisodeState, me: str
@@ -722,6 +907,19 @@ class ConductorEngine:
                 )
                 step = protocol.step(step.edge(None))
                 continue
+            if step.collect == "keywords" and run.key_terms:
+                # The summon named the key terms, so nobody is asked for them.
+                ep.trace.append(
+                    {
+                        "step": step.id,
+                        "turn": run.steps_taken,
+                        "skipped": "the summon named the key terms",
+                        "next": step.edge(None),
+                        "at": datetime.now(UTC).isoformat(),
+                    }
+                )
+                step = protocol.step(step.edge(None))
+                continue
             if run.steps_taken >= cap:
                 return "rejected", f"hit the step cap ({cap}) at `{step.id}`"
             run.steps_taken += 1
@@ -766,18 +964,21 @@ class ConductorEngine:
             run.options,
             run.handles,
             run.ratings,
-            step.threshold if step.threshold is not None else protocols.DEFAULT_THRESHOLD,
+            run.bar(),
             repairs_done=done,
-            max_repairs=step.max_repairs
-            if step.max_repairs is not None
-            else protocols.DEFAULT_MAX_REPAIRS,
+            max_repairs=run.fixes(step),
+            anchors=run.anchors,
+            reasons=run.reasons,
         )
+        if not run.options:
+            record["outcome"] = "nothing"
         outcome = record["outcome"]
         if outcome == "infeasible":
             run.repairs[step.id] = done + 1
             least = record["least_happy"]
             if run.first_short is None and least:
-                run.first_short = (least, record["ratings"][least])
+                why = (record.get("reasons") or {}).get(record["pick"], {}).get(least, "")
+                run.first_short = (least, why)
         run.last_pick = record
         edges = step.next if isinstance(step.next, dict) else {}
         nxt = edges.get(outcome) or edges.get("default")
@@ -973,7 +1174,8 @@ class ConductorEngine:
             items = [f["text"] for f in made["flags"]]
             listed = "\n".join(f"- {t}" for t in items) or "- None."
             where = (
-                f"Saved as [[{key}]]."
+                f"Saved as [[{key}]]. Later work in this task is held to it; a line "
+                "starting `conflict:` in this thread adds to its open items."
                 if saved
                 else "The shared summary could not be saved; it is in this thread."
             )
@@ -990,19 +1192,36 @@ class ConductorEngine:
     async def _save_decision(
         self, managed: ManagedRoomChannel, run: Run, ep: episode_state.EpisodeState, me: str
     ) -> None:
-        """Save the option everyone agreed on to the room's memory, the way a
-        shared summary is saved, so the work that follows can read it."""
+        """Save the option the run ended on to the room's memory, the way a
+        shared summary is saved, so the work that follows can read it.
+
+        It leads with reasons: the option, how each member sees it and why, and
+        for a best found rather than an agreement, who is still short and why.
+        The numbers come last, for anyone checking the arithmetic."""
         pick = run.last_pick or {}
         run.saving = True
         key = agreed.decision_key(run.task or ep.short_id)
         ratings = pick.get("ratings") or {}
-        rated = ", ".join(f"{h} {r}" for h, r in ratings.items())
-        options = "\n".join(f"- {o['label']}. {o['text']}" for o in pick.get("options") or [])
+        agreed_by_all = pick.get("outcome") == "feasible"
+        label = str(pick.get("pick") or "")
+        options = []
+        for o in pick.get("options") or []:
+            options.append(f"- **{o['label']}.** {o['text']}")
+            options += [f"  - why ({h}): {w}" for h, w in (o.get("why") or {}).items() if w]
+        verdict = (
+            "Everyone meets the bar."
+            if agreed_by_all
+            else f"Best found, below the bar: {choosing.summary(pick)}"
+        )
+        views = "\n".join(f"- {v}" for v in choosing.views(pick, label))
+        considered = "\n".join(options)
         body = (
             f"# Decision: {run.title or run.task or 'this task'}\n\n"
-            f"Going with {pick.get('pick')}: {pick.get('text')}\n\n"
-            f"Ratings: {rated} (the bar was {pick.get('threshold')}).\n\n"
-            f"## Options considered\n\n{options}\n"
+            f"Going with {label}: {pick.get('text')}\n\n{verdict}\n\n"
+            f"{run.bar_said()}\n\n"
+            f"## How each member sees it\n\n{views}\n\n"
+            f"## Options considered\n\n{considered}\n\n"
+            f"## The numbers\n\n{choosing.numbers(pick)}\n"
         )
         saved = await agreed.save(
             managed.room,
@@ -1010,10 +1229,15 @@ class ConductorEngine:
             body=body,
             meta={
                 agreed.DECISION_META: {
-                    "pick": pick.get("pick"),
+                    "pick": label,
                     "text": pick.get("text"),
+                    "agreed": agreed_by_all,
                     "threshold": pick.get("threshold"),
+                    "outcomes": {"bad": run.settings.bad, "ideal": run.settings.ideal},
+                    "views": choosing.views(pick, label) if label else [],
+                    "short": pick.get("short") or [],
                     "ratings": ratings,
+                    "standing": pick.get("standing") or {},
                     "options": pick.get("options") or [],
                     "cast": list(run.handles),
                 },
@@ -1041,11 +1265,14 @@ class ConductorEngine:
         A step that collects adds what the replies carried to the run; one that
         requires something asks, once, whoever replied without it.
         """
+        before = len(run.options)
         stances = await self._ask(managed, run, ep, me, step, cap)
         replied = set(run.answers)
         if step.collect == "pieces":
             run.added = 0
         await self._gather(managed, run, me, step, list(run.answers))
+        if step.collect == "options" and step.to == protocols.BOTTLENECK:
+            await self._refuse_a_repeat(managed, run, ep, me, step, cap, before)
         lacking = self._lacking(run, step, stances)
         if lacking and run.steps_taken < cap:
             stances = await self._reask(managed, run, ep, me, step, cap, lacking, stances)
@@ -1059,24 +1286,142 @@ class ConductorEngine:
             stances = [(h, "reject" if h in replied and s is None else s) for h, s in stances]
         return stances
 
+    async def _refuse_a_repeat(
+        self,
+        managed: ManagedRoomChannel,
+        run: Run,
+        ep: episode_state.EpisodeState,
+        me: str,
+        step: Step,
+        cap: int,
+        before: int,
+    ) -> None:
+        """A fix has to be something new. One that is an option already on the
+        table, or nearly the same text, is taken back and the fixer is asked
+        once more for something that answers the objections. A second repeat
+        stands: the next rating round, or the lack of one, says what it's worth."""
+        fixer = next(iter(run.targets(step)), None)
+        if fixer is None or fixer not in run.answers or fixer in run.repeat_refused:
+            return
+        if run.steps_taken >= cap:
+            return
+        added = run.options[before:]
+        if added:
+            newest = added[-1]
+            same = await asyncio.to_thread(self._near, run, newest.text, run.options[:before])
+            if same is not None:
+                run.options.pop()
+        else:
+            prose = markers.MARKER_RE.sub("", run.replies.get(fixer, "")).strip()
+            option, _why = markers.split_why(prose)
+            same = (
+                next((o for o in run.options if choosing.same_text(o.text, option)), None)
+                if option
+                else None
+            )
+        if same is None:
+            return
+        run.repeat_refused.add(fixer)
+        run.steps_taken += 1
+        prompt = (
+            f"{run.protocol.name} · {step.id} (again) · turn {run.steps_taken} of {cap} · {fixer}\n\n"
+            f"That's option {same.label} again, or very close to it. A fix has to be "
+            "something new that answers these objections, not the same option or a small "
+            f"change to it:\n\n{run.objections()}\n\nReply with the option, then a line "
+            "saying what it answers and how:\n\n<the option>\nwhy: <what it answers>"
+        )
+        self._manager.hold_floor(managed.room, run.episode, holder=me, speakers=[fixer])
+        run.answers = {}
+        line = turn_line(run, step, fixer, cap=cap, round_n=1) | {"again": True}
+        await self._turn(
+            managed,
+            ep,
+            me,
+            run,
+            fixer,
+            prompt,
+            {"step": step.id, "protocol": run.protocol.name, LINE_KEY: line},
+        )
+        await self._gather(managed, run, me, step, list(run.answers))
+        ep.trace.append(
+            {
+                "step": step.id,
+                "turn": run.steps_taken,
+                "again": True,
+                "asked": [fixer],
+                "repeat_of": same.label,
+                "at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+    @staticmethod
+    def _near(run: Run, text: str, options: list[choosing.Option]) -> choosing.Option | None:
+        """The option ``text`` repeats: the same words, or (with the embedding
+        model) a near-identical meaning."""
+        for o in options:
+            if choosing.same_text(o.text, text):
+                return o
+        if run.similar is None:
+            return None
+        for o in options:
+            try:
+                if float(run.similar(o.text, text)) >= REPEAT_SIMILARITY:
+                    return o
+            except Exception:
+                logger.warning(
+                    "similarity unavailable; repeats checked by text only", exc_info=True
+                )
+                return None
+        return None
+
     def _collect(self, run: Run, step: Step, answered: list[str]) -> None:
-        """Add what the replies of ``answered`` carried: options in cast order
-        (whatever order they arrived in), or ratings of the options on the table."""
+        """Add what the replies of ``answered`` carried, in cast order (whatever
+        order they arrived in): options with why they were proposed, ratings of
+        the options on the table with their reasons, ratings of the two
+        reference outcomes, or the key terms members named."""
         order = [h for h in run.handles if h in answered]
         if step.collect == "options":
             for handle in order:
                 # The prose without any marker; a reply that was only a marker
-                # suggested nothing, so it puts nothing on the table.
+                # proposed nothing, so it puts nothing on the table.
                 prose = markers.MARKER_RE.sub("", run.replies.get(handle, "")).strip()
-                if prose:
-                    choosing.add_option(run.options, prose, handle)
+                option, why = markers.split_why(prose)
+                if option:
+                    choosing.add_option(run.options, option, handle, why)
         elif step.needs == "scores":
             labels = {o.label for o in run.options}
             for handle in order:
-                given = markers.scores_of(run.answers[handle])
+                given = markers.rated_of(run.answers[handle])
                 kept = {k: v for k, v in given.items() if k in labels}
                 if kept:
-                    run.ratings.setdefault(handle, {}).update(kept)
+                    run.ratings.setdefault(handle, {}).update({k: v for k, (v, _w) in kept.items()})
+                    run.reasons.setdefault(handle, {}).update(
+                        {k: w for k, (_v, w) in kept.items() if w}
+                    )
+        elif step.collect == "anchors":
+            for handle in order:
+                said = markers.anchor_lines(run.replies.get(handle, ""))
+                if "bad" in said and "ideal" in said and said["ideal"][0] > said["bad"][0]:
+                    run.anchors[handle] = (said["bad"][0], said["ideal"][0])
+        elif step.collect == "keywords":
+            run.key_terms = self._key_terms(run, order)
+
+    @staticmethod
+    def _key_terms(run: Run, order: list[str]) -> list[str]:
+        """The key terms members named (``term: …`` lines), the most named first
+        and then in the order they were first named; five at most."""
+        named: dict[str, tuple[str, int, int]] = {}
+        for handle in order:
+            seen: set[str] = set()
+            for text in markers.term_names(run.replies.get(handle, "")):
+                key = text.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                shown, count, first = named.get(key, (text, 0, len(named)))
+                named[key] = (shown, count + 1, first)
+        ranked = sorted(named.values(), key=lambda v: (-v[1], v[2]))
+        return [shown for shown, _c, _f in ranked[:5]]
 
     async def _gather(
         self, managed: ManagedRoomChannel, run: Run, me: str, step: Step, answered: list[str]
@@ -1089,7 +1434,7 @@ class ConductorEngine:
             self._collect(run, step, answered)
             return
         order = [h for h in run.handles if h in answered]
-        replies = [(h, markers.pieces_of(run.answers[h])) for h in order]
+        replies = [(h, markers.pieces_of(run.answers[h], run.key_terms)) for h in order]
         folded = await asyncio.to_thread(framing.fold, run.frame, replies, similar=run.similar)
         run.added += len(folded.added)
         if folded.notes:
@@ -1102,7 +1447,7 @@ class ConductorEngine:
         whole as one unlabelled statement by its writer: never lost, never
         guessed into a type."""
         for handle in lacking:
-            if handle in run.answers and markers.pieces_of(run.answers[handle]):
+            if handle in run.answers and markers.pieces_of(run.answers[handle], run.key_terms):
                 continue
             text = markers.MARKER_RE.sub("", run.replies.get(handle, "")).strip()
             if not text:
@@ -1123,16 +1468,22 @@ class ConductorEngine:
                 h
                 for h in run.handles
                 if h in run.answers
-                and not markers.pieces_of(run.answers[h])
+                and not markers.pieces_of(run.answers[h], run.key_terms)
                 and markers.MARKER_RE.sub("", run.replies.get(h, "")).strip()
             ]
         if step.needs == "scores":
+            # A rating has to come with its reason: the reason is the argument.
             wanted = {o.label for o in run.new_options()}
             return [
                 h
                 for h in run.handles
-                if h in run.answers and not wanted <= set(run.ratings.get(h, {}))
+                if h in run.answers
+                and not (
+                    wanted <= set(run.ratings.get(h, {})) and wanted <= set(run.reasons.get(h, {}))
+                )
             ]
+        if step.needs == "anchors":
+            return [h for h in run.handles if h in run.answers and h not in run.anchors]
         if step.needs == "stance":
             return [h for h, s in stances if s is None and h in run.answers]
         return []
@@ -1154,20 +1505,26 @@ class ConductorEngine:
             # Restate what's being rated: the re-ask arrives on its own, and a
             # member can't rate options it can't see.
             fresh = run.new_options()
-            labels = " ".join(f"{o.label}=.." for o in fresh)
-            listed = "\n".join(f"{o.label}. {o.text}" for o in fresh)
+            lines = _rating_lines(fresh, run.options)
             ask = (
-                f"I couldn't read your ratings of these options:\n\n{listed}\n\n"
-                "Rate each 0-100 for your role and end your reply with "
-                f"[[mycelium: {labels}]], one number per option."
+                "I couldn't read a rating with a reason for each of these options:\n\n"
+                f"{run._listed(fresh)}\n\nRate each for your role, on the scale you rated "
+                f"the two outcomes on, one line each with your reason:\n\n{lines}"
+            )
+        elif step.needs == "anchors":
+            ask = (
+                "I couldn't read your ratings of the two outcomes, or your ideal wasn't "
+                f"rated above the bad one.\n\nbad: {run.settings.bad}\nideal: "
+                f"{run.settings.ideal}\n\nRate each from 0 to 100 on your own scale, "
+                "one line each, with why:\n\nbad: <0-100> - <why>\nideal: <0-100> - <why>"
             )
         elif step.needs == "pieces":
             ask = (
-                "I couldn't find a label in your reply, so I can't tell what kind of "
-                "point each part is. Say it again with each point on its own line after "
-                "a label, like [[mycelium: constraint]] the limit. The labels are "
-                f"{', '.join(markers.POINT_TYPES)}. Whatever you send without a label "
-                "is kept as you wrote it."
+                "I couldn't find a labelled line in your reply, so I can't tell what kind "
+                "of point each part is. Say it again with each point on its own line, "
+                "starting with what kind it is, like `constraint: the limit`. The kinds "
+                f"are {', '.join(markers.POINT_TYPES)}. Whatever you send without one is "
+                "kept as you wrote it."
             )
         else:
             ask = (
@@ -1372,7 +1729,9 @@ class ConductorEngine:
         commit carries no ``assignments`` for the compile seam to turn into work.
         """
         pick = run.last_pick
-        if outcome == "converged" and pick is not None and pick.get("pick"):
+        if outcome in ("converged", "resolved") and pick is not None and pick.get("pick"):
+            # An agreement, or the best found when the fixes ran out: either way
+            # it's the answer the run gives, saved for the work that follows.
             await self._save_decision(managed, run, ep, me)
         data: dict[str, Any] = {
             "protocol": run.protocol.name,
@@ -1385,11 +1744,13 @@ class ConductorEngine:
         metrics = None
         if pick is not None:
             data["select"] = pick
-            given: dict[str, int] = pick.get("ratings") or {}
-            if given:
+            # Satisfaction is where each member placed the pick between its own
+            # bad and ideal outcomes, so one member's number means what another's does.
+            standing: dict[str, float] = pick.get("standing") or {}
+            if standing:
                 metrics = {
-                    "satisfaction": {h: r / 100 for h, r in given.items()},
-                    "min_satisfaction": min(given.values()) / 100,
+                    "satisfaction": dict(standing),
+                    "min_satisfaction": min(standing.values()),
                 }
                 data["metrics"] = metrics
         if run.saving:
@@ -1450,15 +1811,19 @@ class ConductorEngine:
             )
         label, text = pick["pick"], pick["text"]
         if outcome == "converged":
-            moved = ""
+            answered = ""
             if run.first_short is not None:
-                who, before = run.first_short
-                after = (pick.get("ratings") or {}).get(who)
-                if after is not None:
-                    moved = f" {who} went from {before} to {after}."
+                who, objection = run.first_short
+                if objection:
+                    answered = f" It answers {who}'s objection: {_sentence(objection)}"
             return (
-                f"✓ Everyone's on board: going with {label}: {_sentence(text)}{moved}"
+                f"✓ Everyone meets the bar: going with {label}: {_sentence(text)}{answered}"
                 f"{_saved(run, 'decision')}"
+            )
+        if outcome == "resolved":
+            return (
+                f"Best found: {label}: {_sentence(text)} It's below the bar for some: "
+                f"{choosing.summary(pick)}{_saved(run, 'decision')}"
             )
         return (
             f"✗ Couldn't get everyone there. Best was {label}: {_sentence(text)} "

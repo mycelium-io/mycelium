@@ -642,7 +642,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="episodes-starting-one">Starting one</h2>
       <p>In a task&#x27;s thread in the app, choose <strong>Review</strong> or <strong>Settle</strong> under <strong>+</strong>, or mention the engine. Review is a conductor flow and Settle is an aligner negotiation. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on token storage&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;review @builder @reviewer: the storage change&quot;</span></code></pre>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;review @~builder @~reviewer: the storage change&quot;</span></code></pre>
       <p>The engine has to be in the room first. Add it with <code>mycelium engine create</code>.</p>
       <h2 id="episodes-what-an-episode-doesnt-change">What an episode doesn&#x27;t change</h2>
       <ul>

@@ -345,8 +345,8 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> conductor <span class="flag">--kind</span> conductor <span class="flag">--room</span> sprint-plan
 
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
-  <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
-      <p>The message starts with the flow&#x27;s name. Then come the members in the order of the flow&#x27;s roles, and then the question. Here <code>api</code> is the proposer and <code>sec</code> is the guardian. A flow always runs on a task in that task&#x27;s thread. To see the flows a room can run, use <code>mycelium engine invoke conductor &quot;list&quot;</code>.</p>
+  <span class="str">&quot;gated @~api @~sec: rotate the signing key without downtime&quot;</span></code></pre>
+      <p>The message starts with the flow&#x27;s name. Then come the members in the order of the flow&#x27;s roles, and then the question. Here <code>api</code> is the proposer and <code>sec</code> is the guardian. Write the members as <code>@~name</code>: that names them for the flow without waking them, and the conductor wakes each one when it&#x27;s their turn. A plain <code>@</code> wakes all of them at once, and their early replies are refused. A flow always runs on a task in that task&#x27;s thread. To see the flows a room can run, use <code>mycelium engine invoke conductor &quot;list&quot;</code>.</p>
       <h2 id="conductor-built-in-flows">Built-in flows</h2>
       <div class="table-wrap">
         <table>
@@ -402,35 +402,31 @@
       <h2 id="conductor-helping-members-agree">Helping members agree</h2>
       <p>Sometimes members disagree about how to do a task and there are a few clear options. <code>concord</code> gets them to one they can all live with:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> decisions/double-charge-refunds conductor \
-  <span class="str">&quot;concord @builder @reviewer @julia: refund double charges automatically, or send them to support?&quot;</span></code></pre>
+  <span class="str">&quot;concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?&quot;</span></code></pre>
       <ol class="steps">
-        <li><strong>Suggest.</strong> Everyone suggests one option, and each option gets a letter.</li>
-        <li><strong>Rate.</strong> Everyone rates every option from 0 to 100 from their own point of view. They all rate at the same time, so nobody sees the others&#x27; ratings first. A rating looks like <code>[[mycelium: A=82 B=41]]</code>.</li>
-        <li><strong>Pick.</strong> The pick is the option the least happy member likes best, so nobody&#x27;s view is ignored. The pick is calculated from the ratings. No model makes it.</li>
-        <li><strong>Fix, if needed.</strong> If someone rated the pick below 70, that member suggests a fix and everyone rates it.</li>
-        <li><strong>Stop.</strong> It stops as soon as everyone rates the pick 70 or more. It also stops after two fixes or when the only problem is someone who isn&#x27;t answering.</li>
+        <li><strong>Rate the two ends.</strong> Everyone rates no agreement and their own pick, so each member&#x27;s later ratings are read on their own scale.</li>
+        <li><strong>Propose.</strong> Everyone proposes one option, with a <code>why:</code> line.</li>
+        <li><strong>Rate.</strong> Everyone rates every option, one line each, with a reason: <code>B (Ship on Friday): 40 - the Friday window breaks certification</code>.</li>
+        <li><strong>Pick.</strong> The pick is the option the least happy member is best off with, calculated from the ratings, not by a model. It has to be 60% of the way from no agreement to each member&#x27;s own pick (<code>bar=70</code> sets another).</li>
+        <li><strong>Fix, if needed.</strong> The least happy member proposes something new that answers the others&#x27; objections, and everyone rates it. After 5 fixes (<code>fixes=3</code> sets another), the best option found stands.</li>
       </ol>
-      <p>After each rating round the thread shows a scorecard. When everyone agrees, the decision is saved to the room&#x27;s memory under <code>context/decision/</code>. It&#x27;s named after the task without its <code>work/</code> prefix. A missing rating is never guessed. It counts against the option it&#x27;s missing from.</p>
+      <p>The thread shows how each member sees the pick and why, with the numbers a click away. The result is saved under <code>context/decision/</code>, named after the task without its <code>work/</code> prefix, saying who is short of the bar and why. A missing rating counts against the option it&#x27;s missing from.</p>
       <p>For agents that hold positions rather than pick between options, the <a href="#aligner">aligner</a> negotiates instead.</p>
       <h2 id="conductor-getting-on-the-same-page">Getting on the same page</h2>
       <p>Before work starts, <code>accord</code> gets everyone to the same understanding of the task:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/acme-renewal conductor \
-  <span class="str">&quot;accord @success @finance @legal: agree what the Acme renewal is before we start&quot;</span></code></pre>
+  <span class="str">&quot;accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount&quot;</span></code></pre>
       <ol class="steps">
-        <li><strong>Say what the task is.</strong> Each member gives the points that matter most to them. Each point goes on its own line after a label:
-      <pre><code>[[mycelium: objective]] Renew Acme on terms finance can sign.
-[[mycelium: constraint about=pricing]] A discount of at most 15%.
-[[mycelium: out_of_scope]] Changing the product tier.</code></pre>
-      <p>The labels are <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> and <code>out_of_scope</code>. <code>about=</code> says what a point is about.</p>
+        <li><strong>Key terms.</strong> The words the team could mean differently, from <code>terms:</code>, or the members name them.</li>
+        <li><strong>Say what the task is.</strong> Each member gives a few points, one per line, starting with its kind: <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> or <code>out_of_scope</code>.
+      <pre><code>objective: Renew Acme on terms finance can sign.
+constraint (pricing): A discount of at most 15%.</code></pre>
         </li>
-        <li><strong>Merge.</strong> Points that say the same thing are combined, and each one keeps track of who said it. Everyone adds what&#x27;s missing. This repeats for up to three rounds, until a round brings nothing new. The thread numbers the points <code>p1</code>, <code>p2</code> and so on.</li>
-        <li><strong>Define the words.</strong> Everyone says what they mean by any word they use in a specific sense and how they&#x27;d check a point:
-      <pre><code>[[mycelium: term=renewal]] The same product for a new 12-month term.
-[[mycelium: check covers=p1,p2]] Finance signs the order form.</code></pre>
-        </li>
-        <li><strong>Save.</strong> The shared summary is saved to the room&#x27;s memory under <code>context/summary/</code>. It&#x27;s named after the task without its <code>work/</code> prefix, so here it&#x27;s <code>context/summary/acme-renewal</code>. It ends with what&#x27;s still open. That includes points only one person made, conflicting points, words used in different senses and anyone who didn&#x27;t answer.</li>
+        <li><strong>Merge.</strong> Points that say the same thing are combined, keeping who said them, and everyone adds what&#x27;s missing, once.</li>
+        <li><strong>Terms and checks.</strong> Everyone says what each key term means, with units, and how they&#x27;d confirm points (<code>check p1, p2: Finance signs the order form.</code>). Each check belongs to its writer. A term meant two ways is restated once, and both meanings are kept.</li>
+        <li><strong>Save.</strong> The summary goes to <code>context/summary/</code>, named after the task, and ends with what&#x27;s still open.</li>
       </ol>
-      <p>Everything that runs on the task afterwards sees the summary. Running <code>accord</code> again updates it.</p>
+      <p>Later work in the task is told what the summary says. A line starting <code>conflict:</code> in the task&#x27;s thread adds to its open items. Running <code>accord</code> again updates it.</p>
       <h2 id="conductor-who-can-take-part">Who can take part</h2>
       <p>Any member can fill a role, including your own agent, a <a href="#persona">persona</a>, a <a href="#worker">worker</a> or you. To take a role yourself, put your own handle in the message. When it&#x27;s your turn, reply in the task&#x27;s thread in the app. From a terminal, you take your turn the way an agent does:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--handle</span> julia
@@ -597,7 +593,7 @@
   <span class="str">&quot;You are the API engineer. You want to ship today.&quot;</span>
 
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
-  <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
+  <span class="str">&quot;gated @~api @~sec: rotate the signing key without downtime&quot;</span></code></pre>
       <p>The <code>gated</code> flow has two roles. Here <code>api</code> is the proposer and <code>sec</code> is the guardian. <code>sec</code> keeps rejecting until the proposal includes a rollback plan. Everything happens in the task&#x27;s thread.</p>
       <h2 id="persona-things-to-know">Things to know</h2>
       <ul>

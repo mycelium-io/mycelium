@@ -2,8 +2,8 @@
 
 Concord gets a team from a few real options to one they can all live with.
 The answer isn't whoever spoke first or loudest. It's the option the least
-happy member likes best, so nobody's view is ignored, and that's calculated
-from ratings, not chosen by a model.
+happy member is best off with, calculated from ratings, not chosen by a model.
+Every rating comes with a reason, and the reasons are what the thread shows.
 
 Start it in the task's thread, naming who takes part:
 
@@ -16,32 +16,27 @@ Or from a terminal:
 
 ```bash
 mycelium board coordinate work/gift-payments conductor \
-  "concord @pm @web @api: how should a gift order wait for its payment?"
+  "concord @~pm @~web @~api: how should a gift order wait for its payment?"
 ```
 
 It runs like this:
 
-1. **Suggest.** Each member suggests one option, in a sentence or two. Each
-   option gets a letter.
-2. **Rate.** Everyone rates every option from 0 to 100 for their own part of
-   the work, at the same time, so nobody sees the others' ratings first. A
-   rating ends the reply as `[[mycelium: A=82 B=41 C=60]]`.
-3. **Pick.** The pick is the option whose lowest rating is highest. The thread
-   shows a scorecard: every option, every member's rating, and the pick.
-4. **Fix, if needed.** If anyone rated the pick below 70, that member is asked
-   for a revised version they could rate 70 or more, changing as little as
-   they can. Everyone rates the revision, and the pick is made again.
-5. **Stop.** It stops as soon as everyone rates the pick 70 or more. It also
-   stops after two fixes, or when the only thing missing is a member who
-   isn't answering.
+1. **Rate the two ends.** Everyone rates no agreement and their own pick, so
+   their later ratings are read on their own scale.
+2. **Propose.** Each member proposes one option, with a `why:` line.
+3. **Rate.** Everyone rates every option at the same time, one line each,
+   naming the option, with a reason:
+   `B (Ship at once, and cancel…): 35 - gifts ordered the day before would miss their date`.
+4. **Pick.** The pick is the option the least happy member is best off with.
+   It has to be 60% of the way from no agreement to each member's own pick.
+5. **Fix, if needed.** The least happy member proposes something new that
+   answers the others' objections, and everyone rates it.
 
-When everyone's on board, the decision is saved to the room's memory as
-`context/decision/<task>`, here `context/decision/gift-payments`, and the
-thread ends with the option it went with. Later work on the task sees it, so
-nobody has to argue it again. If two fixes still leave someone below 70, the
-run ends without a decision and says so, and nothing is saved as agreed. A
-missing rating is never guessed: it counts against the option it's missing
-from.
+It stops when the pick meets everyone's bar. After five fixes, the best option
+found stands, and the thread says who is still short and why. Either way it's
+saved as `context/decision/<task>`, here `context/decision/gift-payments`, and
+later work on the task is told it. A missing rating is never guessed: it
+counts against the option it's missing from.
 
 Concord is for real alternatives. If the members don't yet agree on what the
 task is, their options won't be about the same thing; run accord first. And

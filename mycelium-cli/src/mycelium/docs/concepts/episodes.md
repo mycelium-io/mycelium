@@ -21,7 +21,7 @@ negotiation. From the command line:
 
 ```bash
 mycelium board coordinate work/pick-token-storage aligner "agree on token storage"
-mycelium board coordinate work/pick-token-storage conductor "review @builder @reviewer: the storage change"
+mycelium board coordinate work/pick-token-storage conductor "review @~builder @~reviewer: the storage change"
 ```
 
 The engine has to be in the room first. Add it with `mycelium engine create`.

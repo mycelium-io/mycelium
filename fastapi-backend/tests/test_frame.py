@@ -140,6 +140,40 @@ def test_equal_meanings_agree_and_different_ones_are_contested_never_merged():
     assert lead["status"] == "agreed"
 
 
+def test_one_sense_said_several_ways_is_one_sense_and_two_senses_stay_apart():
+    """Meanings are compared at the meaning bar (lower than for points), and a
+    meaning joins a sense when it matches anyone already in it."""
+    scores = {
+        frozenset({"End date, signed.", "Deadline to sign."}): 0.88,
+        frozenset({"Deadline to sign.", "Date it must be in effect."}): 0.87,
+        frozenset({"End date, signed.", "Date it must be in effect."}): 0.80,
+        frozenset({"List price.", "End date, signed."}): 0.60,
+    }
+
+    def similar(x: str, y: str) -> float:
+        return scores.get(frozenset({x, y}), 0.5)
+
+    frame = framing.Frame()
+    framing.fold(
+        frame,
+        [
+            ("a", [{"label": "term", "term": "renewal date", "text": "End date, signed."}]),
+            ("b", [{"label": "term", "term": "renewal date", "text": "Deadline to sign."}]),
+            (
+                "c",
+                [{"label": "term", "term": "renewal date", "text": "Date it must be in effect."}],
+            ),
+            ("a", [{"label": "term", "term": "standard terms", "text": "List price."}]),
+            ("b", [{"label": "term", "term": "standard terms", "text": "The template."}]),
+        ],
+        similar=similar,
+    )
+    assert [m for _t, m in framing.senses(frame, "renewal date", similar)] == [["a", "b", "c"]]
+    assert framing.contested(frame, similar) == ["standard terms"]
+    # 0.88 is a sense for meanings, but under the bar for folding two points.
+    assert framing.MEANING_THRESHOLD <= 0.88 < framing.SIMILARITY_THRESHOLD
+
+
 def test_similarity_folds_near_duplicates_and_its_failure_falls_back_once():
     calls: list[tuple[str, str]] = []
 

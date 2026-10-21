@@ -34,7 +34,7 @@ mycelium memory set agents/api/notes -r sprint-plan \
   "You are the API engineer. You want to ship today."
 
 mycelium board coordinate work/rotate-signing-key conductor \
-  "gated @api @sec: rotate the signing key without downtime"
+  "gated @~api @~sec: rotate the signing key without downtime"
 ```
 
 The `gated` flow has two roles. Here `api` is the proposer and `sec` is the

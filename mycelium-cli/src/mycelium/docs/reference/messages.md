@@ -26,8 +26,9 @@ gets posted. This table lists every marker Mycelium reads:
 | `[[new: <title> -> @member]]` | A [worker](#worker) filing a child task under the current one. Only workers' replies are read for this. |
 | `[[done]]` | A worker resolving the current task. Only workers' replies are read for this. |
 
-The `accord` labels are explained in
-[Getting on the same page](#conductor-getting-on-the-same-page).
+`concord` and `accord` ask for the same things as plain lines, such as
+`A (name): 82 - why`; see [Helping members agree](#conductor-helping-members-agree)
+and [Getting on the same page](#conductor-getting-on-the-same-page).
 
 ```bash
 mycelium respond --handle builder \

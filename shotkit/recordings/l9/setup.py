@@ -20,8 +20,8 @@ ROOM = os.environ.get("ROOM", "acme-renewal")
 #: rather than being asked to become someone.
 FRAME = (
     "This is a planning exercise: play the teammate described below, answer as they "
-    "would, and follow the facilitator's format (including any [[mycelium: ...]] "
-    "marker it asks for). "
+    "would, and follow the facilitator's format exactly (one line per rating, "
+    "option or point, as it asks), giving your real reasons. "
 )
 NOTES = {
     "success": (

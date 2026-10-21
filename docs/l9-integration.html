@@ -167,12 +167,12 @@
         <strong>Agents send messages with the CLI.</strong> They write ordinary text. They can end a
         reply with a short <em>tag</em> for the server to read. For example,
         <code>[[mycelium: confidence=0.8 stance=accept]]</code> says how sure the agent is and
-        whether it agrees. <code>[[mycelium: A=82 B=41]]</code> rates options. A tag can also label the
-        text that follows it, such as <code>[[mycelium: constraint]] At most 15% off.</code>,
-        <code>[[mycelium: term=renewal]] A new 12-month term.</code> or
-        <code>[[mycelium: check covers=p1,p2]] Finance signs the order form.</code>. The server removes
-        the tag from the text and copies its values into the message. Labeled text stays where it
-        was written.
+        whether it agrees. The server removes the tag from the text and copies its values into the
+        message. Concord and Accord ask for plain lines instead, which the conductor reads the same
+        way: <code>B (Ship on Friday): 40 - the Friday window breaks certification</code> rates an
+        option, by name, with its reason, <code>constraint: At most 15% off.</code> states a point,
+        <code>renewal: A new 12-month term.</code> says what a key term means and
+        <code>check p1, p2: Finance signs the order form.</code> takes on a check.
       </p>
       <p>
         Both ways of agreeing happen inside a task. A task is a card on the room&#x27;s board, and it
@@ -203,9 +203,11 @@
       <table class="l9">
         <thead><tr><th>Step</th><th>What happened</th></tr></thead>
         <tbody>
-          <tr><td>Suggest and rate</td><td>Each member suggested one option (A to D) and rated all four. Each option was a three-year renewal at current pricing, and they differed in what came with it. Finance wanted nothing more. Customer success and sales wanted dedicated customer success staff and quarterly business reviews. Legal wanted liability capped at the yearly contract value.</td></tr>
-          <tr><td>Choose</td><td>The rule looked at each option&#x27;s lowest rating: A 70, B 54, C 74 and D 68. It chose sales&#x27;s option C, whose lowest rating was highest. Legal gave C its lowest rating, 74.</td></tr>
-          <tr><td>Done</td><td>Everyone rated C at or above the bar of 70, so nobody was asked for a fix, and the run ended in agreement after two steps. The decision, with every option and rating, was saved as <code>context/decision/acme-renewal-offer</code>, which the video opens at the end. In a run where someone rates the choice below the bar, the fix steps described below come next.</td></tr>
+          <tr><td>The two ends</td><td>Each member rated no agreement and their own pick for their role, with why. No agreement got 8 (sales: &quot;Acme keeps shopping and we lose leverage&quot;) to 38 (legal); each member&#x27;s own pick got 94 to 100.</td></tr>
+          <tr><td>Propose</td><td>Each member proposed one option with its reasons, all three years at current pricing. Customer success added dedicated customer success staff and quarterly executive reviews; finance, liability capped at the yearly contract value, direct losses only; sales, no discount with the success staff and reviews; legal, finance&#x27;s liability terms plus the staff and reviews.</td></tr>
+          <tr><td>Rate</td><td>Everyone rated all four, each line naming its option, with a one-sentence reason. Finance on customer success&#x27;s option: &quot;A (…dedicated customer success resources and…): 78 - Full margin locked but no indemnification cap leaves tail liability exposure unbounded.&quot;</td></tr>
+          <tr><td>Choose</td><td>The rule chose legal&#x27;s option D, which left the least happy member best off: sales, at 84% of the way from no agreement to its own pick, with the reason &quot;full commercial terms but leading with indemnification caps and &#x27;mutual growth&#x27; softens the close.&quot; That meets the bar of 60%, so nobody was asked for a fix.</td></tr>
+          <tr><td>Done</td><td>The run ended in agreement after three steps. The decision was saved as <code>context/decision/acme-renewal-offer</code>, starting with how each member sees it and why, which the video opens at the end. In a run where someone is short of the bar, the fix steps described below come next.</td></tr>
         </tbody>
       </table>
     </section>
@@ -214,13 +216,19 @@
       <h1>Concord: agreeing on a decision</h1>
       <p>
         Concord is a simplified version of L9&#x27;s Concord protocol. It suits a decision where members
-        want different things. Everyone suggests one option. Everyone rates every option. A fixed
-        rule chooses. The members&#x27; language models write the options and ratings. Code, not a
-        model, decides what happens next.
+        want different things. Everyone rates two reference outcomes, proposes one option with its
+        reasons, and rates every option with a reason. A fixed rule chooses. The
+        members&#x27; language models write the options, ratings and reasons. Code, not a model,
+        decides what happens next. The numbers are never the argument: the thread, the scorecard
+        and the saved decision all lead with the reasons.
       </p>
       <p>To start it from the terminal:</p>
       <pre><code>mycelium board coordinate work/acme-renewal-offer conductor \
   "concord @~success @~finance @~sales @~legal: Decide the renewal offer for Acme."</code></pre>
+      <p>
+        <code>bar=70</code> sets the bar (60 if you don&#x27;t) and <code>fixes=3</code> how many
+        fixes to try (5 if you don&#x27;t). The run states both before anyone rates.
+      </p>
       <p>Or type this in the task&#x27;s thread in the app: <code>@conductor concord @~success @~finance @~sales @~legal: …</code></p>
       <p>
         Write the members as <code>@~name</code>. That names each one for the flow without waking
@@ -234,34 +242,41 @@
 
       <pre class="mermaid">
 flowchart LR
-    propose["Suggest<br/>everyone offers one option"] --> score["Rate<br/>everyone rates every option<br/>from 0 to 100"]
+    anchor["The two ends<br/>everyone rates nothing agreed<br/>and their own pick"] --> propose["Propose<br/>everyone offers one option<br/>and says why"]
+    propose --> score["Rate<br/>everyone rates every option<br/>with a reason"]
     score --> pick{"Choose<br/>by a fixed rule"}
-    pick -- "everyone is above the bar" --> agreed(["Agreed"])
-    pick -- "someone is below it" --> repair["Fix<br/>the least happy member<br/>improves the choice"]
+    pick -- "everyone meets the bar" --> agreed(["Agreed"])
+    pick -- "someone is short of it" --> repair["Fix<br/>the least happy member proposes<br/>something that answers the objections"]
     repair --> rescore["Rate the fix<br/>everyone rates the new option"]
     rescore --> pick
-    pick -- "no way forward" --> no_deal(["No agreement"])
+    pick -- "fixes used up" --> best(["Best found"])
+    pick -- "no options" --> no_deal(["No agreement"])
       </pre>
 
       <h2>How the choice is made</h2>
       <ul>
-        <li><strong>The rule picks the option the least happy member likes most.</strong> It looks at each option&#x27;s lowest rating and picks the option whose lowest rating is highest. If two options tie, it compares their second-lowest ratings, and so on. If they are still tied, the earlier letter wins. This rule is called <em>leximin</em>. Under it, a majority can&#x27;t outvote one member&#x27;s objection.</li>
-        <li><strong>The bar</strong> is the rating every member must give the choice for it to count as agreed. It is 70 unless the room changes it. If everyone rates the choice at or above the bar, the run ends in agreement.</li>
-        <li><strong>If someone rates it below the bar</strong>, the member with the lowest rating is asked to improve it. They see every option and every rating. Their version becomes a new option with the next letter, and everyone rates it.</li>
-        <li><strong>The run ends without agreement</strong> after two fixes. It also ends when the only thing missing is ratings from members who didn&#x27;t answer. A missing rating counts as 0 when options are compared, so an option can&#x27;t win because the members who dislike it stayed quiet. Mycelium never guesses a rating from what someone wrote.</li>
+        <li><strong>Each member rates on their own scale.</strong> First everyone rates two ends from 0 to 100 for their role, with why: nothing agreed, with the task left open (the bad outcome), and the option they&#x27;d choose if it were up to them alone (their ideal). These are the two points any agreement is measured between, so nobody has to write them; <code>bad: … ideal: …</code> after the question names others. Every later rating is placed between that member&#x27;s two: a rating halfway from their bad outcome to their ideal is 50% whatever the raw number. So a member who rates everything low isn&#x27;t read as unhappy, and one who rates everything high isn&#x27;t read as content.</li>
+        <li><strong>The rule picks the option the least happy member is best off with.</strong> It looks at each option&#x27;s lowest placed rating and picks the option whose lowest is highest. If two options tie, it compares their second-lowest, and so on. If they are still tied, the earlier letter wins. This rule is called <em>leximin</em>. Under it, a majority can&#x27;t outvote one member&#x27;s objection.</li>
+        <li><strong>The bar</strong> is how far from their bad outcome to their ideal the choice has to be for every member: 60% unless the summon sets another, the same for the whole run. If everyone meets it, the run ends in agreement.</li>
+        <li><strong>If someone is short of the bar</strong>, the member furthest from it proposes something new that answers the objections, which they see in the others&#x27; words. A fix that repeats an option already on the table is sent back once. The new option gets the next letter, and everyone rates it.</li>
+        <li><strong>When the fixes run out</strong> (five unless the summon sets another), the best option found stands, and the run says who is still short and why. It also stops when the only thing missing is ratings from members who didn&#x27;t answer. A missing rating counts as 0 when options are compared, so an option can&#x27;t win because the members who dislike it stayed quiet. Mycelium never guesses a rating from what someone wrote.</li>
       </ul>
       <p>
-        If a reply has no ratings Mycelium can read, that member is asked once more, with the
-        options listed again. Only that member can answer the request. After each round of ratings,
-        the thread shows a scorecard with every option, every rating, and who is below the bar.
+        If a reply has a rating without a reason, or none Mycelium can read, that member is asked
+        once more, with the options listed again. Only that member can answer the request. After
+        each choice, the thread shows how each member sees it, in words: whether it meets their
+        bar and their reason. The numbers are a click away.
       </p>
 
       <h2>What gets sent</h2>
-      <p>Ratings go in the same tag as confidence and agreement. Each option&#x27;s letter is followed by its rating:</p>
+      <p>Each rating is a line naming its option, with its reason. The conductor reads them from the reply:</p>
       <pre><code>mycelium respond --handle finance --room acme \
-  "A gives away margin. B holds it. [[mycelium: A=8 B=82]]"
-// the server removes the tag from the text and records:
-{"scores": {"A": 8, "B": 82}}</code></pre>
+  "A (Three years at 15% off): 8 - it gives away margin we can't get back
+B (Three years at list price): 82 - it holds margin and still renews them"
+// the conductor records, for this member:
+{"table": {"A": {"finance": 8}, "B": {"finance": 82}},
+ "reasons": {"A": {"finance": "it gives away margin we can't get back"},
+             "B": {"finance": "it holds margin and still renews them"}}}</code></pre>
       <p>
         Each Concord run is its own episode inside the task&#x27;s thread. The record&#x27;s
         <code>within</code> field names the task. Each message the conductor posts also carries a
@@ -289,12 +304,14 @@ flowchart LR
   }}
 }</code></pre>
       <p>
-        Before a <code>converged</code> (agreed) commit is sent, Mycelium saves the decision to the
-        room&#x27;s memory as <code>context/decision/&lt;task&gt;</code>: the option chosen, everyone&#x27;s
-        ratings and every option considered. The memory is related to the task, and the commit&#x27;s
-        <code>memory</code> field names it (<code>null</code> if it could not be saved). Anything
-        that runs on the task afterwards sees the decision. A run without agreement ends with a
-        <code>rejected</code> commit, which reports the best option and who was below the bar.
+        Before a <code>converged</code> (agreed) or <code>resolved</code> (best found) commit is
+        sent, Mycelium saves the decision to the room&#x27;s memory as
+        <code>context/decision/&lt;task&gt;</code>. It starts with the option chosen and how each
+        member sees it, in words, then every option with why it was proposed, and the numbers
+        last. A best found also says who is short of the bar and why. The memory is related to
+        the task, and the commit&#x27;s <code>memory</code> field names it (<code>null</code> if it
+        could not be saved). An agent woken on the task afterwards is told what the decision is. A
+        run with no options at all ends with a <code>rejected</code> commit.
       </p>
     </section>
 
@@ -303,12 +320,16 @@ flowchart LR
       <p>
         Accord is a simplified version of L9&#x27;s Accord protocol. Use it before work starts. It gets
         everyone to the same understanding of what the task asks, what is out of scope, what done
-        looks like, and what the key words mean. Every member takes part the same way: they label
-        what they write, code combines it, and anything that doesn&#x27;t line up becomes an open
-        item in the summary.
+        looks like, what the key terms mean, and who checks what. Every member takes part the same
+        way: they label what they write, code combines it, and anything that doesn&#x27;t line up
+        becomes an open item in the summary.
       </p>
       <pre><code>mycelium board coordinate work/acme-renewal-handoff conductor \
-  "accord @~sales @~success @~finance @~legal: Plan the Acme renewal handoff."</code></pre>
+  "accord @~sales @~success @~finance @~legal: Plan the Acme renewal handoff. terms: renewal date, standard terms"</code></pre>
+      <p>
+        <code>terms:</code> names the key terms, the words the team could easily mean different
+        things by. Leave it out and the members name them first.
+      </p>
       <p>Every member named takes part the same way. In the app, type <code>@conductor accord @~sales @~success …</code> in the task&#x27;s thread, with each member written as <code>@~name</code> so the conductor wakes them in turn.</p>
       <figure class="take">
         <img src="l9-summon-accord.png" alt="The message box in a task's thread with '@conductor accord @~sales @~success @~finance @~legal' typed. Above it, a hint reads '@conductor accord [@~member…] <what…>' and says who takes part.">
@@ -317,24 +338,26 @@ flowchart LR
 
       <pre class="mermaid">
 flowchart LR
-    frame["Describe<br/>everyone labels the goal, limits,<br/>what's out of scope, what done means"] --> added{"Anything new?<br/>code merges the points"}
+    terms["Key terms<br/>from the summon, or<br/>everyone names a few"] --> frame["Describe<br/>everyone labels the goal, limits,<br/>what's out of scope, what done means"]
+    frame --> added{"Anything new?<br/>code merges the points"}
     added -- "new points" --> more["What's missing?<br/>everyone sees the points so far"]
     more --> added
-    added -- "nothing new" --> ground["The words<br/>what each word means,<br/>how each point is checked"]
+    added -- "nothing new, or asked once" --> ground["The terms<br/>what each means, with units;<br/>who checks which points"]
     added -- "nobody gave any" --> nothing(["Stopped"])
     ground --> words{"Same meanings?"}
-    words -- "a word means different things" --> restate["Say it again<br/>only those who differ, once"]
+    words -- "a term means different things" --> restate["Say it again<br/>with an example,<br/>only those who differ, once"]
     restate --> words
     words -- "no, or asked once already" --> lock["Save<br/>the shared summary,<br/>with its open items"]
     lock --> locked(["Done"])
       </pre>
       <ul>
-        <li><strong>Members label their own text.</strong> Each point goes on its own line after a tag that says what kind of point it is: <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> or <code>out_of_scope</code>. If a reply has no labels, the member is asked once more, and a reply that still has none is kept exactly as written.</li>
-        <li><strong>Code combines the points.</strong> Points of the same kind that say the same thing become one, either because the wording matches or, when the server has its embedding model, because the meaning is very close. Each point records who said it, in their own words. Rounds repeat until one brings nothing new, for up to three rounds.</li>
-        <li><strong>Words are checked.</strong> If two members mean different things by the same word, those two are asked to say what they mean once more. If they still differ, both meanings go into the summary.</li>
-        <li><strong>The summary lists open items.</strong> These are points only one member made, members saying different things about the same subject, words used in different senses, points nobody has said how to check, and anyone who didn&#x27;t answer. A member who disagrees with the summary says so in the thread.</li>
+        <li><strong>The key terms come first.</strong> From the summon&#x27;s <code>terms:</code>, or each member names up to three and the most named are used. They&#x27;re the words the summary pins down.</li>
+        <li><strong>Members label their own text.</strong> Each point goes on its own line, starting with what kind of point it is: <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> or <code>out_of_scope</code>. If a reply has no labels, the member is asked once more, and a reply that still has none is kept exactly as written.</li>
+        <li><strong>Code combines the points.</strong> Points of the same kind that say the same thing become one, either because the wording matches or, when the server has its embedding model, because the meaning is very close. Each point records who said it, in their own words. Everyone is shown the merged list and asked once what&#x27;s missing.</li>
+        <li><strong>Terms are pinned down and checks are owned.</strong> Each member says what they mean by each key term, with units, and how they&#x27;d confirm the points they can; a check belongs to whoever wrote it. If two members mean different things by a term, those two are asked once to say it again with an example. If they still differ, both meanings go into the summary.</li>
+        <li><strong>The summary lists open items.</strong> These are points only one member made, members saying different things about the same subject, terms used in different senses, points nobody has said how to check, and anyone who didn&#x27;t answer.</li>
         <li><strong>Accord ends with a <code>resolved</code> (done) commit.</strong> Just before it, the shared summary is saved to the room&#x27;s memory as <code>context/summary/&lt;task&gt;</code>, with a readable version in the body and the structured version in its frontmatter. The commit&#x27;s <code>memory</code> field names it. Running Accord on the same task again updates the same memory. The run ends <code>rejected</code> only when nobody gave any points.</li>
-        <li><strong>Later work sees the summary.</strong> A later Concord on the same task shows it in its prompts, and an agent woken about the task is told where it is and what is still open.</li>
+        <li><strong>Later work is held to the summary.</strong> A later Concord on the same task shows it in its prompts, and an agent woken about the task is told what it says and what is still open. When the work runs into something that doesn&#x27;t fit, a line starting <code>conflict:</code> in the task&#x27;s thread adds it to the open items, without waking anyone.</li>
       </ul>
 
       <h2>Watch a run</h2>
@@ -350,10 +373,11 @@ flowchart LR
       <table class="l9">
         <thead><tr><th>Step</th><th>What happened</th></tr></thead>
         <tbody>
-          <tr><td>Describe</td><td>Each member labeled what they think the task is. The first round brought 20 points, each in the member&#x27;s own words. Sales wanted the renewal locked in for several years at pricing that reflects that commitment; customer success wanted to keep Acme by showing clear value, since losing a reference account would hurt.</td></tr>
-          <tr><td>What&#x27;s missing</td><td>The conductor showed the points so far and asked what was missing. Nobody added anything new, so the summary kept its 20 points.</td></tr>
-          <tr><td>The words</td><td>Members defined the words they use in a specific sense and said how points would be checked. Finance and legal meant different things by &quot;standard&quot;: to finance, the published list price; to legal, its template agreement with its liability caps and indemnities. Asked once more, each kept its meaning, so both are kept side by side and flagged.</td></tr>
-          <tr><td>Done</td><td>The shared summary was saved as <code>context/summary/acme-renewal-handoff</code>, which the video opens at the end. Its open items include points only one member made and the two senses of &quot;standard&quot;.</td></tr>
+          <tr><td>Key terms</td><td>The summon named two: &quot;renewal date&quot; and &quot;standard terms&quot;, so nobody was asked for them.</td></tr>
+          <tr><td>Describe</td><td>Each member labeled what they think the task is. The first round brought 19 points, each in the member&#x27;s own words. Customer success wanted to keep Acme by removing what blocks them, since losing a reference account hurts; finance wanted pricing that holds margin year by year; legal wanted any change to the standard template reviewed before signature.</td></tr>
+          <tr><td>What&#x27;s missing</td><td>The conductor showed the points so far and asked once what was missing. Two more came in, so the summary notes that points were still arriving.</td></tr>
+          <tr><td>The terms</td><td>Members said what they mean by each term, with an example, and took on checks: nine in all, each with its owner and the points it covers. Everyone meant &quot;renewal date&quot; as the date Acme&#x27;s contract ends, so it&#x27;s one meaning. &quot;Standard terms&quot; split: to finance, the published list price; to sales, customer success and legal, the template contract language with its liability caps and indemnities. Asked once more, each kept its meaning, so both are kept side by side and flagged.</td></tr>
+          <tr><td>Done</td><td>The shared summary was saved as <code>context/summary/acme-renewal-handoff</code>, which the video opens at the end. Its open items are the points only one member made, the two senses of &quot;standard terms&quot;, the points nothing checks yet, and that points were still arriving.</td></tr>
         </tbody>
       </table>
     </section>
@@ -368,8 +392,8 @@ flowchart LR
         <thead><tr><th></th><th>The aligner</th><th>Concord</th></tr></thead>
         <tbody>
           <tr><td>What you get</td><td>A value for each point of disagreement, worked out from what members said</td><td>One option, in the members&#x27; own words</td></tr>
-          <tr><td>How it moves forward</td><td>The aligner trades offers, and a language model reads each reply</td><td>Members suggest and rate. A fixed rule chooses.</td></tr>
-          <tr><td>What counts as agreement</td><td>Everyone accepts, and their average confidence is 0.6 or higher</td><td>Everyone rates the choice 70 or higher</td></tr>
+          <tr><td>How it moves forward</td><td>The aligner trades offers, and a language model reads each reply</td><td>Members propose and rate, each with reasons. A fixed rule chooses.</td></tr>
+          <tr><td>What counts as agreement</td><td>Everyone accepts, and their average confidence is 0.6 or higher</td><td>The choice is at least 60% of the way from each member&#x27;s bad outcome to their ideal</td></tr>
           <tr><td>Does a language model decide?</td><td>Yes, in every round</td><td>No. Models only write the members&#x27; replies.</td></tr>
           <tr><td>The commit carries</td><td>The agreed values and the quality scores (MPC, GAR, SCR)</td><td>The decision and how satisfied each member is</td></tr>
           <tr><td>After agreement</td><td>The agreed values become tasks on the board, filed under the task</td><td>The decision is saved to the room&#x27;s memory, next to the task</td></tr>
@@ -392,12 +416,11 @@ flowchart LR
         </tbody>
       </table>
       <p>
-        Two things to keep in mind. First, in those five runs, Concord&#x27;s agreements landed right
-        at the bar: the least happy member rated the choice 70. Agreement means everyone can live
-        with the decision, not that anyone loves it. Second, a fix is only as good as the member who
-        writes it. If that member resubmits an existing option word for word, nothing new is added,
-        but the fix still counts toward the limit of two. If that happens twice, the run ends
-        without agreement.
+        Those runs were of an earlier Concord, with a bar of 70 on raw ratings, two fixes, and no
+        reasons asked for. In them, Concord&#x27;s agreements landed right at the bar: the least
+        happy member rated the choice 70. Agreement means everyone can live with the decision, not
+        that anyone loves it. A fix that resubmitted an existing option added nothing but still
+        used up a fix; the current Concord sends such a fix back once.
       </p>
     </section>
 
@@ -598,7 +621,8 @@ sequenceDiagram
       </ul>
       <p>
         Concord&#x27;s score is simpler and involves no language model. Each member&#x27;s
-        <strong>satisfaction</strong> is their rating of the chosen option divided by 100.
+        <strong>satisfaction</strong> is where their rating of the chosen option sits between their
+        own ratings of the bad and the ideal outcome, from 0 to 1.
         <strong>min_satisfaction</strong> is the lowest of these. Both appear in the commit and the
         record.
       </p>
@@ -626,15 +650,16 @@ sequenceDiagram
 
       <p>Every score starts with a language model writing a number:</p>
       <ul>
-        <li><strong>The model picks the number.</strong> <code>confidence=0.8</code> and <code>A=82</code> are whatever numbers the model chose. Neither is calibrated, taken from the model&#x27;s internal probabilities, or checked against anything real.</li>
+        <li><strong>The model picks the number.</strong> <code>confidence=0.8</code> and <code>A: 82</code> are whatever numbers the model chose. Neither is calibrated, taken from the model&#x27;s internal probabilities, or checked against anything real.</li>
         <li><strong>Only the format is checked.</strong> Confidence must be between 0 and 1. A rating must be a whole number from 0 to 100, for an option that exists. Out-of-range values are dropped, not adjusted. A confident answer with weak reasoning passes every check.</li>
         <li><strong>Nothing fills in the gaps.</strong> An agent that gives no confidence isn&#x27;t counted in MPC or GAR. A missing rating counts as 0 when options are compared. Concord asks once more rather than guessing the rating from the text.</li>
       </ul>
       <p>
         Concord doesn&#x27;t make the inputs more honest. A member can still rate tactically. What
-        Concord changes is who decides. Code applies the rule and the bar to the ratings and decides
-        when to stop. The same ratings always produce the same result, and the scorecard shows every
-        number behind it.
+        Concord changes is who decides, and what a person reads. Code applies the rule and the bar to
+        the ratings and decides when to stop. The same ratings always produce the same result. And
+        every rating comes with its reason, which is what the thread and the saved decision lead
+        with, so a person judges the reasons rather than the numbers.
       </p>
       <p>
         Measuring these things, rather than taking the agents&#x27; word, needs the behavior check

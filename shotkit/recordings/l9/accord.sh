@@ -9,16 +9,16 @@ cd "$(dirname "$0")/../../.."
 node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --base-url "${APP_URL:-http://localhost:3000}" \
   --out "${OUT:-.shotkit/accord.mp4}" \
-  --width 1440 --height 900 --format mp4 --caption-at top \
+  --no-daemon --width 1440 --height 900 --format mp4 --caption-at top \
   --storage mycelium.principal=morgan --storage mycelium.name-asked=1 \
-  --action-timeout 300000 --max-seconds 150 --tail 2500 \
+  --action-timeout 300000 --max-seconds 200 --tail 2500 \
   --do "caption:Before work starts, make sure everyone means the same thing by the task." \
   --do "hold:2600" \
   --do "click:Board" \
   --do "click:[data-board-row=\"work/acme-renewal-handoff\"]" \
   --do "caption:One message starts Accord. Nobody leads it." \
   --do "click:textarea[placeholder^=\"Reply in\"]" \
-  --do "typekeys:@conductor accord @~sales @~success @~finance @~legal: Plan the Acme renewal handoff." \
+  --do "typekeys:@conductor accord @~sales @~success @~finance @~legal: Plan the Acme renewal handoff. terms: renewal date, standard terms" \
   --do "press:Enter" \
   --do "eval:(window.__follow ||= setInterval(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Jump to latest')); if (b) b.click(); }, 1000), 'following the thread')" \
   --do "caption:Everyone labels what they think the task is: its aim, its limits, what's out of scope." \
@@ -33,13 +33,13 @@ node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --do "wait:text=/Nobody added anything new|Points were still coming/" \
   --do "speed:1" \
   --do "hold:1500" \
-  --do "caption:Then the words: a word two people mean differently is flagged, not settled." \
+  --do "caption:Then the key terms, with units, and who checks what. A term two people mean differently is flagged, not settled." \
   --do "speed:5" \
   --do "wait:text=/accord\\s*(resolved|rejected)/" \
   --do "speed:1" \
   --do "hold:1500" \
   --do "caption:Nobody leads and nobody votes. What doesn't line up becomes an open item." \
-  --do "zoom:text=/^words: /@1.4" \
+  --do "zoom:text=/used in different senses/ >> nth=-1@1.4" \
   --do "hold:4000" \
   --do "zoomout" \
   --do "caption:The shared summary is saved to the room's memory, next to the task." \

@@ -8,8 +8,12 @@ import { ChevronRight, Workflow } from "lucide-react";
 import {
   isSuccess,
   lockSummary,
+  midSentence,
   pickSummary,
+  placedOf,
+  stepVerb,
   tallySummary,
+  views,
   type ConductorLine,
   type PickRecord,
 } from "@/lib/conductor-line";
@@ -21,6 +25,8 @@ interface Props {
   /** The post's prose: the prompt a member was given, kept behind a toggle. */
   text: string;
   onOpenMemory?: (key: string) => void;
+  /** A turn put to several members at once: everyone it went to, drawn as one row. */
+  members?: string[];
 }
 
 function Handle({ children }: { children: string }) {
@@ -51,7 +57,7 @@ function Saved({ memory, onOpenMemory }: { memory: string | null | undefined; on
  * turn is one line naming the step and who it went to, with the prompt a click
  * away, and the opening and the end are one line each.
  */
-export function ConductorRow({ line, text, onOpenMemory }: Props) {
+export function ConductorRow({ line, text, onOpenMemory, members }: Props) {
   const [open, setOpen] = useState(false);
   const expandable = line.event === "turn" || line.event === "open";
 
@@ -84,12 +90,32 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
         </>
       );
       break;
-    case "turn":
-      body = (
+    case "turn": {
+      const who = members ?? [line.to];
+      // Concord's and accord's steps say what the members are doing; any
+      // other flow names its step and who it went to.
+      const verb = stepVerb(line.protocol, line.step, who.length);
+      body = verb ? (
+        <>
+          {who.map((m, i) => (
+            <span key={m}>
+              {i > 0 && (i === who.length - 1 ? " and " : ", ")}
+              <Handle>{m}</Handle>
+            </span>
+          ))}
+          <span> {verb}</span>
+          {line.again && <span className="text-faint"> (asked again)</span>}
+        </>
+      ) : (
         <>
           <span className="font-medium text-accent">{line.step}</span>
           <span> {line.tell ? "told" : "→"} </span>
-          <Handle>{line.to}</Handle>
+          {who.map((m, i) => (
+            <span key={m}>
+              {i > 0 && ", "}
+              <Handle>{m}</Handle>
+            </span>
+          ))}
           {line.again && <span className="text-faint"> (asked again)</span>}
           <span className="text-faint">
             {" · "}turn {line.turn} of {line.cap}
@@ -98,6 +124,7 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
         </>
       );
       break;
+    }
     case "edge": {
       const said =
         line.stance === "accept"
@@ -119,22 +146,16 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
       break;
     }
     case "select":
-      body = (
+      body = line.select.pick ? (
         <>
-          <span className="font-medium text-accent">{line.step}</span>
-          <span>: </span>
-          <span>{pickSummary(line.select)}</span>
+          <span className="font-medium text-accent">Picked</span> <span>{pickSummary(line.select)}</span>
         </>
+      ) : (
+        <span>{pickSummary(line.select)}</span>
       );
       break;
     case "tally":
-      body = (
-        <>
-          <span className="font-medium text-accent">{line.step}</span>
-          <span>: </span>
-          <span>{tallySummary(line.tally)}</span>
-        </>
-      );
+      body = <span>{tallySummary(line.tally)}</span>;
       break;
     case "lock":
       body = <span>{lockSummary(line.lock)}</span>;
@@ -144,9 +165,11 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
       const good = isSuccess(line.outcome);
       // A run that picked says what it went with, or that it couldn't get there.
       const said = line.pick
-        ? good
-          ? `Everyone's on board: going with ${line.pick}`
-          : `Couldn't get everyone there. Best was ${line.pick}`
+        ? line.outcome === "converged"
+          ? `Everyone meets the bar: going with ${line.pick}`
+          : line.outcome === "resolved"
+            ? `Best found, below the bar for some: ${line.pick}`
+            : `Couldn't get everyone there. Best was ${line.pick}`
         : `${line.protocol} ${good ? "done" : line.outcome}`;
       body = (
         <>
@@ -205,20 +228,57 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
 }
 
 /**
- * A pick's ratings: options down the side, members across, `?` where a member
- * gave none, the pick marked, and anything under the bar drawn so it shows.
+ * A pick, reasons first: each member's view of the pick in words (what their
+ * rating means against the bar, and why), with every option's numbers a click
+ * away for anyone checking the arithmetic.
  */
 export function Scorecard({ record }: { record: PickRecord }) {
+  const [numbers, setNumbers] = useState(false);
+  if (!record.pick) return null;
+  return (
+    <div className="ml-9 mt-1 text-micro">
+      <ul className="space-y-0.5" aria-label={`How each member sees ${record.pick}`}>
+        {views(record, record.pick).map((v) => (
+          <li key={v.member} className="flex gap-2">
+            <span className="w-20 flex-shrink-0 truncate font-medium text-text">{v.member}</span>
+            <span className="min-w-0 text-muted-foreground">
+              <span style={{ color: v.short ? "var(--yellow)" : undefined }}>{v.verdict}</span>
+              {v.why && <span>, because {midSentence(v.why)}</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => setNumbers((n) => !n)}
+        aria-expanded={numbers}
+        className="mt-0.5 flex items-center gap-0.5 rounded px-1 text-faint transition-colors hover:text-text"
+      >
+        <ChevronRight className={`size-3 transition-transform ${numbers ? "rotate-90" : ""}`} />
+        numbers
+      </button>
+      {numbers && <Numbers record={record} />}
+    </div>
+  );
+}
+
+/**
+ * Every option's ratings: options down the side, members across, each cell a
+ * member's rating on its own scale with how far that is from its bad outcome
+ * to its ideal, `?` where a member gave none, the pick marked, and anything
+ * under the bar drawn so it shows. A cell's reason is its tooltip.
+ */
+function Numbers({ record }: { record: PickRecord }) {
   const bar = record.threshold;
   return (
-    <div className="ml-9 mt-1 overflow-x-auto">
-      <table className="text-micro tabular" aria-label={`Ratings, bar ${bar}`}>
+    <div className="mt-1 overflow-x-auto">
+      <table className="text-micro tabular" aria-label={`Ratings, bar ${bar}%`}>
         <thead>
           <tr className="text-faint">
             <th className="py-0.5 pr-3 text-left font-normal">option</th>
             {record.cast.map((h) => (
               <th key={h} className="px-2 py-0.5 text-right font-normal">
-                @{h}
+                {h}
               </th>
             ))}
           </tr>
@@ -240,14 +300,16 @@ export function Scorecard({ record }: { record: PickRecord }) {
                 </th>
                 {record.cast.map((h) => {
                   const r = record.table[o.label]?.[h];
-                  const short = r !== undefined && r < bar;
+                  const at = placedOf(record, o.label, h);
+                  const short = at !== undefined && at * 100 < bar;
                   return (
                     <td
                       key={h}
-                      className="px-2 py-0.5 text-right"
+                      title={record.reasons?.[o.label]?.[h]}
+                      className="whitespace-nowrap px-2 py-0.5 text-right"
                       style={{ color: r === undefined ? "var(--faint)" : short ? "var(--yellow)" : "var(--text)" }}
                     >
-                      {r ?? "?"}
+                      {r === undefined ? "?" : `${r} (${Math.round((at ?? 0) * 100)}%)`}
                     </td>
                   );
                 })}
@@ -256,7 +318,10 @@ export function Scorecard({ record }: { record: PickRecord }) {
           })}
         </tbody>
       </table>
-      <p className="mt-0.5 text-micro text-faint">The bar is {bar}.</p>
+      <p className="mt-0.5 text-micro text-faint">
+        Each rating is on the member&apos;s own scale; in brackets, how far it is from their bad outcome
+        to their ideal. The bar is {bar}%.
+      </p>
     </div>
   );
 }
