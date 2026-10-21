@@ -20,6 +20,11 @@ vi.mock("@/lib/runners", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/runners")>()),
   useRunners: () => ({ runners: connected, connected, loading: false, refresh: vi.fn() }),
 }));
+let thisMachine: string | null = null;
+vi.mock("@/lib/desktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/desktop")>()),
+  useThisMachine: () => thisMachine,
+}));
 
 import type { Runner, RunnerJob } from "@/lib/api";
 import { runner } from "@/lib/runners.fixture";
@@ -44,10 +49,20 @@ function job(over: Partial<RunnerJob> = {}): RunnerJob {
 describe("LaunchAgentForm", () => {
   beforeEach(() => {
     connected = [];
+    thisMachine = null;
     window.localStorage.clear();
     launchRunnerAgent.mockReset();
     fetchRunnerJob.mockReset();
     draftMemberNotes.mockReset();
+  });
+
+  it("starts on the machine the app runs on, never offering another", () => {
+    connected = [runner(), runner({ id: "studio", label: "studio" })];
+    thisMachine = "studio";
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    // Named before the folder, as where the path is.
+    expect(screen.getByTitle("On studio, this machine")).toHaveTextContent("studio");
+    expect(screen.queryByLabelText("Machine")).not.toBeInTheDocument();
   });
 
   it("says how to connect a machine when none is", () => {
@@ -56,14 +71,16 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByDisplayValue("mycelium runner")).toBeInTheDocument();
   });
 
-  it("offers only the agent CLIs the machine can start", () => {
+  it("offers only the agent CLIs the machine can start", async () => {
     connected = [runner()];
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
 
-    const cli = screen.getByLabelText("Agent CLI");
-    expect(within(cli).getAllByRole("option").map((o) => o.textContent)).toEqual([
-      "Claude Code 2.4.1",
-      "opencode 0.9.3",
+    // The first is picked; the dropdown lists each by name, with its version under it.
+    fireEvent.click(screen.getByRole("button", { name: "Agent CLI: Claude Code" }));
+    expect((await screen.findAllByRole("menuitem")).map((o) => o.textContent)).toEqual([
+      "Claude Code2.4.1",
+      "opencode0.9.3",
+      "Rescan for agent CLIs",
     ]);
   });
 
@@ -104,7 +121,9 @@ describe("LaunchAgentForm", () => {
     const onLaunched = vi.fn();
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={onLaunched} />);
 
-    fireEvent.change(screen.getByLabelText("Agent CLI"), { target: { value: "opencode" } });
+    fireEvent.click(screen.getByRole("button", { name: "Agent CLI: Claude Code" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /opencode/ }));
+    expect(screen.getByRole("button", { name: "Agent CLI: opencode" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "@Reviewer" } });
     fireEvent.change(screen.getByLabelText("Instructions"), {
       target: { value: "  Review every change for correctness.  " },
