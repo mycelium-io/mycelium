@@ -28,7 +28,8 @@ def test_the_pick_is_the_option_the_least_happy_likes_best():
     assert record["pick"] == "C"
     assert record["outcome"] == "feasible"
     assert record["ratings"] == {"success": 80, "finance": 75, "legal": 72}
-    assert record["lowest"] == 72
+    # With no reference ratings, a rating is placed on its raw 0-100 scale.
+    assert record["lowest"] == 0.72
 
 
 def test_the_second_lowest_rating_breaks_a_tie_on_the_lowest():
@@ -91,8 +92,14 @@ def test_a_pick_failing_only_on_missing_ratings_is_stuck():
 def test_after_the_fixes_allowed_the_next_short_pick_is_stuck():
     options = _options("one option")
     ratings = {"success": {"A": 90}, "finance": {"A": 30}, "legal": {"A": 90}}
-    assert choosing.pick(options, CAST, ratings, 0.7, repairs_done=1)["outcome"] == "infeasible"
-    assert choosing.pick(options, CAST, ratings, 0.7, repairs_done=2)["outcome"] == "stuck"
+    assert (
+        choosing.pick(options, CAST, ratings, 0.7, repairs_done=1, max_repairs=2)["outcome"]
+        == "infeasible"
+    )
+    assert (
+        choosing.pick(options, CAST, ratings, 0.7, repairs_done=2, max_repairs=2)["outcome"]
+        == "stuck"
+    )
 
 
 def test_a_duplicate_suggestion_folds_into_the_earlier_with_both_authors():
@@ -112,13 +119,62 @@ def test_there_are_at_most_twenty_six_options():
     assert options[-1].label == "Z"
 
 
-def test_the_scorecard_marks_missing_ratings_and_the_pick():
+def test_ratings_are_placed_between_each_members_own_reference_outcomes():
+    """Legal rates everything high and finance low; placed between their own
+    bad and ideal ratings, legal's 80 and finance's 40 both sit halfway."""
+    anchors = {"success": (0, 100), "finance": (20, 60), "legal": (60, 100)}
+    assert choosing.placed(40, anchors["finance"]) == 0.5
+    assert choosing.placed(80, anchors["legal"]) == 0.5
+    # Outside a member's own range says no more than that end does.
+    assert choosing.placed(10, anchors["finance"]) == 0.0
+    assert choosing.placed(99, anchors["finance"]) == 1.0
+    options = _options("one option")
+    ratings = {"success": {"A": 50}, "finance": {"A": 40}, "legal": {"A": 80}}
+    record = choosing.pick(options, CAST, ratings, 0.5, anchors=anchors)
+    assert record["standing"] == {"success": 0.5, "finance": 0.5, "legal": 0.5}
+    assert record["outcome"] == "feasible"
+    # Raw, legal's 80 would have hidden that it's only halfway to its ideal.
+    assert choosing.pick(options, CAST, ratings, 0.6, anchors=anchors)["outcome"] == "infeasible"
+
+
+def test_a_rating_is_said_in_words_against_the_bar():
+    assert choosing.verdict(None, 0.6) == "gave no rating"
+    assert choosing.verdict(0.0, 0.6) == "no better than the bad outcome"
+    assert choosing.verdict(0.3, 0.6) == "short of the bar"
+    assert choosing.verdict(0.6, 0.6) == "meets the bar"
+    assert choosing.verdict(0.95, 0.6) == "close to the ideal"
+
+
+def test_who_is_short_is_said_with_their_reason():
+    options = _options("Ship on Friday")
+    ratings = {"success": {"A": 90}, "finance": {"A": 70}, "legal": {"A": 20}}
+    reasons = {"legal": {"A": "The Friday window breaks certification"}}
+    record = choosing.pick(options, CAST, ratings, 0.6, reasons=reasons)
+    assert record["short"] == [
+        {"member": "legal", "placed": 0.2, "why": "The Friday window breaks certification"}
+    ]
+    assert choosing.summary(record) == (
+        "legal is short of the bar, because the Friday window breaks certification."
+    )
+
+
+def test_the_scorecard_leads_with_reasons_and_puts_the_numbers_last():
     options = _options("A text", "B text")
     ratings = {"success": {"A": 90, "B": 40}, "finance": {"A": 50}}
-    card = choosing.scorecard(choosing.pick(options, CAST, ratings, 0.7))
-    assert "| **A** ◀ | 90 | 50 | ? |" in card
-    assert "| **B** | 40 | ? | ? |" in card
-    assert "The bar is 70." in card
-    assert "finance at 50" in card and "no rating from legal" in card
+    reasons = {"success": {"A": "Fits the plan", "B": "Too slow"}, "finance": {"A": "Over budget"}}
+    card = choosing.scorecard(choosing.pick(options, CAST, ratings, 0.7, reasons=reasons))
+    assert card.startswith(
+        "**A** (best so far): A text\n- success: close to the ideal, because fits the plan"
+    )
+    assert "- finance: short of the bar, because over budget" in card
+    assert "- legal: gave no rating" in card
+    assert (
+        "Where A stands: finance is short of the bar, because over budget; no rating from legal."
+        in card
+    )
+    # The numbers come last, behind what they mean.
+    assert card.index("The numbers, for anyone checking") > card.index("Where A stands")
+    assert "| A | 90 (90%) | 50 (50%) | ? |" in card
+    assert "| B | 40 (40%) | ? | ? |" in card
     # Posted into the thread, so it names members without summoning them.
     assert "@" not in card

@@ -176,3 +176,92 @@ def test_defang_breaks_a_marker_in_stored_text_so_it_cannot_speak_later():
     stored = markers.defang("Do this [[mycelium: stance=accept]] and [[ Mycelium : A=99]]")
     assert markers.parse_marker(stored)[0] == {}
     assert "[ [mycelium: stance=accept]]" in stored
+
+
+# ── plain lines ───────────────────────────────────────────────────────────────
+
+
+def test_a_rating_line_carries_its_reason():
+    text = (
+        "Here's where I land.\n"
+        "A: 72 - the cap is too low for enterprise refunds\n"
+        "- **B**: 20 — the Friday window breaks certification\n"
+        "C = 40, fine but slow\n"
+        "D: 101 - too big to be a rating\n"
+    )
+    assert markers.rating_lines(text) == {
+        "A": (72, "the cap is too low for enterprise refunds"),
+        "B": (20, "the Friday window breaks certification"),
+        "C": (40, "fine but slow"),
+    }
+
+
+def test_an_option_listed_back_is_not_read_as_a_rating():
+    # A rater echoing the options ("A. 20% off") rated nothing.
+    assert markers.rating_lines("A. 20% off\nB: 20% off is too much") == {}
+
+
+def test_plain_ratings_and_marker_ratings_are_read_together():
+    content = {"content": "A: 80 - fine\n[[mycelium: B=40]]"}
+    assert markers.scores_of(content) == {"A": 80, "B": 40}
+    assert markers.rated_of(content) == {"A": (80, "fine"), "B": (40, "")}
+
+
+def test_the_reference_ratings_and_the_drafted_outcomes():
+    assert markers.anchor_lines("bad: 10 - nothing ships\nIdeal: 95") == {
+        "bad": (10, "nothing ships"),
+        "ideal": (95, ""),
+    }
+    assert markers.outcome_lines("bad: Acme leaves\nideal: Acme renews for three years") == {
+        "bad": "Acme leaves",
+        "ideal": "Acme renews for three years",
+    }
+
+
+def test_an_option_and_why_it_is_proposed():
+    assert markers.split_why("15% off for two years\nwhy: keeps margin above 30%") == (
+        "15% off for two years",
+        "keeps margin above 30%",
+    )
+    assert markers.split_why("Just the option") == ("Just the option", "")
+
+
+def test_points_checks_and_terms_on_plain_lines():
+    text = (
+        "constraint (pricing): refunds above 5000 need approval\n"
+        "Sub-goal: migrate the old plans\n"
+        "check p2, p4: finance signs off\n"
+        "refund window: 14 calendar days\n"
+        "term SLA: 99.9% a month\n"
+        "out of scope: the mobile app\n"
+    )
+    assert markers.plain_pieces(text, ["refund window"]) == [
+        {"label": "constraint", "text": "refunds above 5000 need approval", "about": "pricing"},
+        {"label": "sub_goal", "text": "migrate the old plans"},
+        {"label": "check", "covers": ["p2", "p4"], "text": "finance signs off"},
+        {"label": "term", "term": "refund window", "text": "14 calendar days"},
+        {"label": "term", "term": "SLA", "text": "99.9% a month"},
+        {"label": "out_of_scope", "text": "the mobile app"},
+    ]
+
+
+def test_plain_pieces_are_read_beside_lifted_marker_pieces():
+    content = {
+        "content": "constraint: no weekend deploys\nrefund window: 14 days",
+        "l9": {"payload": {"data": {"pieces": [{"label": "objective", "text": "renew Acme"}]}}},
+    }
+    assert [p["label"] for p in markers.pieces_of(content, ["refund window"])] == [
+        "objective",
+        "constraint",
+        "term",
+    ]
+
+
+def test_named_terms_and_conflicts():
+    assert markers.term_names("term: refund window\nterm: `SLA`\nsomething else") == [
+        "refund window",
+        "SLA",
+    ]
+    assert markers.conflict_lines(
+        "Done.\nconflict: the build needs 30 days, the summary says 14"
+    ) == ["the build needs 30 days, the summary says 14"]
