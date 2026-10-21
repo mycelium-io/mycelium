@@ -154,6 +154,8 @@ async def test_a_reported_conflict_is_added_to_the_open_items_once(monkeypatch):
         "context/summary/refunds",
         "# Shared summary",
         contract=SUMMARY,
+        flow="accord",
+        reviewed="by julia",
         **{"relates-to": "work/refunds"},
     )
     conflict = ["the payment provider holds refunds for 30 days, not 14"]
@@ -170,4 +172,63 @@ async def test_a_reported_conflict_is_added_to_the_open_items_once(monkeypatch):
     }
     assert len(flags) == 2
     assert "- b says this doesn't fit: the payment provider holds refunds" in body
+    # Only the contract changed: the summary's other frontmatter is as it was.
     assert meta["relates-to"] == "work/refunds"
+    assert meta["flow"] == "accord"
+    assert meta["reviewed"] == "by julia"
+
+
+@pytest.mark.asyncio
+async def test_conflicts_arriving_together_are_all_kept(monkeypatch):
+    import asyncio
+
+    from app.services import embedding
+
+    monkeypatch.setattr(embedding, "_STUB", True)
+    _write("context/summary/together", "# Shared summary", contract=SUMMARY)
+
+    await asyncio.gather(
+        agreed.add_conflicts(ROOM, "context/summary/together", "a", ["one"]),
+        agreed.add_conflicts(ROOM, "context/summary/together", "b", ["two"]),
+        agreed.add_conflicts(ROOM, "context/summary/together", "c", ["three"]),
+    )
+
+    meta, _body = read_memory_file(get_room_dir(ROOM), "context/summary/together") or ({}, "")
+    reported = [f["text"] for f in meta["contract"]["flags"] if f["kind"] == "reported_conflict"]
+    assert sorted(reported) == [
+        "a says this doesn't fit: one",
+        "b says this doesn't fit: two",
+        "c says this doesn't fit: three",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_summary_rewritten_mid_add_is_read_again_not_overwritten(monkeypatch):
+    from app.services import embedding
+
+    monkeypatch.setattr(embedding, "_STUB", True)
+    key = "context/summary/rewritten"
+    _write(key, "# Shared summary", contract=SUMMARY)
+    real_save = agreed.save
+    rewrites = []
+
+    async def save_after_a_rewrite(*args, **kwargs):
+        # Another writer (an accord run again) saves the summary first, once.
+        if not rewrites:
+            rewrites.append(1)
+            again = {**SUMMARY, "flags": [{"kind": "single", "text": "From the rerun"}]}
+            await real_save(
+                ROOM, key, body="# Shared summary", meta={"contract": again}, task="",
+                by="conductor", tags=["shared-summary"],
+            )  # fmt: skip
+        return await real_save(*args, **kwargs)
+
+    monkeypatch.setattr(agreed, "save", save_after_a_rewrite)
+
+    assert await agreed.add_conflicts(ROOM, key, "b", ["it doesn't fit"])
+
+    meta, _body = read_memory_file(get_room_dir(ROOM), key) or ({}, "")
+    assert [f["text"] for f in meta["contract"]["flags"]] == [
+        "From the rerun",
+        "b says this doesn't fit: it doesn't fit",
+    ]

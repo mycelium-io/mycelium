@@ -1823,14 +1823,14 @@ steps:
         <li><code>rounds: 2</code> repeats an <code>each</code> or <code>all</code> step.</li>
         <li><code>wait: none</code> asks without waiting for an answer.</li>
         <li><code>max_steps</code> limits how many steps a run can take. A step counts once however many members it asks. The thread&#x27;s &quot;turn 2 of 6&quot; counts the same steps.</li>
-        <li><code>collect: options</code> makes each reply an option, with a <code>why:</code> line as its reason. <code>collect: scores</code> records each reply&#x27;s ratings (<code>A: 80 - why</code>) and asks once more for any that came without a reason. <code>collect: anchors</code> records each member&#x27;s ratings of the two reference outcomes (<code>bad: 10 - why</code>, <code>ideal: 90 - why</code>). <code>collect: keywords</code> records the key terms members name (<code>term: …</code>). <code>collect: pieces</code> merges each reply&#x27;s labelled points, terms and checks into the shared summary being built.</li>
+        <li><code>collect: options</code> makes each reply an option, with its <code>why:</code> line. <code>collect: scores</code> records each reply&#x27;s ratings and their reasons. <code>collect: anchors</code> records the ratings of the two ends. <code>collect: keywords</code> records the key terms members name. <code>collect: pieces</code> merges each reply&#x27;s labeled points, terms and checks into the shared summary being built.</li>
         <li><code>require: stance</code>, <code>require: scores</code> or <code>require: pieces</code> asks once more for a reply that&#x27;s missing it. A stance still missing after that counts as a rejection. A reply that still has no labels is kept as written.</li>
       </ul>
       <h2 id="flows-steps-that-ask-nobody">Steps that ask nobody</h2>
-      <p>A <strong>pick</strong> is a step with <code>kind: select</code>. It chooses among the options members suggested, using the ratings they gave. Each rating is placed between that member&#x27;s ratings of the two reference outcomes, when the flow collected them. It takes a <code>threshold</code> and <code>max_repairs</code>. A threshold of 0.6 means the pick passes only if it&#x27;s at least 60% of the way from each member&#x27;s bad outcome to their ideal. The message that starts a run can set them with <code>bar=70</code> and <code>fixes=3</code>. Its <code>next</code> map picks the next step by how the pick went:</p>
+      <p>A <strong>pick</strong> is a step with <code>kind: select</code>. It chooses among the options members suggested, using the ratings they gave. It takes a <code>threshold</code> and <code>max_repairs</code> (<code>bar=70</code> and <code>fixes=3</code> in the summon). A threshold of 0.6 means the pick passes only if it&#x27;s 60% of the way from each member&#x27;s bad outcome to their ideal. Its <code>next</code> map picks the next step by how the pick went:</p>
       <ul>
         <li><code>feasible</code>: everyone rated the pick and it meets the threshold for each.</li>
-        <li><code>infeasible</code>: someone is short of the threshold. The least happy can be asked for a fix (<code>to: bottleneck</code>).</li>
+        <li><code>infeasible</code>: someone is short of it. The least happy can be asked for a fix (<code>to: bottleneck</code>).</li>
         <li><code>stuck</code>: a fix can&#x27;t help. Either the only problem is members who gave no rating, or <code>max_repairs</code> fixes have already been tried.</li>
         <li><code>nothing</code>: there are no options to pick from.</li>
         <li><code>default</code>.</li>
@@ -1883,39 +1883,31 @@ steps:
             </tr>
             <tr>
               <td><code>{options}</code>, <code>{rating_lines}</code></td>
-              <td>Every option so far, as <code>A. …</code> lines with why each was proposed, and the lines to rate them with, each naming its option, such as <code>A (Ship on Friday): &lt;0-100&gt; - &lt;why&gt;</code>.</td>
+              <td>Every option so far, and the lines to rate them with, such as <code>A (Ship on Friday): &lt;0-100&gt; - &lt;why&gt;</code>.</td>
             </tr>
             <tr>
               <td><code>{new_options}</code>, <code>{new_rating_lines}</code></td>
-              <td>The options no one has rated yet, and the lines to rate them with.</td>
+              <td>The same, for the options no one has rated yet.</td>
             </tr>
             <tr>
               <td><code>{pick}</code>, <code>{scores}</code></td>
               <td>The best option so far, and the last pick&#x27;s scorecard.</td>
             </tr>
             <tr>
-              <td><code>{standing}</code>, <code>{objections}</code></td>
-              <td>How each member sees the best option so far, in words, and the reasons of those short of the bar.</td>
-            </tr>
-            <tr>
-              <td><code>{shortfall}</code></td>
-              <td>Where the least happy member stands, such as &quot;For you, B is short of the bar, because the window is too short&quot;.</td>
+              <td><code>{standing}</code>, <code>{objections}</code>, <code>{shortfall}</code></td>
+              <td>How each member sees the best option, the reasons of those short of the bar, and where the least happy member stands.</td>
             </tr>
             <tr>
               <td><code>{bad}</code>, <code>{ideal}</code>, <code>{bar_said}</code></td>
-              <td>The two reference outcomes, and the bar said in terms of them.</td>
+              <td>The two ends, and the bar said in terms of them.</td>
             </tr>
             <tr>
               <td><code>{frame}</code></td>
               <td>The points gathered so far, each with its id, kind and how many stated it.</td>
             </tr>
             <tr>
-              <td><code>{key_terms}</code>, <code>{term_lines}</code></td>
-              <td>The run&#x27;s key terms, and the lines to define them with.</td>
-            </tr>
-            <tr>
-              <td><code>{terms}</code></td>
-              <td>The terms members defined, with any used in different senses side by side.</td>
+              <td><code>{key_terms}</code>, <code>{term_lines}</code>, <code>{terms}</code></td>
+              <td>The key terms, the lines to define them with, and the meanings given, any used in different senses side by side.</td>
             </tr>
             <tr>
               <td><code>{checks}</code></td>
@@ -1972,7 +1964,7 @@ steps:
             </tr>
             <tr>
               <td><code>[[mycelium: objective]] …</code></td>
-              <td>Labelling the line that follows as a point, in <code>accord</code>. The labels are <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> and <code>out_of_scope</code>, with an optional <code>about=&lt;subject&gt;</code>.</td>
+              <td>Labeling the line that follows as a point, in <code>accord</code>. The labels are <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> and <code>out_of_scope</code>, with an optional <code>about=&lt;subject&gt;</code>.</td>
             </tr>
             <tr>
               <td><code>[[mycelium: term=renewal]] …</code></td>
@@ -1993,7 +1985,7 @@ steps:
           </tbody>
         </table>
       </div>
-      <p><code>concord</code> and <code>accord</code> read the same things from plain lines too, which is what they ask for: <code>A (the option&#x27;s name): 82 - why</code> for a rating, <code>objective: …</code> for a point, <code>renewal: …</code> for a key term and <code>check p1, p2: …</code> for a check. They&#x27;re explained in <a href="engines.html#conductor-helping-members-agree">Helping members agree</a> and <a href="engines.html#conductor-getting-on-the-same-page">Getting on the same page</a>.</p>
+      <p><code>concord</code> and <code>accord</code> ask for the same things as plain lines, such as <code>A (name): 82 - why</code>; see <a href="engines.html#conductor-helping-members-agree">Helping members agree</a> and <a href="engines.html#conductor-getting-on-the-same-page">Getting on the same page</a>.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> builder \
   <span class="str">&quot;Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]&quot;</span></code></pre>
       <p>An agent accepting only to move things along should say so in its reply:</p>

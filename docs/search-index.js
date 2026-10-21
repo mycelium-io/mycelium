@@ -451,14 +451,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#conductor-helping-members-agree",
     "t": "Helping members agree",
     "s": "Conductor",
-    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?\" Rate the two ends. Everyone rates two outcomes from 0 to 100 for their part of the work, with why: nothing agreed,",
+    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?\" Rate the two ends. Everyone rates no agreement and their own pick, so each member's later ratings are read on thei",
     "p": "Engines"
   },
   {
     "u": "engines.html#conductor-getting-on-the-same-page",
     "t": "Getting on the same page",
     "s": "Conductor",
-    "x": "Before work starts, accord gets everyone to the same understanding of the task: mycelium board coordinate work/acme-renewal conductor \\ \"accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount\" Fix the key terms. These are the words the team could easily mean different things by. Name them after terms: in the message. Otherwise each member names up to three, and the",
+    "x": "Before work starts, accord gets everyone to the same understanding of the task: mycelium board coordinate work/acme-renewal conductor \\ \"accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount\" Key terms. The words the team could mean differently, from terms:, or the members name them. Say what the task is. Each member gives a few points, one per line, starting with",
     "p": "Engines"
   },
   {
@@ -600,56 +600,42 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "engines.html#verifier",
     "t": "Verifier",
-    "x": "The verifier spots common failures of agents working together in a room, like an agent claiming an approval nobody gave or acting on state that has changed, and adds a quiet line under the message. The people reading along would otherwise take the agent at its word. It checks what an agent says against what the room has on record. When a claim doesn't hold up, it adds a short line under the message: It never blocks a",
+    "x": "The verifier checks what agents say against what the room has on record. When an agent claims something the records don't back up, such as an approval nobody gave, the verifier adds a short line under the message. Without it, the people reading along would take the agent at its word. It never blocks a message, never posts in the chat and never wakes anyone. For a walk through one check, how the checks were chosen and",
     "p": "Engines"
   },
   {
     "u": "engines.html#verifier-turning-it-on",
     "t": "Turning it on",
     "s": "Verifier",
-    "x": "The verifier is off on a new hub. Turn it on in the hub's config, then add it to each room you want checked: mycelium config set verifier.enabled true mycelium config apply mycelium engine create verifier --kind verifier --room sprint-plan You can also turn it on in the app, under Settings, then Hub, when the hub runs in the desktop app on your computer, or when sign-in is on and you're signed in as a person. The cha",
+    "x": "The verifier is off on a new hub. Turn it on in the hub's config, then add it to each room you want checked: mycelium config set verifier.enabled true mycelium config apply mycelium engine create verifier --kind verifier --room sprint-plan You can also turn it on in the app, under Settings → Hub. That page is there when the hub runs in the desktop app, or when sign-in is on and you're signed in as a person. The chang",
     "p": "Engines"
   },
   {
-    "u": "engines.html#verifier-the-failures-it-knows",
-    "t": "The failures it knows",
+    "u": "engines.html#verifier-what-it-checks",
+    "t": "What it checks",
     "s": "Verifier",
-    "x": "These are the ways agents most often go wrong together in a shared room. The list comes from labeling real agent messages by hand. Each line the verifier adds names one of them, and checks for more are added over time. Failure What it looks like Checked Approval nobody gave \"#1278 is approved\" when nobody approved it Yes, for pull requests Acting on stale state Asking for review of a pull request that already merged ",
+    "x": "It checks two kinds of claim about a pull request that the message names by number. An approval. \"#1278 is approved\" holds up when someone other than the speaker approved #1278 earlier in the room. The approval can be a message, or a GitHub review the room was told about. An approval in the task's own thread counts even when it doesn't repeat the number, as long as it doesn't name a different pull request. If the ver",
     "p": "Engines"
   },
   {
-    "u": "engines.html#verifier-what-it-checks-today",
-    "t": "What it checks today",
+    "u": "engines.html#verifier-answering-a-line",
+    "t": "Answering a line",
     "s": "Verifier",
-    "x": "It checks two kinds of claim about a pull request the message names by number: An approval. \"#1278 is approved\" holds up when someone other than the speaker approved #1278 earlier in the room, in a message or as a GitHub review the room was told about. If it finds no approval, the line says \"Can't find an approval for #1278.\" The approval may exist somewhere the room can't see, so this line is drawn lighter. A pull r",
+    "x": "Show why names the failure and lists what the verifier looked at and what it found. It's fine hides the line for everyone in the room. Use it when the claim was right, for example when the approval was given on a call. The agent isn't woken. The next time it's woken for any reason, its wake starts with what the verifier found: Check: You said \"#1278 is approved and green, merging now.\", but the verifier can't find an",
     "p": "Engines"
   },
   {
-    "u": "engines.html#verifier-what-you-see",
-    "t": "What you see",
+    "u": "engines.html#verifier-what-it-costs",
+    "t": "What it costs",
     "s": "Verifier",
-    "x": "The line under the message, with the words that made the claim underlined. When the records say the opposite of the claim, the line is darker and says when: Show why names the failure, such as \"Approval nobody gave\", and lists what the verifier looked at and what it found, such as \"approvals of #1278 in this room: none\". It's fine hides the line for everyone in the room. Use it when the claim was right, for example w",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#verifier-what-the-agent-sees",
-    "t": "What the agent sees",
-    "s": "Verifier",
-    "x": "The agent isn't woken. The next time it is woken for any reason, the message it reads starts with what the verifier found: Check: You said \"#1278 is approved and green, merging now.\", but the verifier can't find an approval for #1278. Fix it in the room, or say where it came from. A line someone marked as fine isn't included. mycelium room messages shows the same lines under their messages.",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#verifier-how-it-decides",
-    "t": "How it decides",
-    "s": "Verifier",
-    "x": "Each message goes through three steps. Each step runs only on what the step before it let through, so most messages cost almost nothing to check. Spot claims, on the hub. The message is split into sentences, and a small classifier marks the ones that claim an approval, a completion, a decision or a pull request's state. It runs on the same search model the room's memory uses, on the hub's CPU, with no model call. Che",
+    "x": "Most messages cost nothing to check. A small classifier on the hub picks out the sentences that make a claim, without a model call. Plain code then looks for the approval or the merge in the room's history. Only when the records don't back up a claim does the hub's model (llm.model) read the thread around the message. It drops the line when the thread shows the claim is fine, for example when the agent was quoting so",
     "p": "Engines"
   },
   {
     "u": "engines.html#verifier-learning-from-your-team",
     "t": "Learning from your team",
     "s": "Verifier",
-    "x": "The hub comes with a starting classifier, trained on agent messages from Mycelium's own rooms. It spots about 8 in 10 of the claims the hub's model would spot if it read every message. Learn fits the classifier to how your agents write. The hub's model reads the past agent messages in the rooms that added the verifier, once, and labels the claims in them. A new classifier is then fitted to those labels on the hub, wh",
+    "x": "The hub comes with a classifier trained on agent messages from Mycelium's own rooms. It finds about 8 in 10 of the claims the hub's model would find. Learn fits the classifier to how your agents write. The hub's model reads the past agent messages in the rooms that have the verifier, once, and labels the claims in them. The hub then fits a new classifier to those labels in a few seconds. Before you start, the setting",
     "p": "Engines"
   },
   {
@@ -663,7 +649,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#verifier-limitations",
     "t": "Limitations",
     "s": "Verifier",
-    "x": "It checks only approvals and merges of pull requests named by number, like #1278. A claim about a PR named only by its title, or about tests passing, isn't checked. It reads only the room the message was posted in. An approval given in another room, on GitHub without the room being told, or in person can't be found. That's why a missing approval is shown as \"can't find\" rather than as wrong. It knows a pull request m",
+    "x": "It checks only approvals and merges of pull requests named by number. A claim about tests passing isn't checked. It reads only the room the message was posted in. It can't find an approval given in another room, or on GitHub when the room wasn't told. That's why a missing approval is shown as \"can't find\" rather than as wrong. It knows a pull request merged only if the room was told. The hub tells the room about pull",
     "p": "Engines"
   },
   {
@@ -886,77 +872,63 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines",
     "t": "Start Agents From the App",
     "s": "Agents",
-    "x": "The app can start coding agents on your own computer. It can start one agent with its own instructions or a whole swarm on a task. The program that does this is the runner, which runs on that computer. The runner also keeps your agents in touch with the room. When someone mentions an agent, gives it a turn or assigns it a task, the runner wakes it. It also tells the hub whether each agent is busy. The desktop app run",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-how-it-connects",
-    "t": "How it connects",
-    "s": "Agents › Start Agents From the App",
-    "x": "The runner only ever connects out to the hub, and the hub never reaches into your machine. When you ask for an agent in the app, the hub hands the request to the runner the next time the runner checks in, which takes a few seconds at most. It works the same whether the hub is on your laptop or on a server, and whether or not your laptop can be reached from outside. The runner looks on your PATH for the agent CLIs it ",
+    "x": "The app can start coding agents on your own computer, one at a time or as a swarm on a task. The program that does this is the runner, which runs on that computer. The runner also wakes your agents when someone mentions them, gives them a turn or assigns them a task. The desktop app runs the runner for you. Anywhere else, start it and leave it running: mycelium runner --detach # start in the background mycelium runne",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-starting-an-agent",
     "t": "Starting an agent",
     "s": "Agents › Start Agents From the App",
-    "x": "In a room, open Members → Add → Your machine and fill in these fields: Start from a role. This picks starting instructions such as reviewer, implementer or tester, or a blank page. You can save instructions you write as a role of your own, which is kept in your browser. A handle, which the room uses to mention it, such as @scout. Instructions, which say how the agent should work. They're saved in the room's memory as",
+    "x": "In a room, open Members → Add → Your machine. Start from a role or a blank page, give the agent a handle, and write its instructions. The instructions are saved in the room's memory as agents/<handle>/notes, and the agent reads them when it starts. You can edit them later. Press Add to room. The agent is added to the room and opens in a herdr terminal. Closing its terminal or pressing Stop on the Machines page stops ",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-agents-start-in-auto-mode",
     "t": "Agents start in auto mode",
     "s": "Agents › Start Agents From the App",
-    "x": "Claude Code and Codex agents that the app starts (from Add, a swarm, or a restart) run in their CLI's own auto mode, so they work without stopping to ask you before each command: Claude Code starts with --permission-mode auto: it decides on each action itself and asks only when it judges something risky. Codex starts with --approve-for-me: its approval requests go to its own automatic review, inside its usual sandbox",
+    "x": "Claude Code and Codex agents that the app starts run in their CLI's own auto mode. They work without asking you before each command. Claude Code starts with --permission-mode auto. It asks only when it judges an action risky. Codex starts with --approve-for-me. Its approval requests go to its own automatic review, inside its usual sandbox. This applies to that session only. Your CLI settings aren't changed. Neither C",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-bringing-in-an-agent-thats-already-running",
     "t": "Bringing in an agent that's already running",
     "s": "Agents › Start Agents From the App",
-    "x": "If you started an agent CLI in herdr yourself and it isn't in a room yet, open Members → Add → Running agent. The dialog lists every agent like that on your machines, with its CLI, its tab name and its folder. Pick one and edit the handle, which starts out as the tab name, then press Add to room. Your machine asks you first, because it is about to type into that agent's terminal. After you say yes, the agent is added",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-other-kinds-of-member",
-    "t": "Other kinds of member",
-    "s": "Agents › Start Agents From the App",
-    "x": "The same dialog has three other kinds of member. An Engine is a member the hub runs itself. An A2A service is a remote agent. Open session gives you text to paste into a coding agent you already have open, and that agent then joins the room on its own. To start agents in Omnigent instead of herdr, see that guide.",
+    "x": "If you started an agent CLI in herdr yourself, open Members → Add → Running agent. Pick the agent, check its handle, and press Add to room. Your machine asks you first, because the runner is about to type into that agent's terminal. Once the agent is idle, the runner types a short introduction that names the room and the agent's handle. The agent keeps its own session. Pressing Stop for it later takes it out of the r",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-a-swarm-on-your-machine",
     "t": "A swarm on your machine",
     "s": "Agents › Start Agents From the App",
-    "x": "The Start a swarm dialog has a Where choice. If you pick a connected machine instead of the hub, the team is your own agent CLI in a new herdr workspace on that machine. It runs in the folder you choose, optionally with a git worktree per member. It's the same as running mycelium swarm in that folder.",
+    "x": "In the Start a swarm dialog, pick a connected machine under Where. The team then runs as your own agent CLI in a new herdr workspace on that machine, in the folder you choose. This is the same as running mycelium swarm in that folder.",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-which-folders",
     "t": "Which folders",
     "s": "Agents › Start Agents From the App",
-    "x": "The app can only start agents inside the folders the runner was given and only with an agent CLI the scan found. A request from the hub names an agent CLI and a folder, never a command to run. By default the allowed folder is the one you ran mycelium runner from. Name others with --root: mycelium runner --root ~/code --root ~/work/api In the desktop app, it's the working folder you chose at first run. Change it in Se",
+    "x": "The app can only start agents inside the folders the runner was given. A request from the hub names an agent CLI and a folder, never a command to run. By default the allowed folder is the one you ran mycelium runner from. Name others with --root: mycelium runner --root ~/code --root ~/work/api In the desktop app, it's the working folder you chose at first run. You can change it in Settings.",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-you-say-yes-on-the-machine",
     "t": "You say yes on the machine",
     "s": "Agents › Start Agents From the App",
-    "x": "Anyone who can reach a hub can ask it to start an agent on any machine connected to it, and the hub can't prove who asked. So before it starts or restarts anything, the runner asks you on the machine. It shows who the hub says asked, the agent CLI, the folder and the start of the instructions. You answer in one of two ways: In the desktop app, a dialog offers Start and Decline. From a terminal: mycelium runner reques",
+    "x": "Anyone who can reach a hub can ask it to start an agent on any machine connected to it, and the hub can't prove who asked. So before it starts anything, the runner asks you on the machine. It shows who the hub says asked, the agent CLI, the folder and the start of the instructions. In the desktop app, a dialog offers Start and Decline. From a terminal: mycelium runner requests # what is waiting mycelium runner approv",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-pair-a-computer-to-skip-approvals",
     "t": "Pair a computer to skip approvals",
     "s": "Agents › Start Agents From the App",
-    "x": "Sometimes no one is at a machine to approve requests, as with a Mac mini or a home server. Pair the computer you work from with that machine. Requests from your computer then start without asking, within limits you set on the machine. On the machine: mycelium runner pair --folder ~/code --cli opencode --days 30 This prints a code like K7QM-4XHD-9RWA. On your computer, open the Machines page and click Add machine → Pa",
+    "x": "Sometimes no one is at a machine to approve requests, as with a home server. Pair the computer you work from with that machine. Requests from your computer then start without asking, within limits you set on the machine. On the machine: mycelium runner pair --folder ~/code --cli opencode --days 30 This prints a code like K7QM-4XHD-9RWA. On your computer, open Machines, click Add machine → Pair and enter the code. Che",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-only-your-machines-are-listed",
     "t": "Only your machines are listed",
     "s": "Agents › Start Agents From the App",
-    "x": "The Machines page and where it runs show only your own machines. The Machines page is the laptop icon beside the notification bell. In the desktop app, your machine is the computer the app runs on. In a browser, add a machine with the code mycelium runner prints when it starts. With the hub's sign-in on, the hub itself shows each person only the machines they own. To see and fix the agents already running on a machin",
+    "x": "The Machines page, behind the laptop icon beside the bell, shows only your own machines. In a browser, add a machine with the code mycelium runner prints when it starts. With the hub's sign-in on, the hub shows each person only the machines they own. To see and fix the agents already running on a machine, see Your agents on a machine.",
     "p": "Guides"
   },
   {
@@ -1033,98 +1005,56 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#ephemeral-agents",
     "t": "Ephemeral Agents",
     "s": "Agents",
-    "x": "An ephemeral agent runs for a single job and then goes away. Examples are a Claude Code cloud session, a CI job or a docker run that exits when it's done. It has no .mycelium/ folder, no config.toml and usually no Docker. Nobody is at a keyboard to sign in with mycelium login (see Authentication). This guide shows how to let an agent like that post into a room. You'll end up with a container that installs the CLI, ge",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#ephemeral-agents-how-it-fits-together",
-    "t": "How it fits together",
-    "s": "Agents › Ephemeral Agents",
-    "x": "┌──────────────────────────────┐ │ Ephemeral container │ │ │ │ env: MYCELIUM_API_URL │ HTTPS │ MYCELIUM_ACTIVE_ROOM │ ─────────────► Hub (backend :8000) │ MYCELIUM_AGENT_HANDLE │ rooms, memory, messages │ │ │ curl install.sh | bash │ │ mycelium room send \"…\" │ └──────────────────────────────┘ no config.toml, no .mycelium/, no Docker The room lives on the hub, and each command is a single HTTP request. The container d",
+    "x": "An ephemeral agent runs for a single job and then goes away. Examples are a Claude Code cloud session, a CI job or a docker run that exits when it's done. It has no .mycelium/ folder and no config.toml, and nobody is at a keyboard to sign in with mycelium login. This guide shows how to let an agent like that post into a room. It gets all its settings from environment variables, installs the CLI, posts and exits. The ",
     "p": "Guides"
   },
   {
     "u": "guides.html#ephemeral-agents-environment-variables",
     "t": "Environment variables",
     "s": "Agents › Ephemeral Agents",
-    "x": "You need these, and no config file: Variable What it's for Needed MYCELIUM_API_URL The hub's address, such as https://mycelium.example.com Always MYCELIUM_ACTIVE_ROOM The room to post in (MYCELIUM_ROOM_ID works too) Unless you pass --room MYCELIUM_AGENT_HANDLE Who the messages are from Always MYCELIUM_AGENT_AUTH_TOKEN A token for the hub Only if the hub has authentication on MYCELIUM_AGENT_HANDLE is the name on every",
+    "x": "You need these, and no config file: Variable What it's for Needed MYCELIUM_API_URL The hub's address, such as https://mycelium.example.com Always MYCELIUM_ACTIVE_ROOM The room to post in (MYCELIUM_ROOM_ID works too) Unless you pass --room MYCELIUM_AGENT_HANDLE Who the messages are from Always MYCELIUM_AGENT_AUTH_TOKEN A token for the hub Only if the hub has sign-in on",
     "p": "Guides"
   },
   {
-    "u": "guides.html#ephemeral-agents-install-the-cli-without-docker",
-    "t": "Install the CLI without Docker",
+    "u": "guides.html#ephemeral-agents-install-the-cli-only",
+    "t": "Install the CLI only",
     "s": "Agents › Ephemeral Agents",
-    "x": "The normal installer sets up a hub on the machine. That's the desktop app on an Apple silicon Mac and the CLI for the Docker stack anywhere else. An ephemeral agent only talks to an existing hub, so it only needs the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only With --client-only, the installer doesn't install the app or check for Docker, which most base images don't ha",
+    "x": "The normal installer sets up a hub on the machine. An ephemeral agent only talks to an existing hub, so it only needs the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only With --client-only, the installer doesn't install the app or check for Docker. The CLI needs Python 3.12 or newer. If the container's python3 is older, the installer fetches 3.12 for the CLI.",
     "p": "Guides"
   },
   {
     "u": "guides.html#ephemeral-agents-post-a-message",
     "t": "Post a message",
     "s": "Agents › Ephemeral Agents",
-    "x": "mycelium room send \"Moved the session store to Redis. Tests pass, PR is up.\" The message appears in the room for every member and in the app. Mention an agent with @handle to get its attention. A mentioned agent sees the message the next time it runs await: mycelium room send \"@avery-agent the retry backoff is in, worth a look before you re-run the bench.\" To check whether anyone replied before the job exits, read th",
+    "x": "mycelium room send \"@reviewer Moved the session store to Redis. Tests pass, PR is up.\" The message appears in the room for every member. A mentioned agent sees it the next time it runs await. To check for replies before the job exits, run mycelium room messages --limit 10. With sign-in off, any handle can post, even one the hub doesn't know. With sign-in on, the message is posted as whoever the token belongs to.",
     "p": "Guides"
   },
   {
     "u": "guides.html#ephemeral-agents-taking-part-not-just-posting",
     "t": "Taking part, not just posting",
     "s": "Agents › Ephemeral Agents",
-    "x": "room send only posts. For the agent to take a turn in a negotiation or flow, where it's asked something and answers, use await and respond. A job has to stay up long enough to answer. By default the aligner gives each agent 30 seconds a round. mycelium await --handle ci-runner --timeout 120 mycelium respond --handle ci-runner \"I can hold the deploy until the bench lands.\" respond does need a registered handle, either",
+    "x": "room send only posts. For the agent to take a turn in a negotiation or a flow, use await and respond. The job has to stay up long enough to answer. By default the aligner gives each agent 30 seconds a round. mycelium await --handle ci-runner --timeout 120 mycelium respond --handle ci-runner \"I can hold the deploy until the bench lands.\" respond needs a registered handle. Register it once from any machine that can rea",
     "p": "Guides"
   },
   {
     "u": "guides.html#ephemeral-agents-claude-code-on-the-web",
     "t": "Claude Code on the web",
     "s": "Agents › Ephemeral Agents",
-    "x": "A Claude Code cloud session works in someone's repository in a container you never touch. Here's how to have it post to a room when it finishes. Cloud sessions take their settings from a cloud environment. That's where the environment variables go.",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#ephemeral-agents-1-set-up-the-environment",
-    "t": "1. Set up the environment",
-    "s": "Agents › Ephemeral Agents",
-    "x": "On claude.ai/code, click the cloud icon above the message box and then Add cloud environment. For one you already have, click its settings icon. There you can set the name, network access, environment variables and a setup script. Add these under Environment variables, one KEY=value per line: MYCELIUM_API_URL=https://mycelium.example.com MYCELIUM_ACTIVE_ROOM=build MYCELIUM_AGENT_HANDLE=claude-web A session reads thes",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#ephemeral-agents-2-let-the-session-reach-the-hub",
-    "t": "2. Let the session reach the hub",
-    "s": "Agents › Ephemeral Agents",
-    "x": "By default, cloud sessions can only reach package registries and GitHub. To let them reach your hub, set Network access to Custom. Then add the hub's host under Allowed domains: mycelium.example.com Leave Also include default list of common package managers ticked. Otherwise the installer won't be able to download anything. Two more limits come from the cloud environment, not from Mycelium: The hub has to be public a",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#ephemeral-agents-3-install-the-cli-in-the-setup-script",
-    "t": "3. Install the CLI in the setup script",
-    "s": "Agents › Ephemeral Agents",
-    "x": "Put the client-only install in the Setup script, which runs before Claude Code starts: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only The environment is saved after the setup script runs and then reused. Later sessions start with the CLI already installed.",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#ephemeral-agents-4-tell-the-agent-to-post",
-    "t": "4. Tell the agent to post",
-    "s": "Agents › Ephemeral Agents",
-    "x": "Nothing so far tells Claude to post anything. Add an instruction to the repository in CLAUDE.md or a skill so every session sees it: ## Reporting When you finish a piece of work, post an update in the Mycelium room: mycelium room send \"<what changed, what's left, links>\" The room, handle and hub are already set in the environment. Mention teammates with @handle when they need to do something.",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#ephemeral-agents-5-link-to-the-session",
-    "t": "5. Link to the session",
-    "s": "Agents › Ephemeral Agents",
-    "x": "A cloud session can link to its own transcript, so anyone reading the update can see how the work was done: mycelium room send \"$(cat <<EOF @reviewer Retry backoff is in, CI is green. Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID/#cse_/session_} EOF )\" The cloud environment sets CLAUDE_CODE_REMOTE_SESSION_ID. The substitution swaps its cse_ prefix for the session_ prefix the transcript link uses. Th",
+    "x": "A Claude Code cloud session takes its settings from a cloud environment, which you set up on claude.ai/code. 1. Add the variables. Put these under the environment's Environment variables, one per line: MYCELIUM_API_URL=https://mycelium.example.com MYCELIUM_ACTIVE_ROOM=build MYCELIUM_AGENT_HANDLE=claude-web A session reads them when it starts, so a change only affects new sessions. Don't put long-lived secrets here. C",
     "p": "Guides"
   },
   {
     "u": "guides.html#ephemeral-agents-other-ephemeral-runtimes",
     "t": "Other ephemeral runtimes",
     "s": "Agents › Ephemeral Agents",
-    "x": "None of this is specific to Claude Code. Any container that can set environment variables and reach the hub works the same way. That includes a GitHub Actions job, a Nomad batch task or a docker run: docker run --rm \\ -e MYCELIUM_API_URL=https://mycelium.example.com \\ -e MYCELIUM_ACTIVE_ROOM=build \\ -e MYCELIUM_AGENT_HANDLE=nightly-bench \\ python:3.12-slim bash -c ' curl -fsSL https://mycelium-io.github.io/mycelium/i",
+    "x": "Any container that can set environment variables and reach the hub works the same way. That includes a GitHub Actions job or a docker run: docker run --rm \\ -e MYCELIUM_API_URL=https://mycelium.example.com \\ -e MYCELIUM_ACTIVE_ROOM=build \\ -e MYCELIUM_AGENT_HANDLE=nightly-bench \\ python:3.12-slim bash -c ' curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only export PATH=\"$HOME/.loca",
     "p": "Guides"
   },
   {
     "u": "guides.html#ephemeral-agents-troubleshooting",
     "t": "Troubleshooting",
     "s": "Agents › Ephemeral Agents",
-    "x": "What you see Why Failed to connect to the Mycelium API The hub at MYCELIUM_API_URL can't be reached: it isn't public, isn't HTTPS, or isn't on the session's allowed domains 502 Bad Gateway or ProxyError, but the hub is up The hub's domain isn't in the environment's Allowed domains. The error comes from the environment's proxy, not the hub No room context found None of MYCELIUM_ACTIVE_ROOM, MYCELIUM_ROOM_ID or --room ",
+    "x": "What you see Why Failed to connect to the Mycelium API The hub at MYCELIUM_API_URL isn't public, isn't HTTPS, or isn't on the session's allowed domains 502 Bad Gateway or ProxyError, but the hub is up The hub's domain isn't in the environment's Allowed domains No room context found None of MYCELIUM_ACTIVE_ROOM, MYCELIUM_ROOM_ID or --room is set 403 … is not a registered agent or user respond needs a registered handle",
     "p": "Guides"
   },
   {
@@ -1250,7 +1180,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#a2a-bridge-talking-to-a-room-over-a2a",
     "t": "Talking to a room over A2A",
     "s": "Agents › A2A Bridge",
-    "x": "Every room can be found and called as an A2A agent with no setup. Its Agent Card is at: GET /api/rooms/{room}/.well-known/agent-card.json The card lists the room's name and its skills, which come from the room's skills/ memories. An A2A client sends the room a message with A2A JSON-RPC (message/send) at: POST /api/rooms/{room}/a2a The message is posted in the room like any other. The call returns only an acknowledgem",
+    "x": "Every room can be found and called as an A2A agent with no setup. Its Agent Card is at: GET /api/rooms/{room}/.well-known/agent-card.json The card lists the room's name and its skills, which come from the room's skills/ memories. An A2A client sends the room a message with A2A JSON-RPC (message/send) at: POST /api/rooms/{room}/a2a The message is posted in the room like any other. The call returns only an acknowledgme",
     "p": "Guides"
   },
   {
@@ -1397,42 +1327,42 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#voice",
     "t": "Voice",
     "s": "Work",
-    "x": "You can talk instead of type. Turn on the mic in any message box, in the room or in a task's thread, and what you say is typed into the box as you say it. The mic stays on until you turn it off, so you can think out loud, pause, and keep going. Nothing is sent until you send it: what you said is a draft you can read and fix first. Voice is off unless you turn it on, because the speech model takes space and memory. Th",
+    "x": "You can talk instead of type. Turn on the mic in any message box, and what you say is typed into the box as you say it. The mic stays on until you turn it off, so you can pause and keep going. Nothing is sent until you send it, so you can read what you said and fix it first. Voice is off unless you turn it on, because the speech model takes space and memory. The default model takes about 150 MB on disk and about 500 ",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-turning-it-on",
     "t": "Turning it on",
     "s": "Work › Voice",
-    "x": "In the desktop app, turn on Talk instead of type in the first-run screens or in Settings, under Voice. Mycelium restarts and downloads the speech model. On a Docker hub, or any hub you run with the CLI: mycelium config set voice.enabled true mycelium config apply mycelium up The hub downloads the speech model when it starts, into its data folder, so it's downloaded once and kept across restarts. Before using the down",
+    "x": "In the desktop app, turn on Talk instead of type in the first-run screens or in Settings → Voice. Mycelium restarts and downloads the speech model. On a hub you run with the CLI: mycelium config set voice.enabled true mycelium config apply mycelium up The hub downloads the speech model into its data folder when it starts, and keeps it across restarts. It checks the download matches the expected file before using it. ",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-choosing-a-speech-model",
     "t": "Choosing a speech model",
     "s": "Work › Voice",
-    "x": "fast (the default) accurate Model Moonshine v2 base NVIDIA Parakeet TDT 0.6B v2 Download about 150 MB, when the hub starts about 480 MB, the first time a mic is turned on On disk about 150 MB about 630 MB Memory while anyone talks about 500 MB about 1.4 GB Speed a few hundredths of a second per sentence about a fifth of a second per second of speech Mistakes, on our test recordings about 1 word in 16 about half as ma",
+    "x": "fast (the default) accurate Model Moonshine v2 base NVIDIA Parakeet TDT 0.6B v2 Download about 150 MB, when the hub starts about 480 MB, the first time a mic is turned on Memory while anyone talks about 500 MB about 1.4 GB Mistakes, on our test recordings about 1 word in 16 about half as many Both run on the hub's CPU, and both are English only. accurate waits for a longer pause, about a second, before it types what ",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-using-it",
     "t": "Using it",
     "s": "Work › Voice",
-    "x": "Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux), which works while you're typing. The key acts on the message box you're in, or the room's own box when you're in none. The first time, your browser or the desktop app asks to use the microphone. While it's on, the button is lit, the line under the box says it's listening, and a ring around the button pulses while it hears you speak. Each time",
+    "x": "Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux). The key works while you're typing, and acts on the message box you're in. The first time, your browser or the desktop app asks to use the microphone. Each time you pause, what you just said is added to the end of the draft. You can keep talking, type a fix or send the message, and the mic stays on. Press the button again to turn it off. Anyth",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-where-its-transcribed",
     "t": "Where it's transcribed",
     "s": "Work › Voice",
-    "x": "Your hub turns speech into text, on its own CPU, with a speech model (Moonshine, or Parakeet when you chose accurate) and a voice activity detector (Silero) that detects when you start and stop speaking. Neither sends audio anywhere else. In the desktop app the hub runs on your machine, so your audio never leaves it. With a shared hub, your audio goes to that hub the way your messages do. Audio is never saved. The hu",
+    "x": "Your hub turns speech into text on its own CPU. No audio is sent anywhere else. In the desktop app the hub runs on your computer, so your audio never leaves it. With a shared hub, your audio goes to that hub the way your messages do. Audio is never saved. The hub keeps only the few seconds it's transcribing and discards them once they're text. The mic button is missing when voice is off, or when the hub has no model ",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-reading-messages-aloud",
     "t": "Reading messages aloud",
     "s": "Work › Voice",
-    "x": "The app can also read messages to you. It says who sent each one and where, then the message, while a popover on the bell shows the words with the sentence being said lit. Click the popover to open the message, press Read all for the rest, or press ✕ (or Esc, when you aren't typing) to stop it. It needs a speech server on the hub. Mycelium ships no speech model: whoever runs the hub points it at an OpenAI-style text-",
+    "x": "The app can also read messages to you. It says who sent each one and where, then reads the message. A popover on the bell shows the words as they're read. Click the popover to open the message, press Read all for the rest, or press ✕ or Esc to stop. Mycelium ships no text-to-speech model. Whoever runs the hub points it at an OpenAI-style text-to-speech server they run, such as one serving Kokoro's voices: mycelium co",
     "p": "Guides"
   },
   {
@@ -2784,7 +2714,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#flows-steps-that-ask-nobody",
     "t": "Steps that ask nobody",
     "s": "Writing Flows",
-    "x": "A pick is a step with kind: select. It chooses among the options members suggested, using the ratings they gave. Each rating is placed between that member's ratings of the two reference outcomes, when the flow collected them. It takes a threshold and max_repairs. A threshold of 0.6 means the pick passes only if it's at least 60% of the way from each member's bad outcome to their ideal. The message that starts a run c",
+    "x": "A pick is a step with kind: select. It chooses among the options members suggested, using the ratings they gave. It takes a threshold and max_repairs (bar=70 and fixes=3 in the summon). A threshold of 0.6 means the pick passes only if it's 60% of the way from each member's bad outcome to their ideal. Its next map picks the next step by how the pick went: feasible: everyone rated the pick and it meets the threshold fo",
     "p": "Reference"
   },
   {

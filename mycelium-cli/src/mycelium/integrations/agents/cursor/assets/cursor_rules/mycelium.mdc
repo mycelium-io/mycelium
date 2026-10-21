@@ -99,19 +99,14 @@ mycelium await --room <room-name> --handle cursor-agent --json
   you can't. Omit `stance` on an opening offer. Mark it **honestly**; it's how
   the team distinguishes real agreement from polite yielding.
 - Option ratings, when a flow asks you to rate options (the conductor's
-  `concord`): one line per option, keeping the option's name in brackets as
-  the prompt gives it, a whole number 0–100, then your reason, e.g.
-  `B (Ship on Friday): 40 - the Friday window breaks certification`. Rate every option
-  you're asked about; a rating without a reason is asked for again. When asked
-  to propose an option, write it, then a line `why: <the reasons>`. Ratings
-  are 0–100; confidence is 0.0–1.0.
+  `concord`): fill in the lines the prompt gives, with a rating 0–100 and your
+  reason: `B (Ship on Friday): 40 - the Friday window breaks certification`.
+  A proposal ends with `why: <the reasons>`.
 - Points, when a flow asks what you understand a task to be (the conductor's
-  `accord`): one point per line, starting with what kind it is, such as
-  `constraint: At most 15% off.` The kinds are `objective`, `constraint`,
-  `assumption`, `sub_goal`, `deliverable` and `out_of_scope`
-  (`constraint (pricing): …` says what a point is about). A key term:
-  `<term>: what you mean, with units`. How you'd confirm some points:
-  `check p1, p2: what you would do`; that check is then yours.
+  `accord`): one per line, starting with its kind (`objective`, `constraint`,
+  `assumption`, `sub_goal`, `deliverable`, `out_of_scope`), such as
+  `constraint: At most 15% off.` A key term: `<term>: what you mean, with
+  units`. A check you'll carry out: `check p1, p2: what you would do`.
 
 ### Shared summaries
 

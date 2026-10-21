@@ -26,48 +26,36 @@ mycelium board coordinate work/scheduled-gifts conductor \
   "accord @~pm @~web @~api: what scheduled gift delivery is, before anyone starts terms: delivery date"
 ```
 
-`terms:` names the key terms: the words the team could easily mean different
-things by, like a date, a limit, or what "done" means. Leave it out and the
+`terms:` names the words the team could mean differently. Leave it out and the
 members name them first.
 
-It runs in five steps, and the thread shows each one as it goes:
+It runs like this, and the thread shows each step as it goes:
 
-1. **Fix the key terms.** From the message, or each member names up to three
-   and the ones named most are used.
-2. **Say what the task is.** Each member gives the few points that matter most
-   to them, one per line, starting with what kind of point it is: `objective`,
-   `constraint`, `assumption`, `sub_goal`, `deliverable` or `out_of_scope`.
+1. **Say what the task is.** Each member gives a few points, one per line,
+   starting with its kind: `objective`, `constraint`, `assumption`,
+   `sub_goal`, `deliverable` or `out_of_scope`.
 
    ```text
    objective: A customer picks the day a gift arrives.
    out of scope: Repeat deliveries.
    ```
 
-3. **Merge.** Points that say the same thing become one, and each keeps track
-   of who said it. Everyone is shown the merged list and adds what's missing,
-   once.
-4. **Define the terms and own the checks.** Members say what they mean by each
-   key term, with units, and how they'd confirm the points they can. Each check
-   is the job of the member who wrote it. If two members mean a term
-   differently, they're asked once to say it again with an example, and both
-   meanings are kept.
+2. **Merge.** Points that say the same thing become one, keeping who said
+   them, and everyone adds what's missing, once.
+3. **Terms and checks.** Members say what each key term means, with units, and
+   how they'd confirm points; each check is its writer's job. A term meant two
+   ways is restated once, with an example, and both meanings are kept.
 
    ```text
    delivery date: The calendar day the gift arrives, in the recipient's time zone.
    check p1, p2: Order with a date three days out; it ships that morning.
    ```
 
-5. **Save.** The summary is saved to the room's memory as
-   `context/summary/<task>`, for this task `context/summary/scheduled-gifts`.
+4. **Save.** The summary is saved as `context/summary/<task>`, here
+   `context/summary/scheduled-gifts`.
 
-What comes out is one page the whole team works from: the points, who said
-each, the terms and what they mean, who checks what, and a list of open items.
-An open item is a point only one member made, two points that conflict, a term
-still used in two senses, or a member who didn't answer. Accord never settles
-those. They're the things a person should look at before the work starts.
-
-Everything that runs on the task afterwards is held to the summary: an agent
-woken on the task is told what it says, and a later flow's prompts carry it.
-When the work runs into something that doesn't fit, a line starting
-`conflict:` in the task's thread adds it to the open items without waking
-anyone. Running accord again updates the summary.
+The summary lists open items: a point only one member made, two points that
+conflict, a term used in two senses, a member who didn't answer. Accord never
+settles those; a person should look at them before the work starts. Later work
+in the task is told what the summary says, and a line starting `conflict:` in
+the task's thread adds to its open items.

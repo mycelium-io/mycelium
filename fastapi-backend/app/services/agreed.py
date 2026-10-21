@@ -76,11 +76,13 @@ async def save(
     task: str,
     by: str,
     tags: list[str],
+    base_version: int | None = None,
 ) -> bool:
     """Upsert one result through the canonical memory write; ``False`` on failure.
 
     Never raises: a run's outcome stands whether or not its result could be
-    saved, and the caller says which.
+    saved, and the caller says which. With ``base_version``, the write is
+    refused (``False``) when the memory moved on since that version.
     """
     from app.routes.memory import upsert_memories
     from app.schemas import MemoryBatchCreate, MemoryCreate
@@ -99,6 +101,7 @@ async def save(
                         embed=True,
                         tags=tags,
                         meta=meta,
+                        base_version=base_version,
                     )
                 ]
             ),
@@ -259,10 +262,33 @@ def reported(room: str, record: TranscriptRecord) -> tuple[str, list[str]] | Non
     return (summary, conflicts) if summary else None
 
 
+#: One lock per (room, summary key), so conflict lines arriving together are
+#: added one after another rather than each overwriting the other.
+_locks: dict[tuple[str, str], asyncio.Lock] = {}
+#: How many times an add is tried when the summary moved under it.
+ADD_TRIES = 3
+
+
 async def add_conflicts(room: str, key: str, by: str, conflicts: list[str]) -> bool:
     """Add what ``by`` reported to the shared summary's open items, once each,
-    and save it; ``False`` when there was nothing new or the save failed."""
+    and save it; ``False`` when there was nothing new or the save failed.
+
+    Only the contract changes: every other key of the summary's frontmatter is
+    written back as it was. Adds to one summary run one at a time, and each
+    write is checked against the version it read, so a summary rewritten in
+    between (an accord run again) is read afresh rather than overwritten."""
+    async with _locks.setdefault((room, key), asyncio.Lock()):
+        for _ in range(ADD_TRIES):
+            saved = await _add_conflicts_once(room, key, by, conflicts)
+            if saved is not None:
+                return saved
+        return False
+
+
+async def _add_conflicts_once(room: str, key: str, by: str, conflicts: list[str]) -> bool | None:
+    """One read, add and checked write: ``None`` when the write was refused."""
     from app.services import frame as framing
+    from app.services.filesystem import unmanaged_meta
 
     found = read_memory_file(get_room_dir(room), key)
     if found is None:
@@ -281,16 +307,18 @@ async def add_conflicts(room: str, key: str, by: str, conflicts: list[str]) -> b
     if not new:
         return False
     made = {**made, "flags": flags + new}
-    kept = {k: v for k, v in meta.items() if k in ("flow", "record")}
-    return await save(
+    tags = meta.get("tags")
+    saved = await save(
         room,
         key,
         body=framing.render(made),
-        meta={CONTRACT_META: made, **kept},
+        meta={**unmanaged_meta(meta), CONTRACT_META: made},
         task=str(meta.get("relates-to") or made.get("task") or ""),
         by=by,
-        tags=["shared-summary"],
+        tags=list(tags) if isinstance(tags, list) and tags else ["shared-summary"],
+        base_version=meta.get("version") if isinstance(meta.get("version"), int) else None,
     )
+    return True if saved else None
 
 
 def handle_recorded(room: str, record: TranscriptRecord) -> None:

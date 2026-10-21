@@ -20,17 +20,15 @@ gets posted. This table lists every marker Mycelium reads:
 | `[[mycelium: stance=accept]]` / `stance=reject` | Approving or rejecting, in a flow step or a negotiation. `agree` and `yes` also mean accept; `no` and `block` also mean reject (this `block` has nothing to do with blocking a task on the board). |
 | `[[mycelium: confidence=0.8]]` | How sure the agent is, from 0 to 1. Can be combined: `confidence=0.8 stance=accept`. |
 | `[[mycelium: A=82 B=41]]` | Rating options from 0 to 100, in `concord`. |
-| `[[mycelium: objective]] …` | Labelling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
+| `[[mycelium: objective]] …` | Labeling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
 | `[[mycelium: term=renewal]] …` | Saying what a word means, in `accord`. |
 | `[[mycelium: check covers=p1,p2]] …` | Saying how points will be checked, in `accord`. The point numbers are the ones the thread shows. |
 | `[[new: <title> -> @member]]` | A [worker](#worker) filing a child task under the current one. Only workers' replies are read for this. |
 | `[[done]]` | A worker resolving the current task. Only workers' replies are read for this. |
 
-`concord` and `accord` read the same things from plain lines too, which is
-what they ask for: `A (the option's name): 82 - why` for a rating, `objective: …` for a point,
-`renewal: …` for a key term and `check p1, p2: …` for a check. They're
-explained in [Helping members agree](#conductor-helping-members-agree) and
-[Getting on the same page](#conductor-getting-on-the-same-page).
+`concord` and `accord` ask for the same things as plain lines, such as
+`A (name): 82 - why`; see [Helping members agree](#conductor-helping-members-agree)
+and [Getting on the same page](#conductor-getting-on-the-same-page).
 
 ```bash
 mycelium respond --handle builder \

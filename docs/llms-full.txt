@@ -1399,35 +1399,22 @@ mycelium board coordinate decisions/double-charge-refunds conductor \
   "concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?"
 ```
 
-1. **Rate the two ends.** Everyone rates two outcomes from 0 to 100 for their
-   part of the work, with why: nothing agreed, the task left open; and the
-   option they'd choose if it were up to them alone. Every later rating is
-   placed between those two, so a member who rates everything low isn't read
-   as unhappy. To measure against other ends, name them after the question:
-   `bad: … ideal: …`.
-2. **Propose.** Everyone proposes one option and says why, on a line starting
-   `why:`. Each option gets a letter and a short name from its first words.
-3. **Rate.** Everyone rates every option at the same time, one line each,
-   naming the option, with a reason:
-   `B (Ship on Friday): 40 - the Friday window breaks certification`. A rating
-   without a reason is asked for again.
-4. **Pick.** The pick is the option the least happy member is best off with.
-   It meets the bar when it's at least that far (60% by default) from nothing
-   agreed to each member's own pick. `bar=70` in the message sets another, and
-   `fixes=3` how many fixes to try (5 if you don't). The pick is calculated
-   from the ratings. No model makes it.
-5. **Fix, if needed.** The member least happy with the pick proposes something
-   new that answers the objections the others wrote. An option already on the
-   table is sent back once. Everyone rates the new one.
-6. **Stop.** It stops as soon as the pick meets everyone's bar. When the fixes
-   run out, the best option found stands, and the thread says who is still
-   short and why.
+1. **Rate the two ends.** Everyone rates no agreement and their own pick, so
+   each member's later ratings are read on their own scale.
+2. **Propose.** Everyone proposes one option, with a `why:` line.
+3. **Rate.** Everyone rates every option, one line each, with a reason:
+   `B (Ship on Friday): 40 - the Friday window breaks certification`.
+4. **Pick.** The pick is the option the least happy member is best off with,
+   calculated from the ratings, not by a model. It has to be 60% of the way
+   from no agreement to each member's own pick (`bar=70` sets another).
+5. **Fix, if needed.** The least happy member proposes something new that
+   answers the others' objections, and everyone rates it. After 5 fixes
+   (`fixes=3` sets another), the best option found stands.
 
-After each pick the thread shows how each member sees it, in words: whether
-it meets their bar and the reason they gave. The numbers are a click away.
-The result is saved to the room's memory under `context/decision/`, named after
-the task without its `work/` prefix, with the reasons first. A missing rating
-is never guessed. It counts against the option it's missing from.
+The thread shows how each member sees the pick and why, with the numbers a
+click away. The result is saved under `context/decision/`, named after the
+task without its `work/` prefix, saying who is short of the bar and why. A
+missing rating counts against the option it's missing from.
 
 For agents that hold positions rather than pick between options, the
 [aligner](#aligner) negotiates instead.
@@ -1442,47 +1429,29 @@ mycelium board coordinate work/acme-renewal conductor \
   "accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount"
 ```
 
-1. **Fix the key terms.** These are the words the team could easily mean
-   different things by. Name them after `terms:` in the message. Otherwise each
-   member names up to three, and the ones named most are used.
-2. **Say what the task is.** Each member gives the points that matter most to
-   them, one per line, starting with what kind of point it is:
+1. **Key terms.** The words the team could mean differently, from `terms:`, or
+   the members name them.
+2. **Say what the task is.** Each member gives a few points, one per line,
+   starting with its kind: `objective`, `constraint`, `assumption`,
+   `sub_goal`, `deliverable` or `out_of_scope`.
 
    ```
    objective: Renew Acme on terms finance can sign.
    constraint (pricing): A discount of at most 15%.
-   out of scope: Changing the product tier.
    ```
 
-   The kinds are `objective`, `constraint`, `assumption`, `sub_goal`,
-   `deliverable` and `out_of_scope`. A word in brackets says what a point is
-   about.
-3. **Merge.** Points that say the same thing are combined, and each one keeps
-   track of who said it. Everyone is shown the list and adds what's missing,
-   once. The thread numbers the points `p1`, `p2` and so on.
-4. **Define the terms and own the checks.** Everyone says what they mean by
-   each key term, with units where it has them, and how they'd confirm the
-   points they can:
+3. **Merge.** Points that say the same thing are combined, keeping who said
+   them, and everyone adds what's missing, once.
+4. **Terms and checks.** Everyone says what each key term means, with units,
+   and how they'd confirm points (`check p1, p2: Finance signs the order
+   form.`). Each check belongs to its writer. A term meant two ways is
+   restated once, and both meanings are kept.
+5. **Save.** The summary goes to `context/summary/`, named after the task, and
+   ends with what's still open.
 
-   ```
-   renewal: The same product for a new 12-month term.
-   check p1, p2: Finance signs the order form.
-   ```
-
-   Each check belongs to the member who wrote it. If two members mean a term
-   differently, they're asked once to say it again with an example. Nobody
-   has to give way: both meanings are kept.
-5. **Save.** The shared summary is saved to the room's memory under
-   `context/summary/`. It's named after the task without its `work/` prefix,
-   so here it's `context/summary/acme-renewal`. It ends with what's still open.
-   That includes points only one person made, conflicting points, terms used in
-   different senses and anyone who didn't answer.
-
-Everything that runs on the task afterwards is held to the summary: an agent
-woken on the task is told what it says, and a later flow's prompts carry it.
-When work runs into something in it that doesn't fit, a line starting
-`conflict:` in the task's thread adds it to the open items, without waking
-anyone. Running `accord` again updates the summary.
+Later work in the task is told what the summary says. A line starting
+`conflict:` in the task's thread adds to its open items. Running `accord` again
+updates it.
 
 ## Who can take part
 
@@ -1872,20 +1841,17 @@ Like a persona, a worker takes its character from its notes in
 
 # Verifier
 
-The verifier spots common failures of agents working together in a room, like
-an agent claiming an approval nobody gave or acting on state that has changed,
-and adds a quiet line under the message. The people reading along would
-otherwise take the agent at its word.
-
-It checks what an agent says against what the room has on record. When a claim
-doesn't hold up, it adds a short line under the message:
+The verifier checks what agents say against what the room has on record. When
+an agent claims something the records don't back up, such as an approval
+nobody gave, the verifier adds a short line under the message. Without it, the
+people reading along would take the agent at its word.
 
 ![A message saying "#502 is approved and green", with those words underlined and the line "verifier · Can't find an approval for #502. Show why · It's fine" under it](app-verifier-line.png)
 
 It never blocks a message, never posts in the chat and never wakes anyone.
 
-For a walk through one check, how the checks were chosen and what the numbers
-behind them are, see [The verifier, in depth](verifier.html).
+For a walk through one check, how the checks were chosen and the numbers
+behind them, see [The verifier, in depth](verifier.html).
 
 ## Turning it on
 
@@ -1899,86 +1865,54 @@ mycelium config apply
 mycelium engine create verifier --kind verifier --room sprint-plan
 ```
 
-You can also turn it on in the app, under **Settings**, then **Hub**, when the
-hub runs in the desktop app on your computer, or when sign-in is on and you're
-signed in as a person. The change applies when the hub restarts, and on the
-desktop app the page has a button that restarts it.
+You can also turn it on in the app, under **Settings → Hub**. That page is there
+when the hub runs in the desktop app, or when sign-in is on and you're signed in
+as a person. The change applies when the hub restarts.
 
-In the app, add it from **Members**, then **Add**, then **Engine**. Unlike the
-other engines it doesn't wait to be mentioned. Once a room has it, it reads
-every message an agent posts there. It doesn't check messages from people or
-from other engines.
+To add it to a room in the app, open **Members**, press **Add** and pick
+**Engine**.
 
-## The failures it knows
+Unlike the other engines, the verifier doesn't wait to be mentioned. Once a room
+has it, it reads every message an agent posts there. It doesn't check messages
+from people or from other engines.
 
-These are the ways agents most often go wrong together in a shared room. The
-list comes from labeling real agent messages by hand. Each line the verifier
-adds names one of them, and checks for more are added over time.
+## What it checks
 
-| Failure | What it looks like | Checked |
-|---|---|---|
-| Approval nobody gave | "#1278 is approved" when nobody approved it | Yes, for pull requests |
-| Acting on stale state | Asking for review of a pull request that already merged | Yes, for merged pull requests |
-| Work called done without evidence | "Tests pass" when CI failed | Not yet |
-| A request nobody answered | Someone asks an agent to do something and hears nothing back | Not yet |
-| A decision that wasn't theirs | An agent settles a question someone else owns | Not yet |
-| Misreading the ask | Doing something different from what was asked | Needs the whole thread |
-| Losing something in a handoff | A detail goes missing when work passes to another agent | Needs the whole thread |
-| Going out of scope | Changing what it wasn't asked or allowed to change | Needs the whole thread |
-| A side effect nobody asked for | Changing something as a by-product | Needs the whole thread |
+It checks two kinds of claim about a pull request that the message names by
+number.
 
-"Needs the whole thread" means one message isn't enough to tell. Those need a
-review of the task's whole conversation, which the verifier doesn't do.
+**An approval.** "#1278 is approved" holds up when someone other than the
+speaker approved #1278 earlier in the room. The approval can be a message, or a
+GitHub review the room was told about. An approval in the task's own thread
+counts even when it doesn't repeat the number, as long as it doesn't name a
+different pull request.
 
-## What it checks today
+If the verifier finds no approval, the line says "Can't find an approval for
+#1278." The approval may exist somewhere the room can't see, so this line is
+drawn lighter.
 
-It checks two kinds of claim about a pull request the message names by number:
-
-- **An approval.** "#1278 is approved" holds up when someone other than the
-  speaker approved #1278 earlier in the room, in a message or as a GitHub
-  review the room was told about. If it finds no approval, the line says
-  "Can't find an approval for #1278." The approval may exist somewhere the
-  room can't see, so this line is drawn lighter.
-- **A pull request treated as still open.** "Next I'll merge #1266" or "#1266
-  still needs review" is wrong when #1266 had already merged more than two
-  minutes before. The line says when: "#1266 was already merged, at 20:08."
-  The records say the opposite of the claim, so this line is drawn darker.
-
-An approval given in the task's own thread counts even when it doesn't repeat
-the number ("Approved, CI passes"), as long as it doesn't name a different
-pull request.
+**A pull request treated as still open.** "Next I'll merge #1266" is wrong when
+#1266 had already merged more than two minutes earlier. The line says when it
+merged: "#1266 was already merged, at 20:08." Here the records say the opposite
+of the claim, so this line is drawn darker. Talk about a merge that hasn't
+happened yet, like "once #1266 is merged", doesn't count.
 
 A room often talks about more than one repository, and their pull request
-numbers overlap. Write `mycelium-classifier#3` or paste the pull request's link
-and the verifier only compares it with that repository's #3. A plain `#3` in a
-sentence that also names a repository the room has mentioned before is taken
-to be that repository's. A sentence that names two repositories is not checked.
+numbers overlap. To name one repository's pull request, write
+`mycelium-classifier#3` or paste its link. A plain `#3` in a sentence that names
+a repository the room has mentioned before is taken to be that repository's. A
+sentence that names two repositories isn't checked.
 
-Talk about a merge that hasn't happened yet, like "once #1266 is merged" or
-"#1266 isn't merged yet", doesn't count as a merge.
+## Answering a line
 
-## What you see
+**Show why** names the failure and lists what the verifier looked at and what
+it found.
 
-- **The line** under the message, with the words that made the claim
-  underlined. When the records say the opposite of the claim, the line is
-  darker and says when:
+**It's fine** hides the line for everyone in the room. Use it when the claim
+was right, for example when the approval was given on a call.
 
-  ![A message saying #499 still needs a review, with the darker line "verifier · #499 was already merged, at 18:10."](app-verifier-line-sure.png)
-
-- **Show why** names the failure, such as "Approval nobody gave", and lists
-  what the verifier looked at and what it found, such as "approvals of #1278
-  in this room: none".
-
-  ![The Show why panel: "Acting on stale state", the agent's sentence, the reason, and "Merges of #499 in this room: merged at 18:10 (@builder)"](app-verifier-show-why.png)
-
-- **It's fine** hides the line for everyone in the room. Use it when the claim
-  was right, for example when the approval was given on a call. The answer is
-  kept on the hub with the room it came from.
-
-## What the agent sees
-
-The agent isn't woken. The next time it is woken for any reason, the message
-it reads starts with what the verifier found:
+The agent isn't woken. The next time it's woken for any reason, its wake starts
+with what the verifier found:
 
 ```
 Check:   You said "#1278 is approved and green, merging now.", but the verifier
@@ -1986,54 +1920,40 @@ Check:   You said "#1278 is approved and green, merging now.", but the verifier
          came from.
 ```
 
-A line someone marked as fine isn't included. `mycelium room messages` shows
-the same lines under their messages.
+A line someone marked as fine isn't included.
 
-## How it decides
+## What it costs
 
-Each message goes through three steps. Each step runs only on what the step
-before it let through, so most messages cost almost nothing to check.
+Most messages cost nothing to check. A small classifier on the hub picks out the
+sentences that make a claim, without a model call. Plain code then looks for the
+approval or the merge in the room's history.
 
-1. **Spot claims, on the hub.** The message is split into sentences, and a
-   small classifier marks the ones that claim an approval, a completion, a
-   decision or a pull request's state. It runs on the same search model the
-   room's memory uses, on the hub's CPU, with no model call.
-2. **Check the room's records.** Plain code looks for the approval or the
-   merge in this room's history. A claim the records back up stops here.
-3. **Ask the hub's model.** For a claim the records don't back up, the hub's
-   model (`llm.model`) reads the thread around the message. It drops the line
-   when the thread shows the claim is fine: the approval was given in words
-   the records missed, the agent was quoting someone else, or it was a plan
-   ("once it's approved I'll merge") rather than a claim. If the model call
-   fails, nothing is shown.
+Only when the records don't back up a claim does the hub's model (`llm.model`)
+read the thread around the message. It drops the line when the thread shows the
+claim is fine, for example when the agent was quoting someone else. If the model
+call fails, no line is shown.
 
-To skip the third step and show every finding from the records, set
-`verifier.confirm` to `false`. That makes no model calls but shows more lines
-that turn out to be fine.
+To skip the model and show every finding from the records, set
+`verifier.confirm` to `false`. The verifier then makes no model calls, but more
+of its lines turn out to be fine.
 
 ## Learning from your team
 
-The hub comes with a starting classifier, trained on agent messages from
-Mycelium's own rooms. It spots about 8 in 10 of the claims the hub's model
-would spot if it read every message.
+The hub comes with a classifier trained on agent messages from Mycelium's own
+rooms. It finds about 8 in 10 of the claims the hub's model would find.
 
 **Learn** fits the classifier to how your agents write. The hub's model reads
-the past agent messages in the rooms that added the verifier, once, and labels
-the claims in them. A new classifier is then fitted to those labels on the
-hub, which takes a few seconds. The settings page shows how many messages
-there are and roughly what reading them will cost before you start. A few
-thousand messages cost around a dollar.
+the past agent messages in the rooms that have the verifier, once, and labels
+the claims in them. The hub then fits a new classifier to those labels in a few
+seconds. Before you start, the settings page shows how many messages there are
+and roughly what reading them will cost. A few thousand messages cost around a
+dollar.
 
-- It reads only the rooms that added the verifier.
-- The labels are kept on the hub, beside its data, each tagged with its room.
-  The classifier itself is a list of numbers and holds no text from your rooms.
-- If the hub's search model changes, the classifier is fitted again from the
-  saved labels, with no model calls.
+The labels are kept on the hub, each tagged with its room. The classifier
+itself is a list of numbers and holds no text from your rooms.
 
-Start it from the verifier's section in **Settings**, or over the API with
+Start it from the verifier's section in **Settings**, or with
 `POST /api/verifier/learn`.
-
-![The Verifier section in Hub settings: on, the rooms it checks, and Learn from your team with its cost](app-verifier-settings.png)
 
 ## Settings
 
@@ -2044,22 +1964,15 @@ Start it from the verifier's section in **Settings**, or over the API with
 
 ## Limitations
 
-- It checks only approvals and merges of pull requests named by number, like
-  `#1278`. A claim about a PR named only by its title, or about tests passing,
-  isn't checked.
-- It reads only the room the message was posted in. An approval given in
-  another room, on GitHub without the room being told, or in person can't be
-  found. That's why a missing approval is shown as "can't find" rather than as
-  wrong.
-- It knows a pull request merged only if the room was told: by the hub's
-  GitHub status checks for a PR linked to a task, or by someone saying so in
-  the room. A merge of a PR no task links to and nobody mentioned can't be
-  checked.
-- It recognizes a repository by its name as written in the room
-  (`mycelium-classifier#3`, a link, or GitHub's own updates). If a sentence
-  calls it something else, such as "the website's #14", a plain #14 is read
-  as the room's usual repository.
-- The classifier misses some claims. A missed claim gets no line.
+- It checks only approvals and merges of pull requests named by number. A claim
+  about tests passing isn't checked.
+- It reads only the room the message was posted in. It can't find an approval
+  given in another room, or on GitHub when the room wasn't told. That's why a
+  missing approval is shown as "can't find" rather than as wrong.
+- It knows a pull request merged only if the room was told. The hub tells the
+  room about pull requests linked to a task. A merge nobody linked or mentioned
+  can't be checked.
+- The classifier misses some claims, and a missed claim gets no line.
 - It was trained on English messages.
 
 
@@ -2578,12 +2491,10 @@ name it doesn't know.
 
 # Start Agents From the App
 
-The app can start coding agents on your own computer. It can start one agent
-with its own instructions or a whole swarm on a task. The program that does
-this is the **runner**, which runs on that computer. The runner also keeps your
-agents in touch with the room. When someone mentions an agent, gives it a turn
-or assigns it a task, the runner wakes it. It also tells the hub whether each
-agent is busy.
+The app can start coding agents on your own computer, one at a time or as a
+swarm on a task. The program that does this is the **runner**, which runs on
+that computer. The runner also wakes your agents when someone mentions them,
+gives them a turn or assigns them a task.
 
 The desktop app runs the runner for you. Anywhere else, start it and leave it
 running:
@@ -2597,115 +2508,82 @@ mycelium runner stop         # stop it; agents it started keep running
 While the runner isn't running, your agents keep working but don't hear about
 mentions or turns.
 
-## How it connects
-
-The runner only ever connects out to the hub, and the hub never reaches into
-your machine. When you ask for an agent in the app, the hub hands the request
-to the runner the next time the runner checks in, which takes a few seconds at
-most. It works the same whether the hub is on your laptop or on a server, and
-whether or not your laptop can be reached from outside.
+The runner only ever connects out to the hub. The hub never reaches into your
+machine, so this works whether or not your computer can be reached from
+outside.
 
 The runner looks on your `PATH` for the agent CLIs it knows, such as Claude
-Code, Codex, Gemini CLI, Cursor Agent, OpenCode, Pi, GitHub Copilot CLI and
-Amp. It tells the hub what it found and starts agents in [herdr](#herdr)
-terminals. It needs herdr 0.9.3 or newer, which the desktop app includes. To look
-again, press **Rescan** in the app or run `mycelium runner scan`.
+Code, Codex and OpenCode. It starts agents in [herdr](#herdr) terminals, and
+needs herdr 0.9.3 or newer. The desktop app includes herdr. After you install a
+new agent CLI, press **Rescan** in the app or run `mycelium runner scan`.
 
 ## Starting an agent
 
-In a room, open **Members → Add → Your machine** and fill in these fields:
-
-- **Start from a role.** This picks starting instructions such as
-  **reviewer**, **implementer** or **tester**, or a blank page. You can save
-  instructions you write as a role of your own, which is kept in your browser.
-- **A handle**, which the room uses to mention it, such as `@scout`.
-- **Instructions**, which say how the agent should work. They're saved in the
-  room's memory as `agents/<handle>/notes`. The agent reads them when it
-  starts, and you can edit them later.
-- **Where it runs.** This is the agent CLI and the folder it starts in, plus
-  the machine if more than one runner is connected.
+In a room, open **Members → Add → Your machine**. Start from a role or a blank
+page, give the agent a handle, and write its instructions. The instructions are
+saved in the room's memory as `agents/<handle>/notes`, and the agent reads them
+when it starts. You can edit them later.
 
 Press **Add to room**. The agent is added to the room and opens in a herdr
-terminal. It reads its notes and looks at the board.
+terminal.
 
 Closing its terminal or pressing **Stop** on the Machines page stops the agent.
 It stays in the room with its notes, so you can start it again.
 
 ### Agents start in auto mode
 
-Claude Code and Codex agents that the app starts (from Add, a swarm, or a
-restart) run in their CLI's own auto mode, so they work without stopping to
-ask you before each command:
+Claude Code and Codex agents that the app starts run in their CLI's own auto
+mode. They work without asking you before each command.
 
-- **Claude Code** starts with `--permission-mode auto`: it decides on each
-  action itself and asks only when it judges something risky.
-- **Codex** starts with `--approve-for-me`: its approval requests go to its
-  own automatic review, inside its usual sandbox.
+- **Claude Code** starts with `--permission-mode auto`. It asks only when it
+  judges an action risky.
+- **Codex** starts with `--approve-for-me`. Its approval requests go to its own
+  automatic review, inside its usual sandbox.
 
-This applies to that session only. Your CLI settings aren't changed, and an
-agent you start yourself in a terminal runs however you start it. Neither CLI
-is ever started with its bypass (`--dangerously-skip-permissions`, or Codex's
-`--dangerously-bypass-approvals-and-sandbox`). An older version of either CLI
-without auto mode starts as it did before.
+This applies to that session only. Your CLI settings aren't changed. Neither
+CLI is ever started with its option that skips permissions entirely.
 
 ## Bringing in an agent that's already running
 
-If you started an agent CLI in herdr yourself and it isn't in a room yet, open
-**Members → Add → Running agent**. The dialog lists every agent like that on
-your machines, with its CLI, its tab name and its folder. Pick one and edit the
-handle, which starts out as the tab name, then press **Add to room**.
+If you started an agent CLI in herdr yourself, open **Members → Add → Running
+agent**. Pick the agent, check its handle, and press **Add to room**.
 
-Your machine asks you first, because it is about to type into that agent's
-terminal. After you say yes, the agent is added to the room. Once it's idle, the
-runner types a short introduction into it that names the room and its handle and
-tells it to read the skill and the board. The agent keeps its own session.
-Pressing **Stop** for it later takes it out of the room's sync but leaves its
-terminal open.
-
-## Other kinds of member
-
-The same dialog has three other kinds of member. An **Engine** is a member the
-hub runs itself. An **A2A service** is a remote agent. **Open session** gives you text to
-paste into a coding agent you already have open, and that agent then joins the
-room on its own.
-
-To start agents in [Omnigent](#omnigent) instead of herdr, see that guide.
+Your machine asks you first, because the runner is about to type into that
+agent's terminal. Once the agent is idle, the runner types a short introduction
+that names the room and the agent's handle. The agent keeps its own session.
+Pressing **Stop** for it later takes it out of the room but leaves its terminal
+open.
 
 ## A swarm on your machine
 
-The **Start a swarm** dialog has a **Where** choice. If you pick a connected
-machine instead of the hub, the team is your own agent CLI in a new herdr
-workspace on that machine. It runs in the folder you choose, optionally with a
-git worktree per member. It's the same as running [`mycelium swarm`](#swarm) in
-that folder.
+In the **Start a swarm** dialog, pick a connected machine under **Where**. The
+team then runs as your own agent CLI in a new herdr workspace on that machine,
+in the folder you choose. This is the same as running [`mycelium swarm`](#swarm)
+in that folder.
 
 ## Which folders
 
-The app can only start agents inside the folders the runner was given and only
-with an agent CLI the scan found. A request from the hub names an agent CLI and
-a folder, never a command to run. By default
-the allowed folder is the one you ran `mycelium runner` from. Name others with
-`--root`:
+The app can only start agents inside the folders the runner was given. A request
+from the hub names an agent CLI and a folder, never a command to run.
+
+By default the allowed folder is the one you ran `mycelium runner` from. Name
+others with `--root`:
 
 ```bash
 mycelium runner --root ~/code --root ~/work/api
 ```
 
-In the desktop app, it's the working folder you chose at first run. Change it in
-Settings. When you add an agent that runs on the same computer as the app,
-**Choose…** beside **Folder** opens the system's folder dialog. Anywhere else,
-type the folder's path.
+In the desktop app, it's the working folder you chose at first run. You can
+change it in Settings.
 
 ## You say yes on the machine
 
 Anyone who can reach a hub can ask it to start an agent on any machine
-connected to it, and the hub can't prove who asked. So before it starts or
-restarts anything, the runner asks you on the machine. It shows who the hub
-says asked, the agent CLI, the folder and the start of the instructions. You
-answer in one of two ways:
+connected to it, and the hub can't prove who asked. So before it starts
+anything, the runner asks you on the machine. It shows who the hub says asked,
+the agent CLI, the folder and the start of the instructions.
 
-- In the desktop app, a dialog offers **Start** and **Decline**.
-- From a terminal:
+In the desktop app, a dialog offers **Start** and **Decline**. From a terminal:
 
 ```bash
 mycelium runner requests          # what is waiting
@@ -2716,24 +2594,25 @@ mycelium runner decline <id>      # don't
 If nobody answers within ten minutes, the answer is no.
 
 The runner doesn't ask when the request comes from the desktop app's own hub,
-since only this computer can reach that hub. That also means any program on
-this computer can start agents through it without a question. For another hub you know nobody else can reach, `mycelium runner --trust-hub`
-skips the question.
+because only this computer can reach that hub. That also means any program on
+this computer can start agents through it without a question. For another hub
+you know nobody else can reach, `mycelium runner --trust-hub` skips the
+question.
 
 ## Pair a computer to skip approvals
 
-Sometimes no one is at a machine to approve requests, as with a Mac mini or a
-home server. Pair the computer you work from with that machine. Requests from
-your computer then start without asking, within limits you set on the machine.
-On the machine:
+Sometimes no one is at a machine to approve requests, as with a home server.
+Pair the computer you work from with that machine. Requests from your computer
+then start without asking, within limits you set on the machine. On the
+machine:
 
 ```bash
 mycelium runner pair --folder ~/code --cli opencode --days 30
 ```
 
-This prints a code like `K7QM-4XHD-9RWA`. On your computer, open the
-**Machines** page and click **Add machine → Pair**. Enter the code and a name
-for your computer, and check that both sides show the same key fingerprint.
+This prints a code like `K7QM-4XHD-9RWA`. On your computer, open **Machines**,
+click **Add machine → Pair** and enter the code. Check that both sides show the
+same key fingerprint.
 
 | Option | What it limits | Default |
 |---|---|---|
@@ -2742,19 +2621,17 @@ for your computer, and check that both sides show the same key fingerprint.
 | `--swarms` | Whether swarms are allowed | no |
 | `--days` | How long the pairing lasts (`0` means no expiry) | 90 |
 
-Anything outside these limits or from another computer still asks. Your
-computer signs each request with a key it can't export. The limits are kept on
-the machine, so neither the network nor the hub can change them.
-`mycelium runner pairings` lists pairings, and
+A request outside these limits, or from another computer, still asks. The
+limits are kept on the machine, so neither the network nor the hub can change
+them. `mycelium runner pairings` lists pairings, and
 `mycelium runner unpair "work laptop"` removes one.
 
 ## Only your machines are listed
 
-The Machines page and **where it runs** show only your own machines. The
-Machines page is the laptop icon beside the notification bell. In the desktop
-app, your machine is the computer the app runs on. In a browser, add a machine with the code
-`mycelium runner` prints when it starts. With the hub's [sign-in](#auth) on,
-the hub itself shows each person only the machines they own.
+The Machines page, behind the laptop icon beside the bell, shows only your own
+machines. In a browser, add a machine with the code `mycelium runner` prints
+when it starts. With the hub's [sign-in](#auth) on, the hub shows each person
+only the machines they own.
 
 To see and fix the agents already running on a machine, see
 [Your agents on a machine](#agents-on-a-machine).
@@ -2951,34 +2828,14 @@ To bring agents back after herdr's server restarts, see
 
 An ephemeral agent runs for a single job and then goes away. Examples are a
 Claude Code cloud session, a CI job or a `docker run` that exits when it's
-done. It has no `.mycelium/` folder, no `config.toml` and usually no Docker.
-Nobody is at a keyboard to sign in with `mycelium login` (see
-[Authentication](#auth)).
+done. It has no `.mycelium/` folder and no `config.toml`, and nobody is at a
+keyboard to sign in with `mycelium login`.
 
-This guide shows how to let an agent like that post into a room. You'll end up
-with a container that installs the CLI, gets all its settings from environment
-variables, posts a message and exits. If you're setting up long-lived machines
-that share rooms, read [Hub & Spoke](#hub-and-spoke) first. This is the same
-setup with nothing saved locally.
-
-## How it fits together
-
-```
-┌──────────────────────────────┐
-│  Ephemeral container         │
-│                              │
-│  env: MYCELIUM_API_URL       │      HTTPS
-│       MYCELIUM_ACTIVE_ROOM   │  ─────────────►  Hub (backend :8000)
-│       MYCELIUM_AGENT_HANDLE  │                  rooms, memory, messages
-│                              │
-│  curl install.sh | bash      │
-│  mycelium room send "…"      │
-└──────────────────────────────┘
-        no config.toml, no .mycelium/, no Docker
-```
-
-The room lives on the hub, and each command is a single HTTP request. The
-container doesn't keep anything, so nothing is lost when it's thrown away.
+This guide shows how to let an agent like that post into a room. It gets all
+its settings from environment variables, installs the CLI, posts and exits. The
+room lives on the hub, and each command is a single HTTP request, so nothing is
+lost when the container is thrown away. For long-lived machines that share
+rooms, see [Hub & Spoke](#hub-and-spoke).
 
 ## Environment variables
 
@@ -2989,72 +2846,47 @@ You need these, and no config file:
 | `MYCELIUM_API_URL` | The hub's address, such as `https://mycelium.example.com` | Always |
 | `MYCELIUM_ACTIVE_ROOM` | The room to post in (`MYCELIUM_ROOM_ID` works too) | Unless you pass `--room` |
 | `MYCELIUM_AGENT_HANDLE` | Who the messages are from | Always |
-| `MYCELIUM_AGENT_AUTH_TOKEN` | A token for the hub | Only if the hub has [authentication](#auth) on |
+| `MYCELIUM_AGENT_AUTH_TOKEN` | A token for the hub | Only if the hub has [sign-in](#auth) on |
 
-`MYCELIUM_AGENT_HANDLE` is the name on every message. It's also the handle a
-token is looked up for. Authentication is off by default, and then you don't
-need a token.
+## Install the CLI only
 
-The full list of environment variables is in
-[Troubleshooting](#troubleshooting).
-
-## Install the CLI without Docker
-
-The normal installer sets up a hub on the machine. That's the desktop app on an
-Apple silicon Mac and the CLI for the Docker stack anywhere else. An ephemeral agent only talks
-to an existing hub, so it only needs the CLI:
+The normal installer sets up a hub on the machine. An ephemeral agent only
+talks to an existing hub, so it only needs the CLI:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only
 ```
 
 With `--client-only`, the installer doesn't install the app or check for
-Docker, which most base images don't have. The CLI needs Python 3.12 or newer.
-If the container's `python3` is older, the installer fetches 3.12 for the CLI
-instead of failing.
-
-You can set `MYCELIUM_CLIENT_ONLY=1` instead of passing the flag. If
-`MYCELIUM_API_URL` points at a hub on another machine, the installer uses
-client-only mode automatically.
+Docker. The CLI needs Python 3.12 or newer. If the container's `python3` is
+older, the installer fetches 3.12 for the CLI.
 
 ## Post a message
 
 ```bash
-mycelium room send "Moved the session store to Redis. Tests pass, PR is up."
+mycelium room send "@reviewer Moved the session store to Redis. Tests pass, PR is up."
 ```
 
-The message appears in the room for every member and in the app. Mention an
-agent with `@handle` to get its attention. A mentioned agent sees the message
-the next time it runs `await`:
+The message appears in the room for every member. A mentioned agent sees it
+the next time it runs `await`. To check for replies before the job exits, run
+`mycelium room messages --limit 10`.
 
-```bash
-mycelium room send "@avery-agent the retry backoff is in, worth a look before you re-run the bench."
-```
-
-To check whether anyone replied before the job exits, read the room:
-
-```bash
-mycelium room messages --limit 10
-```
-
-With sign-in off, any handle can post a message like this, even one the hub
-doesn't know. You don't have to register anything just to post an update. With
+With sign-in off, any handle can post, even one the hub doesn't know. With
 sign-in on, the message is posted as whoever the token belongs to.
 
 ## Taking part, not just posting
 
-`room send` only posts. For the agent to take a turn in a negotiation or flow,
-where it's asked something and answers, use `await` and `respond`. A job has to
-stay up long enough to answer. By default the aligner gives each agent 30
-seconds a round.
+`room send` only posts. For the agent to take a turn in a negotiation or a
+flow, use `await` and `respond`. The job has to stay up long enough to answer.
+By default the aligner gives each agent 30 seconds a round.
 
 ```bash
 mycelium await   --handle ci-runner --timeout 120
 mycelium respond --handle ci-runner "I can hold the deploy until the bench lands."
 ```
 
-`respond` does need a registered handle, either an agent or a user. Register it
-once from any machine that can reach the hub:
+`respond` needs a registered handle. Register it once from any machine that can
+reach the hub:
 
 ```bash
 mycelium user create ci-runner --name "CI"
@@ -3062,29 +2894,17 @@ mycelium user create ci-runner --name "CI"
 mycelium agent create ci-runner --room build
 ```
 
-Otherwise the hub answers `403 … is not a registered agent or user`.
-
-An agent that stays up and should answer whenever it's asked needs its harness
-to keep `await` running. [Bring Your Own Harness](#bring-your-own-harness) says
-what that takes.
+An agent that should answer whenever it's asked needs a harness that keeps
+`await` running. See [Bring Your Own Harness](#bring-your-own-harness).
 
 ## Claude Code on the web
 
 A [Claude Code cloud session](https://code.claude.com/docs/en/claude-code-on-the-web)
-works in someone's repository in a container you never touch. Here's how to
-have it post to a room when it finishes.
+takes its settings from a **cloud environment**, which you set up on
+[claude.ai/code](https://claude.ai/code).
 
-Cloud sessions take their settings from a **cloud environment**. That's where
-the environment variables go.
-
-### 1. Set up the environment
-
-On [claude.ai/code](https://claude.ai/code), click the cloud icon above the
-message box and then **Add cloud environment**. For one you already have, click
-its settings icon. There you can set the name, network access, environment
-variables and a setup script.
-
-Add these under **Environment variables**, one `KEY=value` per line:
+**1. Add the variables.** Put these under the environment's **Environment
+variables**, one per line:
 
 ```text
 MYCELIUM_API_URL=https://mycelium.example.com
@@ -3092,56 +2912,28 @@ MYCELIUM_ACTIVE_ROOM=build
 MYCELIUM_AGENT_HANDLE=claude-web
 ```
 
-A session reads these once when it starts, so a change only affects sessions
-you start after making it.
+A session reads them when it starts, so a change only affects new sessions.
 
 > **Don't put long-lived secrets here.** Cloud environments have no secret
 > storage, and anyone who uses the environment can read the values. A hub that
 > a cloud session can reach is on the public internet, so it must have
-> [sign-in](#auth) on. Give the session its own agent identity from your
-> identity provider with a short token lifetime. Pass it as
-> `MYCELIUM_AGENT_AUTH_TOKEN` and treat it as readable by anyone who can see
-> the environment.
+> [sign-in](#auth) on. Give the session its own agent identity with a short
+> token lifetime, and pass it as `MYCELIUM_AGENT_AUTH_TOKEN`.
 
-### 2. Let the session reach the hub
+**2. Let the session reach the hub.** Set **Network access** to **Custom** and
+add the hub's host under **Allowed domains**. Leave the default package
+managers ticked, or the installer can't download anything.
 
-By default, cloud sessions can only reach package registries and GitHub. To let
-them reach your hub, set **Network access** to **Custom**. Then add the hub's
-host under **Allowed domains**:
+The hub has to be on a public domain name with HTTPS. A cloud session can't
+reach a private address, a `localhost` hub or plain `http://`, so a hub on a
+laptop won't work.
 
-```text
-mycelium.example.com
-```
+**3. Install the CLI in the setup script.** Put the client-only install command
+from above in the **Setup script**. The environment is saved after the script
+runs, so later sessions start with the CLI installed.
 
-Leave **Also include default list of common package managers** ticked.
-Otherwise the installer won't be able to download anything.
-
-Two more limits come from the cloud environment, not from Mycelium:
-
-- **The hub has to be public and use HTTPS.** A cloud session can't reach a
-  private address like `192.168.x.x`, a `localhost` hub or plain `http://`.
-  Run the hub behind HTTPS on a public domain name with sign-in on. A hub on a
-  laptop won't work.
-- **Any domain not on the list is blocked.** The error comes from the cloud
-  environment's proxy, not from Mycelium. See
-  [Troubleshooting](#troubleshooting).
-
-### 3. Install the CLI in the setup script
-
-Put the client-only install in the **Setup script**, which runs before Claude
-Code starts:
-
-```bash
-curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only
-```
-
-The environment is saved after the setup script runs and then reused. Later
-sessions start with the CLI already installed.
-
-### 4. Tell the agent to post
-
-Nothing so far tells Claude to post anything. Add an instruction to the
-repository in `CLAUDE.md` or a skill so every session sees it:
+**4. Tell the agent to post.** Add an instruction to the repository's
+`CLAUDE.md` or a skill, so every session sees it:
 
 ```markdown
 ## Reporting
@@ -3154,10 +2946,7 @@ The room, handle and hub are already set in the environment. Mention
 teammates with @handle when they need to do something.
 ```
 
-### 5. Link to the session
-
-A cloud session can link to its own transcript, so anyone reading the update
-can see how the work was done:
+**5. Link to the session.** A cloud session can link to its own transcript:
 
 ```bash
 mycelium room send "$(cat <<EOF
@@ -3168,15 +2957,14 @@ EOF
 ```
 
 The cloud environment sets `CLAUDE_CODE_REMOTE_SESSION_ID`. The substitution
-swaps its `cse_` prefix for the `session_` prefix the transcript link uses. The
-variable isn't set locally. If the same script also runs locally, write it as
+swaps its `cse_` prefix for the `session_` prefix the link uses. If the same
+script also runs locally, where the variable isn't set, write it as
 `${CLAUDE_CODE_REMOTE_SESSION_ID:-}`.
 
 ## Other ephemeral runtimes
 
-None of this is specific to Claude Code. Any container that can set environment
-variables and reach the hub works the same way. That includes a GitHub Actions
-job, a Nomad batch task or a `docker run`:
+Any container that can set environment variables and reach the hub works the
+same way. That includes a GitHub Actions job or a `docker run`:
 
 ```bash
 docker run --rm \
@@ -3190,25 +2978,21 @@ docker run --rm \
   '
 ```
 
-In CI, turn authentication on instead of using a hub without it. Store
-`MYCELIUM_AGENT_AUTH_TOKEN` in the CI system's secrets. Unlike a cloud
-environment, CI has a safe place to keep it.
+In CI, keep `MYCELIUM_AGENT_AUTH_TOKEN` in the CI system's secrets.
 
 ## Troubleshooting
 
 | What you see | Why |
 | --- | --- |
-| `Failed to connect to the Mycelium API` | The hub at `MYCELIUM_API_URL` can't be reached: it isn't public, isn't HTTPS, or isn't on the session's allowed domains |
-| `502 Bad Gateway` or `ProxyError`, but the hub is up | The hub's domain isn't in the environment's **Allowed domains**. The error comes from the environment's proxy, not the hub |
+| `Failed to connect to the Mycelium API` | The hub at `MYCELIUM_API_URL` isn't public, isn't HTTPS, or isn't on the session's allowed domains |
+| `502 Bad Gateway` or `ProxyError`, but the hub is up | The hub's domain isn't in the environment's **Allowed domains** |
 | `No room context found` | None of `MYCELIUM_ACTIVE_ROOM`, `MYCELIUM_ROOM_ID` or `--room` is set |
 | `403 … is not a registered agent or user` | `respond` needs a registered handle. `room send` doesn't |
-| `404 Room not found` | The room has to exist on the hub first. Create it there with `mycelium room create <name>` |
-| `Python 3.12+ required` | An old copy of the installer. Fetch it again from the URL above, which fetches Python 3.12 when it's missing |
+| `404 Room not found` | The room has to exist on the hub first. Create it with `mycelium room create <name>` |
 | `mycelium: command not found` after installing | Run `export PATH="$HOME/.local/bin:$PATH"` in the same shell |
 
-`mycelium doctor` works from a client-only install too. When
-`MYCELIUM_API_URL` is set, it checks the hub at that address instead of looking
-for a stack on the local machine.
+`mycelium doctor` works from a client-only install too. With `MYCELIUM_API_URL`
+set, it checks the hub at that address.
 
 
 ---
@@ -3529,7 +3313,7 @@ POST /api/rooms/{room}/a2a
 ```
 
 The message is posted in the room like any other. The call returns only an
-acknowledgement, not an answer. If the message mentions an agent in the room,
+acknowledgment, not an answer. If the message mentions an agent in the room,
 that agent answers in the room as usual.
 
 Anyone who can reach the hub can read any room's card, as the A2A spec
@@ -3912,23 +3696,21 @@ what one is, and `mycelium file rm <name>` removes one.
 
 # Voice
 
-You can talk instead of type. Turn on the mic in any message box, in the room
-or in a task's thread, and what you say is typed into the box as you say it.
-The mic stays on until you turn it off, so you can think out loud, pause, and
-keep going. Nothing is sent until you send it: what you said is a draft you
-can read and fix first.
+You can talk instead of type. Turn on the mic in any message box, and what you
+say is typed into the box as you say it. The mic stays on until you turn it
+off, so you can pause and keep going. Nothing is sent until you send it, so you
+can read what you said and fix it first.
 
 Voice is off unless you turn it on, because the speech model takes space and
-memory. There are two to choose from (see [Choosing a speech model](#choosing-a-speech-model)).
-The default takes about 150 MB on disk and about 500 MB of memory while anyone
-is talking.
+memory. The default model takes about 150 MB on disk and about 500 MB of memory
+while anyone is talking.
 
 ## Turning it on
 
 In the desktop app, turn on **Talk instead of type** in the first-run screens or
-in Settings, under Voice. Mycelium restarts and downloads the speech model.
+in **Settings → Voice**. Mycelium restarts and downloads the speech model.
 
-On a Docker hub, or any hub you run with the CLI:
+On a hub you run with the CLI:
 
 ```bash
 mycelium config set voice.enabled true
@@ -3936,15 +3718,13 @@ mycelium config apply
 mycelium up
 ```
 
-The hub downloads the speech model when it starts, into its data folder, so
-it's downloaded once and kept across restarts. Before using the download, the
-hub checks that it matches the expected file. With `voice.download` set to false the
-hub never downloads anything, and you put the files in the data folder under
-`models/voice` yourself.
+The hub downloads the speech model into its data folder when it starts, and
+keeps it across restarts. It checks the download matches the expected file
+before using it. To stop the hub downloading anything, set `voice.download` to
+`false` and put the files in the data folder under `models/voice` yourself.
 
-Turning voice off again (`voice.enabled false`, or the switch in the desktop app)
-removes the mic from every message box. The downloaded model stays in the data
-folder, and you can delete `models/voice` to get the space back.
+Turning voice off removes the mic from every message box. The downloaded model
+stays in `models/voice` until you delete it.
 
 ## Choosing a speech model
 
@@ -3952,20 +3732,13 @@ folder, and you can delete `models/voice` to get the space back.
 | --- | --- | --- |
 | Model | Moonshine v2 base | NVIDIA Parakeet TDT 0.6B v2 |
 | Download | about 150 MB, when the hub starts | about 480 MB, the first time a mic is turned on |
-| On disk | about 150 MB | about 630 MB |
 | Memory while anyone talks | about 500 MB | about 1.4 GB |
-| Speed | a few hundredths of a second per sentence | about a fifth of a second per second of speech |
 | Mistakes, on our test recordings | about 1 word in 16 | about half as many |
-| Languages | English only | English only |
 
-Both run on the hub's CPU, and both give their memory back a few minutes after
-the last mic is turned off. `accurate` also waits for a longer pause (about a
-second) before it types what you said, since it transcribes a whole sentence
-more accurately than part of one. With `fast`, a stretch of speech is cut into pieces of at most
-five and a half seconds, because longer pieces come back empty from the
-version of the speech runtime the hub uses. `accurate` has no such limit.
+Both run on the hub's CPU, and both are English only. `accurate` waits for a
+longer pause, about a second, before it types what you said.
 
-To switch on a Docker hub, or any hub you run with the CLI:
+To switch, run this and restart the hub:
 
 ```bash
 mycelium config set voice.model accurate
@@ -3973,71 +3746,52 @@ mycelium config apply
 mycelium up
 ```
 
-The hub reads the choice when it starts, so a switch takes effect after that
-restart. In the desktop app, pick **Fast** or **Accurate** under Voice in Settings
-and save, which restarts Mycelium.
+In the desktop app, pick **Fast** or **Accurate** under **Settings → Voice** and
+save. Mycelium restarts.
 
-The first time you turn on a mic with `accurate`, the hub downloads it, which
-can take a few minutes. The line under the box says it's getting ready
-meanwhile. Turn the mic on once to start the download, and talk once your first
-words appear. The download is checked the same way as the default model's, and
-a download that fails is tried again a minute later. With `voice.download` set
-to false, put the model's folder (`sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`)
-in `models/voice` yourself.
-
-Switching back to `fast` leaves the larger model in `models/voice`. Delete its
-folder to get the space back.
+The first time you turn on a mic with `accurate`, the hub downloads the model,
+which can take a few minutes. The line under the box says it's getting ready.
+With `voice.download` set to `false`, put the model's folder
+(`sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`) in `models/voice` yourself.
 
 ## Using it
 
-Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux),
-which works while you're typing. The key acts on the message box you're in,
-or the room's own box when you're in none. The first time, your browser or the
-desktop app asks to use the microphone. While it's on, the button is lit, the line
-under the box says it's listening, and a ring around the button pulses while it
-hears you speak.
+Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux). The
+key works while you're typing, and acts on the message box you're in. The first
+time, your browser or the desktop app asks to use the microphone.
 
-Each time you pause, what you just said is added to the end of the draft. Keep
-talking, type a fix, or send the message, and the mic stays on. Press the
-button again to turn it off; anything you were in the middle of saying still
-lands in the draft.
+Each time you pause, what you just said is added to the end of the draft. You
+can keep talking, type a fix or send the message, and the mic stays on. Press
+the button again to turn it off. Anything you were in the middle of saying
+still lands in the draft.
 
-Voice is English only for now.
+After the mic has been off for a while, turning it on takes about a second.
+Keep the mic on until your words appear. What you say meanwhile is transcribed
+once it's ready.
 
 ## Where it's transcribed
 
-Your hub turns speech into text, on its own CPU, with a speech model (Moonshine,
-or Parakeet when you chose `accurate`) and a voice activity detector (Silero)
-that detects when you start and stop speaking. Neither sends audio anywhere else. In
-the desktop app the hub runs on your machine, so your audio never leaves it.
-With a shared hub, your audio goes to that hub the way your messages do.
+Your hub turns speech into text on its own CPU. No audio is sent anywhere else.
+In the desktop app the hub runs on your computer, so your audio never leaves
+it. With a shared hub, your audio goes to that hub the way your messages do.
 
-Audio is never saved. The hub keeps only the few seconds it is transcribing and
+Audio is never saved. The hub keeps only the few seconds it's transcribing and
 discards them once they're text.
 
-The model runs in a separate process that the hub starts when someone turns on
-a mic and that stops about five minutes after the last mic is turned off. That's
-when its memory is given back. Starting it takes about a second, during which
-the line under the box says it's getting ready. Keep the mic on until your words
-appear: what you say meanwhile is held and transcribed once it's ready, but
-turning the mic off before then drops it.
-
-The mic button is missing when voice is off or the hub can't run it (it has no
-model and can't download one), and in the desktop app when it's connected to
-another hub. The app gives the microphone only to the hub it runs itself, so a
-remote hub's pages can't listen; use that hub in a browser to talk to it.
+The mic button is missing when voice is off, or when the hub has no model and
+can't download one. It's also missing in the desktop app when the app is
+connected to another hub. To talk to a remote hub, open it in a browser.
 
 ## Reading messages aloud
 
 The app can also read messages to you. It says who sent each one and where,
-then the message, while a popover on the bell shows the words with the
-sentence being said lit. Click the
-popover to open the message, press **Read all** for the rest, or press ✕ (or
-Esc, when you aren't typing) to stop it.
+then reads the message. A popover on the bell shows the words as they're read.
+Click the popover to open the message, press **Read all** for the rest, or press
+✕ or Esc to stop.
 
-It needs a speech server on the hub. Mycelium ships no speech model: whoever
-runs the hub points it at an OpenAI-style text-to-speech server they run, such
-as one serving Qwen's or Kokoro's voices:
+Mycelium ships no text-to-speech model. Whoever runs the hub points it at an
+OpenAI-style text-to-speech server they run, such as one serving Kokoro's
+voices:
 
 ```bash
 mycelium config set voice.speech_url http://127.0.0.1:8880/v1
@@ -4046,36 +3800,27 @@ mycelium config apply
 mycelium up
 ```
 
-`/audio/speech` is added to the address unless it ends with it already.
-`voice.speech_model` names the model when the server expects one, and
-`voice.speech_api_key` is sent as a bearer token when it asks for a key. All
-four can be set on the Hub settings page too. The app asks the hub and the
-hub asks the server, so the server needs no CORS headers, it can be on plain
-http while the app is on https, and its key stays on the hub. It's separate
-from the mic: a hub can read aloud without transcribing, and the other way
-round.
+If the server expects a model name, set `voice.speech_model`. If it asks for a
+key, set `voice.speech_api_key`. You can also set all four on the Hub settings
+page. The key stays on the hub, because the app asks the hub and the hub asks
+the server. Reading aloud doesn't need the mic to be on, and the mic doesn't
+need reading aloud.
 
-Then each person sets it up for themselves in Settings, under **Read aloud**.
-It's off until they turn it on, and **Try it** reads a sample line. Every
-other choice there is theirs too, starting from the first option listed:
+Each person then turns it on for themselves under **Settings → Read aloud**.
+**Try it** reads a sample line. The other choices there are:
 
 | Setting | Choices |
 | --- | --- |
-| What it reads | Mentions of you and messages sent to you, or everything said in rooms you pick (and mentions anywhere) |
+| What it reads | Mentions of you and messages sent to you, or everything in rooms you pick |
 | Skip what's in front of me | The thread you have open, the room you have open, or nothing |
-| How much | The start (the first paragraph or about twenty seconds, with **Read all** for the rest), or all of it |
+| How much | The start, with **Read all** for the rest, or all of it |
 | Voice | The hub's voice, or another the speech server lists |
 | Speed | Normal, slower or faster |
 
-"In front of me" means what the window you're working in shows: its room, and
-the Channel or the task threads it has open (a split can show several). The
-bell's ping has the same choice of its own, under Notifications.
-
-Only a window you can see reads aloud, and only one window does when you
-have several open. It waits while a mic is open in any of them, so what it says
-never lands in your draft, and goes on once the mic is off. Do not disturb and
-muted rooms keep it quiet. A browser plays nothing until you have clicked or
-typed in the page once, so the first message after opening the app isn't read.
+Only a window you can see reads aloud, and only one at a time. It waits while a
+mic is open, so what it says never lands in your draft. Do not disturb and muted
+rooms keep it quiet. A browser plays nothing until you've clicked or typed in
+the page once, so the first message after you open the app isn't read.
 
 
 ---
@@ -5340,13 +5085,11 @@ Other options:
 - `wait: none` asks without waiting for an answer.
 - `max_steps` limits how many steps a run can take. A step counts once however
   many members it asks. The thread's "turn 2 of 6" counts the same steps.
-- `collect: options` makes each reply an option, with a `why:` line as its
-  reason. `collect: scores` records each reply's ratings (`A: 80 - why`) and
-  asks once more for any that came without a reason. `collect: anchors`
-  records each member's ratings of the two reference outcomes (`bad: 10 - why`,
-  `ideal: 90 - why`). `collect: keywords` records the key terms members name
-  (`term: …`). `collect: pieces` merges each reply's labelled points, terms and
-  checks into the shared summary being built.
+- `collect: options` makes each reply an option, with its `why:` line.
+  `collect: scores` records each reply's ratings and their reasons.
+  `collect: anchors` records the ratings of the two ends. `collect: keywords`
+  records the key terms members name. `collect: pieces` merges each reply's
+  labeled points, terms and checks into the shared summary being built.
 - `require: stance`, `require: scores` or `require: pieces` asks once more for a
   reply that's missing it. A stance still missing after that counts as a
   rejection. A reply that still has no labels is kept as written.
@@ -5354,16 +5097,15 @@ Other options:
 ## Steps that ask nobody
 
 A **pick** is a step with `kind: select`. It chooses among the options members
-suggested, using the ratings they gave. Each rating is placed between that
-member's ratings of the two reference outcomes, when the flow collected them.
-It takes a `threshold` and `max_repairs`. A threshold of 0.6 means the pick
-passes only if it's at least 60% of the way from each member's bad outcome to
-their ideal. The message that starts a run can set them with `bar=70` and
-`fixes=3`. Its `next` map picks the next step by how the pick went:
+suggested, using the ratings they gave. It takes a `threshold` and
+`max_repairs` (`bar=70` and `fixes=3` in the summon). A threshold of 0.6
+means the pick passes only if it's 60% of the way from each member's bad
+outcome to their ideal. Its `next` map picks the next step by how the pick
+went:
 
 - `feasible`: everyone rated the pick and it meets the threshold for each.
-- `infeasible`: someone is short of the threshold. The least happy can be asked
-  for a fix (`to: bottleneck`).
+- `infeasible`: someone is short of it. The least happy can be asked for a fix
+  (`to: bottleneck`).
 - `stuck`: a fix can't help. Either the only problem is members who gave no
   rating, or `max_repairs` fixes have already been tried.
 - `nothing`: there are no options to pick from.
@@ -5399,15 +5141,13 @@ Prompts can use these:
 | `{replies}` | Every member's latest answer, one per line. |
 | `{handles}` | The members taking part. |
 | `{round}`, `{rounds}` | The current round and the total. |
-| `{options}`, `{rating_lines}` | Every option so far, as `A. …` lines with why each was proposed, and the lines to rate them with, each naming its option, such as `A (Ship on Friday): <0-100> - <why>`. |
-| `{new_options}`, `{new_rating_lines}` | The options no one has rated yet, and the lines to rate them with. |
+| `{options}`, `{rating_lines}` | Every option so far, and the lines to rate them with, such as `A (Ship on Friday): <0-100> - <why>`. |
+| `{new_options}`, `{new_rating_lines}` | The same, for the options no one has rated yet. |
 | `{pick}`, `{scores}` | The best option so far, and the last pick's scorecard. |
-| `{standing}`, `{objections}` | How each member sees the best option so far, in words, and the reasons of those short of the bar. |
-| `{shortfall}` | Where the least happy member stands, such as "For you, B is short of the bar, because the window is too short". |
-| `{bad}`, `{ideal}`, `{bar_said}` | The two reference outcomes, and the bar said in terms of them. |
+| `{standing}`, `{objections}`, `{shortfall}` | How each member sees the best option, the reasons of those short of the bar, and where the least happy member stands. |
+| `{bad}`, `{ideal}`, `{bar_said}` | The two ends, and the bar said in terms of them. |
 | `{frame}` | The points gathered so far, each with its id, kind and how many stated it. |
-| `{key_terms}`, `{term_lines}` | The run's key terms, and the lines to define them with. |
-| `{terms}` | The terms members defined, with any used in different senses side by side. |
+| `{key_terms}`, `{term_lines}`, `{terms}` | The key terms, the lines to define them with, and the meanings given, any used in different senses side by side. |
 | `{checks}` | The checks members gave, with the points each covers. |
 | `{agreed}` | What the team already agreed for this task (its summary and decision), or nothing. |
 
@@ -5436,17 +5176,15 @@ gets posted. This table lists every marker Mycelium reads:
 | `[[mycelium: stance=accept]]` / `stance=reject` | Approving or rejecting, in a flow step or a negotiation. `agree` and `yes` also mean accept; `no` and `block` also mean reject (this `block` has nothing to do with blocking a task on the board). |
 | `[[mycelium: confidence=0.8]]` | How sure the agent is, from 0 to 1. Can be combined: `confidence=0.8 stance=accept`. |
 | `[[mycelium: A=82 B=41]]` | Rating options from 0 to 100, in `concord`. |
-| `[[mycelium: objective]] …` | Labelling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
+| `[[mycelium: objective]] …` | Labeling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
 | `[[mycelium: term=renewal]] …` | Saying what a word means, in `accord`. |
 | `[[mycelium: check covers=p1,p2]] …` | Saying how points will be checked, in `accord`. The point numbers are the ones the thread shows. |
 | `[[new: <title> -> @member]]` | A [worker](#worker) filing a child task under the current one. Only workers' replies are read for this. |
 | `[[done]]` | A worker resolving the current task. Only workers' replies are read for this. |
 
-`concord` and `accord` read the same things from plain lines too, which is
-what they ask for: `A (the option's name): 82 - why` for a rating, `objective: …` for a point,
-`renewal: …` for a key term and `check p1, p2: …` for a check. They're
-explained in [Helping members agree](#conductor-helping-members-agree) and
-[Getting on the same page](#conductor-getting-on-the-same-page).
+`concord` and `accord` ask for the same things as plain lines, such as
+`A (name): 82 - why`; see [Helping members agree](#conductor-helping-members-agree)
+and [Getting on the same page](#conductor-getting-on-the-same-page).
 
 ```bash
 mycelium respond --handle builder \
