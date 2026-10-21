@@ -125,7 +125,7 @@ async fn find(app: &AppHandle) -> Result<Option<Update>, String> {
     let updater = match versions::channel() {
         versions::Channel::Stable => app.updater().map_err(|e| e.to_string())?,
         versions::Channel::ReleaseCandidates => {
-            let Some(newest) = versions::releases(true).await?.into_iter().next() else {
+            let Some(newest) = versions::releases(true).await?.releases.into_iter().next() else {
                 return Ok(None);
             };
             app.updater_builder()
