@@ -64,6 +64,12 @@ export function tokenPromised(): boolean {
   return process.env.MYCELIUM_UI_TOKEN_STDIN === "1" || launchToken() !== null;
 }
 
+/** What a request to a name this server doesn't serve is told: a hub served
+ *  under a public name needs that name set, and says how. */
+export const WRONG_NAME =
+  "This server doesn't answer to that name. If it's this server's public name, " +
+  "set it on the server: mycelium config set ui.public_host <name>, then restart it.";
+
 /** The public name this server is also reached by, when it has one. */
 export function publicHost(): string | null {
   const host = process.env.MYCELIUM_UI_HOST?.trim().toLowerCase();
@@ -156,7 +162,7 @@ export function guardApi(
   // never fall back to treating this as a server with no token.
   if (promised && !token) return refuse(503, "Mycelium's window token didn't arrive; restart Mycelium.");
   const host = req.headers.get("host");
-  if (!hostAllowed(host)) return refuse(421, "This server doesn't answer to that name.");
+  if (!hostAllowed(host)) return refuse(421, WRONG_NAME);
 
   const origin = req.headers.get("origin");
   if (origin && origin !== "null") {

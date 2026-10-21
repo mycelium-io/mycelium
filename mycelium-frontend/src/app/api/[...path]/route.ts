@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { getBackendUrl, upstreamUrl } from "@/lib/backend";
+import { getBackendUrl, upstreamHeaders, upstreamUrl } from "@/lib/backend";
 import { bearer } from "@/lib/session";
 import { TOKEN_HEADER } from "@/lib/ui-guard";
 import { MOCK_HEADER, handleMock, isMockMode } from "@/mocks";
@@ -12,8 +12,9 @@ import { MOCK_HEADER, handleMock, isMockMode } from "@/mocks";
  */
 export const dynamic = "force-dynamic";
 
-// Headers that must not be forwarded verbatim across the proxy hop.
-const STRIP_REQUEST = ["host", "connection", "keep-alive", "transfer-encoding", "upgrade", "content-length"];
+const HEALTH_PATH = "/api/health";
+
+// Headers that must not be passed back verbatim across the proxy hop.
 const STRIP_RESPONSE = ["connection", "keep-alive", "transfer-encoding", "upgrade", "content-length", "content-encoding"];
 
 async function proxy(req: Request): Promise<Response> {
@@ -32,8 +33,7 @@ async function proxy(req: Request): Promise<Response> {
   const backend = getBackendUrl();
   const target = upstreamUrl(backend, req.url);
 
-  const headers = new Headers(req.headers);
-  for (const h of STRIP_REQUEST) headers.delete(h);
+  const headers = upstreamHeaders(req);
   // The app's own proof stays here: the hub never sees it, so it never lands
   // in the hub's log, on this machine or another (`lib/ui-guard.ts`).
   headers.delete(TOKEN_HEADER);
@@ -59,6 +59,12 @@ async function proxy(req: Request): Promise<Response> {
   let res: Response;
   try {
     res = await fetch(target, init);
+    // A backend answers health at its root; a hub that serves its own pages
+    // (what the desktop app reaches in client mode) answers it under `/api`,
+    // and its root `/health` is a missing page.
+    if (res.status === 404 && new URL(req.url).pathname === HEALTH_PATH) {
+      res = await fetch(`${backend}${HEALTH_PATH}`, init);
+    }
   } catch {
     return Response.json(
       { detail: `Backend unreachable at ${backend}` },
