@@ -7,10 +7,21 @@ import { ChevronDown, ChevronUp, History, Loader2, Search, X } from "lucide-reac
 import { useMemo, useState, type RefObject } from "react";
 import { CandidateList, Signature, type Candidate } from "@/components/composer-hints";
 import { Tooltip } from "@/components/ui/tooltip";
+import { FIND_SKIP } from "@/lib/dom-find";
 import { hintAt, type Seen } from "@/lib/message-search";
 import { cn } from "@/lib/utils";
 
 interface Props {
+  /** What it finds in, for the input's name: "Find in the channel". */
+  label?: string;
+  placeholder?: string;
+  /** Whether the query is the hub's search grammar, with its field hints. Off
+   *  where the bar finds words in what a view has drawn. */
+  grammar?: boolean;
+  /** What the count is a count of, on hover. */
+  countAbout?: string;
+  /** What the History button reaches, on hover. */
+  historyAbout?: string;
   query: string;
   onQueryChange: (query: string) => void;
   /** Messages the query hits, and which of them the reader is standing on. */
@@ -22,13 +33,9 @@ interface Props {
   onStep: (delta: 1 | -1) => void;
   onClose: () => void;
   inputRef: RefObject<HTMLInputElement | null>;
-  /** True while the channel still has older pages it hasn't read. Stepping
-   *  works on what is loaded, and says so rather than implying it searched the
-   *  room; History is what reaches the rest. */
-  partial: boolean;
-  /** The room-wide search behind the bar: how many messages in the whole
-   *  history match, whether that answer is in flight, and whether its panel is
-   *  open. Absent where there is no hub search (a test, a session shim). */
+  /** The search behind the bar (the room's messages, a thread's, the room's
+   *  memories): how many match, whether that answer is in flight, and whether
+   *  its panel is open. Absent where there is none. */
   history?: {
     total: number | null;
     loading: boolean;
@@ -44,16 +51,22 @@ interface Props {
   handles?: string[];
 }
 
-/** The channel's find bar: a strip above the feed, not an overlay on it.
+/** ⌘F's bar, the same in every view: a strip above what it finds in, not an
+ *  overlay on it.
  *
- *  It takes the height it needs and the messages move down, because a bar that
- *  floats over the feed covers the newest thing said at the exact moment the
- *  reader is hunting through the older ones.
+ *  It takes the height it needs and the view moves down, because a bar that
+ *  floats over the channel covers the newest thing said at the exact moment
+ *  the reader is hunting through the older ones.
  *
- *  It speaks the hub's search grammar (`from:avery task:checkout after:2d`),
- *  with the composer's hints under it: a field name completes as it is typed,
- *  and a `field:` offers the values the room's messages actually carry. */
-export function ChatFindBar({
+ *  Over messages it speaks the hub's search grammar (`from:avery task:checkout
+ *  after:2d`), with the composer's hints under it: a field name completes as it
+ *  is typed, and a `field:` offers the values the room's messages carry. */
+export function FindBar({
+  label = "Find in the channel",
+  placeholder = "Find  ·  from:  task:  after:",
+  grammar = true,
+  countAbout,
+  historyAbout = "Every match in the room, threads included",
   query,
   onQueryChange,
   count,
@@ -62,7 +75,6 @@ export function ChatFindBar({
   onStep,
   onClose,
   inputRef,
-  partial,
   history,
   seen = {},
   handles = [],
@@ -75,8 +87,8 @@ export function ChatFindBar({
   const [hinting, setHinting] = useState(true);
   const [lit, setLit] = useState(-1);
   const hint = useMemo(
-    () => (hinting ? hintAt(query, cursor, seen, handles) : null),
-    [hinting, query, cursor, seen, handles],
+    () => (grammar && hinting ? hintAt(query, cursor, seen, handles) : null),
+    [grammar, hinting, query, cursor, seen, handles],
   );
   const showCandidates = hint !== null && hint.candidates.length > 0;
 
@@ -102,15 +114,15 @@ export function ChatFindBar({
   };
 
   return (
-    <div data-slot="chat-find-bar" className="relative shrink-0 border-b border-border bg-surface">
+    <div data-slot="find-bar" {...{ [FIND_SKIP]: "" }} className="relative shrink-0 border-b border-border bg-surface">
       <div className="flex items-center gap-2 px-4 py-1.5">
         <Search aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
         <input
           ref={inputRef}
           type="text"
           value={query}
-          aria-label="Find in the channel"
-          placeholder="Find  ·  from:  task:  after:"
+          aria-label={label}
+          placeholder={placeholder}
           spellCheck={false}
           autoComplete="off"
           onChange={e => {
@@ -162,13 +174,7 @@ export function ChatFindBar({
           }}
           className="min-w-0 flex-1 bg-transparent text-body text-text outline-none placeholder:text-faint"
         />
-        <Tooltip
-          content={
-            partial
-              ? "Matches among the messages loaded here. History searches the whole room."
-              : "Matches in the channel. History lists them all, threads included."
-          }
-        >
+        <Tooltip content={countAbout ?? "Matches in what's shown here"}>
           <span
             aria-live="polite"
             className={`shrink-0 cursor-default text-micro tabular ${count === 0 && !unsaid ? "text-red" : "text-muted-foreground"}`}
@@ -199,7 +205,7 @@ export function ChatFindBar({
           </button>
         </div>
         {history && !empty && (
-          <Tooltip content={history.failed ? "Hub unreachable" : "Every match in the room, threads included"}>
+          <Tooltip content={history.failed ? "Hub unreachable" : historyAbout}>
             <button
               type="button"
               onClick={history.onToggle}

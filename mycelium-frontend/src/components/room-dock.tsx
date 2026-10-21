@@ -41,8 +41,10 @@ import { copyText } from "@/lib/clipboard";
 import { clearOnScreen, setOnScreen } from "@/lib/on-screen";
 import { useRoomThreads } from "@/lib/room-data";
 import { threadShortId } from "@/lib/threads";
+import { Findable } from "@/components/findable";
 import {
   VIEW_LABELS,
+  findFor,
   isClosable,
   loadLayout,
   memoryPanelId,
@@ -51,6 +53,7 @@ import {
   restorableLayout,
   saveLayout,
   threadPanelId,
+  type FindRequest,
   type View,
 } from "@/lib/room-dock";
 import { cn } from "@/lib/utils";
@@ -77,7 +80,10 @@ interface DockContextValue {
   onConnectionChange: (connected: boolean) => void;
   focusMessageId: string | null;
   onFocusConsumed: () => void;
-  openFind: number;
+  /** The latest ⌘F, for whichever panel was in front. */
+  find: FindRequest;
+  /** Put a panel in front, when it's clicked into. */
+  bringToFront: (id: string) => void;
   onMemoryGuard: (key: string, guard: GuardHandle | null) => void;
   requestClose: (id: string) => void;
   setChannelCount: (n: number) => void;
@@ -108,7 +114,7 @@ function ChannelView() {
           onOpenThread={d.onOpenThread}
           focusMessageId={d.focusMessageId}
           onFocusConsumed={d.onFocusConsumed}
-          openFind={d.openFind}
+          openFind={findFor(d.find, "channel")}
           onCountChange={d.setChannelCount}
         />
       </div>
@@ -117,30 +123,42 @@ function ChannelView() {
   );
 }
 
+/** What ⌘F says it finds in, per view. */
+const FIND_LABELS: Record<Exclude<View, "channel">, string> = {
+  stream: "Find in the stream",
+  board: "Find on the board",
+  files: "Find in the files",
+  schedules: "Find in the schedules",
+};
+
 function OtherView({ view }: { view: Exclude<View, "channel"> }) {
   const d = useDock();
-  if (view === "stream") return <RoomStream roomName={d.roomName} onOpenThread={d.onOpenThread} onOpenMemory={d.onOpenMemory} />;
-  if (view === "files") {
-    return (
-      <RoomFiles
-        roomName={d.roomName}
-        onOpenThread={d.onOpenThread}
-        onOpenMessage={d.onOpenMessage}
-        onOpenMemory={d.onOpenMemory}
-      />
-    );
-  }
-  if (view === "board") {
-    return (
-      <div className="h-full min-h-0">
-        <RoomBoard roomName={d.roomName} onOpenThread={d.onOpenThread} onOpenMessage={d.onOpenMessage} />
-      </div>
-    );
-  }
   return (
-    <div className="h-full min-h-0">
-      <RoomSchedules roomName={d.roomName} />
-    </div>
+    <Findable
+      request={findFor(d.find, view)}
+      label={FIND_LABELS[view]}
+      className="h-full"
+      contentClassName="[&>*]:h-full"
+    >
+      {view === "stream" ? (
+        <RoomStream roomName={d.roomName} onOpenThread={d.onOpenThread} onOpenMemory={d.onOpenMemory} />
+      ) : view === "files" ? (
+        <RoomFiles
+          roomName={d.roomName}
+          onOpenThread={d.onOpenThread}
+          onOpenMessage={d.onOpenMessage}
+          onOpenMemory={d.onOpenMemory}
+        />
+      ) : view === "board" ? (
+        <div className="h-full min-h-0">
+          <RoomBoard roomName={d.roomName} onOpenThread={d.onOpenThread} onOpenMessage={d.onOpenMessage} />
+        </div>
+      ) : (
+        <div className="h-full min-h-0">
+          <RoomSchedules roomName={d.roomName} />
+        </div>
+      )}
+    </Findable>
   );
 }
 
@@ -162,16 +180,43 @@ function ViewPane({ view }: { view: View }) {
 
 // ── What you opened ─────────────────────────────────────────────────────────
 
-function MemoryPanel({ params }: IDockviewPanelProps<{ key: string }>) {
+/** A tab's content, which puts the tab in front when it's clicked into. The
+ *  dock says so when a tab is picked, but not when the reader clicks back into
+ *  the tab already showing in its group after using the view beside it. */
+function InFront({ id, children }: { id: string; children: React.ReactNode }) {
   const d = useDock();
   return (
-    <MemoryView
-      key={params.key}
-      roomName={d.roomName}
-      memoryKey={params.key}
-      onOpenMemory={d.onOpenMemory}
-      onGuard={d.onMemoryGuard}
-    />
+    <div
+      className="flex h-full min-h-0 min-w-0 flex-col"
+      onFocusCapture={() => d.bringToFront(id)}
+      onPointerDownCapture={() => d.bringToFront(id)}
+    >
+      {children}
+    </div>
+  );
+}
+
+function MemoryPanel({ params }: IDockviewPanelProps<{ key: string }>) {
+  const d = useDock();
+  const id = memoryPanelId(params.key);
+  return (
+    <InFront id={id}>
+      <Findable
+        request={findFor(d.find, id)}
+        label="Find in this memory"
+        history={{ kind: "memories", room: d.roomName, onOpen: d.onOpenMemory }}
+        className="h-full"
+        contentClassName="[&>*]:h-full"
+      >
+        <MemoryView
+          key={params.key}
+          roomName={d.roomName}
+          memoryKey={params.key}
+          onOpenMemory={d.onOpenMemory}
+          onGuard={d.onMemoryGuard}
+        />
+      </Findable>
+    </InFront>
   );
 }
 
@@ -182,10 +227,20 @@ function ThreadPanel({ params, api }: IDockviewPanelProps<{ episode: string }>) 
     () => ({ episode: params.episode, title: threads.get(params.episode)?.title ?? null }),
     [params.episode, threads],
   );
+  const id = threadPanelId(params.episode);
   return (
-    <div className="flex h-full min-w-0">
-      <ThreadView roomName={d.roomName} target={target} onClose={() => api.close()} showClose={false} onOpenMemory={d.onOpenMemory} />
-    </div>
+    <InFront id={id}>
+      <div className="flex h-full min-w-0">
+        <ThreadView
+          roomName={d.roomName}
+          target={target}
+          onClose={() => api.close()}
+          showClose={false}
+          onOpenMemory={d.onOpenMemory}
+          findRequest={findFor(d.find, id)}
+        />
+      </div>
+    </InFront>
   );
 }
 
@@ -500,7 +555,7 @@ interface Props {
   onConnectionChange: (connected: boolean) => void;
   focusMessageId: string | null;
   onFocusConsumed: () => void;
-  openFind: number;
+  find: FindRequest;
   /** Too narrow for the view and the tabs side by side: the pane shows one at
    *  a time, every tab stays in one group, and dragging is off. */
   narrow: boolean;
@@ -530,7 +585,7 @@ export function RoomDock({
   onConnectionChange,
   focusMessageId,
   onFocusConsumed,
-  openFind,
+  find,
   narrow,
   onActiveChange,
   onReady,
@@ -548,6 +603,12 @@ export function RoomDock({
   const [showing, setShowing] = useState<"view" | "tabs">("view");
   const [share, setShare] = useState(TABS_SHARE);
   const centerRef = useRef<HTMLDivElement>(null);
+
+  // A view picked (or restored for this room after the dock was ready) is
+  // what's in front, so ⌘F never goes to the Channel hidden behind it.
+  useEffect(() => {
+    onActiveChange(view);
+  }, [view, onActiveChange]);
 
   const narrowRef = useRef(narrow);
   const viewRef = useRef(view);
@@ -743,7 +804,8 @@ export function RoomDock({
       onConnectionChange,
       focusMessageId,
       onFocusConsumed,
-      openFind,
+      find,
+      bringToFront: onActiveChange,
       onMemoryGuard,
       requestClose,
       setChannelCount: onChannelCount,
@@ -758,7 +820,8 @@ export function RoomDock({
       onConnectionChange,
       focusMessageId,
       onFocusConsumed,
-      openFind,
+      find,
+      onActiveChange,
       onMemoryGuard,
       requestClose,
       onChannelCount,
@@ -772,8 +835,10 @@ export function RoomDock({
           aria-label={VIEW_LABELS[view]}
           data-room-view={view}
           // Clicking into the view puts it in front again, for the keys that
-          // act on what's in front (⌘F finds in the Channel).
+          // act on what's in front (⌘F finds in it), whether or not what was
+          // clicked takes focus.
           onFocusCapture={() => onActiveChange(view)}
+          onPointerDownCapture={() => onActiveChange(view)}
           className={cn("flex min-h-0 min-w-0 flex-1 flex-col", !viewShown && "hidden")}
         >
           {narrow && hasTabs && (

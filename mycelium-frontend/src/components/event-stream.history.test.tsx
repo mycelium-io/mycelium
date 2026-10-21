@@ -137,7 +137,7 @@ describe("<EventStream /> find: the room's whole history", () => {
     await userEvent.type(findBar(), "from:bruno ");
     await settle();
 
-    const bar = screen.getByRole("button", { name: "Close find" }).closest("[data-slot='chat-find-bar']") as HTMLElement;
+    const bar = screen.getByRole("button", { name: "Close find" }).closest("[data-slot='find-bar']") as HTMLElement;
     expect(within(bar).getByText("1/1")).toBeInTheDocument();
   });
 });

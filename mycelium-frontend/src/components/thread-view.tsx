@@ -9,6 +9,7 @@ import { Eye, Maximize2, MessageSquare, Pencil, X } from "lucide-react";
 import { memoryHref } from "@/lib/memory-routes";
 import { useRoomEpisodes, useRoomMembers, useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { threadShortId } from "@/lib/threads";
+import { Findable } from "@/components/findable";
 import { FlowPanel } from "@/components/flow-panel";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
@@ -47,6 +48,8 @@ interface Props {
   showClose?: boolean;
   /** A `[[wikilink]]` in a thread message opens the memory, same as in chat. */
   onOpenMemory?: (key: string) => void;
+  /** Bumped by the room's ⌘F while this thread is in front. */
+  findRequest?: number;
 }
 
 /**
@@ -64,7 +67,7 @@ interface Props {
  * this episode. The read is the conversation's own SWR entry, so opening this
  * never replaces the room's feed with a filtered slice of itself.
  */
-export function ThreadView({ roomName, target, onClose, showClose = true, onOpenMemory }: Props) {
+export function ThreadView({ roomName, target, onClose, showClose = true, onOpenMemory, findRequest = 0 }: Props) {
   // The task this thread is of, resolved by its episode — the row is the thread,
   // so the pane opens with the task itself (its body and fields) above the
   // conversation about it, the way an issue shows its description over its
@@ -217,7 +220,24 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
         // instead of taking a scrollbar of its own, so the wheel does one thing
         // everywhere in the pane. A negotiation thread bound to no row is all
         // conversation.
-        <div className="relative flex min-h-0 flex-1 flex-col">
+        // ⌘F finds in the task and its conversation as drawn; History searches
+        // every message said in this thread, and a hit scrolls to its reply.
+        <Findable
+          request={findRequest}
+          label="Find in this thread"
+          history={{
+            kind: "messages",
+            room: roomName,
+            scope: `thread:${target.episode}`,
+            about: "Every match in this thread",
+            onOpenHit: hit =>
+              scroller
+                ?.querySelector(`[data-event-id="${CSS.escape(hit.message.id)}"]`)
+                ?.scrollIntoView({ block: "center", behavior: "smooth" }),
+          }}
+          className="min-h-0 flex-1"
+          contentClassName="relative flex flex-col"
+        >
           <ScrollArea className="min-h-0 flex-1" viewportRef={setScroller}>
             {run && (
               <div className="border-b border-border">
@@ -244,7 +264,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
             />
           </ScrollArea>
           {!latest.atBottom && latest.hasRows && <JumpToLatest unread={latest.unread} onClick={latest.jump} />}
-        </div>
+        </Findable>
       )}
 
       <RoomChatBox

@@ -19,7 +19,7 @@ import { RoomTour } from "@/components/room-tour";
 import { AgentOpenerProvider } from "@/components/agent-opener";
 import { CELL, StatusButton, StatusDot } from "@/components/status-items";
 import { episodeUrn } from "@/lib/threads";
-import { loadView, parsePanelId, saveView, type View } from "@/lib/room-dock";
+import { NO_FIND, loadView, parsePanelId, saveView, type FindRequest, type View } from "@/lib/room-dock";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
@@ -220,13 +220,14 @@ function RoomWorkspace() {
   // textarea itself; this only makes sure the pane holding it is the one on
   // screen.
   useKeyScope("room");
-  // ⌘F belongs to the page rather than to the feed: find is a channel surface.
-  // The counter is the message — the channel opens (or re-focuses) its find bar
-  // on every press, including the ones where the bar is already open.
-  const [findRequest, setFindRequest] = useState(0);
-  // Only while the channel is the tab in front: over a memory or the board, ⌘F
-  // is left to the browser's own find rather than yanking the reader away.
-  useKeyAction("chat.find", () => setFindRequest(n => n + 1), { enabled: activePanel === "channel" });
+  // ⌘F belongs to the page rather than to any one view: it finds in whatever is
+  // in front (the channel, a thread, a memory, the board). The counter is the
+  // message: that view opens (or re-focuses) its find bar on every press,
+  // including the ones where the bar is already open.
+  const [findRequest, setFindRequest] = useState<FindRequest>(NO_FIND);
+  useKeyAction("chat.find", () => setFindRequest(r => ({ id: activePanel, n: r.n + 1 })), {
+    enabled: activePanel !== null,
+  });
   useKeyAction("pane.channel", () => showView("channel"));
   useKeyAction("pane.stream", () => showView("stream"));
   useKeyAction("pane.board", () => showView("board"));
@@ -433,7 +434,7 @@ function RoomWorkspace() {
                 onConnectionChange={setConnected}
                 focusMessageId={focus?.type === "message" ? focus.id : null}
                 onFocusConsumed={clearFocus}
-                openFind={findRequest}
+                find={findRequest}
                 narrow={sheetLayout}
                 onActiveChange={setActivePanel}
                 onReady={onDockReady}
