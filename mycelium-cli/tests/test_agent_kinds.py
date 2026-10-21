@@ -54,7 +54,6 @@ def test_claude_is_started_allowed_mycelium_in_its_auto_mode(
     claude = agents.of_kind("claude")
     args = claude.launch_args()
     assert args == ["--allowedTools", "Bash(mycelium:*)", "--permission-mode", "auto"]
-    assert claude.session_note() == "Claude Code runs in its auto mode"
     assert "Claude Code asks before" in (claude.blocked_hint() or "")
     # A restart that resumes its session keeps the mode: resuming adds to these.
     assert "--dangerously-skip-permissions" not in args
@@ -66,7 +65,6 @@ def test_an_older_claude_without_auto_mode_starts_as_before(
     _installed(tmp_path, monkeypatch, claude=OLD_CLAUDE_HELP)
     claude = agents.of_kind("claude")
     assert claude.launch_args() == ["--allowedTools", "Bash(mycelium:*)"]
-    assert claude.session_note() is None
 
 
 def test_codex_sandbox_lets_mycelium_reach_the_hub_and_write_only_its_agent_state(
@@ -89,9 +87,6 @@ def test_codex_sandbox_lets_mycelium_reach_the_hub_and_write_only_its_agent_stat
     assert str(tmp_path / ".mycelium") not in args
     # Never the bypass, and never a change to who approves what.
     assert not any("dangerously" in a or a in ("-a", "--ask-for-approval") for a in args)
-    note = agents.of_kind("codex").session_note()
-    assert note is not None
-    assert note.startswith("Codex runs in its auto mode")
 
 
 def test_an_older_codex_without_auto_review_keeps_only_the_sandbox_settings(
@@ -100,10 +95,6 @@ def test_an_older_codex_without_auto_review_keeps_only_the_sandbox_settings(
     monkeypatch.setenv("HOME", str(tmp_path))
     _installed(tmp_path, monkeypatch, codex="  -s, --sandbox <SANDBOX_MODE>")
     assert "--approve-for-me" not in agents.of_kind("codex").launch_args()
-    assert (
-        agents.of_kind("codex").session_note()
-        == "Codex can reach the hub and its own Mycelium state"
-    )
 
 
 def test_what_an_agent_writes_lives_in_the_agent_state_folder(

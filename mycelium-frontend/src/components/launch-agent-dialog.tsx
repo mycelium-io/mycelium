@@ -614,7 +614,6 @@ function RunsOn({
 }) {
   const startable = launchable(runner);
   const roots = runner.roots.map(tildePath);
-  const sessionNote = startable.find((f) => f.id === frameworkId)?.note ?? null;
   return (
     <MemberFooter
       action={children}
@@ -664,12 +663,6 @@ function RunsOn({
                     </option>
                   ))}
                 </Select>
-                {/* What its session may do, when the runner says (Codex's opened sandbox). */}
-                {sessionNote && (
-                  <span className="min-w-0 truncate text-micro text-faint" title={sessionNote}>
-                    {sessionNote}
-                  </span>
-                )}
               </>
             )}
             <RescanButton runner={runner} iconOnly />
