@@ -37,7 +37,7 @@ describe("<LoginGate /> on a hub you can't sign in to", () => {
     expect(screen.getByText("This hub trusts 2 identity providers.")).toBeInTheDocument();
     expect(screen.queryByText("the app")).toBeNull();
     // In a browser there is no app to change hubs with.
-    expect(screen.queryByRole("button", { name: /different hub/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Change hub" })).toBeNull();
   });
 
   it("offers the desktop app's own Hub and Connection, since Settings is behind the same screen", async () => {
@@ -46,7 +46,7 @@ describe("<LoginGate /> on a hub you can't sign in to", () => {
         command === "get_state" ? { settings: { mode: "client", hubUrl: "https://hub.example.com", roots: [] } } : false,
     };
     gate();
-    fireEvent.click(screen.getByRole("button", { name: /different hub/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Change hub" }));
     expect(await screen.findByRole("radio", { name: /On this/ })).toBeInTheDocument();
   });
 });

@@ -86,7 +86,7 @@ function OtherHub() {
         aria-expanded={open}
         className="mx-auto block text-micro text-muted-foreground hover:text-text"
       >
-        Use a different hub, or this computer
+        Change hub
       </button>
       {open && (
         <div className="mt-3">
