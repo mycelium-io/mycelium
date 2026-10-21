@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-// An agent's @ tag opens it, the way a click in Members does; an engine's, an
-// A2A member's and a person's stay plain, and so does every tag outside a room.
+// On the "is responding" line, an agent's @ tag opens it, the way a click in
+// Members does; an engine's, an A2A member's and a person's stay plain, and so
+// does every tag outside a room.
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -31,32 +32,30 @@ vi.mock("@/components/agent-screen", () => ({
 
 import { AgentOpenerProvider, AgentTag, RespondingNames } from "@/components/agent-opener";
 import type { Responding } from "@/lib/activity";
-import { MarkdownContent } from "@/components/markdown-content";
 
 function inRoom(ui: React.ReactNode) {
   return render(<AgentOpenerProvider roomName="checkout">{ui}</AgentOpenerProvider>);
 }
 
 describe("an agent's @ tag", () => {
-  it("opens the agent from a message, in the drawer Members opens", () => {
-    inRoom(<MarkdownContent>{"@builder can you look?"}</MarkdownContent>);
+  it("opens the agent in the drawer Members opens", () => {
+    inRoom(<AgentTag handle="builder" />);
     fireEvent.click(screen.getByRole("button", { name: "Open @builder" }));
     expect(screen.getByTestId("drawer").textContent).toBe("builder on studio-mini");
   });
 
-  it("opens from a silent and an interrupting mention too", () => {
-    inRoom(<MarkdownContent>{"@~builder and @!builder"}</MarkdownContent>);
-    expect(screen.getAllByRole("button", { name: "Open @builder" })).toHaveLength(2);
-  });
-
   it("stays plain for an engine, an A2A member and a person", () => {
-    inRoom(<MarkdownContent>{"@aligner @partner @julia"}</MarkdownContent>);
+    inRoom(
+      <>
+        <AgentTag handle="aligner" /> <AgentTag handle="partner" /> <AgentTag handle="julia" />
+      </>,
+    );
     expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByText("@aligner")).toBeTruthy();
+    expect(screen.getByText(/@aligner/)).toBeTruthy();
   });
 
   it("stays plain outside a room", () => {
-    render(<MarkdownContent>{"@builder"}</MarkdownContent>);
+    render(<AgentTag handle="builder" />);
     expect(screen.queryByRole("button")).toBeNull();
   });
 

@@ -4,10 +4,10 @@
 "use client";
 
 /**
- * Opening an agent from its @ tag, anywhere in a room: the channel's "is
- * responding" line and the @ tags in messages. It opens the agent the way a
- * click in Members does, in the drawer that shows its terminal, live, when it
- * runs on this machine and says where it runs when it doesn't.
+ * Opening an agent from its @ tag on the "is responding" line, in the channel
+ * and in a task's thread; @ tags in messages stay plain text. It opens the
+ * agent the way a click in Members does, in the drawer that shows its terminal,
+ * live, when it runs on this machine and says where it runs when it doesn't.
  *
  * Only agents that run in a terminal open. Engines and A2A members answer from
  * the hub and have no terminal, and a person has nothing to open yet, so their
