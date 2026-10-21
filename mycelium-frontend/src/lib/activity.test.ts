@@ -8,8 +8,6 @@ import {
   applyActivity,
   expireActivity,
   isActivityFrame,
-  respondingLabel,
-  respondingNames,
   settleActivity,
   splitActivity,
   type Responding,
@@ -80,25 +78,6 @@ describe("settling and expiring", () => {
     const s = applyActivity([], frame("growth", "responding", { ttl_s: 10 }), T0);
     expect(expireActivity(s, T0 + 9_999)).toBe(s);
     expect(expireActivity(s, T0 + 10_000)).toEqual([]);
-  });
-});
-
-describe("the line", () => {
-  const at = (...handles: string[]): Responding[] =>
-    handles.map((h) => ({ handle: h, episode: null, since: T0, until: T0 + 1 }));
-
-  it("reads naturally for one, two and many", () => {
-    expect(respondingLabel([])).toBe("");
-    expect(respondingLabel(at("aligner"))).toBe("@aligner is responding…");
-    expect(respondingLabel(at("growth", "finance"))).toBe("@growth and @finance are responding…");
-    expect(respondingLabel(at("a", "b", "c"))).toBe("@a, @b and 1 other are responding…");
-    expect(respondingLabel(at("a", "b", "c", "d"))).toBe("@a, @b and 2 others are responding…");
-    expect(respondingNames(at("a", "b"))).toBe("@a and @b");
-  });
-
-  it("stops short of the thread's name when the turn is going elsewhere", () => {
-    expect(respondingLabel(at("aligner"), "elsewhere")).toBe("@aligner is responding in");
-    expect(respondingLabel(at("a", "b"), "elsewhere")).toBe("@a and @b are responding in");
   });
 });
 

@@ -123,6 +123,45 @@ function Screen({ text, error }: { text: string | null; error: string | null }) 
   );
 }
 
+/** How many of a screen's last lines a peek shows. */
+const PEEK_LINES = 6;
+
+/**
+ * The last few lines of an agent's terminal, live, for a hover over its @ tag:
+ * the same read the drawer makes, while the peek is up. Nothing at all where
+ * the drawer would show a note instead (outside the app, or an agent that
+ * doesn't run here), so a hover never says more than the tag does.
+ */
+export function AgentPeek({ room, handle }: { room: string; handle: string }) {
+  const desktop = useIsDesktop();
+  const screen = useAgentScreen(desktop ? { room, handle } : null);
+  const lines = useMemo(() => {
+    const all = screen.text ? parseAnsi(screen.text) : [];
+    const used = all.filter((runs) => runs.some((r) => r.text.trim()));
+    return used.slice(-PEEK_LINES);
+  }, [screen.text]);
+  if (!desktop || screen.unasked || screen.notHere || lines.length === 0) return null;
+  return (
+    <span className="block w-[28rem] max-w-[80vw] rounded-md border border-border bg-surface p-2 text-left shadow-lg">
+      <span className="block overflow-hidden font-mono text-[11px] leading-snug text-text">
+        {lines.map((runs, i) => (
+          <span key={i} className="block truncate whitespace-pre">
+            {runs.map((r, j) => (
+              <span key={j} style={cssOf(r.style)}>
+                {r.text}
+              </span>
+            ))}
+          </span>
+        ))}
+      </span>
+      <span className="mt-1.5 flex items-center justify-between gap-3 text-[11px] text-faint">
+        <span>Click to open its terminal</span>
+        <span>Streamed from this machine</span>
+      </span>
+    </span>
+  );
+}
+
 function cssOf(s: AnsiStyle): CSSProperties | undefined {
   const fg = s.inverse ? (s.bg ?? "var(--bg)") : s.fg;
   const bg = s.inverse ? (s.fg ?? "var(--text)") : s.bg;

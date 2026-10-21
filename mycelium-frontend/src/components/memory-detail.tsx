@@ -17,7 +17,7 @@ import { downloadUrl, formatBytes, isUploadKey, kindLabel } from "@/lib/uploads"
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
-import { UploadPreview } from "@/components/uploads/upload-preview";
+import { UploadPreview, UploadPreviewDialog } from "@/components/uploads/upload-preview";
 
 export interface MemoryLike {
   key: string;
@@ -226,6 +226,7 @@ export function MemoryDetail({
   const isUpload = Boolean(roomName) && isUploadKey(memory.key);
   const { uploads, loading: uploadsLoading } = useRoomUploads(isUpload ? (roomName ?? "") : "");
   const upload = isUpload ? uploads.find((u) => u.key === memory.key) : undefined;
+  const [lightbox, setLightbox] = useState(false);
   const [jsonView, setJsonView] = useState(false);
   const [outbound, setOutbound] = useState<MemoryLink[]>([]);
   const [backlinks, setBacklinks] = useState<MemoryLink[]>([]);
@@ -373,7 +374,25 @@ export function MemoryDetail({
       <div className={bodyClassName}>
       {isUpload && !raw && (
         <div className={`${pad} pt-4`}>
-          {upload ? (
+          {upload?.kind === "image" ? (
+            // An image opens the lightbox here as it does in a message: full
+            // size, zoomable, with its copy and download.
+            <>
+              <button
+                type="button"
+                onClick={() => setLightbox(true)}
+                aria-label={`Preview ${upload.filename}`}
+                className="block w-full cursor-zoom-in rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+              >
+                <UploadPreview upload={upload} onOpenMemory={onNavigate} />
+              </button>
+              <UploadPreviewDialog
+                upload={lightbox ? upload : null}
+                onClose={() => setLightbox(false)}
+                onOpenMemory={onNavigate}
+              />
+            </>
+          ) : upload ? (
             <UploadPreview upload={upload} onOpenMemory={onNavigate} />
           ) : uploadsLoading ? null : (
             <p className="text-label text-muted-foreground">This upload&apos;s file isn&apos;t on the hub.</p>

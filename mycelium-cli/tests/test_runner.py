@@ -238,13 +238,11 @@ def test_herdr_decides_what_can_be_started(herdr: Herdr):
     assert [f.installed for f in frameworks.scan(None)][:3] == [True, True, True]
 
 
-def test_a_startable_cli_says_what_its_session_may_do(
-    herdr: Herdr, monkeypatch: pytest.MonkeyPatch
-):
+def test_a_startable_cli_carries_no_note(herdr: Herdr, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(frameworks.shutil, "which", lambda name: f"/usr/bin/{name}")
     found = {f.id: f for f in frameworks.scan({"codex", "claude"})}
     assert found["codex"].launchable
-    assert found["codex"].note == "Codex can reach the hub and its own Mycelium state"
+    assert found["codex"].note is None
     assert found["claude"].note is None
 
 

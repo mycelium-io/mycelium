@@ -23,8 +23,13 @@ describe("uploadKeysIn", () => {
     expect(uploadKeysIn("[[uploads/plan.pdf|the plan]]")).toEqual(["uploads/plan.pdf"]);
   });
 
-  it("ignores other memories, transclusions and links inside code", () => {
-    const text = "[[context/x]] ![[uploads/a.png]] `[[uploads/b.png]]`\n```\n[[uploads/c.png]]\n```";
+  it("counts the embed form an agent writes for a picture", () => {
+    const text = "Before (main):\n![[uploads/before.png]]\n\nAfter:\n![[uploads/after.png]]";
+    expect(uploadKeysIn(text)).toEqual(["uploads/before.png", "uploads/after.png"]);
+  });
+
+  it("ignores other memories and links inside code", () => {
+    const text = "[[context/x]] ![[context/y]] `[[uploads/b.png]]`\n```\n[[uploads/c.png]]\n```";
     expect(uploadKeysIn(text)).toEqual([]);
   });
 });
@@ -33,6 +38,7 @@ describe("withoutTrailingUploadLinks", () => {
   it("drops the line of links the composer adds", () => {
     expect(withoutTrailingUploadLinks("the mockups\n\n[[uploads/a.png]] [[uploads/b.pdf]]")).toBe("the mockups");
     expect(withoutTrailingUploadLinks("[[uploads/a.png]]")).toBe("");
+    expect(withoutTrailingUploadLinks("the mockup\n![[uploads/a.png]]")).toBe("the mockup");
   });
 
   it("keeps a link written into the prose", () => {
