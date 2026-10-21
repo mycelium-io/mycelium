@@ -31,10 +31,7 @@ The app's board has three groups:
 Each row says who has the task, the last thing said in its thread, and where
 it stands. A person doesn't claim or resolve work on the board: agents do
 that from the command line, and you hand work off and answer what you're
-asked. [Working the board](#working-the-board) covers the board in detail,
-and `mycelium board` shows the agents' view, which also lists decisions from
-`decisions/`, status notes from `status/` and things that failed from
-`failed/`.
+asked. `mycelium board` shows the agents' view.
 
 ## Add a task
 
@@ -51,22 +48,15 @@ mycelium board new "Ship passkey login"
   talk about it in there: mycelium board send t3aa11bb "…"
 ```
 
-Every task gets its own thread when it's created and keeps it for life. Any
-command that takes a task accepts its key (`work/ship-passkey-login`) or its
-thread id (`t3aa11bb`). `mycelium board` cuts each key to 12 characters to fit
-its column. The board actions (`claim`, `release`, `resolve` and `block`)
-accept that short form too. A `#502` on a row is a pull request the row links
-to, not a task.
+Every task keeps its thread for life. Any command that takes a task accepts
+its key (`work/ship-passkey-login`) or its thread id (`t3aa11bb`). To say who a
+task is for, add `--assign @sec`.
 
-To say who a task is for, use `--assign`:
+A `#502` on a row is a pull request the row links to. It isn't a task.
 
-```bash
-mycelium board new "Pick token storage" --assign @sec
-```
-
-A concern typed into the board's hand-off line with no one named is short-lived.
-If nobody claims it within two days it expires, which keeps the board from
-turning into a backlog.
+If you type something into the hand-off line without naming anyone, and nobody
+claims it within two days, it expires. That keeps the board from turning into a
+backlog.
 
 ## Talk inside a task
 
@@ -78,22 +68,20 @@ mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
 mycelium board messages work/ship-passkey-login
 ```
 
-The room's chat never shows a thread's messages. It shows a line when a task is
-**filed**, **claimed**, **handed back** or **resolved**. Click the line to open
-the thread. These lines wake nobody.
+The room's chat never shows a thread's messages. It shows one line when a task
+moves, for example when it's filed or resolved. Clicking the line opens the
+thread, and the line wakes nobody.
 
 Use the room's chat for things that don't belong to any task. Use a task's
-thread for anything about that task. Any memory can have a thread the same way.
-For example, `board send context/api-shape "…"` posts in that note's thread.
+thread for anything about that task. Any memory can have a thread the same
+way, for example `board send context/api-shape "…"`.
 
-Who can post in a thread:
+Anyone in the room can post in a thread. While a [flow](#conductor) runs in it,
+only the member whose turn it is can post. While the [aligner](#aligner)
+negotiates in it, only the agents taking part can.
 
-- Normally, anyone in the room.
-- While a [flow](#conductor) runs in it, only the member whose turn it is.
-- While the [aligner](#aligner) negotiates in it, only the agents taking part.
-
-Nothing said in a thread changes who holds the task or resolves it. Use
-`board resolve` for that.
+Nothing said in a thread changes who holds the task. `board resolve` does
+that.
 
 ## Split a task
 
@@ -102,22 +90,18 @@ mycelium board new "Pick token storage" --parent work/ship-passkey-login --assig
 mycelium board new "Migrate existing sessions" --parent work/ship-passkey-login
 ```
 
-`--parent` links the new task to its parent so the parent lists its parts. If
-the parent doesn't exist, the command fails instead of leaving a broken link.
+`--parent` links the new task to its parent, which then lists its parts.
 
-When one piece can't start until another is resolved, add a `depends-on`
-field. The board shows the row as waiting until then, and the room's chat says
-when it stops waiting:
+When one piece can't start until another is resolved, give it a `depends-on`
+field. The board shows it as waiting until then:
 
 ```bash
 mycelium memory set work/run-the-migration "Run the migration" \
   --meta depends-on=work/write-the-migration
 ```
 
-By default a waiting task can still be claimed. To refuse that, set
-`board.dependency_gate` to `true` in the hub's config, or turn on one room's
-`dependency-gate` [room setting](#rooms).
-`board claim --force` claims it anyway.
+A waiting task can still be claimed unless the room's `dependency-gate`
+[setting](#rooms) is on.
 
 ## Hand work off
 
@@ -134,31 +118,13 @@ mycelium board release work/pick-token-storage --note "handing to @sec, schema i
 mycelium board assign work/pick-token-storage @sec
 ```
 
-A task someone holds stays theirs. `claim` refuses it, and `board assign` refuses
-to give it to someone else unless you add `--reassign`, which tells the room who
-it moved from and to.
+A task someone holds stays theirs. `claim` refuses it. To move it to someone
+else, `board assign` needs `--reassign`, and the room is told who it moved
+from and to.
 
-A hold has no timer. It lasts until the holder resolves the task, releases it
-or hands it off, or until the hub sees the holder is gone: its herdr pane
-closed, or the agent was removed from the room (`mycelium agent rm`). When the
-hub ends a hold, the room gets a notice saying why. A task with nothing
-happening on it for a few hours is not taken away; the room's timeline says
-once that it has gone quiet, and nobody is messaged or woken. A holder the hub
-can't see at all (no herdr pane and no connection to the room) loses the hold
-after eight hours with nothing happening on the task, and the room is told. A
-hub that has just started hasn't heard from anyone yet, so it waits ten
-minutes, or until that agent's machine reports in, before deciding it can't see
-a holder. When the hub has ended a hold, giving the task to the same agent again
-(`mycelium board assign`) makes it theirs again. A task waiting on someone else, because its pull request is waiting on a review
-or a merge or because it's blocked, is never called quiet and never expires.
-
-`claim --ttl` still takes a claim for a set number of minutes, for a holder
-that will keep it alive with `mycelium await --lease`.
-
-```
-unclaimed → held → released / resolved
-                ↘ expired
-```
+A hold has no timer. It lasts until the holder gives the task up or finishes
+it, or until the hub sees the holder is gone. A task nobody has touched for a
+while isn't taken away. See [when a hold ends](#board-reference).
 
 ## When agents disagree
 

@@ -199,21 +199,21 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#board-add-a-task",
     "t": "Add a task",
     "s": "Board",
-    "x": "In the app, type the task into the line at the top of the board, \"Hand something off to the room\", or type /task and the task into the message box. From the command line: mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" Every task gets its own thread when it's created and keeps it for life. Any command tha",
+    "x": "In the app, type the task into the line at the top of the board, \"Hand something off to the room\", or type /task and the task into the message box. From the command line: mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" Every task keeps its thread for life. Any command that takes a task accepts its key (wo",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#board-talk-inside-a-task",
     "t": "Talk inside a task",
     "s": "Board",
-    "x": "In the app, opening a task shows its body and fields at the top and its thread underneath. From the command line: mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board messages work/ship-passkey-login The room's chat never shows a thread's messages. It shows a line when a task is filed, claimed, handed back or resolved. Click the line to open the thread. These lines wake nobody. Us",
+    "x": "In the app, opening a task shows its body and fields at the top and its thread underneath. From the command line: mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board messages work/ship-passkey-login The room's chat never shows a thread's messages. It shows one line when a task moves, for example when it's filed or resolved. Clicking the line opens the thread, and the line wakes n",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#board-split-a-task",
     "t": "Split a task",
     "s": "Board",
-    "x": "mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec mycelium board new \"Migrate existing sessions\" --parent work/ship-passkey-login --parent links the new task to its parent so the parent lists its parts. If the parent doesn't exist, the command fails instead of leaving a broken link. When one piece can't start until another is resolved, add a depends-on field. The board shows the r",
+    "x": "mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec mycelium board new \"Migrate existing sessions\" --parent work/ship-passkey-login --parent links the new task to its parent, which then lists its parts. When one piece can't start until another is resolved, give it a depends-on field. The board shows it as waiting until then: mycelium memory set work/run-the-migration \"Run the migrat",
     "p": "Concepts"
   },
   {
@@ -732,70 +732,49 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop",
     "t": "The Desktop App",
     "s": "Setup",
-    "x": "The desktop app is the quickest way to get going. It runs everything Mycelium needs on your computer, with no Docker and no setup in a terminal. It also starts your coding agents for you when you ask. Your computer Download Needs Mac Mycelium for Mac Apple silicon, macOS 13 or later Linux (preview) Linux AppImage x86-64, glibc 2.35 or later (Ubuntu 22.04, Fedora 36, Debian 12 or newer) Windows (preview) Windows insta",
+    "x": "The desktop app is the quickest way to get going. It runs everything Mycelium needs on your computer, with no Docker and no setup in a terminal, and starts your coding agents for you when you ask. Your computer Download Needs Mac Mycelium for Mac Apple silicon, macOS 13 or later Linux (preview) Linux AppImage x86-64, glibc 2.35 or later (Ubuntu 22.04, Fedora 36, Debian 12 or newer) Windows (preview) Windows installer",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-install",
     "t": "Install",
     "s": "Setup › The Desktop App",
-    "x": "Mac: open the download and drag Mycelium into Applications, then open it from there. The first time, macOS asks whether to open an app downloaded from the internet. Choose Open. Linux: make the file executable (chmod +x Mycelium-linux-x86_64.AppImage) and run it. It runs from that one file, so there's nothing to install. Windows: run the installer. It installs for you alone, with no administrator prompt. The installe",
+    "x": "Mac: drag Mycelium into Applications and open it. The first time, macOS asks whether to open an app from the internet. Choose Open. Linux: make the file executable (chmod +x Mycelium-linux-x86_64.AppImage) and run it. Windows: run the installer. It installs for you alone, with no administrator prompt. The installer isn't code-signed, so Windows asks before running it. Choose More info, then Run anyway. The app then a",
     "p": "Guides"
   },
   {
-    "u": "guides.html#desktop-whats-inside",
-    "t": "What's inside",
+    "u": "guides.html#desktop-adding-and-watching-agents",
+    "t": "Adding and watching agents",
     "s": "Setup › The Desktop App",
-    "x": "The app includes everything, at versions tested together: the Mycelium hub and its UI; a SLIM node for the rooms' messages; herdr, where your agents run as terminals you can watch and type to; the mycelium CLI, which agents use to work in rooms; the runner, which starts your agents and wakes them; Pi, which the engines use to call the model; the small model behind memory search, so search works offline. It doesn't in",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#desktop-adding-agents",
-    "t": "Adding agents",
-    "s": "Setup › The Desktop App",
-    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See Start Agents From the App. To talk to an agent, open the agents terminal: terminal in the bar at the bottom of the wind",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#desktop-watching-an-agents-terminal",
-    "t": "Watching an agent's terminal",
-    "s": "Setup › The Desktop App",
-    "x": "You can see what an agent on this computer is doing without leaving the room. Its terminal shows live, read-only, in color: Members: click the agent, or right-click it and pick Watch terminal. Machines: press View on the agent's row. The channel: press watch beside \"is working\" while it works. Add agent: when an agent stops at a sign-in or a question as it starts, the dialog shows what it's asking. The view says \"Str",
+    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. See Start Agents From the App. To type to an agent, open the agents terminal. terminal in the bar at the bottom of the window opens it, and so does Open terminal beside an agent on Machines. To watch an agent withou",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-the-apps-menu",
     "t": "The app's menu",
     "s": "Setup › The Desktop App",
-    "x": "While it runs, Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running, and Quit Mycelium stops the hub. Agents you started keep running in herdr either way and pick up again when the hub is back. The menu shows the state of the hub, the SLIM node and the runner. It also has these items: Open Mycelium, Agents terminal and Your agents… Start at l",
+    "x": "Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running. Quit Mycelium stops the hub. Agents keep running in herdr either way and pick up again when the hub is back. The menu shows whether each part of Mycelium is running. Health check… runs the same checks as mycelium doctor --mode desktop and says what to do about anything that's wrong. The me",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-updates",
     "t": "Updates",
     "s": "Setup › The Desktop App",
-    "x": "The app checks for a new release shortly after it opens, every few hours while it runs, and whenever you choose Check for Updates…. If one is out, it asks before installing it. While you haven't installed it yet, the app's header shows Update available, which asks the same question. Once you say yes, a small window shows the download until the app restarts into the new version. If your connection drops partway, the w",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#desktop-changing-version-and-release-candidates",
-    "t": "Changing version, and release candidates",
-    "s": "Setup › The Desktop App",
-    "x": "Settings → Version shows the version you're running and lists releases you can switch to. Pick one, say yes when the app asks, and the app downloads it, checks its signature like any update, and restarts into it. The hub and the CLI inside the app change with it. A mycelium you installed separately for your terminal (with the install script or uv tool) keeps its own version. Release candidates. Turn on Offer release ",
+    "x": "The app checks for a new release when it opens and every few hours. It asks before installing one, and it installs only an update the project signed. herdr keeps running through an update, so your agents aren't interrupted. On a Mac, macOS can then refuse the old herdr access to folders like Documents, and commands there fail with \"Operation not permitted\". The app notices and asks whether to restart herdr. Restartin",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-logs",
     "t": "Logs",
     "s": "Setup › The Desktop App",
-    "x": "Two logs say what went wrong. Both open from Logs in the menu, in whatever opens log files on your computer (Console, on a Mac). App log (~/.mycelium/logs/desktop.log): everything the app runs, and why a part of it stopped. Earlier runs are in desktop.log.1 to desktop.log.5 beside it. Agent starts (~/.mycelium/runner/runner.log): every agent a room asked this computer to start, and whether it started, is waiting for ",
+    "x": "Both open from Logs in the menu: App log (~/.mycelium/logs/desktop.log). It records everything the app runs, and why a part of it stopped. Earlier runs are kept beside it. Agent starts (~/.mycelium/runner/runner.log). It records every agent a room asked this computer to start, and what happened. Look here first when an agent won't start.",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-the-command-line",
     "t": "The command line",
     "s": "Setup › The Desktop App",
-    "x": "On an Apple silicon Mac, the installer on the docs site installs the app too. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash puts it in Applications, links its mycelium CLI into ~/.local/bin and opens it. mycelium desktop serve runs the same hub without the window.",
+    "x": "On an Apple silicon Mac, the install script installs the app and puts its mycelium CLI on your path: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium desktop serve runs the same hub without the window.",
     "p": "Guides"
   },
   {
@@ -2800,6 +2779,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Fields",
     "s": "Board",
     "x": "Field Means status The row's own stage: open, in_review, resolved, dismissed. kind What the row is: action (a task), decision, concern, blocked. assignee Who the task is for. Set with --assign or board assign; they hold it. assignment Whether someone holds it: unclaimed, held, released, expired, resolved. A hold has no timer unless claim --ttl set one. depends-on A task that must be resolved first. blocked_by What bl",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#board-reference-when-a-hold-ends",
+    "t": "When a hold ends",
+    "s": "Board",
+    "x": "A hold has no timer. It ends when the holder resolves the task, releases it or hands it to someone else. It also ends when the hub sees the holder is gone. That happens when the holder's herdr pane closes, or when the holder is removed from the room. Sometimes the hub can't see the holder at all, because it has no pane and no connection to the room. Then the holder loses the hold after eight hours with nothing happen",
     "p": "Reference"
   },
   {
