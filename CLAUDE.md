@@ -367,3 +367,13 @@ SLIM node running (`mycelium hub host`) and `pi` on `PATH`.
   decision goes in the PR or the issue. What does belong: current-state docs
   (`mycelium-cli/src/mycelium/docs/`), READMEs, this file, runbooks, and
   `contracts/`.
+- **A PR changes the docs only when a reader has something new to do or
+  know.** A new command, setting or step a person takes, or a fact they'd need
+  and can't see in the app, earns a docs change. These don't:
+  - how something works inside, which belongs in the code and the PR;
+  - a Troubleshooting entry for a bug the same PR fixes;
+  - anything that repeats what the app already says on screen.
+
+  When a change only shifts how an existing thing behaves, update the sentence
+  that's now wrong rather than adding a paragraph. Review cuts a docs addition
+  that fails this rule, the same way it holds a PR for its title.
