@@ -115,6 +115,7 @@ async def lifespan(app: FastAPI):
     telemetry_service.setup()  # providers only — FastAPIInstrumentor wired at app-creation time
 
     # Usage: the hub coming up is the first thing it counts.
+    from app.services import agreed
     from app.services import analytics as usage
 
     await asyncio.to_thread(usage.hub_started)
@@ -268,9 +269,18 @@ async def lifespan(app: FastAPI):
             logger.exception("usage notice handler failed in %s", room)
 
     room_channel_manager.on_notice = _dispatch_notice
+
     # Every recorded message: the verifier reads agents' prose in rooms that
-    # added it, and adds a line under a claim the records don't back up.
-    room_channel_manager.on_recorded = app.state.verifier.handle_recorded
+    # added it, and adds a line under a claim the records don't back up; a
+    # `conflict:` line in a task's thread goes onto its shared summary.
+    def _dispatch_recorded(room: str, record: Any) -> None:
+        app.state.verifier.handle_recorded(room, record)
+        try:
+            agreed.handle_recorded(room, record)
+        except Exception:
+            logger.exception("shared summary conflict handler failed in %s", room)
+
+    room_channel_manager.on_recorded = _dispatch_recorded
     logger.info(
         "engines wired (aligner @%s, synthesizer @%s, hello @%s, conductor @%s, "
         "persona @%s, workers by kind; llm=pi via %s)",

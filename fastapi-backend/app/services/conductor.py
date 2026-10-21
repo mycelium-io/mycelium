@@ -1232,7 +1232,8 @@ class ConductorEngine:
             items = [f["text"] for f in made["flags"]]
             listed = "\n".join(f"- {t}" for t in items) or "- None."
             where = (
-                f"Saved as [[{key}]]."
+                f"Saved as [[{key}]]. Later work in this task is held to it; a line "
+                "starting `conflict:` in this thread adds to its open items."
                 if saved
                 else "The shared summary could not be saved; it is in this thread."
             )
