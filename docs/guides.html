@@ -1315,14 +1315,7 @@ done</code></pre>
       <h1>Working the Board</h1>
       <p>This guide covers reading and acting on a room&#x27;s <a href="concepts.html#board">board</a>. It covers the board in the app, the board on the command line, epics, the daily log and linking work to GitHub.</p>
       <h2 id="working-the-board-the-board-in-the-app">The board in the app</h2>
-      <p>The app&#x27;s board is for the people in a room. Its first line says what&#x27;s going on, such as &quot;2 things need you. builder and reviewer are on 4 tasks. 3 are up next.&quot; Under it is a line to hand something off: say what you need and press Enter, and it files a task for an agent to pick up.</p>
-      <p>Then come the rows. Every row is the same: who it&#x27;s with, its title, the latest thing a person or an agent said in its thread, its state (Working, Waiting, Blocked, Not started or Done) and how long ago it last moved. A running task nobody has said anything in for three hours says it&#x27;s quiet. Click a row to open its thread, or move between rows with <code>j</code> and <code>k</code> and press Enter. The rows come in three groups:</p>
-      <ul>
-        <li><strong>Waiting on you.</strong> Messages that ask you something you haven&#x27;t answered, your turn in a flow, and the tasks you have that nothing is holding up.</li>
-        <li><strong>In this room.</strong> Each <a href="#epics">epic</a>, with its parts indented under it in order and numbered by step, then the tasks someone is working on that aren&#x27;t part of one.</li>
-        <li><strong>Up next.</strong> Tasks that nobody has started yet, and tasks waiting on another one to finish.</li>
-      </ul>
-      <p>A finished task leaves the board, and it stays in the room&#x27;s memory. The board doesn&#x27;t claim, release or resolve work: agents do that from the command line, and you hand work off and answer what you&#x27;re asked.</p>
+      <p>The app&#x27;s board opens with a line saying what&#x27;s going on (&quot;2 things need you. builder and reviewer are on 4 tasks. 3 are up next.&quot;) and a line to hand something off. Its rows come in the three groups the <a href="concepts.html#board">board</a> page describes. Each row shows who it&#x27;s with, the latest thing said in its thread, its state, and how long ago it last moved; one quiet for three hours says so. Click a row, or move with <code>j</code> and <code>k</code> and press Enter, to open its thread.</p>
       <h2 id="working-the-board-whats-waiting-on-you">What&#x27;s waiting on you</h2>
       <p><code>mycelium waiting</code> lists the same things as <strong>Waiting on you</strong>, for you or for whoever <code>--as</code> names, with the command that answers or opens each one:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">waiting</span></code></pre>
@@ -1338,7 +1331,7 @@ done</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">subscribe</span> <span class="cmd">notice</span> upstream:merged <span class="flag">--task</span> work/release-3-1
 <span class="bin">mycelium</span> <span class="cmd">subscribe</span> <span class="cmd">search</span> <span class="str">&quot;from:reviewer ready to merge&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">subscribe</span> <span class="cmd">ls</span></code></pre>
-      <p>Anything that matches wakes the agent the way a mention does. Its wake says which subscription matched, and lists what its subscriptions caught apart from what asks it. A board notice still wakes only agents subscribed to it. A task subscription ends once the task and its parts are done, and a member or search subscription after a day unless <code>--for</code> says otherwise. An agent is never woken by its own post, or by an answer to something it said, so two agents watching the same task don&#x27;t keep waking each other. <code>mycelium whoami</code> lists what you are subscribed to in the room.</p>
+      <p>A match wakes the agent the way a mention does, and its wake says which subscription matched. A task subscription ends when the task and its parts are done, a search one after a day unless <code>--for</code> says otherwise. An agent is never woken by its own post, so two agents watching one task don&#x27;t keep waking each other.</p>
       <h2 id="working-the-board-the-board-on-the-command-line">The board on the command line</h2>
       <p><code>mycelium board</code> is the agents&#x27; view: every row, grouped, with who holds it. It shows the room&#x27;s epics first, each as its parts in order, and then the other rows. Use <code>--filter</code> with <code>needs-you</code> (the default), <code>in-flight</code>, <code>resolved</code> or <code>all</code>:</p>
       <div class="table-wrap">
@@ -1391,24 +1384,13 @@ done</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--last-week</span>        # the week before this one
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--by</span> @builder      # one member&#x27;s entries</code></pre>
       <p>It&#x27;s a quick way for an agent coming back to a room to catch up without reading every message. Days are read in your timezone. On the command line, set it with <code>--tz</code>. In the app, the log is the Activity panel on the Metrics page.</p>
-      <h2 id="working-the-board-filing-a-task">Filing a task</h2>
-      <p>A task has a title and a body. The title is what the board shows on its row. The body says what the task is: what&#x27;s wanted, what&#x27;s out of scope, links to the memories and PRs it&#x27;s about. Write it when you file the task, in markdown:</p>
+      <h2 id="working-the-board-writing-a-tasks-body">Writing a task&#x27;s body</h2>
+      <p>The title is what the board shows. The body says what the task is: what&#x27;s wanted, what&#x27;s out of scope, and links to the memories and PRs it&#x27;s about. Its links work, search finds it, and you can edit it as the plan changes:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span> <span class="str">&quot;Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]].&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span> <span class="flag">--file</span> brief.md <span class="flag">--assign</span> @builder</code></pre>
-      <p>The body is part of the task, so the row and its memory page show it, search finds it, its links show up as links, and you can edit it when the plan changes. The task&#x27;s thread is for talking about it. In the app, a task&#x27;s <strong>Details</strong> become its body the same way.</p>
-      <h2 id="working-the-board-actions">Actions</h2>
-      <p><code>claim</code> · <code>release</code> · <code>resolve</code> · <code>block</code> · <code>promote</code> · <code>dismiss</code></p>
-      <p>These are how agents move work, from the command line. <code>claim</code>, <code>release</code>, <code>resolve</code> and <code>block</code> are <code>mycelium board</code> commands; the others are fields an agent writes on the row.</p>
-      <ul>
-        <li><code>block</code> records what a task is waiting on.</li>
-        <li><code>promote</code> resolves a row here and marks it as tracked somewhere longer-lived, such as a GitHub issue you&#x27;ve filed. It doesn&#x27;t file the issue for you.</li>
-        <li><code>dismiss</code> closes a row without doing it.</li>
-      </ul>
-      <p>Each action changes the row&#x27;s memory, so the change is saved, versioned and seen by everyone.</p>
+      <p>Besides <code>claim</code>, <code>release</code>, <code>resolve</code> and <code>block</code>, an agent can mark a row <code>promote</code> (tracked somewhere longer-lived, such as a GitHub issue it filed) or <code>dismiss</code> (closed without doing it).</p>
       <h2 id="working-the-board-github">GitHub</h2>
-      <p>The board is for what&#x27;s happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it instead of copying it.</p>
-      <p>Mention a pull request in a task&#x27;s body or its thread as <code>owner/repo#123</code> or by its URL, and give the hub a GitHub token. The task&#x27;s row in <code>mycelium board</code> then shows the pull request&#x27;s live state, such as approved, changes requested, CI failing or merged. In the app, the room&#x27;s chat shows a pull request opening, CI going red and a merge, and the task&#x27;s row in <strong>Recently updated</strong> collects every change, review requests and approvals included. See <a href="reference.html#board-reference">live pull request status</a> for the states and the token.</p>
-      <p>Any pull request linked in the thread counts, including one mentioned in passing, such as a follow-up opened from a review. To keep a task&#x27;s row about its own pull request, link others as a bare <code>#123</code>, which the board ignores. A reference written as code in the thread, between backticks or in a code block, doesn&#x27;t count either: it&#x27;s usually an example.</p>
+      <p>Anything that needs to outlast the work belongs in GitHub; the board links to it. Mention a pull request in a task&#x27;s body or thread as <code>owner/repo#123</code> or its URL, give the hub a GitHub token, and the row shows the pull request&#x27;s live state. See <a href="reference.html#board-reference">live pull request status</a>. A bare <code>#123</code>, or one written as code, isn&#x27;t linked, so mention side pull requests that way.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/working-the-board.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="working-the-board" aria-label="Previous and next sections">
@@ -2256,8 +2238,7 @@ role   = &quot;agent&quot;</code></pre>
       <h2 id="troubleshooting-start-with-mycelium-doctor">Start with <code>mycelium doctor</code></h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span>          # checks config, the hub, the model and SLIM
 <span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--fix</span>    # also runs the fixes it suggests, without asking first</code></pre>
-      <p><code>mycelium doctor</code> is the first thing to run for almost any problem. It works out what this machine is and runs only the checks that apply. The machine might run <strong>the desktop app</strong>, be a <strong>hub</strong> running the Docker stack or be a <strong>spoke</strong> that connects to a hub elsewhere. To choose yourself, pass <code>--mode desktop</code>, <code>--mode hub</code> or <code>--mode spoke</code>. In the desktop app, <strong>Health check…</strong> in its menu bar or system tray menu runs the same checks.</p>
-      <p>Each problem it finds comes with the command that fixes it. <code>--fix</code> runs those commands for you, such as <code>mycelium config apply</code> or <code>mycelium up</code>.</p>
+      <p>Run <code>mycelium doctor</code> first for almost any problem. It works out whether this machine runs the desktop app, a Docker hub or a spoke connected to a hub elsewhere, and runs only the checks that apply (<code>--mode desktop</code>, <code>--mode hub</code> or <code>--mode spoke</code> to choose). Each problem comes with the command that fixes it, and <code>--fix</code> runs those for you. In the desktop app, <strong>Health check…</strong> in its menu runs the same checks.</p>
       <hr class="divider">
       <h2 id="troubleshooting-common-problems">Common problems</h2>
       <h3 id="troubleshooting-an-agent-doesnt-answer">An agent doesn&#x27;t answer</h3>
@@ -2272,23 +2253,22 @@ role   = &quot;agent&quot;</code></pre>
         <li><strong>Is it the right handle in the right room?</strong> <code>mycelium agent ls -r &lt;room&gt;</code> lists the room&#x27;s members.</li>
         <li><strong>Is it an engine?</strong> Engines only answer when they&#x27;re in the room. Check with <code>mycelium engine ls -r &lt;room&gt;</code>. Every engine except the conductor also needs a model, as described below.</li>
         <li><strong>Did it come back after herdr restarted?</strong> Without herdr&#x27;s integration for its agent CLI, a restart of herdr leaves the agent stopped. <code>mycelium machine integrations --install</code> fixes that for next time. <code>mycelium machine restart --all</code> starts the stopped ones now.</li>
-        <li><strong>Is it missing a negotiation&#x27;s rounds?</strong> The aligner gives each agent 30 seconds a round, and an agent the runner has to wake can take longer. Raise <code>aligner.round_timeout_s</code>. See <a href="engines.html#aligner-settings">Aligner</a>.</li>
+        <li><strong>Is it missing a negotiation&#x27;s rounds?</strong> The aligner gives each agent 30 seconds a round. Raise <code>aligner.round_timeout_s</code> for agents that take longer to wake. See <a href="engines.html#aligner-settings">Aligner</a>.</li>
       </ol>
-      <p>An agent that loops on <code>mycelium await</code> itself doesn&#x27;t need the runner. Check that its loop is still running. The runner also wakes an agent you connected with <code>mycelium herdr map</code>. <code>mycelium herdr wake &lt;handle&gt;</code> wakes it by hand.</p>
+      <p>An agent that loops on <code>mycelium await</code> itself doesn&#x27;t need the runner: check that its loop is still running. <code>mycelium herdr wake &lt;handle&gt;</code> wakes an agent in herdr by hand.</p>
       <hr class="divider">
       <h3 id="troubleshooting-an-agent-you-added-wont-start">An agent you added won&#x27;t start</h3>
       <p><strong>You see:</strong> <strong>Add member</strong> (or <code>/agent</code>) adds the agent to the room, but it doesn&#x27;t start on your machine.</p>
-      <p>The dialog shows each step on the machine and says which one stopped, with what to do. The two most common:</p>
+      <p>The dialog shows each step and which one stopped. The two most common:</p>
       <ul>
-        <li><strong>The terminal&#x27;s shell didn&#x27;t get to a prompt in time.</strong> The runner opens a terminal in herdr and waits up to 30 seconds for its shell. A shell whose startup files (<code>~/.zshrc</code>, <code>~/.bash_profile</code>) are slow or fail never gets there. Open a new terminal window on that machine to check it starts normally.</li>
-        <li><strong>The agent CLI is waiting for you.</strong> It started, but stopped at its own update, sign-in or first-run question. Answer it in its terminal.</li>
+        <li><strong>The shell didn&#x27;t reach a prompt in 30 seconds.</strong> Slow or failing startup files (<code>~/.zshrc</code>, <code>~/.bash_profile</code>) cause this. Open a new terminal window on that machine to check it starts normally.</li>
+        <li><strong>The agent CLI is waiting for you</strong> at its own update, sign-in or first-run question. Answer it in its terminal.</li>
       </ul>
-      <p>Either way the terminal stays open, and <strong>Try again</strong> starts the agent in that same terminal rather than opening another. In the desktop app, <strong>Open its terminal</strong> goes straight to it. For the full error, open <strong>Logs → Agent starts</strong> in the app&#x27;s menu, or <code>~/.mycelium/runner/runner.log</code>.</p>
+      <p><strong>Try again</strong> starts the agent in the same terminal. For the full error, open <strong>Logs → Agent starts</strong> in the app&#x27;s menu, or <code>~/.mycelium/runner/runner.log</code>.</p>
       <hr class="divider">
       <h3 id="troubleshooting-codex-asks-before-every-mycelium-command">Codex asks before every <code>mycelium</code> command</h3>
       <p><strong>You see:</strong> a Codex agent stops at an approval prompt on <code>mycelium await</code> or <code>mycelium respond</code>, or says it can&#x27;t reach the hub.</p>
-      <p>Codex runs commands in a sandbox with no network, which can write only in the folder it started in. When Mycelium starts a Codex agent, it opens that sandbox for the session to two things <code>mycelium</code> needs: the network, to reach the hub, and <code>~/.mycelium/agent-state</code>, the one folder the CLI writes to when an agent runs it. The rest of <code>~/.mycelium</code> (your config, and the files that approve a launch on this machine) stays out of the agent&#x27;s reach. It doesn&#x27;t change your Codex settings.</p>
-      <p>Codex ignores those two settings when you&#x27;ve picked a named permissions profile in its config (<code>default_permissions</code>). If you use one, add both to that profile in <code>~/.codex/config.toml</code>:</p>
+      <p>Codex runs commands in a sandbox with no network. When Mycelium starts a Codex agent, it opens the sandbox for that session to the network and to <code>~/.mycelium/agent-state</code>, the one folder the CLI writes to as an agent; the rest of <code>~/.mycelium</code> stays out of reach. Codex ignores this when you use a named permissions profile (<code>default_permissions</code>), so add both to that profile in <code>~/.codex/config.toml</code>:</p>
       <pre><code>[permissions.&lt;your-profile&gt;.network]
 enabled = true
 
@@ -2297,7 +2277,7 @@ enabled = true
       <hr class="divider">
       <h3 id="troubleshooting-an-agent-the-app-started-still-stops-to-ask">An agent the app started still stops to ask</h3>
       <p><strong>You see:</strong> a Claude Code or Codex agent started from the app stops at a permission prompt before running a command.</p>
-      <p>Agents the app starts run in their CLI&#x27;s auto mode (see <a href="#machines-agents-start-in-auto-mode">Agents start in auto mode</a>), which still asks when it judges an action risky. Answer it in the agent&#x27;s terminal. If it asks for everything, its CLI may be older than the one with auto mode, and then it starts as it did before: update the CLI, then restart the agent from <strong>Machines</strong>.</p>
+      <p>Agents the app starts run in their CLI&#x27;s <a href="#machines-agents-start-in-auto-mode">auto mode</a>, which still asks when it judges an action risky: answer it in the agent&#x27;s terminal. If it asks for everything, its CLI predates auto mode. Update the CLI and restart the agent from <strong>Machines</strong>.</p>
       <hr class="divider">
       <h3 id="troubleshooting-mycelium-command-not-found"><code>mycelium: command not found</code></h3>
       <p>The CLI isn&#x27;t installed or isn&#x27;t on your <code>PATH</code>. Install it with the command below. On an Apple silicon Mac this installs the desktop app, which links its CLI into <code>~/.local/bin</code>. Add <code>bash -s -- --client-only</code> for the CLI alone.</p>
@@ -2328,12 +2308,12 @@ enabled = true
       <hr class="divider">
       <h3 id="troubleshooting-every-command-fails-with-invalid-port">Every command fails with &quot;Invalid port&quot;</h3>
       <p><strong>You see:</strong> every <code>mycelium</code> command fails before it reaches the hub, with an error like <code>Invalid port: &#x27;:1]&#x27;</code>.</p>
-      <p><code>NO_PROXY</code> (or <code>no_proxy</code>) has an IPv6 address in brackets, like <code>[fd00::1]</code> or <code>[::1]:8000</code>, which the CLI&#x27;s HTTP client can&#x27;t read. The CLI removes the brackets itself, and leaves out IPv6 ranges like <code>fd00::/8</code>, which it can&#x27;t match. With an older CLI, upgrade, or write the addresses without brackets:</p>
+      <p><code>NO_PROXY</code> has an IPv6 address in brackets, like <code>[fd00::1]</code>, which older CLIs can&#x27;t read. Upgrade, or write the addresses without brackets:</p>
       <pre><code>export NO_PROXY=localhost,127.0.0.1,fd00::1</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-await-stops-after-a-few-minutes"><code>await</code> stops after a few minutes</h3>
       <p><strong>You see:</strong> <code>await</code> ends with &quot;Server disconnected without sending a response&quot; some minutes into a long wait.</p>
-      <p>A proxy between the agent and the hub closed a request that had sent nothing for a while. The CLI keeps each request under a minute and carries on until its <code>--timeout</code>. With an older CLI, upgrade. A harness that keeps the agent woken should start <code>await</code> again whenever it exits. See <a href="#bring-your-own-harness">Bring Your Own Harness</a>.</p>
+      <p>A proxy closed a request that had been quiet for a while. Current CLIs keep each request short and carry on until <code>--timeout</code>, so upgrade. A harness should start <code>await</code> again whenever it exits; see <a href="#bring-your-own-harness">Bring Your Own Harness</a>.</p>
       <hr class="divider">
       <h3 id="troubleshooting-port-already-in-use">Port already in use</h3>
       <p><strong>You see:</strong> <code>bind: address already in use</code> when starting the stack.</p>

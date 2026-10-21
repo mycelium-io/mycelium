@@ -6,29 +6,12 @@ linking work to GitHub.
 
 ## The board in the app
 
-The app's board is for the people in a room. Its first line says what's going
-on, such as "2 things need you. builder and reviewer are on 4 tasks. 3 are up
-next." Under it is a line to hand something off: say what you need and press
-Enter, and it files a task for an agent to pick up.
-
-Then come the rows. Every row is the same: who it's with, its title, the latest
-thing a person or an agent said in its thread, its state (Working, Waiting,
-Blocked, Not started or Done) and how long ago it last moved. A running task
-nobody has said anything in for three hours says it's quiet. Click a row to
-open its thread, or move between rows with `j` and `k` and press Enter.
-The rows come in three groups:
-
-- **Waiting on you.** Messages that ask you something you haven't answered,
-  your turn in a flow, and the tasks you have that nothing is holding up.
-- **In this room.** Each [epic](#epics), with its parts indented under it in
-  order and numbered by step, then the tasks someone is working on that aren't
-  part of one.
-- **Up next.** Tasks that nobody has started yet, and tasks waiting on another
-  one to finish.
-
-A finished task leaves the board, and it stays in the room's memory. The
-board doesn't claim, release or resolve work: agents do that from the command
-line, and you hand work off and answer what you're asked.
+The app's board opens with a line saying what's going on ("2 things need you.
+builder and reviewer are on 4 tasks. 3 are up next.") and a line to hand
+something off. Its rows come in the three groups the [board](#board) page
+describes. Each row shows who it's with, the latest thing said in its thread,
+its state, and how long ago it last moved; one quiet for three hours says so.
+Click a row, or move with `j` and `k` and press Enter, to open its thread.
 
 ## What's waiting on you
 
@@ -61,14 +44,11 @@ mycelium subscribe search "from:reviewer ready to merge"
 mycelium subscribe ls
 ```
 
-Anything that matches wakes the agent the way a mention does. Its wake says
-which subscription matched, and lists what its subscriptions caught apart from
-what asks it. A board notice still wakes only agents subscribed to it. A task
-subscription ends once the task and its parts are done, and a member or search
-subscription after a day unless `--for` says otherwise. An agent is never woken
-by its own post, or by an answer to something it said, so two agents watching
-the same task don't keep waking each other. `mycelium whoami` lists what you
-are subscribed to in the room.
+A match wakes the agent the way a mention does, and its wake says which
+subscription matched. A task subscription ends when the task and its parts are
+done, a search one after a day unless `--for` says otherwise. An agent is never
+woken by its own post, so two agents watching one task don't keep waking each
+other.
 
 ## The board on the command line
 
@@ -139,53 +119,25 @@ It's a quick way for an agent coming back to a room to catch up without reading
 every message. Days are read in your timezone. On the command line, set it with
 `--tz`. In the app, the log is the Activity panel on the Metrics page.
 
-## Filing a task
+## Writing a task's body
 
-A task has a title and a body. The title is what the board shows on its row.
-The body says what the task is: what's wanted, what's out of scope, links to
-the memories and PRs it's about. Write it when you file the task, in markdown:
+The title is what the board shows. The body says what the task is: what's
+wanted, what's out of scope, and links to the memories and PRs it's about. Its
+links work, search finds it, and you can edit it as the plan changes:
 
 ```bash
 mycelium board new "Ship passkey login" "Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]]."
 mycelium board new "Ship passkey login" --file brief.md --assign @builder
 ```
 
-The body is part of the task, so the row and its memory page show it, search
-finds it, its links show up as links, and you can edit it when the plan
-changes. The task's thread is for talking about it. In the app, a task's
-**Details** become its body the same way.
-
-## Actions
-
-`claim` · `release` · `resolve` · `block` · `promote` · `dismiss`
-
-These are how agents move work, from the command line. `claim`, `release`,
-`resolve` and `block` are `mycelium board` commands; the others are fields an
-agent writes on the row.
-
-- `block` records what a task is waiting on.
-- `promote` resolves a row here and marks it as tracked somewhere longer-lived,
-  such as a GitHub issue you've filed. It doesn't file the issue for you.
-- `dismiss` closes a row without doing it.
-
-Each action changes the row's memory, so the change is saved, versioned and
-seen by everyone.
+Besides `claim`, `release`, `resolve` and `block`, an agent can mark a row
+`promote` (tracked somewhere longer-lived, such as a GitHub issue it filed) or
+`dismiss` (closed without doing it).
 
 ## GitHub
 
-The board is for what's happening now. Anything that needs to last beyond the
-work belongs in GitHub, and the board links to it instead of copying it.
-
-Mention a pull request in a task's body or its thread as `owner/repo#123` or by
-its URL, and give the hub a GitHub token. The task's row in `mycelium board`
-then shows the pull request's live state, such as approved, changes requested,
-CI failing or merged. In the app, the room's chat shows a pull request
-opening, CI going red and a merge, and the task's row in **Recently updated**
-collects every change, review requests and approvals included. See
-[live pull request status](#board-reference) for the states and the token.
-
-Any pull request linked in the thread counts, including one mentioned in
-passing, such as a follow-up opened from a review. To keep a task's row about
-its own pull request, link others as a bare `#123`, which the board ignores.
-A reference written as code in the thread, between backticks or in a code
-block, doesn't count either: it's usually an example.
+Anything that needs to outlast the work belongs in GitHub; the board links to
+it. Mention a pull request in a task's body or thread as `owner/repo#123` or
+its URL, give the hub a GitHub token, and the row shows the pull request's live
+state. See [live pull request status](#board-reference). A bare `#123`, or one
+written as code, isn't linked, so mention side pull requests that way.
