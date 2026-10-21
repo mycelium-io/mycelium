@@ -2110,9 +2110,11 @@ steps:
           </tbody>
         </table>
       </div>
-      <p>The app&#x27;s <strong>Metrics</strong> page shows the first two on its Usage and System tabs. Open it from the strip along the bottom of the app.</p>
+      <p>The app&#x27;s <strong>Metrics</strong> page shows the first two, on its Usage and System tabs. Open it from the strip along the bottom of the app.</p>
+      <figure class="doc-figure"><img class="doc-img" src="app-metrics.png" alt="The Metrics page&#x27;s Usage tab" loading="lazy">
+      </figure>
       <h2 id="metrics-usage">Usage</h2>
-      <p>Most work in a room is a task, so usage follows tasks. The hub records an event each time one of these happens:</p>
+      <p>The hub records an event each time one of these happens:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -2156,35 +2158,17 @@ steps:
           </tbody>
         </table>
       </div>
-      <p>Every way the app offers to start work is counted by these events. A plain task counts as filed and then resolved. Review, Split and Settle each count as a flow or a negotiation that finishes inside a task. Split runs a swarm.</p>
-      <p>Every event also includes the release, the time and the hub&#x27;s id. The id is a random UUID, either the one <code>mycelium install</code> saves in <code>config.toml</code> or one the hub creates for itself. Resolved tasks, finished flows and finished negotiations include <code>work_count</code>, which is how much work this hub has finished so far. That tells first use (<code>1</code>) apart from repeat use (<code>2</code> and up).</p>
+      <p>Every event also carries the release, the time and the hub&#x27;s id, which is a random UUID. Resolved tasks, finished flows and finished negotiations carry <code>work_count</code>, which is how much work this hub has finished so far.</p>
       <p><strong>Never recorded:</strong> names, handles, emails, rooms, task titles or text, prompts, replies, IPs or hostnames. A room&#x27;s own flow is counted as <code>custom</code>, because its name belongs to the room.</p>
-      <h3 id="metrics-where-to-see-it">Where to see it</h3>
-      <figure class="doc-figure"><img class="doc-img" src="app-metrics.png" alt="The Metrics page&#x27;s Usage tab" loading="lazy">
-      </figure>
-      <p>The Metrics page opens on its <strong>Usage</strong> tab and covers the last 30 or 90 days. It shows:</p>
-      <ul>
-        <li>tasks filed and resolved, how long tasks stay open and active days;</li>
-        <li>whether the board keeps up, as filed against resolved by day or by week;</li>
-        <li>each way of starting work and how often it ends well;</li>
-        <li>who files the work, and how long tasks stay open by who resolved them;</li>
-        <li>agents joined, by adapter.</li>
-      </ul>
-      <p>Its <strong>System</strong> tab shows the backend&#x27;s own metrics, described below. The same figures are at <code>GET /api/observability/usage?days=30</code>. The events themselves are in <code>$MYCELIUM_DATA_DIR/usage/events.jsonl</code>, one JSON object per line.</p>
+      <p>The Usage tab&#x27;s figures are also at <code>GET /api/observability/usage?days=30</code>. The events themselves are in <code>$MYCELIUM_DATA_DIR/usage/events.jsonl</code>, one JSON object per line.</p>
       <h3 id="metrics-sharing-usage-stats">Sharing usage stats</h3>
-      <p>Sharing sends each event to <code>telemetry.analytics_destination</code> as it happens. It&#x27;s off unless you turn it on. You&#x27;re asked in two places:</p>
-      <ul>
-        <li><strong>The desktop app</strong> asks on its first screen when it runs a hub, and again under Settings. The app&#x27;s answer is the one that counts for the hub it starts.</li>
-        <li><strong><code>mycelium install</code></strong> asks as its last question.</li>
-      </ul>
-      <p>To change it by hand:</p>
+      <p>Sharing sends each event to <code>telemetry.analytics_destination</code> as it happens. It&#x27;s off unless you turn it on. The desktop app asks on its first screen, and <code>mycelium install</code> asks as its last question. To change it by hand:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> telemetry.send_product_analytics true   # or false
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
-      <p>Events go only to the address in <code>telemetry.analytics_destination</code>. No address is set by default, so turning sharing on sends nothing until one is set. Events are POSTed as JSON. When the address contains <code>/loki/</code>, they&#x27;re sent in Loki&#x27;s push format instead. The destination must be HTTPS or plain HTTP to this machine (<code>localhost</code>, <code>127.0.0.1</code>, <code>host.docker.internal</code>).</p>
+      <p>No destination is set by default, so turning sharing on sends nothing until one is set. Events are POSTed as JSON, or in Loki&#x27;s push format when the address contains <code>/loki/</code>. The destination must be HTTPS, or plain HTTP to this machine.</p>
       <h2 id="metrics-backend-metrics">Backend metrics</h2>
-      <p><strong>What the backend records.</strong> It records memory writes and searches, embeddings, index runs and model calls by operation and model, with how long each took. Model calls go through <code>pi</code>, which doesn&#x27;t report token usage. So calls, failures and timings are recorded but cost isn&#x27;t. Read them as JSON at <code>GET /api/observability</code>.</p>
-      <p><strong>Health.</strong> <code>GET /health</code> tells you whether messaging is working. It reports channels set up and failed, failed invites and per-room counts of messages re-sent and dropped. It also reports the state of storage, embeddings and the model. This is what <code>mycelium doctor</code> checks.</p>
-      <p>When a latency p95 passes its threshold, <code>/health</code> reports <code>degraded</code> and <code>mycelium doctor</code> says so:</p>
+      <p>The backend records memory writes and searches, embeddings, index runs and model calls, with how long each took. Read them as JSON at <code>GET /api/observability</code>. Model calls go through <code>pi</code>, which doesn&#x27;t report token usage, so their cost isn&#x27;t recorded.</p>
+      <p><code>GET /health</code> says whether messaging, storage, embeddings and the model are working. This is what <code>mycelium doctor</code> checks. When a latency p95 passes its threshold, <code>/health</code> reports <code>degraded</code>:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -2218,23 +2202,21 @@ steps:
 <span class="bin">mycelium</span> <span class="cmd">metrics</span> <span class="cmd">show</span> cost      # estimated model cost, where token counts were reported
 <span class="bin">mycelium</span> <span class="cmd">metrics</span> <span class="cmd">show</span> <span class="flag">--json</span>    # everything collected, as JSON
 <span class="bin">mycelium</span> <span class="cmd">metrics</span> <span class="cmd">reset</span>          # clear the metrics collected on this machine</code></pre>
-      <p><code>metrics show cost</code> multiplies token counts by each model&#x27;s price. Engine calls go through Pi, which reports no token counts, so it has nothing to show for them.</p>
-      <h3 id="metrics-exporting-them-over-opentelemetry-optional">Exporting them over OpenTelemetry (optional)</h3>
-      <p>With <code>telemetry.enabled</code>, the backend also exports traces and metrics over OTLP. It sends a span per HTTP route and timings for aligner rounds, SLIM channels, <code>await</code> and model calls. It&#x27;s off by default, and when it&#x27;s off none of that code runs.</p>
+      <h3 id="metrics-exporting-them-over-opentelemetry">Exporting them over OpenTelemetry</h3>
+      <p>With <code>telemetry.enabled</code>, the backend also exports traces and metrics over OTLP. It&#x27;s off by default.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> telemetry.enabled true
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> telemetry.otlp_endpoint &lt;url&gt;
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
-      <p>Where to point it:</p>
+      <p>You can point it at any of these:</p>
       <ul>
-        <li><strong>A hosted OTLP backend</strong>, such as Grafana Cloud or Honeycomb. Set the endpoint to it. Set its auth header with <code>mycelium config set telemetry.otlp_headers &quot;x-honeycomb-team=&lt;key&gt;&quot;</code>.</li>
-        <li><strong>A local Grafana</strong> with the Docker stack. Set the endpoint to <code>http://mycelium-grafana:4318</code> and run <code>mycelium up --grafana</code>. That starts Grafana&#x27;s all-in-one image and imports Mycelium&#x27;s dashboard. It opens at <code>http://localhost:3001</code> with the login admin / admin. To also forward everything it receives to a hosted backend, set <code>telemetry.forward_endpoint</code>. Use <code>telemetry.otlp_headers</code> for that backend&#x27;s auth.</li>
-        <li><strong>The desktop app</strong> runs no collector or Grafana. Set the endpoint to one you run yourself, such as <code>http://127.0.0.1:4318</code> for a collector on the same computer.</li>
+        <li><strong>A hosted OTLP backend</strong>, such as Grafana Cloud or Honeycomb. Set its auth header with <code>mycelium config set telemetry.otlp_headers &quot;x-honeycomb-team=&lt;key&gt;&quot;</code>.</li>
+        <li><strong>A local Grafana</strong> with the Docker stack. Set the endpoint to <code>http://mycelium-grafana:4318</code> and run <code>mycelium up --grafana</code>. Grafana opens at <code>http://localhost:3001</code> with Mycelium&#x27;s dashboard, and the login is admin / admin. To also forward everything to a hosted backend, set <code>telemetry.forward_endpoint</code>.</li>
+        <li><strong>A collector you run yourself.</strong> The desktop app runs no collector or Grafana, so use one such as <code>http://127.0.0.1:4318</code>.</li>
       </ul>
       <p>If the Grafana container restarts, restart the backend too with <code>docker restart mycelium-backend</code>. Its OTLP connection doesn&#x27;t reconnect.</p>
-      <p>The spans follow OpenTelemetry&#x27;s <code>gen_ai.*</code> conventions, which are still marked Development. The versions tested against are pinned in <code>fastapi-backend/pyproject.toml</code>.</p>
-      <h2 id="metrics-agent-telemetry-over-otlp-optional">Agent telemetry over OTLP (optional)</h2>
-      <p>The collector receives OpenTelemetry data. Start it with <code>mycelium up --metrics</code>. It listens for OTLP metrics and traces on <code>localhost:4318</code> and also reads the backend&#x27;s <code>/api/observability</code>. It saves a combined snapshot to <code>$MYCELIUM_DATA_DIR/metrics/</code>, which is what <code>mycelium metrics</code> reads.</p>
-      <p>Point any OTLP exporter at <code>http://&lt;host&gt;:4318</code> to send data to it. Traces are stored in full. Spans that carry OpenTelemetry&#x27;s GenAI attributes can be grouped by agent, model and tool. Those attributes are <code>gen_ai.agent.name</code>, <code>gen_ai.request.model</code>, <code>gen_ai.tool.name</code> and <code>gen_ai.usage.*</code>. For metrics, the collector only counts how many data points each host has sent.</p>
+      <h2 id="metrics-agent-telemetry-over-otlp">Agent telemetry over OTLP</h2>
+      <p>The collector receives OpenTelemetry data from your agents. Start it with <code>mycelium up --metrics</code>. It listens on <code>localhost:4318</code>, so point any OTLP exporter at <code>http://&lt;host&gt;:4318</code>. It saves a combined snapshot that <code>mycelium metrics</code> reads.</p>
+      <p>Spans that carry OpenTelemetry&#x27;s GenAI attributes, such as <code>gen_ai.agent.name</code> and <code>gen_ai.request.model</code>, can be grouped by agent, model and tool:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">metrics</span> <span class="cmd">traces</span> summary    # totals over a time window
 <span class="bin">mycelium</span> <span class="cmd">metrics</span> <span class="cmd">traces</span> by-agent   # spans grouped by agent, room, model, tool and more</code></pre>
       <h2 id="metrics-files">Files</h2>

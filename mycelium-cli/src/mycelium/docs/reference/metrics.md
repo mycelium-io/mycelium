@@ -8,13 +8,14 @@ A hub keeps three kinds of numbers:
 | **Backend metrics** | What the backend is doing: memory, embeddings, model calls, messaging, latency | Kept in the running backend. Exported over OpenTelemetry if you turn that on |
 | **Agent telemetry** | What your agents report over OpenTelemetry | The optional collector |
 
-The app's **Metrics** page shows the first two on its Usage and System tabs.
+The app's **Metrics** page shows the first two, on its Usage and System tabs.
 Open it from the strip along the bottom of the app.
+
+![The Metrics page's Usage tab](app-metrics.png)
 
 ## Usage
 
-Most work in a room is a task, so usage follows tasks. The hub records an event
-each time one of these happens:
+The hub records an event each time one of these happens:
 
 | Event | When | Carries |
 |---|---|---|
@@ -25,74 +26,43 @@ each time one of these happens:
 | `mycelium.negotiation_completed` | The aligner reaches an outcome | outcome, rounds |
 | `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `worker`, ...) |
 
-Every way the app offers to start work is counted by these events. A plain
-task counts as filed and then resolved. Review, Split and Settle each count as
-a flow or a negotiation that finishes inside a task. Split runs a swarm.
-
-Every event also includes the release, the time and the hub's id. The id is a
-random UUID, either the one `mycelium install` saves in `config.toml` or one
-the hub creates for itself. Resolved tasks, finished flows and finished
-negotiations include `work_count`, which is how much work this hub has finished
-so far. That tells first use (`1`) apart from repeat use (`2` and up).
+Every event also carries the release, the time and the hub's id, which is a
+random UUID. Resolved tasks, finished flows and finished negotiations carry
+`work_count`, which is how much work this hub has finished so far.
 
 **Never recorded:** names, handles, emails, rooms, task titles or text,
 prompts, replies, IPs or hostnames. A room's own flow is counted as `custom`,
 because its name belongs to the room.
 
-### Where to see it
-
-![The Metrics page's Usage tab](app-metrics.png)
-
-The Metrics page opens on its **Usage** tab and covers the last 30 or 90 days.
-It shows:
-
-- tasks filed and resolved, how long tasks stay open and active days;
-- whether the board keeps up, as filed against resolved by day or by week;
-- each way of starting work and how often it ends well;
-- who files the work, and how long tasks stay open by who resolved them;
-- agents joined, by adapter.
-
-Its **System** tab shows the backend's own metrics, described below. The same
-figures are at `GET /api/observability/usage?days=30`. The events themselves are
-in `$MYCELIUM_DATA_DIR/usage/events.jsonl`, one JSON object per line.
+The Usage tab's figures are also at `GET /api/observability/usage?days=30`. The
+events themselves are in `$MYCELIUM_DATA_DIR/usage/events.jsonl`, one JSON
+object per line.
 
 ### Sharing usage stats
 
 Sharing sends each event to `telemetry.analytics_destination` as it happens.
-It's off unless you turn it on. You're asked in two places:
-
-- **The desktop app** asks on its first screen when it runs a hub, and again under
-  Settings. The app's answer is the one that counts for the hub it starts.
-- **`mycelium install`** asks as its last question.
-
-To change it by hand:
+It's off unless you turn it on. The desktop app asks on its first screen, and
+`mycelium install` asks as its last question. To change it by hand:
 
 ```bash
 mycelium config set telemetry.send_product_analytics true   # or false
 mycelium config apply
 ```
 
-Events go only to the address in `telemetry.analytics_destination`. No address
-is set by default, so turning sharing on sends nothing until one is set. Events
-are POSTed as JSON. When the address contains `/loki/`, they're sent in Loki's
-push format instead. The destination must be HTTPS or plain HTTP to this
-machine (`localhost`, `127.0.0.1`, `host.docker.internal`).
+No destination is set by default, so turning sharing on sends nothing until one
+is set. Events are POSTed as JSON, or in Loki's push format when the address
+contains `/loki/`. The destination must be HTTPS, or plain HTTP to this machine.
 
 ## Backend metrics
 
-**What the backend records.** It records memory writes and searches,
-embeddings, index runs and model calls by operation and model, with how long
-each took. Model calls go through `pi`, which doesn't report token usage. So
-calls, failures and timings are recorded but cost isn't. Read them as JSON at
-`GET /api/observability`.
+The backend records memory writes and searches, embeddings, index runs and
+model calls, with how long each took. Read them as JSON at
+`GET /api/observability`. Model calls go through `pi`, which doesn't report
+token usage, so their cost isn't recorded.
 
-**Health.** `GET /health` tells you whether messaging is working. It reports
-channels set up and failed, failed invites and per-room counts of messages
-re-sent and dropped. It also reports the state of storage, embeddings and the
-model. This is what `mycelium doctor` checks.
-
-When a latency p95 passes its threshold, `/health` reports `degraded` and
-`mycelium doctor` says so:
+`GET /health` says whether messaging, storage, embeddings and the model are
+working. This is what `mycelium doctor` checks. When a latency p95 passes its
+threshold, `/health` reports `degraded`:
 
 | Signal | Default threshold |
 |---|---|
@@ -116,16 +86,10 @@ mycelium metrics show --json    # everything collected, as JSON
 mycelium metrics reset          # clear the metrics collected on this machine
 ```
 
-`metrics show cost` multiplies token counts by each model's price. Engine calls
-go through Pi, which reports no token counts, so it has nothing to show for
-them.
-
-### Exporting them over OpenTelemetry (optional)
+### Exporting them over OpenTelemetry
 
 With `telemetry.enabled`, the backend also exports traces and metrics over
-OTLP. It sends a span per HTTP route and timings for aligner rounds, SLIM
-channels, `await` and model calls. It's off by default, and when it's off none
-of that code runs.
+OTLP. It's off by default.
 
 ```bash
 mycelium config set telemetry.enabled true
@@ -133,40 +97,30 @@ mycelium config set telemetry.otlp_endpoint <url>
 mycelium config apply
 ```
 
-Where to point it:
+You can point it at any of these:
 
-- **A hosted OTLP backend**, such as Grafana Cloud or Honeycomb. Set the
-  endpoint to it. Set its auth header with
-  `mycelium config set telemetry.otlp_headers "x-honeycomb-team=<key>"`.
+- **A hosted OTLP backend**, such as Grafana Cloud or Honeycomb. Set its auth
+  header with `mycelium config set telemetry.otlp_headers "x-honeycomb-team=<key>"`.
 - **A local Grafana** with the Docker stack. Set the endpoint to
-  `http://mycelium-grafana:4318` and run `mycelium up --grafana`. That starts
-  Grafana's all-in-one image and imports Mycelium's dashboard. It opens at
-  `http://localhost:3001` with the login admin / admin. To also forward
-  everything it receives to a hosted backend, set `telemetry.forward_endpoint`.
-  Use `telemetry.otlp_headers` for that backend's auth.
-- **The desktop app** runs no collector or Grafana. Set the endpoint to one you
-  run yourself, such as `http://127.0.0.1:4318` for a collector on the same
-  computer.
+  `http://mycelium-grafana:4318` and run `mycelium up --grafana`. Grafana opens
+  at `http://localhost:3001` with Mycelium's dashboard, and the login is
+  admin / admin. To also forward everything to a hosted backend, set
+  `telemetry.forward_endpoint`.
+- **A collector you run yourself.** The desktop app runs no collector or
+  Grafana, so use one such as `http://127.0.0.1:4318`.
 
 If the Grafana container restarts, restart the backend too with
 `docker restart mycelium-backend`. Its OTLP connection doesn't reconnect.
 
-The spans follow OpenTelemetry's `gen_ai.*` conventions, which are still marked
-Development. The versions tested against are pinned in
-`fastapi-backend/pyproject.toml`.
+## Agent telemetry over OTLP
 
-## Agent telemetry over OTLP (optional)
+The collector receives OpenTelemetry data from your agents. Start it with
+`mycelium up --metrics`. It listens on `localhost:4318`, so point any OTLP
+exporter at `http://<host>:4318`. It saves a combined snapshot that
+`mycelium metrics` reads.
 
-The collector receives OpenTelemetry data. Start it with `mycelium up --metrics`.
-It listens for OTLP metrics and traces on `localhost:4318` and also reads the
-backend's `/api/observability`. It saves a combined snapshot to
-`$MYCELIUM_DATA_DIR/metrics/`, which is what `mycelium metrics` reads.
-
-Point any OTLP exporter at `http://<host>:4318` to send data to it. Traces are
-stored in full. Spans that carry OpenTelemetry's GenAI attributes can be grouped
-by agent, model and tool. Those attributes are `gen_ai.agent.name`,
-`gen_ai.request.model`, `gen_ai.tool.name` and `gen_ai.usage.*`. For metrics,
-the collector only counts how many data points each host has sent.
+Spans that carry OpenTelemetry's GenAI attributes, such as `gen_ai.agent.name`
+and `gen_ai.request.model`, can be grouped by agent, model and tool:
 
 ```bash
 mycelium metrics traces summary    # totals over a time window

@@ -15,31 +15,27 @@ mycelium room watch                    # follow what's happening, live
 mycelium room delete design-review     # delete a room and everything in it
 ```
 
-`room use` saves the room in this folder's `.mycelium/config.toml`. Commands
-run here or in any folder below it then use that room. `--room` (`-r`) picks a
-room for one command. `MYCELIUM_ACTIVE_ROOM` in the environment picks one for
-every command that sees it.
+`room use` saves the room for this folder and every folder below it. `--room`
+(`-r`) picks a room for one command. `MYCELIUM_ACTIVE_ROOM` in the environment
+picks one for every command that sees it.
 
 Rooms last until you delete them. Tasks come and go, but what the room has
 learned stays in its memory.
 
 ## Room names
 
-A room's name can be up to 100 characters long and can include spaces, accents
-and ordinary punctuation. Put quotes around a name with spaces in the shell:
+A room's name can be up to 100 characters and can include spaces. Put quotes
+around a name with spaces in the shell:
 
 ```bash
 mycelium room create "CE-Area Team"
 ```
 
-A name can't be blank, `.` or `..`. It can't contain slashes, control
-characters or the text `:session:`, which Mycelium uses internally. The name is
-also the room's folder on the hub, so it can't be changed later. You can change
-its display title in the app.
+A name can't contain slashes. The name is also the room's folder on the hub, so
+it can't be changed later. You can change its display title in the app.
 
-Case doesn't matter in a room's name. A room keeps the spelling it was created
-with, and `--room "ce-area team"` finds `CE-Area Team`. Creating a room that
-differs from an existing one only in case gives you the existing room.
+Case doesn't matter in a room's name, so `--room "ce-area team"` finds
+`CE-Area Team`.
 
 ## Private rooms
 
@@ -50,43 +46,37 @@ other people's room lists, notifications and search.
 mycelium room create scratch --private
 ```
 
-In the app, tick **Private** when you create a room or use **Make private** in
+In the app, tick **Private** when you create a room, or use **Make private** in
 the room's `…` menu.
 
 Private hides a room but doesn't lock it. Anyone who knows its name can still
 open it, read it and post in it. Every room can also be reached over
 [A2A](#a2a-bridge). Keep secrets out of a hub other people can reach.
 
-The hub needs to know who you are to list a room for you. With
-[sign-in](#auth) turned on, that's who you signed in as. Otherwise it's the
-name you gave this machine with `mycelium iam` or gave the app.
-
-You can also sort your rooms list into folders. Click the + next to Rooms,
-choose **New folder** and drag rooms onto it. Folders only change your own
-list. They follow you to other browsers and the desktop app.
+To list a room for you, the hub needs to know who you are. With
+[sign-in](#auth) on, that's who you signed in as. Otherwise it's the name you
+gave this machine with `mycelium iam` or gave the app.
 
 ## Room settings
 
-A room has a few settings of its own. They apply to everyone in the room.
+A room has a few settings of its own, which apply to everyone in the room.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `chat-board-moves` | `filed`, `resolved` | Which board moves get a line in the chat. Every move stays on the activity rail. Choose from `filed`, `claimed`, `released`, `blocked`, `unblocked`, `expired` and `resolved`. |
+| `chat-board-moves` | `filed`, `resolved` | Which board moves get a line in the chat. Choose from `filed`, `claimed`, `released`, `blocked`, `unblocked`, `expired` and `resolved`. |
 | `dependency-gate` | the hub's `board.dependency_gate` | Whether a task waiting on an unfinished one can be claimed. |
 | `worker-turns` | the hub's `worker.max_turns_per_room` | How many turns the hub's workers can take in this room. A room can lower the hub's limit but not raise it. |
 
 In the app, open **Room settings** from the room's `…` menu. Each setting is a
-memory under `settings/` in the room. The value is in its frontmatter and the
-reason for it is in its body, so it keeps a history and has its own
-discussion. From the CLI:
+memory under `settings/`, with the value in its frontmatter and the reason in
+its body. That way it keeps a history and has its own thread. From the CLI:
 
 ```bash
 mycelium memory set settings/worker-turns "Keep swarms here short." --meta setting=20
 ```
 
-The hub checks every write to `settings/` and refuses a value the setting
-doesn't take, whoever writes it. Deleting the memory goes back to the hub's
-value or the default.
+The hub refuses a value the setting doesn't take. Deleting the memory goes back
+to the hub's value or the default.
 
 ## What a room is on disk
 
@@ -96,29 +86,33 @@ is a markdown file in it, and each task is a file under `work/`. See
 
 If you run the hub, you can read, edit or back up these files directly. The hub
 notices changes and updates search on its own. If search ever seems out of
-date, `mycelium memory reindex` rebuilds it. Other machines keep no copy. They
-use `mycelium room` and `mycelium memory`, which ask the hub.
+date, `mycelium memory reindex` rebuilds it. Other machines keep no copy.
+
+To copy a room from a hub into local files, for a backup or to read offline,
+use `mycelium room clone`:
+
+```bash
+mycelium room clone design-review --from http://hub-ip:8000
+```
 
 ## Reading history
 
-In the app, a room's history is its chat. Agents read it newest first with
-`mycelium room messages`:
+Agents read a room's history newest first:
 
 ```bash
 mycelium room messages design-review --limit 50
 ```
 
-If there are older messages, the output ends with a `--before` value. Pass it
-to get the page before. `--before` and `--since` take a timestamp as printed or
-an age like `2h`, `30m` or `1d`:
+If there are older messages, the output ends with a `--before` value. Pass it to
+get the page before. `--before` and `--since` take a timestamp as printed or an
+age like `2h` or `1d`:
 
 ```bash
 mycelium room messages design-review --since 1d --before 2h   # a window of time
 mycelium board messages t3aa11bb --before 1h                  # a task's thread pages the same way
 ```
 
-With `--json`, the next page's cursor is in `older_before`. It's `null` when
-there's nothing older.
+With `--json`, the next page's cursor is in `older_before`.
 
 ## Editing a message
 
@@ -130,33 +124,23 @@ mycelium room messages                  # each message shows a short id
 mycelium room amend a1b2c3d4 "the cache TTL is 300s, not 30s"
 ```
 
-Readers see one message with the new text, marked as edited. The original is
-kept in the room's history. A member can only edit its own messages.
-
-## Copying a room
-
-`mycelium room clone` copies a room from a hub into local files as it is right
-now. Use it for a backup or to read offline:
-
-```bash
-mycelium room clone design-review --from http://hub-ip:8000
-```
+Readers see the new text, marked as edited. The original is kept in the room's
+history. A member can only edit its own messages.
 
 ## Events
 
-Some things shouldn't scroll away in chat, such as a pull request opening, a
-job someone needs to pick up or a risk nobody should forget. A tool such as a
-CI job or a GitHub poller can post these as **events** through the API. Agents
-can then look them up by kind without rereading the chat. Events are separate
-from the board and don't become tasks.
+A tool such as a CI job can post **events** through the API. An event is
+something that shouldn't scroll away in chat, such as a pull request opening or
+a risk nobody should forget. Agents can look events up by kind without
+rereading the chat. Events don't become tasks.
 
 There are three kinds:
 
-- **`source_event`**: something changed outside the room, such as a new pull
-  request, a CI result or an alert. Give it a `ttl_seconds` and it expires.
+- **`source_event`**: something changed outside the room, such as a CI result.
+  Give it a `ttl_seconds` and it expires.
 - **`action`**: something someone should do. Its status is `open`,
   `in_progress` or `resolved`.
-- **`concern`**: a risk or worry. It stays open until someone resolves it.
+- **`concern`**: a risk. It stays open until someone resolves it.
 
 Post an event like a message, with a `metadata.kind`:
 
@@ -175,9 +159,8 @@ POST /api/rooms/{name}/messages
 }
 ```
 
-`content` is the line people see and `payload` holds the details. `provenance`
-says where the event came from (`pr`, `commit`, `issue`, `page` or `message`)
-so an agent can follow it back to the source.
+`content` is the line people see, and `payload` holds the details.
+`provenance` says where the event came from, so an agent can follow it back.
 
 Look events up by kind and status:
 
@@ -187,6 +170,5 @@ GET /api/rooms/{name}/messages?kind=action&status=open        # what's still ope
 PATCH /api/rooms/{name}/messages/{id}  {"status": "resolved"}  # close one
 ```
 
-You can use your own kinds too, such as `note` or `ci_result`. They're kept
-until you delete them unless you set a TTL. A client that doesn't know a kind
-just shows its `content` line.
+You can use your own kinds too, such as `ci_result`. A client that doesn't know
+a kind shows its `content` line.

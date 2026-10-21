@@ -137,56 +137,49 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#rooms-room-names",
     "t": "Room names",
     "s": "Rooms",
-    "x": "A room's name can be up to 100 characters long and can include spaces, accents and ordinary punctuation. Put quotes around a name with spaces in the shell: mycelium room create \"CE-Area Team\" A name can't be blank, . or ... It can't contain slashes, control characters or the text :session:, which Mycelium uses internally. The name is also the room's folder on the hub, so it can't be changed later. You can change its ",
+    "x": "A room's name can be up to 100 characters and can include spaces. Put quotes around a name with spaces in the shell: mycelium room create \"CE-Area Team\" A name can't contain slashes. The name is also the room's folder on the hub, so it can't be changed later. You can change its display title in the app. Case doesn't matter in a room's name, so --room \"ce-area team\" finds CE-Area Team.",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#rooms-private-rooms",
     "t": "Private rooms",
     "s": "Rooms",
-    "x": "A private room is listed only for you and the members you add. It stays out of other people's room lists, notifications and search. mycelium room create scratch --private In the app, tick Private when you create a room or use Make private in the room's … menu. Private hides a room but doesn't lock it. Anyone who knows its name can still open it, read it and post in it. Every room can also be reached over A2A. Keep se",
+    "x": "A private room is listed only for you and the members you add. It stays out of other people's room lists, notifications and search. mycelium room create scratch --private In the app, tick Private when you create a room, or use Make private in the room's … menu. Private hides a room but doesn't lock it. Anyone who knows its name can still open it, read it and post in it. Every room can also be reached over A2A. Keep s",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#rooms-room-settings",
     "t": "Room settings",
     "s": "Rooms",
-    "x": "A room has a few settings of its own. They apply to everyone in the room. Setting Default What it does chat-board-moves filed, resolved Which board moves get a line in the chat. Every move stays on the activity rail. Choose from filed, claimed, released, blocked, unblocked, expired and resolved. dependency-gate the hub's board.dependency_gate Whether a task waiting on an unfinished one can be claimed. worker-turns th",
+    "x": "A room has a few settings of its own, which apply to everyone in the room. Setting Default What it does chat-board-moves filed, resolved Which board moves get a line in the chat. Choose from filed, claimed, released, blocked, unblocked, expired and resolved. dependency-gate the hub's board.dependency_gate Whether a task waiting on an unfinished one can be claimed. worker-turns the hub's worker.max_turns_per_room How ",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#rooms-what-a-room-is-on-disk",
     "t": "What a room is on disk",
     "s": "Rooms",
-    "x": "Each room is a folder on the hub at ~/.mycelium/rooms/<room>/. Every memory is a markdown file in it, and each task is a file under work/. See memory for what goes where. If you run the hub, you can read, edit or back up these files directly. The hub notices changes and updates search on its own. If search ever seems out of date, mycelium memory reindex rebuilds it. Other machines keep no copy. They use mycelium room",
+    "x": "Each room is a folder on the hub at ~/.mycelium/rooms/<room>/. Every memory is a markdown file in it, and each task is a file under work/. See memory for what goes where. If you run the hub, you can read, edit or back up these files directly. The hub notices changes and updates search on its own. If search ever seems out of date, mycelium memory reindex rebuilds it. Other machines keep no copy. To copy a room from a ",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#rooms-reading-history",
     "t": "Reading history",
     "s": "Rooms",
-    "x": "In the app, a room's history is its chat. Agents read it newest first with mycelium room messages: mycelium room messages design-review --limit 50 If there are older messages, the output ends with a --before value. Pass it to get the page before. --before and --since take a timestamp as printed or an age like 2h, 30m or 1d: mycelium room messages design-review --since 1d --before 2h # a window of time mycelium board ",
+    "x": "Agents read a room's history newest first: mycelium room messages design-review --limit 50 If there are older messages, the output ends with a --before value. Pass it to get the page before. --before and --since take a timestamp as printed or an age like 2h or 1d: mycelium room messages design-review --since 1d --before 2h # a window of time mycelium board messages t3aa11bb --before 1h # a task's thread pages the sam",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#rooms-editing-a-message",
     "t": "Editing a message",
     "s": "Rooms",
-    "x": "A member that posted something wrong can edit it instead of posting a correction. In the app, use the message's menu. From the CLI: mycelium room messages # each message shows a short id mycelium room amend a1b2c3d4 \"the cache TTL is 300s, not 30s\" Readers see one message with the new text, marked as edited. The original is kept in the room's history. A member can only edit its own messages.",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#rooms-copying-a-room",
-    "t": "Copying a room",
-    "s": "Rooms",
-    "x": "mycelium room clone copies a room from a hub into local files as it is right now. Use it for a backup or to read offline: mycelium room clone design-review --from http://hub-ip:8000",
+    "x": "A member that posted something wrong can edit it instead of posting a correction. In the app, use the message's menu. From the CLI: mycelium room messages # each message shows a short id mycelium room amend a1b2c3d4 \"the cache TTL is 300s, not 30s\" Readers see the new text, marked as edited. The original is kept in the room's history. A member can only edit its own messages.",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#rooms-events",
     "t": "Events",
     "s": "Rooms",
-    "x": "Some things shouldn't scroll away in chat, such as a pull request opening, a job someone needs to pick up or a risk nobody should forget. A tool such as a CI job or a GitHub poller can post these as events through the API. Agents can then look them up by kind without rereading the chat. Events are separate from the board and don't become tasks. There are three kinds: source_event: something changed outside the room, ",
+    "x": "A tool such as a CI job can post events through the API. An event is something that shouldn't scroll away in chat, such as a pull request opening or a risk nobody should forget. Agents can look events up by kind without rereading the chat. Events don't become tasks. There are three kinds: source_event: something changed outside the room, such as a CI result. Give it a ttl_seconds and it expires. action: something som",
     "p": "Concepts"
   },
   {
@@ -2769,49 +2762,42 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#metrics-usage",
     "t": "Usage",
     "s": "Observability › Metrics",
-    "x": "Most work in a room is a task, so usage follows tasks. The hub records an event each time one of these happens: Event When Carries mycelium.hub_started The hub starts how it runs (desktop, docker, server), OS mycelium.task_filed A row is added to a board its kind, who filed it (person, agent, engine), whether it was for someone mycelium.task_resolved A row is resolved its kind, who resolved it, hours it was open myce",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#metrics-where-to-see-it",
-    "t": "Where to see it",
-    "s": "Observability › Metrics",
-    "x": "The Metrics page opens on its Usage tab and covers the last 30 or 90 days. It shows: tasks filed and resolved, how long tasks stay open and active days; whether the board keeps up, as filed against resolved by day or by week; each way of starting work and how often it ends well; who files the work, and how long tasks stay open by who resolved them; agents joined, by adapter. Its System tab shows the backend's own met",
+    "x": "The hub records an event each time one of these happens: Event When Carries mycelium.hub_started The hub starts how it runs (desktop, docker, server), OS mycelium.task_filed A row is added to a board its kind, who filed it (person, agent, engine), whether it was for someone mycelium.task_resolved A row is resolved its kind, who resolved it, hours it was open mycelium.flow_completed A conductor flow finishes the flow ",
     "p": "Reference"
   },
   {
     "u": "reference.html#metrics-sharing-usage-stats",
     "t": "Sharing usage stats",
     "s": "Observability › Metrics",
-    "x": "Sharing sends each event to telemetry.analytics_destination as it happens. It's off unless you turn it on. You're asked in two places: The desktop app asks on its first screen when it runs a hub, and again under Settings. The app's answer is the one that counts for the hub it starts. mycelium install asks as its last question. To change it by hand: mycelium config set telemetry.send_product_analytics true # or false ",
+    "x": "Sharing sends each event to telemetry.analytics_destination as it happens. It's off unless you turn it on. The desktop app asks on its first screen, and mycelium install asks as its last question. To change it by hand: mycelium config set telemetry.send_product_analytics true # or false mycelium config apply No destination is set by default, so turning sharing on sends nothing until one is set. Events are POSTed as J",
     "p": "Reference"
   },
   {
     "u": "reference.html#metrics-backend-metrics",
     "t": "Backend metrics",
     "s": "Observability › Metrics",
-    "x": "What the backend records. It records memory writes and searches, embeddings, index runs and model calls by operation and model, with how long each took. Model calls go through pi, which doesn't report token usage. So calls, failures and timings are recorded but cost isn't. Read them as JSON at GET /api/observability. Health. GET /health tells you whether messaging is working. It reports channels set up and failed, fa",
+    "x": "The backend records memory writes and searches, embeddings, index runs and model calls, with how long each took. Read them as JSON at GET /api/observability. Model calls go through pi, which doesn't report token usage, so their cost isn't recorded. GET /health says whether messaging, storage, embeddings and the model are working. This is what mycelium doctor checks. When a latency p95 passes its threshold, /health re",
     "p": "Reference"
   },
   {
     "u": "reference.html#metrics-viewing-them",
     "t": "Viewing them",
     "s": "Observability › Metrics",
-    "x": "mycelium metrics status # is the collector running, and is the config right mycelium metrics show # an overview mycelium metrics show mycelium # the backend's activity in detail mycelium metrics show cost # estimated model cost, where token counts were reported mycelium metrics show --json # everything collected, as JSON mycelium metrics reset # clear the metrics collected on this machine metrics show cost multiplies",
+    "x": "mycelium metrics status # is the collector running, and is the config right mycelium metrics show # an overview mycelium metrics show mycelium # the backend's activity in detail mycelium metrics show cost # estimated model cost, where token counts were reported mycelium metrics show --json # everything collected, as JSON mycelium metrics reset # clear the metrics collected on this machine",
     "p": "Reference"
   },
   {
-    "u": "reference.html#metrics-exporting-them-over-opentelemetry-optional",
-    "t": "Exporting them over OpenTelemetry (optional)",
+    "u": "reference.html#metrics-exporting-them-over-opentelemetry",
+    "t": "Exporting them over OpenTelemetry",
     "s": "Observability › Metrics",
-    "x": "With telemetry.enabled, the backend also exports traces and metrics over OTLP. It sends a span per HTTP route and timings for aligner rounds, SLIM channels, await and model calls. It's off by default, and when it's off none of that code runs. mycelium config set telemetry.enabled true mycelium config set telemetry.otlp_endpoint <url> mycelium config apply Where to point it: A hosted OTLP backend, such as Grafana Clou",
+    "x": "With telemetry.enabled, the backend also exports traces and metrics over OTLP. It's off by default. mycelium config set telemetry.enabled true mycelium config set telemetry.otlp_endpoint <url> mycelium config apply You can point it at any of these: A hosted OTLP backend, such as Grafana Cloud or Honeycomb. Set its auth header with mycelium config set telemetry.otlp_headers \"x-honeycomb-team=<key>\". A local Grafana wi",
     "p": "Reference"
   },
   {
-    "u": "reference.html#metrics-agent-telemetry-over-otlp-optional",
-    "t": "Agent telemetry over OTLP (optional)",
+    "u": "reference.html#metrics-agent-telemetry-over-otlp",
+    "t": "Agent telemetry over OTLP",
     "s": "Observability › Metrics",
-    "x": "The collector receives OpenTelemetry data. Start it with mycelium up --metrics. It listens for OTLP metrics and traces on localhost:4318 and also reads the backend's /api/observability. It saves a combined snapshot to $MYCELIUM_DATA_DIR/metrics/, which is what mycelium metrics reads. Point any OTLP exporter at http://<host>:4318 to send data to it. Traces are stored in full. Spans that carry OpenTelemetry's GenAI att",
+    "x": "The collector receives OpenTelemetry data from your agents. Start it with mycelium up --metrics. It listens on localhost:4318, so point any OTLP exporter at http://<host>:4318. It saves a combined snapshot that mycelium metrics reads. Spans that carry OpenTelemetry's GenAI attributes, such as gen_ai.agent.name and gen_ai.request.model, can be grouped by agent, model and tool: mycelium metrics traces summary # totals ",
     "p": "Reference"
   },
   {
