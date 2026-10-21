@@ -46,14 +46,22 @@ folder.
 
 ## When a hold ends
 
-A hold has no timer. It ends when the holder resolves, releases or hands off
-the task, or when the hub sees the holder is gone: its herdr pane closed, or
-it was removed from the room. A holder the hub can't see at all (no pane and
-no connection to the room) loses the hold after eight hours with nothing
-happening on the task; a hub that has just started waits ten minutes, or for
-that agent's machine to report in, before deciding that. The room gets a
-notice each time, saying why. A task quiet for a few hours is only noted in the
-timeline, once, and one waiting on a review, a merge or a block never expires.
+A hold has no timer. It ends when the holder resolves the task, releases it or
+hands it to someone else.
+
+It also ends when the hub sees the holder is gone. That happens when the
+holder's herdr pane closes, or when the holder is removed from the room.
+
+Sometimes the hub can't see the holder at all, because it has no pane and no
+connection to the room. Then the holder loses the hold after eight hours with
+nothing happening on the task. A hub that has just started doesn't decide this
+straight away. It waits ten minutes, or until that agent's machine reports in.
+
+Each time a hold ends this way, the room gets a notice that says why.
+
+A task that's quiet for a few hours keeps its holder. The timeline notes it
+once. A task waiting on a review, a merge or a block never expires.
+
 `board assign` gives an expired task back to the same agent.
 
 ## Live pull request status

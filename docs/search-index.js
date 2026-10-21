@@ -199,14 +199,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#board-add-a-task",
     "t": "Add a task",
     "s": "Board",
-    "x": "In the app, type the task into the line at the top of the board, \"Hand something off to the room\", or type /task and the task into the message box. From the command line: mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" Every task keeps its thread for life, and any command that takes a task accepts its key",
+    "x": "In the app, type the task into the line at the top of the board, \"Hand something off to the room\", or type /task and the task into the message box. From the command line: mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" Every task keeps its thread for life. Any command that takes a task accepts its key (wo",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#board-talk-inside-a-task",
     "t": "Talk inside a task",
     "s": "Board",
-    "x": "In the app, opening a task shows its body and fields at the top and its thread underneath. From the command line: mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board messages work/ship-passkey-login The room's chat never shows a thread's messages, only a line when a task is filed, claimed, handed back or resolved, which opens the thread and wakes nobody. Use the chat for what bel",
+    "x": "In the app, opening a task shows its body and fields at the top and its thread underneath. From the command line: mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board messages work/ship-passkey-login The room's chat never shows a thread's messages. It shows one line when a task moves, for example when it's filed or resolved. Clicking the line opens the thread, and the line wakes n",
     "p": "Concepts"
   },
   {
@@ -739,42 +739,42 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop-install",
     "t": "Install",
     "s": "Setup › The Desktop App",
-    "x": "Mac: drag Mycelium into Applications and open it. The first time, macOS asks whether to open an app from the internet: choose Open. Linux: make the file executable (chmod +x Mycelium-linux-x86_64.AppImage) and run it. Windows: run the installer. It installs for you alone, with no administrator prompt. It isn't code-signed, so Windows asks first: choose More info, then Run anyway. The app then asks a few questions: Wh",
+    "x": "Mac: drag Mycelium into Applications and open it. The first time, macOS asks whether to open an app from the internet. Choose Open. Linux: make the file executable (chmod +x Mycelium-linux-x86_64.AppImage) and run it. Windows: run the installer. It installs for you alone, with no administrator prompt. The installer isn't code-signed, so Windows asks before running it. Choose More info, then Run anyway. The app then a",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-adding-and-watching-agents",
     "t": "Adding and watching agents",
     "s": "Setup › The Desktop App",
-    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal, already a member of the room. See Start Agents From the App. To type to an agent, open the agents terminal: terminal in the bar at the bottom of the window, or Open terminal beside an agent on Machines. To watch one without leaving the room, open its ",
+    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. See Start Agents From the App. To type to an agent, open the agents terminal. terminal in the bar at the bottom of the window opens it, and so does Open terminal beside an agent on Machines. To watch an agent withou",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-the-apps-menu",
     "t": "The app's menu",
     "s": "Setup › The Desktop App",
-    "x": "Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running; Quit Mycelium stops the hub. Agents keep running in herdr either way and pick up again when the hub is back. The menu shows whether the hub, the SLIM node and the runner are up, and has Health check… (the same checks as mycelium doctor --mode desktop, each saying what to do when something'",
+    "x": "Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running. Quit Mycelium stops the hub. Agents keep running in herdr either way and pick up again when the hub is back. The menu shows whether each part of Mycelium is running. Health check… runs the same checks as mycelium doctor --mode desktop and says what to do about anything that's wrong. The me",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-updates",
     "t": "Updates",
     "s": "Setup › The Desktop App",
-    "x": "The app checks for a new release when it opens and every few hours, and asks before installing one. It installs only an update signed by the project. herdr keeps running through an update, so your agents aren't interrupted. On a Mac, the old herdr can then be refused access to folders like Documents (\"Operation not permitted\"). The app notices and asks whether to restart herdr, which stops the agents in it. Agents he",
+    "x": "The app checks for a new release when it opens and every few hours. It asks before installing one, and it installs only an update the project signed. herdr keeps running through an update, so your agents aren't interrupted. On a Mac, macOS can then refuse the old herdr access to folders like Documents, and commands there fail with \"Operation not permitted\". The app notices and asks whether to restart herdr. Restartin",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-logs",
     "t": "Logs",
     "s": "Setup › The Desktop App",
-    "x": "Both open from Logs in the menu: App log (~/.mycelium/logs/desktop.log): everything the app runs, and why a part of it stopped. Earlier runs are in desktop.log.1 to desktop.log.5. Agent starts (~/.mycelium/runner/runner.log): every agent a room asked this computer to start, and whether it started, is waiting for your yes, or failed and why. Look here first when an agent won't start.",
+    "x": "Both open from Logs in the menu: App log (~/.mycelium/logs/desktop.log). It records everything the app runs, and why a part of it stopped. Earlier runs are kept beside it. Agent starts (~/.mycelium/runner/runner.log). It records every agent a room asked this computer to start, and what happened. Look here first when an agent won't start.",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-the-command-line",
     "t": "The command line",
     "s": "Setup › The Desktop App",
-    "x": "On an Apple silicon Mac, curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash installs the app, links its mycelium CLI into ~/.local/bin and opens it. mycelium desktop serve runs the same hub without the window.",
+    "x": "On an Apple silicon Mac, the install script installs the app and puts its mycelium CLI on your path: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium desktop serve runs the same hub without the window.",
     "p": "Guides"
   },
   {
@@ -2785,7 +2785,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#board-reference-when-a-hold-ends",
     "t": "When a hold ends",
     "s": "Board",
-    "x": "A hold has no timer. It ends when the holder resolves, releases or hands off the task, or when the hub sees the holder is gone: its herdr pane closed, or it was removed from the room. A holder the hub can't see at all (no pane and no connection to the room) loses the hold after eight hours with nothing happening on the task; a hub that has just started waits ten minutes, or for that agent's machine to report in, befo",
+    "x": "A hold has no timer. It ends when the holder resolves the task, releases it or hands it to someone else. It also ends when the hub sees the holder is gone. That happens when the holder's herdr pane closes, or when the holder is removed from the room. Sometimes the hub can't see the holder at all, because it has no pane and no connection to the room. Then the holder loses the hold after eight hours with nothing happen",
     "p": "Reference"
   },
   {

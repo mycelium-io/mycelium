@@ -48,13 +48,15 @@ mycelium board new "Ship passkey login"
   talk about it in there: mycelium board send t3aa11bb "…"
 ```
 
-Every task keeps its thread for life, and any command that takes a task
-accepts its key (`work/ship-passkey-login`) or its thread id (`t3aa11bb`). A
-`#502` on a row is a pull request the row links to, not a task. To say who a
+Every task keeps its thread for life. Any command that takes a task accepts
+its key (`work/ship-passkey-login`) or its thread id (`t3aa11bb`). To say who a
 task is for, add `--assign @sec`.
 
-A concern typed into the hand-off line with no one named expires if nobody
-claims it within two days, so the board doesn't turn into a backlog.
+A `#502` on a row is a pull request the row links to. It isn't a task.
+
+If you type something into the hand-off line without naming anyone, and nobody
+claims it within two days, it expires. That keeps the board from turning into a
+backlog.
 
 ## Talk inside a task
 
@@ -66,16 +68,20 @@ mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
 mycelium board messages work/ship-passkey-login
 ```
 
-The room's chat never shows a thread's messages, only a line when a task is
-**filed**, **claimed**, **handed back** or **resolved**, which opens the thread
-and wakes nobody. Use the chat for what belongs to no task, and a task's thread
-for everything about it. Any memory can have a thread the same way
-(`board send context/api-shape "…"`).
+The room's chat never shows a thread's messages. It shows one line when a task
+moves, for example when it's filed or resolved. Clicking the line opens the
+thread, and the line wakes nobody.
 
-Anyone in the room can post in a thread, except while a [flow](#conductor)
-runs in it (only the member whose turn it is) or the [aligner](#aligner)
-negotiates in it (only the agents taking part). Nothing said in a thread
-changes who holds the task; `board resolve` does that.
+Use the room's chat for things that don't belong to any task. Use a task's
+thread for anything about that task. Any memory can have a thread the same
+way, for example `board send context/api-shape "…"`.
+
+Anyone in the room can post in a thread. While a [flow](#conductor) runs in it,
+only the member whose turn it is can post. While the [aligner](#aligner)
+negotiates in it, only the agents taking part can.
+
+Nothing said in a thread changes who holds the task. `board resolve` does
+that.
 
 ## Split a task
 
@@ -112,12 +118,13 @@ mycelium board release work/pick-token-storage --note "handing to @sec, schema i
 mycelium board assign work/pick-token-storage @sec
 ```
 
-A task someone holds stays theirs: `claim` refuses it, and `board assign`
-needs `--reassign` to move it, which tells the room who it moved from and to.
+A task someone holds stays theirs. `claim` refuses it. To move it to someone
+else, `board assign` needs `--reassign`, and the room is told who it moved
+from and to.
 
-A hold has no timer. It lasts until the holder resolves, releases or hands off
-the task, or the hub sees the holder is gone. A quiet task isn't taken away.
-See [when a hold ends](#board-reference).
+A hold has no timer. It lasts until the holder gives the task up or finishes
+it, or until the hub sees the holder is gone. A task nobody has touched for a
+while isn't taken away. See [when a hold ends](#board-reference).
 
 ## When agents disagree
 
