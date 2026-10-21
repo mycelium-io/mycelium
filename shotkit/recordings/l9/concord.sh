@@ -16,12 +16,12 @@ node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --do "hold:2600" \
   --do "click:Board" \
   --do "click:[data-board-row=\"work/acme-renewal-offer\"]" \
-  --do "caption:Ask them to agree, and name a bad and an ideal outcome everyone rates against." \
+  --do "caption:Ask them to agree. One message starts the flow." \
   --do "click:textarea[placeholder^=\"Reply in\"]" \
-  --do "typekeys:@conductor concord @~success @~finance @~sales @~legal: Decide the renewal offer for Acme. bad: Acme leaves at renewal ideal: Acme renews for three years at list price" \
+  --do "typekeys:@conductor concord @~success @~finance @~sales @~legal: Decide the renewal offer for Acme." \
   --do "press:Enter" \
   --do "eval:(window.__follow ||= setInterval(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Jump to latest')); if (b) b.click(); }, 1000), 'following the thread')" \
-  --do "caption:Everyone proposes an option and says why, then rates every option with a reason." \
+  --do "caption:Everyone proposes an option and says why, then rates every option, by name, with a reason." \
   --do "speed:5" \
   --do "wait:ul[aria-label^=\"How each member sees\"]" \
   --do "speed:1" \

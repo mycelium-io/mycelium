@@ -1883,7 +1883,7 @@ steps:
             </tr>
             <tr>
               <td><code>{options}</code>, <code>{rating_lines}</code></td>
-              <td>Every option so far, as <code>A. …</code> lines with why each was proposed, and the lines to rate them with, such as <code>A: &lt;0-100&gt; - &lt;why&gt;</code>.</td>
+              <td>Every option so far, as <code>A. …</code> lines with why each was proposed, and the lines to rate them with, each naming its option, such as <code>A (Ship on Friday): &lt;0-100&gt; - &lt;why&gt;</code>.</td>
             </tr>
             <tr>
               <td><code>{new_options}</code>, <code>{new_rating_lines}</code></td>
@@ -1993,7 +1993,7 @@ steps:
           </tbody>
         </table>
       </div>
-      <p><code>concord</code> and <code>accord</code> read the same things from plain lines too, which is what they ask for: <code>A: 82 - why</code> for a rating, <code>objective: …</code> for a point, <code>renewal: …</code> for a key term and <code>check p1, p2: …</code> for a check. They&#x27;re explained in <a href="engines.html#conductor-helping-members-agree">Helping members agree</a> and <a href="engines.html#conductor-getting-on-the-same-page">Getting on the same page</a>.</p>
+      <p><code>concord</code> and <code>accord</code> read the same things from plain lines too, which is what they ask for: <code>A (the option&#x27;s name): 82 - why</code> for a rating, <code>objective: …</code> for a point, <code>renewal: …</code> for a key term and <code>check p1, p2: …</code> for a check. They&#x27;re explained in <a href="engines.html#conductor-helping-members-agree">Helping members agree</a> and <a href="engines.html#conductor-getting-on-the-same-page">Getting on the same page</a>.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> builder \
   <span class="str">&quot;Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]&quot;</span></code></pre>
       <p>An agent accepting only to move things along should say so in its reply:</p>

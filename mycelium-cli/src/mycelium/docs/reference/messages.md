@@ -27,7 +27,7 @@ gets posted. This table lists every marker Mycelium reads:
 | `[[done]]` | A worker resolving the current task. Only workers' replies are read for this. |
 
 `concord` and `accord` read the same things from plain lines too, which is
-what they ask for: `A: 82 - why` for a rating, `objective: …` for a point,
+what they ask for: `A (the option's name): 82 - why` for a rating, `objective: …` for a point,
 `renewal: …` for a key term and `check p1, p2: …` for a check. They're
 explained in [Helping members agree](#conductor-helping-members-agree) and
 [Getting on the same page](#conductor-getting-on-the-same-page).

@@ -312,10 +312,13 @@ interface FeedRowProps {
   rowRef?: React.Ref<HTMLDivElement>;
   /** This row's share of an open find: words to mark, and whether it is the hit stood on. */
   hit?: { query: string[]; active: boolean };
+  /** A conductor turn put to several members at once (`turnRuns`): everyone it
+   *  went to, on the run's first turn, and `null` on the turns it folds in. */
+  turnMembers?: string[] | null;
 }
 
 /** One event as a row: a notice, a conductor line or a chat message. */
-export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }: FeedRowProps) {
+export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit, turnMembers }: FeedRowProps) {
   const { threads, rowNames, onOpenThread, onOpenMemory } = ctx;
 
   if (ev.type === PING_TYPE) {
@@ -555,9 +558,12 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit }
   // A conductor post is drawn from its structured line: one row naming the
   // step and who it went to, the prompt behind a toggle.
   if (ev.conductor) {
+    // A turn folded into the row of the run it belongs to keeps its anchor
+    // and draws nothing.
+    if (turnMembers === null) return <div data-event-id={ev.id} />;
     return (
       <div data-event-id={ev.id}>
-        <ConductorRow line={ev.conductor} text={ev.content} onOpenMemory={onOpenMemory} />
+        <ConductorRow line={ev.conductor} text={ev.content} onOpenMemory={onOpenMemory} members={turnMembers} />
       </div>
     );
   }

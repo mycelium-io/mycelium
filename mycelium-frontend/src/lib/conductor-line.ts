@@ -224,6 +224,8 @@ export function describeConductorLine(line: ConductorLine): string {
       return `Running ${line.protocol}${cast.length ? ` · ${cast.join(" · ")}` : ""}`;
     }
     case "turn": {
+      const said = stepSentence(line.protocol, line.step, [line.to]);
+      if (said) return `${said}${line.again ? " (asked again)" : ""}`;
       const round = line.rounds ? ` · round ${line.round} of ${line.rounds}` : "";
       return `${line.step} → ${line.to} · turn ${line.turn} of ${line.cap}${round}`;
     }
@@ -239,7 +241,7 @@ export function describeConductorLine(line: ConductorLine): string {
       return `${line.step}: ${line.who} ${said}, on to ${line.next}`;
     }
     case "select":
-      return `${line.step}: ${pickSummary(line.select)}`;
+      return line.select.pick ? `Picked ${pickSummary(line.select)}` : `${line.step}: ${pickSummary(line.select)}`;
     case "tally":
       return tallySummary(line.tally);
     case "lock":
@@ -298,11 +300,96 @@ export function lockSummary(lock: LockRecord): string {
   return `Shared summary: ${parts.join(", ")}${quiet}`;
 }
 
-/** Where a pick stands, in words: "B: everyone meets the bar", or who is
- *  short and why: "B: finance is short of the bar, because margin drops". */
+/** How many of an option's first words make its name. */
+const NAME_WORDS = 5;
+
+/** An option's name, for a reader who sees only its letter: its first few
+ *  words, cut at the end of its first sentence or clause, with `…` when cut.
+ *  The hub names options the same way in the lines members fill in. */
+export function shortName(text: string): string {
+  const trimmed = text.trim();
+  const first = trimmed.split(/(?<=[.;:])\s/)[0].replace(/[.;:]+$/, "");
+  const words = first.replace(/[()[\]]/g, "").split(/\s+/).filter(Boolean);
+  const cut = words.slice(0, NAME_WORDS);
+  const whole = cut.length === words.length && first === trimmed.replace(/\.+$/, "");
+  return cut.join(" ").replace(/,$/, "") + (whole ? "" : "…");
+}
+
+/** `D (Hold a gift order until…)`: a letter a reader can follow. */
+export function named(label: string, text: string): string {
+  return text ? `${label} (${shortName(text)})` : label;
+}
+
+/** Concord's and accord's steps as what the members are doing, by step id:
+ *  the verb for one member, then for several. */
+const STEP_SAID: Record<string, Record<string, [string, string]>> = {
+  concord: {
+    anchor: ["rates the two ends: nothing agreed, and their own pick", "rate the two ends: nothing agreed, and their own pick"],
+    propose: ["proposes an option, with why", "propose an option each, with why"],
+    score: ["rates every option, with reasons", "rate every option, with reasons"],
+    repair: ["proposes a fix that answers the objections", "propose a fix that answers the objections"],
+    rescore: ["rates the new option", "rate the new option"],
+  },
+  accord: {
+    terms: ["names the key terms", "name the key terms"],
+    frame: ["says what the task is", "say what the task is"],
+    more: ["adds what's missing", "add what's missing"],
+    ground: ["defines the key terms and takes on checks", "define the key terms and take on checks"],
+    restate: ["restates the term, with an example", "restate the term they differ on, with an example"],
+  },
+};
+
+/** What `count` members are doing at a step ("rate the new option"), or
+ *  `null` for a step with no wording here. */
+export function stepVerb(protocol: string, step: string, count: number): string | null {
+  const said = STEP_SAID[protocol]?.[step];
+  if (!said || count === 0) return null;
+  return count === 1 ? said[0] : said[1];
+}
+
+/** What a step's turn is, said as what the members are doing ("finance and
+ *  legal rate the new option"), or `null` for a step with no wording here. */
+export function stepSentence(protocol: string, step: string, who: string[]): string | null {
+  const verb = stepVerb(protocol, step, who.length);
+  if (!verb) return null;
+  const names = who.length === 1 ? who[0] : `${who.slice(0, -1).join(", ")} and ${who[who.length - 1]}`;
+  return `${names} ${verb}`;
+}
+
+/**
+ * A step put to several members at once posts one turn per member, back to
+ * back. A thread draws the run as one row: `{id: members}` for the first turn
+ * of each run of turns at the same step and turn number, and `{id: null}` for
+ * the turns that run folds in. Turns put one at a time are interleaved with
+ * replies, so each stays its own row.
+ */
+export function turnRuns(events: { id: string; conductor: ConductorLine | null }[]): Map<string, string[] | null> {
+  const runs = new Map<string, string[] | null>();
+  let head: { id: string; key: string; who: string[] } | null = null;
+  for (const ev of events) {
+    const line = ev.conductor;
+    if (line?.event !== "turn") {
+      head = null;
+      continue;
+    }
+    const key = `${line.protocol}\u0000${line.step}\u0000${line.turn}\u0000${line.round ?? 0}\u0000${line.again ? 1 : 0}`;
+    if (head && head.key === key) {
+      head.who.push(line.to);
+      runs.set(ev.id, null);
+      continue;
+    }
+    head = { id: ev.id, key, who: [line.to] };
+    runs.set(ev.id, head.who);
+  }
+  return runs;
+}
+
+/** Where a pick stands, in words: "B (10% off): everyone meets the bar", or
+ *  who is short and why: "B (10% off): finance is short of the bar, because margin drops". */
 export function pickSummary(record: PickRecord): string {
   if (!record.pick) return "nothing to pick yet";
-  if (record.outcome === "feasible") return `${record.pick}: everyone meets the bar`;
+  const pick = named(record.pick, record.text);
+  if (record.outcome === "feasible") return `${pick}: everyone meets the bar`;
   const short = (
     record.short ??
     views(record, record.pick)
@@ -315,5 +402,5 @@ export function pickSummary(record: PickRecord): string {
       : `${s.member} finds it no better than the bad outcome${because(s.why)}`,
   );
   if (record.missing.length) short.push(`no rating from ${record.missing.join(", ")}`);
-  return `${record.pick}: ${short.join("; ") || "short of the bar"}`;
+  return `${pick}: ${short.join("; ") || "short of the bar"}`;
 }

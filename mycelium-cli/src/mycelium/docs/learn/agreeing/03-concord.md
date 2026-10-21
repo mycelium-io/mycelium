@@ -7,10 +7,9 @@ calculated from ratings, not chosen by a model. The ratings are never the
 argument, though: every one comes with a reason, and the reasons are what the
 thread shows and what the others have to answer.
 
-Start it in the task's thread, naming who takes part and the two outcomes
-everyone rates against:
+Start it in the task's thread, naming who takes part:
 
-> @conductor concord @~pm @~web @~api: how should a gift order wait for its payment? bad: gifts ship unpaid or arrive late ideal: every gift ships on its date, paid
+> @conductor concord @~pm @~web @~api: how should a gift order wait for its payment?
 
 As with accord, `@~name` names a member without waking them, so the conductor
 can ask each one in turn.
@@ -19,19 +18,20 @@ Or from a terminal:
 
 ```bash
 mycelium board coordinate work/gift-payments conductor \
-  "concord @~pm @~web @~api: how should a gift order wait for its payment? bad: gifts ship unpaid or arrive late ideal: every gift ships on its date, paid"
+  "concord @~pm @~web @~api: how should a gift order wait for its payment?"
 ```
 
-Leave out `bad:` and `ideal:` and the first member drafts them. `bar=70` in
-the message sets the bar (60 if you don't), and `fixes=3` how many fixes to
-try (5 if you don't). The run says both before anyone rates.
+`bar=70` in the message sets the bar (60 if you don't), and `fixes=3` how many
+fixes to try (5 if you don't). The run says both before anyone rates.
 
 It runs like this:
 
-1. **Rate the two outcomes.** Everyone says how good the bad and the ideal
-   outcome would be for their part of the work, from 0 to 100, with why. That
-   gives each member a scale of their own. Later ratings are read on it, so a
-   member who rates everything low isn't counted as unhappy.
+1. **Rate the two ends.** Everyone rates two outcomes for their part of the
+   work, from 0 to 100, with why: nothing agreed, with the task left open; and
+   the option they'd choose if it were up to them alone. That gives each member
+   a scale of their own. Later ratings are read on it, so a member who rates
+   everything low isn't counted as unhappy. (To measure against other ends,
+   name them after the question: `bad: … ideal: …`.)
 2. **Propose.** Each member proposes one option and says why:
 
    ```text
@@ -43,14 +43,15 @@ It runs like this:
    with a reason:
 
    ```text
-   A: 80 - safe, and the date still holds for most orders
-   B: 35 - gifts ordered the day before would miss their date
+   A (Hold the order until the…): 80 - safe, and the date still holds for most orders
+   B (Ship at once, and cancel…): 35 - gifts ordered the day before would miss their date
    ```
 
-   A rating without a reason is asked for again.
+   Each line names its option, so the thread reads without a key. A rating
+   without a reason is asked for again.
 4. **Pick.** The pick is the option the least happy member is best off with.
-   It meets the bar when it's at least that far (60% by default) from each
-   member's bad outcome to their ideal. The thread shows how each member sees
+   It meets the bar when it's at least that far (60% by default) from nothing
+   agreed to each member's own pick. The thread shows how each member sees
    it, in words: whether it meets their bar, and their reason. The numbers are
    a click away.
 5. **Fix, if needed.** The member least happy with the pick proposes something

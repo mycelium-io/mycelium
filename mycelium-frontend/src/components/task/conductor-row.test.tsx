@@ -74,7 +74,7 @@ describe("ConductorRow", () => {
     );
     const row = screen.getByTestId("conductor-row");
     expect(row.textContent).toContain(
-      "B: success is short of the bar, because ten percent won't keep them; no rating from legal",
+      "Picked B (10% off): success is short of the bar, because ten percent won't keep them; no rating from legal",
     );
     const seen = screen.getByRole("list", { name: "How each member sees B" });
     expect([...seen.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
@@ -87,6 +87,19 @@ describe("ConductorRow", () => {
     fireEvent.click(screen.getByRole("button", { name: /numbers/ }));
     const rows = screen.getByRole("table", { name: "Ratings, bar 60%" }).querySelectorAll("tbody tr");
     expect(rows[1].textContent).toBe("B 10% off55 (55%)45 (90%)?");
+  });
+
+  it("draws a concord step put to everyone as one sentence of what they're doing", () => {
+    render(
+      <ConductorRow
+        line={{ event: "turn", protocol: "concord", step: "score", to: "pm", turn: 3, cap: 20 }}
+        members={["pm", "web", "api"]}
+        text="concord · score · turn 3 of 20 · pm\n\nThe options…"
+      />,
+    );
+    const row = screen.getByTestId("conductor-row").textContent;
+    expect(row).toContain("pm, web and api rate every option, with reasons");
+    expect(row).not.toContain("turn 3 of 20");
   });
 
   it("draws an agreement as a success that says what it went with", () => {
@@ -121,7 +134,7 @@ describe("ConductorRow", () => {
         text="Nobody added anything new."
       />,
     );
-    expect(screen.getByTestId("conductor-row").textContent).toBe("added: Nobody added anything new: 5 points");
+    expect(screen.getByTestId("conductor-row").textContent).toBe("Nobody added anything new: 5 points");
     expect(screen.queryByRole("button")).toBeNull();
 
     rerender(

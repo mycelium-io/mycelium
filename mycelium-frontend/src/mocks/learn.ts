@@ -21,6 +21,7 @@
 import type { EpisodeSummary } from "@/lib/api";
 import type { UpstreamRef } from "@/lib/board/upstream";
 import type { UPSTREAM_CHANGES } from "@/lib/threads";
+import { named } from "@/lib/conductor-line";
 import { Director, once, sleep, titleOf } from "./director";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
 import { publish } from "./live";
@@ -1062,6 +1063,36 @@ async function turn(
   await sleep(500);
 }
 
+/** A step put to several members at once, as the conductor does it: every
+ *  member's turn line back to back, then their replies as they come. */
+async function everyone(
+  d: Director,
+  thread: string,
+  protocol: string,
+  step: string,
+  who: string[],
+  n: number,
+  cap: number,
+  replies: Record<string, string>,
+  wait = 2000,
+): Promise<void> {
+  for (const h of who) {
+    d.say("conductor", `${protocol} · ${step} · turn ${n} of ${cap} · ${h}`, thread, {
+      event: "turn",
+      protocol,
+      step,
+      to: h,
+      turn: n,
+      cap,
+    });
+  }
+  for (const h of who) {
+    await d.think(h, thread, wait);
+    d.say(h, replies[h], thread);
+    await sleep(400);
+  }
+}
+
 // Accord: three agents read "schedule a gift" three ways.
 
 const SCHEDULED = "work/scheduled-gifts";
@@ -1158,30 +1189,38 @@ async function accord(d: Director, thread: string): Promise<void> {
     steps: ACCORD_STEPS,
   });
   await sleep(900);
-  for (const who of TRIO) await turn(d, thread, "accord", "frame", who, 1, 9, FRAMES[who]);
+  await everyone(d, thread, "accord", "frame", TRIO, 1, 9, FRAMES, 2200);
   say("tally", "Round 1: 8 new points, 8 in all", {
     step: "added",
     next: "more",
     tally: { of: "points", round: 1, max_rounds: 2, outcome: "grew", added: 8, points: 8, capped: false },
   });
   await sleep(900);
-  for (const who of TRIO) {
-    await turn(d, thread, "accord", "more", who, 2, 9, "Nothing missing from my side.", 1400);
-  }
+  await everyone(
+    d,
+    thread,
+    "accord",
+    "more",
+    TRIO,
+    2,
+    9,
+    Object.fromEntries(TRIO.map((h) => [h, "Nothing missing from my side."])),
+    1200,
+  );
   say("tally", "Nobody added anything new: 8 points", {
     step: "added",
     next: "ground",
     tally: { of: "points", round: 2, max_rounds: 2, outcome: "settled", added: 0, points: 8, capped: false },
   });
   await sleep(900);
-  for (const who of TRIO) await turn(d, thread, "accord", "ground", who, 3, 9, GROUND[who], 2000);
+  await everyone(d, thread, "accord", "ground", TRIO, 3, 9, GROUND, 1800);
   say("tally", "Words used in different senses: schedule. Asking pm, web, api again", {
     step: "words",
     next: "restate",
     tally: { of: "terms", round: 1, max_rounds: 2, outcome: "contested", words: 1, contested: ["schedule"], asked: TRIO },
   });
   await sleep(1000);
-  for (const who of TRIO) await turn(d, thread, "accord", "restate", who, 4, 9, RESTATED[who], who === "api" ? 2600 : 1600);
+  await everyone(d, thread, "accord", "restate", TRIO, 4, 9, RESTATED, 1600);
   say("tally", "No word used in different senses", {
     step: "words",
     next: "lock",
@@ -1217,12 +1256,13 @@ const CONCORD_STEPS = [
   { id: "no_deal", end: "rejected" },
 ];
 
-const BAD = "gifts ship unpaid, or arrive late";
-const IDEAL = "every gift arrives on its day, paid";
+// The two ends every concord is measured between, as the hub words them.
+const BAD = `nothing is agreed and ${PAYMENTS_TITLE} stays open`;
+const IDEAL = `the outcome you'd choose for ${PAYMENTS_TITLE} if it were up to you alone`;
 const ANCHORS: Record<string, string> = {
-  pm: "bad: 0 - we lose money and customers in the same week\nideal: 100 - gift season with no complaints and no chargebacks",
-  web: "bad: 0 - a gift that misses its day is the worst thing we can do\nideal: 100 - nobody waits and nothing goes wrong",
-  api: "bad: 0 - shipping unpaid orders is money we never get back\nideal: 100 - no unpaid order ever leaves the warehouse",
+  pm: "bad: 0 - gifts keep shipping on cards that fail, all season\nideal: 100 - my pick: safe for us, and most gifts never wait",
+  web: "bad: 0 - nothing changes, and we're still arguing in December\nideal: 100 - my pick: nobody waits for a gift",
+  api: "bad: 0 - unpaid orders keep shipping, money we never get back\nideal: 100 - my pick: no unpaid order ever leaves the warehouse",
 };
 
 const OPTIONS = [
@@ -1337,7 +1377,7 @@ async function concord(d: Director, thread: string): Promise<void> {
     d.say("conductor", text, thread, { event, ...line });
   say(
     "open",
-    `Running concord with pm, web, api as members. The bar: the option picked has to be at least 60% of the way from *${BAD}* to *${IDEAL}* for every member. Up to 5 fixes; then the best option found stands.`,
+    `Running concord with pm, web, api as members. The bar: the option picked has to be at least 60% of the way from *${BAD}* to *${IDEAL}* for every member. That's the default bar; \`bar=NN\` in the summon sets another. Up to 5 fixes; then the best option found stands, saying who is still short and why.`,
     {
       protocol: "concord",
       description:
@@ -1348,15 +1388,36 @@ async function concord(d: Director, thread: string): Promise<void> {
     },
   );
   await sleep(900);
-  for (const who of TRIO) await turn(d, thread, "concord", "anchor", who, 1, 20, ANCHORS[who], 1600);
-  for (const who of ["api", "web", "pm"]) {
-    const o = OPTIONS.find((x) => x.who === who);
-    await turn(d, thread, "concord", "propose", who, 2, 20, o ? `${o.text}\nwhy: ${o.why}` : "", 2200);
-  }
-  for (const who of TRIO) {
-    const lines = Object.entries(FIRST_RATINGS[who]).map(([label, [n, why]]) => `${label}: ${n} - ${why}`);
-    await turn(d, thread, "concord", "score", who, 3, 20, lines.join("\n"), 2200);
-  }
+  // The lines a member fills in name each option, as the hub's prompt does.
+  const rated = (label: string, n: number, why: string) => {
+    const o = [...OPTIONS, REVISED].find((x) => x.label === label);
+    return `${o ? named(label, o.text) : label}: ${n} - ${why}`;
+  };
+  await everyone(d, thread, "concord", "anchor", TRIO, 1, 20, ANCHORS, 1500);
+  await everyone(
+    d,
+    thread,
+    "concord",
+    "propose",
+    ["api", "web", "pm"],
+    2,
+    20,
+    Object.fromEntries(OPTIONS.map((o) => [o.who, `${o.text}\nwhy: ${o.why}`])),
+    1800,
+  );
+  await everyone(
+    d,
+    thread,
+    "concord",
+    "score",
+    TRIO,
+    3,
+    20,
+    Object.fromEntries(
+      TRIO.map((h) => [h, Object.entries(FIRST_RATINGS[h]).map(([l, [n, why]]) => rated(l, n, why)).join("\n")]),
+    ),
+    1800,
+  );
   const first = byOption(FIRST_RATINGS);
   say("select", "pick: C: web is short of the bar, because a first-time gift buyer waits a day and misses the date", {
     step: "pick",
@@ -1365,10 +1426,17 @@ async function concord(d: Director, thread: string): Promise<void> {
   });
   await sleep(2600);
   await turn(d, thread, "concord", "repair", "web", 4, 20, `${REVISED.text}\nwhy: ${REVISED.why}`, 2800);
-  for (const who of TRIO) {
-    const [n, why] = SECOND[who];
-    await turn(d, thread, "concord", "rescore", who, 5, 20, `D: ${n} - ${why}`, 1800);
-  }
+  await everyone(
+    d,
+    thread,
+    "concord",
+    "rescore",
+    TRIO,
+    5,
+    20,
+    Object.fromEntries(TRIO.map((h) => [h, rated("D", SECOND[h][0], SECOND[h][1])])),
+    1500,
+  );
   const options = [...OPTIONS, REVISED];
   say("select", "pick: D: everyone meets the bar", {
     step: "pick",

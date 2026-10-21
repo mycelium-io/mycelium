@@ -11,6 +11,7 @@ import {
   midSentence,
   pickSummary,
   placedOf,
+  stepVerb,
   tallySummary,
   views,
   type ConductorLine,
@@ -24,6 +25,8 @@ interface Props {
   /** The post's prose: the prompt a member was given, kept behind a toggle. */
   text: string;
   onOpenMemory?: (key: string) => void;
+  /** A turn put to several members at once: everyone it went to, drawn as one row. */
+  members?: string[];
 }
 
 function Handle({ children }: { children: string }) {
@@ -54,7 +57,7 @@ function Saved({ memory, onOpenMemory }: { memory: string | null | undefined; on
  * turn is one line naming the step and who it went to, with the prompt a click
  * away, and the opening and the end are one line each.
  */
-export function ConductorRow({ line, text, onOpenMemory }: Props) {
+export function ConductorRow({ line, text, onOpenMemory, members }: Props) {
   const [open, setOpen] = useState(false);
   const expandable = line.event === "turn" || line.event === "open";
 
@@ -87,12 +90,32 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
         </>
       );
       break;
-    case "turn":
-      body = (
+    case "turn": {
+      const who = members ?? [line.to];
+      // Concord's and accord's steps say what the members are doing; any
+      // other flow names its step and who it went to.
+      const verb = stepVerb(line.protocol, line.step, who.length);
+      body = verb ? (
+        <>
+          {who.map((m, i) => (
+            <span key={m}>
+              {i > 0 && (i === who.length - 1 ? " and " : ", ")}
+              <Handle>{m}</Handle>
+            </span>
+          ))}
+          <span> {verb}</span>
+          {line.again && <span className="text-faint"> (asked again)</span>}
+        </>
+      ) : (
         <>
           <span className="font-medium text-accent">{line.step}</span>
           <span> {line.tell ? "told" : "→"} </span>
-          <Handle>{line.to}</Handle>
+          {who.map((m, i) => (
+            <span key={m}>
+              {i > 0 && ", "}
+              <Handle>{m}</Handle>
+            </span>
+          ))}
           {line.again && <span className="text-faint"> (asked again)</span>}
           <span className="text-faint">
             {" · "}turn {line.turn} of {line.cap}
@@ -101,6 +124,7 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
         </>
       );
       break;
+    }
     case "edge": {
       const said =
         line.stance === "accept"
@@ -122,22 +146,16 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
       break;
     }
     case "select":
-      body = (
+      body = line.select.pick ? (
         <>
-          <span className="font-medium text-accent">{line.step}</span>
-          <span>: </span>
-          <span>{pickSummary(line.select)}</span>
+          <span className="font-medium text-accent">Picked</span> <span>{pickSummary(line.select)}</span>
         </>
+      ) : (
+        <span>{pickSummary(line.select)}</span>
       );
       break;
     case "tally":
-      body = (
-        <>
-          <span className="font-medium text-accent">{line.step}</span>
-          <span>: </span>
-          <span>{tallySummary(line.tally)}</span>
-        </>
-      );
+      body = <span>{tallySummary(line.tally)}</span>;
       break;
     case "lock":
       body = <span>{lockSummary(line.lock)}</span>;

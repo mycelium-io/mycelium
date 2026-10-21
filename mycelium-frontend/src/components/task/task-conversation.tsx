@@ -19,6 +19,7 @@ import { useThreadMessages } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf } from "@/lib/threads";
 import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
+import { turnRuns } from "@/lib/conductor-line";
 import { FeedRow, lastChatSender, useFeedContext } from "@/components/messages/feed-row";
 import type { ConversationRows } from "@/components/messages/use-follow-latest";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -170,6 +171,8 @@ export function TaskConversation({
   }, [loadOlder, messages.length]);
 
   const rowIds = useMemo(() => (loading && events.length === 0 ? null : events.map((ev) => ev.id)), [loading, events]);
+  // A step put to several members at once reads as one row, not one per member.
+  const turns = useMemo(() => turnRuns(events), [events]);
   useEffect(() => {
     onRows?.({ rows: rowIds, sent: newestPending, onNearTop: hasOlder ? readBack : undefined });
   }, [onRows, rowIds, newestPending, hasOlder, readBack]);
@@ -204,7 +207,7 @@ export function TaskConversation({
               </div>
             )}
             {events.map((ev, i) => (
-              <FeedRow key={ev.id} ev={ev} prev={events[i - 1]} ctx={feed} />
+              <FeedRow key={ev.id} ev={ev} prev={events[i - 1]} ctx={feed} turnMembers={turns.get(ev.id)} />
             ))}
             <PendingMessageRows
               roomName={roomName}

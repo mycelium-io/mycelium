@@ -451,7 +451,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#conductor-helping-members-agree",
     "t": "Helping members agree",
     "s": "Conductor",
-    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support? bad: customers wait days and we refund real orders ideal: true duplicates go back the same day and nothing else doe",
+    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?\" Rate the two ends. Everyone rates two outcomes from 0 to 100 for their part of the work, with why: nothing agreed,",
     "p": "Engines"
   },
   {

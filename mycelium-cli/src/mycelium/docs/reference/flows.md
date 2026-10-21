@@ -120,7 +120,7 @@ Prompts can use these:
 | `{replies}` | Every member's latest answer, one per line. |
 | `{handles}` | The members taking part. |
 | `{round}`, `{rounds}` | The current round and the total. |
-| `{options}`, `{rating_lines}` | Every option so far, as `A. …` lines with why each was proposed, and the lines to rate them with, such as `A: <0-100> - <why>`. |
+| `{options}`, `{rating_lines}` | Every option so far, as `A. …` lines with why each was proposed, and the lines to rate them with, each naming its option, such as `A (Ship on Friday): <0-100> - <why>`. |
 | `{new_options}`, `{new_rating_lines}` | The options no one has rated yet, and the lines to rate them with. |
 | `{pick}`, `{scores}` | The best option so far, and the last pick's scorecard. |
 | `{standing}`, `{objections}` | How each member sees the best option so far, in words, and the reasons of those short of the bar. |

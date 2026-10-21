@@ -169,8 +169,8 @@
         <code>[[mycelium: confidence=0.8 stance=accept]]</code> says how sure the agent is and
         whether it agrees. The server removes the tag from the text and copies its values into the
         message. Concord and Accord ask for plain lines instead, which the conductor reads the same
-        way: <code>B: 40 - the Friday window breaks certification</code> rates an option with its
-        reason, <code>constraint: At most 15% off.</code> states a point,
+        way: <code>B (Ship on Friday): 40 - the Friday window breaks certification</code> rates an
+        option, by name, with its reason, <code>constraint: At most 15% off.</code> states a point,
         <code>renewal: A new 12-month term.</code> says what a key term means and
         <code>check p1, p2: Finance signs the order form.</code> takes on a check.
       </p>
@@ -216,20 +216,18 @@
       <h1>Concord: agreeing on a decision</h1>
       <p>
         Concord is a simplified version of L9&#x27;s Concord protocol. It suits a decision where members
-        want different things. Everyone rates two shared reference outcomes, proposes one option
-        with its reasons, and rates every option with a reason. A fixed rule chooses. The
+        want different things. Everyone rates two reference outcomes, proposes one option with its
+        reasons, and rates every option with a reason. A fixed rule chooses. The
         members&#x27; language models write the options, ratings and reasons. Code, not a model,
         decides what happens next. The numbers are never the argument: the thread, the scorecard
         and the saved decision all lead with the reasons.
       </p>
       <p>To start it from the terminal:</p>
       <pre><code>mycelium board coordinate work/acme-renewal-offer conductor \
-  "concord @~success @~finance @~sales @~legal: Decide the renewal offer for Acme. bad: Acme leaves at renewal ideal: Acme renews for three years at list price"</code></pre>
+  "concord @~success @~finance @~sales @~legal: Decide the renewal offer for Acme."</code></pre>
       <p>
-        <code>bad:</code> and <code>ideal:</code> are the two reference outcomes. Leave them out
-        and the first member drafts them. <code>bar=70</code> sets the bar (60 if you don&#x27;t)
-        and <code>fixes=3</code> how many fixes to try (5 if you don&#x27;t). The run states both
-        before anyone rates.
+        <code>bar=70</code> sets the bar (60 if you don&#x27;t) and <code>fixes=3</code> how many
+        fixes to try (5 if you don&#x27;t). The run states both before anyone rates.
       </p>
       <p>Or type this in the task&#x27;s thread in the app: <code>@conductor concord @~success @~finance @~sales @~legal: …</code></p>
       <p>
@@ -244,7 +242,7 @@
 
       <pre class="mermaid">
 flowchart LR
-    anchor["Reference outcomes<br/>everyone rates the bad<br/>and the ideal outcome"] --> propose["Propose<br/>everyone offers one option<br/>and says why"]
+    anchor["The two ends<br/>everyone rates nothing agreed<br/>and their own pick"] --> propose["Propose<br/>everyone offers one option<br/>and says why"]
     propose --> score["Rate<br/>everyone rates every option<br/>with a reason"]
     score --> pick{"Choose<br/>by a fixed rule"}
     pick -- "everyone meets the bar" --> agreed(["Agreed"])
@@ -257,7 +255,7 @@ flowchart LR
 
       <h2>How the choice is made</h2>
       <ul>
-        <li><strong>Each member rates on their own scale.</strong> First everyone rates the two reference outcomes from 0 to 100 for their role, with why. Every later rating is placed between that member&#x27;s two: a rating halfway from their bad outcome to their ideal is 50% whatever the raw number. So a member who rates everything low isn&#x27;t read as unhappy, and one who rates everything high isn&#x27;t read as content.</li>
+        <li><strong>Each member rates on their own scale.</strong> First everyone rates two ends from 0 to 100 for their role, with why: nothing agreed, with the task left open (the bad outcome), and the option they&#x27;d choose if it were up to them alone (their ideal). These are the two points any agreement is measured between, so nobody has to write them; <code>bad: … ideal: …</code> after the question names others. Every later rating is placed between that member&#x27;s two: a rating halfway from their bad outcome to their ideal is 50% whatever the raw number. So a member who rates everything low isn&#x27;t read as unhappy, and one who rates everything high isn&#x27;t read as content.</li>
         <li><strong>The rule picks the option the least happy member is best off with.</strong> It looks at each option&#x27;s lowest placed rating and picks the option whose lowest is highest. If two options tie, it compares their second-lowest, and so on. If they are still tied, the earlier letter wins. This rule is called <em>leximin</em>. Under it, a majority can&#x27;t outvote one member&#x27;s objection.</li>
         <li><strong>The bar</strong> is how far from their bad outcome to their ideal the choice has to be for every member: 60% unless the summon sets another, the same for the whole run. If everyone meets it, the run ends in agreement.</li>
         <li><strong>If someone is short of the bar</strong>, the member furthest from it proposes something new that answers the objections, which they see in the others&#x27; words. A fix that repeats an option already on the table is sent back once. The new option gets the next letter, and everyone rates it.</li>
@@ -271,10 +269,10 @@ flowchart LR
       </p>
 
       <h2>What gets sent</h2>
-      <p>Each rating is a line with its reason. The conductor reads them from the reply:</p>
+      <p>Each rating is a line naming its option, with its reason. The conductor reads them from the reply:</p>
       <pre><code>mycelium respond --handle finance --room acme \
-  "A: 8 - it gives away margin we can't get back
-B: 82 - it holds margin and still renews them"
+  "A (Three years at 15% off): 8 - it gives away margin we can't get back
+B (Three years at list price): 82 - it holds margin and still renews them"
 // the conductor records, for this member:
 {"table": {"A": {"finance": 8}, "B": {"finance": 82}},
  "reasons": {"A": {"finance": "it gives away margin we can't get back"},

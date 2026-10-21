@@ -58,27 +58,26 @@ options. `concord` gets them to one they can all live with:
 
 ```bash
 mycelium board coordinate decisions/double-charge-refunds conductor \
-  "concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support? bad: customers wait days and we refund real orders ideal: true duplicates go back the same day and nothing else does"
+  "concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?"
 ```
 
-`bad:` and `ideal:` go after the question. They're two outcomes everyone
-rates, so a member's ratings can be read on their own scale. Leave them out
-and the first member drafts them. `bar=70` sets the bar (60 if you don't) and
-`fixes=3` how many fixes to try (5 if you don't).
-
-1. **Rate the two outcomes.** Everyone says how good the bad and the ideal
-   outcome would be for their part of the work, from 0 to 100, with why. Every
-   later rating is placed between those two, so a member who rates everything
-   low isn't read as unhappy.
+1. **Rate the two ends.** Everyone rates two outcomes from 0 to 100 for their
+   part of the work, with why: nothing agreed, the task left open; and the
+   option they'd choose if it were up to them alone. Every later rating is
+   placed between those two, so a member who rates everything low isn't read
+   as unhappy. To measure against other ends, name them after the question:
+   `bad: … ideal: …`.
 2. **Propose.** Everyone proposes one option and says why, on a line starting
-   `why:`. Each option gets a letter.
-3. **Rate.** Everyone rates every option at the same time, one line each, with
-   a reason: `B: 40 - the Friday window breaks certification`. A rating
+   `why:`. Each option gets a letter and a short name from its first words.
+3. **Rate.** Everyone rates every option at the same time, one line each,
+   naming the option, with a reason:
+   `B (Ship on Friday): 40 - the Friday window breaks certification`. A rating
    without a reason is asked for again.
 4. **Pick.** The pick is the option the least happy member is best off with.
-   It meets the bar when it's at least that far (60% by default) from each
-   member's bad outcome to their ideal. The pick is calculated from the
-   ratings. No model makes it.
+   It meets the bar when it's at least that far (60% by default) from nothing
+   agreed to each member's own pick. `bar=70` in the message sets another, and
+   `fixes=3` how many fixes to try (5 if you don't). The pick is calculated
+   from the ratings. No model makes it.
 5. **Fix, if needed.** The member least happy with the pick proposes something
    new that answers the objections the others wrote. An option already on the
    table is sent back once. Everyone rates the new one.

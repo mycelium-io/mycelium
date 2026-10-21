@@ -99,8 +99,9 @@ mycelium await --room <room-name> --handle cursor-agent --json
   you can't. Omit `stance` on an opening offer. Mark it **honestly**; it's how
   the team distinguishes real agreement from polite yielding.
 - Option ratings, when a flow asks you to rate options (the conductor's
-  `concord`): one line per option, a whole number 0–100, then your reason,
-  e.g. `B: 40 - the Friday window breaks certification`. Rate every option
+  `concord`): one line per option, keeping the option's name in brackets as
+  the prompt gives it, a whole number 0–100, then your reason, e.g.
+  `B (Ship on Friday): 40 - the Friday window breaks certification`. Rate every option
   you're asked about; a rating without a reason is asked for again. When asked
   to propose an option, write it, then a line `why: <the reasons>`. Ratings
   are 0–100; confidence is 0.0–1.0.
