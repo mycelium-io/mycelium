@@ -74,6 +74,14 @@ export const SETTINGS_PAGES = [
   "connection",
   "room",
   "hub",
+  // The desktop app's own (`lib/desktop-app.ts`), shown only in the app.
+  "model",
+  "agents",
+  "voice",
+  "experiences",
+  "privacy",
+  "version",
+  "health",
 ] as const;
 
 export type SettingsPage = (typeof SETTINGS_PAGES)[number];

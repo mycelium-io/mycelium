@@ -3,6 +3,7 @@
 
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import useSWR from "swr";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { hubSummary, StatusDot, TONE_COLOR } from "@/components/status-items";
 import { useHubLabel } from "@/components/title-bar";
 import { fetchHubSettings, fetchVoiceStatus, restartHub, type HubEditing } from "@/lib/api";
-import { desktopMachine, settingsLink, useIsDesktop } from "@/lib/desktop";
+import { settingHref } from "@/lib/client-settings";
+import { desktopMachine, useIsDesktop } from "@/lib/desktop";
 import { DOCS_URL } from "@/lib/install";
 import { useNetworkStatus } from "@/lib/room-data";
 import { useHubHealth } from "@/lib/use-status";
@@ -96,11 +98,15 @@ export function HubPage() {
             {ownHub && (
               <>
                 {" "}
-                Voice and usage counts are set in{" "}
-                <a href={settingsLink()} className="text-accent hover:underline">
-                  Mycelium Settings
-                </a>
-                .
+                Voice and usage counts are set on this app&apos;s{" "}
+                <Link href={settingHref("voice")} className="text-accent hover:underline">
+                  Voice
+                </Link>{" "}
+                and{" "}
+                <Link href={settingHref("privacy")} className="text-accent hover:underline">
+                  Privacy
+                </Link>{" "}
+                pages.
               </>
             )}
           </>

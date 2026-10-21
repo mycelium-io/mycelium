@@ -6,17 +6,19 @@
 import { CopyField } from "@/components/ui/copy-field";
 import { hubSummary, StatusDot, TONE_COLOR } from "@/components/status-items";
 import { useHubLabel } from "@/components/title-bar";
-import { desktopMachine, inviteLink, settingsLink, useIsDesktop } from "@/lib/desktop";
+import { desktopMachine, inviteLink, useIsDesktop } from "@/lib/desktop";
+import { useHasAppSettings } from "@/lib/desktop-app";
 import { useHubAddress } from "@/lib/hub-address";
 import { useHubHealth } from "@/lib/use-status";
+import { AppConnection } from "./app-connection";
 import { Row, Section, SettingsPage, Value } from "./settings-ui";
 
-/** Which hub this window is using, and how someone else joins it. Choosing a
- *  different hub happens where the window is opened: in the desktop app, its
- *  own Settings window (it has to work while no hub answers); in a browser, by
- *  opening the other hub's address. */
+/** Which hub this window is using, and how someone else joins it. In the
+ *  desktop app, also where its rooms live (here, or a team's hub) and start
+ *  at login; in a browser, another hub is another address. */
 export function ConnectionPage() {
   const desktop = useIsDesktop();
+  const app = useHasAppSettings();
   const hub = useHubLabel();
   const { data: health } = useHubHealth();
   const origin = useHubAddress();
@@ -25,7 +27,7 @@ export function ConnectionPage() {
 
   return (
     <SettingsPage
-      title="Connection"
+      title={app ? "Hub and Connection" : "Connection"}
       scope={desktop ? `Which hub this ${desktopMachine()} uses.` : "Which hub this browser is using."}
     >
       <Section title="The hub you're on">
@@ -57,28 +59,17 @@ export function ConnectionPage() {
         )}
       </Section>
 
-      <Section title="Another hub">
-        {desktop ? (
-          <Row
-            id="connection.switch"
-            label="Use a different hub"
-            help={`The app's own Settings window switches between running a hub on this ${desktopMachine()} and joining one elsewhere, and says what happens to the agents here before it does.`}
-          >
-            <a
-              href={settingsLink()}
-              className="rounded-md border border-border px-2.5 py-1 text-label text-text hover:bg-surface"
-            >
-              Switch hub…
-            </a>
-          </Row>
-        ) : (
+      {app ? (
+        <AppConnection />
+      ) : (
+        <Section title="Another hub">
           <Row
             id="connection.switch"
             label="Use a different hub"
             help="Open the other hub's address in your browser. Each hub keeps its own rooms, and this browser remembers your settings for each one separately."
           />
-        )}
-      </Section>
+        </Section>
+      )}
     </SettingsPage>
   );
 }

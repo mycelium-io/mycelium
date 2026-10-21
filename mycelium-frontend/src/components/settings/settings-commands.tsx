@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { useCommands } from "@/components/keymap-provider";
 import { settingHref, type SettingsPage } from "@/lib/client-settings";
+import { useHasAppSettings } from "@/lib/desktop-app";
 import type { PaletteCommand } from "@/lib/commands";
 
 /** Each settings page as a palette command, with the settings on it as words
@@ -22,19 +23,31 @@ const PAGES: { page: SettingsPage; title: string; keywords: string[] }[] = [
   { page: "hub", title: "Hub", keywords: ["model", "api key", "workers", "sign-in", "voice", "usage"] },
 ];
 
+/** The desktop app's own pages, there only in the app. */
+const APP_PAGES: typeof PAGES = [
+  { page: "model", title: "Model", keywords: ["model", "api key", "provider", "anthropic", "openai", "ollama"] },
+  { page: "agents", title: "Agents", keywords: ["folder", "working folder", "claude code", "codex", "herdr"] },
+  { page: "voice", title: "Voice", keywords: ["mic", "microphone", "talk", "dictate", "speech model"] },
+  { page: "experiences", title: "Experiences", keywords: ["patterns", "examples", "scenarios"] },
+  { page: "privacy", title: "Privacy", keywords: ["usage stats", "analytics", "telemetry"] },
+  { page: "version", title: "Version", keywords: ["update", "release candidate", "rc", "downgrade", "switch version"] },
+  { page: "health", title: "Health check", keywords: ["doctor", "diagnose", "log", "problems"] },
+];
+
 /** Registers the settings pages with the command palette while mounted. */
 export function SettingsCommands({ room }: { room?: string | null }) {
   const router = useRouter();
+  const app = useHasAppSettings();
   const commands = useMemo<PaletteCommand[]>(
     () =>
-      PAGES.map(({ page, title, keywords }) => ({
+      [...PAGES, ...(app ? APP_PAGES : [])].map(({ page, title, keywords }) => ({
         id: `settings.${page}`,
         title: `Settings: ${title}`,
         group: "Preferences",
         keywords: ["settings", "preferences", ...keywords],
         run: () => router.push(settingHref(page, undefined, page === "room" ? (room ?? undefined) : undefined)),
       })),
-    [router, room],
+    [router, room, app],
   );
   useCommands(commands);
   return null;

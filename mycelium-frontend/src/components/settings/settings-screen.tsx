@@ -8,7 +8,14 @@ import { useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { CLIENT_DEFAULTS, settingHref, useClientSetting, type SettingsPage } from "@/lib/client-settings";
-import { useIsDesktop } from "@/lib/desktop";
+import { desktopMachine, useIsDesktop } from "@/lib/desktop";
+import { useHasAppSettings } from "@/lib/desktop-app";
+import { AppAgentsPage } from "./app-agents-page";
+import { AppExperiencesPage } from "./app-experiences-page";
+import { AppHealthPage } from "./app-health-page";
+import { AppModelPage } from "./app-model-page";
+import { AppVersionPage } from "./app-version-page";
+import { AppPrivacyPage, AppVoicePage } from "./app-voice-privacy";
 import { ProfilePage } from "./profile-page";
 import { GeneralPage } from "./general-page";
 import { NotificationsPage } from "./notifications-page";
@@ -24,6 +31,19 @@ interface RailItem {
   /** How many settings on it differ from their defaults, when that's known here. */
   changed?: number;
 }
+
+/** The desktop app's own pages, in the app only: what its separate settings
+ *  window used to hold, beside everything else. */
+const APP_PAGES: RailItem[] = [
+  { page: "connection", label: "Hub and Connection" },
+  { page: "model", label: "Model" },
+  { page: "agents", label: "Agents" },
+  { page: "voice", label: "Voice" },
+  { page: "experiences", label: "Experiences" },
+  { page: "privacy", label: "Privacy" },
+  { page: "version", label: "Version" },
+  { page: "health", label: "Health check" },
+];
 
 function RailGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -64,6 +84,7 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
     (send !== CLIENT_DEFAULTS["general.send"] ? 1 : 0) + (zone !== CLIENT_DEFAULTS["general.time-zone"] ? 1 : 0);
   const keysChanged = Object.keys(keys).length;
   const here = desktop ? "This app" : "This browser";
+  const app = useHasAppSettings();
 
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
@@ -87,8 +108,15 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
             active={page === "keys"}
             room={room}
           />
-          <RailLink item={{ page: "connection", label: "Connection" }} active={page === "connection"} room={room} />
+          {!app && <RailLink item={{ page: "connection", label: "Connection" }} active={page === "connection"} room={room} />}
         </RailGroup>
+        {app && (
+          <RailGroup title={`This ${desktopMachine()}`}>
+            {APP_PAGES.map((item) => (
+              <RailLink key={item.page} item={item} active={page === item.page} room={room} />
+            ))}
+          </RailGroup>
+        )}
         <RailGroup title="This room">
           <RailLink item={{ page: "room", label: "Room" }} active={page === "room"} room={room} />
         </RailGroup>
@@ -105,6 +133,13 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
         {page === "connection" && <ConnectionPage />}
         {page === "room" && <RoomSettingsPage room={room} />}
         {page === "hub" && <HubPage />}
+        {app && page === "model" && <AppModelPage />}
+        {app && page === "agents" && <AppAgentsPage />}
+        {app && page === "voice" && <AppVoicePage />}
+        {app && page === "experiences" && <AppExperiencesPage />}
+        {app && page === "privacy" && <AppPrivacyPage />}
+        {app && page === "version" && <AppVersionPage />}
+        {app && page === "health" && <AppHealthPage />}
       </div>
     </div>
   );

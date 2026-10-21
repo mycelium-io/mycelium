@@ -122,9 +122,10 @@ describe("<HubPage /> for someone who may change the hub", () => {
     renderPage();
     const voice = await waitFor(() => row("hub.voice"));
     expect(within(voice).queryByRole("switch")).toBeNull();
-    expect(within(voice).getByRole("link", { name: "Change in Mycelium Settings" })).toHaveAttribute(
+    // The app's own Voice page, in the same Settings.
+    expect(within(voice).getByRole("link", { name: "Change in this app's settings" })).toHaveAttribute(
       "href",
-      "mycelium://settings",
+      "/settings/voice",
     );
   });
 
