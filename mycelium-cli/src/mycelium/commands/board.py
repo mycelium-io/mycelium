@@ -51,6 +51,7 @@ from mycelium.board.epics import epic_lines, epic_parts, where_it_stands
 from mycelium.board.model import (
     EPISODE_FIELD,
     KINDS,
+    LIVE_NAMESPACES,
     PRIORITIES,
     STATUSES,
     THREAD_REFUSALS,
@@ -788,6 +789,39 @@ def _row(room: str, row_id: str) -> LiveItem | None:
         tail = item.id.split(":", 1)[1] if ":" in item.id else item.id
         if wanted in (item.id, tail, tail[:12], item.text("thread")):
             return item
+    # The board reads the room's most recently changed memories, so a task that
+    # hasn't moved in a while isn't among them: ask the hub for it directly.
+    memory = _live_memory(room, wanted)
+    if memory is None:
+        return None
+    rows = project_items(
+        episodes=[], memories=[memory], agents=[], members=[], now=datetime.now(UTC)
+    )
+    return rows[0] if rows else None
+
+
+def _live_memory(room: str, wanted: str) -> dict | None:
+    """The board-namespace memory ``wanted`` names, by key or by its thread's
+    short id, read off the hub; ``None`` when there is none."""
+    key = wanted.removeprefix("memory:")
+    cfg = MyceliumConfig.load()
+    try:
+        with hub_client(cfg, timeout=30) as client:
+            if "/" in key:
+                if key.split("/", 1)[0] not in LIVE_NAMESPACES:
+                    return None
+                resp = client.get(f"/api/rooms/{room}/memory/{key}")
+                return resp.json() if resp.status_code < 400 else None
+            # A thread id: the task carrying that thread.
+            for namespace in LIVE_NAMESPACES:
+                resp = client.get(f"/api/rooms/{room}/memory?prefix={namespace}/&limit=1000")
+                listed = resp.json() if resp.status_code < 400 else None
+                for memory in listed if isinstance(listed, list) else []:
+                    episode = str(memory.get(EPISODE_FIELD) or "")
+                    if episode and episode.rsplit(":", 1)[-1] == key:
+                        return memory
+    except (httpx.HTTPError, ValueError):
+        return None
     return None
 
 
