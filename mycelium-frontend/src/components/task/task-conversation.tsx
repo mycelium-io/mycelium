@@ -7,11 +7,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { usePendingMessages, type Landed } from "@/lib/pending-messages";
 import { PendingMessageRows } from "@/components/pending-message-rows";
 import { Shimmer, SporeMark } from "@/components/responding-mark";
+import { RespondingNames } from "@/components/agent-opener";
 import {
   applyActivity,
   expireActivity,
   isActivityFrame,
-  respondingLabel,
   settleActivity,
   type Responding,
 } from "@/lib/activity";
@@ -228,7 +228,9 @@ export function TaskConversation({
           )}
         >
           <SporeMark />
-          <Shimmer className="truncate">{respondingLabel(responding)}</Shimmer>
+          <Shimmer className="truncate">
+            <RespondingNames group={responding} /> {responding.length === 1 ? "is" : "are"} responding…
+          </Shimmer>
         </div>
       )}
     </div>
