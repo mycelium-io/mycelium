@@ -68,8 +68,7 @@ This applies to that session only. Your CLI settings aren't changed, and an
 agent you start yourself in a terminal runs however you start it. Neither CLI
 is ever started with its bypass (`--dangerously-skip-permissions`, or Codex's
 `--dangerously-bypass-approvals-and-sandbox`). An older version of either CLI
-without auto mode starts as it did before. Add agent says which mode an agent
-CLI starts in, next to where you pick it.
+without auto mode starts as it did before.
 
 ## Bringing in an agent that's already running
 

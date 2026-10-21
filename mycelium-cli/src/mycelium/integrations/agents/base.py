@@ -54,11 +54,6 @@ class AgentKind:
         """A line on what it commonly waits for when its host reads it as blocked."""
         return None
 
-    def session_note(self) -> str | None:
-        """A line on what its launch arguments let it do, shown where a person
-        picks it, when that's more than they'd expect."""
-        return None
-
     def interrupt_key(self) -> str:
         """The key that stops its current turn and keeps its session, as herdr names
         keys. Escape for the agent TUIs this table knows."""
