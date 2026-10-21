@@ -2,6 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { getBackendUrl, upstreamHeaders, upstreamUrl } from "@/lib/backend";
+import { HEALTH_PATH, fetchHealth } from "@/lib/hub-health";
 import { bearer } from "@/lib/session";
 import { TOKEN_HEADER } from "@/lib/ui-guard";
 import { MOCK_HEADER, handleMock, isMockMode } from "@/mocks";
@@ -11,8 +12,6 @@ import { MOCK_HEADER, handleMock, isMockMode } from "@/mocks";
  * The more-specific SSE route handler (rooms/[name]/messages/stream) takes precedence.
  */
 export const dynamic = "force-dynamic";
-
-const HEALTH_PATH = "/api/health";
 
 // Headers that must not be passed back verbatim across the proxy hop.
 const STRIP_RESPONSE = ["connection", "keep-alive", "transfer-encoding", "upgrade", "content-length", "content-encoding"];
@@ -58,13 +57,7 @@ async function proxy(req: Request): Promise<Response> {
 
   let res: Response;
   try {
-    res = await fetch(target, init);
-    // A backend answers health at its root; a hub that serves its own pages
-    // (what the desktop app reaches in client mode) answers it under `/api`,
-    // and its root `/health` is a missing page.
-    if (res.status === 404 && new URL(req.url).pathname === HEALTH_PATH) {
-      res = await fetch(`${backend}${HEALTH_PATH}`, init);
-    }
+    res = new URL(req.url).pathname === HEALTH_PATH ? await fetchHealth(init, backend) : await fetch(target, init);
   } catch {
     return Response.json(
       { detail: `Backend unreachable at ${backend}` },

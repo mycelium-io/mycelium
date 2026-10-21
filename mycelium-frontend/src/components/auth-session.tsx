@@ -26,6 +26,8 @@ interface AuthSessionState {
   loading: boolean;
   authRequired: boolean;
   oidcConfigured: boolean;
+  /** Why a hub that asks for sign-in can't be signed in to from here, in plain words. */
+  signInProblem: string | null;
   signedIn: boolean;
   handle: string | null;
 }
@@ -42,6 +44,7 @@ const INITIAL: AuthSessionState = {
   loading: true,
   authRequired: false,
   oidcConfigured: false,
+  signInProblem: null,
   signedIn: false,
   handle: null,
 };
@@ -58,6 +61,7 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
         loading: false,
         authRequired: Boolean(d.authRequired),
         oidcConfigured: Boolean(d.oidcConfigured),
+        signInProblem: d.signInProblem ?? null,
         signedIn: Boolean(d.signedIn),
         handle: d.handle ?? null,
       };

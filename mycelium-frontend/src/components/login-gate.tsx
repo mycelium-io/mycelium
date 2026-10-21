@@ -13,17 +13,25 @@ import { useAuthSession } from "./auth-session";
  * not blank room lists.
  */
 export function LoginGate({ children }: { children: ReactNode }) {
-  const { loading, authRequired, oidcConfigured, signedIn, login } = useAuthSession();
+  const { loading, authRequired, oidcConfigured, signInProblem, signedIn, login } = useAuthSession();
 
   // Don't flash the sign-in screen on first paint while /api/auth/session
   // resolves — for the common ungated hub it lands on "not required" instantly.
   if (loading) return null;
   if (!authRequired || signedIn) return <>{children}</>;
 
-  return <SignInScreen oidcConfigured={oidcConfigured} onLogin={login} />;
+  return <SignInScreen oidcConfigured={oidcConfigured} problem={signInProblem} onLogin={login} />;
 }
 
-function SignInScreen({ oidcConfigured, onLogin }: { oidcConfigured: boolean; onLogin: () => void }) {
+function SignInScreen({
+  oidcConfigured,
+  problem,
+  onLogin,
+}: {
+  oidcConfigured: boolean;
+  problem: string | null;
+  onLogin: () => void;
+}) {
   const authError = useAuthError();
 
   return (
@@ -38,6 +46,10 @@ function SignInScreen({ oidcConfigured, onLogin }: { oidcConfigured: boolean; on
           <Button size="lg" className="mt-6 w-full" onClick={onLogin}>
             Sign in with your identity provider
           </Button>
+        ) : problem ? (
+          <p className="mt-6 rounded-md border border-border bg-bg/60 p-3 text-left text-xs text-muted-foreground">
+            {problem}
+          </p>
         ) : (
           <p className="mt-6 rounded-md border border-border bg-bg/60 p-3 text-left text-xs text-muted-foreground">
             The backend gate is on, but browser login isn&apos;t configured on this

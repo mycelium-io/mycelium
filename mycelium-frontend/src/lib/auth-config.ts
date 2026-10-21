@@ -21,7 +21,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { getBackendUrl } from "./backend";
+import { fetchHealth } from "./hub-health";
 import { tokenPromised } from "./ui-guard";
 
 export interface OidcConfig {
@@ -79,38 +79,67 @@ const DISCOVERED_FOR_MS = 60_000;
 const UNUSED_SECRET = randomBytes(32).toString("hex");
 const found = globalThis as { __myceliumOidc?: { at: number; cfg: OidcConfig | null } };
 
+/** What the hub says about its sign-in in its health: whether it asks for one, and whom it trusts. */
+export interface HubSignIn {
+  enabled: boolean;
+  issuers: string[];
+}
+
+/** The hub's sign-in, from its health (`lib/hub-health.ts`). Null when the hub can't be read. */
+export async function readHubSignIn(): Promise<HubSignIn | null> {
+  try {
+    const res = await fetchHealth();
+    if (!res.ok) return null;
+    const auth = ((await res.json()) as { auth?: { enabled?: boolean; issuers?: unknown } }).auth;
+    const issuers = Array.isArray(auth?.issuers)
+      ? auth.issuers.filter((i): i is string => typeof i === "string" && !!i.trim()).map(i => trimSlash(i.trim()))
+      : [];
+    return { enabled: Boolean(auth?.enabled), issuers };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The sign-in this UI server uses. The environment's when it names an issuer;
- * otherwise, in the desktop app, the one issuer the hub names at `/health`
+ * otherwise, in the desktop app, the one issuer the hub names in its health
  * (as `mycelium login` finds it), with the client the app passed in, which is
  * the CLI's and already signs in through this machine's loopback address.
- * Null when the hub asks for no sign-in, or names no single issuer.
+ * Null when the hub asks for no sign-in, or names no single issuer. A caller
+ * that has just read the hub passes what it read, so the hub is asked once.
  */
-export async function resolveOidcConfig(): Promise<OidcConfig | null> {
+export async function resolveOidcConfig(hub?: HubSignIn | null): Promise<OidcConfig | null> {
   const configured = oidcConfig();
   if (configured || !heldInMemory()) return configured;
   const cached = found.__myceliumOidc;
-  if (cached && Date.now() - cached.at < DISCOVERED_FOR_MS) return cached.cfg;
-  const cfg = await discover();
+  if (hub === undefined && cached && Date.now() - cached.at < DISCOVERED_FOR_MS) return cached.cfg;
+  const cfg = discovered(hub === undefined ? await readHubSignIn() : hub);
   found.__myceliumOidc = { at: Date.now(), cfg };
   return cfg;
 }
 
-async function discover(): Promise<OidcConfig | null> {
-  let issuers: unknown;
-  try {
-    const res = await fetch(`${getBackendUrl()}/health`, { cache: "no-store" });
-    if (!res.ok) return null;
-    const auth = ((await res.json()) as { auth?: { enabled?: boolean; issuers?: unknown } }).auth;
-    if (!auth?.enabled) return null;
-    issuers = auth.issuers;
-  } catch {
-    return null;
+/**
+ * Why a hub that asks for sign-in can't be signed in to from here, in words
+ * for the person looking at the sign-in screen. Null when it can, or when
+ * this is not the desktop app (whose server is set up by its operator, and
+ * the screen says what to set).
+ */
+export function whyNoSignIn(hub: HubSignIn | null): string | null {
+  if (!hub?.enabled || !heldInMemory()) return null;
+  if (hub.issuers.length === 0) {
+    return "This hub needs you to sign in, but doesn't say where. Whoever runs it can name its identity provider in the hub's auth settings.";
   }
-  const named = Array.isArray(issuers) ? issuers.filter((i): i is string => typeof i === "string" && !!i.trim()) : [];
+  if (hub.issuers.length > 1) {
+    return `This hub trusts ${hub.issuers.length} identity providers, and the app can't tell which one should decide who you are. It can sign in to a hub that trusts one; ask whoever runs this one.`;
+  }
+  return null;
+}
+
+function discovered(hub: HubSignIn | null): OidcConfig | null {
+  if (!hub?.enabled) return null;
   // Several issuers is not a choice to guess at: which one decides who the hub thinks you are.
-  if (named.length !== 1) return null;
-  const issuer = trimSlash(named[0].trim());
+  if (hub.issuers.length !== 1) return null;
+  const issuer = hub.issuers[0];
   return {
     issuer,
     internalIssuer: issuer,
