@@ -80,9 +80,7 @@ def test_every_app_command_refuses_a_page_it_does_not_answer() -> None:
 
 
 @pytest.mark.skipif(not SRC.is_dir(), reason="the desktop app's source isn't in this checkout")
-def test_only_the_folder_dialog_its_machine_its_screens_and_the_apps_settings_answer_the_ui() -> (
-    None
-):
+def test_the_ui_may_call_exactly_the_commands_named_for_it() -> None:
     open_to_hub = {name for name, body in _commands().items() if "own_ui_only(" in body}
     assert open_to_hub == OWN_UI
 
