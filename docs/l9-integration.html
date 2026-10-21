@@ -203,9 +203,11 @@
       <table class="l9">
         <thead><tr><th>Step</th><th>What happened</th></tr></thead>
         <tbody>
-          <tr><td>Suggest and rate</td><td>Each member suggested one option (A to D) and rated all four. Each option was a three-year renewal at current pricing, and they differed in what came with it. Finance wanted nothing more. Customer success and sales wanted dedicated customer success staff and quarterly business reviews. Legal wanted liability capped at the yearly contract value.</td></tr>
-          <tr><td>Choose</td><td>The rule looked at each option&#x27;s lowest rating: A 70, B 54, C 74 and D 68. It chose sales&#x27;s option C, whose lowest rating was highest. Legal gave C its lowest rating, 74.</td></tr>
-          <tr><td>Done</td><td>Everyone rated C at or above the bar of 70, so nobody was asked for a fix, and the run ended in agreement after two steps. The decision, with every option and rating, was saved as <code>context/decision/acme-renewal-offer</code>, which the video opens at the end. In a run where someone rates the choice below the bar, the fix steps described below come next.</td></tr>
+          <tr><td>Reference outcomes</td><td>Each member rated &quot;Acme leaves at renewal&quot; and &quot;Acme renews for three years at list price&quot; for their role. The bad outcome got 8 (customer success, &quot;losing Acme tanks my retention metrics and our reference story&quot;) to 20 (legal); the ideal got 85 (legal) to 98 (customer success).</td></tr>
+          <tr><td>Propose</td><td>Each member proposed one option with its reasons. Customer success: three years at 15% off, so an at-risk customer sees we value them. Finance: three years at 10% off, the most it would give on a three-year term. Sales: two years at 10% off, prepaid for the first year. Legal: three years at list price with standard liability caps and arbitration.</td></tr>
+          <tr><td>Rate</td><td>Everyone rated all four, each with a one-sentence reason. Finance placed customer success&#x27;s 15% off at 29% of the way to its ideal: &quot;Fifteen percent blows through my ceiling.&quot;</td></tr>
+          <tr><td>Choose</td><td>The rule chose legal&#x27;s option D, which left the least happy member best off: customer success, at 76% of the way from its bad outcome to its ideal, with the reason &quot;list price is structurally clean but risky; an at-risk customer at full price is a harder close.&quot; That meets the bar of 60%, so nobody was asked for a fix.</td></tr>
+          <tr><td>Done</td><td>The run ended in agreement after three steps. The decision was saved as <code>context/decision/acme-renewal-offer</code>, starting with how each member sees it and why, which the video opens at the end. In a run where someone is short of the bar, the fix steps described below come next.</td></tr>
         </tbody>
       </table>
     </section>
@@ -373,10 +375,11 @@ flowchart LR
       <table class="l9">
         <thead><tr><th>Step</th><th>What happened</th></tr></thead>
         <tbody>
-          <tr><td>Describe</td><td>Each member labelled what they think the task is. The first round brought 20 points, each in the member&#x27;s own words. Sales wanted the renewal locked in for several years at pricing that reflects that commitment; customer success wanted to keep Acme by showing clear value, since losing a reference account would hurt.</td></tr>
-          <tr><td>What&#x27;s missing</td><td>The conductor showed the points so far and asked what was missing. Nobody added anything new, so the summary kept its 20 points.</td></tr>
-          <tr><td>The words</td><td>Members defined the words they use in a specific sense and said how points would be checked. Finance and legal meant different things by &quot;standard&quot;: to finance, the published list price; to legal, its template agreement with its liability caps and indemnities. Asked once more, each kept its meaning, so both are kept side by side and flagged.</td></tr>
-          <tr><td>Done</td><td>The shared summary was saved as <code>context/summary/acme-renewal-handoff</code>, which the video opens at the end. Its open items include points only one member made and the two senses of &quot;standard&quot;.</td></tr>
+          <tr><td>Key terms</td><td>The summon named two: &quot;renewal date&quot; and &quot;standard terms&quot;, so nobody was asked for them.</td></tr>
+          <tr><td>Describe</td><td>Each member labelled what they think the task is. The first round brought 19 points, each in the member&#x27;s own words. Sales and finance both wanted the renewal locked into multiple years at pricing that reflects the commitment; customer success wanted to keep Acme by removing what blocks them; legal wanted terms without unusual liability.</td></tr>
+          <tr><td>What&#x27;s missing</td><td>The conductor showed the points so far and asked once what was missing. Customer success added two: when Acme&#x27;s contract ends, and whether 10% off is a hard limit, since its own point said there was room to move on price and finance&#x27;s capped discounts at 10%. The summary notes that points were still arriving.</td></tr>
+          <tr><td>The terms</td><td>Members said what they mean by each term, with an example, and took on checks: eight in all, each with its owner and the points it covers. Finance meant &quot;standard terms&quot; as the published list price; legal and sales meant the template agreement with its liability caps and indemnities. Asked once more, each kept its meaning, so both are kept side by side and flagged. &quot;Renewal date&quot; was flagged too, though everyone meant the date the current contract ends; finance also counted the days of runway from today.</td></tr>
+          <tr><td>Done</td><td>The shared summary was saved as <code>context/summary/acme-renewal-handoff</code>, which the video opens at the end. Its open items include points only one member made, sales and finance saying different things about pricing, and the two senses of &quot;standard terms&quot;.</td></tr>
         </tbody>
       </table>
     </section>
