@@ -32,7 +32,7 @@ import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { reportToApp } from "@/lib/report-to-app";
 import { usePendingMessages, type Landed } from "@/lib/pending-messages";
 import { PendingMessageRows } from "@/components/pending-message-rows";
-import { ChatFindBar } from "@/components/chat-find-bar";
+import { FindBar } from "@/components/find-bar";
 import { ChatSearchResults } from "@/components/chat-search-results";
 import { freeText, hasScope, type MessageSearchHit } from "@/lib/message-search";
 import { ChatMinimap, type MinimapTick } from "@/components/chat-minimap";
@@ -1047,7 +1047,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     <div className="flex flex-col h-full">
       <div className="relative flex flex-1 min-h-0 flex-col">
       {findOpen && (
-        <ChatFindBar
+        <FindBar
+          // Stepping works on what is loaded, and says so rather than implying
+          // it searched the room; History is what reaches the rest.
+          countAbout={
+            reachedStart
+              ? "Matches in the channel. History lists them all, threads included."
+              : "Matches among the messages loaded here. History searches the whole room."
+          }
           query={query}
           onQueryChange={value => {
             setQuery(value);
@@ -1061,7 +1068,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
           onStep={stepMatch}
           onClose={closeFind}
           inputRef={findInput}
-          partial={!reachedStart}
           history={{
             total: search.result?.total ?? null,
             loading: search.loading,

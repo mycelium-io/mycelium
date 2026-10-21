@@ -59,7 +59,7 @@ async function typeQuery(text: string) {
   await settle();
 }
 
-const status = () => screen.getByRole("button", { name: "Close find" }).closest("[data-slot='chat-find-bar']")!;
+const status = () => screen.getByRole("button", { name: "Close find" }).closest("[data-slot='find-bar']")!;
 
 describe("<EventStream /> find in the channel", () => {
   beforeEach(() => {
@@ -169,7 +169,7 @@ describe("<EventStream /> find in the channel", () => {
 
     // This channel has walked back to the beginning of the room, so find has
     // genuinely searched all of it. (The reverse — a channel with pages it
-    // hasn't read saying so — is ChatFindBar's own test.)
+    // hasn't read saying so — is the count's tooltip.)
     expect(screen.queryByText("loaded only")).not.toBeInTheDocument();
   });
 

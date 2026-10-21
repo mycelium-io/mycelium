@@ -77,6 +77,19 @@ export function threadPanelId(episode: string): string {
   return `thread:${episode}`;
 }
 
+/** A ⌘F press, for the panel that was in front when it was pressed. `n`
+ *  counts presses, so a press on a panel whose bar is open re-selects it. */
+export interface FindRequest {
+  id: string | null;
+  n: number;
+}
+export const NO_FIND: FindRequest = { id: null, n: 0 };
+
+/** The press count a panel acts on: the latest one while it was in front, else 0. */
+export function findFor(request: FindRequest, id: string): number {
+  return request.id === id ? request.n : 0;
+}
+
 /** What a panel id names. `null` for an id this version doesn't draw. */
 export function parsePanelId(
   id: string,

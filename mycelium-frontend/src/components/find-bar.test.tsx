@@ -5,14 +5,14 @@ import { createRef, useState } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ChatFindBar } from "@/components/chat-find-bar";
+import { FindBar } from "@/components/find-bar";
 
-function bar(props: Partial<Parameters<typeof ChatFindBar>[0]> = {}) {
+function bar(props: Partial<Parameters<typeof FindBar>[0]> = {}) {
   const onStep = vi.fn();
   const onClose = vi.fn();
   const onQueryChange = vi.fn();
   render(
-    <ChatFindBar
+    <FindBar
       query="deploy"
       onQueryChange={onQueryChange}
       count={3}
@@ -20,14 +20,13 @@ function bar(props: Partial<Parameters<typeof ChatFindBar>[0]> = {}) {
       onStep={onStep}
       onClose={onClose}
       inputRef={createRef<HTMLInputElement>()}
-      partial={false}
       {...props}
     />,
   );
   return { onStep, onClose, onQueryChange };
 }
 
-describe("<ChatFindBar />", () => {
+describe("<FindBar />", () => {
   it("counts from one, the way a find bar reads", () => {
     bar({ count: 3, position: 0 });
     expect(screen.getByText("1/3")).toBeInTheDocument();
@@ -79,14 +78,20 @@ describe("<ChatFindBar />", () => {
     expect(screen.getByLabelText("Next match")).toBeDisabled();
     expect(screen.getByLabelText("Previous match")).toBeDisabled();
   });
+
+  it("is named for what it finds in", () => {
+    bar({ label: "Find in this memory" });
+    expect(screen.getByLabelText("Find in this memory")).toBeInTheDocument();
+  });
 });
 
 /** The bar holding its own query, as the channel does, so typing is real. */
-function Typed({ seen }: { seen?: Parameters<typeof ChatFindBar>[0]["seen"] }) {
+function Typed({ seen, grammar }: { seen?: Parameters<typeof FindBar>[0]["seen"]; grammar?: boolean }) {
   const [query, setQuery] = useState("");
   return (
     <>
-      <ChatFindBar
+      <FindBar
+        grammar={grammar}
         query={query}
         onQueryChange={setQuery}
         count={0}
@@ -94,7 +99,6 @@ function Typed({ seen }: { seen?: Parameters<typeof ChatFindBar>[0]["seen"] }) {
         onStep={() => {}}
         onClose={() => {}}
         inputRef={createRef<HTMLInputElement>()}
-        partial={false}
         seen={seen}
         handles={["builder", "reviewer"]}
       />
@@ -103,7 +107,7 @@ function Typed({ seen }: { seen?: Parameters<typeof ChatFindBar>[0]["seen"] }) {
   );
 }
 
-describe("<ChatFindBar /> hints", () => {
+describe("<FindBar /> hints", () => {
   it("completes a field name with Tab, then offers that field's values", async () => {
     render(<Typed seen={{ from: [{ value: "operator", label: "operator", count: 9 }] }} />);
     const input = screen.getByLabelText("Find in the channel");
@@ -132,6 +136,12 @@ describe("<ChatFindBar /> hints", () => {
     }
     await userEvent.clear(input);
     await userEvent.type(input, "apple");
+    expect(screen.queryByLabelText("Search suggestions")).not.toBeInTheDocument();
+  });
+
+  it("offers no fields where the query is just words", async () => {
+    render(<Typed grammar={false} />);
+    await userEvent.type(screen.getByLabelText("Find in the channel"), "fr");
     expect(screen.queryByLabelText("Search suggestions")).not.toBeInTheDocument();
   });
 });

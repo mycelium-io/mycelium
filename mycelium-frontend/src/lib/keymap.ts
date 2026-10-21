@@ -72,12 +72,11 @@ export const KEYMAP: Binding[] = [
   },
 
   // The browser's own find is the one it hijacks, so it only fires where the
-  // app genuinely answers it: the dispatcher leaves an unclaimed binding alone,
-  // and nothing registers this outside a room's channel.
+  // app genuinely answers it: in a room, for the view or tab in front.
   {
     id: "chat.find",
     keys: ["mod+f"],
-    label: "Find in the channel",
+    label: "Find in this view",
     group: "Search",
     scope: "room",
   },

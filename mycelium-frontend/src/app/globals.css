@@ -943,3 +943,14 @@ body {
 .dockview-theme-mycelium .dv-groupview.dv-active-group .dv-active-tab [role="tab"] {
   box-shadow: inset 0 -1px 0 var(--accent);
 }
+
+/* ⌘F outside the channel marks its hits as text ranges (lib/dom-find.ts), in
+   the same yellow the channel's marks use: every hit, and the one stood on. */
+::highlight(find-hit) {
+  background-color: color-mix(in srgb, var(--yellow) 25%, transparent);
+  color: var(--text);
+}
+::highlight(find-active) {
+  background-color: color-mix(in srgb, var(--yellow) 60%, transparent);
+  color: var(--text);
+}

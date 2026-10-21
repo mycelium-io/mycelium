@@ -114,10 +114,12 @@ export function ChatSearchResults({ query, onQueryChange, result, failed, needle
   );
 }
 
-function Panel({ children }: { children: React.ReactNode }) {
+/** The strip History draws under a find bar, whatever it lists. */
+export function Panel({ children, label = "Search the room's history" }: { children: React.ReactNode; label?: string }) {
   return (
     <section
-      aria-label="Search the room's history"
+      aria-label={label}
+      data-find-skip=""
       data-slot="chat-search-results"
       className="max-h-[40%] shrink-0 overflow-y-auto border-b border-border bg-surface/60"
     >
