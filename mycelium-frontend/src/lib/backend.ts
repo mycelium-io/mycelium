@@ -54,9 +54,11 @@ const HOP_BY_HOP = ["host", "connection", "keep-alive", "transfer-encoding", "up
  * What the browser said about the page, which this server has already checked
  * (`lib/ui-guard.ts`). The request on to the hub is this server's own call,
  * not the browser's: forwarded, the page's origin reaches a hub that serves
- * its own UI as a request from another site, and is refused.
+ * its own UI as a request from another site, and is refused. The hub never
+ * reads cookies (the sign-in goes as a bearer), and on 127.0.0.1 the browser
+ * sends every local app's, so none go on to a hub on another machine.
  */
-const BROWSER_CONTEXT = ["origin", "referer"];
+const BROWSER_CONTEXT = ["origin", "referer", "cookie"];
 const BROWSER_CONTEXT_PREFIX = "sec-fetch-";
 
 /** The page's request headers as this server sends them on to the hub. */
