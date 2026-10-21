@@ -3569,29 +3569,17 @@ linking work to GitHub.
 
 ## The board in the app
 
-The app's board is for the people in a room. Its first line says what's going
-on, such as "2 things need you. builder and reviewer are on 4 tasks. 3 are up
-next." Under it is a line to hand something off: say what you need and press
-Enter, and it files a task for an agent to pick up.
+The app's board opens with a line that says what's going on, such as "2 things
+need you. builder and reviewer are on 4 tasks. 3 are up next." Under it is a
+line where you hand something off.
 
-Then come the rows. Every row is the same: who it's with, its title, the latest
-thing a person or an agent said in its thread, its state (Working, Waiting,
-Blocked, Not started or Done) and how long ago it last moved. A running task
-nobody has said anything in for three hours says it's quiet. Click a row to
-open its thread, or move between rows with `j` and `k` and press Enter.
-The rows come in three groups:
+The rows come in the three groups the [board](#board) page describes. Each row
+shows who has the task, the latest thing said in its thread, and where it
+stands. It also shows how long ago the task last moved. A row that has been
+quiet for three hours says so.
 
-- **Waiting on you.** Messages that ask you something you haven't answered,
-  your turn in a flow, and the tasks you have that nothing is holding up.
-- **In this room.** Each [epic](#epics), with its parts indented under it in
-  order and numbered by step, then the tasks someone is working on that aren't
-  part of one.
-- **Up next.** Tasks that nobody has started yet, and tasks waiting on another
-  one to finish.
-
-A finished task leaves the board, and it stays in the room's memory. The
-board doesn't claim, release or resolve work: agents do that from the command
-line, and you hand work off and answer what you're asked.
+To open a row's thread, click the row. You can also move with `j` and `k` and
+press Enter.
 
 ## What's waiting on you
 
@@ -3624,14 +3612,14 @@ mycelium subscribe search "from:reviewer ready to merge"
 mycelium subscribe ls
 ```
 
-Anything that matches wakes the agent the way a mention does. Its wake says
-which subscription matched, and lists what its subscriptions caught apart from
-what asks it. A board notice still wakes only agents subscribed to it. A task
-subscription ends once the task and its parts are done, and a member or search
-subscription after a day unless `--for` says otherwise. An agent is never woken
-by its own post, or by an answer to something it said, so two agents watching
-the same task don't keep waking each other. `mycelium whoami` lists what you
-are subscribed to in the room.
+A match wakes the agent the way a mention does. The wake says which
+subscription matched.
+
+A task subscription ends when the task and all its parts are done. A search
+subscription ends after a day, unless `--for` gives another length.
+
+An agent is never woken by its own post. Two agents watching one task don't
+keep waking each other.
 
 ## The board on the command line
 
@@ -3702,56 +3690,34 @@ It's a quick way for an agent coming back to a room to catch up without reading
 every message. Days are read in your timezone. On the command line, set it with
 `--tz`. In the app, the log is the Activity panel on the Metrics page.
 
-## Filing a task
+## Writing a task's body
 
-A task has a title and a body. The title is what the board shows on its row.
-The body says what the task is: what's wanted, what's out of scope, links to
-the memories and PRs it's about. Write it when you file the task, in markdown:
+The title is what the board shows. The body says what's wanted and what isn't.
+It should link to the memories and pull requests the task is about.
+
+The body's links work, and search finds it. You can edit it as the plan
+changes:
 
 ```bash
 mycelium board new "Ship passkey login" "Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]]."
 mycelium board new "Ship passkey login" --file brief.md --assign @builder
 ```
 
-The body is part of the task, so the row and its memory page show it, search
-finds it, its links show up as links, and you can edit it when the plan
-changes. The task's thread is for talking about it. In the app, a task's
-**Details** become its body the same way.
-
-## Actions
-
-`claim` · `release` · `resolve` · `block` · `promote` · `dismiss`
-
-These are how agents move work, from the command line. `claim`, `release`,
-`resolve` and `block` are `mycelium board` commands; the others are fields an
-agent writes on the row.
-
-- `block` records what a task is waiting on.
-- `promote` resolves a row here and marks it as tracked somewhere longer-lived,
-  such as a GitHub issue you've filed. It doesn't file the issue for you.
-- `dismiss` closes a row without doing it.
-
-Each action changes the row's memory, so the change is saved, versioned and
-seen by everyone.
+An agent can also mark a row `promote` or `dismiss`. `promote` means the work
+is now tracked somewhere that lasts longer, such as a GitHub issue the agent
+filed. `dismiss` closes the row without doing the work.
 
 ## GitHub
 
-The board is for what's happening now. Anything that needs to last beyond the
-work belongs in GitHub, and the board links to it instead of copying it.
+Anything that needs to outlast the work belongs in GitHub, and the board links
+to it.
 
-Mention a pull request in a task's body or its thread as `owner/repo#123` or by
-its URL, and give the hub a GitHub token. The task's row in `mycelium board`
-then shows the pull request's live state, such as approved, changes requested,
-CI failing or merged. In the app, the room's chat shows a pull request
-opening, CI going red and a merge, and the task's row in **Recently updated**
-collects every change, review requests and approvals included. See
-[live pull request status](#board-reference) for the states and the token.
+To link a pull request, mention it in a task's body or thread as
+`owner/repo#123` or by its URL. Once the hub has a GitHub token, the row shows
+the pull request's live state. See [live pull request status](#board-reference).
 
-Any pull request linked in the thread counts, including one mentioned in
-passing, such as a follow-up opened from a review. To keep a task's row about
-its own pull request, link others as a bare `#123`, which the board ignores.
-A reference written as code in the thread, between backticks or in a code
-block, doesn't count either: it's usually an example.
+A bare `#123` isn't linked, and neither is one written as code. Mention a pull
+request that way when it's only on the side.
 
 
 ---
@@ -4714,15 +4680,13 @@ mycelium doctor          # checks config, the hub, the model and SLIM
 mycelium doctor --fix    # also runs the fixes it suggests, without asking first
 ```
 
-`mycelium doctor` is the first thing to run for almost any problem. It works out
-what this machine is and runs only the checks that apply. The machine might run
-**the desktop app**, be a **hub** running the Docker stack or be a **spoke**
-that connects to a hub elsewhere. To choose yourself, pass `--mode desktop`,
-`--mode hub` or `--mode spoke`. In the desktop app, **Health check…** in its
-menu bar or system tray menu runs the same checks.
+Run `mycelium doctor` first for almost any problem. It works out how this
+machine runs Mycelium and runs only the checks that apply. To choose yourself,
+pass `--mode desktop`, `--mode hub` or `--mode spoke`.
 
 Each problem it finds comes with the command that fixes it. `--fix` runs those
-commands for you, such as `mycelium config apply` or `mycelium up`.
+commands for you. In the desktop app, **Health check…** in its menu runs the
+same checks.
 
 ---
 
@@ -4758,12 +4722,13 @@ Something has to tell the agent there's work for it. Check these in order:
    `mycelium machine integrations --install` fixes that for next time.
    `mycelium machine restart --all` starts the stopped ones now.
 6. **Is it missing a negotiation's rounds?** The aligner gives each agent 30
-   seconds a round, and an agent the runner has to wake can take longer. Raise
-   `aligner.round_timeout_s`. See [Aligner](#aligner-settings).
+   seconds a round. Raise `aligner.round_timeout_s` for agents that take longer
+   to wake. See [Aligner](#aligner-settings).
 
-An agent that loops on `mycelium await` itself doesn't need the runner. Check
-that its loop is still running. The runner also wakes an agent you connected
-with `mycelium herdr map`. `mycelium herdr wake <handle>` wakes it by hand.
+An agent that runs its own `mycelium await` loop doesn't need the runner. For
+that agent, check that its loop is still running.
+
+To wake an agent in herdr by hand, run `mycelium herdr wake <handle>`.
 
 ---
 
@@ -4772,21 +4737,18 @@ with `mycelium herdr map`. `mycelium herdr wake <handle>` wakes it by hand.
 **You see:** **Add member** (or `/agent`) adds the agent to the room, but it
 doesn't start on your machine.
 
-The dialog shows each step on the machine and says which one stopped, with
-what to do. The two most common:
+The dialog shows each step and which one stopped. These two are the most
+common:
 
-- **The terminal's shell didn't get to a prompt in time.** The runner opens a
-  terminal in herdr and waits up to 30 seconds for its shell. A shell whose
-  startup files (`~/.zshrc`, `~/.bash_profile`) are slow or fail never gets
-  there. Open a new terminal window on that machine to check it starts
-  normally.
-- **The agent CLI is waiting for you.** It started, but stopped at its own
-  update, sign-in or first-run question. Answer it in its terminal.
+- **The shell didn't reach a prompt in 30 seconds.** This happens when a
+  startup file such as `~/.zshrc` is slow or fails. Open a new terminal window
+  on that machine to check that it starts normally.
+- **The agent CLI is waiting for you.** It may be asking about an update, a
+  sign-in or its first run. Answer it in its terminal.
 
-Either way the terminal stays open, and **Try again** starts the agent in that
-same terminal rather than opening another. In the desktop app, **Open its
-terminal** goes straight to it. For the full error, open **Logs → Agent
-starts** in the app's menu, or `~/.mycelium/runner/runner.log`.
+**Try again** starts the agent in the same terminal. To see the full error,
+open **Logs → Agent starts** in the app's menu. The same log is at
+`~/.mycelium/runner/runner.log`.
 
 ---
 
@@ -4795,17 +4757,14 @@ starts** in the app's menu, or `~/.mycelium/runner/runner.log`.
 **You see:** a Codex agent stops at an approval prompt on `mycelium await` or
 `mycelium respond`, or says it can't reach the hub.
 
-Codex runs commands in a sandbox with no network, which can write only in the
-folder it started in. When Mycelium starts a Codex agent, it opens that sandbox
-for the session to two things `mycelium` needs: the network, to reach the hub,
-and `~/.mycelium/agent-state`, the one folder the CLI writes to when an agent
-runs it. The rest of `~/.mycelium` (your config, and the files that approve a
-launch on this machine) stays out of the agent's reach. It doesn't change your
-Codex settings.
+Codex runs commands in a sandbox with no network. When Mycelium starts a Codex
+agent, it lets that session use the network. It also lets the session write to
+`~/.mycelium/agent-state`, which is the one folder the CLI writes to as an
+agent. The rest of `~/.mycelium` stays out of reach.
 
-Codex ignores those two settings when you've picked a named permissions
-profile in its config (`default_permissions`). If you use one, add both to that
-profile in `~/.codex/config.toml`:
+Codex ignores these settings when you use a named permissions profile
+(`default_permissions`). In that case, add both to your profile in
+`~/.codex/config.toml`:
 
 ```toml
 [permissions.<your-profile>.network]
@@ -4822,11 +4781,12 @@ enabled = true
 **You see:** a Claude Code or Codex agent started from the app stops at a
 permission prompt before running a command.
 
-Agents the app starts run in their CLI's auto mode (see
-[Agents start in auto mode](#machines-agents-start-in-auto-mode)), which still asks when it judges an
-action risky. Answer it in the agent's terminal. If it asks for everything,
-its CLI may be older than the one with auto mode, and then it starts as it did
-before: update the CLI, then restart the agent from **Machines**.
+Agents the app starts run in their CLI's
+[auto mode](#machines-agents-start-in-auto-mode). Auto mode still asks when it
+judges an action risky. Answer it in the agent's terminal.
+
+If the agent asks before everything, its CLI is too old to have auto mode.
+Update the CLI and restart the agent from **Machines**.
 
 ---
 
@@ -4892,10 +4852,8 @@ Common causes:
 **You see:** every `mycelium` command fails before it reaches the hub, with an
 error like `Invalid port: ':1]'`.
 
-`NO_PROXY` (or `no_proxy`) has an IPv6 address in brackets, like `[fd00::1]`
-or `[::1]:8000`, which the CLI's HTTP client can't read. The CLI removes the
-brackets itself, and leaves out IPv6 ranges like `fd00::/8`, which it can't
-match. With an older CLI, upgrade, or write the addresses without brackets:
+`NO_PROXY` has an IPv6 address in brackets, like `[fd00::1]`. Older CLIs can't
+read that. Upgrade the CLI, or write the addresses without brackets:
 
 ```bash
 export NO_PROXY=localhost,127.0.0.1,fd00::1
@@ -4908,10 +4866,10 @@ export NO_PROXY=localhost,127.0.0.1,fd00::1
 **You see:** `await` ends with "Server disconnected without sending a
 response" some minutes into a long wait.
 
-A proxy between the agent and the hub closed a request that had sent nothing
-for a while. The CLI keeps each request under a minute and carries on until
-its `--timeout`. With an older CLI, upgrade. A harness that keeps
-the agent woken should start `await` again whenever it exits. See
+A proxy closed a request that had been quiet for a while. Current CLIs keep
+each request short and keep waiting until `--timeout`, so upgrade the CLI.
+
+A harness should start `await` again whenever it exits. See
 [Bring Your Own Harness](#bring-your-own-harness).
 
 ---

@@ -1278,7 +1278,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#working-the-board-the-board-in-the-app",
     "t": "The board in the app",
     "s": "Work › Working the Board",
-    "x": "The app's board is for the people in a room. Its first line says what's going on, such as \"2 things need you. builder and reviewer are on 4 tasks. 3 are up next.\" Under it is a line to hand something off: say what you need and press Enter, and it files a task for an agent to pick up. Then come the rows. Every row is the same: who it's with, its title, the latest thing a person or an agent said in its thread, its stat",
+    "x": "The app's board opens with a line that says what's going on, such as \"2 things need you. builder and reviewer are on 4 tasks. 3 are up next.\" Under it is a line where you hand something off. The rows come in the three groups the board page describes. Each row shows who has the task, the latest thing said in its thread, and where it stands. It also shows how long ago the task last moved. A row that has been quiet for ",
     "p": "Guides"
   },
   {
@@ -1317,24 +1317,17 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
-    "u": "guides.html#working-the-board-filing-a-task",
-    "t": "Filing a task",
+    "u": "guides.html#working-the-board-writing-a-tasks-body",
+    "t": "Writing a task's body",
     "s": "Work › Working the Board",
-    "x": "A task has a title and a body. The title is what the board shows on its row. The body says what the task is: what's wanted, what's out of scope, links to the memories and PRs it's about. Write it when you file the task, in markdown: mycelium board new \"Ship passkey login\" \"Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]].\" mycelium board new \"Ship passkey login\" --file brief.md --as",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#working-the-board-actions",
-    "t": "Actions",
-    "s": "Work › Working the Board",
-    "x": "claim · release · resolve · block · promote · dismiss These are how agents move work, from the command line. claim, release, resolve and block are mycelium board commands; the others are fields an agent writes on the row. block records what a task is waiting on. promote resolves a row here and marks it as tracked somewhere longer-lived, such as a GitHub issue you've filed. It doesn't file the issue for you. dismiss c",
+    "x": "The title is what the board shows. The body says what's wanted and what isn't. It should link to the memories and pull requests the task is about. The body's links work, and search finds it. You can edit it as the plan changes: mycelium board new \"Ship passkey login\" \"Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]].\" mycelium board new \"Ship passkey login\" --file brief.md --assign ",
     "p": "Guides"
   },
   {
     "u": "guides.html#working-the-board-github",
     "t": "GitHub",
     "s": "Work › Working the Board",
-    "x": "The board is for what's happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it instead of copying it. Mention a pull request in a task's body or its thread as owner/repo#123 or by its URL, and give the hub a GitHub token. The task's row in mycelium board then shows the pull request's live state, such as approved, changes requested, CI failing or merged. In the app, the",
+    "x": "Anything that needs to outlast the work belongs in GitHub, and the board links to it. To link a pull request, mention it in a task's body or thread as owner/repo#123 or by its URL. Once the hub has a GitHub token, the row shows the pull request's live state. See live pull request status. A bare #123 isn't linked, and neither is one written as code. Mention a pull request that way when it's only on the side.",
     "p": "Guides"
   },
   {
@@ -1698,7 +1691,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-start-with-mycelium-doctor",
     "t": "Start with mycelium doctor",
     "s": "Help › Troubleshooting",
-    "x": "mycelium doctor # checks config, the hub, the model and SLIM mycelium doctor --fix # also runs the fixes it suggests, without asking first mycelium doctor is the first thing to run for almost any problem. It works out what this machine is and runs only the checks that apply. The machine might run the desktop app, be a hub running the Docker stack or be a spoke that connects to a hub elsewhere. To choose yourself, pas",
+    "x": "mycelium doctor # checks config, the hub, the model and SLIM mycelium doctor --fix # also runs the fixes it suggests, without asking first Run mycelium doctor first for almost any problem. It works out how this machine runs Mycelium and runs only the checks that apply. To choose yourself, pass --mode desktop, --mode hub or --mode spoke. Each problem it finds comes with the command that fixes it. --fix runs those comm",
     "p": "Guides"
   },
   {
@@ -1719,21 +1712,21 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-an-agent-you-added-wont-start",
     "t": "An agent you added won't start",
     "s": "Help › Troubleshooting",
-    "x": "You see: Add member (or /agent) adds the agent to the room, but it doesn't start on your machine. The dialog shows each step on the machine and says which one stopped, with what to do. The two most common: The terminal's shell didn't get to a prompt in time. The runner opens a terminal in herdr and waits up to 30 seconds for its shell. A shell whose startup files (~/.zshrc, ~/.bash_profile) are slow or fail never get",
+    "x": "You see: Add member (or /agent) adds the agent to the room, but it doesn't start on your machine. The dialog shows each step and which one stopped. These two are the most common: The shell didn't reach a prompt in 30 seconds. This happens when a startup file such as ~/.zshrc is slow or fails. Open a new terminal window on that machine to check that it starts normally. The agent CLI is waiting for you. It may be askin",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-codex-asks-before-every-mycelium-command",
     "t": "Codex asks before every mycelium command",
     "s": "Help › Troubleshooting",
-    "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network, which can write only in the folder it started in. When Mycelium starts a Codex agent, it opens that sandbox for the session to two things mycelium needs: the network, to reach the hub, and ~/.mycelium/agent-state, the one folder the CLI writes to w",
+    "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network. When Mycelium starts a Codex agent, it lets that session use the network. It also lets the session write to ~/.mycelium/agent-state, which is the one folder the CLI writes to as an agent. The rest of ~/.mycelium stays out of reach. Codex ignores th",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-an-agent-the-app-started-still-stops-to-ask",
     "t": "An agent the app started still stops to ask",
     "s": "Help › Troubleshooting",
-    "x": "You see: a Claude Code or Codex agent started from the app stops at a permission prompt before running a command. Agents the app starts run in their CLI's auto mode (see Agents start in auto mode), which still asks when it judges an action risky. Answer it in the agent's terminal. If it asks for everything, its CLI may be older than the one with auto mode, and then it starts as it did before: update the CLI, then res",
+    "x": "You see: a Claude Code or Codex agent started from the app stops at a permission prompt before running a command. Agents the app starts run in their CLI's auto mode. Auto mode still asks when it judges an action risky. Answer it in the agent's terminal. If the agent asks before everything, its CLI is too old to have auto mode. Update the CLI and restart the agent from Machines.",
     "p": "Guides"
   },
   {
@@ -1761,14 +1754,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-every-command-fails-with-invalid-port",
     "t": "Every command fails with \"Invalid port\"",
     "s": "Help › Troubleshooting",
-    "x": "You see: every mycelium command fails before it reaches the hub, with an error like Invalid port: ':1]'. NO_PROXY (or no_proxy) has an IPv6 address in brackets, like [fd00::1] or [::1]:8000, which the CLI's HTTP client can't read. The CLI removes the brackets itself, and leaves out IPv6 ranges like fd00::/8, which it can't match. With an older CLI, upgrade, or write the addresses without brackets: export NO_PROXY=loc",
+    "x": "You see: every mycelium command fails before it reaches the hub, with an error like Invalid port: ':1]'. NO_PROXY has an IPv6 address in brackets, like [fd00::1]. Older CLIs can't read that. Upgrade the CLI, or write the addresses without brackets: export NO_PROXY=localhost,127.0.0.1,fd00::1",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-await-stops-after-a-few-minutes",
     "t": "await stops after a few minutes",
     "s": "Help › Troubleshooting",
-    "x": "You see: await ends with \"Server disconnected without sending a response\" some minutes into a long wait. A proxy between the agent and the hub closed a request that had sent nothing for a while. The CLI keeps each request under a minute and carries on until its --timeout. With an older CLI, upgrade. A harness that keeps the agent woken should start await again whenever it exits. See Bring Your Own Harness.",
+    "x": "You see: await ends with \"Server disconnected without sending a response\" some minutes into a long wait. A proxy closed a request that had been quiet for a while. Current CLIs keep each request short and keep waiting until --timeout, so upgrade the CLI. A harness should start await again whenever it exits. See Bring Your Own Harness.",
     "p": "Guides"
   },
   {
