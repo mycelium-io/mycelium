@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Circle, Laptop, Loader2, Sparkles, SquareTerminal, Undo2, X } from "lucide-react";
+import { Check, Circle, FolderOpen, GitBranch, Loader2, Sparkles, SquareTerminal, Undo2, X } from "lucide-react";
 import {
   draftMemberNotes,
   launchRunnerAgent,
@@ -37,11 +37,10 @@ import {
 import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Monogram } from "@/components/ui/monogram";
 import { AgentScreen } from "@/components/agent-screen";
-import { Select } from "@/components/ui/select";
 import { FolderPicker } from "@/components/folder-picker";
+import { HarnessIcon } from "@/components/harness-icon";
 import {
   ConnectMachine,
   HostMissing,
@@ -614,7 +613,6 @@ function RunsOn({
 }) {
   const startable = launchable(runner);
   const roots = runner.roots.map(tildePath);
-  const sessionNote = startable.find((f) => f.id === frameworkId)?.note ?? null;
   return (
     <MemberFooter
       action={children}
@@ -627,70 +625,85 @@ function RunsOn({
               No agent CLI on this machine that {hostOf(runner).name} can start. Install one, then rescan.
             </p>
           ) : null}
-          {/* First line: which machine, and which agent CLI on it. */}
-          <div className="flex min-w-0 items-center gap-2 text-label text-muted-foreground">
-            <Laptop className="size-4 flex-shrink-0" aria-hidden />
-            {runners.length > 1 ? (
-              <Select
-                aria-label="Machine"
-                value={runner.id}
-                onChange={(e) => onRunner(e.target.value)}
-                className="max-w-48"
-              >
-                {runners.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {runnerName(r)}
-                  </option>
-                ))}
-              </Select>
-            ) : (
-              <span className="max-w-48 truncate text-text" title={runnerName(runner)}>
-                {runnerName(runner)}
-              </span>
-            )}
+          {/* First line: the agent CLI, each by its own mark, and the machine
+              it starts on as a quiet note (a choice only when there is one). */}
+          <div className="flex min-w-0 items-center gap-1.5">
             {startable.length > 0 && (
-              <>
-                <span className="flex-shrink-0 text-micro text-faint">with</span>
-                <Select
-                  aria-label="Agent CLI"
-                  value={frameworkId ?? ""}
-                  onChange={(e) => onFramework(e.target.value)}
-                  className="flex-shrink-0"
+              <div role="radiogroup" aria-label="Agent CLI" className="flex min-w-0 flex-wrap gap-1.5">
+                {startable.map((f) => {
+                  const active = f.id === frameworkId;
+                  const version = shortVersion(f.version);
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      aria-label={f.name}
+                      title={f.version ?? f.name}
+                      onClick={() => onFramework(f.id)}
+                      className={cn(
+                        "flex items-center gap-2 rounded-lg border py-1 pr-3 pl-2 text-left transition-colors",
+                        active
+                          ? "border-accent bg-accent/10"
+                          : "border-border hover:border-border2 hover:bg-hairline",
+                      )}
+                    >
+                      <HarnessIcon id={f.id} name={f.name} className="size-5" />
+                      <span className="leading-tight">
+                        <span className={cn("block text-label", active ? "text-text" : "text-muted-foreground")}>
+                          {f.name}
+                        </span>
+                        {version && <span className="block font-mono text-micro text-faint">{version}</span>}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <span className="ml-auto flex flex-shrink-0 items-center gap-1 text-micro text-faint">
+              on
+              {runners.length > 1 ? (
+                <select
+                  aria-label="Machine"
+                  value={runner.id}
+                  onChange={(e) => onRunner(e.target.value)}
+                  className="max-w-40 cursor-pointer truncate bg-transparent text-muted-foreground outline-none hover:text-text"
                 >
-                  {startable.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                      {shortVersion(f.version) ? ` ${shortVersion(f.version)}` : ""}
+                  {runners.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {runnerName(r)}
                     </option>
                   ))}
-                </Select>
-                {/* What its session may do, when the runner says (Codex's opened sandbox). */}
-                {sessionNote && (
-                  <span className="min-w-0 truncate text-micro text-faint" title={sessionNote}>
-                    {sessionNote}
-                  </span>
-                )}
-              </>
-            )}
-            <RescanButton runner={runner} iconOnly />
+                </select>
+              ) : (
+                <span className="max-w-40 truncate text-muted-foreground" title={runnerName(runner)}>
+                  {runnerName(runner)}
+                </span>
+              )}
+              <RescanButton runner={runner} iconOnly />
+            </span>
           </div>
         </>
       }
     >
-      {/* Second line: the folder it works in, with the room to read the path. */}
-      <label htmlFor="launch-folder" className="flex-shrink-0 text-micro text-faint">
-        Folder
-      </label>
-      <input
-        id="launch-folder"
-        list="launch-folder-roots"
-        value={folder}
-        onChange={(e) => onFolder(e.target.value)}
-        spellCheck={false}
-        placeholder={roots[0] ?? "~/code/project"}
-        title={roots.length ? `Inside ${roots.join(" or ")}` : undefined}
-        className={cn(fieldClass, "min-w-0 flex-1 py-1.5 font-mono")}
-      />
+      {/* Second line: the folder it works in, and whether it gets a branch of its own. */}
+      <div className={cn(fieldClass, "flex min-w-0 flex-1 items-center gap-1.5 py-0 focus-within:border-accent")}>
+        <FolderOpen className="size-3.5 flex-shrink-0 text-faint" aria-hidden />
+        <label htmlFor="launch-folder" className="sr-only">
+          Folder
+        </label>
+        <input
+          id="launch-folder"
+          list="launch-folder-roots"
+          value={folder}
+          onChange={(e) => onFolder(e.target.value)}
+          spellCheck={false}
+          placeholder={roots[0] ?? "~/code/project"}
+          title={roots.length ? `Inside ${roots.join(" or ")}` : undefined}
+          className="min-w-0 flex-1 bg-transparent py-1.5 font-mono text-text outline-none placeholder:text-faint"
+        />
+      </div>
       <datalist id="launch-folder-roots">
         {roots.map((r) => (
           <option key={r} value={r} />
@@ -702,13 +715,23 @@ function RunsOn({
         onPick={(path) => onFolder(tildePath(path))}
       />
       {startsInHerdr(runner) && (
-        <label
-          className="flex flex-shrink-0 items-center gap-1.5 text-micro text-muted-foreground"
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={worktree}
+          aria-label="Own worktree"
           title="Start it in a git worktree of this folder, on a branch of its own"
+          onClick={() => onWorktree(!worktree)}
+          className={cn(
+            "flex h-8 flex-shrink-0 items-center gap-1.5 rounded-md border px-2 text-label transition-colors",
+            worktree
+              ? "border-accent bg-accent/10 text-text"
+              : "border-border text-muted-foreground hover:border-border2 hover:text-text",
+          )}
         >
-          <Checkbox checked={worktree} onCheckedChange={(v) => onWorktree(v === true)} />
-          Own worktree
-        </label>
+          <GitBranch className={cn("size-3.5", worktree ? "text-accent" : "text-faint")} aria-hidden />
+          Worktree
+        </button>
       )}
     </MemberFooter>
   );
