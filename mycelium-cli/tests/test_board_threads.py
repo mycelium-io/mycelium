@@ -69,14 +69,17 @@ def _hub(
     memories: list[dict],
     posts: list | None = None,
     keyed: dict[str, dict] | None = None,
-    listed: dict[str, list[dict]] | None = None,
+    older: list[dict] | None = None,
 ):
     """Stand in for every hub read the board makes, plus the write it may do.
 
-    ``keyed`` is the by-key memory read, which is how a chat verb reaches a
-    memory the board never projects. A key absent from it 404s. ``listed`` is
-    a namespace's whole list (``memory?prefix=work/&limit=1000``), by namespace.
+    ``memories`` are the room's recently changed ones, which the log reads
+    (``memory?limit=50``); the board reads each of its namespaces whole, which
+    adds ``older``, the tasks that haven't changed lately. ``keyed`` is the
+    by-key memory read, which is how a chat verb reaches a memory the board
+    never projects. A key absent from it 404s.
     """
+    every = memories + (older or [])
     fake_config = SimpleNamespace(
         server=SimpleNamespace(api_url="http://localhost:8000"),
         get_active_room=lambda: ROOM,
@@ -105,8 +108,10 @@ def _hub(
         f"/api/rooms/{ROOM}/sessions/members": {"members": []},
         f"/api/rooms/{ROOM}/messages?limit=300": {"messages": []},
         **{
-            f"/api/rooms/{ROOM}/memory?prefix={namespace}/&limit=1000": rows
-            for namespace, rows in (listed or {}).items()
+            f"/api/rooms/{ROOM}/memory?prefix={namespace}/&limit=1000": [
+                m for m in every if m["key"].startswith(f"{namespace}/")
+            ]
+            for namespace in board_cmd.LIVE_NAMESPACES
         },
     }
 
@@ -265,20 +270,22 @@ QUIET = {
 }
 
 
-class TestActionsOnATaskTheBoardReadLeavesOut:
-    """resolve, claim, release and block find any live task by key or thread,
-    not just the ones among the room's most recently changed memories."""
+class TestATaskThatHasntChangedLately:
+    """The board lists, and resolve, claim, release and block find, every live
+    task, not just the ones among the room's most recently changed memories."""
 
     def _quiet_hub(self, monkeypatch: pytest.MonkeyPatch) -> list:
         posts: list = []
-        _hub(
-            monkeypatch,
-            memories=[_unit()],
-            posts=posts,
-            keyed={QUIET_KEY: {k: v for k, v in QUIET.items() if k != "key"}},
-            listed={"work": [_unit(), QUIET]},
-        )
+        _hub(monkeypatch, memories=[_unit()], posts=posts, older=[QUIET])
         return posts
+
+    def test_the_board_lists_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._quiet_hub(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["--filter", "all"], env={"COLUMNS": "200"})
+        assert result.exit_code == 0, result.output
+        # Both tasks: the recent one and the quiet one, elided, held by reviewer.
+        assert "Actions 2" in result.output
+        assert "y-when  held @reviewer" in result.output
 
     @pytest.mark.parametrize("typed", [QUIET_KEY, f"memory:{QUIET_KEY}", "5bd40de8"])
     def test_resolve_finds_it_by_key_or_thread(
