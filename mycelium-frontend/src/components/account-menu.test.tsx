@@ -29,10 +29,11 @@ const session = (over: object) => ({
 });
 
 describe("<AccountMenu />", () => {
-  it("puts Sign in in the corner when the hub offers a sign-in you haven't made", () => {
+  it("offers Sign in from its menu when the hub offers a sign-in you haven't made", () => {
     const s = session({ oidcConfigured: true });
     auth.mockReturnValue(s);
     render(<AccountMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /@foobar/ }));
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(s.login).toHaveBeenCalledOnce();
   });
@@ -44,11 +45,14 @@ describe("<AccountMenu />", () => {
     expect(screen.getByRole("button", { name: "Choose your name" })).toBeInTheDocument();
   });
 
-  it("shows no Sign in button once you're signed in", () => {
-    auth.mockReturnValue(session({ authRequired: true, oidcConfigured: true, signedIn: true, handle: "julia" }));
+  it("offers Sign out from its menu once you're signed in", () => {
+    const s = session({ authRequired: true, oidcConfigured: true, signedIn: true, handle: "julia" });
+    auth.mockReturnValue(s);
     render(<AccountMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /@julia/ }));
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
-    expect(screen.getByRole("button", { name: /@julia/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(s.logout).toHaveBeenCalledOnce();
   });
 });
 

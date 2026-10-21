@@ -140,93 +140,83 @@ export function AccountMenu() {
   const label = me ? `You are ${myName ? `${myName} (@${me})` : `@${me}`}` : "Choose your name";
 
   return (
-    <>
-      {/* Where people look for it: the corner, in words, whenever this hub
-          offers a sign-in you haven't made. Sign out is in the menu. */}
-      {!signedIn && oidcConfigured && (
-        <Button variant="ghost" size="sm" onClick={login} className="text-text">
-          <LogIn className="size-3.5" />
-          Sign in
-        </Button>
-      )}
-      <Popover open={open} onOpenChange={o => show(o)}>
-        <Tooltip content={label} side="bottom">
-          <PopoverTrigger
-            aria-label={label}
-            className="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-hairline"
-          >
-            {me ? (
-              <Monogram handle={me} color="var(--avatar-neutral)" className="size-5 text-[8px]" />
-            ) : (
-              <UserRound className="size-3.5 text-muted-foreground" />
-            )}
-          </PopoverTrigger>
-        </Tooltip>
+    <Popover open={open} onOpenChange={o => show(o)}>
+      <Tooltip content={label} side="bottom">
+        <PopoverTrigger
+          aria-label={label}
+          className="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-hairline"
+        >
+          {me ? (
+            <Monogram handle={me} color="var(--avatar-neutral)" className="size-5 text-[8px]" />
+          ) : (
+            <UserRound className="size-3.5 text-muted-foreground" />
+          )}
+        </PopoverTrigger>
+      </Tooltip>
 
-        <PopoverContent className="w-72 rounded-lg p-0">
-          {view === "menu" && me && (
-            <MenuView
-              me={me}
-              user={record}
-              signedIn={signedIn}
-              canSignIn={oidcConfigured}
-              onGo={setView}
-              onSettings={() => {
-                setOpen(false);
-                router.push(settingHref("general"));
-              }}
-              onSignIn={login}
-              onSignOut={async () => {
-                setOpen(false);
-                await logout();
-              }}
-            />
-          )}
-          {view === "switch" && !signedIn && (
-            <SwitchView
-              me={me}
-              users={users}
-              canSignIn={oidcConfigured}
-              onSignIn={login}
-              onBack={me ? () => setView("menu") : undefined}
-              onPick={async (handle, isNew) => {
-                if (isNew) {
-                  try {
-                    await createUser({ handle });
-                  } catch (err) {
-                    // The name still works in this browser; the hub record can follow.
-                    logFetchError("createUser")(err);
-                  }
-                  refresh();
+      <PopoverContent className="w-72 rounded-lg p-0">
+        {view === "menu" && me && (
+          <MenuView
+            me={me}
+            user={record}
+            signedIn={signedIn}
+            canSignIn={oidcConfigured}
+            onGo={setView}
+            onSettings={() => {
+              setOpen(false);
+              router.push(settingHref("general"));
+            }}
+            onSignIn={login}
+            onSignOut={async () => {
+              setOpen(false);
+              await logout();
+            }}
+          />
+        )}
+        {view === "switch" && !signedIn && (
+          <SwitchView
+            me={me}
+            users={users}
+            canSignIn={oidcConfigured}
+            onSignIn={login}
+            onBack={me ? () => setView("menu") : undefined}
+            onPick={async (handle, isNew) => {
+              if (isNew) {
+                try {
+                  await createUser({ handle });
+                } catch (err) {
+                  // The name still works in this browser; the hub record can follow.
+                  logFetchError("createUser")(err);
                 }
-                setPrincipal(handle);
-                setView("menu");
-              }}
-              onClear={() => {
-                setPrincipal("");
-                setOpen(false);
-              }}
-            />
-          )}
-          {view === "profile" && me && (
-            <ProfileView
-              me={me}
-              user={record}
-              teamSuggestions={teams.map(t => t.team)}
-              onBack={() => setView("menu")}
-              onSaved={() => {
                 refresh();
-                setView("menu");
-              }}
-            />
-          )}
-          {view === "terminal" && me && (
-            <TerminalView command={iamCommand(me, record)} onBack={() => setView("menu")} />
-          )}
-          {view === "about" && <AboutView onBack={me ? () => setView("menu") : undefined} />}
-        </PopoverContent>
-      </Popover>
-    </>
+              }
+              setPrincipal(handle);
+              setView("menu");
+            }}
+            onClear={() => {
+              setPrincipal("");
+              setOpen(false);
+            }}
+          />
+        )}
+        {view === "profile" && me && (
+          <ProfileView
+            me={me}
+            user={record}
+            teamSuggestions={teams.map(t => t.team)}
+            onBack={() => setView("menu")}
+            onSaved={() => {
+              refresh();
+              setView("menu");
+            }}
+          />
+        )}
+        {view === "terminal" && me && (
+          <TerminalView command={iamCommand(me, record)} onBack={() => setView("menu")} />
+        )}
+        {view === "about" && <AboutView onBack={me ? () => setView("menu") : undefined} />}
+      </PopoverContent>
+    </Popover>
   );
 }
 
