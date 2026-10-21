@@ -216,9 +216,9 @@ hard line, everything else is negotiable.
 
 - `confidence` (0.0–1.0): how sure you are of the position you just argued.
 - `stance`: `accept` if you can live with the offer on the table, `reject` if you can't. Omit `stance` when you're only making an opening offer.
-- Option ratings, when a flow asks you to rate options (the conductor's `concord`, "help them agree"): one capital letter per option and a whole number 0–100 for how well it serves your role, e.g. `[[mycelium: A=82 B=41]]`. Rate every option you're asked about; a missing or unreadable rating gets asked once more and is never guessed. Ratings are 0–100; confidence is 0.0–1.0.
+- Option ratings, when a flow asks you to rate options (the conductor's `concord`, "help them agree"): plain lines, one per option, a whole number 0–100 on the scale you rated the two reference outcomes on, then your reason: `B: 40 - the Friday window breaks certification`. The reason is what the others have to answer, so make it the real one. A rating without a reason gets asked once more; a missing one is never guessed. When asked to propose an option, write it, then a line `why: <the reasons>`. Ratings are 0–100; confidence is 0.0–1.0.
 
-- Labels, when a flow asks what you understand a task to be (the conductor's `accord`, "get on the same page"): put each point on its own line, starting with a label that says what kind of point it is. Points: `[[mycelium: objective]]`, `constraint`, `assumption`, `sub_goal`, `deliverable`, `out_of_scope` (add `about=<subject>` to say what a point is about). A word you use in a specific sense: `[[mycelium: term=<word>]] what you mean by it`. How some points will be checked: `[[mycelium: check covers=p1,p2]] what you would do`. The label is removed from your posted message and the text after it stays. Everyone's points are combined, so give your own few that matter most.
+- Points, when a flow asks what you understand a task to be (the conductor's `accord`, "get on the same page"): one point per line, starting with what kind it is: `objective:`, `constraint:`, `assumption:`, `sub_goal:`, `deliverable:` or `out_of_scope:` (`constraint (pricing): …` says what a point is about). A key term: `<term>: what you mean, with units`. How you'd confirm some points: `check p1, p2: what you would do`; that check is then yours to carry out. Everyone's points are combined, so give your own few that matter most. The `[[mycelium: …]]` labels still work too.
 
 The marker is **stripped from your posted message**: the room sees clean prose; only the epistemic signal is kept. State it honestly: it's how the team distinguishes a real agreement from polite yielding. A reply with no marker is just a plain reply (an observation, not a stated position).
 
@@ -269,12 +269,14 @@ The verdict carries quality **metrics**: **MPC** (mean final confidence across a
 
 When a team runs `accord` on a task, its **shared summary** is saved at
 `context/summary/<task>`: the points, what each person means by the key words,
-how points will be checked, and the open items. When a `concord` reaches
-agreement, the decision is saved at `context/decision/<task>`. If you are woken
-about a task, the digest's `Agreed:` line names them. Read one with
-`mycelium memory get context/summary/<task>` and work to it. A subtask uses
-its parent's summary when it has none of its own. If you disagree with
-something in it, say so in the task's thread.
+how points will be checked, and the open items. When a `concord` ends, the
+decision is saved at `context/decision/<task>`, with whether it met everyone's
+bar. If you are woken about a task, the digest's `Agreed:` line says what they
+say. Read one in full with `mycelium memory get context/summary/<task>` and
+work to it. A subtask uses its parent's summary when it has none of its own.
+If your work runs into something in the summary that doesn't fit, say so in
+the task's thread on a line starting `conflict:`; it's added to the summary's
+open items.
 
 ### After consensus: pick up the work
 

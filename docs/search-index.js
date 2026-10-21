@@ -451,14 +451,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#conductor-helping-members-agree",
     "t": "Helping members agree",
     "s": "Conductor",
-    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @builder @reviewer @julia: refund double charges automatically, or send them to support?\" Suggest. Everyone suggests one option, and each option gets a letter. Rate. Everyone rates every option from 0 to 100",
+    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @builder @reviewer @julia: refund double charges automatically, or send them to support? bad: customers wait days and we refund real orders ideal: true duplicates go back the same day and nothing else does\" ",
     "p": "Engines"
   },
   {
     "u": "engines.html#conductor-getting-on-the-same-page",
     "t": "Getting on the same page",
     "s": "Conductor",
-    "x": "Before work starts, accord gets everyone to the same understanding of the task: mycelium board coordinate work/acme-renewal conductor \\ \"accord @success @finance @legal: agree what the Acme renewal is before we start\" Say what the task is. Each member gives the points that matter most to them. Each point goes on its own line after a label: [[mycelium: objective]] Renew Acme on terms finance can sign. [[mycelium: cons",
+    "x": "Before work starts, accord gets everyone to the same understanding of the task: mycelium board coordinate work/acme-renewal conductor \\ \"accord @success @finance @legal: agree what the Acme renewal is before we start terms: renewal, discount\" Fix the key terms. These are the words the team could easily mean different things by. Name them after terms: in the message. Otherwise each member names up to three, and the on",
     "p": "Engines"
   },
   {
@@ -2840,14 +2840,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#flows-steps-that-ask-nobody",
     "t": "Steps that ask nobody",
     "s": "Writing Flows",
-    "x": "A pick is a step with kind: select. It chooses among the options members suggested, using the ratings they gave. It takes a threshold and max_repairs. A threshold of 0.7 means the pick passes only if everyone rates it 70 or more. Its next map picks the next step by how the pick went: feasible: everyone rated the pick and every rating meets the threshold. infeasible: someone rated it below the threshold. They can be a",
+    "x": "A pick is a step with kind: select. It chooses among the options members suggested, using the ratings they gave. Each rating is placed between that member's ratings of the two reference outcomes, when the flow collected them. It takes a threshold and max_repairs. A threshold of 0.6 means the pick passes only if it's at least 60% of the way from each member's bad outcome to their ideal. The message that starts a run c",
     "p": "Reference"
   },
   {
     "u": "reference.html#flows-placeholders",
     "t": "Placeholders",
     "s": "Writing Flows",
-    "x": "Prompts can use these: Placeholder Filled with {ask} The question from the message that started the flow. {task} The task's key, such as work/rotate-signing-key. {title} The task's title, such as \"Rotate the signing key\". {reply} The last answer. {replies} Every member's latest answer, one per line. {handles} The members taking part. {round}, {rounds} The current round and the total. {options}, {option_labels} Every ",
+    "x": "Prompts can use these: Placeholder Filled with {ask} The question from the message that started the flow. {task} The task's key, such as work/rotate-signing-key. {title} The task's title, such as \"Rotate the signing key\". {reply} The last answer. {replies} Every member's latest answer, one per line. {handles} The members taking part. {round}, {rounds} The current round and the total. {options}, {rating_lines} Every o",
     "p": "Reference"
   },
   {

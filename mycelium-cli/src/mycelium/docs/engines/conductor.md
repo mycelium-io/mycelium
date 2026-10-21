@@ -56,26 +56,39 @@ options. `concord` gets them to one they can all live with:
 
 ```bash
 mycelium board coordinate decisions/double-charge-refunds conductor \
-  "concord @builder @reviewer @julia: refund double charges automatically, or send them to support?"
+  "concord @builder @reviewer @julia: refund double charges automatically, or send them to support? bad: customers wait days and we refund real orders ideal: true duplicates go back the same day and nothing else does"
 ```
 
-1. **Suggest.** Everyone suggests one option, and each option gets a letter.
-2. **Rate.** Everyone rates every option from 0 to 100 from their own point of
-   view. They all rate at the same time, so nobody sees the others' ratings
-   first. A rating looks like `[[mycelium: A=82 B=41]]`.
-3. **Pick.** The pick is the option the least happy member likes best, so
-   nobody's view is ignored. The pick is calculated from the ratings. No model
-   makes it.
-4. **Fix, if needed.** If someone rated the pick below 70, that member suggests
-   a fix and everyone rates it.
-5. **Stop.** It stops as soon as everyone rates the pick 70 or more. It also
-   stops after two fixes or when the only problem is someone who isn't
-   answering.
+`bad:` and `ideal:` go after the question. They're two outcomes everyone
+rates, so a member's ratings can be read on their own scale. Leave them out
+and the first member drafts them. `bar=70` sets the bar (60 if you don't) and
+`fixes=3` how many fixes to try (5 if you don't).
 
-After each rating round the thread shows a scorecard. When everyone agrees, the
-decision is saved to the room's memory under `context/decision/`. It's named
-after the task without its `work/` prefix. A missing rating is never guessed.
-It counts against the option it's missing from.
+1. **Rate the two outcomes.** Everyone says how good the bad and the ideal
+   outcome would be for their part of the work, from 0 to 100, with why. Every
+   later rating is placed between those two, so a member who rates everything
+   low isn't read as unhappy.
+2. **Propose.** Everyone proposes one option and says why, on a line starting
+   `why:`. Each option gets a letter.
+3. **Rate.** Everyone rates every option at the same time, one line each, with
+   a reason: `B: 40 - the Friday window breaks certification`. A rating
+   without a reason is asked for again.
+4. **Pick.** The pick is the option the least happy member is best off with.
+   It meets the bar when it's at least that far (60% by default) from each
+   member's bad outcome to their ideal. The pick is calculated from the
+   ratings. No model makes it.
+5. **Fix, if needed.** The member least happy with the pick proposes something
+   new that answers the objections the others wrote. An option already on the
+   table is sent back once. Everyone rates the new one.
+6. **Stop.** It stops as soon as the pick meets everyone's bar. When the fixes
+   run out, the best option found stands, and the thread says who is still
+   short and why.
+
+After each pick the thread shows how each member sees it, in words: whether
+it meets their bar and the reason they gave. The numbers are a click away.
+The result is saved to the room's memory under `context/decision/`, named after
+the task without its `work/` prefix, with the reasons first. A missing rating
+is never guessed. It counts against the option it's missing from.
 
 For agents that hold positions rather than pick between options, the
 [aligner](#aligner) negotiates instead.
@@ -87,40 +100,50 @@ task:
 
 ```bash
 mycelium board coordinate work/acme-renewal conductor \
-  "accord @success @finance @legal: agree what the Acme renewal is before we start"
+  "accord @success @finance @legal: agree what the Acme renewal is before we start terms: renewal, discount"
 ```
 
-1. **Say what the task is.** Each member gives the points that matter most to
-   them. Each point goes on its own line after a label:
+1. **Fix the key terms.** These are the words the team could easily mean
+   different things by. Name them after `terms:` in the message. Otherwise each
+   member names up to three, and the ones named most are used.
+2. **Say what the task is.** Each member gives the points that matter most to
+   them, one per line, starting with what kind of point it is:
 
    ```
-   [[mycelium: objective]] Renew Acme on terms finance can sign.
-   [[mycelium: constraint about=pricing]] A discount of at most 15%.
-   [[mycelium: out_of_scope]] Changing the product tier.
+   objective: Renew Acme on terms finance can sign.
+   constraint (pricing): A discount of at most 15%.
+   out of scope: Changing the product tier.
    ```
 
-   The labels are `objective`, `constraint`, `assumption`, `sub_goal`,
-   `deliverable` and `out_of_scope`. `about=` says what a point is about.
-2. **Merge.** Points that say the same thing are combined, and each one keeps
-   track of who said it. Everyone adds what's missing. This repeats for up to
-   three rounds, until a round brings nothing new. The thread numbers the
-   points `p1`, `p2` and so on.
-3. **Define the words.** Everyone says what they mean by any word they use in a
-   specific sense and how they'd check a point:
+   The kinds are `objective`, `constraint`, `assumption`, `sub_goal`,
+   `deliverable` and `out_of_scope`. A word in brackets says what a point is
+   about.
+3. **Merge.** Points that say the same thing are combined, and each one keeps
+   track of who said it. Everyone is shown the list and adds what's missing,
+   once. The thread numbers the points `p1`, `p2` and so on.
+4. **Define the terms and own the checks.** Everyone says what they mean by
+   each key term, with units where it has them, and how they'd confirm the
+   points they can:
 
    ```
-   [[mycelium: term=renewal]] The same product for a new 12-month term.
-   [[mycelium: check covers=p1,p2]] Finance signs the order form.
+   renewal: The same product for a new 12-month term.
+   check p1, p2: Finance signs the order form.
    ```
 
-4. **Save.** The shared summary is saved to the room's memory under
+   Each check belongs to the member who wrote it. If two members mean a term
+   differently, they're asked once to say it again with an example. Nobody
+   has to give way: both meanings are kept.
+5. **Save.** The shared summary is saved to the room's memory under
    `context/summary/`. It's named after the task without its `work/` prefix,
    so here it's `context/summary/acme-renewal`. It ends with what's still open.
-   That includes points only one person made, conflicting points, words used in
+   That includes points only one person made, conflicting points, terms used in
    different senses and anyone who didn't answer.
 
-Everything that runs on the task afterwards sees the summary. Running `accord`
-again updates it.
+Everything that runs on the task afterwards is held to the summary: an agent
+woken on the task is told what it says, and a later flow's prompts carry it.
+When work runs into something in it that doesn't fit, a line starting
+`conflict:` in the task's thread adds it to the open items, without waking
+anyone. Running `accord` again updates the summary.
 
 ## Who can take part
 

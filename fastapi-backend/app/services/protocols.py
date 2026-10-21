@@ -611,7 +611,8 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 "prompt": (
                     "The options for {title}:\n\n{options}\n\n{bar_said}\n\nRate each "
                     "option for your role, on the scale you rated the two outcomes on, "
-                    "one line each with your main reason or concern:\n\n{rating_lines}\n\n"
+                    "one line each with your main reason or concern in one short "
+                    "sentence:\n\n{rating_lines}\n\n"
                     "For example `B: 40 - the Friday window breaks certification`. The "
                     "reason matters more than the number: it's what the others will "
                     "have to answer."
@@ -651,7 +652,7 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 "collect": "scores",
                 "prompt": (
                     "A new option for {title}:\n\n{new_options}\n\nRate it the same way, "
-                    "one line with your reason:\n\n{new_rating_lines}"
+                    "one line with your reason in one short sentence:\n\n{new_rating_lines}"
                 ),
                 "next": "pick",
             },
