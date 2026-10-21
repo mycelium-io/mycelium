@@ -1414,6 +1414,8 @@ struct VersionsView {
     current: String,
     release_candidates: bool,
     releases: Vec<versions::Release>,
+    /// Why the list is one kept from earlier, when GitHub couldn't be asked.
+    note: Option<String>,
 }
 
 #[tauri::command]
@@ -1423,10 +1425,12 @@ async fn app_versions(
     with_rc: bool,
 ) -> Result<VersionsView, String> {
     local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
+    let listed = versions::releases(with_rc).await?;
     Ok(VersionsView {
         current: app.package_info().version.to_string(),
         release_candidates: versions::channel() == versions::Channel::ReleaseCandidates,
-        releases: versions::releases(with_rc).await?,
+        releases: listed.releases,
+        note: listed.note,
     })
 }
 

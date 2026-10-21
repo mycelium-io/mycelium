@@ -48,6 +48,8 @@ export function AppVersionPage() {
       </Section>
       <Section title="Switch to">
         {readError && <Note tone="error">{String(readError.message ?? readError)}</Note>}
+        {/* A list kept from earlier, because GitHub couldn't be asked just now. */}
+        {view?.note && <Note>{view.note}</Note>}
         {!view && !readError && <Row label="Reading releases…" />}
         {view?.releases.length === 0 && <Row label="No releases to switch to." />}
         {view?.releases.map((r) => (

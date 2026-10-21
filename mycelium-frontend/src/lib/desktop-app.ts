@@ -101,6 +101,8 @@ export interface VersionsView {
   current: string;
   releaseCandidates: boolean;
   releases: AppRelease[];
+  /** Why the list is one kept from earlier, when GitHub couldn't be asked. */
+  note?: string | null;
 }
 
 /** What the app answers when the person said no on the machine (`CANCELLED`). */

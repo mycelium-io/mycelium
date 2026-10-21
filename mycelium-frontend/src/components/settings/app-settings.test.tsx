@@ -96,4 +96,18 @@ describe("the app's own settings, in the one Settings", () => {
     await waitFor(() => expect(sent("switch_version")).toEqual([{ tag: "v3.0.54" }]));
     expect(await screen.findByText(/Downloading 3.0.54/)).toBeInTheDocument();
   });
+
+  it("shows a kept list with why, when GitHub couldn't be asked", async () => {
+    const note =
+      "GitHub limits how often the list of releases can be read from one network, and yours has used it up. Try again in 9 minutes. Showing the list from 3 hours ago.";
+    answers.app_versions = () => ({
+      current: "3.0.55",
+      releaseCandidates: false,
+      releases: [{ tag: "v3.0.54", version: "3.0.54", prerelease: false, published: "" }],
+      note,
+    });
+    wrap(<AppVersionPage />);
+    expect(await screen.findByText(note)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Switch back" })).toBeInTheDocument();
+  });
 });
