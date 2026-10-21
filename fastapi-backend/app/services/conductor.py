@@ -203,9 +203,6 @@ class Run:
     reasons: dict[str, dict[str, str]] = field(default_factory=dict)
     #: What the summon set: the bar, the fixes, the reference outcomes, the terms.
     settings: Settings = field(default_factory=Settings)
-    #: Where the two reference outcomes came from: the summon, a member's
-    #: draft, or a plain stand-in when neither gave them.
-    outcomes_from: str = ""
     #: ``{member: (bad, ideal)}``, each member's ratings of the two reference outcomes.
     anchors: dict[str, tuple[int, int]] = field(default_factory=dict)
     #: The key terms of an accord run, from the summon or as members named them.
@@ -333,8 +330,10 @@ class Run:
             options=self._listed(self.options) or "(none yet)",
             new_options=self._listed(fresh) or "(none)",
             new_labels=" ".join(f"{o.label}=.." for o in fresh),
-            rating_lines="\n".join(f"{o.label}: <0-100> - <why>" for o in self.options),
-            new_rating_lines="\n".join(f"{o.label}: <0-100> - <why>" for o in fresh),
+            # Each line carries the option's name, so a reply reads as what it
+            # rates, not as a bare letter.
+            rating_lines=_rating_lines(self.options),
+            new_rating_lines=_rating_lines(fresh),
             scores=choosing.scorecard(self.last_pick) if self.last_pick else "",
             standing="\n".join(f"- {v}" for v in choosing.views(pick, pick["pick"]))
             if pick.get("pick")
@@ -375,7 +374,8 @@ class Run:
         said = choosing.verdict(at, self.bar())
         because = f", because {choosing.mid_sentence(why)}" if why else ""
         return (
-            f"For you, {pick.get('pick')} is {said}{because}. You're the one furthest from the bar."
+            f"For you, {choosing.named(str(pick.get('pick')), str(pick.get('text') or ''))} is "
+            f"{said}{because}. You're the one furthest from the bar."
         )
 
     def flow(self) -> dict[str, Any]:
@@ -461,6 +461,11 @@ def bind_roles(protocol: Protocol, handles: list[str]) -> dict[str, str] | None:
     if len(handles) < len(protocol.roles):
         return None
     return dict(zip(protocol.roles, handles, strict=False))
+
+
+def _rating_lines(options: list[choosing.Option]) -> str:
+    """The lines a member fills in to rate ``options``, each naming its option."""
+    return "\n".join(f"{choosing.named(o.label, o.text)}: <0-100> - <why>" for o in options)
 
 
 def _sentence(text: str) -> str:
@@ -718,7 +723,14 @@ class ConductorEngine:
             similar=self.similarity(),
             settings=set_by_summon,
             key_terms=list(set_by_summon.terms),
-            outcomes_from="summon" if set_by_summon.bad and set_by_summon.ideal else "",
+        )
+        # The two ends any agreement is measured between: no agreement at all,
+        # and each member's own choice. They need nobody to write them; a
+        # summon's `bad:` / `ideal:` names others in their place.
+        about = run.title or run.task or "this task"
+        run.settings.bad = run.settings.bad or f"nothing is agreed and {about} stays open"
+        run.settings.ideal = (
+            run.settings.ideal or f"the outcome you'd choose for {about} if it were up to you alone"
         )
         if not run.similar:
             run.frame.similarity = False
@@ -817,15 +829,7 @@ class ConductorEngine:
         said = [f"Running {run.protocol.name} with {cls._cast(run)}."]
         select = next((s for s in run.protocol.steps if s.kind == "select"), None)
         if select is not None:
-            if run.outcomes_from == "summon":
-                said.append(run.bar_said())
-            else:
-                said.append(
-                    f"The bar: the option picked has to be at least {round(run.bar() * 100)}% "
-                    "of the way from a bad outcome to an ideal one for every member. "
-                    f"{run.handles[0]} will draft those two outcomes first, since the summon "
-                    "didn't give them (`bad: …` and `ideal: …` after the question)."
-                )
+            said.append(run.bar_said())
             default = run.settings.bar is None and select.threshold == protocols.DEFAULT_THRESHOLD
             if default:
                 said.append(
@@ -907,10 +911,6 @@ class ConductorEngine:
                 )
                 step = protocol.step(step.edge(None))
                 continue
-            if step.collect == "anchors" and not run.outcomes_from:
-                if run.steps_taken >= cap:
-                    return "rejected", f"hit the step cap ({cap}) at `{step.id}`"
-                await self._draft_outcomes(managed, run, ep, me, cap)
             if run.steps_taken >= cap:
                 return "rejected", f"hit the step cap ({cap}) at `{step.id}`"
             run.steps_taken += 1
@@ -939,73 +939,6 @@ class ConductorEngine:
                 await self._say(managed, run.episode, me, line, line=edge_event(step, stance, who))
             self._stepped(managed.room, run.episode, None)
             step = protocol.step(nxt)
-
-    async def _draft_outcomes(
-        self,
-        managed: ManagedRoomChannel,
-        run: Run,
-        ep: episode_state.EpisodeState,
-        me: str,
-        cap: int,
-    ) -> None:
-        """Have the first member draft the two reference outcomes the summon
-        didn't give, as states of the world; plain stand-ins when it can't."""
-        drafter = run.handles[0]
-        run.steps_taken += 1
-        title = run.title or run.task or "this task"
-        prompt = (
-            f"{run.protocol.name} · outcomes · turn {run.steps_taken} of {cap} · {drafter}\n\n"
-            f"Before the team rates anything for {title}: {run.ask}\n\n"
-            "Write two outcomes everyone will rate the same way, as states of the world, "
-            "not actions: one that would be bad for the team and one that would be ideal. "
-            "One line each:\n\nbad: <a bad outcome>\nideal: <an ideal outcome>\n\n"
-            "Keep them neutral: they're reference points for everyone, not your position."
-        )
-        self._manager.hold_floor(managed.room, run.episode, holder=me, speakers=[drafter])
-        run.answers = {}
-        line = {"event": "turn", "protocol": run.protocol.name, "step": "outcomes", "to": drafter,
-                "turn": run.steps_taken, "cap": cap}  # fmt: skip
-        await self._turn(
-            managed,
-            ep,
-            me,
-            run,
-            drafter,
-            prompt,
-            {"step": "outcomes", "protocol": run.protocol.name, LINE_KEY: line},
-        )
-        drafted = (
-            markers.outcome_lines(run.replies.get(drafter, "")) if drafter in run.answers else {}
-        )
-        if drafted.get("bad") and drafted.get("ideal"):
-            run.settings.bad, run.settings.ideal = drafted["bad"], drafted["ideal"]
-            run.outcomes_from = "drafted"
-            said = f"The two reference outcomes, drafted by {drafter}: bad: {run.settings.bad}; ideal: {run.settings.ideal}."
-        else:
-            run.settings.bad = run.settings.bad or f"nothing is agreed and {title} stays open"
-            run.settings.ideal = (
-                run.settings.ideal
-                or f"the outcome you'd choose for {title} if it were up to you alone"
-            )
-            run.outcomes_from = "stand-in"
-            said = (
-                f"No outcomes came back from {drafter}, so the reference points are plain "
-                f"ones: bad: {run.settings.bad}; ideal: {run.settings.ideal}."
-            )
-        ep.trace.append(
-            {
-                "step": "outcomes",
-                "turn": run.steps_taken,
-                "asked": [drafter],
-                "outcomes": {
-                    "bad": run.settings.bad,
-                    "ideal": run.settings.ideal,
-                    "from": run.outcomes_from,
-                },
-                "at": datetime.now(UTC).isoformat(),
-            }
-        )
-        await self._say(managed, run.episode, me, f"{said} {run.bar_said()}")
 
     async def _select(
         self,
@@ -1563,7 +1496,7 @@ class ConductorEngine:
             # Restate what's being rated: the re-ask arrives on its own, and a
             # member can't rate options it can't see.
             fresh = run.new_options()
-            lines = "\n".join(f"{o.label}: <0-100> - <why>" for o in fresh)
+            lines = _rating_lines(fresh)
             ask = (
                 "I couldn't read a rating with a reason for each of these options:\n\n"
                 f"{run._listed(fresh)}\n\nRate each for your role, on the scale you rated "

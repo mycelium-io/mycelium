@@ -56,6 +56,26 @@ class Option:
     why: dict[str, str] = field(default_factory=dict)
 
 
+#: How many of an option's first words make its name.
+NAME_WORDS = 5
+
+
+def short_name(text: str) -> str:
+    """An option's name, for a reader who sees only its letter: its first few
+    words, cut at the end of its first sentence or clause, with ``…`` when cut.
+    Brackets are dropped, since the name sits inside a pair."""
+    first = re.split(r"(?<=[.;:])\s", text.strip(), maxsplit=1)[0].rstrip(".;:")
+    words = re.sub(r"[()\[\]]", "", first).split()
+    cut = words[:NAME_WORDS]
+    whole = len(cut) == len(words) and first == text.strip().rstrip(".")
+    return " ".join(cut).rstrip(",") + ("" if whole else "…")
+
+
+def named(label: str, text: str) -> str:
+    """``B (Ship at once, and cancel…)``: a letter a reader can follow."""
+    return f"{label} ({short_name(text)})"
+
+
 def same_text(a: str, b: str) -> bool:
     """Two proposals that differ only in spacing and case are one."""
     squash = lambda s: re.sub(r"\s+", " ", s).strip().lower()  # noqa: E731
@@ -264,7 +284,9 @@ def scorecard(record: dict[str, Any]) -> str:
         lines += [f"- {v}" for v in views(record, o["label"])]
         blocks.append("\n".join(lines))
     if chosen:
-        blocks.append(f"Where {chosen} stands: {summary(record)}")
+        blocks.append(
+            f"Where {named(chosen, str(record.get('text') or ''))} stands: {summary(record)}"
+        )
     blocks.append(numbers(record))
     return "\n\n".join(blocks)
 

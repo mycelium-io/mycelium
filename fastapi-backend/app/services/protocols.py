@@ -570,7 +570,7 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
             "objections, until it meets everyone's bar or the best found stands."
         ),
         "roles": [],
-        # A safety net: outcomes drafted, anchors, propose, rate, 5 x (fix,
+        # A safety net: anchors, propose, rate, 5 x (fix,
         # re-rate), plus re-asks. max_repairs is what bounds the fixes.
         "max_steps": 20,
         "steps": [
@@ -613,7 +613,8 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                     "option for your role, on the scale you rated the two outcomes on, "
                     "one line each with your main reason or concern in one short "
                     "sentence:\n\n{rating_lines}\n\n"
-                    "For example `B: 40 - the Friday window breaks certification`. The "
+                    "Keep the option's name in brackets, so the thread can follow: "
+                    "`B (Ship on Friday): 40 - the Friday window breaks certification`. The "
                     "reason matters more than the number: it's what the others will "
                     "have to answer."
                 ),

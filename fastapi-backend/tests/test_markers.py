@@ -188,11 +188,14 @@ def test_a_rating_line_carries_its_reason():
         "- **B**: 20 — the Friday window breaks certification\n"
         "C = 40, fine but slow\n"
         "D: 101 - too big to be a rating\n"
+        "E (Hold 30 minutes, 50% of orders…): 65 - a short wait is fine\n"
     )
     assert markers.rating_lines(text) == {
         "A": (72, "the cap is too low for enterprise refunds"),
         "B": (20, "the Friday window breaks certification"),
         "C": (40, "fine but slow"),
+        # The option's name in brackets is read past, numbers in it included.
+        "E": (65, "a short wait is fine"),
     }
 
 
@@ -207,14 +210,10 @@ def test_plain_ratings_and_marker_ratings_are_read_together():
     assert markers.rated_of(content) == {"A": (80, "fine"), "B": (40, "")}
 
 
-def test_the_reference_ratings_and_the_drafted_outcomes():
+def test_the_reference_ratings():
     assert markers.anchor_lines("bad: 10 - nothing ships\nIdeal: 95") == {
         "bad": (10, "nothing ships"),
         "ideal": (95, ""),
-    }
-    assert markers.outcome_lines("bad: Acme leaves\nideal: Acme renews for three years") == {
-        "bad": "Acme leaves",
-        "ideal": "Acme renews for three years",
     }
 
 

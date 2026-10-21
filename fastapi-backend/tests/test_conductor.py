@@ -1002,7 +1002,8 @@ async def test_concord_agrees_the_first_time_everyone_meets_the_bar(in_a_task):
     assert (
         "at least 60% of the way from *Acme leaves* to *Acme renews for three years at list price*"
     ) in score
-    assert "B: <0-100> - <why>" in score
+    # The line to fill in names the option, so the reply reads on its own.
+    assert "B (10% off): <0-100> - <why>" in score
     commit = channel.commit()
     assert commit.header.subkind == "converged"
     assert is_converged(commit)
@@ -1067,7 +1068,7 @@ async def test_concord_asks_only_the_least_happy_for_a_fix_then_everyone_rates_i
     fix_prompt = channel.ticks()[9][2]
     # The fixer is told where it stands in words, and what it has to answer.
     assert (
-        "For you, B is short of the bar, because 10% won't keep them past a year. "
+        "For you, B (10% off) is short of the bar, because 10% won't keep them past a year. "
         "You're the one furthest from the bar."
     ) in fix_prompt
     assert "- success: 10% won't keep them past a year" in fix_prompt
@@ -1080,7 +1081,7 @@ async def test_concord_asks_only_the_least_happy_for_a_fix_then_everyone_rates_i
     assert "C. 15% off for a two-year term" in rescore_prompt
     assert "why (success): two years answers the one-year worry" in rescore_prompt
     assert "A. 20% off" not in rescore_prompt, "only the new option is put to a rating"
-    assert "C: <0-100> - <why>" in rescore_prompt
+    assert "C (15% off for a two-year…): <0-100> - <why>" in rescore_prompt
     commit = channel.commit()
     assert commit.payload.data["select"]["text"] == "15% off for a two-year term"
     said = _commit_text(channel)
@@ -1170,7 +1171,7 @@ async def test_a_rating_without_a_reason_is_asked_again_once_and_the_silent_neve
     reask = channel.ticks()[9][2]
     assert "I couldn't read a rating with a reason for each of these options" in reask
     # The re-ask says what it wants rated, since it arrives on its own.
-    assert "A. A text" in reask and "A: <0-100> - <why>" in reask
+    assert "A. A text" in reask and "A (A text): <0-100> - <why>" in reask
     assert ["success"] in [sorted(f.speakers) for f in manager.floor_log]
     # legal never rated: missing, not zero, and a fix can't reach it.
     (card,) = _selects(channel)
@@ -1247,36 +1248,35 @@ async def test_a_fix_that_repeats_an_option_is_sent_back_once(in_a_task):
 
 
 @pytest.mark.asyncio
-async def test_with_no_outcomes_in_the_summon_the_first_member_drafts_them(in_a_task):
-    rest = [ANCHORED, ("same idea", None), ("A: 90 - fine", None)]
-    drafted = ("bad: Acme leaves at renewal\nideal: Acme renews for three years", None)
+async def test_with_no_outcomes_in_the_summon_no_agreement_and_your_own_pick_are_the_ends(
+    in_a_task,
+):
+    """Nobody is asked to write the two outcomes: the run is measured between
+    no agreement at all and what each member would choose alone."""
     (engine, _manager, channel), directive = _concord(
-        {
-            "success": [drafted, *rest],
-            "finance": list(rest),
-            "legal": list(rest),
-        },
-        settings="",
+        {h: [ANCHORED, ("same idea", None), ("A: 90 - fine", None)] for h in CAST}, settings=""
     )
 
     outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=CAST)
 
     assert outcome == "converged"
-    assert channel.ticks()[0][:2] == ("outcomes", "success")
-    assert "success will draft those two outcomes first" in channel.said()[0]
-    anchor = channel.ticks()[1][2]
-    assert "bad: Acme leaves at renewal\nideal: Acme renews for three years" in anchor
-    assert any("drafted by success" in s for s in channel.said())
+    assert [s for s, _to, _p in channel.ticks()][:3] == ["anchor"] * 3, "no drafting turn"
+    ends = (
+        "bad: nothing is agreed and Decide the renewal offer stays open\n"
+        "ideal: the outcome you'd choose for Decide the renewal offer if it were up to you alone"
+    )
+    assert ends in channel.ticks()[0][2]
+    assert (
+        "at least 60% of the way from *nothing is agreed and Decide the renewal offer stays open*"
+    ) in channel.said()[0]
 
-    # No outcomes back from the drafter: plain stand-ins, said as such.
+    # One end named in the summon replaces only that end.
     (engine, _manager, channel), directive = _concord(
-        {"success": [("No idea.", None), *rest], "finance": list(rest), "legal": list(rest)},
-        settings="",
+        {h: [ANCHORED, ("same idea", None), ("A: 90 - fine", None)] for h in CAST},
+        settings="bad: Acme leaves",
     )
     await engine.run(ROOM, episode=THREAD, directive=directive, named=CAST)
-    assert (
-        "bad: nothing is agreed and Decide the renewal offer stays open" in (channel.ticks()[1][2])
-    )
+    assert "bad: Acme leaves\nideal: the outcome you'd choose" in channel.ticks()[0][2]
 
 
 @pytest.mark.asyncio

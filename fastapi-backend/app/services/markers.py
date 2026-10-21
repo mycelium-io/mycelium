@@ -164,19 +164,19 @@ _LEAD = r"^[ \t]*(?:[-*•][ \t]+)?\**"
 #: en or em dash, a colon, a comma or a semicolon.
 _THEN = r"[ \t]*(?:[-–—:,;][ \t]*)?"  # noqa: RUF001
 
-#: ``B: 20 - why``, or ``B = 20, why``: one option's rating and its reason.
+#: ``B: 20 - why``, ``B (Ship at once…): 20 - why`` or ``B = 20, why``: one
+#: option's rating and its reason, with the option's name in brackets if given.
 _RATING_LINE = re.compile(
-    _LEAD + r"(?:option[ \t]+)?([A-Z])\**[ \t]*[:=][ \t]*(\d{1,3})\b(?!%)" + _THEN + r"(.*)$",
+    _LEAD
+    + r"(?:option[ \t]+)?([A-Z])\**(?:[ \t]*\([^)\n]*\))?\**[ \t]*[:=][ \t]*(\d{1,3})\b(?!%)"
+    + _THEN
+    + r"(.*)$",
     re.MULTILINE,
 )
 #: ``bad: 10 - why`` / ``ideal: 95``: a reference outcome's rating.
 _ANCHOR_LINE = re.compile(
     _LEAD + r"(bad|ideal)\**[ \t]*[:=][ \t]*(\d{1,3})\b" + _THEN + r"(.*)$",
     re.MULTILINE | re.IGNORECASE,
-)
-#: ``bad: <outcome>`` / ``ideal: <outcome>``: a drafted reference outcome.
-_OUTCOME_LINE = re.compile(
-    _LEAD + r"(bad|ideal)\**[ \t]*:[ \t]*(.+)$", re.MULTILINE | re.IGNORECASE
 )
 #: ``why: <reason>``: why an option is proposed; the option is what comes before.
 _WHY_LINE = re.compile(_LEAD + r"why\**[ \t]*:[ \t]*", re.MULTILINE | re.IGNORECASE)
@@ -225,11 +225,6 @@ def anchor_lines(text: str) -> dict[str, tuple[int, str]]:
         if value is not None:
             found[match.group(1).lower()] = (value, _reason(match.group(3)))
     return found
-
-
-def outcome_lines(text: str) -> dict[str, str]:
-    """A drafted pair of reference outcomes: ``{"bad": text, "ideal": text}``."""
-    return {m.group(1).lower(): _reason(m.group(2)) for m in _OUTCOME_LINE.finditer(text)}
 
 
 def split_why(text: str) -> tuple[str, str]:

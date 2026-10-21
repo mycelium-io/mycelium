@@ -145,6 +145,19 @@ def test_a_rating_is_said_in_words_against_the_bar():
     assert choosing.verdict(0.95, 0.6) == "close to the ideal"
 
 
+def test_an_option_is_named_by_its_first_words_so_a_letter_can_be_followed():
+    assert choosing.named("B", "10% off") == "B (10% off)"
+    assert choosing.short_name("Ship at once, and cancel the delivery if the payment fails.") == (
+        "Ship at once, and cancel…"
+    )
+    # Cut at the end of the first sentence, and brackets dropped.
+    assert choosing.short_name("Hold it. Then ship (maybe).") == "Hold it…"
+    assert (
+        choosing.short_name("Three-year renewal at list price")
+        == "Three-year renewal at list price"
+    )
+
+
 def test_a_reason_reads_mid_sentence_without_mangling_i_or_acronyms():
     assert choosing.mid_sentence("Too slow") == "too slow"
     assert (
@@ -180,11 +193,11 @@ def test_the_scorecard_leads_with_reasons_and_puts_the_numbers_last():
     assert "- finance: short of the bar, because over budget" in card
     assert "- legal: gave no rating" in card
     assert (
-        "Where A stands: finance is short of the bar, because over budget; no rating from legal."
-        in card
+        "Where A (A text) stands: finance is short of the bar, because over budget; "
+        "no rating from legal." in card
     )
     # The numbers come last, behind what they mean.
-    assert card.index("The numbers, for anyone checking") > card.index("Where A stands")
+    assert card.index("The numbers, for anyone checking") > card.index("Where A (A text) stands")
     assert "| A | 90 (90%) | 50 (50%) | ? |" in card
     assert "| B | 40 (40%) | ? | ? |" in card
     # Posted into the thread, so it names members without summoning them.
