@@ -886,77 +886,63 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines",
     "t": "Start Agents From the App",
     "s": "Agents",
-    "x": "The app can start coding agents on your own computer. It can start one agent with its own instructions or a whole swarm on a task. The program that does this is the runner, which runs on that computer. The runner also keeps your agents in touch with the room. When someone mentions an agent, gives it a turn or assigns it a task, the runner wakes it. It also tells the hub whether each agent is busy. The desktop app run",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-how-it-connects",
-    "t": "How it connects",
-    "s": "Agents › Start Agents From the App",
-    "x": "The runner only ever connects out to the hub, and the hub never reaches into your machine. When you ask for an agent in the app, the hub hands the request to the runner the next time the runner checks in, which takes a few seconds at most. It works the same whether the hub is on your laptop or on a server, and whether or not your laptop can be reached from outside. The runner looks on your PATH for the agent CLIs it ",
+    "x": "The app can start coding agents on your own computer, one at a time or as a swarm on a task. The program that does this is the runner, which runs on that computer. The runner also wakes your agents when someone mentions them, gives them a turn or assigns them a task. The desktop app runs the runner for you. Anywhere else, start it and leave it running: mycelium runner --detach # start in the background mycelium runne",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-starting-an-agent",
     "t": "Starting an agent",
     "s": "Agents › Start Agents From the App",
-    "x": "In a room, open Members → Add → Your machine and fill in these fields: Start from a role. This picks starting instructions such as reviewer, implementer or tester, or a blank page. You can save instructions you write as a role of your own, which is kept in your browser. A handle, which the room uses to mention it, such as @scout. Instructions, which say how the agent should work. They're saved in the room's memory as",
+    "x": "In a room, open Members → Add → Your machine. Start from a role or a blank page, give the agent a handle, and write its instructions. The instructions are saved in the room's memory as agents/<handle>/notes, and the agent reads them when it starts. You can edit them later. Press Add to room. The agent is added to the room and opens in a herdr terminal. Closing its terminal or pressing Stop on the Machines page stops ",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-agents-start-in-auto-mode",
     "t": "Agents start in auto mode",
     "s": "Agents › Start Agents From the App",
-    "x": "Claude Code and Codex agents that the app starts (from Add, a swarm, or a restart) run in their CLI's own auto mode, so they work without stopping to ask you before each command: Claude Code starts with --permission-mode auto: it decides on each action itself and asks only when it judges something risky. Codex starts with --approve-for-me: its approval requests go to its own automatic review, inside its usual sandbox",
+    "x": "Claude Code and Codex agents that the app starts run in their CLI's own auto mode. They work without asking you before each command. Claude Code starts with --permission-mode auto. It asks only when it judges an action risky. Codex starts with --approve-for-me. Its approval requests go to its own automatic review, inside its usual sandbox. This applies to that session only. Your CLI settings aren't changed. Neither C",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-bringing-in-an-agent-thats-already-running",
     "t": "Bringing in an agent that's already running",
     "s": "Agents › Start Agents From the App",
-    "x": "If you started an agent CLI in herdr yourself and it isn't in a room yet, open Members → Add → Running agent. The dialog lists every agent like that on your machines, with its CLI, its tab name and its folder. Pick one and edit the handle, which starts out as the tab name, then press Add to room. Your machine asks you first, because it is about to type into that agent's terminal. After you say yes, the agent is added",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-other-kinds-of-member",
-    "t": "Other kinds of member",
-    "s": "Agents › Start Agents From the App",
-    "x": "The same dialog has three other kinds of member. An Engine is a member the hub runs itself. An A2A service is a remote agent. Open session gives you text to paste into a coding agent you already have open, and that agent then joins the room on its own. To start agents in Omnigent instead of herdr, see that guide.",
+    "x": "If you started an agent CLI in herdr yourself, open Members → Add → Running agent. Pick the agent, check its handle, and press Add to room. Your machine asks you first, because the runner is about to type into that agent's terminal. Once the agent is idle, the runner types a short introduction that names the room and the agent's handle. The agent keeps its own session. Pressing Stop for it later takes it out of the r",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-a-swarm-on-your-machine",
     "t": "A swarm on your machine",
     "s": "Agents › Start Agents From the App",
-    "x": "The Start a swarm dialog has a Where choice. If you pick a connected machine instead of the hub, the team is your own agent CLI in a new herdr workspace on that machine. It runs in the folder you choose, optionally with a git worktree per member. It's the same as running mycelium swarm in that folder.",
+    "x": "In the Start a swarm dialog, pick a connected machine under Where. The team then runs as your own agent CLI in a new herdr workspace on that machine, in the folder you choose. This is the same as running mycelium swarm in that folder.",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-which-folders",
     "t": "Which folders",
     "s": "Agents › Start Agents From the App",
-    "x": "The app can only start agents inside the folders the runner was given and only with an agent CLI the scan found. A request from the hub names an agent CLI and a folder, never a command to run. By default the allowed folder is the one you ran mycelium runner from. Name others with --root: mycelium runner --root ~/code --root ~/work/api In the desktop app, it's the working folder you chose at first run. Change it in Se",
+    "x": "The app can only start agents inside the folders the runner was given. A request from the hub names an agent CLI and a folder, never a command to run. By default the allowed folder is the one you ran mycelium runner from. Name others with --root: mycelium runner --root ~/code --root ~/work/api In the desktop app, it's the working folder you chose at first run. You can change it in Settings.",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-you-say-yes-on-the-machine",
     "t": "You say yes on the machine",
     "s": "Agents › Start Agents From the App",
-    "x": "Anyone who can reach a hub can ask it to start an agent on any machine connected to it, and the hub can't prove who asked. So before it starts or restarts anything, the runner asks you on the machine. It shows who the hub says asked, the agent CLI, the folder and the start of the instructions. You answer in one of two ways: In the desktop app, a dialog offers Start and Decline. From a terminal: mycelium runner reques",
+    "x": "Anyone who can reach a hub can ask it to start an agent on any machine connected to it, and the hub can't prove who asked. So before it starts anything, the runner asks you on the machine. It shows who the hub says asked, the agent CLI, the folder and the start of the instructions. In the desktop app, a dialog offers Start and Decline. From a terminal: mycelium runner requests # what is waiting mycelium runner approv",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-pair-a-computer-to-skip-approvals",
     "t": "Pair a computer to skip approvals",
     "s": "Agents › Start Agents From the App",
-    "x": "Sometimes no one is at a machine to approve requests, as with a Mac mini or a home server. Pair the computer you work from with that machine. Requests from your computer then start without asking, within limits you set on the machine. On the machine: mycelium runner pair --folder ~/code --cli opencode --days 30 This prints a code like K7QM-4XHD-9RWA. On your computer, open the Machines page and click Add machine → Pa",
+    "x": "Sometimes no one is at a machine to approve requests, as with a home server. Pair the computer you work from with that machine. Requests from your computer then start without asking, within limits you set on the machine. On the machine: mycelium runner pair --folder ~/code --cli opencode --days 30 This prints a code like K7QM-4XHD-9RWA. On your computer, open Machines, click Add machine → Pair and enter the code. Che",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-only-your-machines-are-listed",
     "t": "Only your machines are listed",
     "s": "Agents › Start Agents From the App",
-    "x": "The Machines page and where it runs show only your own machines. The Machines page is the laptop icon beside the notification bell. In the desktop app, your machine is the computer the app runs on. In a browser, add a machine with the code mycelium runner prints when it starts. With the hub's sign-in on, the hub itself shows each person only the machines they own. To see and fix the agents already running on a machin",
+    "x": "The Machines page, behind the laptop icon beside the bell, shows only your own machines. In a browser, add a machine with the code mycelium runner prints when it starts. With the hub's sign-in on, the hub shows each person only the machines they own. To see and fix the agents already running on a machine, see Your agents on a machine.",
     "p": "Guides"
   },
   {
@@ -1397,42 +1383,42 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#voice",
     "t": "Voice",
     "s": "Work",
-    "x": "You can talk instead of type. Turn on the mic in any message box, in the room or in a task's thread, and what you say is typed into the box as you say it. The mic stays on until you turn it off, so you can think out loud, pause, and keep going. Nothing is sent until you send it: what you said is a draft you can read and fix first. Voice is off unless you turn it on, because the speech model takes space and memory. Th",
+    "x": "You can talk instead of type. Turn on the mic in any message box, and what you say is typed into the box as you say it. The mic stays on until you turn it off, so you can pause and keep going. Nothing is sent until you send it, so you can read what you said and fix it first. Voice is off unless you turn it on, because the speech model takes space and memory. The default model takes about 150 MB on disk and about 500 ",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-turning-it-on",
     "t": "Turning it on",
     "s": "Work › Voice",
-    "x": "In the desktop app, turn on Talk instead of type in the first-run screens or in Settings, under Voice. Mycelium restarts and downloads the speech model. On a Docker hub, or any hub you run with the CLI: mycelium config set voice.enabled true mycelium config apply mycelium up The hub downloads the speech model when it starts, into its data folder, so it's downloaded once and kept across restarts. Before using the down",
+    "x": "In the desktop app, turn on Talk instead of type in the first-run screens or in Settings → Voice. Mycelium restarts and downloads the speech model. On a hub you run with the CLI: mycelium config set voice.enabled true mycelium config apply mycelium up The hub downloads the speech model into its data folder when it starts, and keeps it across restarts. It checks the download matches the expected file before using it. ",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-choosing-a-speech-model",
     "t": "Choosing a speech model",
     "s": "Work › Voice",
-    "x": "fast (the default) accurate Model Moonshine v2 base NVIDIA Parakeet TDT 0.6B v2 Download about 150 MB, when the hub starts about 480 MB, the first time a mic is turned on On disk about 150 MB about 630 MB Memory while anyone talks about 500 MB about 1.4 GB Speed a few hundredths of a second per sentence about a fifth of a second per second of speech Mistakes, on our test recordings about 1 word in 16 about half as ma",
+    "x": "fast (the default) accurate Model Moonshine v2 base NVIDIA Parakeet TDT 0.6B v2 Download about 150 MB, when the hub starts about 480 MB, the first time a mic is turned on Memory while anyone talks about 500 MB about 1.4 GB Mistakes, on our test recordings about 1 word in 16 about half as many Both run on the hub's CPU, and both are English only. accurate waits for a longer pause, about a second, before it types what ",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-using-it",
     "t": "Using it",
     "s": "Work › Voice",
-    "x": "Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux), which works while you're typing. The key acts on the message box you're in, or the room's own box when you're in none. The first time, your browser or the desktop app asks to use the microphone. While it's on, the button is lit, the line under the box says it's listening, and a ring around the button pulses while it hears you speak. Each time",
+    "x": "Press the mic button beside Send, or ⌘⌥V (Ctrl+Alt+V on Windows and Linux). The key works while you're typing, and acts on the message box you're in. The first time, your browser or the desktop app asks to use the microphone. Each time you pause, what you just said is added to the end of the draft. You can keep talking, type a fix or send the message, and the mic stays on. Press the button again to turn it off. Anyth",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-where-its-transcribed",
     "t": "Where it's transcribed",
     "s": "Work › Voice",
-    "x": "Your hub turns speech into text, on its own CPU, with a speech model (Moonshine, or Parakeet when you chose accurate) and a voice activity detector (Silero) that detects when you start and stop speaking. Neither sends audio anywhere else. In the desktop app the hub runs on your machine, so your audio never leaves it. With a shared hub, your audio goes to that hub the way your messages do. Audio is never saved. The hu",
+    "x": "Your hub turns speech into text on its own CPU. No audio is sent anywhere else. In the desktop app the hub runs on your computer, so your audio never leaves it. With a shared hub, your audio goes to that hub the way your messages do. Audio is never saved. The hub keeps only the few seconds it's transcribing and discards them once they're text. The mic button is missing when voice is off, or when the hub has no model ",
     "p": "Guides"
   },
   {
     "u": "guides.html#voice-reading-messages-aloud",
     "t": "Reading messages aloud",
     "s": "Work › Voice",
-    "x": "The app can also read messages to you. It says who sent each one and where, then the message, while a popover on the bell shows the words with the sentence being said lit. Click the popover to open the message, press Read all for the rest, or press ✕ (or Esc, when you aren't typing) to stop it. It needs a speech server on the hub. Mycelium ships no speech model: whoever runs the hub points it at an OpenAI-style text-",
+    "x": "The app can also read messages to you. It says who sent each one and where, then reads the message. A popover on the bell shows the words as they're read. Click the popover to open the message, press Read all for the rest, or press ✕ or Esc to stop. Mycelium ships no text-to-speech model. Whoever runs the hub points it at an OpenAI-style text-to-speech server they run, such as one serving Kokoro's voices: mycelium co",
     "p": "Guides"
   },
   {
