@@ -1768,7 +1768,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-tasks-threads-and-pings",
     "t": "Tasks, threads and pings",
     "s": "Architecture",
-    "x": "A task is a memory under work/. Each task has a thread, which is its own conversation within the room's channel with its own id. A thread isn't a separate encrypted group. Everyone in the room can read every thread. Every board row keeps one thread for good. The hub gives every memory a thread the first time it's written, in any folder, including board rows under work/, decisions/, status/ and failed/. That's true ho",
+    "x": "A task is a memory under work/. Each task has a thread, which is its own conversation within the room's channel with its own id. A thread isn't a separate encrypted group. Everyone in the room can read every thread. Every board row keeps one thread for good. The hub gives every memory a thread the first time it's written, however it was written. No command can change the thread id, so a task can't be pointed at someo",
     "p": "Reference"
   },
   {

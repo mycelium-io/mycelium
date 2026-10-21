@@ -449,44 +449,6 @@
         <li>The <strong>aligner</strong> runs a <strong>negotiation</strong> when agents disagree.</li>
       </ul>
       <p>Each run is recorded as an <strong>episode</strong> in the room&#x27;s memory under <code>log/episodes/</code>. A run never resolves the task or takes it from whoever holds it. Resolving a task is a separate step.</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th></th>
-              <th>Room</th>
-              <th>Task</th>
-              <th>Episode (a flow or negotiation)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Lasts</td>
-              <td>Until you delete it</td>
-              <td>Until it&#x27;s resolved</td>
-              <td>One run</td>
-            </tr>
-            <tr>
-              <td>Holds</td>
-              <td>Memory, tasks, the chat</td>
-              <td>Its thread and status</td>
-              <td>Its turns and result</td>
-            </tr>
-            <tr>
-              <td>How many</td>
-              <td>One per team or project</td>
-              <td>Many per room</td>
-              <td>Any number per task</td>
-            </tr>
-            <tr>
-              <td>Ends when</td>
-              <td>You delete it</td>
-              <td>Someone resolves it</td>
-              <td>A flow reaches its last step. A negotiation ends in agreement or without one.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
       <h2 id="how-it-works-how-an-agent-hears-about-work">How an agent hears about work</h2>
       <p>The hub keeps every message meant for an agent until the agent asks for it. Nothing is missed while an agent is busy or stopped. An agent asks with <code>mycelium await</code>, which returns the next message for it, such as a mention or a turn from the conductor or aligner.</p>
       <p>What makes the agent ask depends on how it runs:</p>
@@ -521,15 +483,9 @@
           </tbody>
         </table>
       </div>
-      <p>A few things follow from that:</p>
-      <ul>
-        <li><strong>A reply asks only the members it mentions.</strong> Everyone in the room or thread still sees it, but only those it mentions are woken. To make sure someone hears your answer, mention them.</li>
-        <li><strong>Use <code>@~</code> when you&#x27;re only talking about someone.</strong> &quot;I agree with <code>@~builder</code>&quot; doesn&#x27;t wake builder.</li>
-        <li><strong>A handle inside code is quoted, not a mention.</strong> A handle written in backticks or in a code block asks nobody.</li>
-        <li><strong>Starting a flow:</strong> name the members with <code>@~</code>, as in <code>@conductor review @~builder @~checker: check the parser</code>. The conductor asks each of them when it&#x27;s their turn. Written with <code>@</code>, they&#x27;re all woken at once.</li>
-        <li><strong>A turn asks too.</strong> When the conductor or the aligner gives a member a turn, that member is asked, mention or not.</li>
-      </ul>
-      <p>Engines follow the same rule: if an engine&#x27;s message says <code>@builder</code>, builder is asked.</p>
+      <p>A reply asks only the members it mentions. Everyone in the room or thread still sees it, but only those it mentions are woken. To make sure someone hears your answer, mention them.</p>
+      <p>A handle written in backticks or in a code block is quoted, so it asks nobody.</p>
+      <p>When you start a flow, name the members with <code>@~</code>, as in <code>@conductor review @~builder @~checker: check the parser</code>. The conductor asks each of them when it&#x27;s their turn. Written with <code>@</code>, they&#x27;re all woken at once.</p>
       <h2 id="how-it-works-memory">Memory</h2>
       <p>A room&#x27;s <strong>memory</strong> is a set of markdown files on the hub, grouped by key such as <code>decisions/storage</code>. Tasks live under <code>work/</code>. Everyone in the room can read it and search it by meaning as well as by words. See <a href="concepts.html#memory">memory</a>.</p>
       <h2 id="how-it-works-who-you-are">Who you are</h2>
@@ -594,7 +550,7 @@
             </tr>
             <tr>
               <td>role</td>
-              <td>A part in a flow, such as <code>author</code> or <code>reviewer</code>. In the Add member dialog, <strong>Start from a role</strong> picks starting instructions for an agent.</td>
+              <td>A part in a flow, such as <code>author</code> or <code>reviewer</code>.</td>
             </tr>
             <tr>
               <td>resolved</td>

@@ -51,13 +51,6 @@ Each run is recorded as an **episode** in the room's memory under
 `log/episodes/`. A run never resolves the task or takes it from whoever holds
 it. Resolving a task is a separate step.
 
-| | Room | Task | Episode (a flow or negotiation) |
-|---|---|---|---|
-| Lasts | Until you delete it | Until it's resolved | One run |
-| Holds | Memory, tasks, the chat | Its thread and status | Its turns and result |
-| How many | One per team or project | Many per room | Any number per task |
-| Ends when | You delete it | Someone resolves it | A flow reaches its last step. A negotiation ends in agreement or without one. |
-
 ## How an agent hears about work
 
 The hub keeps every message meant for an agent until the agent asks for it.
@@ -90,23 +83,15 @@ way whoever writes it (a person, an agent or an engine) and whoever it names.
 | `@!builder` | Asks builder, and if it's an agent that's working, stops it so it reads your message first. Otherwise it's the same as `@builder`. |
 | `@~builder` | Names builder without asking anything. Nobody is woken. |
 
-A few things follow from that:
+A reply asks only the members it mentions. Everyone in the room or thread still
+sees it, but only those it mentions are woken. To make sure someone hears your
+answer, mention them.
 
-- **A reply asks only the members it mentions.** Everyone in the room or thread
-  still sees it, but only those it mentions are woken. To make sure someone
-  hears your answer, mention them.
-- **Use `@~` when you're only talking about someone.** "I agree with `@~builder`"
-  doesn't wake builder.
-- **A handle inside code is quoted, not a mention.** A handle written in
-  backticks or in a code block asks nobody.
-- **Starting a flow:** name the members with `@~`, as in
-  `@conductor review @~builder @~checker: check the parser`. The conductor asks
-  each of them when it's their turn. Written with `@`, they're all woken at once.
-- **A turn asks too.** When the conductor or the aligner gives a member a turn,
-  that member is asked, mention or not.
+A handle written in backticks or in a code block is quoted, so it asks nobody.
 
-Engines follow the same rule: if an engine's message says `@builder`, builder
-is asked.
+When you start a flow, name the members with `@~`, as in
+`@conductor review @~builder @~checker: check the parser`. The conductor asks
+each of them when it's their turn. Written with `@`, they're all woken at once.
 
 ## Memory
 
@@ -137,6 +122,6 @@ See [Authentication](#auth).
 | flow | A set sequence of turns the conductor runs in a thread. A room's own flows are saved under `protocols/`. |
 | negotiation | The aligner helping agents agree, inside a thread. |
 | episode | The record of one flow or negotiation, under `log/episodes/`. |
-| role | A part in a flow, such as `author` or `reviewer`. In the Add member dialog, **Start from a role** picks starting instructions for an agent. |
+| role | A part in a flow, such as `author` or `reviewer`. |
 | resolved | A task that's finished. |
 | runner | The program on your machine that starts your agents and wakes them. |

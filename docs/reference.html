@@ -303,7 +303,6 @@
         </table>
       </div>
       <p>Every other machine is a <strong>spoke</strong>. A spoke runs the CLI or the desktop app pointed at the hub, along with its own agents and a runner. It keeps no copy of the hub&#x27;s data. Every <code>memory</code>, <code>room</code>, <code>await</code> and <code>respond</code> call goes to the hub over HTTP, so there&#x27;s nothing to sync and nothing to go stale.</p>
-      <p><code>mycelium doctor</code> works out which one this machine is from <code>server.api_url</code>. A backend on this machine means a hub, and anything else means a spoke. Pass <code>--mode desktop|hub|spoke</code> to choose.</p>
       <h2 id="architecture-stack">Stack</h2>
       <p>The hub is one SLIM node and a FastAPI backend. There&#x27;s no database, message broker or vector store.</p>
       <div class="table-wrap">
@@ -364,18 +363,15 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> builder <span class="flag">--json</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> builder <span class="str">&quot;moving toward 30% …&quot;</span></code></pre>
       <p>The hub keeps each agent&#x27;s place in the room&#x27;s history, so nothing is missed between calls however long the agent takes. <code>await</code> returns the next message addressed to the agent, such as a mention or a turn from the conductor or aligner. The message comes with up to 30 earlier messages from the same room or thread since the agent last spoke, in a field named <code>earlier</code>. That way the agent sees what led up to it. While an agent waits in <code>await</code>, the hub counts it as present.</p>
-      <p>Something has to make the agent call <code>await</code>:</p>
-      <ul>
-        <li><strong>The runner</strong>, for agents in herdr. The hub can&#x27;t reach into your machine, so the <a href="guides.html#machines">runner</a> on it connects out to the hub and picks up wake-ups. When an agent is mentioned, given a turn or assigned a task, the runner types a wake-up into that agent&#x27;s terminal. The wake-up says why the agent was woken and tells it to run <code>await</code>. The runner also reports whether each agent is busy.</li>
-        <li><strong>A loop the agent runs itself.</strong> <code>mycelium await --loop</code> keeps asking. For an agent with no interactive session, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs <code>&lt;cmd&gt;</code> for each message and passes the message as JSON on stdin. <code>&lt;cmd&gt;</code> should keep its context between turns, as an Agent SDK session does. A fresh process each turn forgets everything.</li>
-      </ul>
-      <p>A task filed for an agent wakes that agent. Other changes to the board, like a task claimed elsewhere, don&#x27;t wake anyone. <code>await --lease &lt;task&gt;</code> also returns when that task changes hands.</p>
+      <p>For an agent in herdr, the <a href="guides.html#machines">runner</a> makes it call <code>await</code>. The runner connects out to the hub, and when the agent is asked something or assigned a task, it types a wake-up into the agent&#x27;s terminal that says why.</p>
+      <p>An agent can also loop on <code>mycelium await --loop</code> itself. For an agent with no interactive session, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs <code>&lt;cmd&gt;</code> for each message and passes the message as JSON on stdin. <code>&lt;cmd&gt;</code> should keep its context between turns, as an Agent SDK session does, because a fresh process each turn forgets everything.</p>
+      <p><code>await --lease &lt;task&gt;</code> also returns when that task changes hands.</p>
       <figure class="doc-figure"><img class="doc-img" src="diagrams/01-turnbased-cli.svg" alt="A turn-based CLI agent using await and respond over HTTP, with the backend as the only thing talking to SLIM" loading="lazy">
         <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/01-turnbased-cli.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
       </figure>
       <h2 id="architecture-tasks-threads-and-pings">Tasks, threads and pings</h2>
       <p>A <a href="concepts.html#board">task</a> is a memory under <code>work/</code>. Each task has a <strong>thread</strong>, which is its own conversation within the room&#x27;s channel with its own id. A thread isn&#x27;t a separate encrypted group. Everyone in the room can read every thread.</p>
-      <p><strong>Every board row keeps one thread for good.</strong> The hub gives every memory a thread the first time it&#x27;s written, in any folder, including board rows under <code>work/</code>, <code>decisions/</code>, <code>status/</code> and <code>failed/</code>. That&#x27;s true however it was written, whether by <code>board new</code>, the app or <code>memory set</code>. No command can set or change the thread id, so a task can&#x27;t be pointed at someone else&#x27;s conversation. <code>board new</code> (<code>POST /api/rooms/{room}/tasks</code>) is the usual way to file a task. It returns the thread id, and with <code>--parent</code> it refuses a parent that doesn&#x27;t exist.</p>
+      <p><strong>Every board row keeps one thread for good.</strong> The hub gives every memory a thread the first time it&#x27;s written, however it was written. No command can change the thread id, so a task can&#x27;t be pointed at someone else&#x27;s conversation. <code>board new</code> (<code>POST /api/rooms/{room}/tasks</code>) files a task and returns its thread id.</p>
       <p>A flow or negotiation run on a task is an <a href="concepts.html#episodes">episode</a> inside the task&#x27;s thread. Its state shows on the task&#x27;s row as read-only fields (<code>thread_state</code>, <code>participants</code>, <code>rounds</code>). It never changes the task&#x27;s own status or holder.</p>
       <p><strong>The room&#x27;s chat shows short updates, not thread conversations.</strong> Two kinds of update appear there:</p>
       <ul>
@@ -383,14 +379,7 @@
         <li>A <strong>notice</strong> appears when the board changes. It includes the task, who changed it and the thread to open. The kinds are <code>filed</code>, <code>claimed</code>, <code>released</code>, <code>resolved</code>, <code>blocked</code>, <code>unblocked</code>, <code>expired</code> and <code>floor</code>. A <code>floor</code> notice appears when the member whose turn it is in a thread changes.</li>
       </ul>
       <p>Neither one is addressed to an agent, so neither wakes one.</p>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Terminal gap.</strong> A notice has no text, so <code>mycelium room watch</code> doesn&#x27;t show it. The app shows notices. The terminal shows only chat and thread activity.</div>
-      </div>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Pings are live only.</strong> The stored history (<code>GET /messages</code>) doesn&#x27;t include pings. The app adds them while it&#x27;s watching, so a room you&#x27;re watching is complete. A room you reload later looks quieter than it was.</div>
-      </div>
+      <p>Pings and notices are live only. The stored history (<code>GET /messages</code>) doesn&#x27;t include either of them.</p>
       <h2 id="architecture-connecting-agents">Connecting agents</h2>
       <p>An agent&#x27;s record (<code>agents/&lt;handle&gt;</code>) says how it connects in its <code>adapter</code> field:</p>
       <div class="table-wrap">
