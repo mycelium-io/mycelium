@@ -4,7 +4,8 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { Cpu, Globe, Laptop, Play, SquareTerminal, type LucideIcon } from "lucide-react";
+import { Cpu, Globe, History, Laptop, Play, SquareTerminal, type LucideIcon } from "lucide-react";
+import { MachineWithSessions, PastSessionMember } from "@/components/past-session-member";
 import { createEngine, createMemories, registerA2aAgent, type EngineKind } from "@/lib/api";
 import { agentHandoffPrompt } from "@/lib/install";
 import { useNetworkStatus, useRoomRevalidate } from "@/lib/room-data";
@@ -108,7 +109,14 @@ interface Props {
  * it does (a role and instructions, an engine, a service's card), and, along
  * the bottom, where it runs beside the one button that adds it.
  */
-export function AddMemberDialog({ open, onOpenChange, roomName, initialKind = "machine", onAdded }: Props) {
+export function AddMemberDialog({
+  open,
+  onOpenChange,
+  roomName,
+  initialKind = "machine",
+  onAdded,
+  mock,
+}: Props & { mock?: string }) {
   const [kind, setKind] = useState<MemberKind>(initialKind);
   const [shownFor, setShownFor] = useState(initialKind);
   // A new ask for a kind (the palette's "invite an engine") wins over the last pick.
@@ -116,7 +124,32 @@ export function AddMemberDialog({ open, onOpenChange, roomName, initialKind = "m
     setShownFor(initialKind);
     setKind(initialKind);
   }
-  const about = KINDS.find((k) => k.kind === kind)?.about;
+  const kinds =
+    mock === "a"
+      ? KINDS.filter((k) => k.kind !== "session").map((k) =>
+          k.kind === "running"
+            ? {
+                ...k,
+                icon: History,
+                label: "Past session",
+                hint: "Pick one up again",
+                about:
+                  "A conversation you had with a coding agent on your machine. It reopens with everything it knows and joins this room.",
+              }
+            : k,
+        )
+      : mock === "b"
+        ? KINDS.filter((k) => k.kind !== "session" && k.kind !== "running").map((k) =>
+            k.kind === "machine"
+              ? {
+                  ...k,
+                  hint: "New or resumed",
+                  about: "A coding agent on your machine: a new one, or a session you already had, which keeps its conversation.",
+                }
+              : k,
+          )
+        : KINDS;
+  const about = kinds.find((k) => k.kind === kind)?.about;
   const close = () => onOpenChange(false);
   const added = (handle: string) => onAdded?.(handle);
 
@@ -128,12 +161,16 @@ export function AddMemberDialog({ open, onOpenChange, roomName, initialKind = "m
             Add a member to <span className="font-mono">{roomName}</span>
           </DialogTitle>
           <DialogDescription className="mt-1 text-label text-muted-foreground">{about}</DialogDescription>
-          <KindPicker value={kind} onChange={setKind} />
+          <KindPicker value={kind} onChange={setKind} kinds={kinds} />
         </div>
-        {open && kind === "machine" && (
+        {open && kind === "machine" && mock === "b" && (
+          <MachineWithSessions newForm={<LaunchAgentForm roomName={roomName} onLaunched={added} onClose={close} />} />
+        )}
+        {open && kind === "machine" && mock !== "b" && (
           <LaunchAgentForm roomName={roomName} onLaunched={added} onClose={close} />
         )}
-        {open && kind === "running" && (
+        {open && kind === "running" && mock === "a" && <PastSessionMember />}
+        {open && kind === "running" && mock !== "a" && (
           <RunningAgentMember roomName={roomName} onAdded={added} onClose={close} />
         )}
         {open && kind === "engine" && (
@@ -148,10 +185,19 @@ export function AddMemberDialog({ open, onOpenChange, roomName, initialKind = "m
   );
 }
 
-function KindPicker({ value, onChange }: { value: MemberKind; onChange: (k: MemberKind) => void }) {
+function KindPicker({
+  value,
+  onChange,
+  kinds,
+}: {
+  value: MemberKind;
+  onChange: (k: MemberKind) => void;
+  kinds: typeof KINDS;
+}) {
+  const cols = kinds.length === 5 ? "sm:grid-cols-5" : kinds.length === 4 ? "sm:grid-cols-4" : "sm:grid-cols-3";
   return (
-    <div role="tablist" aria-label="Kind of member" className="mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-5">
-      {KINDS.map(({ kind, icon: Icon, label, hint }) => {
+    <div role="tablist" aria-label="Kind of member" className={cn("mt-4 grid grid-cols-2 gap-1.5", cols)}>
+      {kinds.map(({ kind, icon: Icon, label, hint }) => {
         const active = kind === value;
         return (
           <button

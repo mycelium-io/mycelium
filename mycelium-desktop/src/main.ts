@@ -690,6 +690,185 @@ function agentsPiece(c: Choices, snap: Snapshot): HTMLElement {
   );
 }
 
+// ── mockups for the agents step (scratch, never merged) ──
+
+const MOCK_FOUND: Framework[] = [
+  { id: "claude", name: "Claude Code", version: "2.1.280", installed: true, launchable: false },
+  { id: "codex", name: "Codex", version: "0.52.0", installed: true, launchable: false },
+  { id: "aider", name: "Aider", version: "0.86.1", installed: true, launchable: false },
+];
+const STARTABLE = new Set(["claude", "codex", "gemini", "cursor", "opencode", "pi", "copilot", "amp", "droid", "cline", "kiro", "kimi", "grok"]);
+const LOOKED_FOR: [string, string][] = [
+  ["claude", "Claude Code"], ["codex", "Codex"], ["cursor", "Cursor Agent"], ["gemini", "Gemini CLI"],
+  ["opencode", "OpenCode"], ["copilot", "GitHub Copilot CLI"], ["amp", "Amp"], ["pi", "Pi"],
+  ["droid", "Droid"], ["cline", "Cline"], ["kiro", "Kiro"], ["kimi", "Kimi"], ["grok", "Grok"],
+];
+
+function folderBlock(c: Choices): HTMLElement {
+  return el(
+    "div",
+    {},
+    el("div", { class: "label" }, "Working folder"),
+    el(
+      "div",
+      { class: "folder" },
+      el("span", { class: "folder-icon", "aria-hidden": "true" }),
+      el("span", { class: "folder-path mono" }, c.root),
+      el("button", { class: "button ghost", type: "button" }, "Choose…"),
+    ),
+    el("p", { class: "hint" }, "Agents started from Mycelium can only work in this folder."),
+  );
+}
+
+function agentsMock(c: Choices, _snap: Snapshot, variant: string): HTMLElement {
+  c.root = "~/code";
+  if (variant === "now") {
+    const herdrPill = el("span", { class: "pill" }, el("span", { class: "dot on" }), "herdr included");
+    return el(
+      "div",
+      { class: "piece" },
+      el(
+        "div",
+        { class: "agents" },
+        ...MOCK_FOUND.map((f) =>
+          el("span", { class: "pill", title: "herdr can't start this one" }, el("span", { class: "dot" }), f.name, el("span", { class: "v" }, f.version!)),
+        ),
+        herdrPill,
+      ),
+      folderBlock(c),
+      el(
+        "div",
+        { class: "share" },
+        el("label", { class: "share-label", for: "r" }, checkbox("r", true, () => {}), "Bring agents back after herdr restarts"),
+        el(
+          "p",
+          { class: "hint" },
+          "Installs herdr's integration for each agent program here, which adds a hook to that program's own settings. With it, herdr reopens each agent in its own conversation.",
+        ),
+      ),
+    );
+  }
+
+  const startable = MOCK_FOUND.filter((f) => STARTABLE.has(f.id));
+  const other = MOCK_FOUND.filter((f) => !STARTABLE.has(f.id));
+  const names = startable.map((f) => f.name).join(" and ");
+
+  if (variant === "a") {
+    // A: what was found, said in words; a way to find what wasn't.
+    const rows = el(
+      "ul",
+      { class: "found" },
+      ...startable.map((f) =>
+        el(
+          "li",
+          {},
+          el("span", { class: "tick", "aria-hidden": "true" }, "✓"),
+          el("strong", {}, f.name),
+          el("span", { class: "v" }, f.version!),
+          el("span", { class: "found-note" }, "Mycelium can start it"),
+        ),
+      ),
+      ...other.map((f) =>
+        el(
+          "li",
+          { class: "dim" },
+          el("span", { class: "tick", "aria-hidden": "true" }, "–"),
+          el("strong", {}, f.name),
+          el("span", { class: "v" }, f.version!),
+          el("span", { class: "found-note" }, "Found, but Mycelium can't start it yet. You can still bring it into a room yourself."),
+        ),
+      ),
+    );
+    const missing = LOOKED_FOR.filter(([id]) => !MOCK_FOUND.some((f) => f.id === id)).map(([, n]) => n);
+    const notListed = el(
+      "details",
+      { class: "missing-help", open: "" },
+      el("summary", {}, "Don't see yours?"),
+      el(
+        "p",
+        { class: "hint" },
+        `Mycelium also looks for ${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}. If yours is installed but not listed, it's somewhere Mycelium didn't look. Show Mycelium where it is:`,
+      ),
+      el(
+        "div",
+        { class: "row-actions" },
+        el("button", { class: "button ghost", type: "button" }, "Locate an agent app…"),
+        el("button", { class: "button text", type: "button" }, "Look again"),
+      ),
+    );
+    return el(
+      "div",
+      { class: "piece" },
+      rows,
+      notListed,
+      folderBlock(c),
+      el(
+        "div",
+        { class: "share" },
+        el("label", { class: "share-label", for: "r" }, checkbox("r", true, () => {}), "Reopen each agent's conversation after a restart"),
+        el(
+          "p",
+          { class: "hint" },
+          `Adds a small hook to ${names}'s own settings, so when Mycelium or your ${MACHINE} restarts, each agent comes back in the conversation it was having. You can remove it in Settings.`,
+        ),
+      ),
+    );
+  }
+
+  // B: every app Mycelium can start, found or not, as a grid you can complete.
+  const tiles = LOOKED_FOR.slice(0, 9).map(([id, name]) => {
+    const f = MOCK_FOUND.find((x) => x.id === id);
+    return el(
+      "div",
+      { class: f ? "tile on" : "tile" },
+      el("strong", {}, name),
+      f
+        ? el("span", { class: "tile-state" }, el("span", { class: "tick" }, "✓"), ` Found · ${f.version}`)
+        : id === "cursor"
+          ? el("span", { class: "tile-state" }, "Not found · ", el("a", { href: "#" }, "Locate…"))
+          : el("span", { class: "tile-state" }, "Not found"),
+    );
+  });
+  return el(
+    "div",
+    { class: "piece" },
+    el("div", { class: "tiles" }, ...tiles),
+    el(
+      "p",
+      { class: "hint" },
+      "Showing 9 of 13 Mycelium can start. ",
+      el("a", { href: "#" }, "Show all"),
+      " · ",
+      el("a", { href: "#" }, "Look again"),
+      other.length ? ` · Also on this ${MACHINE}: ${other.map((f) => f.name).join(", ")}, which Mycelium can't start yet.` : "",
+    ),
+    folderBlock(c),
+    el(
+      "div",
+      {},
+      el("div", { class: "label" }, "When Mycelium restarts"),
+      el(
+        "div",
+        { class: "choices column" },
+        el(
+          "button",
+          { class: "choice stacked", type: "button", role: "radio", "aria-checked": "true" },
+          el("span", { class: "radio" }),
+          el("strong", {}, "Agents pick up where they left off"),
+          el("span", {}, `Each comes back in its own conversation. Adds a small hook to ${names}'s settings.`),
+        ),
+        el(
+          "button",
+          { class: "choice stacked", type: "button", role: "radio", "aria-checked": "false" },
+          el("span", { class: "radio" }),
+          el("strong", {}, "Agents start fresh"),
+          el("span", {}, "Nothing in their settings changes. They catch up from the room."),
+        ),
+      ),
+    ),
+  );
+}
+
 /** Usage stats, off unless ticked, and only for a hub on this Mac. */
 function privacyPiece(c: Choices): HTMLElement {
   return el(
@@ -962,7 +1141,7 @@ type Step = "place" | "model" | "agents" | "voice" | "experiences" | "ready";
 async function wizard() {
   const snap = await snapshot();
   const c: Choices = { ...choicesFrom(snap), restore: true };
-  let at: Step = "place";
+  let at: Step = (new URLSearchParams(location.search).get("step") as Step) ?? "place";
   let skippedModel = false;
   // Built once, so what's typed survives going Back and forth.
   const model = await modelPiece("wizard");
@@ -970,7 +1149,8 @@ async function wizard() {
   // redraws on the spot.
   let redraw = () => {};
   const place = placePiece(c, () => redraw());
-  const agents = agentsPiece(c, snap);
+  const mockAs = new URLSearchParams(location.search).get("mock");
+  const agents = mockAs ? agentsMock(c, snap, mockAs) : agentsPiece(c, snap);
   // Nothing to restart yet: the hub that starts at the end reads what's added.
   const experiences = experiencesPiece("wizard", () => {});
 

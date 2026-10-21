@@ -1072,3 +1072,28 @@ select.field {
     animation: none !important;
   }
 }
+
+/* mockups (scratch) */
+.found { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.found li { display: flex; align-items: baseline; gap: 8px; padding: 9px 12px; font-size: 13px; color: var(--text); background: var(--bg); }
+.found li + li { border-top: 1px solid var(--border); }
+.found .tick { color: var(--green); width: 12px; flex-shrink: 0; }
+.found .v, .tile .v { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+.found .found-note { margin-left: auto; font-size: 12px; color: var(--muted-foreground); text-align: right; }
+.found li.dim strong { color: var(--muted-foreground); font-weight: 500; }
+.found li.dim .tick { color: var(--faint); }
+.found li.dim .found-note { color: var(--faint); max-width: 300px; }
+.found strong { font-weight: 500; }
+.missing-help summary { font-size: 13px; color: var(--accent); cursor: pointer; }
+.missing-help .hint { margin-top: 6px; }
+.row-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+.row-actions .button { padding: 5px 12px; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tile { border: 1px dashed var(--border); border-radius: 10px; padding: 8px 10px; display: grid; gap: 2px; }
+.tile strong { font-size: 13px; font-weight: 500; color: var(--muted-foreground); }
+.tile .tile-state { font-size: 11px; color: var(--faint); }
+.tile .tile-state a { color: var(--accent); text-decoration: none; }
+.tile.on { border-style: solid; border-color: var(--border2); background: var(--bg); }
+.tile.on strong { color: var(--text); }
+.tile.on .tile-state { color: var(--muted-foreground); }
+.tile .tick { color: var(--green); }
