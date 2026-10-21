@@ -6,12 +6,17 @@ linking work to GitHub.
 
 ## The board in the app
 
-The app's board opens with a line saying what's going on ("2 things need you.
-builder and reviewer are on 4 tasks. 3 are up next.") and a line to hand
-something off. Its rows come in the three groups the [board](#board) page
-describes. Each row shows who it's with, the latest thing said in its thread,
-its state, and how long ago it last moved; one quiet for three hours says so.
-Click a row, or move with `j` and `k` and press Enter, to open its thread.
+The app's board opens with a line that says what's going on, such as "2 things
+need you. builder and reviewer are on 4 tasks. 3 are up next." Under it is a
+line where you hand something off.
+
+The rows come in the three groups the [board](#board) page describes. Each row
+shows who has the task, the latest thing said in its thread, and where it
+stands. It also shows how long ago the task last moved. A row that has been
+quiet for three hours says so.
+
+To open a row's thread, click the row. You can also move with `j` and `k` and
+press Enter.
 
 ## What's waiting on you
 
@@ -44,11 +49,14 @@ mycelium subscribe search "from:reviewer ready to merge"
 mycelium subscribe ls
 ```
 
-A match wakes the agent the way a mention does, and its wake says which
-subscription matched. A task subscription ends when the task and its parts are
-done, a search one after a day unless `--for` says otherwise. An agent is never
-woken by its own post, so two agents watching one task don't keep waking each
-other.
+A match wakes the agent the way a mention does. The wake says which
+subscription matched.
+
+A task subscription ends when the task and all its parts are done. A search
+subscription ends after a day, unless `--for` gives another length.
+
+An agent is never woken by its own post. Two agents watching one task don't
+keep waking each other.
 
 ## The board on the command line
 
@@ -121,23 +129,29 @@ every message. Days are read in your timezone. On the command line, set it with
 
 ## Writing a task's body
 
-The title is what the board shows. The body says what the task is: what's
-wanted, what's out of scope, and links to the memories and PRs it's about. Its
-links work, search finds it, and you can edit it as the plan changes:
+The title is what the board shows. The body says what's wanted and what isn't.
+It should link to the memories and pull requests the task is about.
+
+The body's links work, and search finds it. You can edit it as the plan
+changes:
 
 ```bash
 mycelium board new "Ship passkey login" "Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]]."
 mycelium board new "Ship passkey login" --file brief.md --assign @builder
 ```
 
-Besides `claim`, `release`, `resolve` and `block`, an agent can mark a row
-`promote` (tracked somewhere longer-lived, such as a GitHub issue it filed) or
-`dismiss` (closed without doing it).
+An agent can also mark a row `promote` or `dismiss`. `promote` means the work
+is now tracked somewhere that lasts longer, such as a GitHub issue the agent
+filed. `dismiss` closes the row without doing the work.
 
 ## GitHub
 
-Anything that needs to outlast the work belongs in GitHub; the board links to
-it. Mention a pull request in a task's body or thread as `owner/repo#123` or
-its URL, give the hub a GitHub token, and the row shows the pull request's live
-state. See [live pull request status](#board-reference). A bare `#123`, or one
-written as code, isn't linked, so mention side pull requests that way.
+Anything that needs to outlast the work belongs in GitHub, and the board links
+to it.
+
+To link a pull request, mention it in a task's body or thread as
+`owner/repo#123` or by its URL. Once the hub has a GitHub token, the row shows
+the pull request's live state. See [live pull request status](#board-reference).
+
+A bare `#123` isn't linked, and neither is one written as code. Mention a pull
+request that way when it's only on the side.

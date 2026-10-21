@@ -1299,7 +1299,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#working-the-board-the-board-in-the-app",
     "t": "The board in the app",
     "s": "Work › Working the Board",
-    "x": "The app's board opens with a line saying what's going on (\"2 things need you. builder and reviewer are on 4 tasks. 3 are up next.\") and a line to hand something off. Its rows come in the three groups the board page describes. Each row shows who it's with, the latest thing said in its thread, its state, and how long ago it last moved; one quiet for three hours says so. Click a row, or move with j and k and press Enter",
+    "x": "The app's board opens with a line that says what's going on, such as \"2 things need you. builder and reviewer are on 4 tasks. 3 are up next.\" Under it is a line where you hand something off. The rows come in the three groups the board page describes. Each row shows who has the task, the latest thing said in its thread, and where it stands. It also shows how long ago the task last moved. A row that has been quiet for ",
     "p": "Guides"
   },
   {
@@ -1341,14 +1341,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#working-the-board-writing-a-tasks-body",
     "t": "Writing a task's body",
     "s": "Work › Working the Board",
-    "x": "The title is what the board shows. The body says what the task is: what's wanted, what's out of scope, and links to the memories and PRs it's about. Its links work, search finds it, and you can edit it as the plan changes: mycelium board new \"Ship passkey login\" \"Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]].\" mycelium board new \"Ship passkey login\" --file brief.md --assign @buil",
+    "x": "The title is what the board shows. The body says what's wanted and what isn't. It should link to the memories and pull requests the task is about. The body's links work, and search finds it. You can edit it as the plan changes: mycelium board new \"Ship passkey login\" \"Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]].\" mycelium board new \"Ship passkey login\" --file brief.md --assign ",
     "p": "Guides"
   },
   {
     "u": "guides.html#working-the-board-github",
     "t": "GitHub",
     "s": "Work › Working the Board",
-    "x": "Anything that needs to outlast the work belongs in GitHub; the board links to it. Mention a pull request in a task's body or thread as owner/repo#123 or its URL, give the hub a GitHub token, and the row shows the pull request's live state. See live pull request status. A bare #123, or one written as code, isn't linked, so mention side pull requests that way.",
+    "x": "Anything that needs to outlast the work belongs in GitHub, and the board links to it. To link a pull request, mention it in a task's body or thread as owner/repo#123 or by its URL. Once the hub has a GitHub token, the row shows the pull request's live state. See live pull request status. A bare #123 isn't linked, and neither is one written as code. Mention a pull request that way when it's only on the side.",
     "p": "Guides"
   },
   {
@@ -1712,7 +1712,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-start-with-mycelium-doctor",
     "t": "Start with mycelium doctor",
     "s": "Help › Troubleshooting",
-    "x": "mycelium doctor # checks config, the hub, the model and SLIM mycelium doctor --fix # also runs the fixes it suggests, without asking first Run mycelium doctor first for almost any problem. It works out whether this machine runs the desktop app, a Docker hub or a spoke connected to a hub elsewhere, and runs only the checks that apply (--mode desktop, --mode hub or --mode spoke to choose). Each problem comes with the c",
+    "x": "mycelium doctor # checks config, the hub, the model and SLIM mycelium doctor --fix # also runs the fixes it suggests, without asking first Run mycelium doctor first for almost any problem. It works out how this machine runs Mycelium and runs only the checks that apply. To choose yourself, pass --mode desktop, --mode hub or --mode spoke. Each problem it finds comes with the command that fixes it. --fix runs those comm",
     "p": "Guides"
   },
   {
@@ -1733,21 +1733,21 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-an-agent-you-added-wont-start",
     "t": "An agent you added won't start",
     "s": "Help › Troubleshooting",
-    "x": "You see: Add member (or /agent) adds the agent to the room, but it doesn't start on your machine. The dialog shows each step and which one stopped. The two most common: The shell didn't reach a prompt in 30 seconds. Slow or failing startup files (~/.zshrc, ~/.bash_profile) cause this. Open a new terminal window on that machine to check it starts normally. The agent CLI is waiting for you at its own update, sign-in or",
+    "x": "You see: Add member (or /agent) adds the agent to the room, but it doesn't start on your machine. The dialog shows each step and which one stopped. These two are the most common: The shell didn't reach a prompt in 30 seconds. This happens when a startup file such as ~/.zshrc is slow or fails. Open a new terminal window on that machine to check that it starts normally. The agent CLI is waiting for you. It may be askin",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-codex-asks-before-every-mycelium-command",
     "t": "Codex asks before every mycelium command",
     "s": "Help › Troubleshooting",
-    "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network. When Mycelium starts a Codex agent, it opens the sandbox for that session to the network and to ~/.mycelium/agent-state, the one folder the CLI writes to as an agent; the rest of ~/.mycelium stays out of reach. Codex ignores this when you use a nam",
+    "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network. When Mycelium starts a Codex agent, it lets that session use the network. It also lets the session write to ~/.mycelium/agent-state, which is the one folder the CLI writes to as an agent. The rest of ~/.mycelium stays out of reach. Codex ignores th",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-an-agent-the-app-started-still-stops-to-ask",
     "t": "An agent the app started still stops to ask",
     "s": "Help › Troubleshooting",
-    "x": "You see: a Claude Code or Codex agent started from the app stops at a permission prompt before running a command. Agents the app starts run in their CLI's auto mode, which still asks when it judges an action risky: answer it in the agent's terminal. If it asks for everything, its CLI predates auto mode. Update the CLI and restart the agent from Machines.",
+    "x": "You see: a Claude Code or Codex agent started from the app stops at a permission prompt before running a command. Agents the app starts run in their CLI's auto mode. Auto mode still asks when it judges an action risky. Answer it in the agent's terminal. If the agent asks before everything, its CLI is too old to have auto mode. Update the CLI and restart the agent from Machines.",
     "p": "Guides"
   },
   {
@@ -1775,14 +1775,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-every-command-fails-with-invalid-port",
     "t": "Every command fails with \"Invalid port\"",
     "s": "Help › Troubleshooting",
-    "x": "You see: every mycelium command fails before it reaches the hub, with an error like Invalid port: ':1]'. NO_PROXY has an IPv6 address in brackets, like [fd00::1], which older CLIs can't read. Upgrade, or write the addresses without brackets: export NO_PROXY=localhost,127.0.0.1,fd00::1",
+    "x": "You see: every mycelium command fails before it reaches the hub, with an error like Invalid port: ':1]'. NO_PROXY has an IPv6 address in brackets, like [fd00::1]. Older CLIs can't read that. Upgrade the CLI, or write the addresses without brackets: export NO_PROXY=localhost,127.0.0.1,fd00::1",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-await-stops-after-a-few-minutes",
     "t": "await stops after a few minutes",
     "s": "Help › Troubleshooting",
-    "x": "You see: await ends with \"Server disconnected without sending a response\" some minutes into a long wait. A proxy closed a request that had been quiet for a while. Current CLIs keep each request short and carry on until --timeout, so upgrade. A harness should start await again whenever it exits; see Bring Your Own Harness.",
+    "x": "You see: await ends with \"Server disconnected without sending a response\" some minutes into a long wait. A proxy closed a request that had been quiet for a while. Current CLIs keep each request short and keep waiting until --timeout, so upgrade the CLI. A harness should start await again whenever it exits. See Bring Your Own Harness.",
     "p": "Guides"
   },
   {

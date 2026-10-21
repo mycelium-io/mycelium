@@ -7,12 +7,13 @@ mycelium doctor          # checks config, the hub, the model and SLIM
 mycelium doctor --fix    # also runs the fixes it suggests, without asking first
 ```
 
-Run `mycelium doctor` first for almost any problem. It works out whether this
-machine runs the desktop app, a Docker hub or a spoke connected to a hub
-elsewhere, and runs only the checks that apply (`--mode desktop`, `--mode hub`
-or `--mode spoke` to choose). Each problem comes with the command that fixes
-it, and `--fix` runs those for you. In the desktop app, **Health check…** in its
-menu runs the same checks.
+Run `mycelium doctor` first for almost any problem. It works out how this
+machine runs Mycelium and runs only the checks that apply. To choose yourself,
+pass `--mode desktop`, `--mode hub` or `--mode spoke`.
+
+Each problem it finds comes with the command that fixes it. `--fix` runs those
+commands for you. In the desktop app, **Health check…** in its menu runs the
+same checks.
 
 ---
 
@@ -51,9 +52,10 @@ Something has to tell the agent there's work for it. Check these in order:
    seconds a round. Raise `aligner.round_timeout_s` for agents that take longer
    to wake. See [Aligner](#aligner-settings).
 
-An agent that loops on `mycelium await` itself doesn't need the runner: check
-that its loop is still running. `mycelium herdr wake <handle>` wakes an agent
-in herdr by hand.
+An agent that runs its own `mycelium await` loop doesn't need the runner. For
+that agent, check that its loop is still running.
+
+To wake an agent in herdr by hand, run `mycelium herdr wake <handle>`.
 
 ---
 
@@ -62,16 +64,18 @@ in herdr by hand.
 **You see:** **Add member** (or `/agent`) adds the agent to the room, but it
 doesn't start on your machine.
 
-The dialog shows each step and which one stopped. The two most common:
+The dialog shows each step and which one stopped. These two are the most
+common:
 
-- **The shell didn't reach a prompt in 30 seconds.** Slow or failing startup
-  files (`~/.zshrc`, `~/.bash_profile`) cause this. Open a new terminal window
-  on that machine to check it starts normally.
-- **The agent CLI is waiting for you** at its own update, sign-in or first-run
-  question. Answer it in its terminal.
+- **The shell didn't reach a prompt in 30 seconds.** This happens when a
+  startup file such as `~/.zshrc` is slow or fails. Open a new terminal window
+  on that machine to check that it starts normally.
+- **The agent CLI is waiting for you.** It may be asking about an update, a
+  sign-in or its first run. Answer it in its terminal.
 
-**Try again** starts the agent in the same terminal. For the full error, open
-**Logs → Agent starts** in the app's menu, or `~/.mycelium/runner/runner.log`.
+**Try again** starts the agent in the same terminal. To see the full error,
+open **Logs → Agent starts** in the app's menu. The same log is at
+`~/.mycelium/runner/runner.log`.
 
 ---
 
@@ -81,11 +85,13 @@ The dialog shows each step and which one stopped. The two most common:
 `mycelium respond`, or says it can't reach the hub.
 
 Codex runs commands in a sandbox with no network. When Mycelium starts a Codex
-agent, it opens the sandbox for that session to the network and to
-`~/.mycelium/agent-state`, the one folder the CLI writes to as an agent; the
-rest of `~/.mycelium` stays out of reach. Codex ignores this when you use a
-named permissions profile (`default_permissions`), so add both to that profile
-in `~/.codex/config.toml`:
+agent, it lets that session use the network. It also lets the session write to
+`~/.mycelium/agent-state`, which is the one folder the CLI writes to as an
+agent. The rest of `~/.mycelium` stays out of reach.
+
+Codex ignores these settings when you use a named permissions profile
+(`default_permissions`). In that case, add both to your profile in
+`~/.codex/config.toml`:
 
 ```toml
 [permissions.<your-profile>.network]
@@ -103,10 +109,11 @@ enabled = true
 permission prompt before running a command.
 
 Agents the app starts run in their CLI's
-[auto mode](#machines-agents-start-in-auto-mode), which still asks when it
-judges an action risky: answer it in the agent's terminal. If it asks for
-everything, its CLI predates auto mode. Update the CLI and restart the agent
-from **Machines**.
+[auto mode](#machines-agents-start-in-auto-mode). Auto mode still asks when it
+judges an action risky. Answer it in the agent's terminal.
+
+If the agent asks before everything, its CLI is too old to have auto mode.
+Update the CLI and restart the agent from **Machines**.
 
 ---
 
@@ -172,8 +179,8 @@ Common causes:
 **You see:** every `mycelium` command fails before it reaches the hub, with an
 error like `Invalid port: ':1]'`.
 
-`NO_PROXY` has an IPv6 address in brackets, like `[fd00::1]`, which older
-CLIs can't read. Upgrade, or write the addresses without brackets:
+`NO_PROXY` has an IPv6 address in brackets, like `[fd00::1]`. Older CLIs can't
+read that. Upgrade the CLI, or write the addresses without brackets:
 
 ```bash
 export NO_PROXY=localhost,127.0.0.1,fd00::1
@@ -187,8 +194,9 @@ export NO_PROXY=localhost,127.0.0.1,fd00::1
 response" some minutes into a long wait.
 
 A proxy closed a request that had been quiet for a while. Current CLIs keep
-each request short and carry on until `--timeout`, so upgrade. A harness
-should start `await` again whenever it exits; see
+each request short and keep waiting until `--timeout`, so upgrade the CLI.
+
+A harness should start `await` again whenever it exits. See
 [Bring Your Own Harness](#bring-your-own-harness).
 
 ---
