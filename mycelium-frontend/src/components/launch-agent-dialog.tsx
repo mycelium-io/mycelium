@@ -37,7 +37,7 @@ import {
   useRunnersRevalidate,
 } from "@/lib/runners";
 import { signFor } from "@/lib/device-key";
-import { terminalLink, useIsDesktop } from "@/lib/desktop";
+import { terminalLink, useIsDesktop, useThisMachine } from "@/lib/desktop";
 import {
   BUILT_IN,
   deleteTemplate,
@@ -102,7 +102,9 @@ export function LaunchAgentForm({
   const revalidateRoom = useRoomRevalidate(roomName);
   const revalidateRunners = useRunnersRevalidate();
 
-  const [runnerPick, setRunnerPick] = useState<string | null>(null);
+  // The app starts agents on the machine it runs on; outside the app, the one
+  // machine connected (or the first, when there are several).
+  const here = useThisMachine();
   const [frameworkPick, setFrameworkPick] = useState<string | null>(null);
   const [folderTyped, setFolderTyped] = useState<string | null>(null);
   const [worktreePick, setWorktreePick] = useState(false);
@@ -115,7 +117,7 @@ export function LaunchAgentForm({
   const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
 
-  const runner = connected.find((r) => r.id === runnerPick) ?? connected[0];
+  const runner = connected.find((r) => r.id === here) ?? connected[0];
   const startable = useMemo(() => (runner ? launchable(runner) : []), [runner]);
   const framework = startable.find((f) => f.id === frameworkPick) ?? startable[0];
   const folderShown = folderTyped ?? tildePath(runner?.roots[0] ?? "");
@@ -256,15 +258,10 @@ export function LaunchAgentForm({
       </div>
 
       <RunsOn
-        runners={connected}
         runner={runner}
         frameworkId={framework?.id ?? null}
         folder={folderShown}
         worktree={worktree}
-        onRunner={(id) => {
-          setRunnerPick(id);
-          setFolderTyped(null);
-        }}
         onFramework={setFrameworkPick}
         onFolder={setFolderTyped}
         onWorktree={setWorktreePick}
@@ -599,25 +596,21 @@ export function InstructionsEditor({
 const fieldClass =
   "rounded-md border border-border bg-bg px-2 py-1 text-label text-text outline-none hover:border-border2 focus:border-accent";
 
-/** Where the agent runs: machine, agent CLI and folder, in one strip beside the button. */
+/** Where the agent runs: agent CLI and folder on this machine, in one strip beside the button. */
 function RunsOn({
-  runners,
   runner,
   frameworkId,
   folder,
   worktree,
-  onRunner,
   onFramework,
   onFolder,
   onWorktree,
   children,
 }: {
-  runners: Runner[];
   runner: Runner;
   frameworkId: string | null;
   folder: string;
   worktree: boolean;
-  onRunner: (id: string) => void;
   onFramework: (id: string) => void;
   onFolder: (folder: string) => void;
   onWorktree: (worktree: boolean) => void;
@@ -638,31 +631,15 @@ function RunsOn({
             </p>
           ) : null}
           {/* First line: the agent CLI, each by its own mark, and the machine
-              it starts on as a quiet note (a choice only when there is one). */}
+              it starts on as a quiet note: always this one, never a choice. */}
           <div className="flex min-w-0 items-center gap-1.5">
             {startable.length > 0 && (
               <HarnessPicker frameworks={startable} value={frameworkId} onChange={onFramework} />
             )}
-            <span className="ml-auto flex flex-shrink-0 items-center gap-1 text-micro text-faint">
-              on
-              {runners.length > 1 ? (
-                <select
-                  aria-label="Machine"
-                  value={runner.id}
-                  onChange={(e) => onRunner(e.target.value)}
-                  className="max-w-40 cursor-pointer truncate bg-transparent text-muted-foreground outline-none hover:text-text"
-                >
-                  {runners.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {runnerName(r)}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <span className="max-w-40 truncate text-muted-foreground" title={runnerName(runner)}>
-                  {runnerName(runner)}
-                </span>
-              )}
+            <span className="ml-auto flex min-w-0 items-center gap-1 text-micro text-faint">
+              <span className="truncate" title={runnerName(runner)}>
+                on {runnerName(runner)}
+              </span>
               <RescanButton runner={runner} iconOnly />
             </span>
           </div>

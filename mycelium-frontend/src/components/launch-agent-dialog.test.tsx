@@ -20,6 +20,11 @@ vi.mock("@/lib/runners", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/runners")>()),
   useRunners: () => ({ runners: connected, connected, loading: false, refresh: vi.fn() }),
 }));
+let thisMachine: string | null = null;
+vi.mock("@/lib/desktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/desktop")>()),
+  useThisMachine: () => thisMachine,
+}));
 
 import type { Runner, RunnerJob } from "@/lib/api";
 import { runner } from "@/lib/runners.fixture";
@@ -44,10 +49,19 @@ function job(over: Partial<RunnerJob> = {}): RunnerJob {
 describe("LaunchAgentForm", () => {
   beforeEach(() => {
     connected = [];
+    thisMachine = null;
     window.localStorage.clear();
     launchRunnerAgent.mockReset();
     fetchRunnerJob.mockReset();
     draftMemberNotes.mockReset();
+  });
+
+  it("starts on the machine the app runs on, never offering another", () => {
+    connected = [runner(), runner({ id: "studio", label: "studio" })];
+    thisMachine = "studio";
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    expect(screen.getByText("on studio")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Machine")).not.toBeInTheDocument();
   });
 
   it("says how to connect a machine when none is", () => {
