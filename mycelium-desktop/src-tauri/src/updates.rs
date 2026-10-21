@@ -125,7 +125,16 @@ async fn find(app: &AppHandle) -> Result<Option<Update>, String> {
     let updater = match versions::channel() {
         versions::Channel::Stable => app.updater().map_err(|e| e.to_string())?,
         versions::Channel::ReleaseCandidates => {
-            let Some(newest) = versions::releases(true).await?.releases.into_iter().next() else {
+            // The newest release that published an update, stepping past one
+            // whose build didn't finish (the feed lists those too).
+            let mut newest = None;
+            for release in versions::releases(true).await?.releases.into_iter().take(3) {
+                if versions::has_manifest(&release.tag).await? {
+                    newest = Some(release);
+                    break;
+                }
+            }
+            let Some(newest) = newest else {
                 return Ok(None);
             };
             app.updater_builder()
@@ -143,6 +152,10 @@ pub async fn switch(app: AppHandle, tag: &str) -> Result<(), String> {
     if UPDATING.load(Ordering::SeqCst) {
         open_window(&app);
         return Err("An update is already downloading.".into());
+    }
+    // A release listed from the feed may be one whose build didn't finish.
+    if !versions::has_manifest(tag).await? {
+        return Err(versions::no_update(tag));
     }
     let update = app
         .updater_builder()

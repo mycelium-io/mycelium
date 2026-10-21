@@ -81,6 +81,30 @@ pub fn manifest(tag: &str) -> Result<Url, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Whether the release tagged `tag` published its `latest.json`. A release
+/// whose build didn't finish has none, and the feed can't say which those are.
+/// A download address, so not counted against the API's limit.
+pub async fn has_manifest(tag: &str) -> Result<bool, String> {
+    let reply = crate::download::client(None, false)?
+        .head(manifest(tag)?)
+        .send()
+        .await
+        .map_err(|_| Unreachable::Offline.sentence())?;
+    match reply.status().as_u16() {
+        200..=299 => Ok(true),
+        404 => Ok(false),
+        _ => Err("GitHub didn't answer about that release just now. Try again in a few minutes.".into()),
+    }
+}
+
+/// Why a release can't be switched to when it has no `latest.json`.
+pub fn no_update(tag: &str) -> String {
+    format!(
+        "{} has no update to install: its build didn't finish. Pick another release.",
+        tag.trim_start_matches('v')
+    )
+}
+
 /// The releases Settings lists, and a line about them when they aren't GitHub's
 /// answer just now (a saved list, because GitHub couldn't be asked).
 #[derive(Debug, PartialEq)]
@@ -496,6 +520,14 @@ mod tests {
     fn the_api_answering_is_the_list_as_it_is() {
         let listed = choose(Ok(vec![release("v3.0.55")]), None, None, 0).unwrap();
         assert_eq!(listed, Listed { releases: vec![release("v3.0.55")], note: None });
+    }
+
+    #[test]
+    fn a_release_with_no_update_says_so_by_its_version() {
+        assert_eq!(
+            no_update("v3.0.55rc1"),
+            "3.0.55rc1 has no update to install: its build didn't finish. Pick another release."
+        );
     }
 
     #[test]
