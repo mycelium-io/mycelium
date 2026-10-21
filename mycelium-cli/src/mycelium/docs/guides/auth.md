@@ -99,7 +99,9 @@ token, which is what you want with a hub that has auth off.
 
 Your sign-in is kept in the system keychain, with one entry for each hub. Where
 there's no keychain, it's kept in `~/.mycelium/token.json`, which only you can
-read. Set `MYCELIUM_TOKEN_FILE` to keep that file somewhere else.
+read. Set `MYCELIUM_TOKEN_FILE` to keep that file somewhere else. If you signed
+in before the CLI used the keychain, the first command that reads your sign-in
+moves it from `token.json` into the keychain and deletes the file.
 
 The sign-in renews itself, so you don't have to sign in again on a schedule.
 Renewal needs the `offline_access` scope, which is in the default

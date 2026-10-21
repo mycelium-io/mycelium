@@ -484,7 +484,8 @@ A name can't contain slashes. The name is also the room's folder on the hub, so
 it can't be changed later. You can change its display title in the app.
 
 Case doesn't matter in a room's name, so `--room "ce-area team"` finds
-`CE-Area Team`.
+`CE-Area Team`. Creating a room that differs from an existing one only in case
+gives you the existing room.
 
 ## Private rooms
 
@@ -4113,7 +4114,9 @@ token, which is what you want with a hub that has auth off.
 
 Your sign-in is kept in the system keychain, with one entry for each hub. Where
 there's no keychain, it's kept in `~/.mycelium/token.json`, which only you can
-read. Set `MYCELIUM_TOKEN_FILE` to keep that file somewhere else.
+read. Set `MYCELIUM_TOKEN_FILE` to keep that file somewhere else. If you signed
+in before the CLI used the keychain, the first command that reads your sign-in
+moves it from `token.json` into the keychain and deletes the file.
 
 The sign-in renews itself, so you don't have to sign in again on a schedule.
 Renewal needs the `offline_access` scope, which is in the default

@@ -137,7 +137,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#rooms-room-names",
     "t": "Room names",
     "s": "Rooms",
-    "x": "A room's name can be up to 100 characters and can include spaces. Put quotes around a name with spaces in the shell: mycelium room create \"CE-Area Team\" A name can't contain slashes. The name is also the room's folder on the hub, so it can't be changed later. You can change its display title in the app. Case doesn't matter in a room's name, so --room \"ce-area team\" finds CE-Area Team.",
+    "x": "A room's name can be up to 100 characters and can include spaces. Put quotes around a name with spaces in the shell: mycelium room create \"CE-Area Team\" A name can't contain slashes. The name is also the room's folder on the hub, so it can't be changed later. You can change its display title in the app. Case doesn't matter in a room's name, so --room \"ce-area team\" finds CE-Area Team. Creating a room that differs fro",
     "p": "Concepts"
   },
   {
