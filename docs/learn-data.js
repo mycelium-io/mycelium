@@ -655,7 +655,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "agree-accord",
      "about": "Three agents say what a task is. Accord merges their points, finds a word they use in two senses, and saves one summary.",
-     "seconds": 80.4
+     "seconds": 73.9
     },
     "lessons": [
      {
@@ -681,7 +681,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "agree-concord",
      "about": "Three agents each suggest an option and rate them all. The least happy one proposes a fix, and everyone settles on it.",
-     "seconds": 90
+     "seconds": 76.5
     },
     "lessons": [
      {
