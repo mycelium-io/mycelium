@@ -127,10 +127,10 @@ export async function resolveOidcConfig(hub?: HubSignIn | null): Promise<OidcCon
 export function whyNoSignIn(hub: HubSignIn | null): string | null {
   if (!hub?.enabled || !heldInMemory()) return null;
   if (hub.issuers.length === 0) {
-    return "This hub needs you to sign in, but doesn't say where. Whoever runs it can name its identity provider in the hub's auth settings.";
+    return "This hub needs you to sign in, but doesn't say where. Ask whoever runs the hub to set its identity provider.";
   }
   if (hub.issuers.length > 1) {
-    return `This hub trusts ${hub.issuers.length} identity providers, and the app can't tell which one should decide who you are. It can sign in to a hub that trusts one; ask whoever runs this one.`;
+    return `This hub accepts sign-in from ${hub.issuers.length} identity providers, so the app can't tell which one to use. Ask whoever runs the hub to set one.`;
   }
   return null;
 }

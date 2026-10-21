@@ -10,7 +10,7 @@ vi.mock("@/components/auth-session", () => ({
     loading: false,
     authRequired: true,
     oidcConfigured: false,
-    signInProblem: "This hub trusts 2 identity providers.",
+    signInProblem: "This hub accepts sign-in from 2 identity providers.",
     signedIn: false,
     login: () => {},
   }),
@@ -34,7 +34,7 @@ describe("<LoginGate /> on a hub you can't sign in to", () => {
 
   it("says why, in place of the app", () => {
     gate();
-    expect(screen.getByText("This hub trusts 2 identity providers.")).toBeInTheDocument();
+    expect(screen.getByText("This hub accepts sign-in from 2 identity providers.")).toBeInTheDocument();
     expect(screen.queryByText("the app")).toBeNull();
     // In a browser there is no app to change hubs with.
     expect(screen.queryByRole("button", { name: "Change hub" })).toBeNull();

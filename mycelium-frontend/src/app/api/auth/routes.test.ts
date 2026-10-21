@@ -99,7 +99,7 @@ describe("signing in from the desktop app's UI", () => {
     );
     const body = await (await session.GET()).json();
     expect(body).toMatchObject({ authRequired: true, oidcConfigured: false });
-    expect(body.signInProblem).toContain("trusts 2 identity providers");
+    expect(body.signInProblem).toContain("accepts sign-in from 2 identity providers");
   });
 
   it("doesn't trap anyone behind a sign-in screen when the hub can't be read", async () => {
