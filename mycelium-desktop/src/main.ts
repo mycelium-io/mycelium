@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-// The app's own screens: the first-run wizard, Settings, the wait while
-// Mycelium starts, and the health check. Once the supervisor says the room UI
-// is up, the app points this window at it and these pages are gone.
+// The app's own screens: the first-run wizard, the wait while Mycelium starts,
+// and, for when no UI is up yet (first run, or a start that failed), Settings
+// and the health check. Once the supervisor says the room UI is up, the app
+// points this window at it and these pages are gone: the same settings are
+// pages of the UI's own Settings from then on (`mycelium-frontend`,
+// `components/settings/app-*.tsx`), through the same commands.
 
 import "./style.css";
 import { invoke } from "@tauri-apps/api/core";

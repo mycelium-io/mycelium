@@ -11,12 +11,14 @@ export function isUploadKey(key: string): boolean {
   return key.startsWith(UPLOADS_PREFIX);
 }
 
-/** The `[[uploads/…]]` links in a message, in order, each once. A code span
- *  or block is prose about the syntax, so links inside one don't count. */
+/** The `[[uploads/…]]` links in a message, in order, each once, with the
+ *  embed form `![[uploads/…]]` too: agents write that one for a picture, and
+ *  it means the same file. A code span or block is prose about the syntax, so
+ *  links inside one don't count. */
 export function uploadKeysIn(text: string): string[] {
   const prose = text.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
   const keys: string[] = [];
-  for (const match of prose.matchAll(/(?<!!)\[\[(uploads\/[^\]|#\n]+)(?:[|#][^\]\n]*)?\]\]/g)) {
+  for (const match of prose.matchAll(/!?\[\[(uploads\/[^\]|#\n]+)(?:[|#][^\]\n]*)?\]\]/g)) {
     const key = match[1].trim();
     if (!keys.includes(key)) keys.push(key);
   }
@@ -27,7 +29,7 @@ export function uploadKeysIn(text: string): string[] {
  *  adds, for drawing above the files themselves. The text sent keeps them (an
  *  agent reads the links); a link written mid-sentence is left where it is. */
 export function withoutTrailingUploadLinks(text: string): string {
-  return text.replace(/(?:^|\n)(?:[ \t]*\[\[uploads\/[^\]\n]+\]\][ \t]*)+\s*$/, "").trimEnd();
+  return text.replace(/(?:^|\n)(?:[ \t]*!?\[\[uploads\/[^\]\n]+\]\][ \t]*)+\s*$/, "").trimEnd();
 }
 
 /** The link to put in a message for an upload. */

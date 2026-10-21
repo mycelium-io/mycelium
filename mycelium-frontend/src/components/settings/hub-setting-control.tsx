@@ -11,13 +11,22 @@
  * Saving writes config.toml through the hub; it applies when the hub restarts.
  */
 
+import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { updateHubSettings, type HubEditing } from "@/lib/api";
-import { settingsLink } from "@/lib/desktop";
+import { settingHref, type SettingsPage } from "@/lib/client-settings";
 import { HUB_EDITABLE, editMode, parseNumber } from "@/lib/hub-settings";
 import { Confirm, Note, Row, Segmented, Toggle } from "./settings-ui";
+
+/** The app's own Settings page where a setting the desktop app owns is changed. */
+function appPageOf(key: string): SettingsPage {
+  if (key.startsWith("voice.")) return "voice";
+  if (key.startsWith("telemetry.")) return "privacy";
+  if (key.startsWith("llm.")) return "model";
+  return "connection";
+}
 
 /** A control for one key, and what goes under its row (an error, a confirm). */
 export function useHubSettingControl({
@@ -71,9 +80,9 @@ export function useHubSettingControl({
       control: (
         <>
           {display}
-          <a href={settingsLink()} className="text-micro text-accent hover:underline">
-            Change in Mycelium Settings
-          </a>
+          <Link href={settingHref(appPageOf(configKey))} className="text-micro text-accent hover:underline">
+            Change in this app&apos;s settings
+          </Link>
         </>
       ),
       below: null,

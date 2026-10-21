@@ -38,12 +38,6 @@ class Codex(AgentKind):
             args.append("--approve-for-me")
         return args
 
-    def session_note(self) -> str | None:
-        # The sandbox is opened per session, where nobody sees it: say so where it's picked.
-        if self.offers("--approve-for-me"):
-            return "Codex runs in its auto mode, and can reach the hub and its own Mycelium state"
-        return "Codex can reach the hub and its own Mycelium state"
-
     def blocked_hint(self) -> str | None:
         # Like Claude's: what it commonly waits for, never which prompt is up.
         return (

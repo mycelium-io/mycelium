@@ -24,13 +24,6 @@ class Claude(AgentKind):
             args += ["--permission-mode", "auto"]
         return args
 
-    def session_note(self) -> str | None:
-        return (
-            "Claude Code runs in its auto mode"
-            if self.offers("--permission-mode", '"auto"')
-            else None
-        )
-
     def resume_args(self, session: str) -> list[str] | None:
         # The id herdr records for the pane through its Claude integration.
         return ["--resume", session]

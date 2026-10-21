@@ -79,8 +79,7 @@ def scan(kinds: set[str] | None, *, host: str = "herdr") -> list[Found]:
     for k in KNOWN:
         path = located[k.id]
         host_can = bool(k.herdr_kind and kinds is not None and k.herdr_kind in kinds)
-        # Why it can't start here, or, when it can, what its session is allowed.
-        note = k.session_note() if path and host_can else None
+        note = None
         if path and not host_can:
             if kinds is None:
                 note = f"{host} isn't running here"

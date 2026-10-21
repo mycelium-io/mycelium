@@ -58,10 +58,10 @@ function readUpdate(): string | null {
   return typeof found?.version === "string" ? found.version : null;
 }
 
-type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+export type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 
 /** The app's command bridge, present only on its own hub UI; null everywhere else. */
-function appInvoke(): Invoke | null {
+export function appInvoke(): Invoke | null {
   const internals = (globalThis as { __TAURI_INTERNALS__?: { invoke?: Invoke } }).__TAURI_INTERNALS__;
   return typeof internals?.invoke === "function" ? internals.invoke : null;
 }
