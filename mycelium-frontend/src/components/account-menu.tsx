@@ -78,14 +78,16 @@ export function iamCommand(handle: string, user?: Pick<User, "display_name" | "t
  */
 export function AccountMenu() {
   const { principal, setPrincipal } = useCurrentUser();
-  const { signedIn, handle: sessionHandle, oidcConfigured, login, logout } = useAuthSession();
+  const { authRequired, signedIn, handle: sessionHandle, oidcConfigured, login, logout } = useAuthSession();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("menu");
   const [users, setUsers] = useState<User[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
 
-  const me = signedIn ? (sessionHandle ?? principal) : principal;
+  // A hub that asks for sign-in knows you only by it: a name this browser
+  // remembers is nobody there, so it's never shown as you.
+  const me = signedIn ? (sessionHandle ?? principal) : authRequired ? "" : principal;
   const record = users.find(u => u.handle === me);
   const myName = nameOf(useNames(), me);
   // A name saved here is the one every message shows, so the shared copy is

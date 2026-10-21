@@ -9,7 +9,52 @@ vi.mock("@/lib/room-data", () => ({
   useNetworkStatus: () => network(),
 }));
 
-import { AboutView, MenuView } from "@/components/account-menu";
+const auth = vi.fn();
+vi.mock("@/components/auth-session", () => ({ useAuthSession: () => auth() }));
+vi.mock("@/components/current-user", () => ({ useCurrentUser: () => ({ principal: "foobar", setPrincipal: () => {} }) }));
+vi.mock("@/components/keymap-provider", () => ({ useCommands: () => {} }));
+vi.mock("@/lib/people", () => ({ nameOf: () => undefined, useNames: () => ({}), useRefreshUsers: () => () => {} }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => {} }) }));
+
+import { AboutView, AccountMenu, MenuView } from "@/components/account-menu";
+
+const session = (over: object) => ({
+  authRequired: false,
+  oidcConfigured: false,
+  signedIn: false,
+  handle: null,
+  login: vi.fn(),
+  logout: vi.fn(),
+  ...over,
+});
+
+describe("<AccountMenu />", () => {
+  it("offers Sign in from its menu when the hub offers a sign-in you haven't made", () => {
+    const s = session({ oidcConfigured: true });
+    auth.mockReturnValue(s);
+    render(<AccountMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /@foobar/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(s.login).toHaveBeenCalledOnce();
+  });
+
+  it("never shows this browser's name as you on a hub that asks for sign-in", () => {
+    auth.mockReturnValue(session({ authRequired: true, oidcConfigured: true }));
+    render(<AccountMenu />);
+    expect(screen.queryByRole("button", { name: /foobar/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Choose your name" })).toBeInTheDocument();
+  });
+
+  it("offers Sign out from its menu once you're signed in", () => {
+    const s = session({ authRequired: true, oidcConfigured: true, signedIn: true, handle: "julia" });
+    auth.mockReturnValue(s);
+    render(<AccountMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /@julia/ }));
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(s.logout).toHaveBeenCalledOnce();
+  });
+});
 
 describe("<MenuView />", () => {
   it("offers Settings, which goes to the settings pages", () => {

@@ -5,8 +5,7 @@
 // screen: is the backend gate on, is OIDC configured here, and are we signed in.
 
 import { NextResponse } from "next/server";
-import { resolveOidcConfig } from "@/lib/auth-config";
-import { getBackendUrl } from "@/lib/backend";
+import { readHubSignIn, resolveOidcConfig, whyNoSignIn } from "@/lib/auth-config";
 import { getSession } from "@/lib/session";
 import { isMockMode } from "@/mocks";
 
@@ -24,26 +23,19 @@ const MOCK_AUTH: Record<string, object> = {
 export async function GET(): Promise<Response> {
   const mock = isMockMode() ? MOCK_AUTH[process.env.MYCELIUM_UI_MOCK_AUTH ?? ""] : undefined;
   if (mock) return NextResponse.json(mock);
+  // One read of the hub's health, at whichever path it answers, before the
+  // session (which then finds the sign-in it names already known). If the hub
+  // can't be read, don't trap the user behind a login screen.
+  const hub = isMockMode() ? null : await readHubSignIn();
+  const oidcConfigured = (await resolveOidcConfig(hub)) != null;
   const session = await getSession();
   return NextResponse.json({
-    // `authRequired` comes from the backend's own /health auth block — the gate
+    // `authRequired` comes from the backend's own health auth block — the gate
     // is the source of truth, so the UI can't disagree with it.
-    authRequired: await gateOn(),
-    oidcConfigured: (await resolveOidcConfig()) != null,
+    authRequired: Boolean(hub?.enabled),
+    oidcConfigured,
+    signInProblem: oidcConfigured ? null : whyNoSignIn(hub),
     signedIn: session != null,
     handle: session?.handle ?? null,
   });
-}
-
-async function gateOn(): Promise<boolean> {
-  if (isMockMode()) return false;
-  try {
-    const res = await fetch(`${getBackendUrl()}/health`, { cache: "no-store" });
-    if (!res.ok) return false;
-    const health = (await res.json()) as { auth?: { enabled?: boolean } };
-    return Boolean(health.auth?.enabled);
-  } catch {
-    // If we can't reach the backend, don't trap the user behind a login screen.
-    return false;
-  }
 }

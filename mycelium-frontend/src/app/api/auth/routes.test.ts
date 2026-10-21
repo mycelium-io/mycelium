@@ -12,6 +12,7 @@ vi.mock("next/headers", () => ({
 
 import * as callback from "@/app/api/auth/callback/route";
 import * as login from "@/app/api/auth/login/route";
+import * as session from "@/app/api/auth/session/route";
 import { getSession } from "@/lib/session";
 
 const ISSUER = "https://sso.example.com/realms/team";
@@ -71,5 +72,39 @@ describe("signing in from the desktop app's UI", () => {
     expect(res.headers.get("location")).toContain("auth_error=state+mismatch");
     expect(token).not.toHaveBeenCalled();
     expect(await getSession()).toBeNull();
+  });
+
+  it("finds the sign-in of a hub that serves its own pages, which answers health only under /api", async () => {
+    const asked: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        asked.push(url);
+        if (url === "https://hub.example.com/api/health") {
+          return Response.json({ auth: { enabled: true, issuers: [`${ISSUER}/`] } });
+        }
+        return new Response("not here", { status: 404 });
+      }),
+    );
+    const body = await (await session.GET()).json();
+    expect(body).toMatchObject({ authRequired: true, oidcConfigured: true, signInProblem: null, signedIn: false });
+    // One read of the hub for the whole answer.
+    expect(asked).toEqual(["https://hub.example.com/health", "https://hub.example.com/api/health"]);
+  });
+
+  it("says why it can't sign in to a hub that trusts more than one issuer, rather than offering nothing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ auth: { enabled: true, issuers: [ISSUER, "https://other.example.com"] } })),
+    );
+    const body = await (await session.GET()).json();
+    expect(body).toMatchObject({ authRequired: true, oidcConfigured: false });
+    expect(body.signInProblem).toContain("accepts sign-in from 2 identity providers");
+  });
+
+  it("doesn't trap anyone behind a sign-in screen when the hub can't be read", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 503 })));
+    const body = await (await session.GET()).json();
+    expect(body).toMatchObject({ authRequired: false, oidcConfigured: false, signInProblem: null });
   });
 });
