@@ -1069,12 +1069,13 @@ const SCHEDULED_TITLE = "Let customers schedule a gift delivery";
 const SCHEDULED_THREAD = ep("5d1e7a");
 
 const ACCORD_STEPS = [
+  { id: "terms", to: "all", next: "frame", prompt: "Which words could the team mean different things by?" },
   { id: "frame", to: "all", next: "added", prompt: "Say what you understand the task to be, one labelled point per line." },
   { id: "added", kind: "tally", next: { grew: "more", settled: "ground", empty: "nothing" } },
   { id: "more", to: "all", next: "added", prompt: "Is something important missing?" },
-  { id: "ground", to: "all", next: "words", prompt: "Say what you mean by your words, and how you'd check a point." },
+  { id: "ground", to: "all", next: "words", prompt: "Say what you mean by each key term, with units, and how you'd confirm the points you can." },
   { id: "words", kind: "tally", next: { contested: "restate", clear: "lock" } },
-  { id: "restate", to: "contested", next: "words", prompt: "Say again what you mean by each word in dispute." },
+  { id: "restate", to: "contested", next: "words", prompt: "Say again what you mean by each term in dispute, with an example." },
   { id: "lock", kind: "lock", next: { locked: "locked", empty: "nothing" } },
   { id: "locked", end: "resolved" },
   { id: "nothing", end: "rejected" },
@@ -1082,25 +1083,35 @@ const ACCORD_STEPS = [
 
 const FRAMES: Record<string, string> = {
   pm:
-    "[[mycelium: objective]] A gift arrives on a day the customer chooses.\n" +
-    "[[mycelium: constraint]] Ready for gift season, three weeks out.\n" +
-    "[[mycelium: deliverable]] A delivery date on the order, shown in the confirmation email.",
+    "objective: A gift arrives on a day the customer chooses.\n" +
+    "constraint: Ready for gift season, three weeks out.\n" +
+    "deliverable: A delivery date on the order, shown in the confirmation email.",
   web:
-    "[[mycelium: objective]] At checkout, the customer picks the day the gift arrives.\n" +
-    "[[mycelium: sub_goal]] A date picker that only offers days we can ship for.\n" +
-    "[[mycelium: out_of_scope]] Changing the date after the order is placed.",
+    "objective: At checkout, the customer picks the day the gift arrives.\n" +
+    "sub_goal: A date picker that only offers days we can ship for.\n" +
+    "out of scope: Changing the date after the order is placed.",
   api:
-    "[[mycelium: objective]] A gift can be scheduled to repeat: every 2, 4 or 8 weeks until cancelled.\n" +
-    "[[mycelium: sub_goal]] A schedule model that creates the next order on its day.\n" +
-    "[[mycelium: assumption]] Payment is taken again for each delivery.",
+    "objective: A gift can be scheduled to repeat: every 2, 4 or 8 weeks until cancelled.\n" +
+    "sub_goal: A schedule model that creates the next order on its day.\n" +
+    "assumption: Payment is taken again for each delivery.",
 };
 
 const GROUND: Record<string, string> = {
   pm:
-    "[[mycelium: term=schedule]] Choose when one delivery arrives.\n" +
-    "[[mycelium: check covers=p1,p3]] Order a gift for three days out; the email shows that date and it ships that morning.",
-  web: "[[mycelium: term=schedule]] Pick one delivery date at checkout.",
-  api: "[[mycelium: term=schedule]] A delivery that repeats on a cadence until cancelled.",
+    "schedule: Choose the one calendar day a delivery arrives.\n" +
+    "check p1, p3: Order a gift for three days out; the email shows that date and it ships that morning.",
+  web:
+    "schedule: Pick one delivery date at checkout, in the recipient's time zone.\n" +
+    "check p4: Try a Sunday and a day inside the next 48 hours; the picker refuses both.",
+  api: "schedule: A delivery that repeats every 2, 4 or 8 weeks until cancelled.",
+};
+
+const RESTATED: Record<string, string> = {
+  pm: "schedule: The one calendar day a delivery arrives. For example, an order on 3 December for the 10th arrives on the 10th, once.",
+  web: "schedule: One delivery date picked at checkout. For example, the 10th, and nothing after it.",
+  api:
+    "schedule: One delivery date picked at checkout, like the others say. For example, the 10th. " +
+    "Repeating deliveries are a separate feature; I'll keep them out of this one.",
 };
 
 const ACCORD_SUMMARY =
@@ -1115,8 +1126,10 @@ const ACCORD_SUMMARY =
   "**What's handed over**\n- p6. A delivery date on the order, shown in the confirmation email. (@pm)\n\n" +
   "**Assumptions**\n- p7. Payment is taken again for each delivery. (@api)\n\n" +
   "**Out of scope**\n- p8. Changing the date after the order is placed. (@web)\n\n" +
-  "**Words**\n- schedule: choose when one delivery arrives. (@pm, @web, and @api after restating)\n\n" +
-  "**How done is checked**\n- Order a gift for three days out; the email shows that date and it ships that morning. (covers p1, p3)\n\n" +
+  "**Words**\n- schedule: the one calendar day a delivery arrives, picked at checkout. (@pm, @web, and @api after restating)\n\n" +
+  "**How done is checked**\n" +
+  "- Order a gift for three days out; the email shows that date and it ships that morning. (@pm; covers p1, p3)\n" +
+  "- Try a Sunday and a day inside the next 48 hours; the picker refuses both. (@web; covers p4)\n\n" +
   "**Open**\n" +
   "- p2, p5 and p7, repeating deliveries, were said by @api alone, and conflict with p1.\n" +
   "- p8 was said by @web alone.\n" +
@@ -1136,52 +1149,39 @@ function accordRoom(): RoomFixture {
 async function accord(d: Director, thread: string): Promise<void> {
   const say = (event: string, text: string, line: Record<string, unknown>) =>
     d.say("conductor", text, thread, { event, ...line });
-  say("open", "Running accord in this task: @pm, @web, @api.", {
+  say("open", "Running accord with pm, web, api as members. The key terms: schedule.", {
     protocol: "accord",
     description:
-      "Get on the same page. Everyone says what the task is, what's out of scope, what done means and what the key words mean.",
+      "Get on the same page. The key terms are fixed first; everyone says what the task is, what each term means with its units, and which checks it owns.",
     roles: {},
     members: TRIO,
     steps: ACCORD_STEPS,
   });
   await sleep(900);
-  let n = 0;
-  for (const who of TRIO) await turn(d, thread, "accord", "frame", who, ++n, 8, FRAMES[who]);
+  for (const who of TRIO) await turn(d, thread, "accord", "frame", who, 1, 9, FRAMES[who]);
   say("tally", "Round 1: 8 new points, 8 in all", {
     step: "added",
     next: "more",
-    tally: { of: "points", round: 1, max_rounds: 3, outcome: "grew", added: 8, points: 8, capped: false },
+    tally: { of: "points", round: 1, max_rounds: 2, outcome: "grew", added: 8, points: 8, capped: false },
   });
   await sleep(900);
-  n += 1;
   for (const who of TRIO) {
-    await turn(d, thread, "accord", "more", who, n, 8, "Nothing missing from my side.", 1400);
+    await turn(d, thread, "accord", "more", who, 2, 9, "Nothing missing from my side.", 1400);
   }
   say("tally", "Nobody added anything new: 8 points", {
     step: "added",
     next: "ground",
-    tally: { of: "points", round: 2, max_rounds: 3, outcome: "settled", added: 0, points: 8, capped: false },
+    tally: { of: "points", round: 2, max_rounds: 2, outcome: "settled", added: 0, points: 8, capped: false },
   });
   await sleep(900);
-  n += 1;
-  for (const who of TRIO) await turn(d, thread, "accord", "ground", who, n, 8, GROUND[who], 2000);
-  say("tally", "Words used in different senses: schedule. Asking api again", {
+  for (const who of TRIO) await turn(d, thread, "accord", "ground", who, 3, 9, GROUND[who], 2000);
+  say("tally", "Words used in different senses: schedule. Asking pm, web, api again", {
     step: "words",
     next: "restate",
-    tally: { of: "terms", round: 1, max_rounds: 2, outcome: "contested", words: 1, contested: ["schedule"], asked: ["api"] },
+    tally: { of: "terms", round: 1, max_rounds: 2, outcome: "contested", words: 1, contested: ["schedule"], asked: TRIO },
   });
   await sleep(1000);
-  await turn(
-    d,
-    thread,
-    "accord",
-    "restate",
-    "api",
-    n + 1,
-    8,
-    "[[mycelium: term=schedule]] Choose when one delivery arrives. Repeating deliveries are a separate feature; I'll keep that out of this one.",
-    2600,
-  );
+  for (const who of TRIO) await turn(d, thread, "accord", "restate", who, 4, 9, RESTATED[who], who === "api" ? 2600 : 1600);
   say("tally", "No word used in different senses", {
     step: "words",
     next: "lock",
@@ -1190,13 +1190,13 @@ async function accord(d: Director, thread: string): Promise<void> {
   await sleep(800);
   const memory = "context/summary/scheduled-gifts";
   d.setMemory(memory, ACCORD_SUMMARY, "conductor", { "relates-to": SCHEDULED });
-  say("lock", "Shared summary: 8 points, 1 stated by more than one person, 1 check, 3 open items", {
+  say("lock", "Shared summary: 8 points, 1 stated by more than one person, 2 checks, 3 open items", {
     step: "lock",
     next: "locked",
-    lock: { outcome: "locked", memory, saved: true, points: 8, shared: 1, contested: 0, checks: 1, flagged: 3, quiet: [] },
+    lock: { outcome: "locked", memory, saved: true, points: 8, shared: 1, contested: 0, checks: 2, flagged: 3, quiet: [] },
   });
   await sleep(700);
-  say("close", "✓ accord done", { protocol: "accord", outcome: "resolved", steps: 8, reason: "reached `locked`", memory });
+  say("close", "✓ accord done", { protocol: "accord", outcome: "resolved", steps: 4, reason: "reached `locked`", memory });
 }
 
 // Concord: three real ways for a gift order to wait for its payment.
@@ -1206,59 +1206,119 @@ const PAYMENTS_TITLE = "Stop gift orders shipping before the payment clears";
 const PAYMENTS_THREAD = ep("7b2f9c");
 
 const CONCORD_STEPS = [
-  { id: "propose", to: "all", next: "score", prompt: "Reply with the one option you think best." },
-  { id: "score", to: "all", next: "pick", prompt: "Rate each option 0-100 for your role." },
-  { id: "pick", kind: "select", next: { feasible: "agreed", infeasible: "repair", stuck: "no_deal" } },
-  { id: "repair", to: "bottleneck", next: "rescore", prompt: "Revise the best option so you'd rate it 70 or more." },
-  { id: "rescore", to: "all", next: "pick", prompt: "Rate the new option 0-100." },
+  { id: "anchor", to: "all", next: "propose", prompt: "Rate the bad and the ideal outcome for your role, with why." },
+  { id: "propose", to: "all", next: "score", prompt: "Propose the one option you think best, and say why." },
+  { id: "score", to: "all", next: "pick", prompt: "Rate each option for your role, each with a reason." },
+  { id: "pick", kind: "select", next: { feasible: "agreed", infeasible: "repair", stuck: "best", nothing: "no_deal" } },
+  { id: "repair", to: "bottleneck", next: "rescore", prompt: "Propose something new that answers the objections." },
+  { id: "rescore", to: "all", next: "pick", prompt: "Rate the new option, with a reason." },
   { id: "agreed", end: "converged" },
+  { id: "best", end: "resolved" },
   { id: "no_deal", end: "rejected" },
 ];
 
+const BAD = "gifts ship unpaid, or arrive late";
+const IDEAL = "every gift arrives on its day, paid";
+const ANCHORS: Record<string, string> = {
+  pm: "bad: 0 - we lose money and customers in the same week\nideal: 100 - gift season with no complaints and no chargebacks",
+  web: "bad: 0 - a gift that misses its day is the worst thing we can do\nideal: 100 - nobody waits and nothing goes wrong",
+  api: "bad: 0 - shipping unpaid orders is money we never get back\nideal: 100 - no unpaid order ever leaves the warehouse",
+};
+
 const OPTIONS = [
-  { label: "A", who: "api", text: "Hold every gift order until the payment clears, then ship it." },
-  { label: "B", who: "web", text: "Ship at once, and cancel the delivery if the payment fails." },
-  { label: "C", who: "pm", text: "Ship at once, but only for customers with a past paid order; hold the rest." },
+  {
+    label: "A",
+    who: "api",
+    text: "Hold every gift order until the payment clears, then ship it.",
+    why: "an order that never ships unpaid can't cost us anything",
+  },
+  {
+    label: "B",
+    who: "web",
+    text: "Ship at once, and cancel the delivery if the payment fails.",
+    why: "a gift has a day it has to arrive, and most cards clear",
+  },
+  {
+    label: "C",
+    who: "pm",
+    text: "Ship at once, but only for customers with a past paid order; hold the rest.",
+    why: "most of our gift buyers have bought before, so most orders never wait",
+  },
 ];
 const REVISED = {
   label: "D",
   who: "web",
   text: "Hold a gift order until the payment clears, for at most 30 minutes; if it hasn't cleared by then, ship it and cancel if it fails.",
+  why: "it answers api's worry about unpaid orders, and a first-time buyer waits half an hour, not a day",
 };
 
-const FIRST_RATINGS: Record<string, Record<string, number>> = {
-  pm: { A: 75, B: 40, C: 85 },
-  web: { A: 55, B: 90, C: 60 },
-  api: { A: 95, B: 20, C: 72 },
+const FIRST_RATINGS: Record<string, Record<string, [number, string]>> = {
+  pm: {
+    A: [75, "safe, but slow for gift season"],
+    B: [40, "it ships gifts on cards that later fail"],
+    C: [85, "it covers most customers fairly"],
+  },
+  web: {
+    A: [45, "a customer waits with no idea how long"],
+    B: [90, "it's what customers want"],
+    C: [50, "a first-time gift buyer waits a day and misses the date"],
+  },
+  api: {
+    A: [95, "it never ships an unpaid order"],
+    B: [20, "it means chargebacks all December"],
+    C: [72, "fine, though first-time buyers wait"],
+  },
 };
-const WHY: Record<string, string> = {
-  pm: "A is safe but slow for gift season. B ships fraud. C covers most customers fairly.",
-  web: "A makes a customer wait with no idea how long. B is what customers want. C splits people unevenly.",
-  api: "A never ships an unpaid order. B means chargebacks. C is fine, but first-time gift buyers wait.",
+const SECOND: Record<string, [number, string]> = {
+  pm: [82, "safe and quick enough for gift season"],
+  web: [78, "half an hour is a wait customers won't notice"],
+  api: [80, "a short hold catches nearly every failed card"],
 };
 
 function pick(
   outcome: "feasible" | "infeasible",
-  options: { label: string; text: string; who: string }[],
-  table: Record<string, Record<string, number>>,
+  options: { label: string; text: string; who: string; why: string }[],
+  rated: Record<string, Record<string, [number, string]>>,
   chosen: string,
 ): Record<string, unknown> {
-  const ratings = Object.fromEntries(TRIO.map((h) => [h, table[chosen][h]]));
-  const lowest = Math.min(...Object.values(ratings));
-  const least = TRIO.find((h) => ratings[h] === lowest) ?? null;
+  const table = Object.fromEntries(
+    options.map((o) => [o.label, Object.fromEntries(TRIO.map((h) => [h, rated[o.label][h][0]]))]),
+  );
+  const placed = Object.fromEntries(
+    options.map((o) => [o.label, Object.fromEntries(TRIO.map((h) => [h, rated[o.label][h][0] / 100]))]),
+  );
+  const reasons = Object.fromEntries(
+    options.map((o) => [o.label, Object.fromEntries(TRIO.map((h) => [h, rated[o.label][h][1]]))]),
+  );
+  const ratings = table[chosen];
+  const short = TRIO.filter((h) => placed[chosen][h] < 0.6)
+    .sort((a, b) => placed[chosen][a] - placed[chosen][b])
+    .map((h) => ({ member: h, placed: placed[chosen][h], why: reasons[chosen][h] }));
   return {
     outcome,
     pick: chosen,
     text: options.find((o) => o.label === chosen)?.text ?? "",
-    threshold: 70,
-    options: options.map((o) => ({ label: o.label, text: o.text, authors: [o.who] })),
+    threshold: 60,
+    options: options.map((o) => ({ label: o.label, text: o.text, authors: [o.who], why: { [o.who]: o.why } })),
     table,
+    placed,
+    reasons,
     cast: TRIO,
     ratings,
-    lowest,
+    lowest: Math.min(...Object.values(placed[chosen])),
     missing: [],
-    least_happy: outcome === "feasible" ? null : least,
+    least_happy: short[0]?.member ?? null,
+    short,
   };
+}
+
+/** `{option: {member: [rating, why]}}` from `{member: {option: [rating, why]}}`. */
+function byOption(given: Record<string, Record<string, [number, string]>>): Record<string, Record<string, [number, string]>> {
+  const out: Record<string, Record<string, [number, string]>> = {};
+  for (const [who, row] of Object.entries(given)) {
+    for (const [label, r] of Object.entries(row)) (out[label] ??= {})[who] = r;
+  }
+  return out;
 }
 
 function concordRoom(): RoomFixture {
@@ -1275,54 +1335,60 @@ function concordRoom(): RoomFixture {
 async function concord(d: Director, thread: string): Promise<void> {
   const say = (event: string, text: string, line: Record<string, unknown>) =>
     d.say("conductor", text, thread, { event, ...line });
-  say("open", "Running concord in this task: @pm, @web, @api.", {
-    protocol: "concord",
-    description: "Help them agree. Everyone suggests, everyone rates, the least happy agent suggests a fix.",
-    roles: {},
-    members: TRIO,
-    steps: CONCORD_STEPS,
-  });
+  say(
+    "open",
+    `Running concord with pm, web, api as members. The bar: the option picked has to be at least 60% of the way from *${BAD}* to *${IDEAL}* for every member. Up to 5 fixes; then the best option found stands.`,
+    {
+      protocol: "concord",
+      description:
+        "Help them agree. Everyone rates two shared reference outcomes, proposes an option and says why, and rates every option with a reason.",
+      roles: {},
+      members: TRIO,
+      steps: CONCORD_STEPS,
+    },
+  );
   await sleep(900);
+  for (const who of TRIO) await turn(d, thread, "concord", "anchor", who, 1, 20, ANCHORS[who], 1600);
   for (const who of ["api", "web", "pm"]) {
     const o = OPTIONS.find((x) => x.who === who);
-    await turn(d, thread, "concord", "propose", who, 1, 9, o?.text ?? "", 2200);
+    await turn(d, thread, "concord", "propose", who, 2, 20, o ? `${o.text}\nwhy: ${o.why}` : "", 2200);
   }
   for (const who of TRIO) {
-    const r = FIRST_RATINGS[who];
-    await turn(d, thread, "concord", "score", who, 2, 9, `${WHY[who]}\n\n[[mycelium: A=${r.A} B=${r.B} C=${r.C}]]`, 2200);
+    const lines = Object.entries(FIRST_RATINGS[who]).map(([label, [n, why]]) => `${label}: ${n} - ${why}`);
+    await turn(d, thread, "concord", "score", who, 3, 20, lines.join("\n"), 2200);
   }
-  const table1: Record<string, Record<string, number>> = Object.fromEntries(
-    ["A", "B", "C"].map((l) => [l, Object.fromEntries(TRIO.map((h) => [h, FIRST_RATINGS[h][l]]))]),
-  );
-  say("select", "pick: C, @web at 60", { step: "pick", next: "repair", select: pick("infeasible", OPTIONS, table1, "C") });
+  const first = byOption(FIRST_RATINGS);
+  say("select", "pick: C: web is short of the bar, because a first-time gift buyer waits a day and misses the date", {
+    step: "pick",
+    next: "repair",
+    select: pick("infeasible", OPTIONS, first, "C"),
+  });
   await sleep(2600);
-  await turn(d, thread, "concord", "repair", "web", 3, 9, REVISED.text, 2800);
-  const second: Record<string, number> = { pm: 82, web: 78, api: 80 };
+  await turn(d, thread, "concord", "repair", "web", 4, 20, `${REVISED.text}\nwhy: ${REVISED.why}`, 2800);
   for (const who of TRIO) {
-    await turn(
-      d,
-      thread,
-      "concord",
-      "rescore",
-      who,
-      4,
-      9,
-      `${who === "api" ? "A short hold catches nearly every failed card." : who === "web" ? "Half an hour is a wait customers won't notice." : "Safe and quick enough for gift season."}\n\n[[mycelium: D=${second[who]}]]`,
-      1800,
-    );
+    const [n, why] = SECOND[who];
+    await turn(d, thread, "concord", "rescore", who, 5, 20, `D: ${n} - ${why}`, 1800);
   }
   const options = [...OPTIONS, REVISED];
-  const table2 = { ...table1, D: second };
-  say("select", "pick: D, everyone at 70+", { step: "pick", next: "agreed", select: pick("feasible", options, table2, "D") });
+  say("select", "pick: D: everyone meets the bar", {
+    step: "pick",
+    next: "agreed",
+    select: pick("feasible", options, { ...first, D: SECOND }, "D"),
+  });
   await sleep(1200);
   const memory = "context/decision/gift-payments";
-  d.setMemory(memory, `# Decision: ${PAYMENTS_TITLE}\n\n${REVISED.text}\n\nRated 82, 78 and 80 by @pm, @web and @api.`, "conductor", {
-    "relates-to": PAYMENTS,
-  });
-  say("close", `✓ Everyone's on board: going with D`, {
+  d.setMemory(
+    memory,
+    `# Decision: ${PAYMENTS_TITLE}\n\nGoing with D: ${REVISED.text}\n\nEveryone meets the bar.\n\n` +
+      "## How each member sees it\n\n" +
+      TRIO.map((h) => `- ${h}: meets the bar, because ${SECOND[h][1]}`).join("\n"),
+    "conductor",
+    { "relates-to": PAYMENTS },
+  );
+  say("close", `✓ Everyone meets the bar: going with D. It answers web's objection: a first-time gift buyer waits a day and misses the date.`, {
     protocol: "concord",
     outcome: "converged",
-    steps: 6,
+    steps: 5,
     reason: "reached `agreed`",
     pick: "D",
     text: REVISED.text,
