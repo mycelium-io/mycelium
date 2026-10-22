@@ -69,8 +69,6 @@ SECTIONS: list[tuple[str, str]] = [
     ("flows", "Writing Flows"),
     ("messages", "Messages"),
     ("metrics", "Metrics"),
-    ("status-providers", "Adding a Status Provider"),
-    ("keycloak-oidc", "Keycloak / OIDC Setup"),
 ]
 
 # Subdirectories the docs tree is organized into, in lookup order. "commands"

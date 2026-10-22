@@ -117,8 +117,6 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("reference/flows.md",            "flows",              "reference",   "Reference",    "Writing Flows"),
     ("reference/messages.md",         "messages",           "reference",   "Reference",    "Messages"),
     ("reference/metrics.md",          "metrics",            "reference",   "Observability", "Metrics"),
-    ("reference/status-providers.md", "status-providers",   "reference",   "Contributing", "Adding a Status Provider"),
-    ("reference/keycloak-oidc.md",    "keycloak-oidc",      "reference",   "Contributing", "Keycloak / OIDC Setup"),
 ]
 
 # The CLI/config/dependency blocks are generated rather than listed in

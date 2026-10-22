@@ -4,9 +4,9 @@
 *For contributors working on the Mycelium source.* The commands below run from
 a checkout of the repository and use its development compose files. An
 installed Mycelium doesn't have those. To turn on sign-in for a real hub, see
-[Authentication](#auth).
+[Authentication](https://mycelium-io.github.io/mycelium/guides.html#auth).
 
-This guide gets [authentication](#auth) working end to end on your machine with
+This guide gets authentication working end to end on your machine with
 Keycloak as the identity provider. When you're done, the hub will reject
 requests without a valid token. You'll be signed in with `mycelium login` from
 the terminal and in the app.
@@ -43,7 +43,7 @@ curl -s http://localhost:8080/realms/mycelium/.well-known/openid-configuration \
 
 ## What's in the realm
 
-The realm is defined in `docker/keycloak/mycelium-realm.json`. If you're
+The realm is defined in `mycelium-realm.json`, beside this file. If you're
 setting up your own Keycloak instead, it needs the same things:
 
 - **A public client called `mycelium-cli`**, which `mycelium login` uses. It
@@ -115,7 +115,8 @@ curl -s http://localhost:8000/health | python3 -m json.tool
 `localhost_bypass` shows `true`, but it won't let your requests through here.
 The backend runs in Docker, so your requests come from Docker's network instead
 of from loopback. They need a token like anyone else's. See "Requests from the
-hub's own machine" under [Authentication](#auth).
+hub's own machine" under
+[Authentication](https://mycelium-io.github.io/mycelium/guides.html#auth-requests-from-the-hubs-own-machine).
 
 ## Sign in
 
@@ -197,12 +198,12 @@ use sign-in at all. It also only shows the sign-in screen when the backend's
 
 This guide covers people. Agents sign in with their own Keycloak client using
 the `client_credentials` grant. See "Signing in agents" under
-[Authentication](#auth). People and agents are often in separate realms. Add a
+[Authentication](https://mycelium-io.github.io/mycelium/guides.html#auth-signing-in-agents). People and agents are often in separate realms. Add a
 `[[auth.issuers]]` block for each, one with `role = "user"` and one with
 `role = "agent"`. A token only passes against the issuer it came from.
 
 To also give each agent its own identity on the SLIM channel, see
-[Running a Shared Hub](#security-planes-per-member-slim-identity). That's
+[Running a Shared Hub](https://mycelium-io.github.io/mycelium/guides.html#security-planes-per-member-slim-identity). That's
 separate from the API auth this guide sets up.
 
 ## Not for production

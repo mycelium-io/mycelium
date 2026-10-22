@@ -19,8 +19,8 @@ up separately. See [Running a Shared Hub](#security-planes).
 ## Turning it on
 
 You need an OIDC identity provider such as Keycloak, Dex, ZITADEL, Authentik or
-your company's SSO. If you don't have one yet, the
-[Keycloak / OIDC Setup](#keycloak-oidc) guide walks you through a local one.
+your company's SSO. To try it without one, see
+[Keycloak / OIDC setup](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md).
 
 Enable auth and set an audience:
 
@@ -139,7 +139,10 @@ the environment.
 
 Register the CLI with your provider as a **public client**. It uses PKCE with
 S256 and has no secret. Allow `http://127.0.0.1:*/callback` as a redirect URI.
-If you want `--device` to work, enable the device grant.
+If you want `--device` to work, enable the device grant. Don't make PKCE
+required on the client. The device flow doesn't send PKCE parameters, so
+requiring it breaks `mycelium login --device` with
+`Missing parameter: code_challenge_method`.
 
 ## Signing in to the app
 
@@ -236,6 +239,9 @@ The hub reads the caller's handle from the `auth.handle_claim` claim, which is
 `sub` by default. It reads the role from `auth.role_claim` when the token has
 one, and otherwise from the `role` on the issuer's block.
 
+Some providers, such as Keycloak, put a UUID in `sub`. With those, set
+`auth.handle_claim = "preferred_username"`, or every person shows up as a UUID.
+
 ## Who wrote it
 
 With auth on, every write is recorded under the handle in the token. That
@@ -313,6 +319,7 @@ token.
 
 ## Trying it locally
 
-To try sign-in on one machine before setting up a real provider, see the
-[Keycloak / OIDC Setup](#keycloak-oidc) guide. It runs a local Keycloak with a
-ready-made realm and needs a checkout of the Mycelium source.
+To try sign-in on one machine before setting up a real provider, see
+[Keycloak / OIDC setup](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md)
+in the source. It runs a local Keycloak with a ready-made realm from a checkout
+of the repository.

@@ -154,4 +154,5 @@ The same data is at `GET /api/rooms/{room}/status`. `?refresh=true` fetches
 before answering, and `?max_age=<seconds>` reports older answers as `missing`.
 
 To add a tracker other than GitHub, see
-[Adding a status provider](#status-providers).
+[Adding a status provider](https://github.com/mycelium-io/mycelium/blob/main/fastapi-backend/app/services/status/providers/README.md)
+in the source.

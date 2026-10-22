@@ -3,7 +3,7 @@
 *For contributors working on the Mycelium source.*
 
 A status provider lets board rows show the live state of something in another
-tool. [Live pull request status](#board-reference) does this for GitHub.
+tool. [Live pull request status](https://mycelium-io.github.io/mycelium/reference.html#board-reference) does this for GitHub.
 Providers run only on the hub, where the token is, so the whole room shares one
 cache.
 
