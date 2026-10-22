@@ -909,7 +909,7 @@ class Runner:
         whoever is debugging; the sentence is for the person who asked.
         """
         from mycelium.commands.swarm import SHELL_WAIT_S
-        from mycelium.integrations.herdr import AgentNotReadyError
+        from mycelium.integrations.herdr import AgentExitedError, AgentNotReadyError
 
         where = (
             f"It's still open in herdr (pane {e.ref})" if e.ref else "Its terminal is still open"
@@ -923,6 +923,15 @@ class Runner:
                 f"{name} couldn't start on {self.label}: the terminal opened for @{handle} "
                 f"didn't reach a shell prompt within {SHELL_WAIT_S:.0f} seconds. {where}. "
                 f"When it shows a prompt, start @{handle} again: it goes back to that terminal."
+            )
+        elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentExitedError):
+            # What it printed on the way out is on its screen, which stays on
+            # this machine: the app shows it there, and anyone else is told
+            # where to look.
+            why = "exited"
+            message = (
+                f"{name} exited before it started on {self.label}. {where}, showing "
+                f"what {name} printed: fix that, then start @{handle} again."
             )
         elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentNotReadyError):
             why = "cli"

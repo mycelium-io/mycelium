@@ -62,6 +62,8 @@ class Herdr:
         self.panes: list[str] = []
         self._panes = 0
         self.fail_start = False
+        #: ``agent start`` runs the agent CLI, which exits before it comes up.
+        self.exits_on_start = False
         #: ``agent start`` fails, but leaves an agent on the pane in this state,
         #: the way one stopped at a first-run prompt never reads as ready.
         self.start_leaves: str | None = None
@@ -109,6 +111,9 @@ class Herdr:
                 return _proc(stderr=json.dumps({"error": "agent never became ready"}), returncode=1)
             if self.fail_start:
                 return _proc(stderr=json.dumps({"error": "agent never became ready"}), returncode=1)
+            if self.exits_on_start:
+                exited = "agent process exited before becoming interactive"
+                return _proc(stderr=json.dumps({"error": exited}), returncode=1)
             self.live[args[args.index("--pane") + 1]] = "idle"
             return _proc(_ok({}))
         if head == "agent prompt":
@@ -586,6 +591,23 @@ def test_a_shell_that_never_comes_up_says_so_and_keeps_its_terminal(
     r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
     assert herdr.panes == ["w9:p1"]
     assert r.hello_body()["agents"][0]["status"] == "running"
+
+
+def test_an_agent_cli_that_exits_at_start_says_so_and_is_not_started_again(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    herdr.exits_on_start = True
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="exited before it started") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert "start @scout again" in str(failed.value)
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "exited"
+    # Where to look, never what it printed: that stays on this machine.
+    assert failed.value.result["pane"] == "w9:p1"
+    assert "trust the files" not in json.dumps(failed.value.result)
+    # Once: starting it the same way again would only exit again.
+    assert len(herdr.of("agent start")) == 1
 
 
 def test_an_agent_cli_that_never_comes_up_says_what_it_may_be_waiting_on(

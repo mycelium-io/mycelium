@@ -286,6 +286,26 @@ describe("LaunchAgentForm", () => {
     expect(alert).not.toHaveTextContent("Update now? [Y/n]");
   });
 
+  it("says an agent CLI exited before it started, and offers to try again", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(
+      job({
+        status: "failed",
+        error: "Codex exited before it started on julias-mbp.",
+        result: { step: "agent", why: "exited", pane: "w7:p1" },
+      }),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("exited before it started on julias-mbp");
+    expect(alert).not.toHaveTextContent("first-run question");
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  });
+
   it("tries a failed start again without going back to the form", async () => {
     connected = [runner()];
     launchRunnerAgent.mockResolvedValueOnce(job()).mockResolvedValueOnce(job({ id: "job-0010" }));

@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
+import time
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -473,6 +475,55 @@ def test_an_agent_is_started_again_while_its_pane_comes_up(monkeypatch: pytest.M
     with pytest.raises(HerdrError):
         swarm._start_when_ready(_Never(), "agent-1", "claude", "w9:p1", room="eng")
     assert len(attempts) == swarm.START_ATTEMPTS
+
+
+def test_an_agent_cli_that_exits_while_herdr_waits_fails_at_once(monkeypatch: pytest.MonkeyPatch):
+    """herdr waits out its whole timeout for an agent that exited; the pane says sooner."""
+    from mycelium.integrations.herdr import AgentExitedError
+
+    monkeypatch.setattr(swarm, "EXIT_POLL_S", 0.01)
+    release = threading.Event()
+    attempts: list[str] = []
+    looks: list[str] = []
+
+    class _Bridge:
+        def start_agent(self, handle: str, kind: str, pane: str, **_: object) -> dict:
+            attempts.append(pane)
+            release.wait(5)  # herdr, still waiting for an agent that has gone
+            return {}
+
+        def get_agent(self, pane: str) -> dict | None:
+            looks.append(pane)
+            # It came up for a moment, then exited back to the shell.
+            return {"agent": "codex"} if len(looks) < 3 else None
+
+    began = time.monotonic()
+    try:
+        with pytest.raises(AgentExitedError):
+            swarm._start_when_ready(_Bridge(), "agent-1", "codex", "w9:p1", room="eng")
+    finally:
+        release.set()
+    assert time.monotonic() - began < 2
+    assert attempts == ["w9:p1"]
+
+
+def test_herdr_saying_the_agent_exited_is_not_tried_again(monkeypatch: pytest.MonkeyPatch):
+    from mycelium.integrations.herdr import AgentExitedError
+
+    monkeypatch.setattr(swarm, "START_RETRY_S", 0)
+    attempts: list[str] = []
+
+    class _Bridge:
+        def start_agent(self, handle: str, kind: str, pane: str, **_: object) -> dict:
+            attempts.append(pane)
+            raise HerdrError("agent process exited before becoming interactive")
+
+        def get_agent(self, pane: str) -> dict | None:
+            return None
+
+    with pytest.raises(AgentExitedError):
+        swarm._start_when_ready(_Bridge(), "agent-1", "codex", "w9:p1", room="eng")
+    assert attempts == ["w9:p1"]
 
 
 def test_a_slow_shell_is_said_once_and_still_waited_for(monkeypatch: pytest.MonkeyPatch):
