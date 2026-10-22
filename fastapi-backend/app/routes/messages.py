@@ -516,6 +516,7 @@ async def amend_message(
         **MessageRead.model_validate(revised or msg).model_dump(),
         replaced=target.content,
         task=row[1] if row else None,
+        task_key=row[0] if row else None,
     )
 
 

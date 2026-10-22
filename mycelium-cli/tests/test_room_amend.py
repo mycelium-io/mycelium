@@ -53,6 +53,7 @@ def _revised(content: str = "TTL is 300s", replaced: str = "TTL is 30s", task: s
         edited_at=stamp,
         replaced=replaced,
         task=task,
+        task_key="work/speed-up-the-board" if task else None,
     )
 
 
@@ -139,6 +140,7 @@ def test_room_amend_json_carries_the_replaced_text(monkeypatch: pytest.MonkeyPat
     body = json.loads(result.output)
     assert body["replaced"] == "TTL is 30s"
     assert body["content"] == "TTL is 300s"
+    assert "task_key" in body
 
 
 def test_a_long_message_shows_its_first_lines() -> None:
@@ -148,6 +150,19 @@ def test_a_long_message_shows_its_first_lines() -> None:
     ]
     assert lines[0].endswith("line 1 of the original reply")
     assert "… and 4 more lines" in lines[3]
+
+
+def test_a_wrong_edit_shows_the_replaced_text_whole_to_put_it_back() -> None:
+    """The warning says to restore from the text above, so all of it is there."""
+    old = "\n".join(
+        f"Paragraph {i} about the all-hands recording and its slides." for i in range(1, 7)
+    )
+    old += "\n" + "x" * 150
+    lines = [line.text for line in room_cmd.amend_report(old, "Slide four's headline, softened.")]
+    assert all("more lines" not in line and "…" not in line for line in lines)
+    assert sum("Paragraph" in line for line in lines) == 6
+    assert any("x" * 150 in line for line in lines)
+    assert "replaced text above, in full" in lines[-1]
 
 
 def test_room_amend_reports_a_message_it_cannot_revise(monkeypatch: pytest.MonkeyPatch) -> None:

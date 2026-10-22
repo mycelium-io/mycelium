@@ -992,7 +992,9 @@ def amend(
             return
 
         where = f"the thread of “{result.task}”" if isinstance(result.task, str) else room_name
-        posted = result.created_at.astimezone().strftime("%b %-d, %H:%M")
+        # Not `%-d`: Windows' strftime refuses it.
+        at = result.created_at.astimezone()
+        posted = f"{at:%b} {at.day}, {at:%H:%M}"
         typer.echo(f"  ✎  {sender_handle} edited {message_id} in {where} (first posted {posted})")
         for line in amend_report(result.replaced, content):
             typer.secho(line.text, fg=typer.colors.YELLOW if line.warn else None)
@@ -1015,8 +1017,10 @@ _AMEND_LINES = 3
 _AMEND_WIDTH = 100
 
 
-def _shown(text: str) -> list[str]:
+def _shown(text: str, *, whole: bool = False) -> list[str]:
     lines = [ln.rstrip() for ln in text.strip().splitlines() if ln.strip()]
+    if whole:
+        return lines or [""]
     shown = [
         ln if len(ln) <= _AMEND_WIDTH else ln[: _AMEND_WIDTH - 1] + "…"
         for ln in lines[:_AMEND_LINES]
@@ -1041,20 +1045,22 @@ def little_in_common(old: str, new: str) -> bool:
 
 def amend_report(old: str, new: str) -> list[ReportLine]:
     """What an amend replaced, above what it wrote, and a warning when the two
-    have little in common, so a wrong edit shows on the spot."""
+    have little in common, so a wrong edit shows on the spot. With the warning,
+    the replaced text is shown whole: it's what puts the message back."""
+    wrong = little_in_common(old, new)
     lines = [
         ReportLine(f"     Replaced: {ln}" if i == 0 else f"               {ln}")
-        for i, ln in enumerate(_shown(old))
+        for i, ln in enumerate(_shown(old, whole=wrong))
     ]
     lines += [
         ReportLine(f"     With:     {ln}" if i == 0 else f"               {ln}")
         for i, ln in enumerate(_shown(new))
     ]
-    if little_in_common(old, new):
+    if wrong:
         lines.append(
             ReportLine(
                 "     These have little in common. If it's not the message you meant, "
-                "amend it again with the text above.",
+                "amend it again with the replaced text above, in full.",
                 warn=True,
             )
         )

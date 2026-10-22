@@ -265,6 +265,9 @@ class MessageAmended(MessageRead):
     task: str | None = Field(
         None, description="The title of the task whose thread the message is in; None in the room"
     )
+    task_key: str | None = Field(
+        None, description="That task's key, to answer in its thread (`--task`); None in the room"
+    )
 
 
 class MessageAmend(BaseModel):

@@ -11058,6 +11058,18 @@
             ],
             "title": "Task",
             "description": "The title of the task whose thread the message is in; None in the room"
+          },
+          "task_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Key",
+            "description": "That task's key, to answer in its thread (`--task`); None in the room"
           }
         },
         "type": "object",
