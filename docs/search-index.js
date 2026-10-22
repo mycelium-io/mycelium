@@ -2639,7 +2639,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#dependencies-identity-and-crypto",
     "t": "Identity and crypto",
     "s": "Dependencies",
-    "x": "Component Pinned version Role Upstream pyjwt[crypto] >=2.10,<3 JWT validation for the auth gate and SignerJwt identity jpadilla/pyjwt cryptography >=42,<47 ES256 keypair and JWK for SLIM channel identity pyca/cryptography The rest of the stack is standard, widely used building blocks with no special version constraint beyond their pins: fastapi[standard], httpx, pydantic / pydantic-settings, typer, rich, and question",
+    "x": "Component Pinned version Role Upstream pyjwt[crypto] >=2.10,<3 JWT validation for the auth gate and SignerJwt identity jpadilla/pyjwt cryptography >=50,<51 ES256 keypair and JWK for SLIM channel identity pyca/cryptography The rest of the stack is standard, widely used building blocks with no special version constraint beyond their pins: fastapi[standard], httpx, pydantic / pydantic-settings, typer, rich, and question",
     "p": "Reference"
   },
   {
