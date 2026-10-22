@@ -69,12 +69,17 @@ def _hub(
     memories: list[dict],
     posts: list | None = None,
     keyed: dict[str, dict] | None = None,
+    older: list[dict] | None = None,
 ):
     """Stand in for every hub read the board makes, plus the write it may do.
 
-    ``keyed`` is the by-key memory read, which is how a chat verb reaches a
-    memory the board never projects. A key absent from it 404s.
+    ``memories`` are the room's recently changed ones, which the log reads
+    (``memory?limit=50``); the board reads each of its namespaces whole, which
+    adds ``older``, the tasks that haven't changed lately. ``keyed`` is the
+    by-key memory read, which is how a chat verb reaches a memory the board
+    never projects. A key absent from it 404s.
     """
+    every = memories + (older or [])
     fake_config = SimpleNamespace(
         server=SimpleNamespace(api_url="http://localhost:8000"),
         get_active_room=lambda: ROOM,
@@ -102,6 +107,12 @@ def _hub(
         f"/api/rooms/{ROOM}/agents": [],
         f"/api/rooms/{ROOM}/sessions/members": {"members": []},
         f"/api/rooms/{ROOM}/messages?limit=300": {"messages": []},
+        **{
+            f"/api/rooms/{ROOM}/memory?prefix={namespace}/&limit=1000": [
+                m for m in every if m["key"].startswith(f"{namespace}/")
+            ]
+            for namespace in board_cmd.LIVE_NAMESPACES
+        },
     }
 
     class _Client:
@@ -238,6 +249,78 @@ class TestBeyondTheBoard:
         result = runner.invoke(board_cmd.app, ["send", "work/passkey-login", "hello"])
         assert result.exit_code == 0, result.output
         assert sent["post"]["episode"] == THREAD
+
+
+#: An open task that hasn't changed in a while, assigned and marked gone quiet:
+#: the board's read of the room's most recent memories leaves it out.
+QUIET_KEY = "work/add-a-rule-that-a-pr-touches-the-docs-only-when"
+QUIET_THREAD = "urn:ioc:mycelium:episode:atlas:5bd40de8"
+QUIET = {
+    "key": QUIET_KEY,
+    "value": {"text": "Add a rule that a PR touches the docs only when a reader has something new"},
+    "updated_by": "runtime",
+    "updated_at": "2026-08-20T20:37:39Z",
+    "meta": {
+        "kind": "action",
+        "status": "open",
+        "assignee": "reviewer",
+        "hold_flagged_at": "2026-08-20T20:37:39Z",
+    },
+    "episode": QUIET_THREAD,
+}
+
+
+class TestATaskThatHasntChangedLately:
+    """The board lists, and resolve, claim, release and block find, every live
+    task, not just the ones among the room's most recently changed memories."""
+
+    def _quiet_hub(self, monkeypatch: pytest.MonkeyPatch) -> list:
+        posts: list = []
+        _hub(monkeypatch, memories=[_unit()], posts=posts, older=[QUIET])
+        return posts
+
+    def test_the_board_lists_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._quiet_hub(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["--filter", "all"], env={"COLUMNS": "200"})
+        assert result.exit_code == 0, result.output
+        # Both tasks: the recent one and the quiet one, elided, held by reviewer.
+        assert "Actions 2" in result.output
+        assert "y-when  held @reviewer" in result.output
+
+    @pytest.mark.parametrize("typed", [QUIET_KEY, f"memory:{QUIET_KEY}", "5bd40de8"])
+    def test_resolve_finds_it_by_key_or_thread(
+        self, monkeypatch: pytest.MonkeyPatch, typed: str
+    ) -> None:
+        posts = self._quiet_hub(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["resolve", typed])
+        assert result.exit_code == 0, result.output
+        assert "No row" not in result.output
+        assert posts[-1][0] == f"/api/rooms/{ROOM}/assignments/resolve"
+        assert posts[-1][1]["key"] == QUIET_KEY
+
+    def test_release_and_block_find_it_too(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        posts = self._quiet_hub(monkeypatch)
+        for args in (["release", QUIET_KEY], ["block", QUIET_KEY, "--on", "#1435"]):
+            result = runner.invoke(board_cmd.app, args)
+            assert "No row" not in result.output, args
+        assert [p for p, _b in posts] == [
+            f"/api/rooms/{ROOM}/assignments/release",
+            f"/api/rooms/{ROOM}/fields",
+        ]
+
+    def test_claim_finds_it_and_says_it_is_assigned(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._quiet_hub(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["claim", QUIET_KEY])
+        assert "No row" not in result.output
+
+    def test_a_key_outside_the_board_or_not_there_is_still_no_row(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._quiet_hub(monkeypatch)
+        for typed in ("work/never-filed", "context/notes", "deadbeef"):
+            result = runner.invoke(board_cmd.app, ["resolve", typed])
+            assert result.exit_code == 1, typed
+            assert "No row" in result.output, typed
 
 
 class TestChatVerbs:

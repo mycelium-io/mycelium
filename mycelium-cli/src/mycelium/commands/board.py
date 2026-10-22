@@ -51,6 +51,7 @@ from mycelium.board.epics import epic_lines, epic_parts, where_it_stands
 from mycelium.board.model import (
     EPISODE_FIELD,
     KINDS,
+    LIVE_NAMESPACES,
     PRIORITIES,
     STATUSES,
     THREAD_REFUSALS,
@@ -165,8 +166,16 @@ class HubHealth:
         return f"Hub unreachable: {next(iter(self.failed.values()))}"
 
 
-def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], HubHealth]:
-    """Every source the log and the board share, read once."""
+#: The most tasks one board namespace is read for.
+ROWS_PER_NAMESPACE = 1000
+
+
+def _fetch_raw(room: str | None, *, rows: bool = False) -> tuple[str, dict[str, Any], HubHealth]:
+    """Every source the log and the board share, read once.
+
+    The log's memories are the room's most recently changed, of any kind. The
+    board's (``rows``) are every memory in its namespaces, however long since
+    it changed: an open task nobody has touched lately is still open."""
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
     health = HubHealth()
@@ -195,7 +204,17 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], HubHealth]:
 
     with hub_client(cfg, timeout=30) as client:
         episodes = get(f"/api/rooms/{name}/episodes", {}, "episodes")
-        memories = get(f"/api/rooms/{name}/memory?limit=50", [], "memory")
+        if rows:
+            memories = []
+            for namespace in LIVE_NAMESPACES:
+                listed = get(
+                    f"/api/rooms/{name}/memory?prefix={namespace}/&limit={ROWS_PER_NAMESPACE}",
+                    [],
+                    f"{namespace}/",
+                )
+                memories += listed if isinstance(listed, list) else []
+        else:
+            memories = get(f"/api/rooms/{name}/memory?limit=50", [], "memory")
         # What the tools the room points at say. A read never fetches hub-side,
         # so this costs a cache lookup, not a round trip to GitHub.
         upstream = get(f"/api/rooms/{name}/status", None, "status")
@@ -223,7 +242,7 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], HubHealth]:
 def _fetch(room: str | None) -> tuple[str, list[LiveItem], HubHealth, dict[str, Any] | None]:
     """Read every source the board projects.  A source that isn't reachable
     contributes nothing rather than failing the whole board."""
-    name, sources, health = _fetch_raw(room)
+    name, sources, health = _fetch_raw(room, rows=True)
     items = project_items(
         episodes=sources["episodes"],
         memories=sources["memories"],
