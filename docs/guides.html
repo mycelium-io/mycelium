@@ -2126,7 +2126,7 @@ role   = &quot;agent&quot;</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-codex-asks-before-every-mycelium-command">Codex asks before every <code>mycelium</code> command</h3>
       <p><strong>You see:</strong> a Codex agent stops at an approval prompt on <code>mycelium await</code> or <code>mycelium respond</code>, or says it can&#x27;t reach the hub.</p>
-      <p>Codex runs commands in a sandbox with no network. When Mycelium starts a Codex agent, it lets that session use the network. It also lets the session write to <code>~/.mycelium/agent-state</code>, which is the one folder the CLI writes to as an agent. The rest of <code>~/.mycelium</code> stays out of reach.</p>
+      <p>Codex runs commands in a sandbox with no network. When Mycelium starts a Codex agent, it starts that session in Codex&#x27;s <code>workspace-write</code> sandbox, whatever your Codex config sets, and lets it use the network. It also lets the session write to <code>~/.mycelium/agent-state</code>, which is the one folder the CLI writes to as an agent. The rest of <code>~/.mycelium</code> stays out of reach.</p>
       <p>Codex ignores these settings when you use a named permissions profile (<code>default_permissions</code>). In that case, add both to your profile in <code>~/.codex/config.toml</code>:</p>
       <pre><code>[permissions.&lt;your-profile&gt;.network]
 enabled = true

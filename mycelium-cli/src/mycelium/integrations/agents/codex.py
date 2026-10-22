@@ -31,7 +31,22 @@ class Codex(AgentKind):
         # runs, only without keeping what it can't write.
         with contextlib.suppress(OSError):
             state.mkdir(parents=True, exist_ok=True)
-        args = ["-c", "sandbox_workspace_write.network_access=true", "--add-dir", str(state)]
+        # The sandbox those settings belong to is chosen here too, not left to
+        # the person's config or whether the folder is trusted: in read-only,
+        # Codex refuses the extra folder and the network setting doesn't apply.
+        # Still a sandbox, never `danger-full-access`. The config key works on a
+        # Codex too old for the flag.
+        if self.offers("--sandbox"):
+            mode = ["--sandbox", "workspace-write"]
+        else:
+            mode = ["-c", 'sandbox_mode="workspace-write"']
+        args = [
+            *mode,
+            "-c",
+            "sandbox_workspace_write.network_access=true",
+            "--add-dir",
+            str(state),
+        ]
         # And its approvals go to its own automatic review instead of stopping
         # to ask, inside that sandbox. Never the bypass that drops the sandbox.
         if self.offers("--approve-for-me"):

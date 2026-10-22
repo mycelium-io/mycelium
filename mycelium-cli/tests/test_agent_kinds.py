@@ -33,7 +33,11 @@ CLAUDE_HELP = (
 OLD_CLAUDE_HELP = (
     '  --permission-mode <mode>  (choices: "acceptEdits", "bypassPermissions", "plan")'
 )
-CODEX_HELP = "      --approve-for-me\n          Route approval requests through automatic review"
+CODEX_HELP = (
+    "  -s, --sandbox <SANDBOX_MODE>\n"
+    "          [possible values: read-only, workspace-write, danger-full-access]\n"
+    "      --approve-for-me\n          Route approval requests through automatic review"
+)
 
 
 def _installed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **helps: str) -> None:
@@ -75,6 +79,10 @@ def test_codex_sandbox_lets_mycelium_reach_the_hub_and_write_only_its_agent_stat
     args = agents.of_kind("codex").launch_args()
     state = tmp_path / ".mycelium" / "agent-state"
     assert args == [
+        # The sandbox is chosen, whatever the person's config says: in read-only
+        # Codex refuses the extra folder and drops the network setting.
+        "--sandbox",
+        "workspace-write",
         "-c",
         "sandbox_workspace_write.network_access=true",
         "--add-dir",
@@ -85,7 +93,8 @@ def test_codex_sandbox_lets_mycelium_reach_the_hub_and_write_only_its_agent_stat
     # Never the whole folder: its config, herdr registry and the runner's
     # approval files stay out of an agent's reach.
     assert str(tmp_path / ".mycelium") not in args
-    # Never the bypass, and never a change to who approves what.
+    # Never the bypass or full access, and never a change to who approves what.
+    assert "danger-full-access" not in args
     assert not any("dangerously" in a or a in ("-a", "--ask-for-approval") for a in args)
 
 
@@ -94,7 +103,19 @@ def test_an_older_codex_without_auto_review_keeps_only_the_sandbox_settings(
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     _installed(tmp_path, monkeypatch, codex="  -s, --sandbox <SANDBOX_MODE>")
-    assert "--approve-for-me" not in agents.of_kind("codex").launch_args()
+    args = agents.of_kind("codex").launch_args()
+    assert "--approve-for-me" not in args
+    assert args[:2] == ["--sandbox", "workspace-write"]
+
+
+def test_a_codex_without_the_sandbox_flag_picks_the_mode_through_its_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _installed(tmp_path, monkeypatch, codex="  -c, --config <key=value>")
+    args = agents.of_kind("codex").launch_args()
+    assert args[:2] == ["-c", 'sandbox_mode="workspace-write"']
+    assert "--sandbox" not in args
 
 
 def test_what_an_agent_writes_lives_in_the_agent_state_folder(

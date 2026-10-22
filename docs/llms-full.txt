@@ -4407,9 +4407,10 @@ open **Logs → Agent starts** in the app's menu. The same log is at
 `mycelium respond`, or says it can't reach the hub.
 
 Codex runs commands in a sandbox with no network. When Mycelium starts a Codex
-agent, it lets that session use the network. It also lets the session write to
-`~/.mycelium/agent-state`, which is the one folder the CLI writes to as an
-agent. The rest of `~/.mycelium` stays out of reach.
+agent, it starts that session in Codex's `workspace-write` sandbox, whatever
+your Codex config sets, and lets it use the network. It also lets the session
+write to `~/.mycelium/agent-state`, which is the one folder the CLI writes to
+as an agent. The rest of `~/.mycelium` stays out of reach.
 
 Codex ignores these settings when you use a named permissions profile
 (`default_permissions`). In that case, add both to your profile in
