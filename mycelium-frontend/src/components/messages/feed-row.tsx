@@ -183,7 +183,8 @@ export function SystemNotice({
   labelColor?: string;
   strong?: boolean;
   /** The task or thread it is about, in a column of one width, so every line's
-   *  task starts and its detail starts at the same place down a run. */
+   *  task starts and its detail starts at the same place down a run. A line
+   *  about no task (`null` or left out) draws no column, not an empty one. */
   task?: React.ReactNode;
   /** The detail: who it was by or for, or the first line of what was said. */
   children?: React.ReactNode;
@@ -210,7 +211,7 @@ export function SystemNotice({
       {/* Shares of the row's width, up to a cap: every row is as wide as the
           next, so the columns still line up, and a narrow pane (a split
           beside a thread) leaves the detail room rather than squeezing it out. */}
-      {task !== undefined && <span className="flex w-1/3 min-w-0 max-w-64 flex-shrink-0 items-center">{task}</span>}
+      {task != null && <span className="flex w-1/3 min-w-0 max-w-64 flex-shrink-0 items-center">{task}</span>}
       {/* Up to a width, so on a wide window the detail stays near the task
           rather than drifting to the far edge. */}
       <span className="flex min-w-0 max-w-[36rem] flex-1 items-center gap-1.5 truncate">{children}</span>
