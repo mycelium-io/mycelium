@@ -4,45 +4,80 @@
 "use client";
 
 // DESIGN MOCKUP (local branch, not for merge). The rooms list for a computer
-// that belongs to several hubs: "Your rooms" (this computer's, only you), then
-// "Shared rooms", with the rooms you host here first and then one group per
-// hub you've joined. The joined hubs and their rooms are made up.
+// that belongs to several hubs: "Your rooms" (this computer's, only for you),
+// then "Shared rooms", with the rooms you host here first and then one group
+// per hub you've joined. The joined hubs and their rooms are made up.
+//
+// No colour sets a hub apart. `?hubs=line` (the default) groups each hub the
+// way folders are grouped: a heading that folds, its rooms under a thin line.
+// `?hubs=initial` marks each hub with a grey tile of its first letter.
 
-import { Lock, Plus } from "lucide-react";
-import type { ReactNode } from "react";
+import { ChevronDown, Lock, Plus } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useState, type ReactNode } from "react";
 import { RoomAvatar } from "@/components/ui/room-avatar";
+import { cn } from "@/lib/utils";
 
-/** Picked on this computer, never sent by the hub; clear of the status hues. */
-const JOINED: { name: string; color: string; status: ReactNode; dim?: boolean; rooms: { name: string; unread?: number }[] }[] = [
-  {
-    name: "work",
-    color: "#7b93f0",
-    status: <span className="text-green">●</span>,
-    rooms: [{ name: "general", unread: 3 }, { name: "design-review" }, { name: "release" }],
-  },
-  { name: "studio", color: "#e38bc0", status: <span className="text-green">●</span>, rooms: [{ name: "sketches" }, { name: "crit" }] },
-  { name: "sam", color: "#b48ce6", status: <span className="text-faint">can't reach</span>, dim: true, rooms: [{ name: "bikes" }] },
+const JOINED: { name: string; address: string; status?: ReactNode; dim?: boolean; rooms: { name: string; unread?: number }[] }[] = [
+  { name: "work", address: "work.example.com", rooms: [{ name: "general", unread: 3 }, { name: "design-review" }, { name: "release" }] },
+  { name: "studio", address: "studio.example.org", rooms: [{ name: "sketches" }, { name: "crit" }] },
+  { name: "sam", address: "192.168.1.40", status: "can't reach", dim: true, rooms: [{ name: "bikes" }] },
 ];
 
-function Heading({ children }: { children: ReactNode }) {
-  return <div className="mt-3 flex h-6 items-center px-1.5 text-micro font-medium text-faint first:mt-0">{children}</div>;
+type Style = "line" | "initial";
+
+function Heading({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("mt-3 flex h-6 items-center px-1.5 text-micro font-medium text-faint first:mt-0", className)}>{children}</div>;
 }
 
-function HubHeading({ color, name, status }: { color?: string; name: string; status?: ReactNode }) {
+/** The hub's first letter on a grey tile, the same shape as a room's avatar. */
+function Initial({ name }: { name: string }) {
   return (
-    <div className="mt-1.5 flex h-6 items-center gap-1.5 px-1.5 text-micro text-muted-foreground">
-      {color ? <span className="size-2 rounded-[2px]" style={{ background: color }} /> : <span className="size-2" />}
-      <span>{name}</span>
-      {status && <span className="ml-auto text-[11px]">{status}</span>}
+    <span className="flex size-[18px] flex-shrink-0 items-center justify-center rounded-[4px] border border-border2 text-[10px] font-semibold uppercase text-muted-foreground">
+      {name[0]}
+    </span>
+  );
+}
+
+function Hub({
+  style,
+  name,
+  status,
+  dim,
+  children,
+}: {
+  style: Style;
+  name: string;
+  status?: ReactNode;
+  dim?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="group flex h-7 w-full items-center gap-1.5 rounded px-1.5 text-left hover:bg-hairline"
+      >
+        {style === "line" ? (
+          <ChevronDown className={cn("size-3.5 flex-shrink-0 text-faint transition-transform", !open && "-rotate-90")} />
+        ) : (
+          <Initial name={name} />
+        )}
+        <span className="min-w-0 flex-1 truncate text-label font-medium text-text">{name}</span>
+        {status && <span className="text-[11px] text-faint">{status}</span>}
+      </button>
+      {open && <div className={cn(style === "line" ? "ml-3 border-l border-border pl-1" : "pl-0", dim && "opacity-50")}>{children}</div>}
     </div>
   );
 }
 
 /** A row for a room on another hub. It opens in that hub's own frame, so
  *  in this mockup it goes nowhere. */
-function RemoteRow({ name, unread, dim }: { name: string; unread?: number; dim?: boolean }) {
+function RemoteRow({ name, unread }: { name: string; unread?: number }) {
   return (
-    <div className={`group flex h-7 items-center gap-2 rounded px-1.5 hover:bg-hairline ${dim ? "opacity-50" : ""}`}>
+    <div className="group flex h-7 items-center gap-2 rounded px-1.5 hover:bg-hairline">
       <RoomAvatar name={name} className="size-[18px] rounded-[4px] text-[8px]" />
       <span className={`min-w-0 flex-1 truncate text-label ${unread ? "font-medium text-text" : "text-muted-foreground group-hover:text-text"}`}>
         {name}
@@ -57,6 +92,7 @@ function RemoteRow({ name, unread, dim }: { name: string; unread?: number; dim?:
 }
 
 export function HubGroupsDesign({ yours, hosted }: { yours: ReactNode; hosted: ReactNode }) {
+  const style: Style = useSearchParams().get("hubs") === "initial" ? "initial" : "line";
   return (
     <>
       <Heading>
@@ -64,16 +100,16 @@ export function HubGroupsDesign({ yours, hosted }: { yours: ReactNode; hosted: R
         Your rooms
       </Heading>
       {yours}
-      <Heading>Shared rooms</Heading>
-      <HubHeading name="Hosted here" status={<span className="text-faint">by invite</span>} />
-      {hosted}
+      <Heading className="mt-4">Shared rooms</Heading>
+      <Hub style={style} name="Hosted here" status="by invite">
+        {hosted}
+      </Hub>
       {JOINED.map((hub) => (
-        <div key={hub.name}>
-          <HubHeading color={hub.color} name={hub.name} status={hub.status} />
+        <Hub key={hub.name} style={style} name={hub.name} status={hub.status} dim={hub.dim}>
           {hub.rooms.map((r) => (
-            <RemoteRow key={r.name} name={r.name} unread={r.unread} dim={hub.dim} />
+            <RemoteRow key={r.name} name={r.name} unread={r.unread} />
           ))}
-        </div>
+        </Hub>
       ))}
       <a href="/settings/hubs" className="mt-2 flex h-7 items-center gap-2 rounded px-1.5 text-label text-faint hover:bg-hairline hover:text-text">
         <Plus className="size-3.5" /> Join another hub
