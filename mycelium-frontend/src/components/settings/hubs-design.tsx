@@ -8,6 +8,7 @@
 // in the real app. Nothing here talks to a hub.
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Check, ChevronRight, Copy, Loader2, QrCode, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -335,18 +336,85 @@ const ROOMS = ["#sketches", "#crit", "#general"];
 const WHO = ["anyone with the link", "one person"];
 const DAYS = ["1 day", "7 days", "30 days"];
 
-function Inline({ value, options, onChange, label }: { value: string; options: string[]; onChange: (v: string) => void; label: string }) {
+/** The part of a sentence you can change: the words themselves, underlined
+ *  with dots, opening a short menu of the other choices under them. */
+function Inline({
+  value,
+  options,
+  onChange,
+  label,
+  open: startOpen = false,
+}: {
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  label: string;
+  open?: boolean;
+}) {
+  const [open, setOpen] = useState(startOpen);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-inline-pick]")) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
   return (
-    <select
+    <span data-inline-pick className="relative inline-block">
+      <button
+        type="button"
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className={cn(
+          "border-b border-dotted border-accent/70 leading-tight text-text outline-none transition-colors hover:text-accent focus-visible:text-accent",
+          open && "text-accent",
+        )}
+      >
+        {value}
+      </button>
+      {open && (
+        <span role="listbox" aria-label={label} className="absolute left-0 top-full z-20 mt-1.5 flex min-w-[10rem] flex-col rounded-lg border border-border2 bg-elevated py-1 shadow-xl">
+          {options.map((o) => (
+            <button
+              key={o}
+              type="button"
+              role="option"
+              aria-selected={o === value}
+              onClick={() => {
+                onChange(o);
+                setOpen(false);
+              }}
+              className="flex items-center gap-2 whitespace-nowrap px-3 py-1 text-left text-label leading-6 text-text hover:bg-hairline"
+            >
+              <Check className={cn("size-3.5 text-accent", o !== value && "invisible")} />
+              {o}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** A number or a handle typed straight into the sentence, underlined like the choices. */
+function InlineText({ value, onChange, label, width, placeholder }: { value: string; onChange: (v: string) => void; label: string; width: string; placeholder?: string }) {
+  return (
+    <input
       aria-label={label}
       value={value}
+      placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
-      className="mx-0.5 rounded-md border border-border2 bg-surface px-2 py-0.5 text-body text-text outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-    >
-      {options.map((o) => (
-        <option key={o}>{o}</option>
-      ))}
-    </select>
+      style={{ width }}
+      className="border-0 border-b border-dotted border-accent/70 bg-transparent p-0 text-center leading-tight text-text outline-none placeholder:text-faint focus:border-solid"
+    />
   );
 }
 
@@ -356,6 +424,9 @@ export function HubAccessDesign() {
   const [room, setRoom] = useState(ROOMS[0]);
   const [days, setDays] = useState(DAYS[1]);
   const [uses, setUses] = useState("20");
+  const [handle, setHandle] = useState("");
+  // ?pick=room opens that menu, so a capture can show it.
+  const pickOpen = useSearchParams().get("pick");
   const [made, setMade] = useState(true);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -376,26 +447,20 @@ export function HubAccessDesign() {
     >
       <Block>
         <h2 className="text-[15px] font-semibold text-text">Invite someone</h2>
-        <p className="mt-3 text-[15px] leading-[2.3] text-text">
+        <p className="mt-3 text-[17px] leading-[2] text-[var(--prose)]">
           Let <Inline label="Who" value={who} options={WHO} onChange={setWho} />
           {one && (
-            <input
-              aria-label="Handle"
-              placeholder="@handle"
-              className="mx-1 w-28 rounded-md border border-border2 bg-surface px-2 py-0.5 text-body text-text outline-none"
-            />
+            <>
+              {" "}
+              <InlineText label="Handle" value={handle} onChange={setHandle} width="6.5rem" placeholder="@handle" />
+            </>
           )}{" "}
-          join <Inline label="Room" value={room} options={ROOMS} onChange={setRoom} />, for the next{" "}
+          join <Inline label="Room" value={room} options={ROOMS} onChange={setRoom} open={pickOpen === "room"} />, for the next{" "}
           <Inline label="How long" value={days} options={DAYS} onChange={setDays} />
           {!one && (
             <>
               , up to{" "}
-              <input
-                aria-label="People"
-                value={uses}
-                onChange={(e) => setUses(e.target.value.replace(/\D/g, ""))}
-                className="mx-0.5 w-14 rounded-md border border-border2 bg-surface px-2 py-0.5 text-center text-body text-text outline-none"
-              />{" "}
+              <InlineText label="People" value={uses} onChange={(v) => setUses(v.replace(/\D/g, ""))} width={`${Math.max(uses.length, 1) + 0.6}ch`} />{" "}
               people
             </>
           )}
