@@ -74,4 +74,22 @@ describe("the chat's status rows", () => {
     expect(screen.getByText("I approve the jump arc")).toBeInTheDocument();
     expect(screen.getByText("juliarvalenti/stick-fighter#12")).toBeInTheDocument();
   });
+
+  it("draw no task column, not an empty one, for a line about no task", () => {
+    const joined = event({ type: "coordination_join", raw: { handle: "scout" } });
+    const inThread = event({ id: "j2", type: "coordination_join", raw: { handle: "scout", episode: THREAD } });
+    render(
+      <div>
+        <FeedRow ev={joined} ctx={ctx} />
+        <FeedRow ev={inThread} prev={joined} ctx={ctx} />
+      </div>,
+    );
+
+    const [room, thread] = document.querySelectorAll("[data-system-notice]");
+    // The room join: the name, then "joined" right after it.
+    expect(room.querySelector(".w-1\\/3")).toBeNull();
+    expect(room.textContent).toContain("joined");
+    // A join into a thread still has its task column.
+    expect(thread.querySelector(".w-1\\/3")).not.toBeNull();
+  });
 });
