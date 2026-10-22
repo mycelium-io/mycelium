@@ -332,6 +332,35 @@ export function HubsDesign() {
   );
 }
 
+/** A plain table: sentence-case headers, rows divided by hairlines, the
+ *  row's one action at the right. */
+function SimpleTable({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
+  return (
+    <table className="mt-3 w-full text-left text-body">
+      <thead>
+        <tr className="border-b border-border">
+          {head.map((h, i) => (
+            <th key={i} className="py-2 pr-4 text-micro font-normal text-faint">
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border">
+        {rows.map((r, i) => (
+          <tr key={i}>
+            {r.map((c, j) => (
+              <td key={j} className={cn("py-2.5 pr-4 text-text", j === r.length - 1 && "pr-0 text-right")}>
+                {c}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 const ROOMS = ["#sketches", "#crit", "#general"];
 const WHO = ["anyone with the link", "one person"];
 const DAYS = ["1 day", "7 days", "30 days"];
@@ -495,34 +524,14 @@ export function HubAccessDesign() {
       <section className="py-6">
         <h2 className="text-[15px] font-semibold text-text">Open invites</h2>
         <Say quiet>Each one works until it runs out or you revoke it. Revoking stops new people. Anyone who already joined stays.</Say>
-        <div className="mt-3 divide-y divide-border">
-          <div className="py-3.5">
-            <Say>
-              Anyone with the link can join <b className="font-medium text-text">#sketches</b> until{" "}
-              <b className="font-medium text-text">Thursday</b>. 6 of 20 people have.
-            </Say>
-            <When>Made by you, Monday.</When>
-            <Acts>
-              <Act tone="danger">Revoke</Act>
-            </Acts>
-          </div>
-          <div className="py-3.5">
-            <Say>
-              <b className="font-medium text-text">@dana</b> can join <b className="font-medium text-text">#crit</b> until{" "}
-              <b className="font-medium text-text">Saturday</b>. They haven't yet.
-            </Say>
-            <When>Made by @mara, yesterday. Kept for @dana, so nobody else can use it.</When>
-            <Acts>
-              <Act tone="danger">Revoke</Act>
-            </Acts>
-          </div>
-          <div className="py-3.5">
-            <Say quiet>
-              The workshop link for <b className="font-medium">#general</b> is used up. 300 people joined with it.
-            </Say>
-            <When>It leaves this list tomorrow.</When>
-          </div>
-        </div>
+        <SimpleTable
+          head={["Room", "For", "Joined", "Ends", "Made by", ""]}
+          rows={[
+            ["#sketches", "anyone with the link", "6 of 20", "Thursday", "you", <Act key="r" tone="danger">Revoke</Act>],
+            ["#crit", "@dana", "not yet", "Saturday", "@mara", <Act key="r" tone="danger">Revoke</Act>],
+            [<span key="g" className="text-faint">#general</span>, <span key="w" className="text-faint">anyone with the link</span>, <span key="j" className="text-faint">300 of 300</span>, <span key="e" className="text-faint">used up</span>, <span key="m" className="text-faint">you</span>, <span key="l" className="text-micro text-faint">gone tomorrow</span>],
+          ]}
+        />
         <When>Lost a link? Revoke it and make a new one.</When>
       </section>
     </QuestionPage>
@@ -575,29 +584,14 @@ export function HubDevicesDesign() {
       </Block>
       <section className="py-6">
         <h2 className="text-[15px] font-semibold text-text">Your devices on studio</h2>
-        <div className="mt-2 divide-y divide-border">
-          <div className="py-3">
-            <Say>
-              <b className="font-medium text-text">This MacBook</b> <span className="text-faint">· this one · used now</span>
-            </Say>
-          </div>
-          <div className="py-3">
-            <Say>
-              <b className="font-medium text-text">Studio iMac</b> <span className="text-faint">· linked Oct 9 · used yesterday</span>
-            </Say>
-            <Acts>
-              <Act tone="danger">Remove</Act>
-            </Acts>
-          </div>
-          <div className="py-3">
-            <Say>
-              <b className="font-medium text-text">Old laptop</b> <span className="text-faint">· linked Aug 30 · not used in 7 weeks</span>
-            </Say>
-            <Acts>
-              <Act tone="danger">Remove</Act>
-            </Acts>
-          </div>
-        </div>
+        <SimpleTable
+          head={["Device", "Linked", "Last used", ""]}
+          rows={[
+            [<span key="d">This MacBook <span className="text-faint">(this one)</span></span>, "Aug 2", "now", ""],
+            ["Studio iMac", "Oct 9", "yesterday", <Act key="r" tone="danger">Remove</Act>],
+            ["Old laptop", "Aug 30", "7 weeks ago", <Act key="r" tone="danger">Remove</Act>],
+          ]}
+        />
         <When>
           Removing a device takes effect within the hour, when its sign-in next renews. Lost every device? Ask one of studio's admins to
           invite you again as @julia.
