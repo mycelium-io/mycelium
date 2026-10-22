@@ -23,6 +23,7 @@ from app.schemas import (
     EventStatusUpdate,
     FacetBucket,
     MessageAmend,
+    MessageAmended,
     MessageCreate,
     MessageListResponse,
     MessageRead,
@@ -401,7 +402,7 @@ def _find_amend_target(
     return matched[0] if len(matched) == 1 else None
 
 
-@router.post("/{message_id}/amend", response_model=MessageRead, status_code=201)
+@router.post("/{message_id}/amend", response_model=MessageAmended, status_code=201)
 async def amend_message(
     room_name: str,
     message_id: str,
@@ -506,9 +507,17 @@ async def amend_message(
     )
 
     # Answer with the folded message — the row the room now reads — rather than
-    # the amendment, so a client refreshes to exactly what it was handed.
+    # the amendment, so a client refreshes to exactly what it was handed. With it,
+    # the text it replaced and the task it's in: an amend of the wrong message is
+    # then plain from the answer, not only from someone reading the room later.
     revised = _find_amend_target(_read_messages(channel, coord), str(target.id))
-    return MessageRead.model_validate(revised or msg)
+    row = tasks.row_of_episode(base_room, target.episode) if target.episode else None
+    return MessageAmended(
+        **MessageRead.model_validate(revised or msg).model_dump(),
+        replaced=target.content,
+        task=row[1] if row else None,
+        task_key=row[0] if row else None,
+    )
 
 
 @router.patch("/{message_id}", response_model=MessageRead)

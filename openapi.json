@@ -1569,7 +1569,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageRead"
+                  "$ref": "#/components/schemas/MessageAmended"
                 }
               }
             }
@@ -10946,6 +10946,143 @@
         ],
         "title": "MessageAmend",
         "description": "A revision of an earlier message: new text, same author.\n\nThe amendment is posted as its own ``exchange:amend`` message parented on the\none it revises. Nothing in the transcript is rewritten \u2014 the read path folds\nthe chain to the newest text."
+      },
+      "MessageAmended": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "room_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Name"
+          },
+          "coordination_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordination Session Id"
+          },
+          "sender_handle": {
+            "type": "string",
+            "title": "Sender Handle"
+          },
+          "recipient_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Handle"
+          },
+          "message_type": {
+            "type": "string",
+            "title": "Message Type"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "episode URN this message belongs to, if any (for grouping/folding)"
+          },
+          "edited_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited At",
+            "description": "When this message was last revised by an amendment, folded in on read. None for a message nobody amended."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "replaced": {
+            "type": "string",
+            "title": "Replaced",
+            "description": "The message's text just before this amendment"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task",
+            "description": "The title of the task whose thread the message is in; None in the room"
+          },
+          "task_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Key",
+            "description": "That task's key, to answer in its thread (`--task`); None in the room"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sender_handle",
+          "message_type",
+          "content",
+          "created_at",
+          "replaced"
+        ],
+        "title": "MessageAmended",
+        "description": "An amended message as the room now reads it, with the text it replaced.\n\nThe replaced text is what the room showed just before (the newest version\nwhen it had been amended already), so whoever amended can see at once\nwhether they revised the message they meant to."
       },
       "MessageCreate": {
         "properties": {

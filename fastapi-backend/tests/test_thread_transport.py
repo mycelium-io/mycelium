@@ -862,6 +862,10 @@ class TestWriteRoutes:
         )
         assert amended.status_code == 201
         assert amended.json()["episode"] == thread
+        # The answer names what it replaced and the task it's in, by title and by key.
+        assert amended.json()["replaced"] == "in memory"
+        assert amended.json()["task"] == "pick a token store"
+        assert amended.json()["task_key"].startswith("work/")
 
         in_thread = await client.get(f"/api/rooms/{room}/messages", params={"episode": thread})
         assert [m["content"] for m in in_thread.json()["messages"]] == ["in the keychain"]

@@ -253,6 +253,23 @@ class MessageRead(BaseModel):
     model_config = {"from_attributes": True, "populate_by_name": True}
 
 
+class MessageAmended(MessageRead):
+    """An amended message as the room now reads it, with the text it replaced.
+
+    The replaced text is what the room showed just before (the newest version
+    when it had been amended already), so whoever amended can see at once
+    whether they revised the message they meant to.
+    """
+
+    replaced: str = Field(..., description="The message's text just before this amendment")
+    task: str | None = Field(
+        None, description="The title of the task whose thread the message is in; None in the room"
+    )
+    task_key: str | None = Field(
+        None, description="That task's key, to answer in its thread (`--task`); None in the room"
+    )
+
+
 class MessageAmend(BaseModel):
     """A revision of an earlier message: new text, same author.
 
