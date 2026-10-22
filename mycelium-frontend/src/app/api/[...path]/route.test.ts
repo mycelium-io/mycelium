@@ -44,6 +44,8 @@ describe("the /api proxy in front of a hub elsewhere", () => {
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "cors",
         "sec-fetch-dest": "empty",
+        // Another app on this machine set this; on 127.0.0.1 the browser sends it here too.
+        cookie: "other_app_session=secret",
         accept: "application/json",
       },
     });
@@ -53,7 +55,7 @@ describe("the /api proxy in front of a hub elsewhere", () => {
     expect(res.status).toBe(200);
     const [upstream] = sent;
     expect(upstream.url).toBe("https://hub.example.com/api/rooms");
-    for (const h of ["origin", "referer", "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest"]) {
+    for (const h of ["origin", "referer", "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest", "cookie"]) {
       expect(upstream.headers.get(h), h).toBeNull();
     }
     expect(upstream.headers.get("accept")).toBe("application/json");
