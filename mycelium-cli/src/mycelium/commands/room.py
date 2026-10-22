@@ -20,6 +20,8 @@ Commands:
 """
 
 import json as json_module
+import re
+from dataclasses import dataclass
 
 import typer
 from rich.markup import escape
@@ -968,7 +970,7 @@ def amend(
         from mycelium_backend_client.api.messages import (
             amend_message_api_rooms_room_name_messages_message_id_amend_post as amend_api,
         )
-        from mycelium_backend_client.models import MessageAmend
+        from mycelium_backend_client.models import MessageAmend, MessageAmended
 
         with _typed_client(config) as client:
             body = MessageAmend(content=content, sender_handle=sender_handle)
@@ -976,7 +978,7 @@ def amend(
                 room_name=room_name, message_id=message_id, client=client, body=body
             )
 
-        if result is None:
+        if not isinstance(result, MessageAmended):
             typer.secho(
                 f"  Could not amend {message_id} in {room_name} "
                 "(no such message, or it isn't yours).",
@@ -989,14 +991,74 @@ def amend(
             typer.echo(json_module.dumps(msg_dict, indent=2, default=str))
             return
 
-        preview = content[:80] + ("…" if len(content) > 80 else "")
-        typer.echo(f"  ✎  {sender_handle} → {room_name} (edited {message_id}): {preview}")
+        where = f"the thread of “{result.task}”" if isinstance(result.task, str) else room_name
+        posted = result.created_at.astimezone().strftime("%b %-d, %H:%M")
+        typer.echo(f"  ✎  {sender_handle} edited {message_id} in {where} (first posted {posted})")
+        for line in amend_report(result.replaced, content):
+            typer.secho(line.text, fg=typer.colors.YELLOW if line.warn else None)
 
     except (typer.Exit, typer.Abort):
         raise
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
+
+
+@dataclass(frozen=True)
+class ReportLine:
+    text: str
+    warn: bool = False
+
+
+#: How much of each text an amend shows: a short message whole, a long one's first lines.
+_AMEND_LINES = 3
+_AMEND_WIDTH = 100
+
+
+def _shown(text: str) -> list[str]:
+    lines = [ln.rstrip() for ln in text.strip().splitlines() if ln.strip()]
+    shown = [
+        ln if len(ln) <= _AMEND_WIDTH else ln[: _AMEND_WIDTH - 1] + "…"
+        for ln in lines[:_AMEND_LINES]
+    ]
+    if len(lines) > _AMEND_LINES:
+        shown.append(f"… and {len(lines) - _AMEND_LINES} more lines")
+    return shown or [""]
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9']+", text.lower()) if len(w) > 3}
+
+
+def little_in_common(old: str, new: str) -> bool:
+    """Whether two versions of a message share almost none of their words:
+    what an amend of the wrong message looks like, rather than a correction."""
+    before, after = _words(old), _words(new)
+    if not before or not after:
+        return False
+    return len(before & after) / len(before | after) < 0.2
+
+
+def amend_report(old: str, new: str) -> list[ReportLine]:
+    """What an amend replaced, above what it wrote, and a warning when the two
+    have little in common, so a wrong edit shows on the spot."""
+    lines = [
+        ReportLine(f"     Replaced: {ln}" if i == 0 else f"               {ln}")
+        for i, ln in enumerate(_shown(old))
+    ]
+    lines += [
+        ReportLine(f"     With:     {ln}" if i == 0 else f"               {ln}")
+        for i, ln in enumerate(_shown(new))
+    ]
+    if little_in_common(old, new):
+        lines.append(
+            ReportLine(
+                "     These have little in common. If it's not the message you meant, "
+                "amend it again with the text above.",
+                warn=True,
+            )
+        )
+    return lines
 
 
 @doc_ref(

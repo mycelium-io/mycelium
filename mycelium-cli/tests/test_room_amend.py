@@ -8,6 +8,7 @@ the rendering, and the refusal path.
 from __future__ import annotations
 
 import datetime
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 from uuid import uuid4
@@ -39,17 +40,19 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch, sync_fn) -> None:
     monkeypatch.setattr(_AMEND_SYNC, sync_fn)
 
 
-def _revised():
-    from mycelium_backend_client.models import MessageRead
+def _revised(content: str = "TTL is 300s", replaced: str = "TTL is 30s", task: str | None = None):
+    from mycelium_backend_client.models import MessageAmended
 
-    stamp = datetime.datetime(2026, 6, 11, 21, 22, 56)  # noqa: DTZ001 — fixed for assertions
-    return MessageRead(
+    stamp = datetime.datetime(2026, 6, 11, 21, 22, 56, tzinfo=datetime.UTC)
+    return MessageAmended(
         id=uuid4(),
         sender_handle="growth",
         message_type="broadcast",
-        content="TTL is 300s",
+        content=content,
         created_at=stamp,
         edited_at=stamp,
+        replaced=replaced,
+        task=task,
     )
 
 
@@ -89,6 +92,62 @@ def test_room_amend_uses_the_handle_option_over_the_identity(
 
     assert result.exit_code == 0, result.output
     assert captured["body"].sender_handle == "ops"
+
+
+def test_room_amend_shows_what_it_replaced_above_what_it_wrote(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_common(monkeypatch, lambda **_kw: _revised(task="Speed up the board"))
+
+    result = CliRunner().invoke(room_cmd.app, ["amend", "a1b2c3d4", "TTL is 300s"])
+
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert "the thread of “Speed up the board”" in lines[0]
+    assert "first posted" in lines[0]
+    assert lines[1].split() == ["Replaced:", "TTL", "is", "30s"]
+    assert lines[2].split() == ["With:", "TTL", "is", "300s"]
+    # A correction shares its words with what it corrects: no warning.
+    assert "little in common" not in result.output
+
+
+def test_room_amend_warns_when_the_old_and_new_text_are_unrelated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The mistake this exists for: a reply about one thing overwritten with another."""
+    _patch_common(
+        monkeypatch,
+        lambda **_kw: _revised(
+            content="Slide four's headline could read: nobody has this completely figured out.",
+            replaced="The all-hands recording would have the exact word, if there's one to scrub through.",
+        ),
+    )
+
+    result = CliRunner().invoke(room_cmd.app, ["amend", "a1b2c3d4", "Slide four's headline…"])
+
+    assert result.exit_code == 0, result.output
+    assert "Replaced: The all-hands recording" in result.output
+    assert "little in common" in result.output
+
+
+def test_room_amend_json_carries_the_replaced_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_common(monkeypatch, lambda **_kw: _revised())
+
+    result = CliRunner().invoke(room_cmd.app, ["amend", "a1b2c3d4", "TTL is 300s", "--json"])
+
+    assert result.exit_code == 0, result.output
+    body = json.loads(result.output)
+    assert body["replaced"] == "TTL is 30s"
+    assert body["content"] == "TTL is 300s"
+
+
+def test_a_long_message_shows_its_first_lines() -> None:
+    old = "\n".join(f"line {i} of the original reply" for i in range(1, 8))
+    lines = [
+        line.text for line in room_cmd.amend_report(old, "line 1 of the original reply, fixed")
+    ]
+    assert lines[0].endswith("line 1 of the original reply")
+    assert "… and 4 more lines" in lines[3]
 
 
 def test_room_amend_reports_a_message_it_cannot_revise(monkeypatch: pytest.MonkeyPatch) -> None:
