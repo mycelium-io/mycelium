@@ -22,6 +22,8 @@ export interface JoinedHub {
   open: boolean;
   down?: boolean;
   unread?: number;
+  /** Messages there that ask you something; a number on the circle. */
+  mentions?: number;
   rooms: { name: string; unread?: number }[];
 }
 
@@ -32,9 +34,10 @@ export const JOINED: JoinedHub[] = [
     you: "julia-v",
     open: true,
     unread: 3,
+    mentions: 1,
     rooms: [{ name: "general", unread: 3 }, { name: "design-review" }, { name: "release" }],
   },
-  { id: "studio", address: "studio.example.org", you: "julia", open: false, rooms: [{ name: "sketches" }, { name: "crit" }] },
+  { id: "studio", address: "studio.example.org", you: "julia", open: false, unread: 2, mentions: 1, rooms: [{ name: "sketches" }, { name: "crit" }] },
   { id: "sam", address: "192.168.1.40:8000", you: "julia", open: true, down: true, rooms: [{ name: "bikes" }] },
 ];
 
@@ -44,14 +47,19 @@ function Circle({
   label,
   chosen,
   unread,
+  mentions,
   dim,
+  own,
   onClick,
   children,
 }: {
   label: string;
   chosen: boolean;
   unread?: boolean;
+  mentions?: number;
   dim?: boolean;
+  /** This computer's own hub: an accent ring no joined hub can have. */
+  own?: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -66,12 +74,18 @@ function Circle({
         />
         <span
           className={cn(
-            "flex size-9 items-center justify-center border text-label font-semibold transition-all",
-            chosen ? "rounded-xl border-border2 bg-elevated text-text" : "rounded-full border-border bg-surface text-muted-foreground group-hover:rounded-xl group-hover:text-text",
+            "relative flex size-9 items-center justify-center border text-label font-semibold transition-all",
+            chosen ? "rounded-xl bg-elevated text-text" : "rounded-full bg-surface text-muted-foreground group-hover:rounded-xl group-hover:text-text",
+            own ? "border-accent/60 text-accent" : chosen ? "border-border2" : "border-border",
             dim && "opacity-45",
           )}
         >
           {children}
+          {mentions ? (
+            <span className="absolute -bottom-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-accent px-1 text-[10px] font-semibold leading-none text-accent-fg">
+              {mentions}
+            </span>
+          ) : null}
         </span>
       </button>
     </Tooltip>
@@ -82,7 +96,7 @@ function Circle({
 export function HubRail({ hub, onHub }: { hub: string; onHub: (id: string) => void }) {
   return (
     <nav aria-label="Hubs" className="flex w-[52px] flex-shrink-0 flex-col items-center gap-2 border-r border-border py-2.5">
-      <Circle label="This computer" chosen={hub === "local"} onClick={() => onHub("local")}>
+      <Circle label="This computer · your own hub" own chosen={hub === "local"} onClick={() => onHub("local")}>
         <Laptop className="size-4" />
       </Circle>
       <span className="my-0.5 h-px w-6 bg-border" />
@@ -92,6 +106,7 @@ export function HubRail({ hub, onHub }: { hub: string; onHub: (id: string) => vo
           label={`${h.address}${h.down ? " · can't reach" : ""}`}
           chosen={hub === h.id}
           unread={!!h.unread}
+          mentions={h.mentions}
           dim={h.down}
           onClick={() => onHub(h.id)}
         >
