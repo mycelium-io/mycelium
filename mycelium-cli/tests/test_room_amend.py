@@ -119,15 +119,15 @@ def test_room_amend_warns_when_the_old_and_new_text_are_unrelated(
     _patch_common(
         monkeypatch,
         lambda **_kw: _revised(
-            content="Slide four's headline could read: nobody has this completely figured out.",
-            replaced="The all-hands recording would have the exact word, if there's one to scrub through.",
+            content="Release notes for 2.4 are drafted and ready for review.",
+            replaced="The cache TTL is 300 seconds; I checked the config on staging.",
         ),
     )
 
-    result = CliRunner().invoke(room_cmd.app, ["amend", "a1b2c3d4", "Slide four's headline…"])
+    result = CliRunner().invoke(room_cmd.app, ["amend", "a1b2c3d4", "Release notes for 2.4…"])
 
     assert result.exit_code == 0, result.output
-    assert "Replaced: The all-hands recording" in result.output
+    assert "Replaced: The cache TTL is 300 seconds" in result.output
     assert "little in common" in result.output
 
 
@@ -155,11 +155,9 @@ def test_a_long_message_shows_its_first_lines() -> None:
 def test_a_wrong_edit_shows_the_replaced_text_whole_to_put_it_back() -> None:
     """The warning says to restore from the text above, so all of it is there,
     paragraphs and all, exactly as it was."""
-    old = "\n\n".join(
-        f"Paragraph {i} about the all-hands recording and its slides." for i in range(1, 7)
-    )
+    old = "\n\n".join(f"Paragraph {i} about the cache settings on staging." for i in range(1, 7))
     old += "\n\n" + "x" * 150
-    lines = [line.text for line in room_cmd.amend_report(old, "Slide four's headline, softened.")]
+    lines = [line.text for line in room_cmd.amend_report(old, "Release notes for 2.4 are ready.")]
     replaced = [line[len("     Replaced: ") :] for line in lines[: len(old.splitlines())]]
     assert "\n".join(replaced) == old
     assert "replaced text above, in full" in lines[-1]
