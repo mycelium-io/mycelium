@@ -14,6 +14,7 @@ import type { ReactNode } from "react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { RoomAvatar } from "@/components/ui/room-avatar";
 import { cn } from "@/lib/utils";
+import { avatarTint, softAvatar } from "@/lib/avatar-color";
 
 export interface JoinedHub {
   id: string;
@@ -50,6 +51,7 @@ function Circle({
   mentions,
   dim,
   own,
+  tint,
   onClick,
   children,
 }: {
@@ -60,9 +62,12 @@ function Circle({
   dim?: boolean;
   /** This computer's own hub: an accent ring no joined hub can have. */
   own?: boolean;
+  /** The hub's name, for the same soft wash its rooms' avatars use. */
+  tint?: string;
   onClick: () => void;
   children: ReactNode;
 }) {
+  const wash = tint ? softAvatar(avatarTint(tint)) : undefined;
   return (
     <Tooltip content={label}>
       <button type="button" aria-label={label} aria-current={chosen || undefined} onClick={onClick} className="group relative flex w-full justify-center">
@@ -74,11 +79,16 @@ function Circle({
         />
         <span
           className={cn(
-            "relative flex size-9 items-center justify-center border text-label font-semibold transition-all",
-            chosen ? "rounded-xl bg-elevated text-text" : "rounded-full bg-surface text-muted-foreground group-hover:rounded-xl group-hover:text-text",
-            own ? "border-accent/60 text-accent" : chosen ? "border-border2" : "border-border",
+            "relative flex size-9 items-center justify-center text-label font-semibold transition-all",
+            chosen ? "rounded-xl" : "rounded-full group-hover:rounded-xl",
+            own
+              ? cn("border border-accent/60 text-accent", chosen ? "bg-elevated" : "bg-surface")
+              : chosen
+                ? "ring-2 ring-text/70 ring-offset-2 ring-offset-[var(--bg)]"
+                : "",
             dim && "opacity-45",
           )}
+          style={wash}
         >
           {children}
           {mentions ? (
@@ -100,9 +110,10 @@ export function HubMark({ hub }: { hub: string }) {
     <span
       aria-label={own ? "This computer" : hub}
       className={cn(
-        "inline-flex size-4 flex-shrink-0 items-center justify-center rounded-full border text-[8px] font-semibold",
-        own ? "border-accent/60 text-accent" : "border-border2 text-muted-foreground",
+        "inline-flex size-4 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-semibold",
+        own && "border border-accent/60 text-accent",
       )}
+      style={own ? undefined : softAvatar(avatarTint(hub))}
     >
       {own ? <Laptop className="size-2.5" /> : hub[0].toUpperCase() + hub[1]}
     </span>
@@ -123,6 +134,7 @@ export function HubRail({ hub, onHub }: { hub: string; onHub: (id: string) => vo
           label={h.address}
           chosen={hub === h.id}
           unread={!!h.unread}
+          tint={h.id}
           mentions={h.mentions}
           dim={h.down}
           onClick={() => onHub(h.id)}
