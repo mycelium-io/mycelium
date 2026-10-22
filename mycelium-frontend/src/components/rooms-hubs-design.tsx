@@ -77,17 +77,17 @@ function Circle({
         <span
           className={cn(
             "absolute left-0 top-1/2 w-1 -translate-y-1/2 rounded-r bg-text transition-all",
-            chosen ? "h-6" : unread ? "h-1.5" : "h-0 group-hover:h-3",
+            chosen ? "h-5" : unread ? "h-1" : "h-0 group-hover:h-2.5",
           )}
         />
         <span
           className={cn(
-            "relative flex size-9 items-center justify-center text-label font-semibold transition-all",
-            chosen ? "rounded-xl" : "rounded-full group-hover:rounded-xl",
+            "relative flex size-7 items-center justify-center text-[11px] font-semibold transition-all",
+            chosen ? "rounded-lg" : "rounded-full group-hover:rounded-lg",
             own
               ? cn("border border-accent/60 text-accent", chosen ? "bg-elevated" : "bg-surface")
               : chosen
-                ? "ring-2 ring-text/70 ring-offset-2 ring-offset-[var(--bg)]"
+                ? "ring-1 ring-text/60 ring-offset-[1.5px] ring-offset-[var(--bg)]"
                 : "",
             dim && "opacity-45",
           )}
@@ -95,7 +95,7 @@ function Circle({
         >
           {children}
           {mentions ? (
-            <span className="absolute -bottom-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-accent px-1 text-[10px] font-semibold leading-none text-accent-fg">
+            <span className="absolute -bottom-1 -right-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-accent px-0.5 text-[9px] font-semibold leading-none text-accent-fg">
               {mentions}
             </span>
           ) : null}
@@ -134,11 +134,11 @@ export function HubMark({ hub }: { hub: string }) {
 /** The column of hubs at the far left of the rooms list. */
 export function HubRail({ hub, onHub }: { hub: string; onHub: (id: string) => void }) {
   return (
-    <nav aria-label="Hubs" className="flex w-[52px] flex-shrink-0 flex-col items-center gap-2 border-r border-border py-2.5">
+    <nav aria-label="Hubs" className="flex w-10 flex-shrink-0 flex-col items-center gap-1.5 border-r border-border py-1.5">
       <Circle label="This computer" own chosen={hub === "local"} onClick={() => onHub("local")}>
-        <Laptop className="size-4" />
+        <Laptop className="size-3.5" />
       </Circle>
-      <span className="my-0.5 h-px w-6 bg-border" />
+      <span className="h-px w-5 bg-border" />
       {JOINED.map((h) => (
         <Circle
           key={h.id}
@@ -162,9 +162,9 @@ export function HubRail({ hub, onHub }: { hub: string; onHub: (id: string) => vo
         <Link
           href="/settings/hubs"
           aria-label="Join another hub"
-          className="flex size-9 items-center justify-center rounded-full border border-dashed border-border2 text-faint transition-all hover:rounded-xl hover:text-text"
+          className="flex size-7 items-center justify-center rounded-full border border-dashed border-border2 text-faint transition-all hover:rounded-lg hover:text-text"
         >
-          <Plus className="size-4" />
+          <Plus className="size-3.5" />
         </Link>
       </Tooltip>
     </nav>
