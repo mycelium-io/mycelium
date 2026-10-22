@@ -319,6 +319,56 @@ SLOW_START_S = 10.0
 #: this is often stopped at something of its own (a question from its startup
 #: files, a password) that only the person can see and answer in its terminal.
 SLOW_SHELL_S = 5.0
+#: How often a start herdr is still waiting on looks at the pane, to tell an
+#: agent CLI that exited from one that's slow to come up.
+EXIT_POLL_S = 1.0
+#: How long a start may be in flight with no agent on its pane before the CLI is
+#: taken to have exited. herdr names the agent on the pane the moment it takes
+#: the start, and keeps it named until the agent is ready or gone; before
+#: taking it, herdr's CLI waits at most 2s for the pane's shell, then answers.
+EXIT_GRACE_S = 3.0
+
+
+def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str] | None) -> None:
+    """``bridge.start_agent``, failing as soon as the agent CLI exits.
+
+    herdr waits out its whole timeout for an agent that exited before it came
+    up: the agent's name goes with its process, so herdr is left waiting for a
+    name that won't come back, and the start reads as hung for a minute. So the
+    pane is looked at while herdr waits. An agent seen there and then gone has
+    exited. So has one never seen once the start has been in flight past
+    :data:`EXIT_GRACE_S`: a CLI refusing its arguments exits in a fraction of a
+    second, before the first look. Either way :class:`AgentExitedError` says so
+    at once. herdr's own start goes on in the background until its timeout,
+    finding nothing.
+    """
+    from mycelium.integrations.herdr import AgentExitedError, HerdrError
+
+    done = threading.Event()
+    failed: list[BaseException] = []
+
+    def start() -> None:
+        try:
+            bridge.start_agent(name, kind, pane, agent_args=args)
+        except BaseException as e:  # noqa: BLE001 - handed to the caller's thread as it is
+            failed.append(e)
+        finally:
+            done.set()
+
+    threading.Thread(target=start, name=f"start {name}", daemon=True).start()
+    began = time.monotonic()
+    seen = False
+    while not done.wait(EXIT_POLL_S):
+        try:
+            agent = bridge.get_agent(pane)
+        except HerdrError:
+            continue
+        if agent is not None:
+            seen = True
+        elif seen or time.monotonic() - began >= EXIT_GRACE_S:
+            raise AgentExitedError(f"{kind} exited before it came up in pane {pane}")
+    if failed:
+        raise failed[0]
 
 
 def _start_when_ready(
@@ -347,17 +397,19 @@ def _start_when_ready(
     once if the shell is still starting after ``SLOW_SHELL_S``.
 
     Raises :class:`ShellNotReadyError` when the shell never reached its prompt,
-    :class:`AgentNotReadyError` when the agent CLI ran but never came up as an
-    agent, and :class:`HerdrError` for anything else.
+    :class:`AgentExitedError` when the agent CLI exited before it came up (not
+    tried again: it would only exit again), :class:`AgentNotReadyError` when it
+    ran but never came up as an agent, and :class:`HerdrError` for anything else.
     """
     from mycelium.integrations.agents import of_kind
     from mycelium.integrations.herdr import (
+        AgentExitedError,
         AgentNotReadyError,
         HerdrError,
         ShellNotReadyError,
         herdr_name,
     )
-    from mycelium.integrations.herdr.bridge import NOT_A_SHELL
+    from mycelium.integrations.herdr.bridge import EXITED_DURING_START, NOT_A_SHELL
 
     known = of_kind(kind)
     args = known.launch_args() + ((known.resume_args(resume) or []) if resume else [])
@@ -368,8 +420,12 @@ def _start_when_ready(
     while True:
         began = time.monotonic()
         try:
-            bridge.start_agent(herdr_name(room, handle), kind, pane, agent_args=args or None)
+            _start_watched(bridge, herdr_name(room, handle), kind, pane, args or None)
+        except AgentExitedError:
+            raise
         except HerdrError as e:
+            if EXITED_DURING_START in str(e):
+                raise AgentExitedError(str(e)) from e
             if (agent := bridge.get_agent(pane)) is not None:
                 return agent
             if time.monotonic() - began >= SLOW_START_S:

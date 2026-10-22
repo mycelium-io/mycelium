@@ -1607,7 +1607,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-codex-asks-before-every-mycelium-command",
     "t": "Codex asks before every mycelium command",
     "s": "Help › Troubleshooting",
-    "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network. When Mycelium starts a Codex agent, it lets that session use the network. It also lets the session write to ~/.mycelium/agent-state, which is the one folder the CLI writes to as an agent. The rest of ~/.mycelium stays out of reach. Codex ignores th",
+    "x": "You see: a Codex agent stops at an approval prompt on mycelium await or mycelium respond, or says it can't reach the hub. Codex runs commands in a sandbox with no network. When Mycelium starts a Codex agent, it starts that session in Codex's workspace-write sandbox, whatever your Codex config sets, and lets it use the network. It also lets the session write to ~/.mycelium/agent-state, which is the one folder the CLI ",
     "p": "Guides"
   },
   {

@@ -14,6 +14,7 @@ resident agent, which every CLI shares unless its module says otherwise.
 from __future__ import annotations
 
 import functools
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -65,24 +66,44 @@ class AgentKind:
         A flag a CLI added in a recent release is passed only to an install that
         has it: an older one would refuse to start over an option it doesn't
         know, which is worse than starting without it.
+
+        The CLI is found the way the scan finds it, on this process's PATH and
+        then on a new terminal's (``runner.frameworks.terminal_path``), and its
+        ``--help`` runs with the PATH it was found on: one installed under nvm
+        is often a Node script that needs that PATH's ``node``. Otherwise a CLI
+        the scan offers, and herdr starts, would be asked about nothing here and
+        started without the flags it has.
         """
+        from mycelium.runner.frameworks import terminal_path
+
         found = next((p for b in self.binaries if (p := shutil.which(b))), None)
+        search: str | None = None
+        if not found and (search := terminal_path()):
+            found = next((p for b in self.binaries if (p := shutil.which(b, path=search))), None)
         if not found:
             return False
         try:
             stamp = Path(found).stat().st_mtime
         except OSError:
             return False
-        text = _help_text(found, stamp)
+        text = _help_text(found, stamp, search)
         return all(w in text for w in words)
 
 
 @functools.cache
-def _help_text(binary: str, stamp: float) -> str:  # noqa: ARG001 - a new install is a new key
-    """What ``binary --help`` prints, read once per installed binary."""
+def _help_text(binary: str, stamp: float, search: str | None = None) -> str:  # noqa: ARG001 - a new install is a new key
+    """What ``binary --help`` prints, read once per installed binary, run with
+    ``search`` as its PATH when it was found there."""
+    env = {**os.environ, "PATH": search} if search else None
     try:
         done = subprocess.run(  # noqa: S603 - the CLI's own path, from the scan's table
-            [binary, "--help"], capture_output=True, text=True, timeout=15, check=False
+            [binary, "--help"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            env=env,
         )
     except (OSError, subprocess.SubprocessError):
         return ""

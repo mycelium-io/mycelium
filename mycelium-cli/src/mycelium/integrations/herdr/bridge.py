@@ -160,6 +160,18 @@ class AgentNotReadyError(HerdrError):
     """
 
 
+class AgentExitedError(HerdrError):
+    """herdr started the agent CLI in its pane, and it exited before it came up.
+
+    Its pane is back at the shell, showing whatever the CLI printed on the way
+    out (a refused option, a bad config). Starting it again the same way would
+    only exit again.
+    """
+
+
+#: herdr's word for an agent CLI that exited during its start.
+EXITED_DURING_START = "exited before becoming interactive"
+
 #: herdr's word for a pane with no shell prompt to start an agent at.
 NOT_A_SHELL = "not an available shell"
 

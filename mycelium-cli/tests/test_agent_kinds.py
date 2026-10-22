@@ -33,7 +33,11 @@ CLAUDE_HELP = (
 OLD_CLAUDE_HELP = (
     '  --permission-mode <mode>  (choices: "acceptEdits", "bypassPermissions", "plan")'
 )
-CODEX_HELP = "      --approve-for-me\n          Route approval requests through automatic review"
+CODEX_HELP = (
+    "  -s, --sandbox <SANDBOX_MODE>\n"
+    "          [possible values: read-only, workspace-write, danger-full-access]\n"
+    "      --approve-for-me\n          Route approval requests through automatic review"
+)
 
 
 def _installed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **helps: str) -> None:
@@ -75,26 +79,83 @@ def test_codex_sandbox_lets_mycelium_reach_the_hub_and_write_only_its_agent_stat
     args = agents.of_kind("codex").launch_args()
     state = tmp_path / ".mycelium" / "agent-state"
     assert args == [
+        # It sets workspace-write itself, so that sandbox is chosen whatever
+        # the person's config or the folder's trust says.
+        "--approve-for-me",
         "-c",
         "sandbox_workspace_write.network_access=true",
         "--add-dir",
         str(state),
-        "--approve-for-me",
     ]
     assert state.is_dir()
     # Never the whole folder: its config, herdr registry and the runner's
     # approval files stay out of an agent's reach.
     assert str(tmp_path / ".mycelium") not in args
-    # Never the bypass, and never a change to who approves what.
-    assert not any("dangerously" in a or a in ("-a", "--ask-for-approval") for a in args)
+    # Never the bypass or full access.
+    assert "danger-full-access" not in args
+    assert not any("dangerously" in a for a in args)
 
 
-def test_an_older_codex_without_auto_review_keeps_only_the_sandbox_settings(
+def test_approve_for_me_never_comes_with_the_flags_codex_refuses_beside_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Codex declares ``--approve-for-me`` in conflict with ``--sandbox`` and
+    ``--ask-for-approval``: passed together, it prints an argument error and exits."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _installed(tmp_path, monkeypatch, codex=CODEX_HELP)  # offers all three
+    args = agents.of_kind("codex").launch_args()
+    assert "--approve-for-me" in args
+    assert not {"--sandbox", "-s", "--ask-for-approval", "-a"} & set(args)
+    assert not any(a.startswith(("sandbox_mode=", "approval_policy=")) for a in args)
+
+
+def test_an_older_codex_without_auto_review_picks_the_sandbox_and_asks_on_request(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     _installed(tmp_path, monkeypatch, codex="  -s, --sandbox <SANDBOX_MODE>")
-    assert "--approve-for-me" not in agents.of_kind("codex").launch_args()
+    args = agents.of_kind("codex").launch_args()
+    assert "--approve-for-me" not in args
+    assert args[:4] == ["--sandbox", "workspace-write", "--ask-for-approval", "on-request"]
+
+
+def test_a_codex_under_nvm_is_asked_about_its_flags_on_the_terminals_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Found only on the PATH a new terminal has, and runnable only with it: a
+    Node CLI's ``#!/usr/bin/env node`` needs that PATH's node. Asked any other
+    way, it says nothing, and Codex would start without the flags it has."""
+    from mycelium.runner import frameworks
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))  # the runner's own: no codex
+    nvm = tmp_path / "nvm" / "bin"
+    nvm.mkdir(parents=True)
+    node = nvm / "fakenode"  # the interpreter, only on the terminal's PATH
+    node.write_text(f"#!/bin/sh\n/bin/cat <<'EOF'\n{CODEX_HELP}\nEOF\n")
+    node.chmod(0o755)
+    codex = nvm / "codex"
+    codex.write_text("#!/usr/bin/env fakenode\n")
+    codex.chmod(0o755)
+    monkeypatch.setattr(frameworks, "terminal_path", lambda: str(nvm))
+
+    args = agents.of_kind("codex").launch_args()
+    assert args[0] == "--approve-for-me"
+
+
+def test_a_codex_without_the_sandbox_flag_picks_the_mode_through_its_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _installed(tmp_path, monkeypatch, codex="  -c, --config <key=value>")
+    args = agents.of_kind("codex").launch_args()
+    assert args[:4] == [
+        "-c",
+        'sandbox_mode="workspace-write"',
+        "-c",
+        'approval_policy="on-request"',
+    ]
+    assert "--sandbox" not in args
 
 
 def test_what_an_agent_writes_lives_in_the_agent_state_folder(

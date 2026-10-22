@@ -197,9 +197,10 @@ export type StartStep = "terminal" | "shell" | "agent";
 /**
  * Why a start stopped, in the runner's one word for it: the terminal's shell
  * never reached a prompt, the agent CLI ran but is showing something of its
- * own (an update, a sign-in, a first-run question), or the host refused.
+ * own (an update, a sign-in, a first-run question), it exited before it came
+ * up, or the host refused.
  */
-export type StartWhy = "shell" | "cli" | "host";
+export type StartWhy = "shell" | "cli" | "exited" | "host";
 
 export interface StartReport {
   step: StartStep | null;
@@ -214,7 +215,7 @@ export interface StartReport {
 }
 
 const STEPS: readonly string[] = ["terminal", "shell", "agent"];
-const WHYS: readonly string[] = ["shell", "cli", "host"];
+const WHYS: readonly string[] = ["shell", "cli", "exited", "host"];
 
 /** What a start job's result says about how far it got. Empty for any other job. */
 export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): StartReport {
@@ -266,6 +267,17 @@ export function startHelp(
         `Once it shows a prompt, try again. It reuses the same terminal.`,
       ],
       short: `its terminal on ${machine} didn't get to a prompt in time`,
+    };
+  }
+  if (why === "exited") {
+    return {
+      happened: `${cli} exited before it started on ${machine}.`,
+      steps: [
+        `Look at its terminal on ${machine}. It's still open, showing what ${cli} printed when it exited.`,
+        `Fix what it says, often a setting in ${cli}'s own config.`,
+        `Then try again.`,
+      ],
+      short: `${cli} exited before it started on ${machine}`,
     };
   }
   if (why === "cli") {
