@@ -31,27 +31,30 @@ class Codex(AgentKind):
         # runs, only without keeping what it can't write.
         with contextlib.suppress(OSError):
             state.mkdir(parents=True, exist_ok=True)
-        # The sandbox those settings belong to is chosen here too, not left to
-        # the person's config or whether the folder is trusted: in read-only,
-        # Codex refuses the extra folder and the network setting doesn't apply.
-        # Still a sandbox, never `danger-full-access`. The config key works on a
-        # Codex too old for the flag.
-        if self.offers("--sandbox"):
-            mode = ["--sandbox", "workspace-write"]
-        else:
-            mode = ["-c", 'sandbox_mode="workspace-write"']
-        args = [
-            *mode,
+        settings = [
             "-c",
             "sandbox_workspace_write.network_access=true",
             "--add-dir",
             str(state),
         ]
-        # And its approvals go to its own automatic review instead of stopping
-        # to ask, inside that sandbox. Never the bypass that drops the sandbox.
+        # The sandbox those settings belong to is chosen here too, never left
+        # to the person's config or whether the folder is trusted: a folder
+        # Codex hasn't been asked about starts read-only, where Codex refuses
+        # the extra folder and exits. Still a sandbox, never `danger-full-access`
+        # and never the bypass.
         if self.offers("--approve-for-me"):
-            args.append("--approve-for-me")
-        return args
+            # Codex 0.147 and later: workspace-write with its approvals going to
+            # its own automatic review instead of stopping to ask. The flag sets
+            # the sandbox itself, and Codex refuses it beside `--sandbox` or
+            # `--ask-for-approval`, so neither is passed with it.
+            return ["--approve-for-me", *settings]
+        # An older Codex: the same sandbox, asking the person only for what it
+        # doesn't allow. The config keys work on one too old for the flags.
+        if self.offers("--sandbox"):
+            mode = ["--sandbox", "workspace-write", "--ask-for-approval", "on-request"]
+        else:
+            mode = ["-c", 'sandbox_mode="workspace-write"', "-c", 'approval_policy="on-request"']
+        return [*mode, *settings]
 
     def blocked_hint(self) -> str | None:
         # Like Claude's: what it commonly waits for, never which prompt is up.

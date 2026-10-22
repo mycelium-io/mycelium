@@ -79,33 +79,44 @@ def test_codex_sandbox_lets_mycelium_reach_the_hub_and_write_only_its_agent_stat
     args = agents.of_kind("codex").launch_args()
     state = tmp_path / ".mycelium" / "agent-state"
     assert args == [
-        # The sandbox is chosen, whatever the person's config says: in read-only
-        # Codex refuses the extra folder and drops the network setting.
-        "--sandbox",
-        "workspace-write",
+        # It sets workspace-write itself, so that sandbox is chosen whatever
+        # the person's config or the folder's trust says.
+        "--approve-for-me",
         "-c",
         "sandbox_workspace_write.network_access=true",
         "--add-dir",
         str(state),
-        "--approve-for-me",
     ]
     assert state.is_dir()
     # Never the whole folder: its config, herdr registry and the runner's
     # approval files stay out of an agent's reach.
     assert str(tmp_path / ".mycelium") not in args
-    # Never the bypass or full access, and never a change to who approves what.
+    # Never the bypass or full access.
     assert "danger-full-access" not in args
-    assert not any("dangerously" in a or a in ("-a", "--ask-for-approval") for a in args)
+    assert not any("dangerously" in a for a in args)
 
 
-def test_an_older_codex_without_auto_review_keeps_only_the_sandbox_settings(
+def test_approve_for_me_never_comes_with_the_flags_codex_refuses_beside_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Codex declares ``--approve-for-me`` in conflict with ``--sandbox`` and
+    ``--ask-for-approval``: passed together, it prints an argument error and exits."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _installed(tmp_path, monkeypatch, codex=CODEX_HELP)  # offers all three
+    args = agents.of_kind("codex").launch_args()
+    assert "--approve-for-me" in args
+    assert not {"--sandbox", "-s", "--ask-for-approval", "-a"} & set(args)
+    assert not any(a.startswith(("sandbox_mode=", "approval_policy=")) for a in args)
+
+
+def test_an_older_codex_without_auto_review_picks_the_sandbox_and_asks_on_request(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     _installed(tmp_path, monkeypatch, codex="  -s, --sandbox <SANDBOX_MODE>")
     args = agents.of_kind("codex").launch_args()
     assert "--approve-for-me" not in args
-    assert args[:2] == ["--sandbox", "workspace-write"]
+    assert args[:4] == ["--sandbox", "workspace-write", "--ask-for-approval", "on-request"]
 
 
 def test_a_codex_under_nvm_is_asked_about_its_flags_on_the_terminals_path(
@@ -129,8 +140,7 @@ def test_a_codex_under_nvm_is_asked_about_its_flags_on_the_terminals_path(
     monkeypatch.setattr(frameworks, "terminal_path", lambda: str(nvm))
 
     args = agents.of_kind("codex").launch_args()
-    assert args[:2] == ["--sandbox", "workspace-write"]
-    assert "--approve-for-me" in args
+    assert args[0] == "--approve-for-me"
 
 
 def test_a_codex_without_the_sandbox_flag_picks_the_mode_through_its_config(
@@ -139,7 +149,12 @@ def test_a_codex_without_the_sandbox_flag_picks_the_mode_through_its_config(
     monkeypatch.setenv("HOME", str(tmp_path))
     _installed(tmp_path, monkeypatch, codex="  -c, --config <key=value>")
     args = agents.of_kind("codex").launch_args()
-    assert args[:2] == ["-c", 'sandbox_mode="workspace-write"']
+    assert args[:4] == [
+        "-c",
+        'sandbox_mode="workspace-write"',
+        "-c",
+        'approval_policy="on-request"',
+    ]
     assert "--sandbox" not in args
 
 

@@ -322,6 +322,11 @@ SLOW_SHELL_S = 5.0
 #: How often a start herdr is still waiting on looks at the pane, to tell an
 #: agent CLI that exited from one that's slow to come up.
 EXIT_POLL_S = 1.0
+#: How long a start may be in flight with no agent on its pane before the CLI is
+#: taken to have exited. herdr names the agent on the pane the moment it takes
+#: the start, and keeps it named until the agent is ready or gone; before
+#: taking it, herdr's CLI waits at most 2s for the pane's shell, then answers.
+EXIT_GRACE_S = 3.0
 
 
 def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str] | None) -> None:
@@ -331,8 +336,11 @@ def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str]
     up: the agent's name goes with its process, so herdr is left waiting for a
     name that won't come back, and the start reads as hung for a minute. So the
     pane is looked at while herdr waits. An agent seen there and then gone has
-    exited, and :class:`AgentExitedError` says so at once. herdr's own start
-    goes on in the background until its timeout, finding nothing.
+    exited. So has one never seen once the start has been in flight past
+    :data:`EXIT_GRACE_S`: a CLI refusing its arguments exits in a fraction of a
+    second, before the first look. Either way :class:`AgentExitedError` says so
+    at once. herdr's own start goes on in the background until its timeout,
+    finding nothing.
     """
     from mycelium.integrations.herdr import AgentExitedError, HerdrError
 
@@ -348,6 +356,7 @@ def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str]
             done.set()
 
     threading.Thread(target=start, name=f"start {name}", daemon=True).start()
+    began = time.monotonic()
     seen = False
     while not done.wait(EXIT_POLL_S):
         try:
@@ -356,7 +365,7 @@ def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str]
             continue
         if agent is not None:
             seen = True
-        elif seen:
+        elif seen or time.monotonic() - began >= EXIT_GRACE_S:
             raise AgentExitedError(f"{kind} exited before it came up in pane {pane}")
     if failed:
         raise failed[0]

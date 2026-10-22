@@ -507,6 +507,38 @@ def test_an_agent_cli_that_exits_while_herdr_waits_fails_at_once(monkeypatch: py
     assert attempts == ["w9:p1"]
 
 
+def test_an_agent_cli_that_exits_before_it_is_ever_seen_fails_once_the_start_is_taken(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A CLI refusing its arguments exits in about 100ms, before the first look.
+    herdr names an agent on the pane as soon as it takes a start, so a start in
+    flight past the grace with nothing on the pane has exited."""
+    from mycelium.integrations.herdr import AgentExitedError
+
+    monkeypatch.setattr(swarm, "EXIT_POLL_S", 0.01)
+    monkeypatch.setattr(swarm, "EXIT_GRACE_S", 0.1)
+    release = threading.Event()
+    attempts: list[str] = []
+
+    class _Bridge:
+        def start_agent(self, handle: str, kind: str, pane: str, **_: object) -> dict:
+            attempts.append(pane)
+            release.wait(5)
+            return {}
+
+        def get_agent(self, pane: str) -> dict | None:
+            return None  # never there: it was gone before anyone looked
+
+    began = time.monotonic()
+    try:
+        with pytest.raises(AgentExitedError):
+            swarm._start_when_ready(_Bridge(), "agent-1", "codex", "w9:p1", room="eng")
+    finally:
+        release.set()
+    assert time.monotonic() - began < 2
+    assert attempts == ["w9:p1"]
+
+
 def test_herdr_saying_the_agent_exited_is_not_tried_again(monkeypatch: pytest.MonkeyPatch):
     from mycelium.integrations.herdr import AgentExitedError
 
