@@ -1513,9 +1513,10 @@ def agent_rename(
     The hub moves its manifest and notes, the open tasks it's meant for or
     holding, its presence and where it has read to, and keeps nothing under the
     old name. A running agent can't take a new name, so the machine running it
-    in herdr restarts it under the new one, asking there first; it catches up
-    from the room. You say so in the room. Past messages keep the name they
-    were signed with.
+    in herdr restarts it under the new one, asking there first. One in its own
+    session keeps its conversation and is told its new name; one in a new
+    session reads its notes and catches up from the room. You say so in the
+    room. Past messages keep the name they were signed with.
     """
     import httpx
 
