@@ -180,8 +180,9 @@ def _print_hubs(found: list[Hub], warned: list[str]) -> None:
 @doc_ref(
     usage="mycelium machine restart <handle>... | --all [--room <room>] [--yes]",
     desc=(
-        "Start stopped agents again in their own folders, as themselves. One in its own session "
-        "keeps its conversation; one in a new session catches up from the room."
+        "Start stopped agents again in their own folders, as themselves. If an agent's CLI can "
+        "resume its last session, it keeps its conversation. Otherwise it starts a new session, "
+        "reads its notes and catches up from the room. It lists which before it asks."
     ),
     group="agent",
 )
@@ -197,10 +198,11 @@ def restart_cmd(
     """Restart stopped agents.
 
     Each starts in its own pane (or a new one beside its room's, if its pane is
-    gone), in its folder, with its handle and room set. One in its own session
-    keeps its conversation and catches up on what happened while it was
-    stopped; one in a new session reads its notes and catches up from the room.
-    After herdr itself restarts, agents with herdr's integration come back on
+    gone), in its folder, with its handle and room set. If its agent CLI can
+    resume its last session, it keeps its conversation and catches up on what
+    happened while it was stopped. Otherwise it starts a new session, reads its
+    notes and catches up from the room. The list printed before it asks says
+    which. After herdr itself restarts, agents with herdr's integration come back on
     their own; see `mycelium machine integrations`.
     """
     r = report()
