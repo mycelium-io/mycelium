@@ -161,11 +161,15 @@ def hub(monkeypatch: pytest.MonkeyPatch) -> Hub:
 
 @pytest.fixture
 def omnigent(monkeypatch: pytest.MonkeyPatch) -> Omnigent:
-    def which(name: str) -> str | None:
+    def which(name: str, path: str | None = None) -> str | None:
+        if path is not None:
+            return None
         return f"/usr/bin/{name}" if name in ("claude", "codex", "opencode") else None
 
     monkeypatch.setattr("shutil.which", which)
-    monkeypatch.setattr(frameworks, "_version", lambda path: f"{Path(path).name} 1.0")
+    monkeypatch.setattr(frameworks, "_version", lambda path, *_a: f"{Path(path).name} 1.0")
+    # The scan never asks the real shell of whoever runs the tests.
+    monkeypatch.setattr(frameworks, "terminal_path", lambda: None)
     return Omnigent()
 
 

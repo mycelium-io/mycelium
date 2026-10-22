@@ -185,13 +185,17 @@ def hub(monkeypatch: pytest.MonkeyPatch) -> Hub:
 def herdr(monkeypatch: pytest.MonkeyPatch) -> Herdr:
     real_which = frameworks.shutil.which
 
-    def which(name: str) -> str | None:
+    def which(name: str, path: str | None = None) -> str | None:
+        if path is not None:
+            return None
         if name in ("herdr", "claude", "opencode", "aider"):
             return f"/usr/bin/{name}"
         return None if name != "git" else real_which(name)
 
     monkeypatch.setattr("shutil.which", which)
-    monkeypatch.setattr(frameworks, "_version", lambda path: f"{Path(path).name} 1.0")
+    monkeypatch.setattr(frameworks, "_version", lambda path, *_a: f"{Path(path).name} 1.0")
+    # The scan never asks the real shell of whoever runs the tests.
+    monkeypatch.setattr(frameworks, "terminal_path", lambda: None)
     return Herdr()
 
 
@@ -239,11 +243,80 @@ def test_herdr_decides_what_can_be_started(herdr: Herdr):
 
 
 def test_a_startable_cli_carries_no_note(herdr: Herdr, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(frameworks.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(frameworks.shutil, "which", lambda name, path=None: f"/usr/bin/{name}")
     found = {f.id: f for f in frameworks.scan({"codex", "claude"})}
     assert found["codex"].launchable
     assert found["codex"].note is None
     assert found["claude"].note is None
+
+
+def test_a_cli_only_a_terminal_finds_is_found_and_run_with_that_path(
+    herdr: Herdr, monkeypatch: pytest.MonkeyPatch
+):
+    """codex under nvm: not on the PATH the desktop app hands the runner, but on
+    the one ~/.zshrc sets up. Its --version needs that PATH's node."""
+    terminal = "/Users/j/.nvm/versions/node/v22/bin:/usr/bin"
+
+    def which(name: str, path: str | None = None) -> str | None:
+        if path == terminal and name == "codex":
+            return "/Users/j/.nvm/versions/node/v22/bin/codex"
+        return f"/usr/bin/{name}" if path is None and name == "claude" else None
+
+    ran: list[tuple] = []
+    monkeypatch.setattr(frameworks.shutil, "which", which)
+    monkeypatch.setattr(frameworks, "terminal_path", lambda: terminal)
+    monkeypatch.setattr(
+        frameworks, "_version", lambda path, search=None: ran.append((path, search)) or "1.0"
+    )
+
+    found = {f.id: f for f in frameworks.scan({"codex", "claude"})}
+
+    assert found["codex"].installed and found["codex"].launchable
+    assert found["codex"].path == "/Users/j/.nvm/versions/node/v22/bin/codex"
+    assert ("/Users/j/.nvm/versions/node/v22/bin/codex", terminal) in ran
+    # What the runner's own PATH has runs with that PATH, as before.
+    assert ("/usr/bin/claude", None) in ran
+
+
+def test_the_terminal_is_not_asked_when_everything_is_already_found(
+    herdr: Herdr, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(frameworks.shutil, "which", lambda name, path=None: f"/usr/bin/{name}")
+    asked: list[bool] = []
+    monkeypatch.setattr(frameworks, "terminal_path", lambda: asked.append(True))
+    frameworks.scan({"claude"})
+    assert asked == []
+
+
+def test_the_terminal_path_is_read_past_what_rc_files_print(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A real shell standing in for the person's: it prints a greeting, as an
+    rc file might, then runs what it's given with a PATH of its own."""
+    shell = tmp_path / "shell"
+    shell.write_text(
+        '#!/bin/sh\necho "Welcome back!"\nPATH=/opt/nvm/bin:/usr/bin\nexec /bin/sh -c "$2"\n'
+    )
+    shell.chmod(0o755)
+    monkeypatch.setenv("SHELL", str(shell))
+    monkeypatch.setattr(frameworks, "_asked", None)
+
+    assert frameworks.terminal_path() == "/opt/nvm/bin:/usr/bin"
+    # Kept: a second scan doesn't start the shell again.
+    shell.write_text("#!/bin/sh\nexit 1\n")
+    assert frameworks.terminal_path() == "/opt/nvm/bin:/usr/bin"
+
+
+def test_a_shell_that_hangs_costs_the_timeout_and_nothing_else(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    shell = tmp_path / "shell"
+    shell.write_text("#!/bin/sh\nsleep 5\n")
+    shell.chmod(0o755)
+    monkeypatch.setenv("SHELL", str(shell))
+    monkeypatch.setattr(frameworks, "_asked", None)
+    monkeypatch.setattr(frameworks, "SHELL_TIMEOUT_S", 0.2)
+    assert frameworks.terminal_path() is None
 
 
 def test_without_herdr_nothing_is_startable(herdr: Herdr):
