@@ -108,6 +108,31 @@ def test_an_older_codex_without_auto_review_keeps_only_the_sandbox_settings(
     assert args[:2] == ["--sandbox", "workspace-write"]
 
 
+def test_a_codex_under_nvm_is_asked_about_its_flags_on_the_terminals_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Found only on the PATH a new terminal has, and runnable only with it: a
+    Node CLI's ``#!/usr/bin/env node`` needs that PATH's node. Asked any other
+    way, it says nothing, and Codex would start without the flags it has."""
+    from mycelium.runner import frameworks
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))  # the runner's own: no codex
+    nvm = tmp_path / "nvm" / "bin"
+    nvm.mkdir(parents=True)
+    node = nvm / "fakenode"  # the interpreter, only on the terminal's PATH
+    node.write_text(f"#!/bin/sh\n/bin/cat <<'EOF'\n{CODEX_HELP}\nEOF\n")
+    node.chmod(0o755)
+    codex = nvm / "codex"
+    codex.write_text("#!/usr/bin/env fakenode\n")
+    codex.chmod(0o755)
+    monkeypatch.setattr(frameworks, "terminal_path", lambda: str(nvm))
+
+    args = agents.of_kind("codex").launch_args()
+    assert args[:2] == ["--sandbox", "workspace-write"]
+    assert "--approve-for-me" in args
+
+
 def test_a_codex_without_the_sandbox_flag_picks_the_mode_through_its_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

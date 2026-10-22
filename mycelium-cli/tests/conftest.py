@@ -79,6 +79,21 @@ def _never_the_real_home(request: pytest.FixtureRequest):
     )
 
 
+@pytest.fixture(autouse=True)
+def _never_the_real_shell(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test starts the developer's own shell to read a terminal's PATH.
+
+    The scan and ``AgentKind.offers`` ask for it when a CLI isn't on the
+    process's PATH, which in a test is most of them: that would run the
+    developer's ``~/.zshrc`` and find their real CLIs. A test that wants a
+    terminal PATH sets ``SHELL`` to a stand-in, or stubs ``terminal_path``.
+    """
+    from mycelium.runner import frameworks
+
+    monkeypatch.delenv("SHELL", raising=False)
+    monkeypatch.setattr(frameworks, "_asked", None)
+
+
 # ── SLIM transport ────────────────────────────────────────────────────────────
 
 
