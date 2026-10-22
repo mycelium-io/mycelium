@@ -561,18 +561,6 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
   );
 }
 
-function Choice({ on, title, children, onPick }: { on: boolean; title: string; children: ReactNode; onPick: () => void }) {
-  return (
-    <button type="button" onClick={onPick} className="flex w-full items-start gap-3 py-2 text-left">
-      <span className={cn("mt-1 size-3.5 flex-shrink-0 rounded-full border", on ? "border-[4px] border-accent" : "border-border2")} />
-      <span>
-        <span className="block text-body text-text">{title}</span>
-        <span className="block text-label text-muted-foreground">{children}</span>
-      </span>
-    </button>
-  );
-}
-
 /** Settings › This hub › Let people in: hosting from this computer. */
 export function HubHostDesign() {
   const machine = machineName();
@@ -580,7 +568,6 @@ export function HubHostDesign() {
   // ?setup=1 shows the first time, before anyone can get in. Without it the
   // page shows this hub as it is in the mock: people can get in by invite.
   const setup = useSearchParams().get("setup") === "1";
-  const [how, setHow] = useState<"invite" | "sign-in">("invite");
   const [sharing, setSharing] = useState<Record<string, string>>({});
   const seeOf = (r: (typeof rooms)[number]) => sharing[r.name] ?? (setup || r.is_public === false ? "only me" : "invited people");
   const [checked, setChecked] = useState<"no" | "running" | "ok">(setup ? "no" : "ok");
@@ -591,20 +578,17 @@ export function HubHostDesign() {
       question={setup ? `Let people into this ${machine}'s hub` : `Who else can get into this ${machine}'s hub?`}
       lead={
         setup
-          ? "Right now only you and your agents use it. Letting people in makes it reachable at an address you give, and from then on nobody gets in without an invite or a sign-in."
+          ? "Right now only you and your agents use it. Letting people in makes it reachable at an address you give, and from then on nobody gets in without an invite."
           : "People you invite, at julia-mbp.tail3e2c.ts.net. Your rooms stay yours: only the rooms you share are open to them."
       }
     >
       <Step n={setup ? 1 : 0} title="Who can get in">
-        <div className="mt-2">
-          <Choice on={how === "invite"} onPick={() => setHow("invite")} title="People I invite">
-            Each person gets a link from you. Their device keeps a key for this hub.
-          </Choice>
-          <Choice on={how === "sign-in"} onPick={() => setHow("sign-in")} title="People who sign in with our sign-in service">
-            For a team that already has one, such as Okta or Google Workspace. You'll connect it next.
-          </Choice>
-        </div>
-        <When>There's no &ldquo;anyone&rdquo;. A hub people can reach and that asks nobody who they are lets anyone post as anyone.</When>
+        <Say>
+          {setup ? "This hub will be invite-only: from now on, only people you invite, and your agents, can post here." : "Invite-only. Only people you invite, and your agents, can post here."}
+        </Say>
+        <When>
+          Each person gets a link from you, and their device keeps a key for this hub. A hub that already uses a sign-in service keeps it.
+        </When>
       </Step>
 
       <Step n={setup ? 2 : 0} title="Which rooms they can see">
