@@ -1018,9 +1018,10 @@ _AMEND_WIDTH = 100
 
 
 def _shown(text: str, *, whole: bool = False) -> list[str]:
-    lines = [ln.rstrip() for ln in text.strip().splitlines() if ln.strip()]
     if whole:
-        return lines or [""]
+        # Exactly as written, blank lines included, so it can be copied back.
+        return text.strip().splitlines() or [""]
+    lines = [ln.rstrip() for ln in text.strip().splitlines() if ln.strip()]
     shown = [
         ln if len(ln) <= _AMEND_WIDTH else ln[: _AMEND_WIDTH - 1] + "…"
         for ln in lines[:_AMEND_LINES]

@@ -153,15 +153,15 @@ def test_a_long_message_shows_its_first_lines() -> None:
 
 
 def test_a_wrong_edit_shows_the_replaced_text_whole_to_put_it_back() -> None:
-    """The warning says to restore from the text above, so all of it is there."""
-    old = "\n".join(
+    """The warning says to restore from the text above, so all of it is there,
+    paragraphs and all, exactly as it was."""
+    old = "\n\n".join(
         f"Paragraph {i} about the all-hands recording and its slides." for i in range(1, 7)
     )
-    old += "\n" + "x" * 150
+    old += "\n\n" + "x" * 150
     lines = [line.text for line in room_cmd.amend_report(old, "Slide four's headline, softened.")]
-    assert all("more lines" not in line and "…" not in line for line in lines)
-    assert sum("Paragraph" in line for line in lines) == 6
-    assert any("x" * 150 in line for line in lines)
+    replaced = [line[len("     Replaced: ") :] for line in lines[: len(old.splitlines())]]
+    assert "\n".join(replaced) == old
     assert "replaced text above, in full" in lines[-1]
 
 
