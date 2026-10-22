@@ -275,28 +275,60 @@ describe("<RoomChatBox /> sent history", () => {
     }
     expect(JSON.parse(window.localStorage.getItem("mycelium.sent:demo") ?? "[]")).toEqual(["first", "second"]);
     await userEvent.type(box, "half typed");
+    // jsdom doesn't move the cursor on Up as a browser does, so each step back
+    // starts from the first character by hand.
+    const upFromStart = async () => {
+      (box as HTMLTextAreaElement).setSelectionRange(0, 0);
+      await userEvent.keyboard("{ArrowUp}");
+    };
 
-    await userEvent.keyboard("{ArrowUp}");
+    await upFromStart();
     expect(box).toHaveValue("second");
-    await userEvent.keyboard("{ArrowUp}");
+    await upFromStart();
     expect(box).toHaveValue("first");
     // Nothing older: it stays put.
-    await userEvent.keyboard("{ArrowUp}");
+    await upFromStart();
     expect(box).toHaveValue("first");
 
+    // Down steps forward from the very end ("first" is five characters).
+    (box as HTMLTextAreaElement).setSelectionRange(5, 5);
     await userEvent.keyboard("{ArrowDown}");
     expect(box).toHaveValue("second");
     await userEvent.keyboard("{ArrowDown}");
     expect(box).toHaveValue("half typed");
   });
 
-  it("moves the cursor as usual when it isn't on the first line", async () => {
+  it("moves the cursor as usual anywhere but the first character", async () => {
     window.localStorage.setItem("mycelium.sent:demo", JSON.stringify(["earlier"]));
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.type(box, "line one{Shift>}{Enter}{/Shift}line two");
     await userEvent.keyboard("{ArrowUp}");
     expect(box).toHaveValue("line one\nline two");
+  });
+
+  it("doesn't recall from a long line that wraps, until the cursor is at its start", async () => {
+    const long = "a long message that wraps onto several rows of the box";
+    window.localStorage.setItem("mycelium.sent:demo", JSON.stringify(["earlier"]));
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = (await textarea()) as HTMLTextAreaElement;
+    await userEvent.type(box, long);
+
+    // No newline before the cursor, but it isn't at the start: Up moves it.
+    box.setSelectionRange(5, 5);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue(long);
+    box.setSelectionRange(0, 0);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("earlier");
+
+    // Down, mirrored: only from the very end does it step forward to the draft.
+    box.setSelectionRange(2, 2);
+    await userEvent.keyboard("{ArrowDown}");
+    expect(box).toHaveValue("earlier");
+    box.setSelectionRange(7, 7);
+    await userEvent.keyboard("{ArrowDown}");
+    expect(box).toHaveValue(long);
   });
 
   it("keeps each room's history apart", async () => {
