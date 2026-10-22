@@ -124,8 +124,6 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
         </RailGroup>
         <RailGroup title="This hub">
           <RailLink item={{ page: "hub", label: "Hub" }} active={page === "hub"} room={room} />
-        </RailGroup>
-        <RailGroup title="studio · you're an admin">
           <RailLink item={{ page: "hub-access", label: "Who can get in" }} active={page === "hub-access"} room={room} />
         </RailGroup>
       </nav>

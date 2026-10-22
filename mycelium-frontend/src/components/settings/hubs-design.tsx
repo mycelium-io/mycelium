@@ -13,6 +13,7 @@ import { Check, ChevronRight, Copy, Loader2, QrCode, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { desktopMachine, isDesktop } from "@/lib/desktop";
+import { useRooms } from "@/lib/room-data";
 
 /** This machine as the title bar names it: "Mac" in the app on a Mac,
  *  "computer" anywhere else. */
@@ -361,7 +362,6 @@ function SimpleTable({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
   );
 }
 
-const ROOMS = ["#sketches", "#crit", "#general"];
 const WHO = ["anyone with the link", "one person"];
 const DAYS = ["1 day", "7 days", "30 days"];
 
@@ -447,10 +447,15 @@ function InlineText({ value, onChange, label, width, placeholder }: { value: str
   );
 }
 
-/** Settings › studio › Who can get in. */
+/** Settings › This hub › Who can get in. The rooms are this hub's own. */
 export function HubAccessDesign() {
+  const { rooms } = useRooms();
+  const shared = rooms.filter((r) => r.is_public !== false).map((r) => `#${r.name}`);
+  const ROOMS = shared.length ? shared : ["#checkout"];
   const [who, setWho] = useState(WHO[0]);
-  const [room, setRoom] = useState(ROOMS[0]);
+  const [picked, setRoom] = useState<string | null>(null);
+  const room = picked ?? ROOMS[0];
+  const [r1, r2, r3] = [ROOMS[0], ROOMS[1] ?? ROOMS[0], ROOMS[2] ?? ROOMS[0]];
   const [days, setDays] = useState(DAYS[1]);
   const [uses, setUses] = useState("20");
   const [handle, setHandle] = useState("");
@@ -466,13 +471,9 @@ export function HubAccessDesign() {
   const one = who === "one person";
   return (
     <QuestionPage
-      crumb={
-        <span className="flex items-center gap-1.5">
-          <Swatch hub="studio" /> studio
-        </span>
-      }
-      question="Who can get into studio?"
-      lead="Only people with an invite. 9 people are in, on 14 devices. You're one of studio's admins, and this app holds your admin key, so you can invite people from here."
+      crumb="This hub"
+      question="Who can get into this hub?"
+      lead="Only people with an invite. 9 people are in, on 14 devices. You're one of this hub's admins, and this app holds your admin key, so you can invite people from here."
     >
       <Block>
         <h2 className="text-[15px] font-semibold text-text">Invite someone</h2>
@@ -504,10 +505,10 @@ export function HubAccessDesign() {
             <p className="text-body text-text">
               <Check className="mr-1.5 inline size-3.5 text-green" />
               <b className="font-medium">Here's the link.</b>{" "}
-              <span className="text-muted-foreground">Copy it now. studio keeps only a hash of the code, so the link can't be shown again.</span>
+              <span className="text-muted-foreground">Copy it now. The hub keeps only a hash of the code, so the link can't be shown again.</span>
             </p>
             <p className="mt-2 break-all font-mono text-micro text-[var(--prose)]">
-              https://mycelium-io.github.io/mycelium/join#hub=https://studio.example.org&amp;key=c4e1…08ab&amp;code=K7QM4XHD9RWAC2LP
+              https://mycelium-io.github.io/mycelium/join#hub=https://team.example.com&amp;key=c4e1…08ab&amp;code=K7QM4XHD9RWAC2LP
             </p>
             <Acts>
               <button type="button" onClick={() => setCopied(true)} className="flex items-center gap-1.5 text-label text-accent hover:underline underline-offset-4">
@@ -527,9 +528,9 @@ export function HubAccessDesign() {
         <SimpleTable
           head={["Room", "For", "Joined", "Ends", "Made by", ""]}
           rows={[
-            ["#sketches", "anyone with the link", "6 of 20", "Thursday", "you", <Act key="r" tone="danger">Revoke</Act>],
-            ["#crit", "@dana", "not yet", "Saturday", "@mara", <Act key="r" tone="danger">Revoke</Act>],
-            [<span key="g" className="text-faint">#general</span>, <span key="w" className="text-faint">anyone with the link</span>, <span key="j" className="text-faint">300 of 300</span>, <span key="e" className="text-faint">used up</span>, <span key="m" className="text-faint">you</span>, <span key="l" className="text-micro text-faint">gone tomorrow</span>],
+            [r1, "anyone with the link", "6 of 20", "Thursday", "you", <Act key="r" tone="danger">Revoke</Act>],
+            [r2, "@dana", "not yet", "Saturday", "@mara", <Act key="r" tone="danger">Revoke</Act>],
+            [<span key="g" className="text-faint">{r3}</span>, <span key="w" className="text-faint">anyone with the link</span>, <span key="j" className="text-faint">300 of 300</span>, <span key="e" className="text-faint">used up</span>, <span key="m" className="text-faint">you</span>, <span key="l" className="text-micro text-faint">gone tomorrow</span>],
           ]}
         />
         <When>Lost a link? Revoke it and make a new one.</When>
