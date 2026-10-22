@@ -1,0 +1,543 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Mycelium Contributors
+
+"use client";
+
+// DESIGN MOCKUP (local branch, not for merge). Settings for a machine that
+// belongs to several hubs, built from made-up data so the pages can be judged
+// in the real app. Nothing here talks to a hub.
+
+import Link from "next/link";
+import { Check, ChevronRight, Copy, Loader2, QrCode, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
+import { desktopMachine, isDesktop } from "@/lib/desktop";
+
+/** This machine as the title bar names it: "Mac" in the app on a Mac,
+ *  "computer" anywhere else. */
+function machineName(): string {
+  return isDesktop() ? desktopMachine() : "computer";
+}
+
+/** A hub's colour is picked on this machine, never sent by the hub, and kept
+ *  clear of the status hues. This machine's own hub has none. */
+const HUB_COLOR = { work: "#7b93f0", studio: "#e38bc0", sam: "#b48ce6", acme: "#8a94a0" } as const;
+
+function Swatch({ hub }: { hub: keyof typeof HUB_COLOR }) {
+  return <span aria-hidden className="size-2.5 flex-shrink-0 rounded-[3px]" style={{ background: HUB_COLOR[hub] }} />;
+}
+
+/** A page that asks one question, in one roomy column. */
+function QuestionPage({ crumb, question, lead, children }: { crumb?: ReactNode; question: string; lead: ReactNode; children: ReactNode }) {
+  return (
+    <div className="mx-auto max-w-[720px] px-6 pb-24 pt-10">
+      {crumb && <div className="mb-3 text-micro text-faint">{crumb}</div>}
+      <h1 className="text-[22px] font-semibold tracking-[-0.01em] text-text">{question}</h1>
+      <p className="mt-2 max-w-[600px] text-body leading-relaxed text-[var(--prose)]">{lead}</p>
+      <div className="mt-6 border-t border-border">{children}</div>
+    </div>
+  );
+}
+
+function Block({ children, className }: { children: ReactNode; className?: string }) {
+  return <section className={cn("border-b border-border py-6", className)}>{children}</section>;
+}
+
+function Say({ children, quiet }: { children: ReactNode; quiet?: boolean }) {
+  return <p className={cn("mt-1.5 text-body leading-relaxed", quiet ? "text-muted-foreground" : "text-[var(--prose)]")}>{children}</p>;
+}
+
+function When({ children }: { children: ReactNode }) {
+  return <p className="mt-1.5 text-micro text-faint">{children}</p>;
+}
+
+/** Actions are words under what they act on. Leave is the quiet one. */
+function Act({ children, onClick, tone = "accent" }: { children: ReactNode; onClick?: () => void; tone?: "accent" | "quiet" | "danger" }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "text-label hover:underline underline-offset-4",
+        tone === "accent" && "text-accent",
+        tone === "quiet" && "text-muted-foreground hover:text-text",
+        tone === "danger" && "text-red",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Acts({ children }: { children: ReactNode }) {
+  return <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">{children}</div>;
+}
+
+type Check = { ok: boolean; text: ReactNode };
+
+/** A test that proves the connection, said in words, one line per check. */
+function TestResult({ checks, after }: { checks: Check[]; after?: ReactNode }) {
+  return (
+    <div className="mt-3 space-y-1.5">
+      {checks.map((c, i) => (
+        <div key={i} className="flex items-baseline gap-2.5 text-body">
+          {c.ok ? <Check className="size-3.5 flex-shrink-0 translate-y-0.5 text-green" /> : <X className="size-3.5 flex-shrink-0 translate-y-0.5 text-red" />}
+          <span className="text-text">{c.text}</span>
+        </div>
+      ))}
+      {after && <When>{after}</When>}
+    </div>
+  );
+}
+
+/** Runs a pretend test: a moment of "testing", then the result. */
+function useTest(initial: boolean) {
+  const [state, setState] = useState<"idle" | "running" | "done">(initial ? "done" : "idle");
+  const run = () => {
+    setState("running");
+    window.setTimeout(() => setState("done"), 900);
+  };
+  return { state, run };
+}
+
+function Testing() {
+  return (
+    <div className="mt-3 flex items-center gap-2 text-body text-muted-foreground">
+      <Loader2 className="size-3.5 animate-spin" /> Testing…
+    </div>
+  );
+}
+
+function Advanced({ children, open: initial = false }: { children: ReactNode; open?: boolean }) {
+  const [open, setOpen] = useState(initial);
+  return (
+    <div className="mt-4">
+      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1 text-label text-muted-foreground hover:text-text">
+        <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} /> Advanced
+      </button>
+      {open && <div className="mt-3 space-y-4 border-l border-border2 pl-4">{children}</div>}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="text-micro text-faint">{label}</div>
+      <div className="mt-1 text-body text-text">{children}</div>
+    </div>
+  );
+}
+
+function LeaveConfirm({ hub, agents, onCancel }: { hub: string; agents: string[]; onCancel: () => void }) {
+  return (
+    <div role="alertdialog" className="mt-4 border-l-2 border-red/70 pl-4">
+      <p className="text-body font-medium text-text">Leave {hub}?</p>
+      <Say quiet>
+        Its rooms leave your list, and your name, drafts and saved data for {hub} are removed from this {machineName()}. {hub} keeps
+        what you posted.
+      </Say>
+      {agents.length > 0 && (
+        <Say>
+          {agents.join(" and ")} {agents.length === 1 ? "runs" : "run"} only for {hub}, so {agents.length === 1 ? "it stops" : "they stop"} too.
+        </Say>
+      )}
+      <Acts>
+        <Act tone="danger">Leave {hub}{agents.length ? ` and stop ${agents.length === 1 ? "it" : `${agents.length} agents`}` : ""}</Act>
+        <Act tone="quiet" onClick={onCancel}>
+          Cancel
+        </Act>
+      </Acts>
+    </div>
+  );
+}
+
+function HubTitle({ hub, address }: { hub: keyof typeof HUB_COLOR; address: string }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <Swatch hub={hub} />
+      <h2 className="text-[16px] font-semibold text-text">{hub}</h2>
+      <span className="font-mono text-micro text-faint">{address}</span>
+    </div>
+  );
+}
+
+function WorkHub() {
+  const test = useTest(true);
+  const [leaving, setLeaving] = useState(false);
+  return (
+    <Block>
+      <HubTitle hub="work" address="work.example.com" />
+      <Say>
+        You're <b className="font-medium text-text">@julia-v</b> here. Anyone who reaches work can post, because it doesn't ask people
+        to sign in. Two of your agents, builder and reviewer, run on this {machineName()} for it.
+      </Say>
+      <Say>
+        work may start agents on this {machineName()} only in <span className="font-mono text-label">~/code/checkout</span>, and it
+        asks you each time.
+      </Say>
+      <Acts>
+        <Act onClick={test.run}>Test the connection</Act>
+        <Act>Rename or recolor</Act>
+        <Act tone="quiet" onClick={() => setLeaving(true)}>
+          Leave work…
+        </Act>
+      </Acts>
+      {test.state === "running" && <Testing />}
+      {test.state === "done" && (
+        <TestResult
+          checks={[
+            { ok: true, text: "work answered in 120 ms." },
+            { ok: true, text: "It's the same hub you joined. Its key matches the one it gave you then." },
+            { ok: true, text: "@julia-v is still yours there." },
+          ]}
+          after="Tested just now."
+        />
+      )}
+      {leaving && <LeaveConfirm hub="work" agents={["builder", "reviewer"]} onCancel={() => setLeaving(false)} />}
+      <Advanced>
+        <Field label="Folders work may start agents in">
+          <div className="flex flex-wrap gap-1.5">
+            <span className="flex items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono text-micro">
+              ~/code/checkout <X className="size-3 text-faint" />
+            </span>
+            <button type="button" className="rounded-md border border-dashed border-border2 px-2 py-0.5 text-micro text-muted-foreground hover:text-text">
+              Choose a folder…
+            </button>
+          </div>
+          <When>A change applies to the next request. This {machineName()} still asks you each time.</When>
+        </Field>
+        <Field label="Hub key">
+          <span className="font-mono text-label">7f3a 91c0 … 52d8 c21e</span>
+        </Field>
+        <Field label="Store id">
+          <span className="font-mono text-label text-muted-foreground">st_8f2e41c7</span>
+        </Field>
+      </Advanced>
+    </Block>
+  );
+}
+
+function StudioHub() {
+  const test = useTest(false);
+  return (
+    <Block>
+      <HubTitle hub="studio" address="studio.example.org" />
+      <Say>
+        You're <b className="font-medium text-text">@julia</b> here. Only people studio invited can get in, and this {machineName()}{" "}
+        holds your key for it. Your key is also on Studio iMac.
+      </Say>
+      <Say>studio can't start agents on this {machineName()}. You haven't allowed it any folders.</Say>
+      <Acts>
+        <Act onClick={test.run}>Test the connection</Act>
+        <Link href="/settings/hub-devices" className="text-label text-accent underline-offset-4 hover:underline">
+          Use studio on another device…
+        </Link>
+        <Act>Rename or recolor</Act>
+        <Act tone="quiet">Leave studio…</Act>
+      </Acts>
+      {test.state === "running" && <Testing />}
+      {test.state === "done" && (
+        <TestResult
+          checks={[
+            { ok: true, text: "studio answered in 88 ms, and it's the same hub you joined." },
+            { ok: true, text: "Your key for studio still works. Your sign-in renews by itself." },
+          ]}
+          after="Tested just now."
+        />
+      )}
+    </Block>
+  );
+}
+
+function SamHub() {
+  const test = useTest(true);
+  return (
+    <Block>
+      <HubTitle hub="sam" address="192.168.1.40:8000" />
+      <Say>You're <b className="font-medium text-text">@julia</b> here. Last reached 2 hours ago.</Say>
+      {test.state === "running" ? (
+        <Testing />
+      ) : (
+        <TestResult
+          checks={[
+            {
+              ok: false,
+              text: "Couldn't reach sam at 192.168.1.40. Nothing answered on port 8000. The computer may be asleep or off this network.",
+            },
+          ]}
+          after="Tested just now. Its rooms stay in your list, and the app tries again every minute."
+        />
+      )}
+      <Acts>
+        <Act onClick={test.run}>Test again</Act>
+        <Act>Change its address…</Act>
+        <Act tone="quiet">Leave sam…</Act>
+      </Acts>
+    </Block>
+  );
+}
+
+function AcmeHub() {
+  return (
+    <Block>
+      <HubTitle hub="acme" address="mycelium.acme.io" />
+      <Say>You sign in to acme with your acme account, julia@acme.io.</Say>
+      <TestResult
+        checks={[
+          { ok: true, text: "acme answered, and it's the same hub you joined." },
+          { ok: false, text: "Your sign-in ran out yesterday, and acme refused to renew it. Sign in again to post there." },
+        ]}
+      />
+      <Acts>
+        <Act>Sign in again</Act>
+        <Act tone="quiet">Leave acme…</Act>
+      </Acts>
+    </Block>
+  );
+}
+
+/** Settings › Hubs: which hubs this machine is part of. */
+export function HubsDesign() {
+  const machine = machineName();
+  return (
+    <QuestionPage
+      question={`Which hubs is this ${machine} part of?`}
+      lead="Each hub has its own rooms, and your own name and sign-in there. Nothing you write on one reaches another."
+    >
+      <Block>
+        <div className="flex items-center gap-2.5">
+          <h2 className="text-[16px] font-semibold text-text">This {machine}</h2>
+          <span className="text-micro text-faint">your own hub</span>
+        </div>
+        <Say>
+          Your private rooms and your own memory. It runs here and only this {machine} can reach it. It's always part of this {machine}.
+        </Say>
+      </Block>
+      <WorkHub />
+      <StudioHub />
+      <SamHub />
+      <AcmeHub />
+      <section className="py-6">
+        <h2 className="text-[15px] font-semibold text-text">Join another hub</h2>
+        <Say quiet>Open an invite link someone sent you. Mycelium checks the hub before you join.</Say>
+        <Acts>
+          <Act>Join with an invite link…</Act>
+          <Act tone="quiet">I have a link code from my other device</Act>
+        </Acts>
+        <When>"Join with an invite link…" reads your clipboard once, to look for a link. Nothing reads it before you choose.</When>
+      </section>
+    </QuestionPage>
+  );
+}
+
+const ROOMS = ["#sketches", "#crit", "#general"];
+const WHO = ["anyone with the link", "one person"];
+const DAYS = ["1 day", "7 days", "30 days"];
+
+function Inline({ value, options, onChange, label }: { value: string; options: string[]; onChange: (v: string) => void; label: string }) {
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="mx-0.5 rounded-md border border-border2 bg-surface px-2 py-0.5 text-body text-text outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+    >
+      {options.map((o) => (
+        <option key={o}>{o}</option>
+      ))}
+    </select>
+  );
+}
+
+/** Settings › studio › Who can get in. */
+export function HubAccessDesign() {
+  const [who, setWho] = useState(WHO[0]);
+  const [room, setRoom] = useState(ROOMS[0]);
+  const [days, setDays] = useState(DAYS[1]);
+  const [uses, setUses] = useState("20");
+  const [made, setMade] = useState(true);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+  const one = who === "one person";
+  return (
+    <QuestionPage
+      crumb={
+        <span className="flex items-center gap-1.5">
+          <Swatch hub="studio" /> studio
+        </span>
+      }
+      question="Who can get into studio?"
+      lead="Only people with an invite. 9 people are in, on 14 devices. You're one of studio's admins, and this app holds your admin key, so you can invite people from here."
+    >
+      <Block>
+        <h2 className="text-[15px] font-semibold text-text">Invite someone</h2>
+        <p className="mt-3 text-[15px] leading-[2.3] text-text">
+          Let <Inline label="Who" value={who} options={WHO} onChange={setWho} />
+          {one && (
+            <input
+              aria-label="Handle"
+              placeholder="@handle"
+              className="mx-1 w-28 rounded-md border border-border2 bg-surface px-2 py-0.5 text-body text-text outline-none"
+            />
+          )}{" "}
+          join <Inline label="Room" value={room} options={ROOMS} onChange={setRoom} />, for the next{" "}
+          <Inline label="How long" value={days} options={DAYS} onChange={setDays} />
+          {!one && (
+            <>
+              , up to{" "}
+              <input
+                aria-label="People"
+                value={uses}
+                onChange={(e) => setUses(e.target.value.replace(/\D/g, ""))}
+                className="mx-0.5 w-14 rounded-md border border-border2 bg-surface px-2 py-0.5 text-center text-body text-text outline-none"
+              />{" "}
+              people
+            </>
+          )}
+          .
+        </p>
+        <Acts>
+          <Act onClick={() => setMade(true)}>Make the link</Act>
+        </Acts>
+        {!one && <When>Uses can't be unlimited: a link that never runs out is open to anyone.</When>}
+        {made && (
+          <div className="mt-5 border-l-2 border-green/70 pl-4">
+            <p className="text-body text-text">
+              <Check className="mr-1.5 inline size-3.5 text-green" />
+              <b className="font-medium">Here's the link.</b>{" "}
+              <span className="text-muted-foreground">Copy it now. studio keeps only a hash of the code, so the link can't be shown again.</span>
+            </p>
+            <p className="mt-2 break-all font-mono text-micro text-[var(--prose)]">
+              https://mycelium-io.github.io/mycelium/join#hub=https://studio.example.org&amp;key=c4e1…08ab&amp;code=K7QM4XHD9RWAC2LP
+            </p>
+            <Acts>
+              <button type="button" onClick={() => setCopied(true)} className="flex items-center gap-1.5 text-label text-accent hover:underline underline-offset-4">
+                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}
+              </button>
+              <button type="button" className="flex items-center gap-1.5 text-label text-accent hover:underline underline-offset-4">
+                <QrCode className="size-3.5" /> Show as a QR code
+              </button>
+            </Acts>
+          </div>
+        )}
+      </Block>
+
+      <section className="py-6">
+        <h2 className="text-[15px] font-semibold text-text">Open invites</h2>
+        <Say quiet>Each one works until it runs out or you revoke it. Revoking stops new people. Anyone who already joined stays.</Say>
+        <div className="mt-3 divide-y divide-border">
+          <div className="py-3.5">
+            <Say>
+              Anyone with the link can join <b className="font-medium text-text">#sketches</b> until{" "}
+              <b className="font-medium text-text">Thursday</b>. 6 of 20 people have.
+            </Say>
+            <When>Made by you, Monday.</When>
+            <Acts>
+              <Act tone="danger">Revoke</Act>
+            </Acts>
+          </div>
+          <div className="py-3.5">
+            <Say>
+              <b className="font-medium text-text">@dana</b> can join <b className="font-medium text-text">#crit</b> until{" "}
+              <b className="font-medium text-text">Saturday</b>. They haven't yet.
+            </Say>
+            <When>Made by @mara, yesterday. Kept for @dana, so nobody else can use it.</When>
+            <Acts>
+              <Act tone="danger">Revoke</Act>
+            </Acts>
+          </div>
+          <div className="py-3.5">
+            <Say quiet>
+              The workshop link for <b className="font-medium">#general</b> is used up. 300 people joined with it.
+            </Say>
+            <When>It leaves this list tomorrow.</When>
+          </div>
+        </div>
+        <When>Lost a link? Revoke it and make a new one.</When>
+      </section>
+    </QuestionPage>
+  );
+}
+
+/** Hubs › studio › Use studio on another device. */
+export function HubDevicesDesign() {
+  const [left, setLeft] = useState(9 * 60 + 41);
+  useEffect(() => {
+    const t = window.setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  const mins = Math.ceil(left / 60);
+  return (
+    <QuestionPage
+      crumb={
+        <span className="flex items-center gap-1.5">
+          <Link href="/settings/hubs" className="hover:text-text">
+            Hubs
+          </Link>
+          <ChevronRight className="size-3" /> <Swatch hub="studio" /> studio
+        </span>
+      }
+      question="Use studio on another device"
+      lead={`studio knows you by a key on each of your devices. A new device gets its own key, and this ${machineName()} vouches for it. You don't need a new invite.`}
+    >
+      <Block>
+        <h2 className="text-[15px] font-semibold text-text">Link a device</h2>
+        <ol className="mt-3 list-decimal space-y-1 pl-5 text-body text-[var(--prose)]">
+          <li>On the other device, open Mycelium.</li>
+          <li>
+            Choose <b className="font-medium text-text">Join another hub</b>, then{" "}
+            <b className="font-medium text-text">I have a link code from my other device</b>.
+          </li>
+          <li>Enter this code:</li>
+        </ol>
+        <p className="mt-4 font-mono text-[30px] tracking-[0.16em] text-text">QW7-K3P</p>
+        <div className="mt-2 flex items-center gap-2 text-body text-muted-foreground">
+          <span className="size-1.5 animate-pulse rounded-full bg-accent" />
+          Waiting for the other device. The code works once, for {mins} more minute{mins === 1 ? "" : "s"}.
+        </div>
+        <When>
+          Both devices sign the link, so it can only add a key for @julia, and only from here. You'll see the device's name here before
+          it's added.
+        </When>
+        <Acts>
+          <Act tone="quiet">Cancel</Act>
+        </Acts>
+      </Block>
+      <section className="py-6">
+        <h2 className="text-[15px] font-semibold text-text">Your devices on studio</h2>
+        <div className="mt-2 divide-y divide-border">
+          <div className="py-3">
+            <Say>
+              <b className="font-medium text-text">This MacBook</b> <span className="text-faint">· this one · used now</span>
+            </Say>
+          </div>
+          <div className="py-3">
+            <Say>
+              <b className="font-medium text-text">Studio iMac</b> <span className="text-faint">· linked Oct 9 · used yesterday</span>
+            </Say>
+            <Acts>
+              <Act tone="danger">Remove</Act>
+            </Acts>
+          </div>
+          <div className="py-3">
+            <Say>
+              <b className="font-medium text-text">Old laptop</b> <span className="text-faint">· linked Aug 30 · not used in 7 weeks</span>
+            </Say>
+            <Acts>
+              <Act tone="danger">Remove</Act>
+            </Acts>
+          </div>
+        </div>
+        <When>
+          Removing a device takes effect within the hour, when its sign-in next renews. Lost every device? Ask one of studio's admins to
+          invite you again as @julia.
+        </When>
+      </section>
+    </QuestionPage>
+  );
+}

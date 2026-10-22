@@ -24,6 +24,7 @@ import { KeysPage } from "./keys-page";
 import { ConnectionPage } from "./connection-page";
 import { RoomSettingsPage } from "./room-page";
 import { HubPage } from "./hub-page";
+import { HubAccessDesign, HubDevicesDesign, HubsDesign } from "./hubs-design";
 
 interface RailItem {
   page: SettingsPage;
@@ -48,7 +49,7 @@ const APP_PAGES: RailItem[] = [
 function RailGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mb-4">
-      <div className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-faint">{title}</div>
+      <div className="mb-1 px-2 text-micro text-faint">{title}</div>
       <ul className="space-y-0.5">{children}</ul>
     </div>
   );
@@ -102,6 +103,7 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
             room={room}
           />
           <RailLink item={{ page: "notifications", label: "Notifications" }} active={page === "notifications"} room={room} />
+          <RailLink item={{ page: "hubs", label: "Hubs" }} active={page === "hubs" || page === "hub-devices"} room={room} />
           <RailLink item={{ page: "read-aloud", label: "Read aloud" }} active={page === "read-aloud"} room={room} />
           <RailLink
             item={{ page: "keys", label: "Keyboard shortcuts", changed: keysChanged }}
@@ -123,6 +125,9 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
         <RailGroup title="This hub">
           <RailLink item={{ page: "hub", label: "Hub" }} active={page === "hub"} room={room} />
         </RailGroup>
+        <RailGroup title="studio · you're an admin">
+          <RailLink item={{ page: "hub-access", label: "Who can get in" }} active={page === "hub-access"} room={room} />
+        </RailGroup>
       </nav>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {page === "profile" && <ProfilePage />}
@@ -133,6 +138,9 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
         {page === "connection" && <ConnectionPage />}
         {page === "room" && <RoomSettingsPage room={room} />}
         {page === "hub" && <HubPage />}
+        {page === "hubs" && <HubsDesign />}
+        {page === "hub-access" && <HubAccessDesign />}
+        {page === "hub-devices" && <HubDevicesDesign />}
         {app && page === "model" && <AppModelPage />}
         {app && page === "agents" && <AppAgentsPage />}
         {app && page === "voice" && <AppVoicePage />}
