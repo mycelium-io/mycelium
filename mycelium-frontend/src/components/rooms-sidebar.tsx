@@ -5,7 +5,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowDown,
   ArrowRight,
@@ -75,9 +75,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { iconButtonClass } from "@/components/ui/icon-button";
 import { KeyBadge } from "@/components/key-badge";
 import { RoomAvatar } from "@/components/ui/room-avatar";
-import { HubGroupsDesign } from "@/components/rooms-hubs-design";
-
-const HUB_GROUPS_DESIGN = true;
+import { HubRail, JOINED, JoinedHubRooms } from "@/components/rooms-hubs-design";
 import { useCommands, useKeyAction } from "@/components/keymap-provider";
 import { useOpenInstallModal } from "@/components/install-modal";
 import { chordFor, chordKey } from "@/lib/keymap";
@@ -165,6 +163,9 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
   const [newRoomIn, setNewRoomIn] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const searching = query.trim().length > 0;
+  // DESIGN MOCKUP: which hub's rooms the list shows; `?hub=work` opens on one.
+  const [hub, setHub] = useState(useSearchParams().get("hub") ?? "local");
+  const joined = JOINED.find(h => h.id === hub) ?? null;
 
   // Filter by the query and scope, then order by recency (last active first) so
   // rooms with fresh activity float up — the same ordering the command palette
@@ -525,7 +526,14 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
   }
 
   return (
-    <aside data-tour="rooms" className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface/50">
+    // DESIGN MOCKUP (local branch): the hubs' column at the far left, and a
+    // joined hub's rooms in place of this computer's when one is chosen.
+    <aside data-tour="rooms" className="flex min-w-0 flex-1 flex-row overflow-hidden bg-surface/50">
+      <HubRail hub={hub} onHub={setHub} />
+      {joined ? (
+        <JoinedHubRooms hub={joined} />
+      ) : (
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       {/* A dock, as an editor draws one: a small header, then the list. The
           way home and who you are live in the title bar above it. */}
       <div className="mb-1 flex h-8 flex-shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
@@ -559,9 +567,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
             className="w-full bg-transparent text-label text-text placeholder:text-faint focus:outline-none"
           />
         </div>
-        {/* DESIGN MOCKUP: the grouped list says who each room is for, so the
-            All / Shared / Private filter is hidden on this branch. */}
-        {hasPrivate && !HUB_GROUPS_DESIGN && (
+        {hasPrivate && (
           <div role="radiogroup" aria-label="Show rooms" className="mt-1 flex gap-0.5 px-0.5">
             {SCOPES.map(({ scope: s, label }) => (
               <button
@@ -674,12 +680,6 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
             ) : (
               <EmptyState size="sm" icon={SearchX} title="No matches" />
             )
-          ) : !searching && activeScope === "all" && groups.length === 0 ? (
-            // DESIGN MOCKUP (local branch): Your rooms, then Shared rooms by hub.
-            <HubGroupsDesign
-              yours={mine.map(room => rowWithViews(room, false))}
-              hosted={shared.map(room => rowWithViews(room, false))}
-            />
           ) : (
             <>
               {shared.map(room => rowWithViews(room, false))}
@@ -697,6 +697,8 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         </DropZone>
         </nav>
       </ScrollArea>
+      </div>
+      )}
 
       <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
       {deleteTarget && (

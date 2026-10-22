@@ -25,8 +25,11 @@ function machineName(): string {
  *  clear of the status hues. This machine's own hub has none. */
 const HUB_COLOR = { work: "#7b93f0", studio: "#e38bc0", sam: "#b48ce6", acme: "#8a94a0" } as const;
 
+/** No colour marks a hub any more: its circle in the rooms list does. The
+ *  name alone stands here. */
 function Swatch({ hub }: { hub: keyof typeof HUB_COLOR }) {
-  return <span aria-hidden className="size-2.5 flex-shrink-0 rounded-[3px]" style={{ background: HUB_COLOR[hub] }} />;
+  void hub;
+  return null;
 }
 
 /** A page that asks one question, in one roomy column. */
