@@ -387,10 +387,9 @@ function RoomWorkspace() {
             <Lock aria-label="private" className="size-3.5 flex-shrink-0 text-faint" />
           </Tooltip>
         )}
-        {/* DESIGN MOCKUP (local branch): who can see this room, said before you post. */}
-        <span className="ml-1 truncate text-micro font-normal text-faint">
-          {room?.is_public === false ? "only for you" : "shared · everyone you've let in"}
-        </span>
+        {/* DESIGN MOCKUP (local branch): a shared room says so before you post.
+            A room only for you already has its lock. */}
+        {room?.is_public !== false && <span className="ml-1 text-micro font-normal text-faint">Shared</span>}
       </span>
       <RoomMenu
         roomName={roomName}
