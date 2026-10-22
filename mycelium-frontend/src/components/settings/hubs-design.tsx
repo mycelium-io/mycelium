@@ -581,6 +581,8 @@ export function HubHostDesign() {
   const seeOf = (r: (typeof rooms)[number]) => sharing[r.name] ?? (setup || r.is_public === false ? "only me" : "invited people");
   const [checked, setChecked] = useState<"no" | "running" | "ok">(setup ? "no" : "ok");
   const shared = rooms.filter((r) => seeOf(r) === "invited people").length;
+  const [picture, setPicture] = useState<string | null>(setup ? null : "/design-hub-mine.svg");
+  const initialsOf = (s: string) => s.slice(0, 2).replace(/^./, (c) => c.toUpperCase());
   return (
     <QuestionPage
       crumb="This hub"
@@ -588,7 +590,7 @@ export function HubHostDesign() {
       lead={
         setup
           ? "Right now only you and your agents use it."
-          : "People you invite, at julia-mbp.tail3e2c.ts.net. Your rooms stay yours: only the rooms you share are open to them."
+          : "People you invite, at julia-mbp.tail3e2c.ts.net."
       }
     >
       <Step n={0} title="Who can get in">
@@ -614,6 +616,30 @@ export function HubHostDesign() {
         <When>
           {shared === 0 ? "No rooms are shared yet." : "A change takes effect right away."}
         </When>
+      </Step>
+
+      <Step n={0} title="Its picture">
+        <div className="mt-3 flex items-center gap-4">
+          {picture ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={picture} alt="" className="size-12 rounded-full object-cover" />
+          ) : (
+            <span className="flex size-12 items-center justify-center rounded-full border border-dashed border-border2 text-label text-faint">
+              {initialsOf(machine)}
+            </span>
+          )}
+          <div className="flex flex-col items-start gap-1">
+            <span className="flex gap-4">
+              <Act onClick={() => setPicture("/design-hub-mine.svg")}>{picture ? "Change…" : "Upload a picture…"}</Act>
+              {picture && (
+                <Act tone="quiet" onClick={() => setPicture(null)}>
+                  Remove
+                </Act>
+              )}
+            </span>
+            <span className="text-micro text-faint">PNG or JPG, square, at least 128 px.</span>
+          </div>
+        </div>
       </Step>
 
       <Step n={0} title="The address people use">

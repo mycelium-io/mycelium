@@ -23,6 +23,8 @@ export interface JoinedHub {
   open: boolean;
   down?: boolean;
   unread?: number;
+  /** The picture the hub's admins uploaded, shown in place of its letters. */
+  icon?: string;
   /** Messages there that ask you something; a number on the circle. */
   mentions?: number;
   rooms: { name: string; unread?: number }[];
@@ -36,9 +38,10 @@ export const JOINED: JoinedHub[] = [
     open: true,
     unread: 3,
     mentions: 1,
+    icon: "/design-hub-work.svg",
     rooms: [{ name: "general", unread: 3 }, { name: "design-review" }, { name: "release" }],
   },
-  { id: "studio", address: "studio.example.org", you: "julia", open: false, unread: 2, mentions: 1, rooms: [{ name: "sketches" }, { name: "crit" }] },
+  { id: "studio", address: "studio.example.org", you: "julia", open: false, unread: 2, mentions: 1, icon: "/design-hub-studio.svg", rooms: [{ name: "sketches" }, { name: "crit" }] },
   { id: "sam", address: "192.168.1.40:8000", you: "julia", open: true, down: true, rooms: [{ name: "bikes" }] },
 ];
 
@@ -106,6 +109,7 @@ function Circle({
  *  header): the same mark as in the column, so no words are needed. */
 export function HubMark({ hub }: { hub: string }) {
   const own = hub === "local";
+  const icon = JOINED.find((h) => h.id === hub)?.icon;
   return (
     <span
       aria-label={own ? "This computer" : hub}
@@ -115,7 +119,14 @@ export function HubMark({ hub }: { hub: string }) {
       )}
       style={own ? undefined : softAvatar(avatarTint(hub))}
     >
-      {own ? <Laptop className="size-2.5" /> : hub[0].toUpperCase() + hub[1]}
+      {own ? (
+        <Laptop className="size-2.5" />
+      ) : icon ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={icon} alt="" className="size-full rounded-full object-cover" />
+      ) : (
+        hub[0].toUpperCase() + hub[1]
+      )}
     </span>
   );
 }
@@ -139,7 +150,12 @@ export function HubRail({ hub, onHub }: { hub: string; onHub: (id: string) => vo
           dim={h.down}
           onClick={() => onHub(h.id)}
         >
-          {h.id[0].toUpperCase() + h.id[1]}
+          {h.icon ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={h.icon} alt="" className="size-full rounded-[inherit] object-cover" />
+          ) : (
+            h.id[0].toUpperCase() + h.id[1]
+          )}
         </Circle>
       ))}
       <Tooltip content="Join another hub">
