@@ -24,7 +24,7 @@ import { KeysPage } from "./keys-page";
 import { ConnectionPage } from "./connection-page";
 import { RoomSettingsPage } from "./room-page";
 import { HubPage } from "./hub-page";
-import { HubAccessDesign, HubDevicesDesign, HubsDesign } from "./hubs-design";
+import { HubAccessDesign, HubDevicesDesign, HubHostDesign, HubsDesign } from "./hubs-design";
 
 interface RailItem {
   page: SettingsPage;
@@ -124,6 +124,7 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
         </RailGroup>
         <RailGroup title="This hub">
           <RailLink item={{ page: "hub", label: "Hub" }} active={page === "hub"} room={room} />
+          <RailLink item={{ page: "hub-host", label: "Let people in" }} active={page === "hub-host"} room={room} />
           <RailLink item={{ page: "hub-access", label: "Who can get in" }} active={page === "hub-access"} room={room} />
         </RailGroup>
       </nav>
@@ -138,6 +139,7 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
         {page === "hub" && <HubPage />}
         {page === "hubs" && <HubsDesign />}
         {page === "hub-access" && <HubAccessDesign />}
+        {page === "hub-host" && <HubHostDesign />}
         {page === "hub-devices" && <HubDevicesDesign />}
         {app && page === "model" && <AppModelPage />}
         {app && page === "agents" && <AppAgentsPage />}

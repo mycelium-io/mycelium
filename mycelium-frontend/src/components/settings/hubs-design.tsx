@@ -313,8 +313,14 @@ export function HubsDesign() {
           <span className="text-micro text-faint">your own hub</span>
         </div>
         <Say>
-          Your private rooms and your own memory. It runs here and only this {machine} can reach it. It's always part of this {machine}.
+          It runs here, and it's always part of this {machine}. Your rooms are only you. You share 3 rooms with people you invite, at{" "}
+          <span className="font-mono text-label">julia-mbp.tail3e2c.ts.net</span>.
         </Say>
+        <Acts>
+          <Link href="/settings/hub-host" className="text-label text-accent underline-offset-4 hover:underline">
+            Who else can get in…
+          </Link>
+        </Acts>
       </Block>
       <WorkHub />
       <StudioHub />
@@ -535,6 +541,156 @@ export function HubAccessDesign() {
         />
         <When>Lost a link? Revoke it and make a new one.</When>
       </section>
+    </QuestionPage>
+  );
+}
+
+const SHARING = ["only me", "invited people"];
+
+function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+  return (
+    <Block>
+      <div className="flex items-baseline gap-3">
+        {n > 0 && <span className="w-4 flex-shrink-0 text-label text-faint">{n}</span>}
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[15px] font-semibold text-text">{title}</h2>
+          {children}
+        </div>
+      </div>
+    </Block>
+  );
+}
+
+function Choice({ on, title, children, onPick }: { on: boolean; title: string; children: ReactNode; onPick: () => void }) {
+  return (
+    <button type="button" onClick={onPick} className="flex w-full items-start gap-3 py-2 text-left">
+      <span className={cn("mt-1 size-3.5 flex-shrink-0 rounded-full border", on ? "border-[4px] border-accent" : "border-border2")} />
+      <span>
+        <span className="block text-body text-text">{title}</span>
+        <span className="block text-label text-muted-foreground">{children}</span>
+      </span>
+    </button>
+  );
+}
+
+/** Settings › This hub › Let people in: hosting from this computer. */
+export function HubHostDesign() {
+  const machine = machineName();
+  const { rooms } = useRooms();
+  // ?setup=1 shows the first time, before anyone can get in. Without it the
+  // page shows this hub as it is in the mock: people can get in by invite.
+  const setup = useSearchParams().get("setup") === "1";
+  const [how, setHow] = useState<"invite" | "sign-in">("invite");
+  const [sharing, setSharing] = useState<Record<string, string>>({});
+  const seeOf = (r: (typeof rooms)[number]) => sharing[r.name] ?? (setup || r.is_public === false ? "only me" : "invited people");
+  const [checked, setChecked] = useState<"no" | "running" | "ok">(setup ? "no" : "ok");
+  const shared = rooms.filter((r) => seeOf(r) === "invited people").length;
+  return (
+    <QuestionPage
+      crumb="This hub"
+      question={setup ? `Let people into this ${machine}'s hub` : `Who else can get into this ${machine}'s hub?`}
+      lead={
+        setup
+          ? "Right now only you and your agents use it. Letting people in makes it reachable at an address you give, and from then on nobody gets in without an invite or a sign-in."
+          : "People you invite, at julia-mbp.tail3e2c.ts.net. Your rooms stay yours: only the rooms you share are open to them."
+      }
+    >
+      <Step n={setup ? 1 : 0} title="Who can get in">
+        <div className="mt-2">
+          <Choice on={how === "invite"} onPick={() => setHow("invite")} title="People I invite">
+            Each person gets a link from you. Their device keeps a key for this hub.
+          </Choice>
+          <Choice on={how === "sign-in"} onPick={() => setHow("sign-in")} title="People who sign in with our sign-in service">
+            For a team that already has one, such as Okta or Google Workspace. You'll connect it next.
+          </Choice>
+        </div>
+        <When>There's no &ldquo;anyone&rdquo;. A hub people can reach and that asks nobody who they are lets anyone post as anyone.</When>
+      </Step>
+
+      <Step n={setup ? 2 : 0} title="Which rooms they can see">
+        <Say quiet>
+          Every room starts as only you, so nothing private is shared by accident. Everyone you let in can see a room you share.
+        </Say>
+        <SimpleTable
+          head={["Room", "Who can see it"]}
+          rows={rooms.map((r) => [
+            <span key="n">#{r.name}</span>,
+            <Inline
+              key="s"
+              label={`Who can see #${r.name}`}
+              value={seeOf(r)}
+              options={SHARING}
+              onChange={(v) => setSharing({ ...sharing, [r.name]: v })}
+            />,
+          ])}
+        />
+        <When>
+          {shared === 0 ? "No rooms are shared yet. People you let in will see an empty hub." : `${shared} of ${rooms.length} rooms shared. A change takes effect right away.`}
+        </When>
+      </Step>
+
+      <Step n={setup ? 3 : 0} title="The address people use">
+        <Say quiet>How this {machine} gets an address is up to you: a server, a tunnel, or Tailscale.</Say>
+        <div className="mt-3 flex items-center gap-3">
+          <input
+            aria-label="Address"
+            defaultValue="https://julia-mbp.tail3e2c.ts.net"
+            className="w-[340px] border-0 border-b border-dotted border-accent/70 bg-transparent p-0 pb-0.5 font-mono text-label text-text outline-none focus:border-solid"
+          />
+          <Act
+            onClick={() => {
+              setChecked("running");
+              window.setTimeout(() => setChecked("ok"), 900);
+            }}
+          >
+            Check it
+          </Act>
+        </div>
+        {checked === "running" && <Testing />}
+        {checked === "ok" && (
+          <TestResult
+            checks={[
+              { ok: true, text: "That address reaches a hub." },
+              { ok: true, text: `It's this ${machine}'s hub. Its key matches.` },
+            ]}
+          />
+        )}
+      </Step>
+
+      {!setup && (
+        <section className="py-6">
+          <Say quiet>
+            Your agents each have their own token for this hub. This hub doesn't trust a request just because it comes from this{" "}
+            {machine}, since a tunnel makes outside requests look local.
+          </Say>
+          <Acts>
+            <Act tone="quiet">Stop letting people in…</Act>
+          </Acts>
+          <When>Stopping closes the hub to everyone but you. The people you let in and their keys are kept, so starting again needs no new invites.</When>
+        </section>
+      )}
+      {setup && (
+      <Step n={4} title="Before it opens">
+        <TestResult
+          checks={[
+            { ok: true, text: "You'll be this hub's first admin. This app sets that up, so there's no code to copy." },
+            {
+              ok: false,
+              text: "builder and reviewer still rely on being on this computer. Letting people in gives each of them its own token first, and they keep working.",
+            },
+          ]}
+        />
+        <When>
+          Once people can get in, this hub stops trusting requests just because they come from this {machine}. A tunnel makes outside requests look local.
+        </When>
+        <div className="mt-5 flex items-center gap-4">
+          <button type="button" className="btn-accent rounded-md px-3.5 py-1.5 text-label font-medium">
+            Let people in
+          </button>
+          <span className="text-micro text-faint">Takes effect right away. Then make invites under Who can get in.</span>
+        </div>
+      </Step>
+      )}
     </QuestionPage>
   );
 }

@@ -75,6 +75,9 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { iconButtonClass } from "@/components/ui/icon-button";
 import { KeyBadge } from "@/components/key-badge";
 import { RoomAvatar } from "@/components/ui/room-avatar";
+import { HubGroupsDesign } from "@/components/rooms-hubs-design";
+
+const HUB_GROUPS_DESIGN = true;
 import { useCommands, useKeyAction } from "@/components/keymap-provider";
 import { useOpenInstallModal } from "@/components/install-modal";
 import { chordFor, chordKey } from "@/lib/keymap";
@@ -556,7 +559,9 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
             className="w-full bg-transparent text-label text-text placeholder:text-faint focus:outline-none"
           />
         </div>
-        {hasPrivate && (
+        {/* DESIGN MOCKUP: the grouped list says who each room is for, so the
+            All / Shared / Private filter is hidden on this branch. */}
+        {hasPrivate && !HUB_GROUPS_DESIGN && (
           <div role="radiogroup" aria-label="Show rooms" className="mt-1 flex gap-0.5 px-0.5">
             {SCOPES.map(({ scope: s, label }) => (
               <button
@@ -669,6 +674,12 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
             ) : (
               <EmptyState size="sm" icon={SearchX} title="No matches" />
             )
+          ) : !searching && activeScope === "all" && groups.length === 0 ? (
+            // DESIGN MOCKUP (local branch): Your rooms, then Shared rooms by hub.
+            <HubGroupsDesign
+              yours={mine.map(room => rowWithViews(room, false))}
+              hosted={shared.map(room => rowWithViews(room, false))}
+            />
           ) : (
             <>
               {shared.map(room => rowWithViews(room, false))}

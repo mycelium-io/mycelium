@@ -85,6 +85,7 @@ export const SETTINGS_PAGES = [
   // DESIGN MOCKUP (local branch, not for merge): several hubs.
   "hubs",
   "hub-access",
+  "hub-host",
   "hub-devices",
 ] as const;
 
