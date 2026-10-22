@@ -75,7 +75,8 @@ function Acts({ children }: { children: ReactNode }) {
   return <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">{children}</div>;
 }
 
-type Check = { ok: boolean; text: ReactNode };
+/** `ok: "note"` is something that will happen, not a pass or a failure. */
+type Check = { ok: boolean | "note"; text: ReactNode };
 
 /** A test that proves the connection, said in words, one line per check. */
 function TestResult({ checks, after }: { checks: Check[]; after?: ReactNode }) {
@@ -83,7 +84,15 @@ function TestResult({ checks, after }: { checks: Check[]; after?: ReactNode }) {
     <div className="mt-3 space-y-1.5">
       {checks.map((c, i) => (
         <div key={i} className="flex items-baseline gap-2.5 text-body">
-          {c.ok ? <Check className="size-3.5 flex-shrink-0 translate-y-0.5 text-green" /> : <X className="size-3.5 flex-shrink-0 translate-y-0.5 text-red" />}
+          {c.ok === "note" ? (
+            <span className="flex size-3.5 flex-shrink-0 translate-y-0.5 items-center justify-center">
+              <span className="size-1.5 rounded-full bg-faint" />
+            </span>
+          ) : c.ok ? (
+            <Check className="size-3.5 flex-shrink-0 translate-y-0.5 text-green" />
+          ) : (
+            <X className="size-3.5 flex-shrink-0 translate-y-0.5 text-red" />
+          )}
           <span className="text-text">{c.text}</span>
         </div>
       ))}
@@ -191,7 +200,7 @@ function WorkHub() {
           checks={[
             { ok: true, text: "work answered in 120 ms." },
             { ok: true, text: "It's the same hub you joined. Its key matches the one it gave you then." },
-            { ok: true, text: "@julia-v is still yours there." },
+            { ok: "note", text: "work doesn't check who you are, so anyone there could post as @julia-v." },
           ]}
           after="Tested just now."
         />
@@ -313,7 +322,7 @@ export function HubsDesign() {
           <span className="text-micro text-faint">your own hub</span>
         </div>
         <Say>
-          It runs here, and it's always part of this {machine}. Your rooms are only you. You share 3 rooms with people you invite, at{" "}
+          It runs here, and it's always part of this {machine}. Your rooms are only for you. You share 3 rooms with people you invite, at{" "}
           <span className="font-mono text-label">julia-mbp.tail3e2c.ts.net</span>.
         </Say>
         <Acts>
@@ -582,7 +591,7 @@ export function HubHostDesign() {
           : "People you invite, at julia-mbp.tail3e2c.ts.net. Your rooms stay yours: only the rooms you share are open to them."
       }
     >
-      <Step n={setup ? 1 : 0} title="Who can get in">
+      <Step n={0} title="Who can get in">
         <Say>
           {setup ? "This hub will be invite-only: from now on, only people you invite, and your agents, can post here." : "Invite-only. Only people you invite, and your agents, can post here."}
         </Say>
@@ -591,9 +600,9 @@ export function HubHostDesign() {
         </When>
       </Step>
 
-      <Step n={setup ? 2 : 0} title="Which rooms they can see">
+      <Step n={0} title="Which rooms they can see">
         <Say quiet>
-          Every room starts as only you, so nothing private is shared by accident. Everyone you let in can see a room you share.
+          Every room starts as only for you, so nothing private is shared by accident. Everyone you let in can see a room you share.
         </Say>
         <SimpleTable
           head={["Room", "Who can see it"]}
@@ -613,7 +622,7 @@ export function HubHostDesign() {
         </When>
       </Step>
 
-      <Step n={setup ? 3 : 0} title="The address people use">
+      <Step n={0} title="The address people use">
         <Say quiet>How this {machine} gets an address is up to you: a server, a tunnel, or Tailscale.</Say>
         <div className="mt-3 flex items-center gap-3">
           <input
@@ -650,18 +659,15 @@ export function HubHostDesign() {
           <Acts>
             <Act tone="quiet">Stop letting people in…</Act>
           </Acts>
-          <When>Stopping closes the hub to everyone but you. The people you let in and their keys are kept, so starting again needs no new invites.</When>
+          <When>Stopping closes the hub to everyone but you and your agents. The people you let in and their keys are kept, so starting again needs no new invites.</When>
         </section>
       )}
       {setup && (
-      <Step n={4} title="Before it opens">
+      <Step n={0} title="Before it opens">
         <TestResult
           checks={[
             { ok: true, text: "You'll be this hub's first admin. This app sets that up, so there's no code to copy." },
-            {
-              ok: false,
-              text: "builder and reviewer still rely on being on this computer. Letting people in gives each of them its own token first, and they keep working.",
-            },
+            { ok: "note", text: "builder and reviewer get their own tokens when you let people in, and they keep working." },
           ]}
         />
         <When>
