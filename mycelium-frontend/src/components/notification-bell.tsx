@@ -15,6 +15,7 @@ import { useNotifications } from "@/components/notifications-provider";
 import { ReadAloudPopover } from "@/components/read-aloud-popover";
 import { settingHref } from "@/lib/client-settings";
 import { mentionHref, OPEN_MENTION_EVENT } from "@/lib/notifications";
+import { HubMark } from "@/components/rooms-hubs-design";
 
 /** The first non-blank line, so a long message reads as one line. */
 const firstLine = (text: string) => text.split("\n").find((l) => l.trim())?.trim() ?? "";
@@ -101,7 +102,6 @@ export function NotificationBell() {
           <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
             <span className="text-label font-semibold text-text">Mentions</span>
             <span className="text-micro tabular text-faint">{loud.length + OTHER_HUBS_WAITING.length}</span>
-            <span className="text-micro text-faint">· all your hubs</span>
             <div className="ml-auto flex items-center gap-1">
               {loud.length > 0 && (
                 <Tooltip content="Mark all read">
@@ -140,9 +140,8 @@ export function NotificationBell() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     <span className="flex-shrink-0 text-micro font-semibold text-text">{w.sender}</span>
-                    <span className="truncate text-micro text-muted-foreground">
-                      <span className="text-text">{w.address}</span> · {w.room}
-                    </span>
+                    <HubMark hub={w.hub} />
+                    <span className="truncate text-micro text-muted-foreground">{w.room}</span>
                     <span className="ml-auto flex-shrink-0 text-micro tabular text-faint">{w.ago}</span>
                   </span>
                   <span className="mt-0.5 block truncate text-label text-text">{w.text}</span>
@@ -180,8 +179,9 @@ export function NotificationBell() {
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="flex-shrink-0 text-micro font-semibold text-text">{n.sender}</span>
+                      <HubMark hub="local" />
                       <span className="truncate text-micro text-muted-foreground">
-                        <span className="text-text">This computer</span> · {n.room} · {n.title ?? (n.episode ? "a thread" : "channel")}
+                        {n.room} · {n.title ?? (n.episode ? "a thread" : "channel")}
                       </span>
                       <span className="ml-auto flex-shrink-0 text-micro tabular text-faint">{timeAgo(n.time)}</span>
                     </div>

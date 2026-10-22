@@ -8,7 +8,7 @@
 // hub, with this computer's own hub at the top. Choosing a hub shows only its
 // rooms. The joined hubs and their rooms are made up.
 
-import { Laptop, Plus } from "lucide-react";
+import { Laptop, Plus, WifiOff } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -92,18 +92,35 @@ function Circle({
   );
 }
 
+/** A hub's circle at text size, for naming a hub inline (the bell, a room's
+ *  header): the same mark as in the column, so no words are needed. */
+export function HubMark({ hub }: { hub: string }) {
+  const own = hub === "local";
+  return (
+    <span
+      aria-label={own ? "This computer" : hub}
+      className={cn(
+        "inline-flex size-4 flex-shrink-0 items-center justify-center rounded-full border text-[8px] font-semibold",
+        own ? "border-accent/60 text-accent" : "border-border2 text-muted-foreground",
+      )}
+    >
+      {own ? <Laptop className="size-2.5" /> : hub[0].toUpperCase() + hub[1]}
+    </span>
+  );
+}
+
 /** The column of hubs at the far left of the rooms list. */
 export function HubRail({ hub, onHub }: { hub: string; onHub: (id: string) => void }) {
   return (
     <nav aria-label="Hubs" className="flex w-[52px] flex-shrink-0 flex-col items-center gap-2 border-r border-border py-2.5">
-      <Circle label="This computer · your own hub" own chosen={hub === "local"} onClick={() => onHub("local")}>
+      <Circle label="This computer" own chosen={hub === "local"} onClick={() => onHub("local")}>
         <Laptop className="size-4" />
       </Circle>
       <span className="my-0.5 h-px w-6 bg-border" />
       {JOINED.map((h) => (
         <Circle
           key={h.id}
-          label={`${h.address}${h.down ? " · can't reach" : ""}`}
+          label={h.address}
           chosen={hub === h.id}
           unread={!!h.unread}
           mentions={h.mentions}
@@ -133,12 +150,12 @@ export function JoinedHubRooms({ hub }: { hub: JoinedHub }) {
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <div className="mb-1 flex h-8 flex-shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
         <span className="min-w-0 truncate text-micro font-medium text-text">{hub.address}</span>
-        {hub.down && <span className="ml-auto flex-shrink-0 whitespace-nowrap text-micro text-faint">can't reach</span>}
+        {hub.down && (
+          <Tooltip content="Can't reach this hub">
+            <WifiOff aria-label="Can't reach this hub" className="ml-auto size-3.5 flex-shrink-0 text-faint" />
+          </Tooltip>
+        )}
       </div>
-      <p className="px-3 pb-2 pt-1 text-micro leading-relaxed text-faint">
-        You're @{hub.you} here.{" "}
-        {hub.down ? "Showing what was loaded 2 hours ago." : hub.open ? "It doesn't check who people are." : "Only people it invited can get in."}
-      </p>
       <nav className={cn("px-2", hub.down && "opacity-50")}>
         {hub.rooms.map((r) => (
           <div key={r.name} className="group flex h-7 items-center gap-2 rounded px-1.5 hover:bg-hairline">

@@ -219,7 +219,7 @@ function WorkHub() {
               Choose a folder…
             </button>
           </div>
-          <When>A change applies to the next request. This {machineName()} still asks you each time.</When>
+          <When>A change applies to the next request.</When>
         </Field>
         <Field label="Hub key">
           <span className="font-mono text-label">7f3a 91c0 … 52d8 c21e</span>
@@ -345,7 +345,6 @@ export function HubsDesign() {
           <Act>Join with an invite link…</Act>
           <Act tone="quiet">I have a link code from my other device</Act>
         </Acts>
-        <When>"Join with an invite link…" reads your clipboard once, to look for a link. Nothing reads it before you choose.</When>
       </section>
     </QuestionPage>
   );
@@ -517,7 +516,6 @@ export function HubAccessDesign() {
         <Acts>
           <Act onClick={() => setMade(true)}>Make the link</Act>
         </Acts>
-        {!one && <When>Uses can't be unlimited: a link that never runs out is open to anyone.</When>}
         {made && (
           <div className="mt-5 border-l-2 border-green/70 pl-4">
             <p className="text-body text-text">
@@ -542,7 +540,6 @@ export function HubAccessDesign() {
 
       <section className="py-6">
         <h2 className="text-[15px] font-semibold text-text">Open invites</h2>
-        <Say quiet>Each one works until it runs out or you revoke it. Revoking stops new people. Anyone who already joined stays.</Say>
         <SimpleTable
           head={["Room", "For", "Joined", "Ends", "Made by", ""]}
           rows={[
@@ -590,7 +587,7 @@ export function HubHostDesign() {
       question={setup ? `Let people into this ${machine}'s hub` : `Who else can get into this ${machine}'s hub?`}
       lead={
         setup
-          ? "Right now only you and your agents use it. Letting people in makes it reachable at an address you give, and from then on nobody gets in without an invite."
+          ? "Right now only you and your agents use it."
           : "People you invite, at julia-mbp.tail3e2c.ts.net. Your rooms stay yours: only the rooms you share are open to them."
       }
     >
@@ -598,15 +595,9 @@ export function HubHostDesign() {
         <Say>
           {setup ? "This hub will be invite-only: from now on, only people you invite, and your agents, can post here." : "Invite-only. Only people you invite, and your agents, can post here."}
         </Say>
-        <When>
-          Each person gets a link from you, and their device keeps a key for this hub. A hub that already uses a sign-in service keeps it.
-        </When>
       </Step>
 
       <Step n={0} title="Which rooms they can see">
-        <Say quiet>
-          Every room starts as only for you, so nothing private is shared by accident. Everyone you let in can see a room you share.
-        </Say>
         <SimpleTable
           head={["Room", "Who can see it"]}
           rows={rooms.map((r) => [
@@ -621,12 +612,11 @@ export function HubHostDesign() {
           ])}
         />
         <When>
-          {shared === 0 ? "No rooms are shared yet. People you let in will see an empty hub." : `${shared} of ${rooms.length} rooms shared. A change takes effect right away.`}
+          {shared === 0 ? "No rooms are shared yet." : "A change takes effect right away."}
         </When>
       </Step>
 
       <Step n={0} title="The address people use">
-        <Say quiet>How this {machine} gets an address is up to you: a server, a tunnel, or Tailscale.</Say>
         <div className="mt-3 flex items-center gap-3">
           <input
             aria-label="Address"
@@ -655,14 +645,10 @@ export function HubHostDesign() {
 
       {!setup && (
         <section className="py-6">
-          <Say quiet>
-            Your agents each have their own token for this hub. This hub doesn't trust a request just because it comes from this{" "}
-            {machine}, since a tunnel makes outside requests look local.
-          </Say>
           <Acts>
             <Act tone="quiet">Stop letting people in…</Act>
           </Acts>
-          <When>Stopping closes the hub to everyone but you and your agents. The people you let in and their keys are kept, so starting again needs no new invites.</When>
+          <When>The people you let in are kept, so starting again needs no new invites.</When>
         </section>
       )}
       {setup && (
@@ -673,14 +659,11 @@ export function HubHostDesign() {
             { ok: "note", text: "builder and reviewer get their own tokens when you let people in, and they keep working." },
           ]}
         />
-        <When>
-          Once people can get in, this hub stops trusting requests just because they come from this {machine}. A tunnel makes outside requests look local.
-        </When>
         <div className="mt-5 flex items-center gap-4">
           <button type="button" className="btn-accent rounded-md px-3.5 py-1.5 text-label font-medium">
             Let people in
           </button>
-          <span className="text-micro text-faint">Takes effect right away. Then make invites under Who can get in.</span>
+          <span className="text-micro text-faint">Takes effect right away.</span>
         </div>
       </Step>
       )}
@@ -724,10 +707,6 @@ export function HubDevicesDesign() {
           <span className="size-1.5 animate-pulse rounded-full bg-accent" />
           Waiting for the other device. The code works once, for {mins} more minute{mins === 1 ? "" : "s"}.
         </div>
-        <When>
-          Both devices sign the link, so it can only add a key for @julia, and only from here. You'll see the device's name here before
-          it's added.
-        </When>
         <Acts>
           <Act tone="quiet">Cancel</Act>
         </Acts>
