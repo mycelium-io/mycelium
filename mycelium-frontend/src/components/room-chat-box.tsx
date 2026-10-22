@@ -958,20 +958,24 @@ export function RoomChatBox({
     }
     // Up at the very start of the box steps back through what you've sent in
     // this room, and Down at its very end steps forward, back to what you'd
-    // typed. Anywhere else the arrows move the cursor as they always do, and
-    // Up on the top line takes it to the start, so pressing Up again recalls.
-    // A line that wraps is never mistaken for the top or bottom one.
+    // typed. Anywhere else in what you're writing the arrows move the cursor
+    // as they always do, and Up on the top line takes it to the start, so
+    // pressing Up again recalls. A line that wraps is never mistaken for the
+    // top or bottom one.
     const plain = !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.nativeEvent.isComposing;
     if (plain && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       const box = e.currentTarget;
       const caret = box.selectionStart;
       const collapsed = caret === box.selectionEnd;
       const sent = loadSent(roomName);
+      // A recalled message you haven't changed is still history: the arrows
+      // keep stepping from wherever the cursor is.
+      const browsing = recall !== null && content === sent[recall.index];
       let next: { index: number; draft: string } | null | undefined;
-      if (e.key === "ArrowUp" && collapsed && caret === 0) {
+      if (e.key === "ArrowUp" && collapsed && (browsing || caret === 0)) {
         const index = (recall ? recall.index : sent.length) - 1;
         if (index >= 0) next = { index, draft: recall ? recall.draft : content };
-      } else if (e.key === "ArrowDown" && recall && collapsed && caret === box.value.length) {
+      } else if (e.key === "ArrowDown" && recall && collapsed && (browsing || caret === box.value.length)) {
         next = recall.index + 1 < sent.length ? { ...recall, index: recall.index + 1 } : null;
       }
       if (next !== undefined) {
