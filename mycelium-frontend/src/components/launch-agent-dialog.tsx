@@ -887,29 +887,96 @@ function LaunchProgress({
       ? startHelp(report.why, { machine, cli: frameworkName, handle, detail: report.detail })
       : null;
   const terminal = desktop && herdr && report.pane ? terminalLink(report.pane) : null;
+  // The person is needed at the terminal: the agent asked something, its shell
+  // is slow to a prompt, or the start stopped. Open terminal leads then.
+  const needsYou = Boolean(waiting) || (status === "running" && report.slow) || failed;
+  const underway = status === "running" && !report.slow;
+  // Where the start is now, said as it happens, so the line under the handle
+  // moves with the terminal beside it.
+  const now = waiting
+    ? `Started on ${machine}, and waiting for input there before it reads its notes.`
+    : status === "done"
+      ? herdr
+        ? `Running on ${machine}, in herdr workspace ${room}.`
+        : `Running on ${machine}, in ${hostOf(runner).where}.`
+      : failed
+        ? `It's in ${room}, but it didn't start on ${machine}.`
+        : status === "waiting"
+          ? `Waiting for someone on ${machine} to approve it. ${machine} asks before it starts anything.`
+          : status === "running" && report.step === "agent"
+            ? `${frameworkName} is starting on ${machine} and reading its notes…`
+            : status === "running" && report.step === "shell"
+              ? `Starting ${frameworkName} on ${machine}…`
+              : status === "running"
+                ? `Opening its terminal on ${machine}…`
+                : `Starting on ${machine}…`;
   return (
     <div className="px-5 py-4">
       <div className="flex items-center gap-3">
         <Monogram handle={handle} className="size-10 text-label" kind="agent" />
         <div>
           <p className="font-mono text-ui text-text">@{handle}</p>
-          <p className="text-micro text-muted-foreground">
-            {waiting
-              ? `Started on ${machine}, and waiting for input there before it reads its notes.`
-              : status === "done"
-              ? startsInHerdr(runner)
-                ? `Running on ${machine}, in herdr workspace ${room}.`
-                : `Running on ${machine}, in ${hostOf(runner).where}.`
-              : failed
-                ? `It's in ${room}, but it didn't start on ${machine}.`
-                : status === "waiting"
-                  ? `Waiting for someone on ${machine} to approve it. ${machine} asks before it starts anything.`
-                  : `Starting on ${machine}…`}
+          <p
+            className={cn(
+              "flex items-center gap-1.5 text-micro",
+              needsYou && !failed ? "text-yellow" : "text-muted-foreground",
+            )}
+          >
+            {underway && <Loader2 className="size-3 shrink-0 animate-spin" aria-hidden />}
+            {now}
           </p>
           {job && pairingNote(job) && <p className="text-micro text-muted-foreground">{pairingNote(job)}</p>}
         </div>
       </div>
-      <ol className="mt-5 space-y-2.5">
+      {/* The agent's terminal, live from the moment the machine opens it, not
+          only once something goes wrong. It's read on this machine and never
+          sent through the hub; its footer says so. */}
+      {/* A start that settled without naming its terminal (an older runner)
+          has nothing to show here, so the panel goes rather than wait forever. */}
+      {herdr && (report.pane || !jobSettled(job)) && (
+        <section
+          aria-label="Its terminal"
+          className={cn(
+            "mt-4 overflow-hidden rounded-lg border",
+            needsYou ? (failed ? "border-red/40" : "border-yellow/50") : "border-border",
+          )}
+        >
+          <div className="flex h-8 items-center gap-2 border-b border-border bg-surface px-3">
+            <span className="text-micro text-muted-foreground">Terminal</span>
+            {report.pane && !desktop && (
+              <span className="text-micro text-faint">
+                herdr pane <span className="font-mono">{report.pane}</span> on {machine}
+              </span>
+            )}
+            {desktop && (
+              <a
+                href={terminal ?? undefined}
+                aria-disabled={!terminal}
+                className={cn(
+                  buttonVariants({ variant: needsYou ? "default" : "secondary", size: "xs" }),
+                  "ml-auto",
+                  !terminal && "pointer-events-none opacity-40",
+                )}
+              >
+                <SquareTerminal className="size-3.5" />
+                Open in terminal
+              </a>
+            )}
+          </div>
+          {report.pane ? (
+            <div className="flex h-48 flex-col">
+              <AgentScreen room={room} handle={handle} openLink={false} />
+            </div>
+          ) : (
+            <p className="px-3 py-3 text-label text-faint">
+              {status === "queued" || status === "waiting"
+                ? `Its terminal opens here once ${machine} starts it.`
+                : `Opening its terminal on ${machine}…`}
+            </p>
+          )}
+        </section>
+      )}
+      <ol className="mt-4 space-y-2">
         {steps.map((s) => (
           <li key={s.label} className="flex items-center gap-2.5 text-label">
             <StepIcon state={s.state} />
@@ -926,30 +993,11 @@ function LaunchProgress({
             startup may be waiting for you, like a question or a password. Answer it there, and{" "}
             {frameworkName} starts as soon as the prompt appears.
           </p>
-          {terminal ? (
-            <a href={terminal} className={buttonVariants({ variant: "secondary", size: "sm" })}>
-              <SquareTerminal className="size-3.5" />
-              Open its terminal
-            </a>
-          ) : (
-            report.pane && (
-              <p className="text-micro text-muted-foreground">
-                Look at it on {machine}: herdr pane <span className="font-mono">{report.pane}</span>.
-              </p>
-            )
-          )}
         </div>
       )}
       {waiting && (
-        <div className="mt-4 space-y-2 rounded-lg border border-yellow/30 bg-yellow/5 px-3 py-2 text-label text-text">
+        <div className="mt-4 rounded-lg border border-yellow/30 bg-yellow/5 px-3 py-2 text-label text-text">
           <p className="whitespace-pre-line break-words">{waiting}</p>
-          {/* What it's waiting on, as its terminal shows it now: a sign-in, a
-              question. Read on this machine, never sent through the hub. */}
-          {terminal && (
-            <div className="flex h-44 flex-col overflow-hidden rounded border border-border">
-              <AgentScreen room={room} handle={handle} />
-            </div>
-          )}
         </div>
       )}
       {failed && help && (
@@ -963,14 +1011,6 @@ function LaunchProgress({
               ))}
             </ol>
           </div>
-          {terminal && (
-            <div>
-              <p className="font-medium">Its terminal shows</p>
-              <div className="mt-1 flex h-44 flex-col overflow-hidden rounded border border-border">
-                <AgentScreen room={room} handle={handle} />
-              </div>
-            </div>
-          )}
           {report.detail && (
             <details className="text-micro text-muted-foreground">
               <summary className="cursor-pointer select-none">Details for troubleshooting</summary>
@@ -991,12 +1031,6 @@ function LaunchProgress({
             <Button variant="secondary" onClick={onRetry}>
               Back
             </Button>
-            {terminal && (
-              <a href={terminal} className={buttonVariants({ variant: "secondary" })}>
-                <SquareTerminal className="size-3.5" />
-                Open its terminal
-              </a>
-            )}
             <Button variant="secondary" onClick={onTryAgain} disabled={retrying}>
               {retrying ? "Trying again…" : "Try again"}
             </Button>
