@@ -848,6 +848,14 @@ class Runner:
             running = self.state.agents.get(key)
             if running is not None and running.live and self.host.alive(running.pane):
                 return {"pane": running.pane, "already": True}
+        # A CLI that would open on a first-run screen (a sign-in) is told to the
+        # person before anything starts, rather than started into a screen its
+        # introduction and wakes can't get past.
+        if reason := known.not_ready():
+            raise JobError(
+                f"{known.name} can't start on {self.label} yet. {reason}",
+                result={"why": "setup", "detail": reason},
+            )
         if spec.get("worktree") and not self.host.worktrees:
             from mycelium.commands.swarm import SwarmError, member_worktree
 

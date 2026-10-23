@@ -59,6 +59,36 @@ class AgentKind:
         keys. Escape for the agent TUIs this table knows."""
         return "esc"
 
+    def not_ready(self) -> str | None:
+        """Why a start would stop at a first-run screen only the person can get
+        past, like a sign-in, said for them; ``None`` when nothing is known to be
+        in the way. Asked before a start, so it never begins into one."""
+        return None
+
+    def run(self, *args: str, timeout: float = 15) -> subprocess.CompletedProcess | None:
+        """The installed CLI run with ``args``, found and run the way :meth:`offers`
+        does; ``None`` when it isn't found or couldn't be run."""
+        from mycelium.runner.frameworks import locate
+
+        found, search = locate(self.binaries)
+        if not found:
+            return None
+        env = {**os.environ, "PATH": search} if search else None
+        try:
+            return subprocess.run(  # noqa: S603 - the CLI's own path, from the scan's table
+                [found, *args],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                check=False,
+                stdin=subprocess.DEVNULL,
+                env=env,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+
     def offers(self, *words: str) -> bool:
         """Whether the installed CLI's own ``--help`` mentions every one of ``words``.
 

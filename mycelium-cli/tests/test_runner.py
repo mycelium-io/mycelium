@@ -616,6 +616,22 @@ def test_an_agent_cli_that_exits_at_start_says_so_and_is_not_started_again(
     assert len(herdr.of("agent start")) == 1
 
 
+def test_a_cli_that_needs_setting_up_is_told_before_anything_starts(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """Like a Codex that isn't signed in: no pane opened, nothing typed into one."""
+    from mycelium.integrations import agents
+
+    kind = type(agents.of_kind("claude"))
+    monkeypatch.setattr(kind, "not_ready", lambda _self: "Sign in first. Then try again.")
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="can't start on .* yet. Sign in first") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert failed.value.result == {"why": "setup", "detail": "Sign in first. Then try again."}
+    assert herdr.of("agent start") == []
+    assert herdr.panes == []
+
+
 def test_a_cli_the_scan_didnt_find_is_started_and_said_to_be_missing_when_it_isnt_there(
     make_runner, herdr: Herdr, hub: Hub
 ):

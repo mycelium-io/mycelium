@@ -144,6 +144,44 @@ def test_a_codex_under_nvm_is_asked_about_its_flags_with_its_node_on_path(
     assert args[0] == "--approve-for-me"
 
 
+def _codex_login(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, said: str, code: int) -> None:
+    """A stand-in codex whose ``login status`` says ``said`` and exits ``code``."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    exe = bin_dir / "codex"
+    exe.write_text(
+        '#!/bin/sh\nif [ "$1 $2" = "login status" ]; then\n'
+        f"  echo '{said}' >&2\n  exit {code}\nfi\nexit 0\n"
+    )
+    exe.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+
+def test_a_codex_that_isnt_signed_in_says_so_before_it_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Not signed in, Codex opens on screens that only take Enter, which herdr
+    reads as ready: the start is stopped before it begins, with what to do."""
+    _codex_login(tmp_path, monkeypatch, said="Not logged in", code=1)
+    reason = agents.of_kind("codex").not_ready()
+    assert reason is not None
+    assert "isn't signed in" in reason
+    assert "Then try again." in reason
+
+
+def test_a_signed_in_codex_or_one_that_cant_say_starts_as_usual(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _codex_login(tmp_path, monkeypatch, said="Logged in using ChatGPT", code=0)
+    assert agents.of_kind("codex").not_ready() is None
+    # An older Codex without the command, or any other trouble, is left for the
+    # start itself to report rather than guessed at here.
+    _codex_login(tmp_path, monkeypatch, said="error: unrecognized subcommand 'status'", code=2)
+    assert agents.of_kind("codex").not_ready() is None
+    # And a CLI with nothing to set up never is.
+    assert agents.of_kind("claude").not_ready() is None
+
+
 def test_a_codex_without_the_sandbox_flag_picks_the_mode_through_its_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

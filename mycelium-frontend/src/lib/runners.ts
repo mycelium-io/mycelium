@@ -202,9 +202,10 @@ export type StartStep = "terminal" | "shell" | "agent";
  * Why a start stopped, in the runner's one word for it: the terminal's shell
  * never reached a prompt, the agent CLI ran but is showing something of its
  * own (an update, a sign-in, a first-run question), it exited before it came
- * up, it isn't installed on the machine, or the host refused.
+ * up, it isn't installed on the machine, it needs setting up there first (a
+ * sign-in, found before anything started), or the host refused.
  */
-export type StartWhy = "shell" | "cli" | "exited" | "missing" | "host";
+export type StartWhy = "shell" | "cli" | "exited" | "missing" | "setup" | "host";
 
 export interface StartReport {
   step: StartStep | null;
@@ -219,7 +220,7 @@ export interface StartReport {
 }
 
 const STEPS: readonly string[] = ["terminal", "shell", "agent"];
-const WHYS: readonly string[] = ["shell", "cli", "exited", "missing", "host"];
+const WHYS: readonly string[] = ["shell", "cli", "exited", "missing", "setup", "host"];
 
 /** What a start job's result says about how far it got. Empty for any other job. */
 export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): StartReport {
@@ -271,6 +272,17 @@ export function startHelp(
         `Once it shows a prompt, try again. It reuses the same terminal.`,
       ],
       short: `its terminal on ${machine} didn't get to a prompt in time`,
+    };
+  }
+  if (why === "setup") {
+    // Found before anything started, so there's no terminal to look at: what
+    // the CLI needs is in the runner's own words.
+    return {
+      happened: `${cli} needs setting up on ${machine} before an agent can start in it.`,
+      steps: detail
+        ? [detail]
+        : [`Run ${cli} once in a terminal on ${machine} and finish its first-run setup.`, `Then try again.`],
+      short: `${cli} needs setting up on ${machine}`,
     };
   }
   if (why === "missing") {

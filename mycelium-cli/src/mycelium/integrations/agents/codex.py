@@ -62,3 +62,20 @@ class Codex(AgentKind):
             "Codex asks before it works in a folder it hasn't run in, "
             "and before a command its sandbox doesn't allow"
         )
+
+    def not_ready(self) -> str | None:
+        # A Codex that isn't signed in opens on its sign-in and welcome screens,
+        # which herdr reads as idle and ready: the introduction and the first
+        # wake would be typed into a screen that only takes Enter. Codex's own
+        # `login status` says which (0 signed in, 1 not), so ask before starting.
+        # Anything else it says (an old Codex without the command, a config it
+        # can't read) is left for the start itself to report.
+        done = self.run("login", "status")
+        if done is None or done.returncode == 0:
+            return None
+        if "not logged in" not in f"{done.stdout}\n{done.stderr}".lower():
+            return None
+        return (
+            "Codex isn't signed in here yet. Run `codex` once in a terminal on this "
+            "machine, sign in, and press Enter past its welcome screen. Then try again."
+        )

@@ -47,12 +47,18 @@ describe("a start that stopped", () => {
     expect(missing.happened).toBe("Codex isn't installed on studio-mini.");
     expect(missing.steps.join(" ")).toContain("Install Codex on studio-mini");
     expect(startReport({ result: { why: "missing" } }).why).toBe("missing");
+    // One that needs setting up first (a sign-in) says what the runner found, as its step.
+    const signIn = "Codex isn't signed in here yet. Run `codex` once in a terminal. Then try again.";
+    const setup = startHelp("setup", { ...names, detail: signIn });
+    expect(setup.happened).toBe("Codex needs setting up on studio-mini before an agent can start in it.");
+    expect(setup.steps).toEqual([signIn]);
+    expect(startReport({ result: { why: "setup" } }).why).toBe("setup");
     // A host that said why leads with it, and doesn't blame the agent CLI.
     const refused = startHelp("host", { ...names, detail: "agent name reviewer is already used" });
     expect(refused.happened).toBe("studio-mini couldn't start Codex: agent name reviewer is already used");
     expect(refused.steps.join(" ")).not.toContain("run it yourself");
     // Plain words for people: no em dashes anywhere in it.
-    for (const help of [shell, cli, exited, missing, startHelp(null, names)]) {
+    for (const help of [shell, cli, exited, missing, setup, startHelp(null, names)]) {
       expect([help.happened, help.short, ...help.steps].join(" ")).not.toContain("—");
     }
   });
