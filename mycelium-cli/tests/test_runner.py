@@ -312,6 +312,22 @@ def test_the_terminal_path_is_read_past_what_rc_files_print(
     assert frameworks.terminal_path() == "/opt/nvm/bin:/usr/bin"
 
 
+def test_an_rc_file_that_prints_bytes_that_arent_utf8_doesnt_stop_the_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Half of a multi-byte character, as a prompt theme can print, used to
+    raise UnicodeDecodeError and keep the runner from starting."""
+    shell = tmp_path / "shell"
+    shell.write_bytes(
+        b'#!/bin/sh\nprintf "theme \\342\\200 ready\\n"\nPATH=/opt/nvm/bin:/usr/bin\nexec /bin/sh -c "$2"\n'
+    )
+    shell.chmod(0o755)
+    monkeypatch.setenv("SHELL", str(shell))
+    monkeypatch.setattr(frameworks, "_asked", None)
+
+    assert frameworks.terminal_path() == "/opt/nvm/bin:/usr/bin"
+
+
 def test_a_shell_that_hangs_costs_the_timeout_and_nothing_else(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

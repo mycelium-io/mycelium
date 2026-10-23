@@ -99,7 +99,8 @@ def _help_text(binary: str, stamp: float, search: str | None = None) -> str:  # 
         done = subprocess.run(  # noqa: S603 - the CLI's own path, from the scan's table
             [binary, "--help"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
             check=False,
             stdin=subprocess.DEVNULL,

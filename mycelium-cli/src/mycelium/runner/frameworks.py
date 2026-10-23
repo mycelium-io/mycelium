@@ -74,7 +74,10 @@ def terminal_path() -> str | None:
             proc = subprocess.run(  # noqa: S603 - the person's own shell, fixed script
                 [shell, "-ilc", f'printf "{_MARK}%s{_MARK}" "$PATH"'],
                 capture_output=True,
-                text=True,
+                # An rc file can print anything, including bytes that aren't
+                # UTF-8; that must never stop the scan, so they're replaced.
+                encoding="utf-8",
+                errors="replace",
                 timeout=SHELL_TIMEOUT_S,
                 check=False,
                 stdin=subprocess.DEVNULL,
@@ -102,7 +105,8 @@ def _version(path: str, search_path: str | None = None) -> str | None:
         proc = subprocess.run(  # noqa: S603 - a path found on PATH, fixed argument
             [path, "--version"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=VERSION_TIMEOUT_S,
             check=False,
             stdin=subprocess.DEVNULL,
