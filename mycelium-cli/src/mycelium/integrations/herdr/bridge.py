@@ -1028,15 +1028,6 @@ class HerdrBridge:
                 status=status,
                 detail=f"agent is '{status}' — holding on the cursor rather than waking mid-turn",
             )
-        # herdr reads some CLIs' first-run screens as idle: a wake typed there
-        # is lost, or its Enter only gets past the screen. Past it, or held.
-        if waiting := self.past_first_run(mapping.pane, mapping.kind):
-            return WakeResult(
-                ok=False,
-                pane=mapping.pane,
-                status="blocked",
-                detail=f"holding on the cursor: {waiting}",
-            )
         try:
             result = self.prompt(
                 mapping.pane, prompt_text, wait=wait, timeout_ms=timeout_ms if wait else None

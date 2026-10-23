@@ -199,6 +199,22 @@ def test_codex_knows_its_welcome_after_signing_in_from_its_sign_in():
     assert "sign in" in menu.what
     assert codex.first_run("Press enter to continue") is None
     assert codex.first_run("› Ask Codex to do anything") is None
+    # Its wait on a sign-in in the browser.
+    browser = codex.first_run(
+        "  Finish signing in via your browser\n\n  https://auth.openai.com/x\n  Press esc to cancel"
+    )
+    assert browser is not None
+    assert browser.key is None
+    # A conversation that quotes those screens is not one: the words are on it,
+    # but it isn't the whole screen, and Codex's input box is there.
+    quoted = (
+        '• The pane said "✓ Signed in with your ChatGPT account" and then\n'
+        "  Press enter to continue\n"
+        "• and the menu offered Sign in with ChatGPT.\n\n"
+        "› Press enter to continue"
+    )
+    assert codex.first_run(quoted) is None
+    assert codex.first_run(quoted.rsplit("\n", 1)[0]) is None
     # A CLI with no first-run screens of its own sees none.
     assert agents.of_kind("claude").first_run("Sign in with ChatGPT") is None
 

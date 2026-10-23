@@ -10,12 +10,19 @@ from dataclasses import dataclass
 
 from mycelium.integrations.agents.base import AgentKind, FirstRun
 
-#: The screen Codex shows once a sign-in finishes, before its prompt: nothing to
-#: choose, just "Press enter to continue" (``tui/src/onboarding/auth.rs``).
-_SIGNED_IN = ("Signed in with your ChatGPT account", "API key configured")
-#: Its sign-in screens, which only the person can answer. Its sign-in menu ends
-#: with "Press enter to continue" too, so that alone never means it's safe.
-_SIGN_IN = ("Sign in with ChatGPT", "Sign in with Device Code", "Finish signing in")
+#: Codex's onboarding screens take the whole pane, each ending on one line
+#: (``tui/src/onboarding/auth.rs``). Matched as a whole screen, never as words
+#: in it: an agent's own conversation can quote any of them.
+_CONTINUE = "Press enter to continue"
+#: Once a sign-in finishes: nothing to choose, so Enter gets past it.
+_SIGNED_IN = "Signed in with your ChatGPT account"
+#: Its sign-in menu, which ends on "Press enter to continue" too: Enter there
+#: would pick a sign-in, so only the person answers it.
+_SIGN_IN_MENU = "Sign in with ChatGPT"
+#: Its wait on a sign-in in the browser, which ends on "Press esc to cancel".
+_IN_BROWSER = "Finish signing in via your browser"
+#: The start of a line in Codex's input box, on every screen once it's past onboarding.
+_INPUT = "›"
 
 
 @dataclass(frozen=True)
@@ -75,10 +82,16 @@ class Codex(AgentKind):
         # sign-in, even with an auth.json on disk, and herdr reads those screens
         # as idle. After a sign-in it waits on "Press enter to continue" with
         # nothing to choose, which Enter gets past; before one, the person signs in.
-        if any(s in screen for s in _SIGNED_IN) and "to continue" in screen:
+        lines = [line.strip() for line in screen.splitlines() if line.strip()]
+        if not lines or any(line.startswith(_INPUT) for line in lines):
+            return None
+        last = lines[-1]
+        if last == _CONTINUE and any(_SIGNED_IN in line for line in lines):
             return FirstRun("Codex's welcome screen, after signing in", key="enter")
-        if any(s in screen for s in _SIGN_IN):
+        if last == _CONTINUE and any(_SIGN_IN_MENU in line for line in lines):
             return FirstRun("Codex is asking you to sign in")
+        if last.endswith("to cancel") and any(_IN_BROWSER in line for line in lines):
+            return FirstRun("Codex is waiting for you to sign in in your browser")
         return None
 
     def not_ready(self) -> str | None:

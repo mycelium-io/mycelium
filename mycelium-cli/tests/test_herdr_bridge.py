@@ -241,43 +241,25 @@ def test_wake_holds_when_agent_busy(monkeypatch: pytest.MonkeyPatch, isolated_ho
     assert not [c for c in runner.calls if c[:2] == ["agent", "prompt"]]
 
 
-def test_wake_gets_a_codex_past_its_welcome_and_holds_at_its_sign_in(
+def test_a_wake_never_reads_or_presses_anything_in_a_codex_that_quotes_its_welcome(
     monkeypatch: pytest.MonkeyPatch, isolated_home: Path
 ) -> None:
-    # herdr reads both as idle; a wake typed there would spend its Enter on the screen.
-    monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
-    screens = ["✓ Signed in with your ChatGPT account\n  Press enter to continue", "› Ask"]
-
-    def read(_args: list[str]) -> subprocess.CompletedProcess:
-        return _proc(_ok({"text": screens[0]}))
-
-    def keys(_args: list[str]) -> subprocess.CompletedProcess:
-        screens.pop(0)
-        return _proc("")
-
+    # A Codex working on its own welcome screen quotes it in its conversation.
+    # A wake goes to an agent already past its first run, so it reads no screen.
+    screen = "• It said ✓ Signed in with your ChatGPT account\n  Press enter to continue"
     bridge, runner = _bridge_with(
         monkeypatch,
         {
             "agent get": _proc(_ok({"agent": {"pane_id": "w2:pV", "agent_status": "idle"}})),
-            "pane read": read,
-            "pane send-keys": keys,
+            "pane read": _proc(_ok({"text": screen})),
+            "pane send-keys": _proc(""),
             "agent prompt": _proc(_ok({})),
         },
     )
     mapping = HerdrPaneMapping(room="design", handle="reviewer", pane="w2:pV", kind="codex")
     assert bridge.wake(mapping, "wake up", timeout_ms=5000, wait=False).ok is True
-    assert [c for c in runner.calls if c[:2] == ["pane", "send-keys"]] == [
-        ["pane", "send-keys", "w2:pV", "enter"]
-    ]
     assert [c for c in runner.calls if c[:2] == ["agent", "prompt"]]
-
-    screens[:] = ["> 1. Sign in with ChatGPT\n  Press enter to continue"]
-    runner.calls.clear()
-    held = bridge.wake(mapping, "wake up", timeout_ms=5000, wait=False)
-    assert held.ok is False
-    assert held.status == "blocked"
-    assert "sign in" in held.detail
-    assert not [c for c in runner.calls if c[:2] in (["agent", "prompt"], ["pane", "send-keys"])]
+    assert not [c for c in runner.calls if c[:2] in (["pane", "read"], ["pane", "send-keys"])]
 
 
 def test_wake_fails_soft_on_stale_mapping(

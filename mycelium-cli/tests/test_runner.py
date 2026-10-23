@@ -708,6 +708,23 @@ def test_a_sign_in_screen_holds_the_introduction_until_it_is_answered(
     assert "Sign in with Device Code" not in sent
 
 
+def test_an_agent_past_its_first_run_never_has_its_screen_read_again(
+    make_runner, herdr: Herdr, hub: Hub, first_runs: None
+):
+    herdr.screen = PROMPT
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert len(herdr.of("agent prompt")) == 1
+    reads = len(herdr.of("pane read"))
+    # Its introduction went in; whatever its screen shows from now on is its own.
+    herdr.screen = SIGNED_IN
+    r.refresh()
+    r.refresh()
+    assert len(herdr.of("pane read")) == reads
+    assert herdr.of("pane send-keys") == []
+    assert r.hello_body()["agents"][0]["status"] == "idle"
+
+
 def test_a_cli_with_no_first_run_screens_never_has_its_screen_read(
     make_runner, herdr: Herdr, hub: Hub
 ):
