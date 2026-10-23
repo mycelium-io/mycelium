@@ -17,6 +17,9 @@ class _Trust:
 
     #: The question's first line.
     start: str
+    #: How the line after the folder it names begins; a long folder wraps
+    #: across lines, so everything between is the folder.
+    after_folder: str
     #: Every sentence it says, as patterns over its text with the wrapping undone.
     prose: tuple[str, ...]
     #: Its options, in the order it lists them.
@@ -34,6 +37,7 @@ _TRUST = (
     # is Down to "Yes", then Enter once it's the one picked.
     _Trust(
         start="Accessing workspace:",
+        after_folder="Quick safety check:",
         prose=(
             r"Quick safety check: Is this a project you created or one you trust\? "
             r"\(Like your own code, a well-known open source project, or work from your "
@@ -46,6 +50,7 @@ _TRUST = (
     ),
     _Trust(
         start="Do you trust the files in this folder?",
+        after_folder="Claude Code may read",
         prose=(
             r"Claude Code may read, write, or execute files contained in this directory\. "
             r"This can pose security risks, so only use files from trusted sources\.",
@@ -106,9 +111,13 @@ class Claude(AgentKind):
             # From the question's first line on; what's above it is the shell
             # it was started from.
             body = lines[starts[-1] + 1 :]
-            # The folder it names.
+            # The folder it names, over as many lines as it wraps to.
             if body and body[0].startswith(("/", "~")):
-                body = body[1:]
+                folder = next(
+                    (i for i, line in enumerate(body) if line.startswith(trust.after_folder)),
+                    len(body),
+                )
+                body = body[folder:] if folder < len(body) else body[1:]
             options: list[str] = []
             picked: list[str] = []
             prose: list[str] = []

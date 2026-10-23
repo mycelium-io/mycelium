@@ -182,17 +182,27 @@ def test_a_signed_in_codex_or_one_that_cant_say_starts_as_usual(
     assert agents.of_kind("claude").not_ready() is None
 
 
-#: Claude Code's folder-trust question as a narrow pane shows it, wrapped.
-CLAUDE_TRUST = """Accessing workspace:
+#: Claude Code 2.1's folder-trust question as herdr read it from a runner's
+#: start in a 60-column pane, the folder renamed: the start's own lines above
+#: it, a rule, and the folder and sentences wrapped.
+CLAUDE_TRUST = """● ● ● ● ● ● ● ●
+ ~/code/workshop-runs/review-1
+ main  claude --allowedTools 'Bash(mycelium:*)' --permissio
+n-mode auto
 
- /Users/someone/code/tipcalc
+────────────────────────────────────────────────────────────
+ Accessing workspace:
 
- Quick safety check: Is this a project you created or one you
- trust? (Like your own code, a well-known open source project, or
- work from your team). If not, take a moment to review what's in
- this folder first.
+ /Users/someone/code/workshop-runs/really-long-folder-name/
+ review-1
 
- Claude Code'll be able to read, edit, and execute files here.
+ Quick safety check: Is this a project you created or one
+ you trust? (Like your own code, a well-known open source
+ project, or work from your team). If not, take a moment to
+ review what's in this folder first.
+
+ Claude Code'll be able to read, edit, and execute files
+ here.
 
  Security guide
 
