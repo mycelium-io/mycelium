@@ -865,7 +865,7 @@ def test_a_folder_whose_settings_grant_themselves_more_is_left_for_the_person(
     assert "passed" not in result
     agent = r.hello_body()["agents"][0]
     assert agent["status"] == "blocked"
-    assert "trust this folder's settings" in agent["detail"]
+    assert "asking whether to trust this folder" in agent["detail"]
 
 
 def test_a_launch_stopped_at_a_prompt_keeps_its_pane_and_waits_for_the_person(

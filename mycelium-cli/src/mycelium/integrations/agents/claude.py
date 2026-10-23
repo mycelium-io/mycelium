@@ -10,22 +10,51 @@ from dataclasses import dataclass
 
 from mycelium.integrations.agents.base import AgentKind, FirstRun
 
-#: The question Claude Code asks the first time it runs in a folder, in its
-#: current words and its older ones, each with the first option, which trusts it.
+
+@dataclass(frozen=True)
+class _Trust:
+    """One wording of the question Claude Code asks the first time it runs in a folder."""
+
+    #: The question's first line.
+    start: str
+    #: Every sentence it says, as patterns over its text with the wrapping undone.
+    prose: tuple[str, ...]
+    #: Its options in order, the first the one that trusts the folder.
+    options: tuple[str, ...]
+
+
+#: The plain question, in Claude Code's current words and its older ones. It is
+#: answered only when nothing else is on it: a folder whose own settings would
+#: act without asking (pre-approved tools, extra folders, helper commands, or
+#: anything a later release adds) shows more, and is left for the person.
 _TRUST = (
-    ("Is this a project you created or one you trust?", "Yes, I trust this folder"),
-    ("Do you trust the files in this folder?", "Yes, proceed"),
+    _Trust(
+        start="Accessing workspace:",
+        prose=(
+            r"Quick safety check: Is this a project you created or one you trust\? "
+            r"\(Like your own code, a well-known open source project, or work from your "
+            r"team\)\. If not, take a moment to review what.s in this folder first\.",
+            r"[\w ]{0,20}.ll be able to read, edit, and execute files here\.",
+            r"Security guide",
+        ),
+        options=("Yes, I trust this folder", "No, exit"),
+    ),
+    _Trust(
+        start="Do you trust the files in this folder?",
+        prose=(
+            r"Claude Code may read, write, or execute files contained in this directory\. "
+            r"This can pose security risks, so only use files from trusted sources\.",
+            r"Learn more",
+        ),
+        options=("Yes, proceed", "No, exit"),
+    ),
 )
-#: What the question adds when the folder's own settings would act without
-#: asking (pre-approved tools, extra folders, helper commands). Never answered
-#: for the person: that's theirs to read.
-_TRUST_GRANTS = (
-    "This folder pre-approves",
-    "This folder adds",
-    "This folder runs commands",
-    "These will apply without asking",
-    "continue without these permissions",
-)
+_OPTION = re.compile(r"^(?:[❯>]\s*)?(\d)\.\s*(.+)$")
+#: A line of key hints under the options ("Enter to confirm · Esc to cancel"):
+#: nothing but "<key> to <a word or two>" hints, so no warning passes as one.
+_HINT = r"(?:Enter|Esc|Tab|↑/↓|↑↓)\s+to\s+[a-z]+(?:\s[a-z]+)?"
+_KEYS = re.compile(rf"^{_HINT}(?:\s*·\s*{_HINT})*$")
+_BORDER = "│╭╮╰╯─ "
 
 
 @dataclass(frozen=True)
@@ -55,23 +84,40 @@ class Claude(AgentKind):
         )
 
     def first_run(self, screen: str) -> FirstRun | None:
-        # The folder was chosen and the start approved on this machine, so its
-        # trust question is answered as that person already did: Enter on the
-        # first option, which trusts it. Matched as the whole question with its
-        # trusting first option; one that names what the folder's own settings
-        # would do without asking is left for the person to read.
-        lines = [line.strip() for line in screen.splitlines() if line.strip()]
-        # A long sentence wraps in a narrow pane, so sentences are looked for
-        # across lines; an option is one short line of its own.
-        text = re.sub(r"\s+", " ", " ".join(lines))
-        for question, yes in _TRUST:
-            if question not in text:
+        # The folder was chosen and the start approved on this machine, so the
+        # plain trust question is answered as that person already did: Enter on
+        # the first option, which trusts it. Anything on it beyond the question
+        # leaves it for the person, so a change in its wording costs them an
+        # Enter, never a yes they didn't see.
+        lines = [line.strip(_BORDER) for line in screen.splitlines()]
+        lines = [line for line in lines if line]
+        for trust in _TRUST:
+            starts = [i for i, line in enumerate(lines) if line == trust.start]
+            if not starts:
                 continue
-            first = re.compile(rf"^(?:[❯>]\s*)?1\.\s*{re.escape(yes)}$")
-            if not any(first.match(line) for line in lines):
-                return None
-            if any(g in text for g in _TRUST_GRANTS):
-                return FirstRun("Claude Code is asking whether to trust this folder's settings")
+            held = FirstRun("Claude Code is asking whether to trust this folder")
+            # From the question's first line on; what's above it is the shell
+            # it was started from.
+            body = lines[starts[-1] + 1 :]
+            # The folder it names.
+            if body and body[0].startswith(("/", "~")):
+                body = body[1:]
+            options: list[str] = []
+            prose: list[str] = []
+            for line in body:
+                if option := _OPTION.match(line):
+                    options.append(option.group(2).strip())
+                elif not _KEYS.match(line):
+                    prose.append(line)
+            if tuple(options) != trust.options:
+                return held
+            # A long sentence wraps in a narrow pane; each known one is taken
+            # out once, and anything left over is something it doesn't know.
+            text = re.sub(r"\s+", " ", " ".join(prose)).replace("’", "'")
+            for sentence in trust.prose:
+                text = re.sub(sentence, "", text, count=1)
+            if text.strip():
+                return held
             return FirstRun(
                 "Claude Code is asking whether to trust this folder",
                 key="enter",

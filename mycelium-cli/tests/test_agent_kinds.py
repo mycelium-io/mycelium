@@ -230,6 +230,34 @@ def test_claude_answers_its_folder_trust_question_unless_the_folder_grants_itsel
     assert claude.first_run("> 1. Yes, I trust this folder") is None
 
 
+def test_claude_answers_only_the_plain_trust_question_and_nothing_it_doesnt_know():
+    """An allow-list: a line it doesn't know leaves the question for the person,
+    so a new warning in a later release costs an Enter, never a yes."""
+    claude = agents.of_kind("claude")
+
+    def answered(screen: str) -> bool:
+        seen = claude.first_run(screen)
+        assert seen is not None, "a trust question is always seen, answered or not"
+        return seen.key == "enter"
+
+    # The shell it was started from, above it, and a box drawn around it, are fine.
+    framed = "~/code/tipcalc $ claude --allowedTools 'Bash(mycelium:*)'\n" + "\n".join(
+        f"│ {line} │" for line in CLAUDE_TRUST.splitlines()
+    )
+    assert answered(framed)
+    # One more line it doesn't know, worded any way at all.
+    for extra in (
+        " This folder's .mcp.json starts 2 servers.",
+        " Hooks in .claude/settings.json run on every prompt",
+        " Enter to confirm, and its servers start without asking",
+    ):
+        assert not answered(CLAUDE_TRUST.replace(" Security guide", f" Security guide\n{extra}"))
+    # A third option, or the trusting one worded differently.
+    more = "2. Yes, and allow its MCP servers\n  3. No, exit"
+    assert not answered(CLAUDE_TRUST.replace("2. No, exit", more))
+    assert not answered(CLAUDE_TRUST.replace("I trust this folder", "trust it and its settings"))
+
+
 def test_codex_knows_its_welcome_after_signing_in_from_its_sign_in():
     codex = agents.of_kind("codex")
     # Signed in in the pane, or with an auth.json its app server didn't take:
