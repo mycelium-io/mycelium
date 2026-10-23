@@ -30,6 +30,9 @@ from mycelium.runner import approvals, daemon, frameworks
 from mycelium.runner.log import open_log
 from tests.herdr_layout import HerdrLayout
 
+#: The real install folders, which every test but the one about them has stubbed out.
+REAL_INSTALL_DIRS = frameworks.install_dirs
+
 HELP = """Start a supported interactive agent in an existing pane
 
 Options:
@@ -199,8 +202,6 @@ def herdr(monkeypatch: pytest.MonkeyPatch) -> Herdr:
 
     monkeypatch.setattr("shutil.which", which)
     monkeypatch.setattr(frameworks, "_version", lambda path, *_a: f"{Path(path).name} 1.0")
-    # The scan never asks the real shell of whoever runs the tests.
-    monkeypatch.setattr(frameworks, "terminal_path", lambda: None)
     return Herdr()
 
 
@@ -241,10 +242,16 @@ def test_herdr_decides_what_can_be_started(herdr: Herdr):
     # Installed, but herdr has no kind for it.
     assert found["aider"].installed and not found["aider"].launchable
     assert "no aider kind" in (found["aider"].note or "")
-    # herdr could start it, but it is not here.
-    assert not found["codex"].installed and not found["codex"].launchable
-    # Installed ones lead the list.
-    assert [f.installed for f in frameworks.scan(None)][:3] == [True, True, True]
+    # Not found here, and still offered: herdr starts it from the person's own
+    # shell, which may have it, and the start says if it doesn't.
+    assert not found["codex"].installed and found["codex"].launchable
+    assert found["codex"].note == "not found on this machine"
+    # What can be started leads the list, found ones first.
+    assert [(f.launchable, f.installed) for f in found.values()][:3] == [
+        (True, True),
+        (True, True),
+        (True, False),
+    ]
 
 
 def test_a_startable_cli_carries_no_note(herdr: Herdr, monkeypatch: pytest.MonkeyPatch):
@@ -255,73 +262,71 @@ def test_a_startable_cli_carries_no_note(herdr: Herdr, monkeypatch: pytest.Monke
     assert found["claude"].note is None
 
 
-def test_a_cli_only_a_terminal_finds_is_found_and_run_with_that_path(
-    herdr: Herdr, monkeypatch: pytest.MonkeyPatch
-):
-    """codex under nvm: not on the PATH the desktop app hands the runner, but on
-    the one ~/.zshrc sets up. Its --version needs that PATH's node."""
-    terminal = "/Users/j/.nvm/versions/node/v22/bin:/usr/bin"
+def _program(path: Path, text: str = "#!/bin/sh\necho 1.0\n") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    path.chmod(0o755)
+    return path
 
-    def which(name: str, path: str | None = None) -> str | None:
-        if path == terminal and name == "codex":
-            return "/Users/j/.nvm/versions/node/v22/bin/codex"
-        return f"/usr/bin/{name}" if path is None and name == "claude" else None
+
+def test_a_cli_under_nvm_is_found_in_the_newest_node_and_run_with_it_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """codex under nvm: not on the PATH the desktop app hands the runner. The
+    scan finds it in nvm's folders, newest Node first, and its --version runs
+    with that folder first on PATH, where its ``node`` is."""
+    monkeypatch.setattr(frameworks, "install_dirs", REAL_INSTALL_DIRS)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("NVM_DIR", raising=False)
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    nodes = tmp_path / ".nvm" / "versions" / "node"
+    # Newest by number, not by spelling: v24.10 is newer than v24.2.
+    _program(nodes / "v9.11.0" / "bin" / "codex")
+    _program(nodes / "v24.2.0" / "bin" / "codex")
+    _program(nodes / "v24.10.1" / "bin" / "node")
+    real = _program(nodes / "v24.10.1" / "bin" / "codex")
 
     ran: list[tuple] = []
-    monkeypatch.setattr(frameworks.shutil, "which", which)
-    monkeypatch.setattr(frameworks, "terminal_path", lambda: terminal)
     monkeypatch.setattr(
         frameworks, "_version", lambda path, search=None: ran.append((path, search)) or "1.0"
     )
-
-    found = {f.id: f for f in frameworks.scan({"codex", "claude"})}
+    found = {f.id: f for f in frameworks.scan({"codex"})}
 
     assert found["codex"].installed and found["codex"].launchable
-    assert found["codex"].path == "/Users/j/.nvm/versions/node/v22/bin/codex"
-    assert ("/Users/j/.nvm/versions/node/v22/bin/codex", terminal) in ran
-    # What the runner's own PATH has runs with that PATH, as before.
-    assert ("/usr/bin/claude", None) in ran
+    assert found["codex"].path == str(real)
+    # (Homebrew's folders are real on this machine, so only codex is checked.)
+    assert [r for r in ran if r[0].endswith("/codex")] == [
+        (str(real), f"{real.parent}:/usr/bin:/bin")
+    ]
 
 
-def test_the_terminal_is_not_asked_when_everything_is_already_found(
-    herdr: Herdr, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setattr(frameworks.shutil, "which", lambda name, path=None: f"/usr/bin/{name}")
-    asked: list[bool] = []
-    monkeypatch.setattr(frameworks, "terminal_path", lambda: asked.append(True))
-    frameworks.scan({"claude"})
-    assert asked == []
-
-
-def test_the_terminal_path_is_read_past_what_rc_files_print(
+def test_the_scan_runs_nothing_of_the_persons_shell(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """A real shell standing in for the person's: it prints a greeting, as an
-    rc file might, then runs what it's given with a PATH of its own."""
-    shell = tmp_path / "shell"
-    shell.write_text(
-        '#!/bin/sh\necho "Welcome back!"\nPATH=/opt/nvm/bin:/usr/bin\nexec /bin/sh -c "$2"\n'
-    )
-    shell.chmod(0o755)
+    """Not their shell, not its rc files: what an rc file prints, how slow it
+    is, or what it starts can't reach the runner."""
+    shell = _program(tmp_path / "shell", "#!/bin/sh\ntouch " + str(tmp_path / "ran") + "\n")
     monkeypatch.setenv("SHELL", str(shell))
-    monkeypatch.setattr(frameworks, "_asked", None)
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setattr(frameworks, "install_dirs", lambda: [tmp_path / "bin"])
+    _program(tmp_path / "bin" / "codex", "#!/bin/sh\necho 'codex --approve-for-me'\n")
+    real_run = subprocess.run
+    argv: list[list[str]] = []
 
-    assert frameworks.terminal_path() == "/opt/nvm/bin:/usr/bin"
-    # Kept: a second scan doesn't start the shell again.
-    shell.write_text("#!/bin/sh\nexit 1\n")
-    assert frameworks.terminal_path() == "/opt/nvm/bin:/usr/bin"
+    def run(cmd: Any, *a: Any, **kw: Any) -> Any:
+        argv.append([str(c) for c in cmd])
+        return real_run(cmd, *a, **kw)
 
+    monkeypatch.setattr(subprocess, "run", run)
+    from mycelium.integrations import agents
 
-def test_a_shell_that_hangs_costs_the_timeout_and_nothing_else(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    shell = tmp_path / "shell"
-    shell.write_text("#!/bin/sh\nsleep 5\n")
-    shell.chmod(0o755)
-    monkeypatch.setenv("SHELL", str(shell))
-    monkeypatch.setattr(frameworks, "_asked", None)
-    monkeypatch.setattr(frameworks, "SHELL_TIMEOUT_S", 0.2)
-    assert frameworks.terminal_path() is None
+    frameworks.scan({"codex"})
+    assert agents.of_kind("codex").offers("--approve-for-me")
+
+    assert not (tmp_path / "ran").exists()
+    assert argv
+    assert all(str(shell) not in cmd and "-ilc" not in cmd for cmd in argv)
+    assert not hasattr(frameworks, "terminal_path")
 
 
 def test_without_herdr_nothing_is_startable(herdr: Herdr):
@@ -334,7 +339,8 @@ def test_the_hello_says_what_this_machine_has(make_runner):
     body = make_runner().hello_body()
     assert body["id"] == "julias-mbp-ab12"
     assert body["herdr"] is True
-    assert [f["id"] for f in body["frameworks"] if f["launchable"]] == ["claude", "opencode"]
+    startable = [(f["id"], f["installed"]) for f in body["frameworks"] if f["launchable"]]
+    assert startable == [("claude", True), ("opencode", True), ("codex", False), ("pi", False)]
     assert body["agents"] == []
 
 
@@ -525,7 +531,7 @@ def test_launching_a_running_agent_again_opens_nothing(make_runner, herdr: Herdr
 @pytest.mark.parametrize(
     ("spec", "said"),
     [
-        ({"framework": "codex"}, "not installed"),
+        ({"framework": "nope"}, "not an agent CLI"),
         ({"framework": "aider"}, "herdr can't start Aider"),
         ({"framework": "claude", "cwd": "/etc"}, "outside the folders"),
         ({"framework": "claude", "cwd": "{root}/../elsewhere"}, "outside the folders"),
@@ -607,6 +613,22 @@ def test_an_agent_cli_that_exits_at_start_says_so_and_is_not_started_again(
     assert failed.value.result["pane"] == "w9:p1"
     assert "trust the files" not in json.dumps(failed.value.result)
     # Once: starting it the same way again would only exit again.
+    assert len(herdr.of("agent start")) == 1
+
+
+def test_a_cli_the_scan_didnt_find_is_started_and_said_to_be_missing_when_it_isnt_there(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    # Its shell says "command not found", so no agent ever appears on the pane.
+    herdr.exits_on_start = True
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="Codex isn't installed on") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "codex"})
+    assert "Install Codex there, then start @scout again" in str(failed.value)
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "missing"
+    assert failed.value.result["pane"] == "w9:p1"
+    # It was tried: the person's own shell may have had it.
     assert len(herdr.of("agent start")) == 1
 
 
@@ -896,7 +918,7 @@ def test_every_job_is_reported_done_or_failed(make_runner, herdr: Herdr, hub: Hu
         }
     )
     r.take(
-        {"id": "j2", "kind": "launch", "spec": {"room": "eng", "handle": "b", "framework": "codex"}}
+        {"id": "j2", "kind": "launch", "spec": {"room": "eng", "handle": "b", "framework": "nope"}}
     )
     r.take({"id": "j3", "kind": "reboot", "spec": {}})
 
@@ -906,7 +928,7 @@ def test_every_job_is_reported_done_or_failed(make_runner, herdr: Herdr, hub: Hu
     assert reports["j2"] == {
         "status": "failed",
         "result": None,
-        "error": "codex is not installed on " + r.label + ".",
+        "error": "nope is not an agent CLI " + r.label + " knows.",
     }
     assert "doesn't know how to do 'reboot'" in reports["j3"]["error"]
     # Each job is followed by a heartbeat, so the app sees the new state at once.
@@ -1117,9 +1139,9 @@ def test_a_launch_this_machine_could_not_do_fails_without_asking(
     make_runner, hub: Hub, tmp_path: Path, quick: None
 ):
     r = make_runner(trust_hub=False)
-    r.take({"id": "a1b2c3d4", "kind": "launch", "spec": {**LAUNCH, "framework": "codex"}})
+    r.take({"id": "a1b2c3d4", "kind": "launch", "spec": {**LAUNCH, "framework": "aider"}})
     failed = _until(lambda: _report(hub, "a1b2c3d4", "failed"))
-    assert "codex is not installed" in failed["error"]
+    assert "herdr can't start Aider" in failed["error"]
     assert approvals.pending(base=tmp_path) == []
 
 
@@ -1231,7 +1253,7 @@ def test_each_job_is_a_line_with_its_outcome_and_time(make_runner, hub: Hub):
     r.take({"id": "j2", "kind": "launch", "spec": {**LAUNCH, "framework": "nope"}})
     log = _log()
     assert re.search(r"job j1 launch done \d+ms", log)
-    assert re.search(r"job j2 launch failed \d+ms: nope is not installed", log)
+    assert re.search(r"job j2 launch failed \d+ms: nope is not an agent CLI", log)
 
 
 def test_a_question_asked_and_answered_is_in_the_log(

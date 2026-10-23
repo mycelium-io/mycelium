@@ -144,16 +144,17 @@ export function MachinePicker({
 }
 
 /**
- * The agent CLIs this machine can start, as one row of choices. Only what can
- * be picked is shown; the rest of the scan (what isn't installed, or what the
- * machine's host can't start) is one line pointing at the Machines page, which
- * lists it all.
+ * The agent CLIs this machine can start, as one row of choices: every kind its
+ * host can start, with the ones the scan didn't find marked "not found". The
+ * host starts a CLI from the person's own shell, which may have one the scan
+ * missed, and a start of one that isn't there says so. What the host can't
+ * start is one line pointing at the Machines page, which lists it all.
  */
 export function FrameworkPicker({
   runner,
   value,
   onChange,
-  usable = (f) => runner.herdr && f.installed && f.launchable,
+  usable = (f) => runner.herdr && f.launchable,
 }: {
   runner: Runner;
   value: string | null;
@@ -189,7 +190,7 @@ export function FrameworkPicker({
                 role="radio"
                 aria-checked={picked}
                 aria-label={f.name}
-                title={f.path ?? undefined}
+                title={f.path ?? `${f.name} wasn't found on this machine. Starting it tries its shell anyway.`}
                 onClick={() => onChange(f.id)}
                 className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-label transition-colors ${
                   picked
@@ -199,7 +200,11 @@ export function FrameworkPicker({
               >
                 {picked && <Check className="size-3 text-accent" />}
                 <span className="font-medium">{f.name}</span>
-                {version && <span className="font-mono text-micro text-faint">{version}</span>}
+                {f.installed ? (
+                  version && <span className="font-mono text-micro text-faint">{version}</span>
+                ) : (
+                  <span className="text-micro text-faint">not found</span>
+                )}
               </button>
             );
           })}

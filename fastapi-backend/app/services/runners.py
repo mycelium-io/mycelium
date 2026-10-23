@@ -243,7 +243,11 @@ def check_framework(runner: RunnerRead, framework_id: str) -> None:
             f"{host} isn't running on {runner.label}, so it can't start agents. Start it there."
         )
     fw = framework_of(runner, framework_id)
-    if fw is None or not fw.installed:
+    if fw is None:
+        raise RunnerError(f"{framework_id} is not an agent CLI {runner.label} knows.")
+    # A runner offers every kind its host can start, found or not: the host's
+    # shell may find what the scan didn't, and the start says if it can't.
+    if not fw.launchable and not fw.installed:
         raise RunnerError(f"{framework_id} is not installed on {runner.label}.")
     if not fw.launchable:
         raise RunnerError(

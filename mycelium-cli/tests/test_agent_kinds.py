@@ -119,25 +119,26 @@ def test_an_older_codex_without_auto_review_picks_the_sandbox_and_asks_on_reques
     assert args[:4] == ["--sandbox", "workspace-write", "--ask-for-approval", "on-request"]
 
 
-def test_a_codex_under_nvm_is_asked_about_its_flags_on_the_terminals_path(
+def test_a_codex_under_nvm_is_asked_about_its_flags_with_its_node_on_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """Found only on the PATH a new terminal has, and runnable only with it: a
-    Node CLI's ``#!/usr/bin/env node`` needs that PATH's node. Asked any other
-    way, it says nothing, and Codex would start without the flags it has."""
+    """Found only in nvm's folder, and runnable only with that folder on PATH:
+    a Node CLI's ``#!/usr/bin/env node`` needs the node installed beside it.
+    Asked any other way, it says nothing, and Codex would start without the
+    flags it has."""
     from mycelium.runner import frameworks
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))  # the runner's own: no codex
-    nvm = tmp_path / "nvm" / "bin"
+    nvm = tmp_path / ".nvm" / "versions" / "node" / "v24.1.0" / "bin"
     nvm.mkdir(parents=True)
-    node = nvm / "fakenode"  # the interpreter, only on the terminal's PATH
+    node = nvm / "fakenode"  # the interpreter, only in nvm's folder
     node.write_text(f"#!/bin/sh\n/bin/cat <<'EOF'\n{CODEX_HELP}\nEOF\n")
     node.chmod(0o755)
     codex = nvm / "codex"
     codex.write_text("#!/usr/bin/env fakenode\n")
     codex.chmod(0o755)
-    monkeypatch.setattr(frameworks, "terminal_path", lambda: str(nvm))
+    monkeypatch.setattr(frameworks, "install_dirs", lambda: [nvm])
 
     args = agents.of_kind("codex").launch_args()
     assert args[0] == "--approve-for-me"
