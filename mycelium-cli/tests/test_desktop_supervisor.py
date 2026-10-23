@@ -170,6 +170,115 @@ def test_a_hub_the_app_did_not_start_is_used_and_reported_never_stopped():
     assert any(e["type"] == "warning" and "development build" in e["message"] for e in events.all)
 
 
+def _alive(pid: int) -> bool:
+    import os
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _program(tmp_path: Path, name: str) -> list[str]:
+    """A stand-in program at its own path, so its command line names it."""
+    script = tmp_path / name
+    script.write_text("import time\ntime.sleep(60)\n")
+    return [sys.executable, str(script)]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX")
+def test_a_pid_that_leads_no_group_is_still_stopped(tmp_path: Path):
+    """A program started without a session of its own: its group is this one's,
+    so signalling a group named by its pid finds none, and it is signalled alone."""
+    import subprocess
+
+    other = subprocess.Popen(_program(tmp_path, "no-session.py"))
+    try:
+        sv.stop_pid(other.pid, grace_s=2)
+        assert other.wait(timeout=5) is not None
+    finally:
+        other.kill()
+
+
+def test_what_an_earlier_run_left_running_is_stopped_and_started_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The app updated itself in place: its supervisor went, its hub didn't.
+    The next supervisor stops that hub, as the app's own, and starts a new one."""
+    started = tmp_path / "started.json"
+    events = Events()
+    old = comp("hub", SLEEP)
+    before = hub(events, [old], started_path=started)
+    # Gone without stopping anything, as an update leaves it.
+    monkeypatch.setattr(before, "_shutdown", lambda: None)
+    run_until(before, lambda: old.state == "running")
+    assert old.proc is not None
+    leftover, left = old.proc, old.proc.pid
+    assert json.loads(started.read_text())["hub"]["pid"] == left
+    assert leftover.poll() is None
+
+    events = Events()
+    new = comp("hub", SLEEP)
+    run_until(hub(events, [new], started_path=started), lambda: new.state == "running")
+    # Stopped (and reaped here, since this test started it).
+    assert leftover.wait(timeout=5) is not None
+    assert any(f"pid {left}" in str(e.get("line")) for e in events.all)
+
+
+def test_a_pid_now_running_something_else_is_never_stopped(tmp_path: Path):
+    import subprocess
+
+    other = subprocess.Popen(_program(tmp_path, "someone-elses.py"))
+    try:
+        started = tmp_path / "started.json"
+        # Written down for a program that isn't what that pid runs now.
+        started.write_text(json.dumps({"hub": {"pid": other.pid, "program": "/gone/mycelium-hub"}}))
+        events = Events()
+        new = comp("hub", SLEEP)
+        run_until(hub(events, [new], started_path=started), lambda: new.state == "running")
+        assert other.poll() is None
+    finally:
+        other.kill()
+        other.wait()
+
+
+def test_a_hub_running_the_apps_own_program_is_stopped_not_adopted(tmp_path: Path):
+    """From a version that wrote nothing down: the hub on the port runs the app's
+    own hub program, so it's the app's, from before the update."""
+    import subprocess
+
+    from mycelium.hubs import Hub
+
+    argv = _program(tmp_path, "mycelium-hub")
+    old = subprocess.Popen(argv, start_new_session=True)
+    try:
+        there = Hub(
+            source="process", port=sv.HUB_PORT, version="3.0.58", pid=old.pid, answering=True
+        )
+
+        class _App(Locator):
+            def app_hub(self) -> Path | None:
+                return Path(argv[1])
+
+        events = Events()
+        new = comp("hub", SLEEP, external=lambda: old.poll() is None)
+        sup = hub(
+            events,
+            [new],
+            look=lambda: [there] if old.poll() is None else [],
+            started_path=tmp_path / "started.json",
+        )
+        sup.locator = _App(None, None)
+        run_until(sup, lambda: new.state == "running" and new.proc is not None)
+        assert old.wait(timeout=5) is not None
+        assert sup.adopted_hub is None
+        assert any("version 3.0.58" in str(e.get("line")) for e in events.all)
+    finally:
+        if old.poll() is None:
+            old.kill()
+
+
 def test_the_app_starts_no_second_runner_beside_one_from_a_terminal(isolated_home: Path):
     import os
 
