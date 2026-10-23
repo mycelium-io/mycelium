@@ -194,9 +194,9 @@ export function pairingNote(job: Pick<RunnerJob, "pairing">): string | null {
 /**
  * How far a start got on its machine, as the runner reports it on the job
  * (`hosts.STEP_*`): a terminal opened for the agent, then its shell and the
- * agent CLI in it, then the agent itself.
+ * agent CLI in it, then the agent itself, then its introduction handed over.
  */
-export type StartStep = "terminal" | "shell" | "agent";
+export type StartStep = "terminal" | "shell" | "agent" | "intro";
 
 /**
  * Why a start stopped, in the runner's one word for it: the terminal's shell
@@ -216,9 +216,12 @@ export interface StartReport {
   detail: string | null;
   /** Still starting, but the terminal's shell is slow to reach a prompt. */
   slow: boolean;
+  /** Started, but stopped at something only the person there can answer (a
+   *  sign-in, a question), in the runner's words; its introduction is held. */
+  waiting: string | null;
 }
 
-const STEPS: readonly string[] = ["terminal", "shell", "agent"];
+const STEPS: readonly string[] = ["terminal", "shell", "agent", "intro"];
 const WHYS: readonly string[] = ["shell", "cli", "exited", "missing", "host"];
 
 /** What a start job's result says about how far it got. Empty for any other job. */
@@ -233,6 +236,7 @@ export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): 
     pane: text(r.pane),
     detail: text(r.detail),
     slow: r.slow === true,
+    waiting: text(r.waiting),
   };
 }
 

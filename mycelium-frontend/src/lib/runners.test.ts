@@ -21,8 +21,14 @@ describe("a start that stopped", () => {
       pane: "w5:p1",
       detail: "not a shell",
       slow: false,
+      waiting: null,
     });
     expect(startReport({ result: { step: "shell", slow: true, pane: "w5:p1" } })).toMatchObject({ slow: true });
+    // The last step, with its terminal, and a start that stopped at a prompt.
+    expect(startReport({ result: { step: "intro", pane: "w5:p1" } })).toMatchObject({ step: "intro", pane: "w5:p1" });
+    expect(startReport({ result: { pane: "w5:p1", waiting: "Codex is asking you to sign in" } })).toMatchObject({
+      waiting: "Codex is asking you to sign in",
+    });
     expect(startReport({ result: { slow: "yes" } })).toMatchObject({ slow: false });
     expect(startReport({ result: { step: "warp", why: 3 } })).toMatchObject({ step: null, why: null });
     expect(startReport(null)).toMatchObject({ step: null, why: null, pane: null });

@@ -149,8 +149,10 @@ class _JobStart(StartHooks):
         self._runner = runner
         self._job_id = job_id
 
-    def step(self, step: str) -> None:
-        self._runner._report(self._job_id, "running", {"step": step}, None)  # noqa: SLF001 - the job's own report
+    def step(self, step: str, ref: str | None = None) -> None:
+        # The terminal to look at, never what it shows: that stays on the machine.
+        result = {"step": step, "pane": ref} if ref else {"step": step}
+        self._runner._report(self._job_id, "running", result, None)  # noqa: SLF001 - the job's own report
 
     def slow_shell(self, ref: str) -> None:
         # The terminal to look at, never what it shows: that stays on the machine.
