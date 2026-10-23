@@ -15,6 +15,7 @@ import { useNotifications } from "@/components/notifications-provider";
 import { ReadAloudPopover } from "@/components/read-aloud-popover";
 import { settingHref } from "@/lib/client-settings";
 import { mentionHref, OPEN_MENTION_EVENT } from "@/lib/notifications";
+import { HubMark } from "@/components/rooms-hubs-design";
 
 /** The first non-blank line, so a long message reads as one line. */
 const firstLine = (text: string) => text.split("\n").find((l) => l.trim())?.trim() ?? "";
@@ -31,8 +32,15 @@ function timeAgo(iso: string): string {
   return `${Math.round(hours / 24)}d`;
 }
 
+/** DESIGN MOCKUP: asks from hubs you've joined, made up. */
+const OTHER_HUBS_WAITING = [
+  { id: "w1", hub: "work", address: "work.example.com", room: "general", sender: "sam", text: "@julia-v can you look at the refund copy before we ship?", ago: "9m" },
+  { id: "w2", hub: "studio", address: "studio.example.org", room: "crit", sender: "mara", text: "Your turn: review the homepage sketch.", ago: "1h" },
+];
+
 export function NotificationBell() {
-  const { notifications, unreadCount, settings, markRead, markAllRead, dismiss, clearAll } = useNotifications();
+  // eslint-disable-next-line prefer-const
+  let { notifications, unreadCount, settings, markRead, markAllRead, dismiss, clearAll } = useNotifications();
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const anchor = useRef<HTMLSpanElement>(null);
@@ -51,6 +59,8 @@ export function NotificationBell() {
   // The bell holds messages that mention you (or were sent to you), and
   // nothing else. Other room activity only badges the room in the sidebar.
   const loud = notifications.filter((n) => n.alert !== false && n.needsMe);
+  // DESIGN MOCKUP: the other hubs' asks count toward the bell too.
+  unreadCount += OTHER_HUBS_WAITING.length;
   const items = [...loud].reverse();
 
   // One string names the trigger and fills its tooltip, so the do-not-disturb
@@ -91,7 +101,7 @@ export function NotificationBell() {
         <PopoverContent className="flex max-h-[28rem] w-80 flex-col p-0">
           <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
             <span className="text-label font-semibold text-text">Mentions</span>
-            <span className="text-micro tabular text-faint">{loud.length}</span>
+            <span className="text-micro tabular text-faint">{loud.length + OTHER_HUBS_WAITING.length}</span>
             <div className="ml-auto flex items-center gap-1">
               {loud.length > 0 && (
                 <Tooltip content="Mark all read">
@@ -117,7 +127,28 @@ export function NotificationBell() {
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {items.length === 0 ? (
+            {/* DESIGN MOCKUP (local branch): what other hubs are waiting on
+                you, each naming its hub. Choosing one switches to that hub. */}
+            {OTHER_HUBS_WAITING.map((w) => (
+              <Link
+                key={w.id}
+                href={`/room/checkout?hub=${w.hub}`}
+                onClick={() => setOpen(false)}
+                className="flex items-start gap-2 border-b border-border bg-accent-soft/40 px-3 py-2.5 hover:bg-hairline"
+              >
+                <span className="mt-1.5 size-1.5 flex-shrink-0 rounded-full bg-accent" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="flex-shrink-0 text-micro font-semibold text-text">{w.sender}</span>
+                    <HubMark hub={w.hub} />
+                    <span className="truncate text-micro text-muted-foreground">{w.room}</span>
+                    <span className="ml-auto flex-shrink-0 text-micro tabular text-faint">{w.ago}</span>
+                  </span>
+                  <span className="mt-0.5 block truncate text-label text-text">{w.text}</span>
+                </span>
+              </Link>
+            ))}
+            {items.length === 0 && OTHER_HUBS_WAITING.length > 0 ? null : items.length === 0 ? (
               <EmptyState
                 size="sm"
                 icon={Bell}
@@ -148,6 +179,7 @@ export function NotificationBell() {
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="flex-shrink-0 text-micro font-semibold text-text">{n.sender}</span>
+                      <HubMark hub="local" />
                       <span className="truncate text-micro text-muted-foreground">
                         {n.room} · {n.title ?? (n.episode ? "a thread" : "channel")}
                       </span>
