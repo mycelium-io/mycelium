@@ -268,14 +268,23 @@ describe("<RoomChatBox /> sent history", () => {
   it("steps back through what you sent with Up, and forward to your draft with Down", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
-    for (const text of ["first", "second"]) {
+    for (const text of ["first", "second", "third"]) {
       await userEvent.type(box, `${text}{Enter}`);
       await waitFor(() => expect(box).toHaveValue(""));
       await waitFor(() => expect(box).toBeEnabled());
     }
-    expect(JSON.parse(window.localStorage.getItem("mycelium.sent:demo") ?? "[]")).toEqual(["first", "second"]);
+    expect(JSON.parse(window.localStorage.getItem("mycelium.sent:demo") ?? "[]")).toEqual([
+      "first",
+      "second",
+      "third",
+    ]);
     await userEvent.type(box, "half typed");
+    // The first step back is from the start of the draft; after that the
+    // recalled messages are unchanged, so each press steps again at once.
+    (box as HTMLTextAreaElement).setSelectionRange(0, 0);
 
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("third");
     await userEvent.keyboard("{ArrowUp}");
     expect(box).toHaveValue("second");
     await userEvent.keyboard("{ArrowUp}");
@@ -287,16 +296,52 @@ describe("<RoomChatBox /> sent history", () => {
     await userEvent.keyboard("{ArrowDown}");
     expect(box).toHaveValue("second");
     await userEvent.keyboard("{ArrowDown}");
+    expect(box).toHaveValue("third");
+    await userEvent.keyboard("{ArrowDown}");
     expect(box).toHaveValue("half typed");
   });
 
-  it("moves the cursor as usual when it isn't on the first line", async () => {
+  it("steps through history from anywhere in an unchanged recalled message", async () => {
+    window.localStorage.setItem("mycelium.sent:demo", JSON.stringify(["older", "a recalled message"]));
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = (await textarea()) as HTMLTextAreaElement;
+    await userEvent.click(box);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("a recalled message");
+    box.setSelectionRange(4, 4);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("older");
+  });
+
+  it("moves the cursor as usual anywhere but the first character", async () => {
     window.localStorage.setItem("mycelium.sent:demo", JSON.stringify(["earlier"]));
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.type(box, "line one{Shift>}{Enter}{/Shift}line two");
     await userEvent.keyboard("{ArrowUp}");
     expect(box).toHaveValue("line one\nline two");
+  });
+
+  it("doesn't recall from a long line that wraps, until the cursor is at its start", async () => {
+    const long = "a long message that wraps onto several rows of the box";
+    window.localStorage.setItem("mycelium.sent:demo", JSON.stringify(["earlier"]));
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = (await textarea()) as HTMLTextAreaElement;
+    await userEvent.type(box, long);
+
+    // No newline before the cursor, but it isn't at the start: Up moves it.
+    box.setSelectionRange(5, 5);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue(long);
+    box.setSelectionRange(0, 0);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("earlier");
+
+    // The recalled message is unchanged, so Down steps forward to the draft
+    // from anywhere in it.
+    box.setSelectionRange(2, 2);
+    await userEvent.keyboard("{ArrowDown}");
+    expect(box).toHaveValue(long);
   });
 
   it("keeps each room's history apart", async () => {
