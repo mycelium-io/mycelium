@@ -187,6 +187,20 @@ def _program(tmp_path: Path, name: str) -> list[str]:
     return [sys.executable, str(script)]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX")
+def test_a_pid_that_leads_no_group_is_still_stopped(tmp_path: Path):
+    """A program started without a session of its own: its group is this one's,
+    so signalling a group named by its pid finds none, and it is signalled alone."""
+    import subprocess
+
+    other = subprocess.Popen(_program(tmp_path, "no-session.py"))
+    try:
+        sv.stop_pid(other.pid, grace_s=2)
+        assert other.wait(timeout=5) is not None
+    finally:
+        other.kill()
+
+
 def test_what_an_earlier_run_left_running_is_stopped_and_started_again(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

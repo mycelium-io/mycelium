@@ -402,8 +402,7 @@ def stop_pid(pid: int, *, grace_s: float = 5.0) -> None:
         argv = ["taskkill", "/PID", str(pid), "/T", "/F"]
         subprocess.run(argv, capture_output=True, check=False)  # noqa: S603, S607
         return
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(pid, 15)
+    _signal_pid(pid, 15)
     deadline = time.monotonic() + grace_s
     while time.monotonic() < deadline:
         try:
@@ -411,8 +410,17 @@ def stop_pid(pid: int, *, grace_s: float = 5.0) -> None:
         except (ProcessLookupError, PermissionError):
             return
         time.sleep(0.1)
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(pid, 9)
+    _signal_pid(pid, 9)
+
+
+def _signal_pid(pid: int, sig: int) -> None:
+    """Signal ``pid``'s group, which it leads when this app started it; ``pid``
+    alone when it leads none, so a program started some other way still stops."""
+    try:
+        os.killpg(pid, sig)
+    except (ProcessLookupError, PermissionError):
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.kill(pid, sig)
 
 
 def port_open(port: int, host: str = HOST, timeout: float = 0.3) -> bool:
