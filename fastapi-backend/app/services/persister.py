@@ -674,15 +674,20 @@ def stored_message_from_record(
     # A conductor post carries a structured line beside its prose (see
     # ``conductor.LINE_KEY``). The chat projection keeps only prose, so the line
     # rides the message's metadata, and a reload draws the run as the live
-    # stream did rather than as the prompts behind it.
+    # stream did rather than as the prompts behind it. A member's reply to a
+    # step carries what the hub read from it (``reply_shape``) the same way.
     data = (record.content.get("l9", {}).get("payload") or {}).get("data") or {}
-    line = data.get("conductor") if isinstance(data, dict) else None
+    meta = (
+        {k: data[k] for k in ("conductor", "reply") if isinstance(data.get(k), dict)}
+        if isinstance(data, dict)
+        else {}
+    )
     msg = StoredMessage(
         room_name=room,
         sender_handle=record.sender or message_format.SYSTEM_ACTOR_ID,
         message_type=message_type,
         content=content,
-        event_metadata={"conductor": line} if isinstance(line, dict) else None,
+        event_metadata=meta or None,
         episode=episode if isinstance(episode, str) else None,
         message_id=record.message_id or None,
         amends=amended_target(record.subkind, header.get("message", {}).get("parents")),
@@ -938,6 +943,10 @@ MemberLeftHook = Callable[[str], None]
 #: Fired once per recorded message with the record as stored (the verifier reads
 #: agents' prose off it). Runs after the record is durable and on the bus.
 RecordedHook = Callable[["TranscriptRecord"], None]
+#: Called before a message is recorded: what a step that asked for it read from
+#: it (:mod:`app.services.reply_shape`), put on the message's payload, or
+#: ``None`` when no step was waiting on it.
+ShapeHook = Callable[["MyceliumMessage", dict[str, Any]], "dict[str, Any] | None"]
 
 # Consecutive genuine transport failures before the loop gives up — keeps a
 # torn-down channel from spinning a hot loop while tolerating transient hiccups.
@@ -1029,6 +1038,7 @@ class RoomPersister:
         on_member_left: MemberLeftHook | None = None,
         on_asked: AskedHook | None = None,
         on_recorded: RecordedHook | None = None,
+        shape_reply: ShapeHook | None = None,
         feed_bus: bool = True,
     ) -> None:
         self.room = room
@@ -1037,6 +1047,7 @@ class RoomPersister:
         self.on_summon = on_summon or _default_summon_hook
         self.on_asked = on_asked
         self.on_recorded = on_recorded
+        self.shape_reply = shape_reply
         self.on_converged = on_converged or _default_converged_hook
         self.on_member_left = on_member_left
         self._feed_bus = feed_bus
@@ -1307,6 +1318,16 @@ class RoomPersister:
             if mid in self._ingested_ids:
                 return
             self._ingested_ids.add(mid)
+        if self.shape_reply is not None:
+            try:
+                reply = self.shape_reply(envelope, content)
+            except Exception:
+                logger.exception("reading a reply's shape failed for %s", mid)
+                reply = None
+            if reply is not None:
+                from app.services.reply_shape import attach
+
+                attach(content, reply)
         record = record_from(envelope, content)
         present = set(self._members_provider())
         self.log.record(record, delivered_to=present, recipients=envelope_recipients(envelope))

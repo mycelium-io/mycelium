@@ -48,7 +48,16 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from app.config import settings
-from app.services import agreed, episode_state, markers, message_format, protocols, tasks, turns
+from app.services import (
+    agreed,
+    episode_state,
+    markers,
+    message_format,
+    protocols,
+    reply_shape,
+    tasks,
+    turns,
+)
 from app.services import frame as framing
 from app.services import select as choosing
 from app.services.agent_registry import norm_handle
@@ -248,6 +257,12 @@ class Run:
     #: something to save, so a failed write reads differently from none.
     saved_to: str | None = None
     saving: bool = False
+    #: The step being asked now, whether this asking is a re-ask, and the
+    #: members whose reply it waits on: what a reply recorded in the thread is
+    #: read against (:meth:`ConductorEngine._reader`).
+    asking: Step | None = None
+    again: bool = False
+    waiting: set[str] = field(default_factory=set)
 
     def targets(self, step: Step) -> list[str]:
         to = step.to or ""
@@ -460,7 +475,16 @@ def close_line(run: Run, outcome: str, why: str) -> dict[str, Any]:
         "reason": why,
     }
     if run.last_pick and run.last_pick.get("pick"):
-        line |= {"pick": run.last_pick["pick"], "text": run.last_pick["text"]}
+        # The pick, the bar it was held to, and how far toward each member's
+        # own ideal it lands (0-100, as the pick read it), for a surface to draw.
+        line |= {
+            "pick": run.last_pick["pick"],
+            "text": run.last_pick["text"],
+            "bar": run.last_pick.get("threshold"),
+            "toward_ideal": {
+                h: round(v * 100) for h, v in (run.last_pick.get("standing") or {}).items()
+            },
+        }
     if run.saving:
         line["memory"] = run.saved_to
     return line
@@ -773,6 +797,9 @@ class ConductorEngine:
         # The floor is the run's from the first instant. (The summon seam
         # already held it; a direct call takes it here.)
         self._manager.hold_floor(room, thread, holder=me)
+        # Every reply recorded in the thread while the run walks is read against
+        # the step waiting on it, and what was read goes on the message.
+        self._manager.read_replies(room, thread, self._reader(run))
         try:
             # The record exists from the opening, so the run can be read while
             # it is still walking.
@@ -780,9 +807,43 @@ class ConductorEngine:
             await self._say(managed, thread, me, self._opening(run), line=open_line(run))
             outcome, why = await self._walk(managed, run, ep, me)
         finally:
+            self._manager.read_replies(room, thread, None)
             self._manager.release_floor(room, thread)
         await self._close(managed, run, ep, me, outcome, why)
         return outcome
+
+    @staticmethod
+    def _reader(run: Run) -> Callable[[str, dict[str, Any]], dict[str, Any] | None]:
+        """What reads a member's reply to the step being asked, as it's recorded:
+        ``None`` for anything else in the thread (the conductor's own posts, a
+        member nobody is waiting on, a step that asks for no shape)."""
+
+        def read(sender: str, content: dict[str, Any]) -> dict[str, Any] | None:
+            step = run.asking
+            who = _norm(sender)
+            if step is None or who not in run.waiting:
+                return None
+            payload = (content.get("l9") or {}).get("payload") or {}
+            if payload.get("type") in _NOT_A_REPLY:
+                return None
+            shape = reply_shape.shape_of(step)
+            if shape is None:
+                return None
+            handle = next((h for h in run.handles if _norm(h) == who), sender)
+            wanted = [o.label for o in run.new_options()] if shape == "ratings" else []
+            reply = {"protocol": run.protocol.name, "step": step.id} | reply_shape.read(
+                shape,
+                content,
+                labels=[o.label for o in run.options],
+                wanted=wanted,
+                anchor=run.anchors.get(handle),
+                key_terms=run.key_terms,
+            )
+            if run.again:
+                reply["again"] = True
+            return reply
+
+        return read
 
     def _spec(self, room: str, name: str) -> str:
         """One flow as the YAML a ``protocols/<name>`` memory carries."""
@@ -1332,6 +1393,7 @@ class ConductorEngine:
         )
         self._manager.hold_floor(managed.room, run.episode, holder=me, speakers=[fixer])
         run.answers = {}
+        run.asking, run.again = step, True
         line = turn_line(run, step, fixer, cap=cap, round_n=1) | {"again": True}
         await self._turn(
             managed,
@@ -1534,6 +1596,7 @@ class ConductorEngine:
         head = f"{run.protocol.name} · {step.id} (again) · turn {run.steps_taken} of {cap}"
         self._manager.hold_floor(managed.room, run.episode, holder=me, speakers=lacking)
         run.answers = {}
+        run.asking, run.again = step, True
         again = dict(
             await asyncio.gather(
                 *(
@@ -1583,6 +1646,7 @@ class ConductorEngine:
         targets = run.targets(step)
         stances: list[tuple[str, str | None]] = []
         run.answers = {}
+        run.asking, run.again = step, False
 
         def render(handle: str, round_n: int) -> str:
             # Every turn says which step of which flow it is, so the episode
@@ -1661,24 +1725,28 @@ class ConductorEngine:
             if isinstance(env, dict):
                 ep.messages.append(env)
 
-        prose = await turns.addressed_turn(
-            managed,
-            managed.persister,
-            sender=me,
-            handle=handle,
-            episode=episode,
-            topic=ep.topic,
-            prompt=prompt,
-            # Posted as a message, not a tick: a turn is prose the room should
-            # read in the thread, the way the aligner's questions are.
-            payload_type="message",
-            payload_data=data,
-            is_reply=is_reply,
-            timeout_s=self._step_timeout_s,
-            poll_interval_s=self._poll_interval_s,
-            on_tick=lambda env: ep.messages.append(message_format.envelope_to_dict(env)),
-            on_reply=on_reply,
-        )
+        run.waiting.add(pending)
+        try:
+            prose = await turns.addressed_turn(
+                managed,
+                managed.persister,
+                sender=me,
+                handle=handle,
+                episode=episode,
+                topic=ep.topic,
+                prompt=prompt,
+                # Posted as a message, not a tick: a turn is prose the room should
+                # read in the thread, the way the aligner's questions are.
+                payload_type="message",
+                payload_data=data,
+                is_reply=is_reply,
+                timeout_s=self._step_timeout_s,
+                poll_interval_s=self._poll_interval_s,
+                on_tick=lambda env: ep.messages.append(message_format.envelope_to_dict(env)),
+                on_reply=on_reply,
+            )
+        finally:
+            run.waiting.discard(pending)
         if not answered:
             return handle, "silent"
         run.replies[handle] = prose

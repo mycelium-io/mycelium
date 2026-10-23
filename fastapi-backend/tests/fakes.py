@@ -222,6 +222,26 @@ class FakeManager:
     def floor(self, room: str, episode: str | None) -> Any:
         return self.floors.get(episode) if episode else None
 
+    # What reads a reply recorded in a thread, as ``RoomChannelManager`` keeps
+    # it: wired into the managed channel's persister, so a node-free run gets
+    # its replies read the way a live one does.
+    def read_replies(self, room: str, episode: str, reader: Any) -> None:
+        readers = self.__dict__.setdefault("readers", {})
+        if reader is None:
+            readers.pop(episode, None)
+        else:
+            readers[episode] = reader
+        persister = getattr(self._managed, "persister", None)
+        if persister is not None:
+            persister.shape_reply = self._shape
+
+    def _shape(self, envelope: Any, content: dict) -> Any:
+        from app.services.persister import envelope_sender
+
+        message = envelope.header.message
+        reader = self.__dict__.get("readers", {}).get(message.episode if message else None)
+        return reader(envelope_sender(envelope) or "", content) if reader else None
+
     async def close_episode(self, room: str) -> bool:
         self.closed.append(room)
         return True

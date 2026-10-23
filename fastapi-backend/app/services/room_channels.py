@@ -36,7 +36,7 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.services import custody, message_format, slim_identity
@@ -90,6 +90,9 @@ RoomConvergedHook = Callable[[str, "MyceliumMessage"], None]
 # handle a message put a turn to (:mod:`app.services.asks`), the way the aligner
 # and the conductor ask one member. The members the hub plays answer it.
 RoomTurnHook = Callable[[str, str, "MyceliumMessage", str], None]
+# What reads a reply recorded in a thread a flow runs in: ``(sender, content)``
+# → what the step waiting on it read from it, or ``None`` (no step waits on it).
+ReplyReader = Callable[[str, dict[str, Any]], "dict[str, Any] | None"]
 # The board-event hook: ``(room, data)`` for every notice raised, where ``data``
 # is the notice's payload (``subkind``, ``key``, ``title``, ``episode``, ``by``,
 # and ``for`` on a ``filed`` row given to someone).
@@ -359,6 +362,10 @@ class RoomChannelManager:
         self.on_summon: RoomSummonHook | None = None
         self.on_converged: RoomConvergedHook | None = None
         self.on_turn: RoomTurnHook | None = None
+        # ``(room, episode)`` → what reads a reply recorded in that thread
+        # against the step waiting on it (``reply_shape``): set by the engine
+        # running a flow there for as long as it runs.
+        self._reply_readers: dict[tuple[str, str], ReplyReader] = {}
         # ``(room, episode, handle)`` when one of a running negotiation's parties
         # left the room; True when the engine running it took it (it stops and
         # posts its own closing line). Wired to the aligner in ``main.py``.
@@ -1019,6 +1026,7 @@ class RoomChannelManager:
             on_converged=self._converged_adapter(room),
             on_asked=self._asked_adapter(room),
             on_recorded=self._recorded_adapter(room),
+            shape_reply=self._shape_adapter(room),
             on_member_left=lambda handle, _room=room: self._drop_member(_room, handle),
         )
         managed.persister_task = asyncio.create_task(managed.persister.run())
@@ -1141,6 +1149,34 @@ class RoomChannelManager:
                 hook(_room, handle, envelope, message_text)
 
         return adapter
+
+    def _shape_adapter(
+        self, room: str
+    ) -> Callable[[MyceliumMessage, dict[str, Any]], dict[str, Any] | None]:
+        """What the persister calls before recording a message: the reader the
+        thread's running flow registered, given the sender and the content."""
+
+        def adapter(
+            envelope: MyceliumMessage, content: dict[str, Any], _room: str = room
+        ) -> dict[str, Any] | None:
+            message = envelope.header.message
+            episode = message.episode if message is not None else None
+            if not episode:
+                return None
+            reader = self._reply_readers.get((_room, episode))
+            if reader is None:
+                return None
+            return reader(envelope_sender(envelope) or "", content)
+
+        return adapter
+
+    def read_replies(self, room: str, episode: str, reader: ReplyReader | None) -> None:
+        """Have ``reader`` read every reply recorded in ``episode`` before it is
+        stored; ``None`` stops it."""
+        if reader is None:
+            self._reply_readers.pop((room, episode), None)
+        else:
+            self._reply_readers[(room, episode)] = reader
 
     def _recorded_adapter(self, room: str) -> Callable[[TranscriptRecord], None] | None:
         """Bind ``room`` onto the room-aware ``on_recorded`` hook. Read at call
