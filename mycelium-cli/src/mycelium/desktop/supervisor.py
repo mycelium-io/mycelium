@@ -46,6 +46,15 @@ anything in hub mode the supervisor looks for every hub on this machine
 on its port (its owner, version and data folder) in its status. It never
 stops one: that hub may be someone's on purpose, so the person decides.
 
+The exception is the app's own, left running by an earlier run. An app that
+updates itself in place replaces its files under its running programs without
+stopping them, and a hub running the old version over the new files breaks in
+odd ways (an import loads the new copy of a library into the old process). So
+each program the supervisor starts is written down (:data:`STARTED_FILE`), and
+the next supervisor stops what is still running of them before it starts.
+A hub on its port running the app's own hub program (from a version that wrote
+nothing down) is stopped the same way.
+
 Where each program comes from, first found wins: an environment override,
 the app bundle (the directory this binary runs from, and where each platform's
 bundle keeps its resources), then a checkout of the repository, then ``PATH``.
@@ -96,6 +105,11 @@ MAX_RESTARTS = len(BACKOFF_S)
 #: What the hub leaves in its data folder before it exits to be restarted with
 #: new settings (`contracts/hub-settings.json`'s `restart_marker`).
 HUB_RESTART_MARKER = ".hub-restart-requested"
+#: The programs a supervisor started and is running (pid and program), in
+#: ``~/.mycelium``. An app that updates itself in place replaces its files under
+#: them without stopping them, so the next supervisor reads this to stop what
+#: was the app's own and start it again from the new files.
+STARTED_FILE = "desktop-started.json"
 #: How often the supervisor looks at its processes.
 TICK_S = 0.5
 #: How many lines of each component's output are kept to explain a crash.
@@ -272,6 +286,10 @@ class Locator:
         """The app's own herdr, or ``None`` outside the app (a checkout)."""
         return self._program("herdr")
 
+    def app_hub(self) -> Path | None:
+        """The app's own hub program, or ``None`` outside the app (a checkout)."""
+        return self._program("hub/mycelium-hub") or self._program("mycelium-hub")
+
     def pi(self) -> str | None:
         """Pi, which the engines think with: the app's own, else one on PATH.
 
@@ -340,6 +358,61 @@ def _signal_group(proc: subprocess.Popen[str], *, force: bool) -> None:
         return
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(proc.pid, 9 if force else 15)
+
+
+def command_of(pid: int) -> str | None:
+    """The command line running as ``pid``, or ``None`` when nothing is (on
+    Windows, its program's file name, which is all ``tasklist`` gives)."""
+    if WINDOWS:
+        argv = ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"]
+    else:
+        argv = ["ps", "-o", "command=", "-p", str(pid)]
+    try:
+        done = subprocess.run(  # noqa: S603 - fixed argv, a pid we wrote down
+            argv,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = done.stdout.strip()
+    if WINDOWS:
+        # `"mycelium.exe","1234",...`, or a line saying no task matched.
+        return out.split('","', 1)[0].strip('"') if out.startswith('"') else None
+    return out or None
+
+
+def runs_program(pid: int, program: str) -> bool:
+    """Whether ``pid`` is running ``program`` (a path): by its whole path where
+    the command line is known, by its file name on Windows."""
+    running = command_of(pid)
+    if not running:
+        return False
+    return Path(program).name.lower() == running.lower() if WINDOWS else program in running
+
+
+def stop_pid(pid: int, *, grace_s: float = 5.0) -> None:
+    """Stop ``pid`` and what it started, as :func:`_signal_group` does for a
+    program this process holds: asked first, killed if it outlasts ``grace_s``."""
+    if WINDOWS:
+        argv = ["taskkill", "/PID", str(pid), "/T", "/F"]
+        subprocess.run(argv, capture_output=True, check=False)  # noqa: S603, S607
+        return
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(pid, 15)
+    deadline = time.monotonic() + grace_s
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except (ProcessLookupError, PermissionError):
+            return
+        time.sleep(0.1)
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(pid, 9)
 
 
 def port_open(port: int, host: str = HOST, timeout: float = 0.3) -> bool:
@@ -473,6 +546,7 @@ class Supervisor:
         stale_herdr: Callable[[], Any] | None = None,
         restart_herdr: Callable[[Any], None] | None = None,
         requests_base: Path | None = None,
+        started_path: Path | None = None,
     ) -> None:
         if mode == "client" and not hub_url:
             raise ValueError("client mode needs the hub's URL")
@@ -505,6 +579,9 @@ class Supervisor:
         self.voice_model = voice_model
         #: How the hubs on this machine are found (``mycelium.hubs.find_hubs``).
         self.look = look
+        #: Where the programs this supervisor started are written down, so the
+        #: next one (after an update, or a crash) knows them as the app's own.
+        self.started_path = started_path or Path.home() / ".mycelium" / STARTED_FILE
         #: Every hub seen at start, what deserves a look about them, and the
         #: one on the app's port when the app is using it.
         self.hubs: list[dict[str, Any]] = []
@@ -810,6 +887,8 @@ class Supervisor:
             with contextlib.suppress(OSError):
                 c.proc.stdin.write(c.stdin + "\n")
                 c.proc.stdin.close()
+        if not c.outlives:
+            self._remember(c.name, c.proc.pid, argv[0])
         c.started_at = time.monotonic()
         c.unanswered_since = 0.0
         self._read(c)
@@ -1095,6 +1174,58 @@ class Supervisor:
         # Look again on the next tick, so the warning clears once it's fixed.
         self._herdr_checked_at = 0.0
 
+    # ── what an earlier run started and left running ────────────────────────
+
+    def _started(self) -> dict[str, dict[str, Any]]:
+        try:
+            found = json.loads(self.started_path.read_text())
+        except (OSError, ValueError):
+            return {}
+        return found if isinstance(found, dict) else {}
+
+    def _remember(self, name: str, pid: int, program: str) -> None:
+        """Write down that ``name`` runs as ``pid`` from ``program``."""
+        started = {**self._started(), name: {"pid": pid, "program": program}}
+        with contextlib.suppress(OSError):
+            self.started_path.parent.mkdir(parents=True, exist_ok=True)
+            self.started_path.write_text(json.dumps(started, indent=2) + "\n")
+
+    def _stop_leftovers(self) -> None:
+        """Stop what an earlier run of the app started and left running.
+
+        An app that updates itself in place replaces its files under its running
+        programs without stopping them: the hub then runs the old version with
+        the new files under it, and the next supervisor would take it for
+        another hub on its port and keep it. What an earlier run wrote down is
+        the app's own, so it's stopped here and started again from the new
+        files. A pid now running some other program (one reused since) is left
+        alone: only a process still running the program written down is stopped.
+        """
+        started = self._started()
+        if not started:
+            return
+        for name, entry in started.items():
+            pid, program = entry.get("pid"), str(entry.get("program") or "")
+            if not isinstance(pid, int) or pid <= 0 or pid == os.getpid() or not program:
+                continue
+            if not runs_program(pid, program):
+                continue
+            self.emit(
+                {
+                    "type": "log",
+                    "component": name,
+                    "line": f"stopping the {name} an earlier run of the app left running (pid {pid})",
+                }
+            )
+            stop_pid(pid)
+        with contextlib.suppress(OSError):
+            self.started_path.unlink(missing_ok=True)
+
+    def _runs_app_hub(self, pid: int) -> bool:
+        """Whether ``pid`` is running this app's own hub program."""
+        program = self.locator.app_hub()
+        return program is not None and runs_program(pid, str(program))
+
     # ── a hub this supervisor didn't start ───────────────────────────────────
 
     def data_dir(self) -> Path:
@@ -1115,6 +1246,21 @@ class Supervisor:
         from mycelium.hubs import at_port, find_hubs, same_store, store_id, warnings
 
         found = self.look() if self.look is not None else find_hubs(HUB_PORT)
+        # The app's own hub program, still running from before the app updated
+        # itself (one started by a version that wrote nothing down): the app's,
+        # so stopped and started again from the new files, never kept.
+        own = at_port(found, HUB_PORT)
+        if own is not None and own.pid and self._runs_app_hub(own.pid):
+            self.emit(
+                {
+                    "type": "log",
+                    "component": "hub",
+                    "line": f"stopping the app's hub from before it updated (pid {own.pid}, "
+                    f"version {own.version or 'unknown'})",
+                }
+            )
+            stop_pid(own.pid)
+            found = self.look() if self.look is not None else find_hubs(HUB_PORT)
         data_dir = self.data_dir()
         self.hubs = [h.wire() for h in found]
         self.warnings = warnings(found, data_dir, __version__)
@@ -1147,6 +1293,7 @@ class Supervisor:
 
             self.runner_id = runner_id()
         self._publish()
+        self._stop_leftovers()
         if self.mode == "hub":
             self._preflight()
         try:
@@ -1176,6 +1323,9 @@ class Supervisor:
             if c.proc is not None and not c.outlives:
                 self._terminate(c)
                 c.state = "stopped"
+        # Stopped cleanly: nothing of this run is left for the next to stop.
+        with contextlib.suppress(OSError):
+            self.started_path.unlink(missing_ok=True)
         self._publish()
 
 
