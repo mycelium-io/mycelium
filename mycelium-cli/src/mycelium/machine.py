@@ -639,7 +639,7 @@ def restart(
     stopped. A session already running in another pane is never started a
     second time.
     """
-    from mycelium.commands.swarm import _start_unblocked
+    from mycelium.commands.swarm import _start_unblocked, not_ready
 
     if not agent.restartable:
         if agent.state not in ("stopped", "gone"):
@@ -647,6 +647,8 @@ def restart(
         raise MachineError(f"@{agent.handle} can't be restarted: no folder or agent CLI on record.")
     bridge = bridge or HerdrBridge()
     kind, folder = str(agent.kind), str(Path(str(agent.folder)).expanduser())
+    if reason := not_ready(kind, "here"):
+        raise MachineError(reason)
     resume = agent.session if resumes(agent) else None
     if resume and (elsewhere := _live_elsewhere(bridge, resume, agent.pane)):
         raise MachineError(

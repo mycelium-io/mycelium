@@ -306,6 +306,27 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
+  it("says a CLI that needs setting up does, before any terminal was opened", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    const signIn = "Codex isn't signed in here yet. Run `codex` once in a terminal on this machine, sign in. Then try again.";
+    fetchRunnerJob.mockResolvedValue(
+      job({ status: "failed", error: `Codex can't start on julias-mbp yet. ${signIn}`, result: { why: "setup", detail: signIn } }),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("needs setting up on julias-mbp");
+    expect(alert).toHaveTextContent("isn't signed in here yet");
+    // Its one step is the setup, never a terminal that was never opened.
+    const setUp = screen.getByText(/is set up on julias-mbp/).closest("li")!;
+    expect(within(setUp).getByLabelText("failed")).toBeInTheDocument();
+    expect(screen.queryByText(/Open a terminal for it/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  });
+
   it("tries a failed start again without going back to the form", async () => {
     connected = [runner()];
     launchRunnerAgent.mockResolvedValueOnce(job()).mockResolvedValueOnce(job({ id: "job-0010" }));

@@ -169,6 +169,13 @@ class AgentHost(Protocol):
         """
         ...
 
+    def first_run(self, ref: str, kind: str | None) -> str | None:
+        """What the agent at ``ref`` waits on at a first-run screen its CLI shows
+        (a sign-in), after getting it past any a key passes; ``None`` when it's
+        past them or the host can't tell. Said in the kind's words, never the
+        screen's, since it goes to the hub."""
+        ...
+
     def wake(self, ref: str, text: str) -> None:
         """Hand the agent at ``ref`` a message. Raises :class:`HostError`."""
         ...
@@ -335,6 +342,11 @@ class HerdrHost:
             # waits until the agent is idle rather than being typed into it.
             status = _HERDR_STATUS.get(str(came_up.get("agent_status") or ""), "running")
             return Started(ref=pane, workspace=workspace, status=status, intro_pending=True)
+        # Ready by herdr's reading, which a CLI's first-run screen can pass for.
+        # One a key gets past is got past; one the person must answer (a
+        # sign-in) leaves it waiting, its introduction held until it's idle.
+        if self.first_run(pane, kind):
+            return Started(ref=pane, workspace=workspace, status="blocked", intro_pending=True)
         self.bridge.prompt(pane, intro, wait=False)
         return Started(ref=pane, workspace=workspace)
 
@@ -366,6 +378,9 @@ class HerdrHost:
 
         parts = [of_kind(kind).blocked_hint(), f"Answer it in its pane: herdr agent focus {ref}"]
         return "\n".join(p for p in parts if p)
+
+    def first_run(self, ref: str, kind: str | None) -> str | None:
+        return self.bridge.past_first_run(ref, kind)
 
     def wake(self, ref: str, text: str) -> None:
         try:
@@ -614,6 +629,9 @@ class OmnigentHost:
         return out
 
     def blocker(self, ref: str, kind: str) -> str | None:  # noqa: ARG002
+        return None
+
+    def first_run(self, ref: str, kind: str | None) -> str | None:  # noqa: ARG002
         return None
 
     def wake(self, ref: str, text: str) -> None:

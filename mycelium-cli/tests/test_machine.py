@@ -327,6 +327,20 @@ def test_herdr_names_are_scoped_by_room_and_fit_herdrs_rule():
     assert herdr_name("c", "a-b") == "a-b_c"
 
 
+def test_a_cli_that_needs_setting_up_isnt_restarted_into_its_sign_in(
+    herdr: FakeHerdr, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium.integrations import agents
+
+    kind = type(agents.of_kind("claude"))
+    monkeypatch.setattr(kind, "not_ready", lambda _self: "Sign in first. Then try again.")
+    bridge = _setup(herdr)
+    with pytest.raises(machine.MachineError, match="can't start here yet. Sign in first"):
+        machine.restart(_config(), _report(bridge).find("reviewer"), bridge=bridge)
+    assert herdr.of("pane run") == []
+    assert herdr.of("agent start") == []
+
+
 def test_a_running_agent_isnt_restarted(herdr: FakeHerdr):
     bridge = _setup(herdr)
     with pytest.raises(machine.MachineError, match="running"):

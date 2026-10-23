@@ -854,8 +854,11 @@ function LaunchProgress({
   const [asked, setAsked] = useState(false);
   if (status === "waiting" && !asked) setAsked(true);
   const paired = job?.pairing?.accepted ? job.pairing.name : null;
+  // Stopped before anything started because the CLI needs setting up there
+  // (a sign-in): approved, with no terminal opened.
+  const setup = failed && report.why === "setup";
   // Nothing past the approval reads as failed when the approval is what failed.
-  const declined = failed && asked && !report.step;
+  const declined = failed && asked && !report.step && !setup;
   const steps: { label: string; state: StepState }[] = [
     { label: `@${handle} added to ${room}, with its notes`, state: "done" },
     { label: `${machine} picked it up`, state: status === "queued" ? "active" : "done" },
@@ -868,13 +871,15 @@ function LaunchProgress({
           },
         ]
       : []),
-    ...machineSteps({
-      herdr,
-      host: hostOf(runner).name,
-      cli: frameworkName,
-      status: declined ? "queued" : status,
-      at: report.step,
-    }),
+    ...(setup
+      ? [{ label: `${frameworkName} is set up on ${machine}`, state: "failed" as StepState }]
+      : machineSteps({
+          herdr,
+          host: hostOf(runner).name,
+          cli: frameworkName,
+          status: declined ? "queued" : status,
+          at: report.step,
+        })),
   ];
   const help =
     failed && report.why

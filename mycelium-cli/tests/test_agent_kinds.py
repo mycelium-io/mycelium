@@ -144,6 +144,81 @@ def test_a_codex_under_nvm_is_asked_about_its_flags_with_its_node_on_path(
     assert args[0] == "--approve-for-me"
 
 
+def _codex_login(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, said: str, code: int) -> None:
+    """A stand-in codex whose ``login status`` says ``said`` and exits ``code``."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    exe = bin_dir / "codex"
+    exe.write_text(
+        '#!/bin/sh\nif [ "$1 $2" = "login status" ]; then\n'
+        f"  echo '{said}' >&2\n  exit {code}\nfi\nexit 0\n"
+    )
+    exe.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+
+def test_a_codex_that_isnt_signed_in_says_so_before_it_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Not signed in, Codex opens on screens that only take Enter, which herdr
+    reads as ready: the start is stopped before it begins, with what to do."""
+    _codex_login(tmp_path, monkeypatch, said="Not logged in", code=1)
+    reason = agents.of_kind("codex").not_ready()
+    assert reason is not None
+    assert "isn't signed in" in reason
+    assert "Then try again." in reason
+
+
+def test_a_signed_in_codex_or_one_that_cant_say_starts_as_usual(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _codex_login(tmp_path, monkeypatch, said="Logged in using ChatGPT", code=0)
+    assert agents.of_kind("codex").not_ready() is None
+    # An older Codex without the command, or any other trouble, is left for the
+    # start itself to report rather than guessed at here.
+    _codex_login(tmp_path, monkeypatch, said="error: unrecognized subcommand 'status'", code=2)
+    assert agents.of_kind("codex").not_ready() is None
+    # And a CLI with nothing to set up never is.
+    assert agents.of_kind("claude").not_ready() is None
+
+
+def test_codex_knows_its_welcome_after_signing_in_from_its_sign_in():
+    codex = agents.of_kind("codex")
+    # Signed in in the pane, or with an auth.json its app server didn't take:
+    # nothing to choose, so Enter gets past it.
+    welcome = codex.first_run("✓ Signed in with your ChatGPT account\n\n  Press enter to continue")
+    assert welcome is not None
+    assert welcome.key == "enter"
+    # Its sign-in menu ends with "Press enter to continue" too: Enter there would
+    # choose a sign-in, so only the person answers it.
+    menu = codex.first_run(
+        "> 1. Sign in with ChatGPT\n  2. Sign in with Device Code\n  Press enter to continue"
+    )
+    assert menu is not None
+    assert menu.key is None
+    assert "sign in" in menu.what
+    assert codex.first_run("Press enter to continue") is None
+    assert codex.first_run("› Ask Codex to do anything") is None
+    # Its wait on a sign-in in the browser.
+    browser = codex.first_run(
+        "  Finish signing in via your browser\n\n  https://auth.openai.com/x\n  Press esc to cancel"
+    )
+    assert browser is not None
+    assert browser.key is None
+    # A conversation that quotes those screens is not one: the words are on it,
+    # but it isn't the whole screen, and Codex's input box is there.
+    quoted = (
+        '• The pane said "✓ Signed in with your ChatGPT account" and then\n'
+        "  Press enter to continue\n"
+        "• and the menu offered Sign in with ChatGPT.\n\n"
+        "› Press enter to continue"
+    )
+    assert codex.first_run(quoted) is None
+    assert codex.first_run(quoted.rsplit("\n", 1)[0]) is None
+    # A CLI with no first-run screens of its own sees none.
+    assert agents.of_kind("claude").first_run("Sign in with ChatGPT") is None
+
+
 def test_a_codex_without_the_sandbox_flag_picks_the_mode_through_its_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

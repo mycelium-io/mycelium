@@ -448,21 +448,43 @@ def _start_when_ready(
             return None
 
 
+def not_ready(kind: str, where: str) -> str | None:
+    """Why agents of ``kind`` can't start ``where`` yet, as a launch says it; ``None``
+    when nothing is known to be in the way.
+
+    A CLI that would open on a first-run screen only the person can get past
+    (Codex not signed in) is told before any pane opens, so a swarm or a
+    restart never starts members into a screen their brief can't reach.
+    """
+    from mycelium.integrations.agents import of_kind
+
+    known = of_kind(kind)
+    reason = known.not_ready()
+    return f"{known.name} can't start {where} yet. {reason}" if reason else None
+
+
 def _start_unblocked(
     bridge: Any, handle: str, kind: str, pane: str, *, room: str, resume: str | None = None
 ) -> None:
     """:func:`_start_when_ready`, refusing to go on past an agent waiting for input.
 
-    The pane is left open: what it waits on is the person's to answer.
+    That includes a first-run screen herdr reads as ready (Codex's welcome),
+    after getting past any a key passes. The pane is left open: what it waits
+    on is the person's to answer.
     """
     from mycelium.integrations.herdr import HerdrError
 
     agent = _start_when_ready(bridge, handle, kind, pane, room=room, resume=resume)
     if agent is not None and agent.get("agent_status") == "blocked":
-        raise HerdrError(
-            f"@{handle} started in pane {pane} but is waiting for input there; "
-            f"answer it (herdr agent focus {pane}) and start again"
-        )
+        waiting = "waiting for input there"
+    elif agent is None and (seen := bridge.past_first_run(pane, kind)):
+        waiting = f"waiting there: {seen}"
+    else:
+        return
+    raise HerdrError(
+        f"@{handle} started in pane {pane} but is {waiting}; "
+        f"answer it (herdr agent focus {pane}) and start again"
+    )
 
 
 def start_local(
@@ -893,6 +915,9 @@ def swarm(
                 "  mycelium config set swarm.agent <command>\n"
                 "or run the team on the hub with --server."
             )
+            raise typer.Exit(1)
+        if reason := not_ready(agent_kind, "here"):
+            console.print(f"[yellow]{reason}[/yellow]")
             raise typer.Exit(1)
 
     local: LocalTeam | None = None

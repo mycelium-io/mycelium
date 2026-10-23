@@ -28,6 +28,17 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
+class FirstRun:
+    """A screen an agent CLI shows before it takes prompts, on its first runs."""
+
+    #: What it is, said for the person: "Codex is asking you to sign in".
+    what: str
+    #: A key that gets past it with nothing to choose (a "Press enter to
+    #: continue" after a sign-in), or ``None`` when only the person can answer it.
+    key: str | None = None
+
+
+@dataclass(frozen=True)
 class AgentKind:
     """An agent CLI: what the scan looks for and what Mycelium adds when it starts one."""
 
@@ -58,6 +69,46 @@ class AgentKind:
         """The key that stops its current turn and keeps its session, as herdr names
         keys. Escape for the agent TUIs this table knows."""
         return "esc"
+
+    def first_run(self, screen: str) -> FirstRun | None:  # noqa: ARG002 - a CLI with such screens says which
+        """The first-run screen ``screen`` (a pane's last lines) shows, if any.
+
+        A host reads an agent as ready from its own signals, and some CLIs open on
+        a screen those read as idle: an introduction or a wake typed there is
+        lost, or its Enter is spent getting past it. So the pane is looked at
+        after a start and before a wake, for the screens its CLI is known to show.
+        """
+        return None
+
+    def not_ready(self) -> str | None:
+        """Why a start would stop at a first-run screen only the person can get
+        past, like a sign-in, said for them; ``None`` when nothing is known to be
+        in the way. Asked before a start, so it never begins into one."""
+        return None
+
+    def run(self, *args: str, timeout: float = 15) -> subprocess.CompletedProcess | None:
+        """The installed CLI run with ``args``, found and run the way :meth:`offers`
+        does; ``None`` when it isn't found or couldn't be run."""
+        from mycelium.runner.frameworks import locate
+
+        found, search = locate(self.binaries)
+        if not found:
+            return None
+        env = {**os.environ, "PATH": search} if search else None
+        try:
+            return subprocess.run(  # noqa: S603 - the CLI's own path, from the scan's table
+                [found, *args],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                check=False,
+                stdin=subprocess.DEVNULL,
+                env=env,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
 
     def offers(self, *words: str) -> bool:
         """Whether the installed CLI's own ``--help`` mentions every one of ``words``.

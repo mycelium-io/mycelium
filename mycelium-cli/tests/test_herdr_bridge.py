@@ -241,6 +241,27 @@ def test_wake_holds_when_agent_busy(monkeypatch: pytest.MonkeyPatch, isolated_ho
     assert not [c for c in runner.calls if c[:2] == ["agent", "prompt"]]
 
 
+def test_a_wake_never_reads_or_presses_anything_in_a_codex_that_quotes_its_welcome(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    # A Codex working on its own welcome screen quotes it in its conversation.
+    # A wake goes to an agent already past its first run, so it reads no screen.
+    screen = "• It said ✓ Signed in with your ChatGPT account\n  Press enter to continue"
+    bridge, runner = _bridge_with(
+        monkeypatch,
+        {
+            "agent get": _proc(_ok({"agent": {"pane_id": "w2:pV", "agent_status": "idle"}})),
+            "pane read": _proc(_ok({"text": screen})),
+            "pane send-keys": _proc(""),
+            "agent prompt": _proc(_ok({})),
+        },
+    )
+    mapping = HerdrPaneMapping(room="design", handle="reviewer", pane="w2:pV", kind="codex")
+    assert bridge.wake(mapping, "wake up", timeout_ms=5000, wait=False).ok is True
+    assert [c for c in runner.calls if c[:2] == ["agent", "prompt"]]
+    assert not [c for c in runner.calls if c[:2] in (["pane", "read"], ["pane", "send-keys"])]
+
+
 def test_wake_fails_soft_on_stale_mapping(
     monkeypatch: pytest.MonkeyPatch, isolated_home: Path
 ) -> None:
