@@ -19,8 +19,10 @@ class _Trust:
     start: str
     #: Every sentence it says, as patterns over its text with the wrapping undone.
     prose: tuple[str, ...]
-    #: Its options in order, the first the one that trusts the folder.
+    #: Its options, in the order it lists them.
     options: tuple[str, ...]
+    #: The one that trusts the folder.
+    yes: str
 
 
 #: The plain question, in Claude Code's current words and its older ones. It is
@@ -28,6 +30,8 @@ class _Trust:
 #: act without asking (pre-approved tools, extra folders, helper commands, or
 #: anything a later release adds) shows more, and is left for the person.
 _TRUST = (
+    # Claude Code 2.x: no numbers, "No, exit" first and picked, so the answer
+    # is Down to "Yes", then Enter once it's the one picked.
     _Trust(
         start="Accessing workspace:",
         prose=(
@@ -37,7 +41,8 @@ _TRUST = (
             r"[\w ]{0,20}.ll be able to read, edit, and execute files here\.",
             r"Security guide",
         ),
-        options=("Yes, I trust this folder", "No, exit"),
+        options=("No, exit", "Yes, I trust this folder"),
+        yes="Yes, I trust this folder",
     ),
     _Trust(
         start="Do you trust the files in this folder?",
@@ -47,9 +52,11 @@ _TRUST = (
             r"Learn more",
         ),
         options=("Yes, proceed", "No, exit"),
+        yes="Yes, proceed",
     ),
 )
-_OPTION = re.compile(r"^(?:[❯>]\s*)?(\d)\.\s*(.+)$")
+#: An option line: the pointer on the one picked, a number in older versions.
+_OPTION = re.compile(r"^(❯\s*)?(?:\d\.\s*)?(.+)$")
 #: A line of key hints under the options ("Enter to confirm · Esc to cancel"):
 #: nothing but "<key> to <a word or two>" hints, so no warning passes as one.
 _HINT = r"(?:Enter|Esc|Tab|↑/↓|↑↓)\s+to\s+[a-z]+(?:\s[a-z]+)?"
@@ -85,10 +92,10 @@ class Claude(AgentKind):
 
     def first_run(self, screen: str) -> FirstRun | None:
         # The folder was chosen and the start approved on this machine, so the
-        # plain trust question is answered as that person already did: Enter on
-        # the first option, which trusts it. Anything on it beyond the question
-        # leaves it for the person, so a change in its wording costs them an
-        # Enter, never a yes they didn't see.
+        # plain trust question is answered as that person already did: its
+        # trusting option is picked, then confirmed. Anything on it beyond the
+        # question leaves it for the person, so a change in its wording costs
+        # them an Enter, never a yes they didn't see.
         lines = [line.strip(_BORDER) for line in screen.splitlines()]
         lines = [line for line in lines if line]
         for trust in _TRUST:
@@ -103,13 +110,19 @@ class Claude(AgentKind):
             if body and body[0].startswith(("/", "~")):
                 body = body[1:]
             options: list[str] = []
+            picked: list[str] = []
             prose: list[str] = []
             for line in body:
-                if option := _OPTION.match(line):
-                    options.append(option.group(2).strip())
+                option = _OPTION.match(line)
+                label = option.group(2).strip() if option else line
+                pointer = bool(option and option.group(1))
+                if label in trust.options or pointer:
+                    options.append(label)
+                    if pointer:
+                        picked.append(label)
                 elif not _KEYS.match(line):
                     prose.append(line)
-            if tuple(options) != trust.options:
+            if tuple(options) != trust.options or len(picked) != 1:
                 return held
             # A long sentence wraps in a narrow pane; each known one is taken
             # out once, and anything left over is something it doesn't know.
@@ -118,9 +131,9 @@ class Claude(AgentKind):
                 text = re.sub(sentence, "", text, count=1)
             if text.strip():
                 return held
-            return FirstRun(
-                "Claude Code is asking whether to trust this folder",
-                key="enter",
-                done="Trusted the folder for Claude Code",
-            )
+            if picked[0] == trust.yes:
+                return FirstRun(held.what, key="enter", done="Trusted the folder for Claude Code")
+            # Move to it; it's confirmed once it reads as the one picked.
+            up = options.index(trust.yes) < options.index(picked[0])
+            return FirstRun(held.what, key="up" if up else "down")
         return None

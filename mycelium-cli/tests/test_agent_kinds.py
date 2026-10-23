@@ -196,66 +196,72 @@ CLAUDE_TRUST = """Accessing workspace:
 
  Security guide
 
- ❯ 1. Yes, I trust this folder
-   2. No, exit
+ ❯ No, exit
+   Yes, I trust this folder
 
  Enter to confirm · Esc to cancel"""
+#: The same, once Down has picked its trusting option.
+CLAUDE_TRUST_ON_YES = CLAUDE_TRUST.replace(
+    " ❯ No, exit\n   Yes, I trust this folder", "   No, exit\n ❯ Yes, I trust this folder"
+)
 
 
-def test_claude_answers_its_folder_trust_question_unless_the_folder_grants_itself_more():
-    claude = agents.of_kind("claude")
-    trust = claude.first_run(CLAUDE_TRUST)
+def _claude_key(screen: str) -> str | None:
+    """The key Claude's first run presses on ``screen``, which is a trust question."""
+    seen = agents.of_kind("claude").first_run(screen)
+    assert seen is not None, "a trust question is always seen, answered or not"
+    return seen.key
+
+
+def test_claude_picks_trust_then_confirms_it_unless_the_folder_grants_itself_more():
+    # Claude Code lists "No, exit" first and picks it, so Enter alone would exit:
+    # Down to "Yes", then Enter once it reads as the one picked.
+    assert _claude_key(CLAUDE_TRUST) == "down"
+    trust = agents.of_kind("claude").first_run(CLAUDE_TRUST_ON_YES)
     assert trust is not None
     assert trust.key == "enter"
     assert trust.done == "Trusted the folder for Claude Code"
-    # Its older wording, the same answer.
-    older = claude.first_run(
-        "Do you trust the files in this folder?\n /w\n❯ 1. Yes, proceed\n  2. No, exit"
-    )
-    assert older is not None
-    assert older.key == "enter"
+    # Its older wording, numbered and with "Yes" first.
+    older = "Do you trust the files in this folder?\n /w\n❯ 1. Yes, proceed\n  2. No, exit"
+    assert _claude_key(older) == "enter"
     # A folder whose own settings would act without asking is the person's to read.
-    grants = CLAUDE_TRUST.replace(
+    grants = CLAUDE_TRUST_ON_YES.replace(
         " Security guide",
-        " This folder pre-approves 3 tool permission rules.\n These will apply without\n"
-        " asking. Only proceed if you trust this configuration.",
-    ).replace("2. No, exit", "2. No, continue without these permissions")
-    held = claude.first_run(grants)
-    assert held is not None
-    assert held.key is None
-    # Words from the question in a conversation, with no option to pick, are none.
-    assert (
-        claude.first_run("> why did it ask Is this a project you created or one you trust?") is None
-    )
-    assert claude.first_run("> 1. Yes, I trust this folder") is None
+        " This folder pre-approves 3 tool permission rules in .claude/settings.json:\n"
+        "   Bash(make:*)\n These will apply without\n"
+        " asking. Only proceed if you trust this configuration.\n Security guide",
+    ).replace("No, exit", "No, continue without these permissions")
+    assert _claude_key(grants) is None
+    # Words from the question in a conversation, with no options, are none.
+    claude = agents.of_kind("claude")
+    assert claude.first_run("> why ask Is this a project you created or one you trust?") is None
+    assert claude.first_run("❯ Yes, I trust this folder") is None
 
 
 def test_claude_answers_only_the_plain_trust_question_and_nothing_it_doesnt_know():
     """An allow-list: a line it doesn't know leaves the question for the person,
     so a new warning in a later release costs an Enter, never a yes."""
-    claude = agents.of_kind("claude")
-
-    def answered(screen: str) -> bool:
-        seen = claude.first_run(screen)
-        assert seen is not None, "a trust question is always seen, answered or not"
-        return seen.key == "enter"
-
     # The shell it was started from, above it, and a box drawn around it, are fine.
     framed = "~/code/tipcalc $ claude --allowedTools 'Bash(mycelium:*)'\n" + "\n".join(
-        f"│ {line} │" for line in CLAUDE_TRUST.splitlines()
+        f"│ {line} │" for line in CLAUDE_TRUST_ON_YES.splitlines()
     )
-    assert answered(framed)
-    # One more line it doesn't know, worded any way at all.
-    for extra in (
-        " This folder's .mcp.json starts 2 servers.",
-        " Hooks in .claude/settings.json run on every prompt",
-        " Enter to confirm, and its servers start without asking",
-    ):
-        assert not answered(CLAUDE_TRUST.replace(" Security guide", f" Security guide\n{extra}"))
-    # A third option, or the trusting one worded differently.
-    more = "2. Yes, and allow its MCP servers\n  3. No, exit"
-    assert not answered(CLAUDE_TRUST.replace("2. No, exit", more))
-    assert not answered(CLAUDE_TRUST.replace("I trust this folder", "trust it and its settings"))
+    assert _claude_key(framed) == "enter"
+    # One more line it doesn't know, worded any way at all, on either step.
+    for screen in (CLAUDE_TRUST, CLAUDE_TRUST_ON_YES):
+        for extra in (
+            " This folder's .mcp.json starts 2 servers.",
+            " Hooks in .claude/settings.json run on every prompt",
+            " Enter to confirm, and its servers start without asking",
+        ):
+            assert (
+                _claude_key(screen.replace(" Security guide", f" Security guide\n{extra}")) is None
+            )
+    # A third option, the trusting one worded differently, or nothing picked.
+    third = "   Yes, and allow its MCP servers\n ❯ Yes, I trust this folder"
+    assert _claude_key(CLAUDE_TRUST_ON_YES.replace(" ❯ Yes, I trust this folder", third)) is None
+    reworded = CLAUDE_TRUST_ON_YES.replace("I trust this folder", "trust it and its settings")
+    assert _claude_key(reworded) is None
+    assert _claude_key(CLAUDE_TRUST_ON_YES.replace("❯", " ")) is None
 
 
 def test_codex_knows_its_welcome_after_signing_in_from_its_sign_in():

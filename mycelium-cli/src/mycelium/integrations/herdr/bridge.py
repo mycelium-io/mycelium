@@ -48,10 +48,11 @@ if TYPE_CHECKING:
 #: back to the durable cursor (see :meth:`HerdrBridge.wake`).
 _WAKEABLE_STATES = frozenset({"idle", "done", "unknown"})
 
-#: How much of a pane is read to tell a first-run screen, how many of its
-#: screens a key may be pressed through, and how long each gets to go.
+#: How much of a pane is read to tell a first-run screen, how many keys may be
+#: pressed getting past them (a move and a confirm, with room for one a CLI
+#: refuses as too soon after its question opened), and how long each gets.
 FIRST_RUN_LINES = 30
-FIRST_RUN_KEYS = 3
+FIRST_RUN_KEYS = 4
 FIRST_RUN_SETTLE_S = 1.0
 
 #: Where ``herdr agent start --help`` lists the kinds it can start.

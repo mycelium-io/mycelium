@@ -825,18 +825,19 @@ def test_a_claude_start_trusts_the_folder_it_was_started_in_then_introduces_it(
     make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
 ):
     """The person chose the folder and approved the start; its trust question is theirs, answered."""
-    from tests.test_agent_kinds import CLAUDE_TRUST
+    from tests.test_agent_kinds import CLAUDE_TRUST, CLAUDE_TRUST_ON_YES
 
     monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
     herdr.start_leaves = "blocked"
     herdr.screen = CLAUDE_TRUST
-    herdr.screens_after_keys = ["> "]
+    # One key refused as too soon after the question opened, then Down, then Enter.
+    herdr.screens_after_keys = [CLAUDE_TRUST, CLAUDE_TRUST_ON_YES, "> "]
     herdr.keys_settle = True
     r = make_runner()
 
     result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
 
-    assert [c[3:] for c in herdr.of("pane send-keys")] == [["enter"]]
+    assert [c[3:] for c in herdr.of("pane send-keys")] == [["down"], ["down"], ["enter"]]
     assert result["passed"] == ["Trusted the folder for Claude Code"]
     assert "waiting" not in result
     # Once it's idle, its introduction goes in.
@@ -1237,13 +1238,13 @@ def test_a_swarm_member_left_at_a_sign_in_is_said_to_be_waiting_there(
 def test_a_swarm_trusts_the_folder_its_claude_members_start_in(
     make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    from tests.test_agent_kinds import CLAUDE_TRUST
+    from tests.test_agent_kinds import CLAUDE_TRUST, CLAUDE_TRUST_ON_YES
 
     monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
     monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
     herdr.start_leaves = "blocked"
     herdr.screen = CLAUDE_TRUST
-    herdr.screens_after_keys = ["> "]
+    herdr.screens_after_keys = [CLAUDE_TRUST_ON_YES, "> "]
     herdr.keys_settle = True
     r = make_runner()
     spec = {
@@ -1257,7 +1258,7 @@ def test_a_swarm_trusts_the_folder_its_claude_members_start_in(
         "kickoff": False,
     }
     r.swarm(spec, "julia")
-    assert [c[3:] for c in herdr.of("pane send-keys")] == [["enter"]]
+    assert [c[3:] for c in herdr.of("pane send-keys")] == [["down"], ["enter"]]
     # Briefed once it's past the question.
     assert hub.of("POST", "/api/rooms/eng/memory")
 
