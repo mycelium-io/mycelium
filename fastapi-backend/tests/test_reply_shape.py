@@ -5,10 +5,49 @@
 
 from __future__ import annotations
 
-from app.services import conductor, protocols, reply_shape
+from app.services import conductor, message_format, persister, protocols, reply_shape
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 from app.services.persister import TranscriptRecord, stored_message_from_record
 
 THREAD = "urn:ioc:mycelium:episode:demo:t1"
+
+
+def test_a_reply_is_read_as_it_is_recorded_and_carries_what_was_read():
+    """The persister asks before it records: what the reader returns goes on
+    the stored message, so the transcript, the live stream and the history
+    read all carry it."""
+    recorded: list[TranscriptRecord] = []
+
+    def shape(envelope, content):
+        sender = persister.envelope_sender(envelope)
+        return {"schema": "concord-anchor-reply", "parsed": True} if sender == "a" else None
+
+    p = persister.RoomPersister(
+        "demo",
+        channel=None,  # ty: ignore[invalid-argument-type]  # _ingest is called directly
+        members_provider=set,
+        on_recorded=recorded.append,
+        shape_reply=shape,
+        feed_bus=False,
+    )
+    for sender in ("a", "b"):
+        env = message_format.build_envelope(
+            kind=Kind.exchange,
+            episode=THREAD,
+            sender=sender,
+            sender_role="agent",
+            payload_type="reply",
+            payload_data={"action": "reply"},
+        )
+        p._ingest(env, serialize_content(env, extra={"content": "…"}), list_write=False)
+
+    a, b = recorded
+    assert a.content["l9"]["payload"]["data"] == {
+        "action": "reply",
+        "reply": {"schema": "concord-anchor-reply", "parsed": True},
+    }
+    assert "reply" not in b.content["l9"]["payload"]["data"]
 
 
 def _said(text: str) -> dict:
