@@ -704,7 +704,11 @@ function HarnessLabel({ framework, active = true }: { framework: Runner["framewo
         <span className={cn("block truncate text-label", active ? "text-text" : "text-muted-foreground")}>
           {framework.name}
         </span>
-        {version && <span className="block font-mono text-micro text-faint">{version}</span>}
+        {framework.installed ? (
+          version && <span className="block font-mono text-micro text-faint">{version}</span>
+        ) : (
+          <span className="block text-micro text-faint">not found</span>
+        )}
       </span>
     </>
   );

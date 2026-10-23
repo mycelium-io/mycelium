@@ -61,10 +61,19 @@ def hello(**over) -> dict:
                 "installed": True,
                 "launchable": True,
             },
+            # An older runner offers only what it found.
             {
                 "id": "codex",
                 "name": "Codex",
                 "command": "codex",
+                "installed": False,
+                "launchable": False,
+            },
+            # A newer one offers every kind herdr can start, found or not.
+            {
+                "id": "opencode",
+                "name": "OpenCode",
+                "command": "opencode",
                 "installed": False,
                 "launchable": True,
             },
@@ -156,10 +165,22 @@ async def test_launch_writes_the_agent_then_queues_the_job(client, room, runner)
 
 
 @pytest.mark.asyncio
+async def test_a_cli_the_runner_didnt_find_is_still_started_when_its_host_can(client, room, runner):
+    # The host starts it from the person's own shell, which may have it.
+    resp = await client.post(
+        f"/api/runners/{RUNNER}/agents",
+        json={"room": room, "handle": "scout", "framework": "opencode"},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["spec"]["framework"] == "opencode"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("body", "said"),
     [
         ({"framework": "codex"}, "not installed"),
+        ({"framework": "nope"}, "not an agent CLI"),
         ({"framework": "claude", "cwd": "/etc"}, "outside the folders"),
         ({"framework": "claude", "cwd": "/Users/julia/code/../../etc"}, "'..'"),
         ({"framework": "claude", "handle": "Not A Slug"}, "lowercase slug"),

@@ -80,18 +80,16 @@ def _never_the_real_home(request: pytest.FixtureRequest):
 
 
 @pytest.fixture(autouse=True)
-def _never_the_real_shell(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No test starts the developer's own shell to read a terminal's PATH.
+def _never_the_real_install_dirs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test finds the developer's own agent CLIs in their install folders.
 
-    The scan and ``AgentKind.offers`` ask for it when a CLI isn't on the
-    process's PATH, which in a test is most of them: that would run the
-    developer's ``~/.zshrc`` and find their real CLIs. A test that wants a
-    terminal PATH sets ``SHELL`` to a stand-in, or stubs ``terminal_path``.
+    The scan and ``AgentKind.offers`` look in ``~/.nvm``, Homebrew's folders and
+    the like when a CLI isn't on the process's PATH, which in a test is most of
+    them. A test that wants one there stubs ``install_dirs``.
     """
     from mycelium.runner import frameworks
 
-    monkeypatch.delenv("SHELL", raising=False)
-    monkeypatch.setattr(frameworks, "_asked", None)
+    monkeypatch.setattr(frameworks, "install_dirs", list)
 
 
 # ── SLIM transport ────────────────────────────────────────────────────────────

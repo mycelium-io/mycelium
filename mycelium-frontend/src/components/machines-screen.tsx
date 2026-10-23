@@ -187,13 +187,13 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
                   <tr key={f.id} className={`h-7 ${f.installed ? "" : "opacity-50"}`}>
                     <td className="pr-3 text-text">{f.name}</td>
                     <td className="pr-3 font-mono text-micro text-muted-foreground">
-                      {f.installed ? (f.version ?? "installed") : "not installed"}
+                      {f.installed ? (f.version ?? "installed") : "not found"}
                     </td>
                     <td className="hidden pr-3 font-mono text-micro text-faint sm:table-cell">
                       {f.path ?? f.command}
                     </td>
                     <td className="text-right text-micro text-muted-foreground">
-                      {f.installed && f.launchable ? (runner.herdr ? "Can start" : `Needs ${hostOf(runner).name}`) : (f.note ?? "")}
+                      {f.launchable ? (runner.herdr ? "Can start" : `Needs ${hostOf(runner).name}`) : (f.note ?? "")}
                     </td>
                   </tr>
                 ))}

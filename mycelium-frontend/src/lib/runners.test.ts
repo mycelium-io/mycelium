@@ -42,12 +42,17 @@ describe("a start that stopped", () => {
     expect(exited.happened).toBe("Codex exited before it started on studio-mini.");
     expect(exited.steps.join(" ")).toContain("showing what Codex printed");
     expect(startReport({ result: { why: "exited" } }).why).toBe("exited");
+    // One its shell couldn't find says it isn't installed, and to install it there.
+    const missing = startHelp("missing", names);
+    expect(missing.happened).toBe("Codex isn't installed on studio-mini.");
+    expect(missing.steps.join(" ")).toContain("Install Codex on studio-mini");
+    expect(startReport({ result: { why: "missing" } }).why).toBe("missing");
     // A host that said why leads with it, and doesn't blame the agent CLI.
     const refused = startHelp("host", { ...names, detail: "agent name reviewer is already used" });
     expect(refused.happened).toBe("studio-mini couldn't start Codex: agent name reviewer is already used");
     expect(refused.steps.join(" ")).not.toContain("run it yourself");
     // Plain words for people: no em dashes anywhere in it.
-    for (const help of [shell, cli, exited, startHelp(null, names)]) {
+    for (const help of [shell, cli, exited, missing, startHelp(null, names)]) {
       expect([help.happened, help.short, ...help.steps].join(" ")).not.toContain("—");
     }
   });
@@ -66,14 +71,26 @@ describe("which machines are yours", () => {
 });
 
 describe("runner helpers", () => {
-  it("orders frameworks startable, then found but not startable, then missing", () => {
+  it("orders frameworks startable and found, startable, found, then neither", () => {
     const sorted = sortFrameworks([
       framework({ id: "zed", name: "Zed", installed: false, launchable: false }),
       framework({ id: "amp", name: "Amp", launchable: false, note: "herdr can't start it" }),
+      framework({ id: "codex", name: "Codex", installed: false }),
       framework({ id: "opencode", name: "opencode" }),
       framework({ id: "claude", name: "Claude Code" }),
     ]);
-    expect(sorted.map((f) => f.id)).toEqual(["claude", "opencode", "amp", "zed"]);
+    expect(sorted.map((f) => f.id)).toEqual(["claude", "opencode", "codex", "amp", "zed"]);
+  });
+
+  it("offers a CLI the scan didn't find when the host can start it, after the found ones", () => {
+    const mac = runner({
+      frameworks: [
+        framework({ id: "codex", name: "Codex", installed: false }),
+        framework({ id: "claude", name: "Claude Code" }),
+        framework({ id: "amp", name: "Amp", launchable: false }),
+      ],
+    });
+    expect(launchable(mac).map((f) => f.id)).toEqual(["claude", "codex"]);
   });
 
   it("starts nothing on a machine whose host isn't running", () => {

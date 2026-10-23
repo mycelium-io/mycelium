@@ -766,8 +766,10 @@ class Runner:
     def framework(self, framework_id: str) -> agents.AgentKind:
         known = agents.by_id(framework_id)
         found = next((f for f in self.found if f.id == framework_id), None)
-        if known is None or found is None or not found.installed:
-            raise JobError(f"{framework_id} is not installed on {self.label}.")
+        # One the scan didn't find is still started: herdr types its command at
+        # the person's own prompt, whose PATH may have it.
+        if known is None or found is None:
+            raise JobError(f"{framework_id} is not an agent CLI {self.label} knows.")
         if not found.launchable or known.herdr_kind is None:
             host = self.host.name
             raise JobError(
@@ -870,7 +872,9 @@ class Runner:
                 hooks=_JobStart(self, job_id) if job_id else None,
             )
         except HostError as e:
-            raise self._start_failed(e, known.name, handle) from e
+            seen = next((f for f in self.found if f.id == known.id), None)
+            missing = seen is not None and not seen.installed
+            raise self._start_failed(e, known.name, handle, missing=missing) from e
         agent = Tracked(
             handle=handle,
             room=room,
@@ -902,8 +906,14 @@ class Runner:
             )
         return result
 
-    def _start_failed(self, e: HostError, name: str, handle: str) -> JobError:
+    def _start_failed(
+        self, e: HostError, name: str, handle: str, *, missing: bool = False
+    ) -> JobError:
         """A start that didn't come up, said as what happened and what to do next.
+
+        ``missing``: the scan didn't find the CLI here. herdr starts it anyway,
+        since the pane's shell may find what the scan didn't; when no agent then
+        appears on the pane, its shell most likely said there's no such command.
 
         What the host said stays in the result's ``detail`` and in the log, for
         whoever is debugging; the sentence is for the person who asked.
@@ -923,6 +933,12 @@ class Runner:
                 f"{name} couldn't start on {self.label}: the terminal opened for @{handle} "
                 f"didn't reach a shell prompt within {SHELL_WAIT_S:.0f} seconds. {where}. "
                 f"When it shows a prompt, start @{handle} again: it goes back to that terminal."
+            )
+        elif e.step == STEP_AGENT and missing and isinstance(e.__cause__, AgentExitedError):
+            why = "missing"
+            message = (
+                f"{name} isn't installed on {self.label}. {where}, showing what its shell "
+                f"said. Install {name} there, then start @{handle} again."
             )
         elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentExitedError):
             # What it printed on the way out is on its screen, which stays on

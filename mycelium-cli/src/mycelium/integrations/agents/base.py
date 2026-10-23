@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import functools
 import os
-import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -67,19 +66,15 @@ class AgentKind:
         has it: an older one would refuse to start over an option it doesn't
         know, which is worse than starting without it.
 
-        The CLI is found the way the scan finds it, on this process's PATH and
-        then on a new terminal's (``runner.frameworks.terminal_path``), and its
-        ``--help`` runs with the PATH it was found on: one installed under nvm
-        is often a Node script that needs that PATH's ``node``. Otherwise a CLI
-        the scan offers, and herdr starts, would be asked about nothing here and
-        started without the flags it has.
+        The CLI is found the way the scan finds it (``runner.frameworks.locate``:
+        this process's PATH, then the usual install folders), and its ``--help``
+        runs with that folder first on its PATH: one installed under nvm is often
+        a Node script that needs the ``node`` beside it. One the scan doesn't
+        find is started without the flags.
         """
-        from mycelium.runner.frameworks import terminal_path
+        from mycelium.runner.frameworks import locate
 
-        found = next((p for b in self.binaries if (p := shutil.which(b))), None)
-        search: str | None = None
-        if not found and (search := terminal_path()):
-            found = next((p for b in self.binaries if (p := shutil.which(b, path=search))), None)
+        found, search = locate(self.binaries)
         if not found:
             return False
         try:
@@ -100,6 +95,8 @@ def _help_text(binary: str, stamp: float, search: str | None = None) -> str:  # 
             [binary, "--help"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
             check=False,
             stdin=subprocess.DEVNULL,

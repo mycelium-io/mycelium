@@ -94,17 +94,21 @@ export function useRunnersRevalidate(): () => void {
   }, [mutate]);
 }
 
-/** Frameworks as a picker lists them: startable first, then found, then missing. */
+/** Frameworks as a picker lists them: startable and found first, then startable,
+ *  then the rest, found ones first. */
 export function sortFrameworks(frameworks: Framework[]): Framework[] {
-  const rank = (f: Framework) => (f.installed ? (f.launchable ? 0 : 1) : 2);
+  const rank = (f: Framework) => (f.launchable ? 0 : 2) + (f.installed ? 0 : 1);
   return [...frameworks].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
-/** Frameworks a machine can start right now: installed, startable by its host,
- *  and its host running there. Empty on a machine whose host isn't running. */
+/** Frameworks a machine can start right now: its host can start the kind and is
+ *  running there. One the scan didn't find is included: the host starts it from
+ *  the person's own shell, which may have it, and the start says if it doesn't.
+ *  Found ones first, so the first is a sensible default. Empty on a machine
+ *  whose host isn't running. */
 export function launchable(runner: Runner): Framework[] {
   if (!runner.herdr) return [];
-  return runner.frameworks.filter((f) => f.installed && f.launchable);
+  return sortFrameworks(runner.frameworks.filter((f) => f.launchable));
 }
 
 /**
@@ -198,9 +202,9 @@ export type StartStep = "terminal" | "shell" | "agent";
  * Why a start stopped, in the runner's one word for it: the terminal's shell
  * never reached a prompt, the agent CLI ran but is showing something of its
  * own (an update, a sign-in, a first-run question), it exited before it came
- * up, or the host refused.
+ * up, it isn't installed on the machine, or the host refused.
  */
-export type StartWhy = "shell" | "cli" | "exited" | "host";
+export type StartWhy = "shell" | "cli" | "exited" | "missing" | "host";
 
 export interface StartReport {
   step: StartStep | null;
@@ -215,7 +219,7 @@ export interface StartReport {
 }
 
 const STEPS: readonly string[] = ["terminal", "shell", "agent"];
-const WHYS: readonly string[] = ["shell", "cli", "exited", "host"];
+const WHYS: readonly string[] = ["shell", "cli", "exited", "missing", "host"];
 
 /** What a start job's result says about how far it got. Empty for any other job. */
 export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): StartReport {
@@ -267,6 +271,17 @@ export function startHelp(
         `Once it shows a prompt, try again. It reuses the same terminal.`,
       ],
       short: `its terminal on ${machine} didn't get to a prompt in time`,
+    };
+  }
+  if (why === "missing") {
+    return {
+      happened: `${cli} isn't installed on ${machine}.`,
+      steps: [
+        `Look at its terminal on ${machine}. It's still open, showing what its shell said.`,
+        `Install ${cli} on ${machine}, and check that a new terminal window there can run it.`,
+        `Then try again.`,
+      ],
+      short: `${cli} isn't installed on ${machine}`,
     };
   }
   if (why === "exited") {

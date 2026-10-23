@@ -168,8 +168,6 @@ def omnigent(monkeypatch: pytest.MonkeyPatch) -> Omnigent:
 
     monkeypatch.setattr("shutil.which", which)
     monkeypatch.setattr(frameworks, "_version", lambda path, *_a: f"{Path(path).name} 1.0")
-    # The scan never asks the real shell of whoever runs the tests.
-    monkeypatch.setattr(frameworks, "terminal_path", lambda: None)
     return Omnigent()
 
 
