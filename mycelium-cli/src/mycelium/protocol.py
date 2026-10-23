@@ -48,10 +48,11 @@ Memory protocol shapes (agent → memory API, structured key conventions):
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 # Two shape rules. A *handle* is an identity and can be minted by a real IdP, so it
 # allows the `@` a corporate SSO `preferred_username` carries (e.g.
@@ -255,6 +256,11 @@ STRUCTURED_CATEGORY_LABELS: dict[str, str] = {
 }
 
 
+#: Categories whose keys may have folders of their own. The others' keys are
+#: board rows, one name each.
+NESTED_CATEGORIES: frozenset[str] = frozenset({"context", "procedures"})
+
+
 class MemoryLogEntry(BaseModel):
     """Typed payload for structured memory writes.
 
@@ -262,16 +268,20 @@ class MemoryLogEntry(BaseModel):
     hitting the API.
 
     Slugs are auto-lowercased so agents can write naturally (e.g. "API-latency"
-    becomes "api-latency").
+    becomes "api-latency"). Under ``context/`` and ``procedures/`` a slug can
+    have folders of its own (``context/api/latency``), each part a slug. Under
+    ``work/``, ``decisions/`` and ``status/`` it's one name: every key there is
+    a row on the board.
 
     Examples:
         MemoryLogEntry(category="work", slug="cron-setup", content="Created crontab ...")
         MemoryLogEntry(category="status", slug="deploy", content="ACTIVE")
         MemoryLogEntry(category="decisions", slug="db-choice", content="Chose AgensGraph ...")
+        MemoryLogEntry(category="context", slug="api/latency", content="p99 under 200ms")
     """
 
     category: Literal["work", "decisions", "context", "status", "procedures"]
-    slug: str = Field(..., min_length=1, pattern=SLUG_PATTERN)
+    slug: str = Field(..., min_length=1)
     content: str = Field(..., min_length=1)
     tags: list[str] | None = None
 
@@ -281,6 +291,25 @@ class MemoryLogEntry(BaseModel):
         if isinstance(data, dict) and "slug" in data:
             data["slug"] = data["slug"].lower()
         return data
+
+    @field_validator("slug")
+    @classmethod
+    def slug_parts(cls, slug: str, info: ValidationInfo) -> str:
+        parts = slug.split("/")
+        category = info.data.get("category")
+        if len(parts) > 1 and category not in NESTED_CATEGORIES:
+            msg = (
+                f"a {category}/ key is a row on the board, so it takes one name with no `/`, "
+                f"like {category}/{'-'.join(p for p in parts if p)}"
+            )
+            raise ValueError(msg)
+        if not all(re.fullmatch(SLUG_PATTERN, p) for p in parts):
+            msg = (
+                "each part between `/` must start with a lowercase letter or digit and use "
+                "only lowercase letters, digits, `-`, `_` and `.`, with no empty parts"
+            )
+            raise ValueError(msg)
+        return slug
 
     @property
     def key(self) -> str:

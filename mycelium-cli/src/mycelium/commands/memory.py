@@ -18,6 +18,7 @@ import httpx
 import typer
 from pydantic import ValidationError
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from mycelium import identity
@@ -168,8 +169,11 @@ def memory_set(
     The value comes from the positional argument, --body, or --file; exactly
     one of them.
 
-    Keys with a known category prefix (work/, decisions/, context/, status/) are
-    validated for slug format. Other keys pass through freely.
+    Keys with a known category prefix (work/, decisions/, context/, status/,
+    procedures/) are checked: each part is lowercase letters, digits, `-`, `_`
+    and `.`. Under context/ and procedures/ a key can have folders of its own
+    (context/api/latency); work/, decisions/ and status/ keys are board rows and
+    take one name. Other keys pass through freely.
 
     Always upserts; the backend handles versioning.
 
@@ -205,11 +209,11 @@ def memory_set(
             try:
                 entry = MemoryLogEntry(category=category, slug=slug, content=value)  # ty: ignore[invalid-argument-type]
             except ValidationError as exc:
-                errors = exc.errors()
-                if any(e["loc"] == ("slug",) for e in errors):
+                slug_error = next((e for e in exc.errors() if e["loc"] == ("slug",)), None)
+                if slug_error is not None:
+                    why = (slug_error.get("ctx") or {}).get("error") or slug_error["msg"]
                     console.print(
-                        f"[red]Error:[/red] invalid slug '{slug}' for {category}/ key. "
-                        "Use lowercase alphanumeric with hyphens/dots/underscores."
+                        f"[red]Error:[/red] {escape(repr(key))} isn't a memory key: {escape(str(why))}."
                     )
                 else:
                     console.print(f"[red]Error:[/red] {exc}")

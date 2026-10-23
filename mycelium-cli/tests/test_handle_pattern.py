@@ -37,3 +37,25 @@ def test_memory_slug_stays_clean() -> None:
     MemoryLogEntry(category="work", slug="cron-setup", content="ok")
     with pytest.raises(ValidationError):
         MemoryLogEntry(category="work", slug="user@example.com", content="ok")
+
+
+@pytest.mark.parametrize("category", ["context", "procedures"])
+def test_context_and_procedures_keys_can_have_folders(category: str) -> None:
+    entry = MemoryLogEntry(category=category, slug="Foo/bar/baz", content="ok")  # ty: ignore[invalid-argument-type]
+    assert entry.key == f"{category}/foo/bar/baz"
+
+
+@pytest.mark.parametrize(
+    "slug", ["foo//bar", "/foo", "foo/../bar", "foo/./bar", "foo/-bar", "foo/b@r", "foo/b r"]
+)
+def test_every_part_of_a_nested_key_is_a_slug(slug: str) -> None:
+    with pytest.raises(ValidationError, match="each part between `/`"):
+        MemoryLogEntry(category="context", slug=slug, content="ok")
+
+
+@pytest.mark.parametrize("category", ["work", "decisions", "status"])
+def test_a_board_rows_key_stays_one_name(category: str) -> None:
+    """Every key under these is a row on the board, so it has no folders."""
+    with pytest.raises(ValidationError, match=f"a {category}/ key is a row on the board") as e:
+        MemoryLogEntry(category=category, slug="foo/bar", content="ok")  # ty: ignore[invalid-argument-type]
+    assert f"like {category}/foo-bar" in str(e.value)

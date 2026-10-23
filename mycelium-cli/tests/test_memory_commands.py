@@ -158,6 +158,33 @@ def test_memory_set_file_dash_reads_stdin(monkeypatch: pytest.MonkeyPatch) -> No
     assert captured[0].items[0].value["text"] == "piped body\n"
 
 
+def test_memory_set_writes_a_nested_context_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _stub_create(monkeypatch)
+    result = runner.invoke(
+        memory_cmd.app, ["set", "context/foo/bar/baz", "hello", "--room", "demo"]
+    )
+    assert result.exit_code == 0, result.output
+    assert captured[0].items[0].key == "context/foo/bar/baz"
+
+
+@pytest.mark.parametrize(
+    ("key", "said"),
+    [
+        ("context/foo//bar", "each part between `/`"),
+        ("context/foo/../bar", "each part between `/`"),
+        ("work/foo/bar", "a work/ key is a row on the board"),
+    ],
+)
+def test_memory_set_says_why_it_refuses_a_key(
+    monkeypatch: pytest.MonkeyPatch, key: str, said: str
+) -> None:
+    captured = _stub_create(monkeypatch)
+    result = runner.invoke(memory_cmd.app, ["set", key, "hello", "--room", "demo"])
+    assert result.exit_code == 1
+    assert said in " ".join(result.output.split())
+    assert captured == []
+
+
 def test_memory_set_rejects_both_value_and_file(tmp_path: Path) -> None:
     spec = tmp_path / "spec.md"
     spec.write_text("body", encoding="utf-8")
