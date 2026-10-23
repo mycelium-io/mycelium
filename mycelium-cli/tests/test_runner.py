@@ -1234,6 +1234,34 @@ def test_a_swarm_member_left_at_a_sign_in_is_said_to_be_waiting_there(
     assert herdr.of("pane close") == []
 
 
+def test_a_swarm_trusts_the_folder_its_claude_members_start_in(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from tests.test_agent_kinds import CLAUDE_TRUST
+
+    monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
+    monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
+    herdr.start_leaves = "blocked"
+    herdr.screen = CLAUDE_TRUST
+    herdr.screens_after_keys = ["> "]
+    herdr.keys_settle = True
+    r = make_runner()
+    spec = {
+        "room": "eng",
+        "key": "work/fix",
+        "episode": "urn:ep:eng:t1",
+        "task": "Fix the flaky tests",
+        "team": ["agent-1"],
+        "framework": "claude",
+        "cwd": str(tmp_path),
+        "kickoff": False,
+    }
+    r.swarm(spec, "julia")
+    assert [c[3:] for c in herdr.of("pane send-keys")] == [["enter"]]
+    # Briefed once it's past the question.
+    assert hub.of("POST", "/api/rooms/eng/memory")
+
+
 # ── asking the person at this machine ─────────────────────────────────────────
 
 
