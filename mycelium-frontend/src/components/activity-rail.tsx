@@ -338,7 +338,7 @@ function ActivityRow({
   const canOpen = Boolean((item.memoryKey && onOpenMemory) || (item.episode && onOpenThread));
   return (
     <li>
-      <div className="flex h-[26px] items-center gap-2 text-micro">
+      <div className="flex h-[22px] items-center gap-2 text-micro">
         {/* The row's history: a way in from the state, not a bare count. */}
         <button
           type="button"
