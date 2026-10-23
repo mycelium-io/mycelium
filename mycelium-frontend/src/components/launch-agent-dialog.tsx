@@ -878,7 +878,8 @@ function LaunchProgress({
           host: hostOf(runner).name,
           cli: frameworkName,
           status: declined ? "queued" : status,
-          at: report.step,
+          // Handing over its introduction is the last of "comes up and reads its notes".
+          at: report.step === "intro" ? "agent" : report.step,
         })),
   ];
   const help =
