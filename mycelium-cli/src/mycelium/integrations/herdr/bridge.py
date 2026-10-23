@@ -845,13 +845,17 @@ class HerdrBridge:
         """Press ``keys`` in ``pane`` (herdr's names: ``esc``, ``enter``...)."""
         self._run_quiet(["pane", "send-keys", pane, *keys])
 
-    def past_first_run(self, pane: str, kind: str | None) -> str | None:
+    def past_first_run(
+        self, pane: str, kind: str | None, passed: list[str] | None = None
+    ) -> str | None:
         """Get the agent in ``pane`` past a first-run screen its CLI shows, where
         a key does it with nothing to choose; else say what it's waiting on.
 
         ``None`` when the pane shows none of the screens ``kind`` is known to
         show (or can't be read), so a prompt can go in. Otherwise what the person
         has to answer there, like a sign-in, and nothing is typed into it.
+        What each key pressed did for the person, when its screen says, is
+        added to ``passed``.
         """
         from mycelium.integrations.agents import AgentKind, of_kind
 
@@ -874,6 +878,8 @@ class HerdrBridge:
                 self.send_keys(pane, seen.key)
             except HerdrError:
                 return seen.what
+            if passed is not None and seen.done and seen.done not in passed:
+                passed.append(seen.done)
             pressed += 1
             time.sleep(FIRST_RUN_SETTLE_S)
 

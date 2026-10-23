@@ -36,6 +36,9 @@ class FirstRun:
     #: A key that gets past it with nothing to choose (a "Press enter to
     #: continue" after a sign-in), or ``None`` when only the person can answer it.
     key: str | None = None
+    #: What pressing ``key`` did, said for the person when it answered a
+    #: question on their behalf ("Trusted the folder for Claude Code").
+    done: str | None = None
 
 
 @dataclass(frozen=True)

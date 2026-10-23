@@ -881,6 +881,8 @@ function LaunchProgress({
           // Handing over its introduction is the last of "comes up and reads its notes".
           at: report.step === "intro" ? "agent" : report.step,
         })),
+    // What the machine answered on the person's behalf (trusting the folder they chose).
+    ...report.passed.map((label) => ({ label, state: "done" as StepState })),
   ];
   const help =
     failed && report.why

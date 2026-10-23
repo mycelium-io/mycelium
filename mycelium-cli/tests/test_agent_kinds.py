@@ -182,6 +182,54 @@ def test_a_signed_in_codex_or_one_that_cant_say_starts_as_usual(
     assert agents.of_kind("claude").not_ready() is None
 
 
+#: Claude Code's folder-trust question as a narrow pane shows it, wrapped.
+CLAUDE_TRUST = """Accessing workspace:
+
+ /Users/someone/code/tipcalc
+
+ Quick safety check: Is this a project you created or one you
+ trust? (Like your own code, a well-known open source project, or
+ work from your team). If not, take a moment to review what's in
+ this folder first.
+
+ Claude Code'll be able to read, edit, and execute files here.
+
+ Security guide
+
+ ❯ 1. Yes, I trust this folder
+   2. No, exit
+
+ Enter to confirm · Esc to cancel"""
+
+
+def test_claude_answers_its_folder_trust_question_unless_the_folder_grants_itself_more():
+    claude = agents.of_kind("claude")
+    trust = claude.first_run(CLAUDE_TRUST)
+    assert trust is not None
+    assert trust.key == "enter"
+    assert trust.done == "Trusted the folder for Claude Code"
+    # Its older wording, the same answer.
+    older = claude.first_run(
+        "Do you trust the files in this folder?\n /w\n❯ 1. Yes, proceed\n  2. No, exit"
+    )
+    assert older is not None
+    assert older.key == "enter"
+    # A folder whose own settings would act without asking is the person's to read.
+    grants = CLAUDE_TRUST.replace(
+        " Security guide",
+        " This folder pre-approves 3 tool permission rules.\n These will apply without\n"
+        " asking. Only proceed if you trust this configuration.",
+    ).replace("2. No, exit", "2. No, continue without these permissions")
+    held = claude.first_run(grants)
+    assert held is not None
+    assert held.key is None
+    # Words from the question in a conversation, with no option to pick, are none.
+    assert (
+        claude.first_run("> why did it ask Is this a project you created or one you trust?") is None
+    )
+    assert claude.first_run("> 1. Yes, I trust this folder") is None
+
+
 def test_codex_knows_its_welcome_after_signing_in_from_its_sign_in():
     codex = agents.of_kind("codex")
     # Signed in in the pane, or with an auth.json its app server didn't take:
