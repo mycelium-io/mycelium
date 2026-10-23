@@ -848,7 +848,7 @@ function LaunchProgress({
   const herdr = startsInHerdr(runner);
   const report = startReport(job);
   // Started, but stopped at a prompt only the person at that machine can answer.
-  const waiting = status === "done" && typeof job?.result?.waiting === "string" ? job.result.waiting : null;
+  const waiting = status === "done" ? report.waiting : null;
   // A machine asks the person there before starting what a hub sent it,
   // except the app's own hub; the step shows only once it has asked.
   const [asked, setAsked] = useState(false);
@@ -903,7 +903,7 @@ function LaunchProgress({
         ? `It's in ${room}, but it didn't start on ${machine}.`
         : status === "waiting"
           ? `Waiting for someone on ${machine} to approve it. ${machine} asks before it starts anything.`
-          : status === "running" && report.step === "agent"
+          : status === "running" && (report.step === "intro" || report.step === "agent")
             ? `${frameworkName} is starting on ${machine} and reading its notes…`
             : status === "running" && report.step === "shell"
               ? `Starting ${frameworkName} on ${machine}…`

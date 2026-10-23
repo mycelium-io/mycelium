@@ -398,6 +398,28 @@ describe("LaunchAgentForm", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("says the agent is reading its notes once it's handed its introduction", async () => {
+    connected = [runner()];
+    desktop = true;
+    screenText = "> Reading the room's notes";
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(job({ status: "running", result: { step: "intro", pane: "w5:p1" } }));
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    expect(
+      await screen.findByText("Claude Code is starting on julias-mbp and reading its notes…"),
+    ).toBeInTheDocument();
+    const panel = screen.getByRole("region", { name: "Its terminal" });
+    expect(within(panel).getByText(/Reading the room's notes/)).toBeInTheDocument();
+    // The steps count it as the agent's own, the last one, still under way.
+    const agent = screen.getByText("Claude Code comes up and reads its notes").closest("li")!;
+    expect(within(agent).getByLabelText("in progress")).toBeInTheDocument();
+    const shell = screen.getByText(/Wait for the terminal's shell/).closest("li")!;
+    expect(within(shell).getByLabelText("done")).toBeInTheDocument();
+  });
+
   it("leads with Open in terminal when the agent waits for the person", async () => {
     connected = [runner()];
     desktop = true;
