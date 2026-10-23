@@ -170,9 +170,9 @@ def test_memory_set_writes_a_nested_context_key(monkeypatch: pytest.MonkeyPatch)
 @pytest.mark.parametrize(
     ("key", "said"),
     [
-        ("context/foo//bar", "each part between `/`"),
-        ("context/foo/../bar", "each part between `/`"),
-        ("work/foo/bar", "a work/ key is a row on the board"),
+        ("context/foo//bar", "Error: context/foo//bar has an empty or invalid part."),
+        ("context/foo/../bar", "Error: context/foo/../bar has an empty or invalid part."),
+        ("work/foo/bar", "Error: work/foo/bar can't have folders: a work/ key is a row"),
     ],
 )
 def test_memory_set_says_why_it_refuses_a_key(

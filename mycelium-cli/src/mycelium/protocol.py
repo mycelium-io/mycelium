@@ -297,16 +297,17 @@ class MemoryLogEntry(BaseModel):
     def slug_parts(cls, slug: str, info: ValidationInfo) -> str:
         parts = slug.split("/")
         category = info.data.get("category")
+        # Each message follows the key in the CLI's error, and leads with what to do.
         if len(parts) > 1 and category not in NESTED_CATEGORIES:
             msg = (
-                f"a {category}/ key is a row on the board, so it takes one name with no `/`, "
-                f"like {category}/{'-'.join(p for p in parts if p)}"
+                f"can't have folders: a {category}/ key is a row on the board, so it takes "
+                f"one name. Try {category}/{'-'.join(p for p in parts if p)}."
             )
             raise ValueError(msg)
         if not all(re.fullmatch(SLUG_PATTERN, p) for p in parts):
             msg = (
-                "each part between `/` must start with a lowercase letter or digit and use "
-                "only lowercase letters, digits, `-`, `_` and `.`, with no empty parts"
+                "has an empty or invalid part. Each part between slashes starts with a "
+                "lowercase letter or digit and uses only a-z, 0-9, -, _ and ."
             )
             raise ValueError(msg)
         return slug

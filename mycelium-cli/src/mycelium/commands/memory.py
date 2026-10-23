@@ -212,9 +212,7 @@ def memory_set(
                 slug_error = next((e for e in exc.errors() if e["loc"] == ("slug",)), None)
                 if slug_error is not None:
                     why = (slug_error.get("ctx") or {}).get("error") or slug_error["msg"]
-                    console.print(
-                        f"[red]Error:[/red] {escape(repr(key))} isn't a memory key: {escape(str(why))}."
-                    )
+                    console.print(f"[red]Error:[/red] {escape(key)} {escape(str(why))}")
                 else:
                     console.print(f"[red]Error:[/red] {exc}")
                 raise typer.Exit(1) from exc
