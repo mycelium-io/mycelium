@@ -32,9 +32,12 @@ interface Props {
   handle: string;
   /** The machine its manifest names, when the caller knows it. */
   runner?: string | null;
+  /** Whether the footer offers Open its terminal. Off where the caller puts
+   *  that button somewhere more prominent of its own. */
+  openLink?: boolean;
 }
 
-export function AgentScreen({ room, handle, runner: runnerOf }: Props) {
+export function AgentScreen({ room, handle, runner: runnerOf, openLink = true }: Props) {
   const desktop = useIsDesktop();
   const thisMachine = useThisMachine();
   const { runners } = useRunners();
@@ -85,13 +88,15 @@ export function AgentScreen({ room, handle, runner: runnerOf }: Props) {
         <Lock className="size-3 shrink-0" strokeWidth={2} aria-hidden />
         <span>{STREAMED_LOCALLY}</span>
         <Updated at={screen.at} />
-        <a
-          href={terminalLink(screen.pane ?? undefined)}
-          className={buttonVariants({ variant: "ghost", size: "xs", className: "-mr-2 ml-auto" })}
-        >
-          <SquareTerminal className="size-3.5" />
-          Open its terminal
-        </a>
+        {openLink && (
+          <a
+            href={terminalLink(screen.pane ?? undefined)}
+            className={buttonVariants({ variant: "ghost", size: "xs", className: "-mr-2 ml-auto" })}
+          >
+            <SquareTerminal className="size-3.5" />
+            Open its terminal
+          </a>
+        )}
       </footer>
     </div>
   );

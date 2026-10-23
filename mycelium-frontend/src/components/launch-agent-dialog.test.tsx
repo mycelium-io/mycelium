@@ -21,9 +21,21 @@ vi.mock("@/lib/runners", async (importOriginal) => ({
   useRunners: () => ({ runners: connected, connected, loading: false, refresh: vi.fn() }),
 }));
 let thisMachine: string | null = null;
+// In the desktop app, the agent's terminal as the app reads it on this machine.
+let desktop = false;
+let screenText: string | null = null;
 vi.mock("@/lib/desktop", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/desktop")>()),
   useThisMachine: () => thisMachine,
+  useIsDesktop: () => desktop,
+  useAgentScreen: (agent: unknown) => ({
+    text: agent ? screenText : null,
+    pane: "w5:p1",
+    at: Date.now(),
+    unasked: false,
+    notHere: false,
+    error: null,
+  }),
 }));
 
 import type { Runner, RunnerJob } from "@/lib/api";
@@ -50,6 +62,8 @@ describe("LaunchAgentForm", () => {
   beforeEach(() => {
     connected = [];
     thisMachine = null;
+    desktop = false;
+    screenText = null;
     window.localStorage.clear();
     launchRunnerAgent.mockReset();
     fetchRunnerJob.mockReset();
@@ -345,6 +359,100 @@ describe("LaunchAgentForm", () => {
     expect(await screen.findByText(/Running on julias-mbp/)).toBeInTheDocument();
     expect(launchRunnerAgent).toHaveBeenCalledTimes(2);
     expect(launchRunnerAgent.mock.calls[1][1]).toEqual(launchRunnerAgent.mock.calls[0][1]);
+  });
+
+  it("says where its terminal will open before the machine starts it", async () => {
+    connected = [runner()];
+    desktop = true;
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(job());
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    const panel = await screen.findByRole("region", { name: "Its terminal" });
+    expect(panel).toHaveTextContent("Its terminal opens here once julias-mbp starts it.");
+    // Nothing to open yet, so the button is there but off.
+    expect(within(panel).getByText("Open in terminal").closest("a")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("streams its terminal from the moment the machine opens it, not only after an error", async () => {
+    connected = [runner()];
+    desktop = true;
+    screenText = "~/code/atlas $ claude --permission-mode auto";
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(job({ status: "running", result: { step: "shell", pane: "w5:p1" } }));
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    const panel = await screen.findByRole("region", { name: "Its terminal" });
+    expect(await within(panel).findByText(/claude --permission-mode auto/)).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Streamed from this machine. Nothing is sent to the hub.");
+    const open = within(panel).getByText("Open in terminal").closest("a")!;
+    expect(open).toHaveAttribute("href", "mycelium://terminal?pane=w5%3Ap1");
+    expect(open).not.toHaveAttribute("aria-disabled", "true");
+    // Under way, nothing needs the person yet: Open in terminal stays quiet.
+    expect(open).not.toHaveClass("btn-accent");
+    expect(screen.getByText("Starting Claude Code on julias-mbp…")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("says the agent is reading its notes once it's handed its introduction", async () => {
+    connected = [runner()];
+    desktop = true;
+    screenText = "> Reading the room's notes";
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(job({ status: "running", result: { step: "intro", pane: "w5:p1" } }));
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    expect(
+      await screen.findByText("Claude Code is starting on julias-mbp and reading its notes…"),
+    ).toBeInTheDocument();
+    const panel = screen.getByRole("region", { name: "Its terminal" });
+    expect(within(panel).getByText(/Reading the room's notes/)).toBeInTheDocument();
+    // The steps count it as the agent's own, the last one, still under way.
+    const agent = screen.getByText("Claude Code comes up and reads its notes").closest("li")!;
+    expect(within(agent).getByLabelText("in progress")).toBeInTheDocument();
+    const shell = screen.getByText(/Wait for the terminal's shell/).closest("li")!;
+    expect(within(shell).getByLabelText("done")).toBeInTheDocument();
+  });
+
+  it("leads with Open in terminal when the agent waits for the person", async () => {
+    connected = [runner()];
+    desktop = true;
+    screenText = "Sign in to continue: https://example.com/device";
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(
+      job({ status: "done", result: { pane: "w5:p1", waiting: "waiting for input on julias-mbp" } }),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    const panel = await screen.findByRole("region", { name: "Its terminal" });
+    expect(await within(panel).findByText(/Sign in to continue/)).toBeInTheDocument();
+    expect(within(panel).getByText("Open in terminal").closest("a")).toHaveClass("btn-accent");
+  });
+
+  it("keeps its terminal in view when the start fails, with the way to open it", async () => {
+    connected = [runner()];
+    desktop = true;
+    screenText = "zsh: command not found: codex";
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(
+      job({ status: "failed", result: { step: "agent", why: "exited", pane: "w5:p1" } }),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    const panel = await screen.findByRole("region", { name: "Its terminal" });
+    expect(await within(panel).findByText(/command not found: codex/)).toBeInTheDocument();
+    expect(within(panel).getByText("Open in terminal").closest("a")).toHaveClass("btn-accent");
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
   it("can't start anything on a machine without herdr, and says why", () => {

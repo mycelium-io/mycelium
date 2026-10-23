@@ -799,6 +799,28 @@ def test_a_start_reports_its_steps_and_lets_the_sync_pass_run_while_herdr_waits(
     assert not r._panes.locked()  # noqa: SLF001
 
 
+def test_a_start_names_its_terminal_from_the_moment_it_opens_then_introduces_it(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    """The app streams the terminal and offers to open it from the first step that has one."""
+    r = make_runner()
+    r.take(
+        {
+            "id": "a2a2a2",
+            "kind": "launch",
+            "spec": {"room": "eng", "handle": "scout", "framework": "claude"},
+        }
+    )
+    _until(lambda: _report(hub, "a2a2a2", "done"))
+    running = [b["result"] for b in hub.of("PATCH", "a2a2a2") if b["status"] == "running"]
+    assert running == [
+        {"step": "terminal"},
+        {"step": "shell", "pane": "w9:p1"},
+        {"step": "intro", "pane": "w9:p1"},
+    ]
+    assert len(herdr.of("agent prompt")) == 1
+
+
 def test_a_launch_stopped_at_a_prompt_keeps_its_pane_and_waits_for_the_person(
     make_runner, herdr: Herdr, hub: Hub
 ):

@@ -48,8 +48,8 @@ _log = logging.getLogger("mycelium.runner.sync")
 
 #: The steps of a start, as the runner reports them and the app draws them:
 #: a terminal opened for the agent, its shell reached a prompt and the agent
-#: CLI started in it, and the agent came up.
-STEP_TERMINAL, STEP_SHELL, STEP_AGENT = "terminal", "shell", "agent"
+#: CLI started in it, the agent came up, and its introduction is handed over.
+STEP_TERMINAL, STEP_SHELL, STEP_AGENT, STEP_INTRO = "terminal", "shell", "agent", "intro"
 
 
 class HostError(Exception):
@@ -69,8 +69,9 @@ class HostError(Exception):
 class StartHooks:
     """What a host tells the runner while it starts an agent. Does nothing by default."""
 
-    def step(self, step: str) -> None:
-        """The start reached ``step`` (``STEP_TERMINAL``, ``STEP_SHELL``...)."""
+    def step(self, step: str, ref: str | None = None) -> None:
+        """The start reached ``step`` (``STEP_TERMINAL``, ``STEP_SHELL``...), in the
+        terminal ``ref`` once one is open, so the person can look at it from then on."""
 
     def slow_shell(self, ref: str) -> None:
         """The terminal ``ref`` opened, but its shell is slow to reach a prompt.
@@ -316,7 +317,7 @@ class HerdrHost:
         )
         self.bridge.registry.bind(workspace, room)
         state.owned[workspace] = room
-        hooks.step(STEP_SHELL)
+        hooks.step(STEP_SHELL, pane)
         try:
             with hooks.unlocked():
                 came_up = _start_when_ready(
@@ -347,6 +348,7 @@ class HerdrHost:
         # sign-in) leaves it waiting, its introduction held until it's idle.
         if self.first_run(pane, kind):
             return Started(ref=pane, workspace=workspace, status="blocked", intro_pending=True)
+        hooks.step(STEP_INTRO, pane)
         self.bridge.prompt(pane, intro, wait=False)
         return Started(ref=pane, workspace=workspace)
 
