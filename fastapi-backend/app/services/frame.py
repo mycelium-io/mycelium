@@ -39,10 +39,14 @@ logger = logging.getLogger(__name__)
 #: similarity is unavailable for the rest of the run.
 Similar = Callable[[str, str], float]
 
-#: How alike two texts must be to count as one, by embedding. Deliberately
-#: high: folding two different points into one hides a disagreement, while
-#: leaving a near-duplicate unfolded costs one extra line.
-SIMILARITY_THRESHOLD = 0.92
+#: How alike two texts must be to count as one point, by embedding. A text
+#: joins a point when it is this close to any text already folded into it, so
+#: three members saying one thing three ways land together even when two of
+#: them are further apart. In a real run, one point said by three members
+#: scored 0.84-0.94 pairwise, with every pair but one at 0.886 or more, while
+#: two different points on the same task scored up to 0.834. Folding two
+#: different points into one hides a disagreement, so the bar sits above that.
+SIMILARITY_THRESHOLD = 0.86
 #: How alike two meanings of a key term must be to count as one sense. Lower
 #: than for points: members define a term in their own words, with their own
 #: example, so one sense said four ways scored 0.85-0.92 in real runs, while
@@ -88,6 +92,9 @@ class Point:
     text: str
     authors: list[str]
     about: str = ""
+    #: Every text folded into it, ``text`` first: a new text is compared with
+    #: each. Not part of the contract, which carries ``text``.
+    said: list[str] = field(default_factory=list)
 
     @property
     def support(self) -> int:
@@ -167,13 +174,22 @@ def _add_point(
 ) -> str | None:
     """Fold one point in; the new point's id, or ``None`` when it joined one."""
     for point in frame.points:
-        if point.type == kind and frame.alike(point.text, text, similar):
+        if point.type == kind and any(frame.alike(t, text, similar) for t in point.said):
             if who not in point.authors:
                 point.authors.append(who)
+            if text not in point.said:
+                point.said.append(text)
             if about and not point.about:
                 point.about = about
             return None
-    point = Point(id=f"p{len(frame.points) + 1}", type=kind, text=text, authors=[who], about=about)
+    point = Point(
+        id=f"p{len(frame.points) + 1}",
+        type=kind,
+        text=text,
+        authors=[who],
+        about=about,
+        said=[text],
+    )
     frame.points.append(point)
     return point.id
 
@@ -237,16 +253,25 @@ def senses(frame: Frame, word: str, similar: Similar | None) -> list[tuple[str, 
     order of first use. More than one group means the word is contested.
 
     A meaning joins a sense when it says the same as any meaning already in
-    it, so four members saying one thing four ways land together."""
+    it, so four members saying one thing four ways land together. A meaning
+    that says the same as two senses joins them into one: the order members
+    answered in doesn't decide how many senses there are."""
     _shown, meanings = frame.terms[word]
     groups: list[tuple[str, list[str]]] = []
     for who, meaning in meanings.items():
-        for _text, members in groups:
-            if any(frame.alike(meanings[m], meaning, similar, MEANING_THRESHOLD) for m in members):
-                members.append(who)
-                break
-        else:
+        matching = [
+            g
+            for g in groups
+            if any(frame.alike(meanings[m], meaning, similar, MEANING_THRESHOLD) for m in g[1])
+        ]
+        if not matching:
             groups.append((meaning, [who]))
+            continue
+        first = matching[0]
+        for other in matching[1:]:
+            first[1].extend(other[1])
+            groups.remove(other)
+        first[1].append(who)
     return groups
 
 
