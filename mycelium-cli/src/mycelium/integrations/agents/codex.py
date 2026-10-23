@@ -8,7 +8,14 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass
 
-from mycelium.integrations.agents.base import AgentKind
+from mycelium.integrations.agents.base import AgentKind, FirstRun
+
+#: The screen Codex shows once a sign-in finishes, before its prompt: nothing to
+#: choose, just "Press enter to continue" (``tui/src/onboarding/auth.rs``).
+_SIGNED_IN = ("Signed in with your ChatGPT account", "API key configured")
+#: Its sign-in screens, which only the person can answer. Its sign-in menu ends
+#: with "Press enter to continue" too, so that alone never means it's safe.
+_SIGN_IN = ("Sign in with ChatGPT", "Sign in with Device Code", "Finish signing in")
 
 
 @dataclass(frozen=True)
@@ -59,9 +66,20 @@ class Codex(AgentKind):
     def blocked_hint(self) -> str | None:
         # Like Claude's: what it commonly waits for, never which prompt is up.
         return (
-            "Codex asks before it works in a folder it hasn't run in, "
-            "and before a command its sandbox doesn't allow"
+            "Codex asks you to sign in the first time it runs, before it works in a "
+            "folder it hasn't run in, and before a command its sandbox doesn't allow"
         )
+
+    def first_run(self, screen: str) -> FirstRun | None:
+        # Codex runs its onboarding whenever its app server finds no usable
+        # sign-in, even with an auth.json on disk, and herdr reads those screens
+        # as idle. After a sign-in it waits on "Press enter to continue" with
+        # nothing to choose, which Enter gets past; before one, the person signs in.
+        if any(s in screen for s in _SIGNED_IN) and "to continue" in screen:
+            return FirstRun("Codex's welcome screen, after signing in", key="enter")
+        if any(s in screen for s in _SIGN_IN):
+            return FirstRun("Codex is asking you to sign in")
+        return None
 
     def not_ready(self) -> str | None:
         # A Codex that isn't signed in opens on its sign-in and welcome screens,

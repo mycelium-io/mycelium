@@ -749,13 +749,16 @@ class Runner:
                     changed = True
                     continue
                 before = (agent.status, agent.detail, agent.intro)
+                # Not mid-turn: what herdr reads as idle, or can't read at all.
+                ready = found[0] in ("idle", "running")
                 if found[0] == "blocked":
                     self._mark_waiting(agent)
+                elif ready and (held := self._at_first_run(agent)):
+                    self._mark_waiting(agent, held)
                 else:
                     agent.status, agent.detail = found
                     agent.waiting_since = agent.waiting_note = None
-                    # Not mid-turn: what herdr reads as idle, or can't read at all.
-                    if found[0] in ("idle", "running"):
+                    if ready:
                         self._hand_intro(agent)
                 if (agent.status, agent.detail, agent.intro) != before:
                     changed = True
@@ -895,7 +898,7 @@ class Runner:
             intro=intro if started.intro_pending else None,
         )
         if agent.status == "blocked":
-            self._mark_waiting(agent)
+            self._mark_waiting(agent, self._at_first_run(agent))
         with self._lock:
             self.state.agents[key] = agent
             self.state.save(self._state_path)
@@ -977,13 +980,32 @@ class Runner:
         }
         return JobError(message, result={k: v for k, v in result.items() if v})
 
-    def _mark_waiting(self, agent: Tracked) -> None:
-        """Say ``agent`` is waiting for input, on which machine, and for how long once that's long."""
-        if agent.waiting_since is None:
-            agent.waiting_since = _now()
-            known = agents.by_id(agent.framework)
-            kind = (known.herdr_kind if known else None) or agent.framework
-            agent.waiting_note = self.host.blocker(agent.pane, kind)
+    def _kind_of(self, agent: Tracked) -> str:
+        known = agents.by_id(agent.framework)
+        return (known.herdr_kind if known else None) or agent.framework
+
+    def _at_first_run(self, agent: Tracked) -> str | None:
+        """What a not-yet-introduced ``agent`` waits on at its CLI's first-run screen.
+
+        A screen like Codex's welcome reads as idle to herdr, so an introduction
+        handed over there would be lost. Only looked for while the introduction
+        is still held: one handed over means the agent was past it.
+        """
+        if agent.intro is None:
+            return None
+        return self.host.first_run(agent.pane, self._kind_of(agent))
+
+    def _mark_waiting(self, agent: Tracked, what: str | None = None) -> None:
+        """Say ``agent`` is waiting for input, on which machine, and for how long once that's long.
+
+        ``what`` is what it waits on, when that's known (a first-run screen).
+        """
+        if agent.waiting_since is None or (
+            what and not (agent.waiting_note or "").startswith(what)
+        ):
+            agent.waiting_since = agent.waiting_since or _now()
+            hint = self.host.blocker(agent.pane, self._kind_of(agent))
+            agent.waiting_note = "\n".join(p for p in (what, hint) if p) or None
         waited = datetime.now(UTC) - datetime.fromisoformat(agent.waiting_since)
         line = f"waiting for input on {self.label}"
         if waited >= WAITING_LONG:
@@ -1067,6 +1089,8 @@ class Runner:
             )
             if agent.status == "blocked":
                 self._mark_waiting(agent)
+            elif agent.status == "idle" and (held := self._at_first_run(agent)):
+                self._mark_waiting(agent, held)
             elif agent.status == "idle":
                 self._hand_intro(agent)
             with self._lock:
@@ -1219,6 +1243,11 @@ class Runner:
         known = self.framework(str(spec["framework"]))
         cwd = self.folder(spec.get("cwd"))
         me = created_by or self.owner() or "web-ui"
+        if reason := known.not_ready():
+            raise JobError(
+                f"{known.name} can't start on {self.label} yet. {reason}",
+                result={"why": "setup", "detail": reason},
+            )
         try:
             local = start_local(
                 self.config,

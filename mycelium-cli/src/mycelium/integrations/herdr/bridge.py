@@ -48,6 +48,12 @@ if TYPE_CHECKING:
 #: back to the durable cursor (see :meth:`HerdrBridge.wake`).
 _WAKEABLE_STATES = frozenset({"idle", "done", "unknown"})
 
+#: How much of a pane is read to tell a first-run screen, how many of its
+#: screens a key may be pressed through, and how long each gets to go.
+FIRST_RUN_LINES = 30
+FIRST_RUN_KEYS = 3
+FIRST_RUN_SETTLE_S = 1.0
+
 #: Where ``herdr agent start --help`` lists the kinds it can start.
 _POSSIBLE_KINDS = re.compile(r"\[possible values:\s*([^\]]+)\]")
 
@@ -839,6 +845,38 @@ class HerdrBridge:
         """Press ``keys`` in ``pane`` (herdr's names: ``esc``, ``enter``...)."""
         self._run_quiet(["pane", "send-keys", pane, *keys])
 
+    def past_first_run(self, pane: str, kind: str | None) -> str | None:
+        """Get the agent in ``pane`` past a first-run screen its CLI shows, where
+        a key does it with nothing to choose; else say what it's waiting on.
+
+        ``None`` when the pane shows none of the screens ``kind`` is known to
+        show (or can't be read), so a prompt can go in. Otherwise what the person
+        has to answer there, like a sign-in, and nothing is typed into it.
+        """
+        from mycelium.integrations.agents import AgentKind, of_kind
+
+        if not kind:
+            return None
+        known = of_kind(kind)
+        # A CLI with no first-run screens of its own never has its screen read.
+        if type(known).first_run is AgentKind.first_run:
+            return None
+        pressed = 0
+        while True:
+            screen = self.read_pane(pane, lines=FIRST_RUN_LINES)
+            seen = known.first_run(screen) if screen else None
+            if seen is None:
+                return None
+            # Still there after its key, or one only the person can answer.
+            if seen.key is None or pressed >= FIRST_RUN_KEYS:
+                return seen.what
+            try:
+                self.send_keys(pane, seen.key)
+            except HerdrError:
+                return seen.what
+            pressed += 1
+            time.sleep(FIRST_RUN_SETTLE_S)
+
     def _run_quiet(self, args: list[str]) -> None:
         """Run a herdr command that prints nothing when it works."""
         if not self.binary_present():
@@ -989,6 +1027,15 @@ class HerdrBridge:
                 pane=mapping.pane,
                 status=status,
                 detail=f"agent is '{status}' — holding on the cursor rather than waking mid-turn",
+            )
+        # herdr reads some CLIs' first-run screens as idle: a wake typed there
+        # is lost, or its Enter only gets past the screen. Past it, or held.
+        if waiting := self.past_first_run(mapping.pane, mapping.kind):
+            return WakeResult(
+                ok=False,
+                pane=mapping.pane,
+                status="blocked",
+                detail=f"holding on the cursor: {waiting}",
             )
         try:
             result = self.prompt(

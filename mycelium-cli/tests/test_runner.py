@@ -78,6 +78,8 @@ class Herdr:
         self.keys_settle = False
         #: What ``pane read`` shows.
         self.screen = "Do you trust the files in this folder?\n\n  1. Yes, proceed\n  2. No, exit\n"
+        #: What the screen shows after each key pressed, in turn.
+        self.screens_after_keys: list[str] = []
         self.layout = HerdrLayout(self._pane)
 
     def _pane(self, workspace: str = "w9") -> str:
@@ -137,6 +139,8 @@ class Herdr:
         if head in ("pane run", "pane send-keys"):
             if head == "pane send-keys" and self.keys_settle and args[2] in self.live:
                 self.live[args[2]] = "idle"
+            if head == "pane send-keys" and self.screens_after_keys:
+                self.screen = self.screens_after_keys.pop(0)
             return _proc("")
         if head == "agent get":
             status = self.live.get(args[2])
@@ -632,6 +636,89 @@ def test_a_cli_that_needs_setting_up_is_told_before_anything_starts(
     assert herdr.panes == []
 
 
+#: Codex's screens, with something private on them that must never leave the machine.
+SIGNED_IN = "sk-live-4f2a9c\n✓ Signed in with your ChatGPT account\n\n  Press enter to continue\n"
+SIGN_IN = (
+    "sk-live-4f2a9c\n> 1. Sign in with ChatGPT\n  2. Sign in with Device Code\n"
+    "  Press enter to continue\n"
+)
+PROMPT = "› Ask Codex to do anything\n"
+
+
+@pytest.fixture
+def first_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Claude standing in for a CLI with first-run screens: Codex's own."""
+    from mycelium.integrations import agents
+    from mycelium.integrations.agents.codex import Codex
+
+    monkeypatch.setattr(type(agents.of_kind("claude")), "first_run", Codex.first_run)
+    monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
+
+
+def test_a_welcome_screen_enter_gets_past_is_got_past_before_the_introduction(
+    make_runner, herdr: Herdr, hub: Hub, first_runs: None
+):
+    """A signed-in Codex on its welcome, which herdr reads as ready: Enter, then the introduction."""
+    herdr.screen = SIGNED_IN
+    herdr.screens_after_keys = [PROMPT]
+    r = make_runner()
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert "waiting" not in result
+    assert [c[3:] for c in herdr.of("pane send-keys")] == [["enter"]]
+    prompts = herdr.of("agent prompt")
+    assert len(prompts) == 1
+    assert "You are @scout" in prompts[0][3]
+
+
+def test_a_sign_in_screen_holds_the_introduction_until_it_is_answered(
+    make_runner, herdr: Herdr, hub: Hub, first_runs: None
+):
+    herdr.screen = SIGN_IN
+    r = make_runner()
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+
+    # Nothing pressed or typed into a screen only the person can answer.
+    assert herdr.of("pane send-keys") == []
+    assert herdr.of("agent prompt") == []
+    assert result["waiting"].startswith("waiting for input on ")
+    agent = r.hello_body()["agents"][0]
+    assert agent["status"] == "blocked"
+    assert "Codex is asking you to sign in" in agent["detail"]
+    assert "herdr agent focus w9:p1" in agent["detail"]
+
+    # herdr still reads it as idle; it stays waiting, its introduction held.
+    r.refresh()
+    assert r.hello_body()["agents"][0]["status"] == "blocked"
+    assert herdr.of("agent prompt") == []
+
+    # Signed in: the welcome after it is got past, then the introduction goes in, once.
+    herdr.screen = SIGNED_IN
+    herdr.screens_after_keys = [PROMPT]
+    r.refresh()
+    r.refresh()
+    prompts = herdr.of("agent prompt")
+    assert len(prompts) == 1
+    assert "You are @scout" in prompts[0][3]
+    assert r.hello_body()["agents"][0]["status"] == "idle"
+
+    # What reached the hub is the kind's words, never the screen.
+    r.hello()
+    sent = json.dumps([body for _m, _p, body in hub.seen])
+    assert "sk-live-4f2a9c" not in sent
+    assert "Sign in with Device Code" not in sent
+
+
+def test_a_cli_with_no_first_run_screens_never_has_its_screen_read(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    herdr.screen = SIGN_IN
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    r.refresh()
+    assert herdr.of("pane read") == []
+    assert len(herdr.of("agent prompt")) == 1
+
+
 def test_a_cli_the_scan_didnt_find_is_started_and_said_to_be_missing_when_it_isnt_there(
     make_runner, herdr: Herdr, hub: Hub
 ):
@@ -1014,6 +1101,51 @@ def test_a_swarm_job_starts_the_team_briefs_it_and_kicks_it_off(
     assert [a["handle"] for a in r.hello_body()["agents"]] == ["agent-1", "agent-2"]
     env = herdr.of("workspace create")[0]
     assert "MYCELIUM_API_URL=http://hub:8000" in env
+
+
+def test_a_swarm_of_a_cli_that_needs_setting_up_opens_no_panes(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium.integrations import agents
+
+    kind = type(agents.of_kind("claude"))
+    monkeypatch.setattr(kind, "not_ready", lambda _self: "Sign in first. Then try again.")
+    r = make_runner()
+    spec = {
+        "room": "eng",
+        "key": "work/fix",
+        "episode": "urn:ep:eng:t1",
+        "task": "Fix the flaky tests",
+        "team": ["agent-1", "agent-2"],
+        "framework": "claude",
+        "cwd": str(tmp_path),
+    }
+    with pytest.raises(daemon.JobError, match="can't start on .* yet. Sign in first") as failed:
+        r.swarm(spec, "julia")
+    assert failed.value.result == {"why": "setup", "detail": "Sign in first. Then try again."}
+    assert herdr.of("workspace create") == []
+    assert herdr.of("agent start") == []
+
+
+def test_a_swarm_member_left_at_a_sign_in_is_said_to_be_waiting_there(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, first_runs: None
+):
+    herdr.screen = SIGN_IN
+    r = make_runner()
+    spec = {
+        "room": "eng",
+        "key": "work/fix",
+        "episode": "urn:ep:eng:t1",
+        "task": "Fix the flaky tests",
+        "team": ["agent-1"],
+        "framework": "claude",
+        "cwd": str(tmp_path),
+    }
+    with pytest.raises(daemon.JobError, match="waiting there: Codex is asking you to sign in"):
+        r.swarm(spec, "julia")
+    # Nothing typed into it, and its pane is left for the person.
+    assert herdr.of("pane send-keys") == []
+    assert herdr.of("pane close") == []
 
 
 # ── asking the person at this machine ─────────────────────────────────────────

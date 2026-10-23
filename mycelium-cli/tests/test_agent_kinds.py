@@ -182,6 +182,27 @@ def test_a_signed_in_codex_or_one_that_cant_say_starts_as_usual(
     assert agents.of_kind("claude").not_ready() is None
 
 
+def test_codex_knows_its_welcome_after_signing_in_from_its_sign_in():
+    codex = agents.of_kind("codex")
+    # Signed in in the pane, or with an auth.json its app server didn't take:
+    # nothing to choose, so Enter gets past it.
+    welcome = codex.first_run("✓ Signed in with your ChatGPT account\n\n  Press enter to continue")
+    assert welcome is not None
+    assert welcome.key == "enter"
+    # Its sign-in menu ends with "Press enter to continue" too: Enter there would
+    # choose a sign-in, so only the person answers it.
+    menu = codex.first_run(
+        "> 1. Sign in with ChatGPT\n  2. Sign in with Device Code\n  Press enter to continue"
+    )
+    assert menu is not None
+    assert menu.key is None
+    assert "sign in" in menu.what
+    assert codex.first_run("Press enter to continue") is None
+    assert codex.first_run("› Ask Codex to do anything") is None
+    # A CLI with no first-run screens of its own sees none.
+    assert agents.of_kind("claude").first_run("Sign in with ChatGPT") is None
+
+
 def test_a_codex_without_the_sandbox_flag_picks_the_mode_through_its_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
