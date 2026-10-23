@@ -40,6 +40,10 @@ const nextConfig: NextConfig & { agentRules?: boolean } = {
   // no setting to put that cache elsewhere, and a UI served from this machine
   // has nothing to gain from it: images ship at the size they're shown.
   images: { unoptimized: true },
+  // The same for rendered pages: from 16.4, Next writes each page it renders
+  // to `.next/server/route-cache/` beside the server, inside the signed app.
+  // Kept in memory instead, where it serves just as well for one person's UI.
+  experimental: { isrFlushToDisk: false },
   allowedDevOrigins,
   // The desktop app's supervisor, run from a checkout, starts its own `next
   // dev` here, so it runs beside a `pnpm dev` in the same folder (Next allows
