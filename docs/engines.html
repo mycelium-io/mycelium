@@ -389,7 +389,7 @@
           </tbody>
         </table>
       </div>
-      <p><code>concord</code> and <code>accord</code> are simplified versions of two protocols from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> L9 work.</p>
+      <p><code>concord</code> and <code>accord</code> come from the Internet of Cognition team&#x27;s ACCORD and CONCORD protocols, from <em>Agreeing on Purpose, Deciding Under Conflict</em> (L9 and MAS-Lab, Outshift by Cisco, October 2026). Their specification is at <a href="https://ioc-project.github.io/cognition-protocols/">ioc-project.github.io/cognition-protocols</a>. <code>concord</code> runs CONCORD as it&#x27;s written there, with the conductor in the initiator&#x27;s place.</p>
       <p>Members approve or reject by ending their reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>. A reply with no stance takes the step&#x27;s default path. In <code>gated</code> and <code>review</code>, that sends the work back. A flow you write can make a step require a stance. If a member replies without one, the conductor asks them once more. A second reply without a stance counts as a reject. Every marker is listed under <a href="reference.html#messages-markers">Markers</a>.</p>
       <p>To change a built-in flow or add your own, see <a href="reference.html#flows">Writing flows</a>.</p>
       <h2 id="conductor-helping-members-agree">Helping members agree</h2>
@@ -397,13 +397,14 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> decisions/double-charge-refunds conductor \
   <span class="str">&quot;concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?&quot;</span></code></pre>
       <ol class="steps">
-        <li><strong>Rate the two ends.</strong> Everyone rates no agreement and their own pick, so each member&#x27;s later ratings are read on their own scale.</li>
-        <li><strong>Propose.</strong> Everyone proposes one option, with a <code>why:</code> line.</li>
-        <li><strong>Rate.</strong> Everyone rates every option, one line each, with a reason: <code>B (Ship on Friday): 40 - the Friday window breaks certification</code>.</li>
-        <li><strong>Pick.</strong> The pick is the option the least happy member is best off with, calculated from the ratings, not by a model. It has to be 60% of the way from no agreement to each member&#x27;s own pick (<code>bar=70</code> sets another).</li>
-        <li><strong>Fix, if needed.</strong> The least happy member proposes something new that answers the others&#x27; objections, and everyone rates it. After 5 fixes (<code>fixes=3</code> sets another), the best option found stands.</li>
+        <li><strong>Anchor.</strong> Everyone rates no agreement and their own pick, so each member&#x27;s later scores are read on their own scale.</li>
+        <li><strong>Seed.</strong> Everyone proposes one candidate, with its rationale. Each is named by who proposed it, like <code>seed-reviewer</code>.</li>
+        <li><strong>Score.</strong> Everyone scores every candidate from 0 to 100, with reasoning.</li>
+        <li><strong>Pick.</strong> The pick is the candidate the least happy member is best off with, calculated from the scores, not by a model. It has to be 60% of the way from no agreement to each member&#x27;s own pick (<code>bar=70</code> sets another).</li>
+        <li><strong>Repair, if needed.</strong> The member who scores the pick lowest proposes a new candidate that answers the reasoning against it (<code>r1-reviewer</code>), and everyone scores it. After 10 repairs (<code>fixes=3</code> sets another), the best candidate found stands.</li>
       </ol>
-      <p>The thread shows how each member sees the pick and why, with the numbers a click away. The result is saved under <code>context/decision/</code>, named after the task without its <code>work/</code> prefix, saying who is short of the bar and why. A missing rating counts against the option it&#x27;s missing from.</p>
+      <p>Each message is CONCORD&#x27;s own element (<code>&lt;concord-anchor&gt;</code>, <code>&lt;concord-score&gt;</code> and the rest), and members reply in the reply element the message shows. A reply that doesn&#x27;t match is asked for once more, saying what it lacked. A score still missing after that is never guessed, and nothing is agreed while one is. The run ends with <code>&lt;concord-commit&gt;</code>.</p>
+      <p>The thread shows how each member sees the pick and why, with the numbers a click away. The result is saved under <code>context/decision/</code>, named after the task without its <code>work/</code> prefix, saying who is short of the bar and why.</p>
       <p>For agents that hold positions rather than pick between options, the <a href="#aligner">aligner</a> negotiates instead.</p>
       <h2 id="conductor-getting-on-the-same-page">Getting on the same page</h2>
       <p>Before work starts, <code>accord</code> gets everyone to the same understanding of the task:</p>

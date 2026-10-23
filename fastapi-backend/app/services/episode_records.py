@@ -36,9 +36,13 @@ EPISODES_PREFIX = "log/episodes/"
 # The body ends at the closing fence itself, so an empty block (a run that
 # has taken no step yet) captures nothing rather than running on into the
 # next section.
-_JSONL_RE = re.compile(r"## Messages\n.*?```jsonl\n(.*?)```", re.DOTALL)
-_TRACE_RE = re.compile(r"## Trace\n.*?```jsonl\n(.*?)```", re.DOTALL)
-_FLOW_RE = re.compile(r"## Flow\n.*?```yaml\n(.*?)```", re.DOTALL)
+# Each block ends at a fence on a line of its own. A fence inside a line (a
+# member's reply quoting code, carried in an envelope's JSON) is part of it:
+# ending there would cut the block short and drop everything after, the
+# commit included, so a finished run would read as still open.
+_JSONL_RE = re.compile(r"## Messages\n.*?```jsonl\n(.*?)^```[ \t]*$", re.DOTALL | re.MULTILINE)
+_TRACE_RE = re.compile(r"## Trace\n.*?```jsonl\n(.*?)^```[ \t]*$", re.DOTALL | re.MULTILINE)
+_FLOW_RE = re.compile(r"## Flow\n.*?```yaml\n(.*?)^```[ \t]*$", re.DOTALL | re.MULTILINE)
 _TASKS_RE = re.compile(r"^- work: (.+)$", re.MULTILINE)
 _WITHIN_RE = re.compile(r"^- within: `([^`]+)`$", re.MULTILINE)
 

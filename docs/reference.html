@@ -1807,13 +1807,14 @@ steps:
         <li><code>max_steps</code> limits how many steps a run can take. A step counts once however many members it asks. The thread&#x27;s &quot;turn 2 of 6&quot; counts the same steps.</li>
         <li><code>collect: options</code> makes each reply an option, with its <code>why:</code> line. <code>collect: scores</code> records each reply&#x27;s ratings and their reasons. <code>collect: anchors</code> records the ratings of the two ends. <code>collect: keywords</code> records the key terms members name. <code>collect: pieces</code> merges each reply&#x27;s labeled points, terms and checks into the shared summary being built.</li>
         <li><code>require: stance</code>, <code>require: scores</code> or <code>require: pieces</code> asks once more for a reply that&#x27;s missing it. A stance still missing after that counts as a rejection. A reply that still has no labels is kept as written.</li>
+        <li><code>reply: concord-anchor-reply</code>, <code>concord-candidate-reply</code> or <code>concord-score-reply</code> has members answer in that CONCORD reply element. The step&#x27;s prompt is sent as written, with no line before it. Each reply is read against the element, and what was read goes on the message (its <code>reply</code> metadata). A reply that doesn&#x27;t match is asked again once, saying what it lacked, then kept as text and marked unparsed.</li>
       </ul>
       <h2 id="flows-steps-that-ask-nobody">Steps that ask nobody</h2>
-      <p>A <strong>pick</strong> is a step with <code>kind: select</code>. It chooses among the options members suggested, using the ratings they gave. It takes a <code>threshold</code> and <code>max_repairs</code> (<code>bar=70</code> and <code>fixes=3</code> in the summon). A threshold of 0.6 means the pick passes only if it&#x27;s 60% of the way from each member&#x27;s bad outcome to their ideal. Its <code>next</code> map picks the next step by how the pick went:</p>
+      <p>A <strong>pick</strong> is a step with <code>kind: select</code>. It chooses among the options members suggested, using the ratings they gave, by CONCORD&#x27;s rules. It takes a <code>threshold</code>, <code>max_repairs</code> (<code>bar=70</code> and <code>fixes=3</code> in the summon) and <code>eps</code>. A threshold of 0.6 means the pick passes only if it&#x27;s 60% of the way from each member&#x27;s bad outcome to their ideal. The pick is made among the options everyone rated at the threshold or above, or failing that every option anyone rated. A new best replaces the one picked before only when it&#x27;s better by <code>eps</code>. Its <code>next</code> map picks the next step by how the pick went:</p>
       <ul>
-        <li><code>feasible</code>: everyone rated the pick and it meets the threshold for each.</li>
-        <li><code>infeasible</code>: someone is short of it. The least happy can be asked for a fix (<code>to: bottleneck</code>).</li>
-        <li><code>stuck</code>: a fix can&#x27;t help. Either the only problem is members who gave no rating, or <code>max_repairs</code> fixes have already been tried.</li>
+        <li><code>feasible</code>: everyone rated the pick at the threshold or above, and no rating anywhere is missing after being asked for again.</li>
+        <li><code>infeasible</code>: not yet. The member who rates the pick lowest can be asked for a fix (<code>to: bottleneck</code>).</li>
+        <li><code>stuck</code>: <code>max_repairs</code> fixes have already been tried.</li>
         <li><code>nothing</code>: there are no options to pick from.</li>
         <li><code>default</code>.</li>
       </ul>
@@ -1899,6 +1900,10 @@ steps:
               <td><code>{agreed}</code></td>
               <td>What the team already agreed for this task (its summary and decision), or nothing.</td>
             </tr>
+            <tr>
+              <td><code>{concord_anchor}</code>, <code>{concord_seed}</code>, <code>{concord_score}</code>, <code>{concord_repair}</code></td>
+              <td>CONCORD&#x27;s messages, each showing the reply element to answer with. <code>{concord_score}</code> lists the candidates no one has scored yet.</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -1942,7 +1947,7 @@ steps:
             </tr>
             <tr>
               <td><code>[[mycelium: A=82 B=41]]</code></td>
-              <td>Rating options from 0 to 100, in <code>concord</code>.</td>
+              <td>Rating options from 0 to 100, in a flow you write that collects scores.</td>
             </tr>
             <tr>
               <td><code>[[mycelium: objective]] …</code></td>
@@ -1967,7 +1972,7 @@ steps:
           </tbody>
         </table>
       </div>
-      <p><code>concord</code> and <code>accord</code> ask for the same things as plain lines, such as <code>A (name): 82 - why</code>; see <a href="engines.html#conductor-helping-members-agree">Helping members agree</a> and <a href="engines.html#conductor-getting-on-the-same-page">Getting on the same page</a>.</p>
+      <p><code>accord</code> asks for the same things as plain lines too, such as <code>constraint (pricing): at most 15% off</code>. <code>concord</code> replies are CONCORD&#x27;s own elements, such as <code>&lt;concord-score-reply&gt;</code>, which each of its messages shows; see <a href="engines.html#conductor-helping-members-agree">Helping members agree</a> and <a href="engines.html#conductor-getting-on-the-same-page">Getting on the same page</a>.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> builder \
   <span class="str">&quot;Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]&quot;</span></code></pre>
       <p>An agent accepting only to move things along should say so in its reply:</p>

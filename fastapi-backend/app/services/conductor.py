@@ -206,7 +206,13 @@ class Run:
     replies: dict[str, str] = field(default_factory=dict)
     #: The most recent reply anyone gave.
     recent: str = ""
+    #: Turns put to members so far, re-asks included: what a turn's "turn N of
+    #: cap" counts.
     steps_taken: int = 0
+    #: Every step the run walked, the ones that ask nobody included: what its
+    #: close says, set when it closes. The thread's header counts the same
+    #: steps (the record's trace), so the two never disagree.
+    walked: int = 0
     #: The key of the row whose thread the run walks, for prompts to name it,
     #: and its title, for prompts to say it.
     task: str = ""
@@ -541,7 +547,7 @@ def close_line(run: Run, outcome: str, why: str) -> dict[str, Any]:
         "event": "close",
         "protocol": run.protocol.name,
         "outcome": outcome,
-        "steps": run.steps_taken,
+        "steps": run.walked,
         "reason": why,
     }
     if run.last_pick and run.last_pick.get("pick"):
@@ -1995,13 +2001,14 @@ class ConductorEngine:
         commit carries no ``assignments`` for the compile seam to turn into work.
         """
         pick = run.last_pick
+        run.walked = len(ep.trace)
         if outcome in ("converged", "resolved") and pick is not None and pick.get("pick"):
             # An agreement, or the best found when the fixes ran out: either way
             # it's the answer the run gives, saved for the work that follows.
             await self._save_decision(managed, run, ep, me)
         data: dict[str, Any] = {
             "protocol": run.protocol.name,
-            "steps": run.steps_taken,
+            "steps": run.walked,
             "reason": why,
             "roles": run.bound,
             "record": f"{EPISODES_PREFIX}{ep.short_id}",
@@ -2053,7 +2060,7 @@ class ConductorEngine:
         self._stepped(managed.room, run.episode, outcome)
         from app.services import analytics as usage
 
-        await asyncio.to_thread(usage.flow_completed, run.protocol.name, outcome, run.steps_taken)
+        await asyncio.to_thread(usage.flow_completed, run.protocol.name, outcome, run.walked)
         if pick is not None:
             # An agreement run is a negotiation too, so the negotiation count
             # keeps counting whichever mechanism ran it.
@@ -2074,15 +2081,14 @@ class ConductorEngine:
                 quiet = numbers["quiet"]
                 said += f" No answer from {', '.join(quiet)}." if quiet else ""
                 return (
-                    f"{mark} {run.protocol.name}: {outcome} after {run.steps_taken} step(s)."
+                    f"{mark} {run.protocol.name}: {outcome} after {run.walked} step(s)."
                     f"{said}{_saved(run, 'shared summary')}"
                 )
             # The close says who was silent at the last step, so a step that
             # went on without someone shows whose answer it went on without.
             quiet = f" No answer from {', '.join(run.quiet)}." if run.quiet else ""
             return (
-                f"{mark} {run.protocol.name}: {outcome} after {run.steps_taken} step(s), "
-                f"{why}.{quiet}"
+                f"{mark} {run.protocol.name}: {outcome} after {run.walked} step(s), {why}.{quiet}"
             )
         label, text = pick["pick"], pick["text"]
         if outcome == "converged":

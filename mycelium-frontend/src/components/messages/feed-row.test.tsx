@@ -92,4 +92,16 @@ describe("the chat's status rows", () => {
     // A join into a thread still has its task column.
     expect(thread.querySelector(".w-1\\/3")).not.toBeNull();
   });
+
+  it("name a finished run by its task, not its thread's id", () => {
+    const done = event({
+      id: "c",
+      type: "coordination_consensus",
+      raw: { episode: THREAD, outcome: "resolved", protocol: "concord", steps: 4 },
+    });
+    render(<FeedRow ev={done} ctx={ctx} />);
+    expect(screen.getByRole("button", { name: "Open thread a1b2c3d4" })).toHaveTextContent("Jumps");
+    expect(screen.queryByText("a1b2c3d4")).toBeNull();
+    expect(screen.getByText("concord flow, 4 steps")).toBeInTheDocument();
+  });
 });

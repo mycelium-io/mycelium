@@ -458,7 +458,22 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit, 
     const gar = typeof garRaw === "number" && Number.isFinite(garRaw) ? garRaw : undefined;
     const tone = broken ? "var(--yellow)" : "var(--green)";
     const openEpisode = onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined;
-    const where = shortId ? (
+    // Named by its task, the way the channel's other lines are; a thread no
+    // row carries falls back to its id.
+    const title = episodeUrn ? threads.get(episodeUrn)?.title : undefined;
+    const where = title ? (
+      <button
+        type="button"
+        onClick={openEpisode}
+        disabled={!openEpisode}
+        title={title}
+        aria-label={`Open thread ${shortId ?? title}`}
+        className="inline-flex max-w-full items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
+      >
+        <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
+        <span className="truncate">{title}</span>
+      </button>
+    ) : shortId ? (
       <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={openEpisode} />
     ) : (
       <span className="px-1 font-mono">episode</span>

@@ -1061,7 +1061,9 @@ async def test_concord_agrees_the_first_time_everyone_meets_the_bar(in_a_task):
     assert "assignments" not in data
     assert "within" not in data
     assert data["memory"] == DECISION_KEY
-    assert data["steps"] == 3
+    # Every step walked, the pick included: what the thread's header counts too.
+    assert data["steps"] == 4
+    assert data[conductor.LINE_KEY]["steps"] == 4
     assert data["select"]["pick"] == FINANCE_SEED
     assert data["metrics"]["min_satisfaction"] == 0.72
     # The run ends with CONCORD's commit, then the line a person reads.
@@ -1508,6 +1510,9 @@ async def test_the_record_traces_each_pick(in_a_task):
     ]
     # One suggestion three ways is one option, credited to all three.
     assert channel.commit().payload.data["select"]["options"][0]["authors"] == CAST
+    # The close counts the steps the record traced: the header and the Done
+    # line read the same number.
+    assert channel.commit().payload.data["steps"] == len(summary["trace"])
 
 
 @pytest.mark.asyncio
@@ -1637,7 +1642,8 @@ async def test_accord_merges_what_everyone_labelled_with_no_lead_and_saves_it(in
     assert commit.payload.data["memory"] == SUMMARY_KEY
     assert "assignments" not in commit.payload.data
     said = _commit_text(channel)
-    assert said.startswith("✓ accord: resolved after 3 step(s).")
+    # The tallies and the lock count as steps walked, as the thread's header has them.
+    assert said.startswith("✓ accord: resolved after 8 step(s).")
     assert "5 point(s), 1 stated by more than one person" in said
     assert f"The shared summary is saved as {SUMMARY_KEY}." in said
     lines = _lines(channel)

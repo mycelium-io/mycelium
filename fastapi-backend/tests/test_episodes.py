@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
+import json
 
 import pytest
 
@@ -265,3 +266,31 @@ def test_a_finished_flow_stands_nowhere_and_a_negotiation_has_no_flow(tmp_path, 
     assert summary["flow"] is None
     assert summary["trace"] == []
     assert summary["within"] is None
+
+
+def test_a_reply_quoting_code_doesnt_cut_the_record_short(tmp_path, monkeypatch, caplog):
+    """A member's reply with a code fence in it rides an envelope's JSON. The
+    record still reads to its commit, so a finished run reads as finished."""
+    from app.services.episode_records import episode_summary
+    from app.services.filesystem import get_room_dir, read_memory_file
+
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    get_room_dir("r")
+    trace = [{"step": "review", "turn": 2, "next": "approved", "note": "see ```code```"}]
+    key = _flow_record("resolved", trace)
+    found = read_memory_file(get_room_dir("r"), key)
+    assert found is not None
+    meta, body = found
+    reply = {
+        "header": {"kind": "exchange", "message": {"id": "m0", "episode": "e"}},
+        "payload": {"type": "reply", "data": {}},
+        "content": "Here:\n```xml\n<concord-anchor-reply/>\n```",
+    }
+    at = body.index("## Messages")
+    fenced = body[:at] + body[at:].replace("```jsonl\n", f"```jsonl\n{json.dumps(reply)}\n", 1)
+    with caplog.at_level("WARNING"):
+        summary = episode_summary(key, meta, fenced)
+    assert summary["outcome"] == "resolved"
+    assert summary["trace"] == trace
+    assert summary["message_count"] == 2
+    assert "malformed" not in caplog.text

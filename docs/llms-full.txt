@@ -1343,9 +1343,12 @@ flows a room can run, use `mycelium engine invoke conductor "list"`.
 | `concord` | none | Helps members agree on one of a few options. See below. |
 | `accord` | none | Gets everyone to the same understanding of the task before work starts. See below. |
 
-`concord` and `accord` are simplified versions of two protocols from the
-[Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
-L9 work.
+`concord` and `accord` come from the Internet of Cognition team's ACCORD and
+CONCORD protocols, from *Agreeing on Purpose, Deciding Under Conflict* (L9 and
+MAS-Lab, Outshift by Cisco, October 2026). Their specification is at
+[ioc-project.github.io/cognition-protocols](https://ioc-project.github.io/cognition-protocols/).
+`concord` runs CONCORD as it's written there, with the conductor in the
+initiator's place.
 
 Members approve or reject by ending their reply with
 `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A reply with no
@@ -1367,22 +1370,28 @@ mycelium board coordinate decisions/double-charge-refunds conductor \
   "concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?"
 ```
 
-1. **Rate the two ends.** Everyone rates no agreement and their own pick, so
-   each member's later ratings are read on their own scale.
-2. **Propose.** Everyone proposes one option, with a `why:` line.
-3. **Rate.** Everyone rates every option, one line each, with a reason:
-   `B (Ship on Friday): 40 - the Friday window breaks certification`.
-4. **Pick.** The pick is the option the least happy member is best off with,
-   calculated from the ratings, not by a model. It has to be 60% of the way
-   from no agreement to each member's own pick (`bar=70` sets another).
-5. **Fix, if needed.** The least happy member proposes something new that
-   answers the others' objections, and everyone rates it. After 5 fixes
-   (`fixes=3` sets another), the best option found stands.
+1. **Anchor.** Everyone rates no agreement and their own pick, so each
+   member's later scores are read on their own scale.
+2. **Seed.** Everyone proposes one candidate, with its rationale. Each is
+   named by who proposed it, like `seed-reviewer`.
+3. **Score.** Everyone scores every candidate from 0 to 100, with reasoning.
+4. **Pick.** The pick is the candidate the least happy member is best off
+   with, calculated from the scores, not by a model. It has to be 60% of the
+   way from no agreement to each member's own pick (`bar=70` sets another).
+5. **Repair, if needed.** The member who scores the pick lowest proposes a new
+   candidate that answers the reasoning against it (`r1-reviewer`), and
+   everyone scores it. After 10 repairs (`fixes=3` sets another), the best
+   candidate found stands.
+
+Each message is CONCORD's own element (`<concord-anchor>`, `<concord-score>`
+and the rest), and members reply in the reply element the message shows. A
+reply that doesn't match is asked for once more, saying what it lacked. A
+score still missing after that is never guessed, and nothing is agreed while
+one is. The run ends with `<concord-commit>`.
 
 The thread shows how each member sees the pick and why, with the numbers a
 click away. The result is saved under `context/decision/`, named after the
-task without its `work/` prefix, saying who is short of the bar and why. A
-missing rating counts against the option it's missing from.
+task without its `work/` prefix, saying who is short of the bar and why.
 
 For agents that hold positions rather than pick between options, the
 [aligner](#aligner) negotiates instead.
@@ -5055,21 +5064,29 @@ Other options:
 - `require: stance`, `require: scores` or `require: pieces` asks once more for a
   reply that's missing it. A stance still missing after that counts as a
   rejection. A reply that still has no labels is kept as written.
+- `reply: concord-anchor-reply`, `concord-candidate-reply` or
+  `concord-score-reply` has members answer in that CONCORD reply element. The
+  step's prompt is sent as written, with no line before it. Each reply is read
+  against the element, and what was read goes on the message (its `reply`
+  metadata). A reply that doesn't match is asked again once, saying what it
+  lacked, then kept as text and marked unparsed.
 
 ## Steps that ask nobody
 
 A **pick** is a step with `kind: select`. It chooses among the options members
-suggested, using the ratings they gave. It takes a `threshold` and
-`max_repairs` (`bar=70` and `fixes=3` in the summon). A threshold of 0.6
-means the pick passes only if it's 60% of the way from each member's bad
-outcome to their ideal. Its `next` map picks the next step by how the pick
-went:
+suggested, using the ratings they gave, by CONCORD's rules. It takes a
+`threshold`, `max_repairs` (`bar=70` and `fixes=3` in the summon) and `eps`. A
+threshold of 0.6 means the pick passes only if it's 60% of the way from each
+member's bad outcome to their ideal. The pick is made among the options
+everyone rated at the threshold or above, or failing that every option anyone
+rated. A new best replaces the one picked before only when it's better by
+`eps`. Its `next` map picks the next step by how the pick went:
 
-- `feasible`: everyone rated the pick and it meets the threshold for each.
-- `infeasible`: someone is short of it. The least happy can be asked for a fix
-  (`to: bottleneck`).
-- `stuck`: a fix can't help. Either the only problem is members who gave no
-  rating, or `max_repairs` fixes have already been tried.
+- `feasible`: everyone rated the pick at the threshold or above, and no rating
+  anywhere is missing after being asked for again.
+- `infeasible`: not yet. The member who rates the pick lowest can be asked for
+  a fix (`to: bottleneck`).
+- `stuck`: `max_repairs` fixes have already been tried.
 - `nothing`: there are no options to pick from.
 - `default`.
 
@@ -5112,6 +5129,7 @@ Prompts can use these:
 | `{key_terms}`, `{term_lines}`, `{terms}` | The key terms, the lines to define them with, and the meanings given, any used in different senses side by side. |
 | `{checks}` | The checks members gave, with the points each covers. |
 | `{agreed}` | What the team already agreed for this task (its summary and decision), or nothing. |
+| `{concord_anchor}`, `{concord_seed}`, `{concord_score}`, `{concord_repair}` | CONCORD's messages, each showing the reply element to answer with. `{concord_score}` lists the candidates no one has scored yet. |
 
 
 ---
@@ -5137,16 +5155,18 @@ gets posted. This table lists every marker Mycelium reads:
 |---|---|
 | `[[mycelium: stance=accept]]` / `stance=reject` | Approving or rejecting, in a flow step or a negotiation. `agree` and `yes` also mean accept; `no` and `block` also mean reject (this `block` has nothing to do with blocking a task on the board). |
 | `[[mycelium: confidence=0.8]]` | How sure the agent is, from 0 to 1. Can be combined: `confidence=0.8 stance=accept`. |
-| `[[mycelium: A=82 B=41]]` | Rating options from 0 to 100, in `concord`. |
+| `[[mycelium: A=82 B=41]]` | Rating options from 0 to 100, in a flow you write that collects scores. |
 | `[[mycelium: objective]] …` | Labeling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
 | `[[mycelium: term=renewal]] …` | Saying what a word means, in `accord`. |
 | `[[mycelium: check covers=p1,p2]] …` | Saying how points will be checked, in `accord`. The point numbers are the ones the thread shows. |
 | `[[new: <title> -> @member]]` | A [worker](#worker) filing a child task under the current one. Only workers' replies are read for this. |
 | `[[done]]` | A worker resolving the current task. Only workers' replies are read for this. |
 
-`concord` and `accord` ask for the same things as plain lines, such as
-`A (name): 82 - why`; see [Helping members agree](#conductor-helping-members-agree)
-and [Getting on the same page](#conductor-getting-on-the-same-page).
+`accord` asks for the same things as plain lines too, such as
+`constraint (pricing): at most 15% off`. `concord` replies are CONCORD's own
+elements, such as `<concord-score-reply>`, which each of its messages shows;
+see [Helping members agree](#conductor-helping-members-agree) and
+[Getting on the same page](#conductor-getting-on-the-same-page).
 
 ```bash
 mycelium respond --handle builder \

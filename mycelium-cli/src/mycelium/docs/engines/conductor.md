@@ -37,9 +37,12 @@ flows a room can run, use `mycelium engine invoke conductor "list"`.
 | `concord` | none | Helps members agree on one of a few options. See below. |
 | `accord` | none | Gets everyone to the same understanding of the task before work starts. See below. |
 
-`concord` and `accord` are simplified versions of two protocols from the
-[Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
-L9 work.
+`concord` and `accord` come from the Internet of Cognition team's ACCORD and
+CONCORD protocols, from *Agreeing on Purpose, Deciding Under Conflict* (L9 and
+MAS-Lab, Outshift by Cisco, October 2026). Their specification is at
+[ioc-project.github.io/cognition-protocols](https://ioc-project.github.io/cognition-protocols/).
+`concord` runs CONCORD as it's written there, with the conductor in the
+initiator's place.
 
 Members approve or reject by ending their reply with
 `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A reply with no
@@ -61,22 +64,28 @@ mycelium board coordinate decisions/double-charge-refunds conductor \
   "concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?"
 ```
 
-1. **Rate the two ends.** Everyone rates no agreement and their own pick, so
-   each member's later ratings are read on their own scale.
-2. **Propose.** Everyone proposes one option, with a `why:` line.
-3. **Rate.** Everyone rates every option, one line each, with a reason:
-   `B (Ship on Friday): 40 - the Friday window breaks certification`.
-4. **Pick.** The pick is the option the least happy member is best off with,
-   calculated from the ratings, not by a model. It has to be 60% of the way
-   from no agreement to each member's own pick (`bar=70` sets another).
-5. **Fix, if needed.** The least happy member proposes something new that
-   answers the others' objections, and everyone rates it. After 5 fixes
-   (`fixes=3` sets another), the best option found stands.
+1. **Anchor.** Everyone rates no agreement and their own pick, so each
+   member's later scores are read on their own scale.
+2. **Seed.** Everyone proposes one candidate, with its rationale. Each is
+   named by who proposed it, like `seed-reviewer`.
+3. **Score.** Everyone scores every candidate from 0 to 100, with reasoning.
+4. **Pick.** The pick is the candidate the least happy member is best off
+   with, calculated from the scores, not by a model. It has to be 60% of the
+   way from no agreement to each member's own pick (`bar=70` sets another).
+5. **Repair, if needed.** The member who scores the pick lowest proposes a new
+   candidate that answers the reasoning against it (`r1-reviewer`), and
+   everyone scores it. After 10 repairs (`fixes=3` sets another), the best
+   candidate found stands.
+
+Each message is CONCORD's own element (`<concord-anchor>`, `<concord-score>`
+and the rest), and members reply in the reply element the message shows. A
+reply that doesn't match is asked for once more, saying what it lacked. A
+score still missing after that is never guessed, and nothing is agreed while
+one is. The run ends with `<concord-commit>`.
 
 The thread shows how each member sees the pick and why, with the numbers a
 click away. The result is saved under `context/decision/`, named after the
-task without its `work/` prefix, saying who is short of the bar and why. A
-missing rating counts against the option it's missing from.
+task without its `work/` prefix, saying who is short of the bar and why.
 
 For agents that hold positions rather than pick between options, the
 [aligner](#aligner) negotiates instead.

@@ -69,21 +69,29 @@ Other options:
 - `require: stance`, `require: scores` or `require: pieces` asks once more for a
   reply that's missing it. A stance still missing after that counts as a
   rejection. A reply that still has no labels is kept as written.
+- `reply: concord-anchor-reply`, `concord-candidate-reply` or
+  `concord-score-reply` has members answer in that CONCORD reply element. The
+  step's prompt is sent as written, with no line before it. Each reply is read
+  against the element, and what was read goes on the message (its `reply`
+  metadata). A reply that doesn't match is asked again once, saying what it
+  lacked, then kept as text and marked unparsed.
 
 ## Steps that ask nobody
 
 A **pick** is a step with `kind: select`. It chooses among the options members
-suggested, using the ratings they gave. It takes a `threshold` and
-`max_repairs` (`bar=70` and `fixes=3` in the summon). A threshold of 0.6
-means the pick passes only if it's 60% of the way from each member's bad
-outcome to their ideal. Its `next` map picks the next step by how the pick
-went:
+suggested, using the ratings they gave, by CONCORD's rules. It takes a
+`threshold`, `max_repairs` (`bar=70` and `fixes=3` in the summon) and `eps`. A
+threshold of 0.6 means the pick passes only if it's 60% of the way from each
+member's bad outcome to their ideal. The pick is made among the options
+everyone rated at the threshold or above, or failing that every option anyone
+rated. A new best replaces the one picked before only when it's better by
+`eps`. Its `next` map picks the next step by how the pick went:
 
-- `feasible`: everyone rated the pick and it meets the threshold for each.
-- `infeasible`: someone is short of it. The least happy can be asked for a fix
-  (`to: bottleneck`).
-- `stuck`: a fix can't help. Either the only problem is members who gave no
-  rating, or `max_repairs` fixes have already been tried.
+- `feasible`: everyone rated the pick at the threshold or above, and no rating
+  anywhere is missing after being asked for again.
+- `infeasible`: not yet. The member who rates the pick lowest can be asked for
+  a fix (`to: bottleneck`).
+- `stuck`: `max_repairs` fixes have already been tried.
 - `nothing`: there are no options to pick from.
 - `default`.
 
@@ -126,3 +134,4 @@ Prompts can use these:
 | `{key_terms}`, `{term_lines}`, `{terms}` | The key terms, the lines to define them with, and the meanings given, any used in different senses side by side. |
 | `{checks}` | The checks members gave, with the points each covers. |
 | `{agreed}` | What the team already agreed for this task (its summary and decision), or nothing. |
+| `{concord_anchor}`, `{concord_seed}`, `{concord_score}`, `{concord_repair}` | CONCORD's messages, each showing the reply element to answer with. `{concord_score}` lists the candidates no one has scored yet. |

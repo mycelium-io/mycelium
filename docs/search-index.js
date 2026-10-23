@@ -444,7 +444,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#conductor-helping-members-agree",
     "t": "Helping members agree",
     "s": "Conductor",
-    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?\" Rate the two ends. Everyone rates no agreement and their own pick, so each member's later ratings are read on thei",
+    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?\" Anchor. Everyone rates no agreement and their own pick, so each member's later scores are read on their own scale.",
     "p": "Engines"
   },
   {
@@ -2707,7 +2707,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#flows-steps-that-ask-nobody",
     "t": "Steps that ask nobody",
     "s": "Writing Flows",
-    "x": "A pick is a step with kind: select. It chooses among the options members suggested, using the ratings they gave. It takes a threshold and max_repairs (bar=70 and fixes=3 in the summon). A threshold of 0.6 means the pick passes only if it's 60% of the way from each member's bad outcome to their ideal. Its next map picks the next step by how the pick went: feasible: everyone rated the pick and it meets the threshold fo",
+    "x": "A pick is a step with kind: select. It chooses among the options members suggested, using the ratings they gave, by CONCORD's rules. It takes a threshold, max_repairs (bar=70 and fixes=3 in the summon) and eps. A threshold of 0.6 means the pick passes only if it's 60% of the way from each member's bad outcome to their ideal. The pick is made among the options everyone rated at the threshold or above, or failing that ",
     "p": "Reference"
   },
   {

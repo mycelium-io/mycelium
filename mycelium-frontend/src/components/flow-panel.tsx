@@ -16,7 +16,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { EpisodeSummary, FlowTraceEntry, RoomFloor } from "@/lib/api";
-import { lockSummary, tallySummary } from "@/lib/conductor-line";
+import { isSuccess, lockSummary, tallySummary } from "@/lib/conductor-line";
 import { FlowGraph } from "@/components/flow-graph";
 
 // The graph is tall, and a thread is opened to read the conversation, so the
@@ -43,6 +43,19 @@ function outcomeTone(outcome: string): string {
   if (outcome === "resolved" || outcome === "converged") return "var(--green)";
   if (outcome === "rejected") return "var(--yellow)";
   return "var(--accent)";
+}
+
+/** Where a run stands, in a word or two: the step it's at while it walks, and
+ *  "done" once it has finished well, the way the channel's close line says it.
+ *  A run whose last step led to an end is finished, even before its record
+ *  says how. */
+export function runState(episode: EpisodeSummary): { said: string; tone: string } {
+  const flow = episode.flow;
+  const at = episode.current_step ?? flow?.steps[0]?.id ?? "start";
+  const end = flow?.steps.find((s) => s.id === at)?.end;
+  const outcome = episode.outcome === "open" && end ? end : episode.outcome;
+  if (outcome === "open") return { said: `at ${at}`, tone: outcomeTone(outcome) };
+  return { said: isSuccess(outcome) ? "done" : outcome, tone: outcomeTone(outcome) };
 }
 
 /** One step taken, as the trace line reads it. */
@@ -124,7 +137,8 @@ export function FlowPanel({
   const flow = episode.flow;
   if (!flow) return null;
   const trace = episode.trace ?? [];
-  const open = episode.outcome === "open";
+  const state = runState(episode);
+  const open = state.said.startsWith("at ");
   const speakers = floor?.speakers ?? [];
   const toggle = () => {
     setShown(s => !s);
@@ -143,8 +157,8 @@ export function FlowPanel({
         <Chevron className="size-3 self-center text-faint" />
         <span className="text-micro font-medium text-faint">Flow</span>
         <span className="font-mono text-micro text-text">{flow.name}</span>
-        <span className="text-micro" style={{ color: outcomeTone(episode.outcome) }}>
-          {open ? `at ${episode.current_step ?? flow.steps[0]?.id ?? "start"}` : episode.outcome}
+        <span className="text-micro" style={{ color: state.tone }}>
+          {state.said}
         </span>
         {open && speakers.length > 0 && (
           <span className="text-micro" style={{ color: "var(--accent)" }}>
