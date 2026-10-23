@@ -339,7 +339,9 @@ def test_spec_of_carries_what_the_app_needs_to_draw_a_pick():
         "id": "pick",
         "kind": "select",
         "threshold": 0.6,
-        "max_repairs": 5,
+        # CONCORD's own: at most B = 10 repairs, and eps = 0.05 to replace the incumbent.
+        "max_repairs": 10,
+        "eps": 0.05,
         "next": {
             "feasible": "agreed",
             "infeasible": "repair",
@@ -349,6 +351,9 @@ def test_spec_of_carries_what_the_app_needs_to_draw_a_pick():
     }
     assert steps["anchor"]["collect"] == "anchors"
     assert steps["score"]["collect"] == "scores"
+    # Each step names the reply schema it asks for, so the app can read the values.
+    assert steps["score"]["reply"] == "concord-score-reply"
+    assert steps["repair"]["reply"] == "concord-candidate-reply"
     assert "kind" not in steps["score"], "an ask step's default is dropped"
     accord = protocols.builtin("accord")
     assert accord is not None
@@ -379,7 +384,7 @@ def test_describe_says_what_a_pick_does():
     # The bar is said against the reference outcomes, never as a bare number.
     assert (
         "- pick: picks the option the least happy member is best off with; it has to be "
-        "at least 60% of the way from each member's bad outcome to its ideal (up to 5 fixes)"
+        "at least 60% of the way from each member's bad outcome to its ideal (up to 10 fixes)"
     ) in text
     assert "- agreed: ends converged" in text
     assert "- best: ends resolved" in text

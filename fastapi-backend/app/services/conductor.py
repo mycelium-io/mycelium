@@ -50,6 +50,7 @@ import yaml
 from app.config import settings
 from app.services import (
     agreed,
+    concord_messages,
     episode_state,
     markers,
     message_format,
@@ -134,6 +135,8 @@ class Settings:
     bad: str = ""
     ideal: str = ""
     terms: list[str] = field(default_factory=list)
+    #: What a candidate has to say, for CONCORD's ``candidate_schema``.
+    schema: str = ""
 
 
 #: The two ends a concord is measured between when the summon names none:
@@ -143,17 +146,18 @@ DEFAULT_IDEAL = "your own pick: the option you'd choose if it were up to you alo
 
 _BAR = re.compile(r"\bbar\s*[=:]\s*(\d{1,3})\s*%?", re.IGNORECASE)
 _FIXES = re.compile(r"\bfixes\s*[=:]\s*(\d{1,2})\b", re.IGNORECASE)
-#: ``bad: …``, ``ideal: …`` and ``terms: …``, each running to the next of them.
-_LABELLED = re.compile(r"\b(bad|ideal|terms)\s*:\s*", re.IGNORECASE)
+#: ``bad: …``, ``ideal: …``, ``terms: …`` and ``schema: …``, each running to
+#: the next of them.
+_LABELLED = re.compile(r"\b(bad|ideal|terms|schema)\s*:\s*", re.IGNORECASE)
 
 
 def run_settings(ask: str) -> tuple[str, Settings]:
     """``(the question, what the summon set)`` from a summon's ask.
 
     ``bar=60`` (a percentage) and ``fixes=3`` can sit anywhere in it.
-    ``bad: …``, ``ideal: …`` and ``terms: a, b`` run to the next of them or the
-    end, so they go after the question: ``decide the renewal offer bad: we lose
-    Acme ideal: Acme renews for three years at full price``.
+    ``bad: …``, ``ideal: …``, ``terms: a, b`` and ``schema: …`` run to the next
+    of them or the end, so they go after the question: ``decide the renewal
+    offer bad: we lose Acme ideal: Acme renews for three years at full price``.
     """
     found = Settings()
     if m := _BAR.search(ask):
@@ -174,6 +178,8 @@ def run_settings(ask: str) -> tuple[str, Settings]:
                 found.terms = [t.strip() for t in re.split(r"[,;]", value) if t.strip()][:5]
             elif kind == "bad":
                 found.bad = value
+            elif kind == "schema":
+                found.schema = value
             else:
                 found.ideal = value
         ask = ask[: marks[0].start()]
@@ -210,15 +216,15 @@ class Run:
     answers: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: The options suggested so far, lettered in cast order.
     options: list[choosing.Option] = field(default_factory=list)
-    #: ``{member: {letter: 0-100}}``, the ratings given so far; a later rating
+    #: ``{member: {option: 0-100}}``, the ratings given so far; a later rating
     #: of the same option replaces the earlier one.
-    ratings: dict[str, dict[str, int]] = field(default_factory=dict)
-    #: ``{member: {letter: why}}``, the reason each rating came with.
+    ratings: dict[str, dict[str, float]] = field(default_factory=dict)
+    #: ``{member: {option: why}}``, the reason each rating came with.
     reasons: dict[str, dict[str, str]] = field(default_factory=dict)
     #: What the summon set: the bar, the fixes, the reference outcomes, the terms.
     settings: Settings = field(default_factory=Settings)
     #: ``{member: (bad, ideal)}``, each member's ratings of the two reference outcomes.
-    anchors: dict[str, tuple[int, int]] = field(default_factory=dict)
+    anchors: dict[str, tuple[float, float]] = field(default_factory=dict)
     #: The key terms of an accord run, from the summon or as members named them.
     key_terms: list[str] = field(default_factory=list)
     #: Members who were refused a fix that repeated an option, so it's once each.
@@ -263,6 +269,9 @@ class Run:
     asking: Step | None = None
     again: bool = False
     waiting: set[str] = field(default_factory=set)
+    #: ``{member: {option}}``: ratings a member still hadn't given when asked
+    #: again (CONCORD's MISSING). While any stands, nothing is agreed.
+    unrated: dict[str, set[str]] = field(default_factory=dict)
 
     def targets(self, step: Step) -> list[str]:
         to = step.to or ""
@@ -281,6 +290,12 @@ class Run:
     def new_options(self) -> list[choosing.Option]:
         """Options no rating round has seen yet."""
         return self.options[self.rated_upto :]
+
+    def owed(self, handle: str) -> list[str]:
+        """The options of this rating round ``handle`` hasn't scored with its
+        reasoning yet."""
+        given, why = self.ratings.get(handle, {}), self.reasons.get(handle, {})
+        return [o.label for o in self.new_options() if o.label not in given or not why.get(o.label)]
 
     def bar(self) -> float:
         """The bar this run holds every member to, 0-1: the summon's, else the
@@ -386,6 +401,61 @@ class Run:
             terms=self.terms_shown or "(no words defined yet)",
             checks=framing.show_checks(self.frame),
             agreed=self.agreed,
+            # CONCORD's messages, as its specification writes them.
+            concord_anchor=concord_messages.anchor(
+                self.bar(),
+                self.settings.bad or DEFAULT_BAD,
+                self.settings.ideal or DEFAULT_IDEAL,
+            ),
+            concord_seed=concord_messages.seed(self.candidate_schema(), self.bar(), self.context()),
+            concord_score=concord_messages.score(
+                self.context(), [self.candidate(o) for o in fresh or self.options]
+            ),
+            concord_repair=self.concord_repair(),
+        )
+
+    # -- CONCORD's messages --
+
+    def context(self) -> str:
+        """The problem statement CONCORD's messages carry: the task and the ask,
+        and what the team agreed earlier in it."""
+        said = f"{self.title or self.task or 'this task'}: {self.ask}".rstrip(": ")
+        return f"{self.agreed.strip()}\n\n{said}" if self.agreed.strip() else said
+
+    def candidate_schema(self) -> str:
+        return self.settings.schema or (
+            f"One option for {self.title or self.task or 'this task'}: what to do, "
+            "in one or two sentences."
+        )
+
+    @staticmethod
+    def candidate(option: choosing.Option) -> concord_messages.Candidate:
+        rationale = " ".join(w for w in option.why.values() if w)
+        return concord_messages.Candidate(id=option.label, text=option.text, rationale=rationale)
+
+    def scored(self, label: str) -> list[concord_messages.Scored]:
+        """Every member's normalized score of one option, with its reasoning."""
+        out = []
+        for h in self.handles:
+            raw = self.ratings.get(h, {}).get(label)
+            at = None if raw is None else choosing.placed(raw, self.anchors.get(h))
+            out.append(concord_messages.Scored(h, at, self.reasons.get(h, {}).get(label, "")))
+        return out
+
+    def concord_repair(self) -> str:
+        pick = self.last_pick or {}
+        least = pick.get("least_happy")
+        incumbent = next((o for o in self.options if o.label == pick.get("pick")), None)
+        if incumbent is None or not least:
+            return ""
+        mine = next((s.score for s in self.scored(incumbent.label) if s.agent == least), None)
+        return concord_messages.repair(
+            self.bar(),
+            self.candidate_schema(),
+            self.context(),
+            self.candidate(incumbent),
+            mine or 0.0,
+            self.scored(incumbent.label),
         )
 
     def shortfall(self) -> str:
@@ -475,19 +545,49 @@ def close_line(run: Run, outcome: str, why: str) -> dict[str, Any]:
         "reason": why,
     }
     if run.last_pick and run.last_pick.get("pick"):
-        # The pick, the bar it was held to, and how far toward each member's
-        # own ideal it lands (0-100, as the pick read it), for a surface to draw.
-        line |= {
-            "pick": run.last_pick["pick"],
-            "text": run.last_pick["text"],
-            "bar": run.last_pick.get("threshold"),
-            "toward_ideal": {
-                h: round(v * 100) for h, v in (run.last_pick.get("standing") or {}).items()
-            },
-        }
+        line |= {"pick": run.last_pick["pick"], "text": run.last_pick["text"]}
+    if (commit := concord_commit(run, outcome)) is not None:
+        line["commit"] = commit
     if run.saving:
         line["memory"] = run.saved_to
     return line
+
+
+#: How a CONCORD run's ends read in its commit.
+_COMMIT_OUTCOMES = {"converged": "SUCCESS", "resolved": "BEST_EFFORT"}
+
+
+def speaks_concord(run: Run) -> bool:
+    """Whether the run sends CONCORD's own messages (its steps name the spec's
+    reply schemas), so it ends with CONCORD's commit."""
+    return any((s.reply or "").startswith("concord-") for s in run.protocol.steps)
+
+
+def concord_commit(run: Run, outcome: str) -> dict[str, Any] | None:
+    """A CONCORD run's commit, as its specification names the fields: how it
+    ended, the winning candidate, each member's normalized score for it (null
+    for none), who is short of the bar and by how much, and who gave no score.
+    ``None`` for any other run, or one that picked nothing."""
+    pick = run.last_pick or {}
+    label = pick.get("pick")
+    if not speaks_concord(run) or not label or outcome not in _COMMIT_OUTCOMES:
+        return None
+    bar = run.bar()
+    scores = {s.agent: s.score for s in run.scored(label)}
+    return {
+        "outcome": _COMMIT_OUTCOMES[outcome],
+        "winning_candidate_id": label,
+        "winning_candidate": pick.get("text", ""),
+        "final_scores": {h: None if v is None else round(v, 4) for h, v in scores.items()},
+        "shortfall": [
+            {"agent": h, "score": round(v, 4), "short_by": round(bar - v, 4)}
+            for h, v in scores.items()
+            if v is not None and v < bar - choosing.TOL
+        ],
+        "unknown": [h for h, v in scores.items() if v is None],
+        "satisfaction_threshold": bar,
+        "repairs": sum(run.repairs.values()),
+    }
 
 
 def bind_roles(protocol: Protocol, handles: list[str]) -> dict[str, str] | None:
@@ -812,33 +912,32 @@ class ConductorEngine:
         await self._close(managed, run, ep, me, outcome, why)
         return outcome
 
-    @staticmethod
-    def _reader(run: Run) -> Callable[[str, dict[str, Any]], dict[str, Any] | None]:
+    @classmethod
+    def _reader(cls, run: Run) -> Callable[[str, dict[str, Any]], dict[str, Any] | None]:
         """What reads a member's reply to the step being asked, as it's recorded:
         ``None`` for anything else in the thread (the conductor's own posts, a
-        member nobody is waiting on, a step that asks for no shape)."""
+        member nobody is waiting on, a step that names no reply schema)."""
 
         def read(sender: str, content: dict[str, Any]) -> dict[str, Any] | None:
             step = run.asking
             who = _norm(sender)
-            if step is None or who not in run.waiting:
+            if step is None or step.reply is None or who not in run.waiting:
                 return None
             payload = (content.get("l9") or {}).get("payload") or {}
             if payload.get("type") in _NOT_A_REPLY:
                 return None
-            shape = reply_shape.shape_of(step)
-            if shape is None:
-                return None
             handle = next((h for h in run.handles if _norm(h) == who), sender)
-            wanted = [o.label for o in run.new_options()] if shape == "ratings" else []
-            reply = {"protocol": run.protocol.name, "step": step.id} | reply_shape.read(
-                shape,
+            reply = reply_shape.read(
+                step.reply,
                 content,
-                labels=[o.label for o in run.options],
-                wanted=wanted,
+                candidates=run.owed(handle),
                 anchor=run.anchors.get(handle),
-                key_terms=run.key_terms,
             )
+            reply["step"] = step.id
+            if step.collect == "options" and reply["parsed"]:
+                reply["value"]["candidate_id"] = cls.candidate_id(run, step, handle)
+            if step.to == protocols.BOTTLENECK:
+                reply["phase"] = "REPAIR"
             if run.again:
                 reply["again"] = True
             return reply
@@ -1030,6 +1129,9 @@ class ConductorEngine:
             max_repairs=run.fixes(step),
             anchors=run.anchors,
             reasons=run.reasons,
+            incumbent=(run.last_pick or {}).get("pick"),
+            eps=step.eps or 0.0,
+            unrated=run.unrated,
         )
         if not run.options:
             record["outcome"] = "nothing"
@@ -1337,6 +1439,11 @@ class ConductorEngine:
         lacking = self._lacking(run, step, stances)
         if lacking and run.steps_taken < cap:
             stances = await self._reask(managed, run, ep, me, step, cap, lacking, stances)
+        if step.reply is not None and step.collect == "scores":
+            # A score still owed after its retry is missing, and stays so.
+            for h in run.targets(step):
+                if owed := run.owed(h):
+                    run.unrated.setdefault(h, set()).update(owed)
         if step.needs == "pieces":
             await self._keep_unlabelled(managed, run, me, lacking)
         if step.needs == "scores":
@@ -1373,8 +1480,11 @@ class ConductorEngine:
             if same is not None:
                 run.options.pop()
         else:
-            prose = markers.MARKER_RE.sub("", run.replies.get(fixer, "")).strip()
-            option, _why = markers.split_why(prose)
+            if step.reply is not None:
+                option = self._read(run, step, fixer)["value"].get("candidate", "")
+            else:
+                prose = markers.MARKER_RE.sub("", run.replies.get(fixer, "")).strip()
+                option, _why = markers.split_why(prose)
             same = (
                 next((o for o in run.options if choosing.same_text(o.text, option)), None)
                 if option
@@ -1391,6 +1501,13 @@ class ConductorEngine:
             f"change to it:\n\n{run.objections()}\n\nReply with the option, then a line "
             "saying what it answers and how:\n\n<the option>\nwhy: <what it answers>"
         )
+        if step.reply is not None:
+            prompt = (
+                f"That's {same.label} again, or very close to it. A repair has to be a new "
+                "candidate that answers the reasoning against the incumbent, not a candidate "
+                "already scored or a small change to one. Here is the repair again.\n\n"
+                f"{step.prompt.format_map(run.fields())}"
+            )
         self._manager.hold_floor(managed.room, run.episode, holder=me, speakers=[fixer])
         run.answers = {}
         run.asking, run.again = step, True
@@ -1442,6 +1559,9 @@ class ConductorEngine:
         the options on the table with their reasons, ratings of the two
         reference outcomes, or the key terms members named."""
         order = [h for h in run.handles if h in answered]
+        if step.reply:
+            self._collect_replies(run, step, order)
+            return
         if step.collect == "options":
             for handle in order:
                 # The prose without any marker; a reply that was only a marker
@@ -1467,6 +1587,49 @@ class ConductorEngine:
                     run.anchors[handle] = (said["bad"][0], said["ideal"][0])
         elif step.collect == "keywords":
             run.key_terms = self._key_terms(run, order)
+
+    @staticmethod
+    def _read(run: Run, step: Step, handle: str) -> dict[str, Any]:
+        """``handle``'s reply to ``step``, read against the step's schema: the
+        same read the hub put on the message when it was recorded."""
+        assert step.reply is not None
+        return reply_shape.read(
+            step.reply,
+            run.answers.get(handle) or {},
+            candidates=run.owed(handle),
+            anchor=run.anchors.get(handle),
+        )
+
+    @staticmethod
+    def candidate_id(run: Run, step: Step, handle: str) -> str:
+        """A candidate's id, as CONCORD names it: ``seed-<member>`` for a first
+        proposal, ``r<N>-<member>`` for the one repair round ``N`` asked for."""
+        if step.to == protocols.BOTTLENECK:
+            return f"r{sum(run.repairs.values())}-{handle}"
+        return f"seed-{handle}"
+
+    def _collect_replies(self, run: Run, step: Step, order: list[str]) -> None:
+        """What replies written in the step's schema add: a member's anchors,
+        its candidate, or its scores. Only what parsed counts; a reply that
+        didn't is kept as the text it is."""
+        for handle in order:
+            reply = self._read(run, step, handle)
+            value = reply["value"]
+            if step.collect == "anchors" and reply["parsed"]:
+                run.anchors[handle] = (value["raw_reject"], value["raw_ideal"])
+            elif step.collect == "options" and reply["parsed"]:
+                choosing.add_option(
+                    run.options,
+                    value["candidate"],
+                    handle,
+                    value["rationale"],
+                    label=self.candidate_id(run, step, handle),
+                )
+            elif step.collect == "scores":
+                for s in value.get("scores") or []:
+                    run.ratings.setdefault(handle, {})[s["candidate_id"]] = s["raw"]
+                    if s["reasoning"]:
+                        run.reasons.setdefault(handle, {})[s["candidate_id"]] = s["reasoning"]
 
     @staticmethod
     def _key_terms(run: Run, order: list[str]) -> list[str]:
@@ -1523,8 +1686,19 @@ class ConductorEngine:
 
     @staticmethod
     def _lacking(run: Run, step: Step, stances: list[tuple[str, str | None]]) -> list[str]:
-        """Who replied without what the step requires. Silence is not lacking:
-        a member who didn't answer isn't asked again."""
+        """Who replied without what the step requires. Silence is not lacking,
+        so a member who didn't answer isn't asked again, except for CONCORD's
+        scores: a score still missing after its retry is marked missing."""
+        if step.reply is not None:
+            if step.collect == "scores":
+                return [h for h in run.targets(step) if run.owed(h)]
+            if step.collect == "anchors":
+                return [h for h in run.handles if h in run.answers and h not in run.anchors]
+            return [
+                h
+                for h in run.handles
+                if h in run.answers and not ConductorEngine._read(run, step, h)["parsed"]
+            ]
         if step.needs == "pieces":
             return [
                 h
@@ -1549,6 +1723,22 @@ class ConductorEngine:
         if step.needs == "stance":
             return [h for h, s in stances if s is None and h in run.answers]
         return []
+
+    @classmethod
+    def _asked_again(cls, run: Run, step: Step, handle: str) -> str:
+        """The one retry a reply in a schema gets: what it lacked, in a line,
+        then the message again as it was sent."""
+        message = step.prompt.format_map(run.fields())
+        if handle not in run.answers:
+            return f"No reply came to this, so here it is again.\n\n{message}"
+        missing = cls._read(run, step, handle).get("missing") or []
+        if step.collect == "anchors" and not missing:
+            missing = ["raw_ideal above raw_reject"]
+        lacked = ", ".join(missing) or "what it asks for"
+        return (
+            f"Your reply didn't have {lacked}. Here is the message again: reply with the "
+            f"element it shows, filled in.\n\n{message}"
+        )
 
     async def _reask(
         self,
@@ -1594,6 +1784,10 @@ class ConductorEngine:
                 "[[mycelium: stance=accept]] or [[mycelium: stance=reject]]."
             )
         head = f"{run.protocol.name} · {step.id} (again) · turn {run.steps_taken} of {cap}"
+        texts = {h: f"{head} · {h}\n\n{ask}" for h in lacking}
+        if step.reply is not None:
+            # Said before the answers are cleared: what each member's reply lacked.
+            texts = {h: self._asked_again(run, step, h) for h in lacking}
         self._manager.hold_floor(managed.room, run.episode, holder=me, speakers=lacking)
         run.answers = {}
         run.asking, run.again = step, True
@@ -1606,7 +1800,7 @@ class ConductorEngine:
                         me,
                         run,
                         h,
-                        f"{head} · {h}\n\n{ask}",
+                        texts[h],
                         {
                             "step": step.id,
                             "protocol": run.protocol.name,
@@ -1649,10 +1843,14 @@ class ConductorEngine:
         run.asking, run.again = step, False
 
         def render(handle: str, round_n: int) -> str:
+            body = step.prompt.format_map(run.fields(round_n=round_n, rounds=step.rounds))
+            if step.reply:
+                # A protocol's own message goes as written, with nothing before
+                # it: the turn's place in the run rides its structured line.
+                return body
             # Every turn says which step of which flow it is, so the episode
             # reads as a run and not as a conversation that happened to occur.
             head = f"{run.protocol.name} · {step.id} · turn {run.steps_taken} of {cap} · {handle}"
-            body = step.prompt.format_map(run.fields(round_n=round_n, rounds=step.rounds))
             return f"{head}\n\n{body}"
 
         def data(handle: str, round_n: int) -> dict[str, Any]:
@@ -1837,6 +2035,15 @@ class ConductorEngine:
         )
         ep.messages.append(message_format.envelope_to_dict(commit))
         text = f"{self._result_line(run, outcome, why)} Record: {EPISODES_PREFIX}{ep.short_id}."
+        said = concord_commit(run, outcome)
+        winner = next((o for o in run.options if o.label == (pick or {}).get("pick")), None)
+        if said is not None and winner is not None:
+            # CONCORD ends with its commit, sent to every member; the line a
+            # person reads follows it.
+            element = concord_messages.commit(
+                said["outcome"], run.candidate(winner), run.scored(winner.label), run.bar()
+            )
+            text = f"{element}\n\n{text}"
         try:
             # A commit asks nobody (``asks.py``): the close is said, not put.
             await managed.post(commit, text, list_write=True)

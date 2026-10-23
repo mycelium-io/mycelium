@@ -13,16 +13,18 @@ three things a person can check by hand:
   member's bad outcome, 1 at its ideal, so one member's 0.6 means what
   another's does, whatever numbers each used. A member with no reference
   ratings is placed on its raw scale (``raw / 100``).
-- **the pick**: the option the least happy member is best off with (leximin
-  over the placed ratings: each option's sorted lowest first, compared from the
-  lowest up; a final tie goes to the earlier letter). A missing rating counts
-  as 0 *for ranking*, so an option cannot win because the people who dislike
-  it did not answer.
-- **whether everyone is on board**: every member rated the pick, and every
-  placed rating is at the bar or above. When not, the member least happy with
-  it, among those who rated it, is the one asked for a fix. When only silence
-  stands in the way, or the fixes allowed are used up, it is ``stuck``, and the
-  pick stands as the best found.
+- **the pick**, by CONCORD's rules (the IoC team's specification,
+  ioc-project.github.io/cognition-protocols/): among the options every member
+  rated at the bar or above, failing that every option anyone rated, the one
+  the least happy member is best off with (leximin over the placed ratings:
+  each option's sorted lowest first, compared from the lowest up; a tie goes
+  to the option rated by more members, then the earlier one). A new best only
+  replaces the option picked before when it is better by ``eps``.
+- **whether everyone is on board**: every member rated the pick at the bar or
+  above, and no rating anywhere is missing after being asked for again. When
+  not, the member who rates the pick lowest is the one asked for a fix, until
+  the fixes allowed are used up: then it is ``stuck``, and the pick stands as
+  the best found.
 
 **The numbers are never the argument.** Every rating carries its member's
 reason, and everything this module writes for people leads with what a rating
@@ -123,11 +125,14 @@ def same_text(a: str, b: str) -> bool:
     return squash(a) == squash(b)
 
 
-def add_option(options: list[Option], text: str, author: str, why: str = "") -> Option | None:
-    """Add a proposal under the next free letter; ``None`` when there is none.
+def add_option(
+    options: list[Option], text: str, author: str, why: str = "", *, label: str | None = None
+) -> Option | None:
+    """Add a proposal under ``label``, or the next free letter; ``None`` when
+    there is none.
 
     A duplicate folds into the earlier option, crediting its author (and its
-    reason) too. After 26 options nothing more is added.
+    reason) too. After 26 lettered options nothing more is added.
     """
     text = text.strip()
     if not text:
@@ -139,16 +144,20 @@ def add_option(options: list[Option], text: str, author: str, why: str = "") -> 
             if why and author not in existing.why:
                 existing.why[author] = why
             return existing
-    if len(options) >= len(LABELS):
+    if label is None:
+        if len(options) >= len(LABELS):
+            return None
+        label = LABELS[len(options)]
+    elif any(o.label == label for o in options):
         return None
-    option = Option(label=LABELS[len(options)], text=text, authors=[author])
+    option = Option(label=label, text=text, authors=[author])
     if why:
         option.why[author] = why
     options.append(option)
     return option
 
 
-def placed(raw: int, anchor: tuple[int, int] | None) -> float:
+def placed(raw: float, anchor: tuple[float, float] | None) -> float:
     """Where ``raw`` stands between a member's bad and ideal ratings, 0 to 1.
 
     Below the bad outcome is 0 and above the ideal is 1: a rating outside the
@@ -174,46 +183,82 @@ def verdict(value: float | None, bar: float) -> str:
     return "meets the bar"
 
 
-def ranking_key(
-    option: Option, index: int, cast: list[str], standing: dict[str, dict[str, float]]
-) -> tuple:
-    """How an option ranks: its placed ratings lowest first (missing as 0),
-    then the earlier letter. Larger wins."""
-    vector = sorted(standing.get(option.label, {}).get(h, 0.0) for h in cast)
-    return (vector, -index)
+#: How close two placed ratings have to be to count as equal.
+TOL = 1e-9
+
+
+def leximin(at: dict[str, float]) -> list[float]:
+    """An option's placed ratings, lowest first: what the pick compares."""
+    return sorted(at.values())
+
+
+def lex_gt(v: list[float], u: list[float]) -> bool:
+    """Whether ``v`` beats ``u`` leximin: higher at the first place they
+    differ, or as good everywhere and rated by more members."""
+    for a, b in zip(v, u, strict=False):
+        if a > b + TOL:
+            return True
+        if b > a + TOL:
+            return False
+    return len(v) > len(u)
+
+
+def accepts(v: list[float], u: list[float], eps: float) -> bool:
+    """Whether ``v`` is enough better than ``u`` to replace it: at least ``eps``
+    higher at some place, no lower anywhere before it."""
+    return any(
+        v[k] >= u[k] + eps - TOL and all(v[i] >= u[i] - TOL for i in range(k))
+        for k in range(min(len(v), len(u)))
+    )
 
 
 def pick(
     options: list[Option],
     cast: list[str],
-    ratings: dict[str, dict[str, int]],
+    ratings: dict[str, dict[str, float]],
     threshold: float,
     *,
     repairs_done: int = 0,
     max_repairs: int = 5,
-    anchors: dict[str, tuple[int, int]] | None = None,
+    anchors: dict[str, tuple[float, float]] | None = None,
     reasons: dict[str, dict[str, str]] | None = None,
+    incumbent: str | None = None,
+    eps: float = 0.0,
+    unrated: dict[str, set[str]] | None = None,
 ) -> dict[str, Any]:
     """The result of one ``select`` step, as the record, the scorecard and the
     close carry it.
 
-    ``ratings`` is ``{member: {letter: 0-100}}`` on each member's own scale;
+    ``ratings`` is ``{member: {option: 0-100}}`` on each member's own scale;
     ``anchors`` is ``{member: (bad, ideal)}``, the member's ratings of the two
-    reference outcomes; ``reasons`` is ``{member: {letter: why}}``.
+    reference outcomes; ``reasons`` is ``{member: {option: why}}``.
     ``threshold`` is the bar, 0-1, on the placed scale. ``repairs_done`` is how
-    many times this step already sent it back for a fix.
+    many times this step already sent it back for a fix. ``incumbent`` is the
+    option the step picked last time, which a new best has to beat by ``eps``
+    to replace. ``unrated`` is ``{member: {option}}``, the ratings a member
+    still hadn't given when asked again: while any stands, nothing is agreed.
+
+    The rules are CONCORD's: the options everyone rated at the bar or above
+    are the ones to pick among, failing that every option anyone rated; the
+    pick is the best of those leximin; it replaces the incumbent only when
+    better by ``eps``; it's agreed when everyone rated it at the bar or above
+    and no rating anywhere is missing; otherwise the member who rates it
+    lowest (the earlier in the cast on a tie) is asked for a fix, until the
+    fixes allowed are used up.
     """
     anchors = anchors or {}
     reasons = reasons or {}
+    unrated = unrated or {}
     bar = round(threshold * 100)
     table = {
         o.label: {h: ratings[h][o.label] for h in cast if o.label in ratings.get(h, {})}
         for o in options
     }
-    standing = {
-        label: {h: round(placed(raw, anchors.get(h)), 2) for h, raw in given.items()}
+    exact = {
+        label: {h: placed(raw, anchors.get(h)) for h, raw in given.items()}
         for label, given in table.items()
     }
+    standing = {label: {h: round(v, 4) for h, v in at.items()} for label, at in exact.items()}
     why = {
         o.label: {h: reasons[h][o.label] for h in cast if reasons.get(h, {}).get(o.label)}
         for o in options
@@ -230,7 +275,8 @@ def pick(
         "reasons": why,
         "cast": list(cast),
     }
-    if not options or not cast:
+    scored = [o for o in options if exact.get(o.label)]
+    if not cast or not scored:
         return base | {
             "outcome": "stuck",
             "pick": None,
@@ -242,41 +288,74 @@ def pick(
             "missing": list(cast),
             "least_happy": None,
             "short": [],
+            "selected": None,
+            "accepted": False,
+            "feasible": [],
+            "unrated": {h: sorted(v) for h, v in unrated.items() if v},
         }
-    best_index = max(range(len(options)), key=lambda i: ranking_key(options[i], i, cast, standing))
-    best = options[best_index]
+
+    def absent(label: str) -> list[str]:
+        return [h for h in cast if h not in exact[label]]
+
+    feasible = [
+        o.label
+        for o in scored
+        if not absent(o.label) and min(exact[o.label].values()) >= threshold - TOL
+    ]
+    pool = [o for o in scored if o.label in feasible] or scored
+    selected = pool[0]
+    for o in pool[1:]:
+        if lex_gt(leximin(exact[o.label]), leximin(exact[selected.label])):
+            selected = o
+    by_label = {o.label: o for o in options}
+    held = by_label.get(incumbent or "")
+    if (
+        held is None
+        or not exact.get(held.label)
+        or (
+            selected.label != held.label
+            and accepts(leximin(exact[selected.label]), leximin(exact[held.label]), eps)
+        )
+    ):
+        best, accepted = selected, True
+    else:
+        best, accepted = held, False
+
     given = table[best.label]
-    at = standing[best.label]
-    missing = [h for h in cast if h not in given]
-    short = [h for h in cast if h in at and at[h] < threshold]
-    lowest = min(at.values()) if at else None
-    # The least happy rater of the pick among those who rated it; the earlier
-    # in the cast on a tie.
-    least_happy = min(short, key=lambda h: (at[h], cast.index(h))) if short else None
+    at = exact[best.label]
+    missing = absent(best.label)
+    short = [h for h in cast if h in at and at[h] < threshold - TOL]
+    lowest = min(at.values())
+    any_unrated = any(unrated.values())
 
     outcome: Outcome
-    if not missing and not short:
+    if lowest >= threshold - TOL and not missing and not any_unrated:
         outcome = "feasible"
-    elif not short or repairs_done >= max_repairs:
-        # Only silence stands in the way (a fix cannot reach someone who is not
-        # answering), or the fixes allowed are used up.
+    elif repairs_done >= max_repairs:
         outcome = "stuck"
     else:
         outcome = "infeasible"
+    # The member who rates the pick lowest, the earlier in the cast on a tie:
+    # the one asked for a fix.
+    least_happy = min(at, key=lambda h: (at[h], cast.index(h))) if outcome == "infeasible" else None
     return base | {
         "outcome": outcome,
         "pick": best.label,
         "text": best.text,
         "ratings": dict(given),
-        "standing": dict(at),
+        "standing": dict(standing[best.label]),
         "verdicts": {h: verdict(at.get(h), threshold) for h in cast},
-        "lowest": lowest,
+        "lowest": round(lowest, 4),
         "missing": missing,
         "least_happy": least_happy,
         "short": [
-            {"member": h, "placed": at[h], "why": why[best.label].get(h, "")}
+            {"member": h, "placed": standing[best.label][h], "why": why[best.label].get(h, "")}
             for h in sorted(short, key=lambda h: (at[h], cast.index(h)))
         ],
+        "selected": selected.label,
+        "accepted": accepted,
+        "feasible": feasible,
+        "unrated": {h: sorted(v) for h, v in unrated.items() if v},
     }
 
 

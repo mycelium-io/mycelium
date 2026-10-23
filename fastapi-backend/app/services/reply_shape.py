@@ -3,24 +3,25 @@
 
 """What a reply to a conductor step has to say, and what the hub read from it.
 
-Each step that asks members for something asks for it in one shape, shown in
-its prompt: two anchor ratings, one option, a rating with a reason for every
-option, labelled pieces, key terms, or a stance. When a member's reply is
-recorded, the hub reads it against the step's shape with the same parsers the
-conductor collects with, and puts what it read on the message as ``reply``, so
-a surface draws the values rather than the prose. A reply that lacks something
-says what (``missing``) and is marked ``parsed: false``; nothing is guessed.
+A step that names a reply schema (``Step.reply``) asks for its answer in that
+schema, shown in its prompt. When a member's reply is recorded, the hub reads it
+against the schema with the parsers here, the same ones the conductor collects
+with, and puts what it read on the message as ``reply``, so a surface draws the
+values rather than the prose. A reply that lacks something says what
+(``missing``) and is marked ``parsed: false``. Nothing is guessed.
 
-The idea of a defined message structure for each step comes from the IoC
-ACCORD and CONCORD protocols (ioc-project.github.io/cognition-protocols/);
-these shapes are Mycelium's own.
+The schemas are CONCORD's, as its specification writes them (the IoC team's
+ACCORD and CONCORD, ioc-project.github.io/cognition-protocols/): the reply
+elements, their fields, and what makes one valid.
 """
 
 from __future__ import annotations
 
+import math
+import re
+import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING, Any
 
-from app.services import markers
 from app.services import select as choosing
 
 if TYPE_CHECKING:
@@ -30,100 +31,131 @@ if TYPE_CHECKING:
 #: under, beside the prose.
 REPLY_KEY = "reply"
 
-#: Which shape each kind of step asks for.
-_BY_COLLECT = {
-    "anchors": "anchors",
-    "options": "option",
-    "scores": "ratings",
-    "pieces": "pieces",
-    "keywords": "terms",
+#: Each reply schema, and the phase of its protocol it answers.
+SCHEMAS: dict[str, tuple[str, str]] = {
+    "concord-anchor-reply": ("concord", "ANCHOR"),
+    "concord-candidate-reply": ("concord", "SEED"),
+    "concord-score-reply": ("concord", "SCORE"),
 }
 
 
-def shape_of(step: Step) -> str | None:
-    """The shape a reply to ``step`` takes, or ``None`` when it asks for none."""
-    if step.collect in _BY_COLLECT:
-        return _BY_COLLECT[step.collect]
-    if step.needs == "stance":
-        return "stance"
+def schema_of(step: Step) -> str | None:
+    """The reply schema ``step`` asks for, or ``None`` when it names none."""
+    return step.reply if step.reply in SCHEMAS else None
+
+
+# ── finding the element in what a member wrote ────────────────────────────────
+
+_FENCE = re.compile(r"```[a-zA-Z]*\s*\n(.*?)\n\s*```", re.DOTALL)
+#: A ``<`` that opens no tag, and an ``&`` that starts no entity: prose inside
+#: an element writes them freely ("cost < 5", "R&D"), and XML can't.
+_BARE_LT = re.compile(r"<(?![a-zA-Z/?!])")
+_BARE_AMP = re.compile(r"&(?!(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)")
+
+
+def _element(text: str, name: str) -> ET.Element | None:
+    """The last ``<name>…</name>`` in ``text``, parsed; ``None`` when there is
+    none or it isn't well formed. A code fence around it is fine."""
+    for body in (*_FENCE.findall(text), text):
+        found = list(re.finditer(rf"<{name}\b[^>]*>.*?</{name}\s*>", body, re.DOTALL))
+        if not found:
+            continue
+        raw = found[-1].group(0)
+        raw = _BARE_AMP.sub("&amp;", _BARE_LT.sub("&lt;", raw))
+        try:
+            return ET.fromstring(raw)
+        except ET.ParseError:
+            return None
     return None
 
 
-def _text(content: dict[str, Any]) -> str:
-    text = content.get("content")
-    return text if isinstance(text, str) else ""
+def _text_of(el: ET.Element | None) -> str:
+    return " ".join("".join(el.itertext()).split()) if el is not None else ""
+
+
+def _raw(el: ET.Element | None) -> float | None:
+    """A raw 0-100 rating, or ``None`` when it isn't one: out of range is
+    refused, never clamped."""
+    try:
+        value = float(_text_of(el))
+    except ValueError:
+        return None
+    return value if math.isfinite(value) and 0 <= value <= 100 else None
+
+
+# ── reading a reply ───────────────────────────────────────────────────────────
 
 
 def read(
-    shape: str,
+    schema: str,
     content: dict[str, Any],
     *,
-    labels: list[str] | tuple[str, ...] = (),
-    wanted: list[str] | tuple[str, ...] = (),
-    anchor: tuple[int, int] | None = None,
-    key_terms: list[str] | None = None,
+    candidates: list[str] | tuple[str, ...] = (),
+    anchor: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
-    """What a reply recorded as ``content`` says, read as ``shape``.
+    """What a reply recorded as ``content`` says, read as ``schema``.
 
-    ``labels`` are the options on the table and ``wanted`` the ones this step
-    asks to be rated; ``anchor`` is the member's own (bad, ideal) ratings;
-    ``key_terms`` are the run's terms, for pieces written as plain lines.
+    ``candidates`` are the ids a score reply has to rate, and ``anchor`` the
+    member's own ``(raw_reject, raw_ideal)``, for the normalized scores.
     """
-    out: dict[str, Any] = {"shape": shape}
+    protocol, phase = SCHEMAS[schema]
+    out: dict[str, Any] = {"protocol": protocol, "phase": phase, "schema": schema}
+    text = content.get("content")
+    text = text if isinstance(text, str) else ""
+    el = _element(text, schema)
     missing: list[str] = []
-    text = _text(content)
-    if shape == "anchors":
-        said = markers.anchor_lines(text)
-        given = {k: {"score": v, "reason": why} for k, (v, why) in said.items() if k in ("bad", "ideal")}
-        if given:
-            out["anchors"] = given
-        missing += [f"a rating for {end}" for end in ("bad", "ideal") if end not in said]
-        if "bad" in said and "ideal" in said and said["ideal"][0] <= said["bad"][0]:
-            missing.append("an ideal rated above the bad outcome")
-    elif shape == "option":
-        option, why = markers.split_why(markers.MARKER_RE.sub("", text).strip())
-        if option:
-            out["option"] = {"text": option, "why": why}
+    value: dict[str, Any] = {}
+    if el is None:
+        missing.append(f"a <{schema}> element")
+    elif schema == "concord-anchor-reply":
+        reject, ideal = _raw(el.find("raw_reject")), _raw(el.find("raw_ideal"))
+        if reject is None:
+            missing.append("raw_reject, a number from 0 to 100")
+        if ideal is None:
+            missing.append("raw_ideal, a number from 0 to 100")
+        if reject is not None and ideal is not None:
+            value = {"raw_reject": reject, "raw_ideal": ideal}
+            if ideal <= reject:
+                missing.append("raw_ideal above raw_reject")
+        if note := _text_of(el.find("note")):
+            value["note"] = note
+    elif schema == "concord-candidate-reply":
+        candidate, rationale = _text_of(el.find("candidate")), _text_of(el.find("rationale"))
+        if candidate:
+            value["candidate"] = candidate
         else:
-            missing.append("the option")
-    elif shape == "ratings":
-        given = {k: v for k, v in markers.rated_of(content).items() if k in labels}
-        ratings = []
-        for label in labels:
-            if label not in given:
+            missing.append("a candidate")
+        if rationale:
+            value["rationale"] = rationale
+        else:
+            missing.append("a rationale")
+    elif schema == "concord-score-reply":
+        given: dict[str, tuple[float | None, str]] = {}
+        for score in el.findall("score"):
+            cid = (score.get("candidate_id") or "").strip()
+            if cid:
+                given[cid] = (_raw(score.find("raw")), _text_of(score.find("reasoning")))
+        scores = []
+        for cid in candidates:
+            raw, reasoning = given.get(cid, (None, ""))
+            if cid not in given:
+                missing.append(f"a score for {cid}")
                 continue
-            score, why = given[label]
-            entry: dict[str, Any] = {"option": label, "score": score, "reason": why}
+            if raw is None:
+                missing.append(f"a raw 0-100 score for {cid}")
+            if not reasoning:
+                missing.append(f"reasoning for {cid}")
+            if raw is None:
+                continue
+            entry: dict[str, Any] = {"candidate_id": cid, "raw": raw, "reasoning": reasoning}
             if anchor is not None:
-                entry["toward_ideal"] = round(choosing.placed(score, anchor) * 100)
-            ratings.append(entry)
-        if ratings:
-            out["ratings"] = ratings
-        if anchor is not None:
-            out["bad"], out["ideal"] = anchor
-        for label in wanted:
-            if label not in given:
-                missing.append(f"a rating for {label}")
-            elif not given[label][1]:
-                missing.append(f"a reason for {label}")
-    elif shape == "pieces":
-        pieces = markers.pieces_of(content, key_terms)
-        if pieces:
-            out["pieces"] = pieces
-        elif markers.MARKER_RE.sub("", text).strip():
-            missing.append("a labelled line")
-    elif shape == "terms":
-        # Naming none is an answer: the prompt asks a member to say so.
-        out["terms"] = markers.term_names(text)
-    elif shape == "stance":
-        stance = markers.stance_of(content)
-        if stance:
-            out["stance"] = stance
-        else:
-            missing.append("a stance")
+                entry["normalized"] = round(choosing.placed(raw, anchor), 4)
+            scores.append(entry)
+        value["scores"] = scores
     out["parsed"] = not missing
     if missing:
         out["missing"] = missing
+    out["value"] = value
     return out
 
 

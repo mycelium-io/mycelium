@@ -82,8 +82,19 @@ SUCCESS = frozenset({"resolved", "converged"})
 #: run always says its bar before anyone rates, and says when it's this one.
 DEFAULT_THRESHOLD = 0.6
 DEFAULT_MAX_REPAIRS = 5
+#: CONCORD's own defaults: at most ``B`` repair rounds, and how much better a
+#: new candidate has to be to replace the incumbent.
+CONCORD_REPAIRS = 10
+CONCORD_EPS = 0.05
 #: How many rounds a tally lets its points or words go before it settles.
 DEFAULT_MAX_ROUNDS = {"points": 3, "terms": 2}
+
+#: What a step collects when it names each reply schema.
+REPLY_COLLECTS = {
+    "concord-anchor-reply": "anchors",
+    "concord-candidate-reply": "options",
+    "concord-score-reply": "scores",
+}
 
 
 class Step(BaseModel):
@@ -129,8 +140,28 @@ class Step(BaseModel):
             "is kept as one unlabelled statement."
         ),
     )
+    reply: (
+        Literal["concord-anchor-reply", "concord-candidate-reply", "concord-score-reply"] | None
+    ) = Field(
+        None,
+        description=(
+            "The schema every reply is written in (app.services.reply_shape). A step "
+            "that names one posts its prompt as written, with no line of its own "
+            "before it, and a reply that doesn't match is asked again once and then "
+            "kept as text, marked unparsed."
+        ),
+    )
     threshold: float | None = Field(
         None, ge=0, le=1, description="A select step's bar, 0-1 (0.7 = everyone rates it 70+)."
+    )
+    eps: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description=(
+            "How much better a new option has to be for a select step to take it over "
+            "the one it picked before, at the first place their sorted scores differ."
+        ),
     )
     max_repairs: int | None = Field(
         None, ge=0, description="How many fixes a select step sends for before it is stuck."
@@ -180,8 +211,16 @@ class Step(BaseModel):
                 "collect or require"
             )
             raise ValueError(msg)
-        if self.kind != "select" and (self.threshold is not None or self.max_repairs is not None):
-            msg = f"step {self.id!r}: threshold and max_repairs belong to a select step"
+        if self.kind != "select" and (
+            self.threshold is not None or self.max_repairs is not None or self.eps is not None
+        ):
+            msg = f"step {self.id!r}: threshold, max_repairs and eps belong to a select step"
+            raise ValueError(msg)
+        if self.reply is not None and REPLY_COLLECTS[self.reply] != self.collect:
+            msg = (
+                f"step {self.id!r}: a {self.reply} answers a step that collects "
+                f"{REPLY_COLLECTS[self.reply]}"
+            )
             raise ValueError(msg)
         if self.kind != "tally" and (self.of is not None or self.max_rounds is not None):
             msg = f"step {self.id!r}: of and max_rounds belong to a tally step"
@@ -555,76 +594,56 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
             {"id": "approved", "end": "resolved"},
         ],
     },
-    # Help them agree on one option. Everyone first rates the same two
-    # reference outcomes, so a later rating means the same for everyone; then
-    # everyone proposes with reasons and rates with reasons, a pick is made in
-    # code, and the member least happy with it proposes something new that
-    # answers the objections, until everyone meets the bar or the fixes run out
-    # and the best found stands.
+    # CONCORD, as the IoC team's specification writes it
+    # (ioc-project.github.io/cognition-protocols/), with the conductor as its
+    # initiator: ANCHOR, SEED, SCORE, then SELECT in code; the member who rates
+    # the best candidate lowest is sent a REPAIR, and everyone scores the new
+    # candidate, until every member clears the bar (SUCCESS) or the repairs
+    # run out (BEST_EFFORT). Each message is the spec's element, sent as
+    # written, and each reply is read against its reply schema.
     "concord": {
         "name": "concord",
         "description": (
-            "Help them agree. Everyone rates two shared reference outcomes, proposes "
-            "an option and says why, and rates every option with a reason; the member "
-            "least happy with the best one proposes something new that answers the "
-            "objections, until it meets everyone's bar or the best found stands."
+            "CONCORD, the IoC team's protocol for agreeing under conflict. Everyone rates "
+            "two reference outcomes, proposes a candidate with its rationale, and scores "
+            "every candidate with reasoning; the member who rates the best one lowest "
+            "proposes a new one, until everyone clears the bar or the repairs run out."
         ),
         "roles": [],
-        # A safety net: anchors, propose, rate, 5 x (fix,
-        # re-rate), plus re-asks. max_repairs is what bounds the fixes.
-        "max_steps": 20,
+        # A safety net: anchor, seed, score, 10 x (repair, score), plus a
+        # re-ask each. max_repairs (the spec's B) is what bounds the repairs.
+        "max_steps": 46,
         "steps": [
             {
                 "id": "anchor",
                 "to": "all",
                 "collect": "anchors",
-                "prompt": (
-                    "{agreed}Before anyone proposes anything for {title}: {ask}\n\n"
-                    "Two outcomes everyone rates the same way:\n\n"
-                    "bad: {bad}\nideal: {ideal}\n\n"
-                    "How good would each be for your role? Rate each from 0 to 100 on your "
-                    "own scale, one line each, with why:\n\n"
-                    "bad: <0-100> - <why>\nideal: <0-100> - <why>\n\n"
-                    "Your ideal has to rate higher than the bad outcome. Every rating you "
-                    "give later is placed between these two, so it means the same as "
-                    "everyone else's."
-                ),
+                "reply": "concord-anchor-reply",
+                "prompt": "{concord_anchor}",
                 "next": "propose",
             },
             {
                 "id": "propose",
                 "to": "all",
                 "collect": "options",
-                "prompt": (
-                    "{agreed}{ask}\n\n{bar_said}\n\nPropose the one option you think "
-                    "best serves your role for {title}: the concrete terms in one or two "
-                    "sentences, then a line saying why, with the facts behind it:\n\n"
-                    "<the option>\nwhy: <the reasons>\n\n"
-                    "Don't hedge or pre-compromise; everyone rates every option next."
-                ),
+                "reply": "concord-candidate-reply",
+                "prompt": "{concord_seed}",
                 "next": "score",
             },
             {
                 "id": "score",
                 "to": "all",
                 "collect": "scores",
-                "prompt": (
-                    "The options for {title}:\n\n{options}\n\n{bar_said}\n\nRate each "
-                    "option for your role, on the scale you rated the two outcomes on, "
-                    "one line each with your main reason or concern in one short "
-                    "sentence:\n\n{rating_lines}\n\n"
-                    "Keep the option's name in brackets, so the thread can follow: "
-                    "`B (Ship on Friday): 40 - the Friday window breaks certification`. The "
-                    "reason matters more than the number: it's what the others will "
-                    "have to answer."
-                ),
+                "reply": "concord-score-reply",
+                "prompt": "{concord_score}",
                 "next": "pick",
             },
             {
                 "id": "pick",
                 "kind": "select",
                 "threshold": DEFAULT_THRESHOLD,
-                "max_repairs": DEFAULT_MAX_REPAIRS,
+                "max_repairs": CONCORD_REPAIRS,
+                "eps": CONCORD_EPS,
                 "next": {
                     "feasible": "agreed",
                     "infeasible": "repair",
@@ -636,25 +655,16 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 "id": "repair",
                 "to": BOTTLENECK,
                 "collect": "options",
-                "prompt": (
-                    "The best option so far for {title} is:\n\n{pick}\n\nHow everyone "
-                    "sees it:\n\n{standing}\n\n{shortfall}\n\nPropose something new that "
-                    "answers these objections, not a small change to it:\n\n{objections}\n\n"
-                    "{bar_said} Aim for an option you'd rate near your ideal that the "
-                    "others can still accept. Reply with the option, then a line saying "
-                    "what it answers and how:\n\n<the option>\nwhy: <what it answers>\n\n"
-                    "Every option so far:\n\n{options}"
-                ),
+                "reply": "concord-candidate-reply",
+                "prompt": "{concord_repair}",
                 "next": "rescore",
             },
             {
                 "id": "rescore",
                 "to": "all",
                 "collect": "scores",
-                "prompt": (
-                    "A new option for {title}:\n\n{new_options}\n\nRate it the same way, "
-                    "one line with your reason in one short sentence:\n\n{new_rating_lines}"
-                ),
+                "reply": "concord-score-reply",
+                "prompt": "{concord_score}",
                 "next": "pick",
             },
             {"id": "agreed", "end": "converged"},

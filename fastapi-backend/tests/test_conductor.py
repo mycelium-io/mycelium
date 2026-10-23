@@ -944,9 +944,43 @@ def in_a_task(monkeypatch: pytest.MonkeyPatch) -> None:
 
 DECISION_KEY = "context/decision/acme-renewal"
 OUTCOMES = "bad: Acme leaves ideal: Acme renews for three years at list price"
+
+
+def _anchor(reject: float = 0, ideal: float = 100) -> tuple[str, None]:
+    """A member's ``<concord-anchor-reply>``."""
+    return (
+        "<concord-anchor-reply>\n"
+        f"  <raw_reject>{reject}</raw_reject>\n  <raw_ideal>{ideal}</raw_ideal>\n"
+        "</concord-anchor-reply>",
+        None,
+    )
+
+
+def _seed(candidate: str, rationale: str = "it serves my role") -> tuple[str, None]:
+    """A member's ``<concord-candidate-reply>``, for a seed or a repair."""
+    return (
+        "<concord-candidate-reply>\n"
+        f"  <candidate>{candidate}</candidate>\n  <rationale>{rationale}</rationale>\n"
+        "</concord-candidate-reply>",
+        None,
+    )
+
+
+def _scores(given: dict[str, tuple[float, str]]) -> tuple[str, None]:
+    """A member's ``<concord-score-reply>``: ``{candidate id: (raw, reasoning)}``."""
+    body = "".join(
+        f'  <score candidate_id="{cid}">\n    <raw>{raw}</raw>\n'
+        f"    <reasoning>{why}</reasoning>\n  </score>\n"
+        for cid, (raw, why) in given.items()
+    )
+    return f"<concord-score-reply>\n{body}</concord-score-reply>", None
+
+
 #: A member's ratings of the two reference outcomes at 0 and 100, so each of
 #: its later ratings is placed exactly where it reads.
-ANCHORED = ("bad: 0 - we lose the account\nideal: 100 - the best this could go", None)
+ANCHORED = _anchor(0, 100)
+#: The candidates of the renewal runs below, by who proposed them.
+SUCCESS_SEED, FINANCE_SEED, LEGAL_SEED = "seed-success", "seed-finance", "seed-legal"
 
 
 def _concord(script: dict[str, list[tuple]], settings: str = OUTCOMES):
@@ -966,18 +1000,30 @@ async def test_concord_agrees_the_first_time_everyone_meets_the_bar(in_a_task):
         {
             "success": [
                 ANCHORED,
-                ("20% off\nwhy: it keeps them from leaving", None),
-                ("A: 95 - it keeps the account\nB: 72 - they may push back", None),
+                _seed("20% off", "it keeps them from leaving"),
+                _scores(
+                    {
+                        SUCCESS_SEED: (95, "it keeps the account"),
+                        FINANCE_SEED: (72, "they may push back"),
+                    }
+                ),
             ],
             "finance": [
                 ANCHORED,
-                ("10% off\nwhy: margin stays above 30%", None),
-                ("A: 30 - margin falls below 30%\nB: 90 - margin holds", None),
+                _seed("10% off", "margin stays above 30%"),
+                _scores(
+                    {
+                        SUCCESS_SEED: (30, "margin falls below 30%"),
+                        FINANCE_SEED: (90, "margin holds"),
+                    }
+                ),
             ],
             "legal": [
                 ANCHORED,
-                ("10% off", None),
-                ("A: 80 - standard terms\nB: 80 - standard terms", None),
+                _seed("10% off", "standard terms cover it"),
+                _scores(
+                    {SUCCESS_SEED: (80, "standard terms"), FINANCE_SEED: (80, "standard terms")}
+                ),
             ],
         }
     )
@@ -988,22 +1034,24 @@ async def test_concord_agrees_the_first_time_everyone_meets_the_bar(in_a_task):
     assert [(s, to) for s, to, _p in channel.ticks()] == [
         (step, h) for step in ("anchor", "propose", "score") for h in CAST
     ]
-    # Everyone rates the same two outcomes first, as the summon gave them.
-    assert (
-        "bad: Acme leaves\nideal: Acme renews for three years at list price"
-        in (channel.ticks()[0][2])
+    # Each message is CONCORD's own element, sent as written: nothing before it.
+    anchor = channel.ticks()[0][2]
+    assert anchor.startswith(
+        "<concord-anchor>\n  <satisfaction_threshold>0.6</satisfaction_threshold>"
     )
-    # Raters read each option with why it was proposed, and the bar in words.
+    assert "<x_reject>Acme leaves</x_reject>" in anchor
+    assert "<x_ideal>Acme renews for three years at list price</x_ideal>" in anchor
+    assert "<concord-anchor-reply>" in anchor
+    assert channel.ticks()[3][2].startswith("<concord-propose-seed>")
+    # Raters read each candidate by its id, with its proposers' rationale.
     score = channel.ticks()[6][2]
+    assert score.startswith("<concord-score>")
     assert (
-        "A. 20% off\n   why (success): it keeps them from leaving\n"
-        "B. 10% off\n   why (finance): margin stays above 30%"
+        '<candidate id="seed-success">\n      <text>20% off</text>\n'
+        "      <rationale>it keeps them from leaving</rationale>"
     ) in score
-    assert (
-        "at least 60% of the way from *Acme leaves* to *Acme renews for three years at list price*"
-    ) in score
-    # The line to fill in names the option, so the reply reads on its own.
-    assert "B (10% off): <0-100> - <why>" in score
+    # The reply to fill in names every candidate id to score.
+    assert '<score candidate_id="seed-finance">' in score
     commit = channel.commit()
     assert commit.header.subkind == "converged"
     assert is_converged(commit)
@@ -1014,47 +1062,78 @@ async def test_concord_agrees_the_first_time_everyone_meets_the_bar(in_a_task):
     assert "within" not in data
     assert data["memory"] == DECISION_KEY
     assert data["steps"] == 3
-    assert data["select"]["pick"] == "B"
+    assert data["select"]["pick"] == FINANCE_SEED
     assert data["metrics"]["min_satisfaction"] == 0.72
+    # The run ends with CONCORD's commit, then the line a person reads.
     said = _commit_text(channel)
-    assert said.startswith("✓ Everyone meets the bar: going with B: 10% off.")
+    assert said.startswith(
+        "<concord-commit>\n  <outcome>SUCCESS</outcome>\n"
+        "  <winning_candidate_id>seed-finance</winning_candidate_id>"
+    )
+    assert '<score agent="legal" value="0.80"/>' in said
+    assert "✓ Everyone meets the bar: going with seed-finance: 10% off." in said
     assert f"The decision is saved as {DECISION_KEY}." in said
+    assert data[conductor.LINE_KEY]["commit"] == {
+        "outcome": "SUCCESS",
+        "winning_candidate_id": FINANCE_SEED,
+        "winning_candidate": "10% off",
+        "final_scores": {"success": 0.72, "finance": 0.9, "legal": 0.8},
+        "shortfall": [],
+        "unknown": [],
+        "satisfaction_threshold": 0.6,
+        "repairs": 0,
+    }
     (card,) = _selects(channel)
     assert card["outcome"] == "feasible"
-    assert card["table"]["A"] == {"success": 95, "finance": 30, "legal": 80}
-    assert card["reasons"]["A"]["finance"] == "margin falls below 30%"
+    assert card["table"][SUCCESS_SEED] == {"success": 95, "finance": 30, "legal": 80}
+    assert card["reasons"][SUCCESS_SEED]["finance"] == "margin falls below 30%"
     # The scorecard in the thread says what each rating means, and why.
     assert any("- legal: meets the bar, because standard terms" in s for s in channel.said())
     meta, body = _saved(DECISION_KEY)
     assert meta["decision"]["agreed"] is True
-    assert body.startswith("# Decision: Decide the renewal offer\n\nGoing with B: 10% off")
+    assert body.startswith(
+        "# Decision: Decide the renewal offer\n\nGoing with seed-finance: 10% off"
+    )
     assert body.index("## How each member sees it") < body.index("## The numbers")
 
 
 @pytest.mark.asyncio
 async def test_concord_asks_only_the_least_happy_for_a_fix_then_everyone_rates_it(in_a_task):
-    # B wins the first pick (lowest 50 beats A's 30), with success least happy.
+    # seed-finance wins the first pick (its lowest, 0.5, beats seed-success's
+    # 0.3), with success the member who rates it lowest.
     (engine, manager, channel), directive = _concord(
         {
             "success": [
                 ANCHORED,
-                ("20% off\nwhy: it keeps them from leaving", None),
-                ("A: 95 - it keeps the account\nB: 50 - 10% won't keep them past a year", None),
-                # its fix
-                ("15% off for a two-year term\nwhy: two years answers the one-year worry", None),
-                ("C: 85 - two years keeps them", None),
+                _seed("20% off", "it keeps them from leaving"),
+                _scores(
+                    {
+                        SUCCESS_SEED: (95, "it keeps the account"),
+                        FINANCE_SEED: (50, "10% won't keep them past a year"),
+                    }
+                ),
+                # its repair
+                _seed("15% off for a two-year term", "two years answers the one-year worry"),
+                _scores({"r1-success": (85, "two years keeps them")}),
             ],
             "finance": [
                 ANCHORED,
-                ("10% off\nwhy: margin stays above 30%", None),
-                ("A: 30 - margin falls below 30%\nB: 90 - margin holds", None),
-                ("C: 80 - margin holds over two years", None),
+                _seed("10% off", "margin stays above 30%"),
+                _scores(
+                    {
+                        SUCCESS_SEED: (30, "margin falls below 30%"),
+                        FINANCE_SEED: (90, "margin holds"),
+                    }
+                ),
+                _scores({"r1-success": (80, "margin holds over two years")}),
             ],
             "legal": [
                 ANCHORED,
-                ("10% off", None),
-                ("A: 80 - standard terms\nB: 80 - standard terms", None),
-                ("C: 75 - a two-year term needs one new clause", None),
+                _seed("10% off", "standard terms cover it"),
+                _scores(
+                    {SUCCESS_SEED: (80, "standard terms"), FINANCE_SEED: (80, "standard terms")}
+                ),
+                _scores({"r1-success": (75, "a two-year term needs one new clause")}),
             ],
         }
     )
@@ -1063,25 +1142,23 @@ async def test_concord_asks_only_the_least_happy_for_a_fix_then_everyone_rates_i
 
     assert outcome == "converged"
     steps = [(s, to) for s, to, _p in channel.ticks()]
-    assert steps[9] == ("repair", "success"), "only the least happy member is asked for a fix"
+    assert steps[9] == ("repair", "success"), "only the bottleneck is sent a repair"
     assert [to for s, to in steps if s == "rescore"] == CAST
     fix_prompt = channel.ticks()[9][2]
-    # The fixer is told where it stands in words, and what it has to answer.
+    # The repair shows the incumbent, where the bottleneck stands on it, and
+    # every member's normalized score with its reasoning.
+    assert fix_prompt.startswith("<concord-repair>")
+    assert '<incumbent id="seed-finance" your_score="0.50" shortfall="0.10">' in fix_prompt
+    assert "<text>10% off</text>" in fix_prompt
     assert (
-        "For you, B (10% off) is short of the bar, because 10% won't keep them past a year. "
-        "You're the one furthest from the bar."
+        '<score agent="success" score="0.50">\n'
+        "        <reasoning>10% won't keep them past a year</reasoning>"
     ) in fix_prompt
-    assert "- success: 10% won't keep them past a year" in fix_prompt
-    assert "- finance (meets the bar): margin holds" in fix_prompt
-    # The fixer revises the pick, so it sees the pick and every option in full,
-    # not just their letters in the table.
-    assert "The best option so far for Decide the renewal offer is:\n\nB. 10% off" in fix_prompt
-    assert "A. 20% off" in fix_prompt
+    assert '<score agent="finance" score="0.90">' in fix_prompt
     rescore_prompt = channel.ticks()[10][2]
-    assert "C. 15% off for a two-year term" in rescore_prompt
-    assert "why (success): two years answers the one-year worry" in rescore_prompt
-    assert "A. 20% off" not in rescore_prompt, "only the new option is put to a rating"
-    assert "C (15% off for a two-year…): <0-100> - <why>" in rescore_prompt
+    assert '<candidate id="r1-success">' in rescore_prompt
+    assert "two years answers the one-year worry" in rescore_prompt
+    assert 'id="seed-success"' not in rescore_prompt, "only the new candidate is scored"
     commit = channel.commit()
     assert commit.payload.data["select"]["text"] == "15% off for a two-year term"
     said = _commit_text(channel)
@@ -1101,24 +1178,27 @@ async def test_concord_asks_only_the_least_happy_for_a_fix_then_everyone_rates_i
 
 @pytest.mark.asyncio
 async def test_when_the_fixes_run_out_the_best_found_stands_and_says_who_is_short(in_a_task):
-    # finance hates everything, including its own fixes, so it stays least happy.
-    def rated(n: int, why: str) -> tuple[str, None]:
-        return ("\n".join(f"{x}: {n} - {why}" for x in "ABCD"), None)
+    # finance hates everything, including its own repairs, so it stays the
+    # bottleneck until the repairs run out.
+    def rated(ids: list[str], n: int, why: str) -> tuple[str, None]:
+        return _scores(dict.fromkeys(ids, (n, why)))
 
-    hates, likes = rated(10, "too deep a cut"), rated(90, "works")
+    rounds = [[SUCCESS_SEED, FINANCE_SEED], ["r1-finance"], ["r2-finance"]]
+    hates = [rated(ids, 10, "too deep a cut") for ids in rounds]
+    likes = [rated(ids, 90, "works") for ids in rounds]
     (engine, _manager, channel), directive = _concord(
         {
-            "success": [ANCHORED, ("A text", None), likes, likes, likes],
+            "success": [ANCHORED, _seed("A text"), *likes],
             "finance": [
                 ANCHORED,
-                ("B text", None),
-                hates,
-                ("fix one\nwhy: a smaller cut", None),
-                hates,
-                ("fix two\nwhy: smaller still", None),
-                hates,
+                _seed("B text"),
+                hates[0],
+                _seed("fix one", "a smaller cut"),
+                hates[1],
+                _seed("fix two", "smaller still"),
+                hates[2],
             ],
-            "legal": [ANCHORED, ("A text", None), likes, likes, likes],
+            "legal": [ANCHORED, _seed("A text"), *likes],
         },
         settings=f"bar=70 fixes=2 {OUTCOMES}",
     )
@@ -1138,8 +1218,13 @@ async def test_when_the_fixes_run_out_the_best_found_stands_and_says_who_is_shor
     assert "assignments" not in commit.payload.data
     assert commit.payload.data["memory"] == DECISION_KEY, "the best found is saved too"
     said = _commit_text(channel)
-    assert said.startswith("Best found: A: A text. It's below the bar for some:")
+    assert said.startswith("<concord-commit>\n  <outcome>BEST_EFFORT</outcome>")
+    assert '<agent name="finance" score="0.10" short_by="0.60"/>' in said
+    assert "Best found: seed-success: A text. It's below the bar for some:" in said
     assert "finance is short of the bar, because too deep a cut." in said
+    close = commit.payload.data[conductor.LINE_KEY]["commit"]
+    assert (close["outcome"], close["repairs"]) == ("BEST_EFFORT", 2)
+    assert close["shortfall"] == [{"agent": "finance", "score": 0.1, "short_by": 0.6}]
     meta, body = _saved(DECISION_KEY)
     assert meta["decision"]["agreed"] is False
     assert meta["decision"]["short"] == [
@@ -1149,49 +1234,76 @@ async def test_when_the_fixes_run_out_the_best_found_stands_and_says_who_is_shor
 
 
 @pytest.mark.asyncio
-async def test_a_rating_without_a_reason_is_asked_again_once_and_the_silent_never(in_a_task):
+async def test_a_score_without_reasoning_and_a_silent_member_are_asked_once_then_missing(
+    in_a_task,
+):
+    no_reasons = (
+        "<concord-score-reply>"
+        '<score candidate_id="seed-success"><raw>90</raw></score>'
+        '<score candidate_id="seed-finance"><raw>80</raw></score>'
+        "</concord-score-reply>",
+        None,
+    )
     (engine, manager, channel), directive = _concord(
         {
             "success": [
                 ANCHORED,
-                ("A text", None),
-                ("[[mycelium: A=90 B=80]]", None),  # numbers with no reasons
-                ("A: 90 - fits the plan\nB: 80 - slower", None),
+                _seed("A text"),
+                no_reasons,
+                _scores({SUCCESS_SEED: (90, "fits the plan"), FINANCE_SEED: (80, "slower")}),
             ],
-            "finance": [ANCHORED, ("B text", None), ("A: 75 - costs more\nB: 90 - cheaper", None)],
-            "legal": [ANCHORED, ("A text", None)],  # proposes, then goes quiet
-        }
+            "finance": [
+                ANCHORED,
+                _seed("B text"),
+                _scores({SUCCESS_SEED: (75, "costs more"), FINANCE_SEED: (90, "cheaper")}),
+            ],
+            "legal": [ANCHORED, _seed("A text")],  # proposes, then goes quiet
+        },
+        settings=f"fixes=1 {OUTCOMES}",
     )
 
     outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=CAST)
 
     ticks = [(s, to) for s, to, _p in channel.ticks()]
-    again = ticks[9:]
-    assert again == [("score", "success")], "one re-ask, to the member who gave no reasons"
+    assert ticks[9:11] == [("score", "success"), ("score", "legal")], (
+        "one retry each: the member who gave no reasoning, and the silent one"
+    )
     reask = channel.ticks()[9][2]
-    assert "I couldn't read a rating with a reason for each of these options" in reask
-    # The re-ask says what it wants rated, since it arrives on its own.
-    assert "A. A text" in reask and "A (A text): <0-100> - <why>" in reask
-    assert ["success"] in [sorted(f.speakers) for f in manager.floor_log]
-    # legal never rated: missing, not zero, and a fix can't reach it.
-    (card,) = _selects(channel)
+    assert reask.startswith(
+        "Your reply didn't have reasoning for seed-success, reasoning for seed-finance."
+    )
+    # The retry sends the message again, since it arrives on its own.
+    assert '<candidate id="seed-success">' in reask
+    assert channel.ticks()[10][2].startswith("No reply came to this, so here it is again.")
+    assert ["legal", "success"] in [sorted(f.speakers) for f in manager.floor_log]
+    # legal never scored: missing, not zero, and nothing is agreed while it is.
+    card = _selects(channel)[0]
     assert card["missing"] == ["legal"]
     assert "legal" not in card["ratings"]
-    assert card["outcome"] == "stuck"
+    assert card["unrated"] == {"legal": [FINANCE_SEED, SUCCESS_SEED]}
+    assert card["outcome"] == "infeasible"
+    assert _selects(channel)[-1]["outcome"] == "stuck"
     assert outcome == "resolved"
-    assert "no rating from legal" in _commit_text(channel)
+    said = _commit_text(channel)
+    assert "no rating from legal" in said
+    assert '<score agent="legal" value="no-reply"/>' in said
+    assert channel.commit().payload.data[conductor.LINE_KEY]["commit"]["unknown"] == ["legal"]
 
 
 @pytest.mark.asyncio
 async def test_a_fix_that_adds_nothing_skips_the_rating_round(in_a_task):
     """A silent fixer leaves nothing new to rate: nobody is asked to rate "(none)"."""
-    likes = ("A: 90 - works\nB: 90 - works", None)
+    likes = _scores({SUCCESS_SEED: (90, "works"), FINANCE_SEED: (90, "works")})
     (engine, _manager, channel), directive = _concord(
         {
-            "success": [ANCHORED, ("A text", None), likes],
+            "success": [ANCHORED, _seed("A text"), likes],
             # then silent
-            "finance": [ANCHORED, ("B text", None), ("A: 30 - too deep\nB: 30 - too deep", None)],
-            "legal": [ANCHORED, ("A text", None), likes],
+            "finance": [
+                ANCHORED,
+                _seed("B text"),
+                _scores({SUCCESS_SEED: (30, "too deep"), FINANCE_SEED: (30, "too deep")}),
+            ],
+            "legal": [ANCHORED, _seed("A text"), likes],
         },
         settings=f"fixes=2 {OUTCOMES}",
     )
@@ -1211,23 +1323,25 @@ async def test_a_fix_that_repeats_an_option_is_sent_back_once(in_a_task):
         {
             "success": [
                 ANCHORED,
-                ("20% off\nwhy: it keeps them", None),
-                ("A: 95 - it keeps them\nB: 50 - it won't keep them", None),
-                ("20% off\nwhy: it's still the right answer", None),  # A again
-                ("15% off for a two-year term\nwhy: keeps them without the deep cut", None),
-                ("C: 85 - it keeps them", None),
+                _seed("20% off", "it keeps them"),
+                _scores(
+                    {SUCCESS_SEED: (95, "it keeps them"), FINANCE_SEED: (50, "it won't keep them")}
+                ),
+                _seed("20% off", "it's still the right answer"),  # seed-success again
+                _seed("15% off for a two-year term", "keeps them without the deep cut"),
+                _scores({"r1-success": (85, "it keeps them")}),
             ],
             "finance": [
                 ANCHORED,
-                ("10% off\nwhy: margin", None),
-                ("A: 30 - margin falls\nB: 90 - margin holds", None),
-                ("C: 80 - margin holds", None),
+                _seed("10% off", "margin"),
+                _scores({SUCCESS_SEED: (30, "margin falls"), FINANCE_SEED: (90, "margin holds")}),
+                _scores({"r1-success": (80, "margin holds")}),
             ],
             "legal": [
                 ANCHORED,
-                ("10% off", None),
-                ("A: 80 - fine\nB: 80 - fine", None),
-                ("C: 75 - needs one clause", None),
+                _seed("10% off", "fine"),
+                _scores({SUCCESS_SEED: (80, "fine"), FINANCE_SEED: (80, "fine")}),
+                _scores({"r1-success": (75, "needs one clause")}),
             ],
         }
     )
@@ -1238,8 +1352,9 @@ async def test_a_fix_that_repeats_an_option_is_sent_back_once(in_a_task):
     steps = [(s, to) for s, to, _p in channel.ticks()]
     assert steps[9:11] == [("repair", "success"), ("repair", "success")]
     again = channel.ticks()[10][2]
-    assert "That's option A again, or very close to it." in again
-    assert "- success: it won't keep them" in again
+    assert again.startswith("That's seed-success again, or very close to it.")
+    assert "<concord-repair>" in again
+    assert "<reasoning>it won't keep them</reasoning>" in again
     assert [o["text"] for o in channel.commit().payload.data["select"]["options"]] == [
         "20% off",
         "10% off",
@@ -1253,17 +1368,16 @@ async def test_with_no_outcomes_in_the_summon_no_agreement_and_your_own_pick_are
 ):
     """Nobody is asked to write the two outcomes: the run is measured between
     no agreement at all and what each member would choose alone."""
-    (engine, _manager, channel), directive = _concord(
-        {h: [ANCHORED, ("same idea", None), ("A: 90 - fine", None)] for h in CAST}, settings=""
-    )
+    same = [ANCHORED, _seed("same idea"), _scores({SUCCESS_SEED: (90, "fine")})]
+    (engine, _manager, channel), directive = _concord({h: list(same) for h in CAST}, settings="")
 
     outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=CAST)
 
     assert outcome == "converged"
     assert [s for s, _to, _p in channel.ticks()][:3] == ["anchor"] * 3, "no drafting turn"
     ends = (
-        "bad: no agreement: nothing is decided and the task stays open\n"
-        "ideal: your own pick: the option you'd choose if it were up to you alone"
+        "<x_reject>no agreement: nothing is decided and the task stays open</x_reject>\n"
+        "  <x_ideal>your own pick: the option you'd choose if it were up to you alone</x_ideal>"
     )
     assert ends in channel.ticks()[0][2]
     assert (
@@ -1272,22 +1386,21 @@ async def test_with_no_outcomes_in_the_summon_no_agreement_and_your_own_pick_are
 
     # One end named in the summon replaces only that end.
     (engine, _manager, channel), directive = _concord(
-        {h: [ANCHORED, ("same idea", None), ("A: 90 - fine", None)] for h in CAST},
-        settings="bad: Acme leaves",
+        {h: list(same) for h in CAST}, settings="bad: Acme leaves"
     )
     await engine.run(ROOM, episode=THREAD, directive=directive, named=CAST)
-    assert "bad: Acme leaves\nideal: your own pick" in channel.ticks()[0][2]
+    assert "<x_reject>Acme leaves</x_reject>\n  <x_ideal>your own pick" in channel.ticks()[0][2]
     assert "from *Acme leaves* to *your own pick" in channel.said()[0]
 
 
 @pytest.mark.asyncio
 async def test_an_ideal_rated_below_the_bad_outcome_is_asked_again(in_a_task):
-    rest = [("same idea", None), ("A: 90 - fine", None)]
+    rest = [_seed("same idea"), _scores({SUCCESS_SEED: (90, "fine")})]
     (engine, _manager, channel), directive = _concord(
         {
             "success": [ANCHORED, *rest],
             "finance": [ANCHORED, *rest],
-            "legal": [("bad: 80 - fine\nideal: 20 - great", None), ANCHORED, *rest],
+            "legal": [_anchor(80, 20), ANCHORED, *rest],
         }
     )
 
@@ -1295,7 +1408,7 @@ async def test_an_ideal_rated_below_the_bad_outcome_is_asked_again(in_a_task):
 
     assert outcome == "converged"
     assert channel.ticks()[3][:2] == ("anchor", "legal")
-    assert "your ideal wasn't rated above the bad one" in channel.ticks()[3][2]
+    assert channel.ticks()[3][2].startswith("Your reply didn't have raw_ideal above raw_reject.")
 
 
 @pytest.mark.asyncio
@@ -1304,13 +1417,17 @@ async def test_a_member_who_rates_low_on_its_own_scale_is_read_on_that_scale(in_
     so it meets a bar its raw number would miss."""
     (engine, _manager, channel), directive = _concord(
         {
-            "success": [ANCHORED, ("one way\nwhy: simple", None), ("A: 80 - fine", None)],
-            "finance": [
-                ("bad: 0 - nothing\nideal: 50 - the most I'd give anything", None),
-                ("one way", None),
-                ("A: 45 - close to the most I'd give", None),
+            "success": [
+                ANCHORED,
+                _seed("one way", "simple"),
+                _scores({SUCCESS_SEED: (80, "fine")}),
             ],
-            "legal": [ANCHORED, ("one way", None), ("A: 70 - fine", None)],
+            "finance": [
+                _anchor(0, 50),
+                _seed("one way"),
+                _scores({SUCCESS_SEED: (45, "close to the most I'd give")}),
+            ],
+            "legal": [ANCHORED, _seed("one way"), _scores({SUCCESS_SEED: (70, "fine")})],
         }
     )
 
@@ -1320,25 +1437,28 @@ async def test_a_member_who_rates_low_on_its_own_scale_is_read_on_that_scale(in_
     assert channel.commit().payload.data["metrics"]["satisfaction"]["finance"] == 0.9
 
 
-def test_a_reply_that_is_only_a_marker_is_not_an_option():
+def test_a_reply_that_isnt_a_candidate_reply_adds_no_candidate():
     engine, _manager, _channel = _engine({})
     concord = protocols.builtin("concord")
     assert concord is not None
     run = conductor.Run(protocol=concord, ask="", handles=CAST, bound={}, episode=THREAD)
-    run.answers = {"success": {}, "finance": {}}
-    run.replies = {"success": "[[mycelium: A=95]]", "finance": "Offer 10% off"}
+    run.answers = {
+        "success": {"content": "Offer 20% off\nwhy: it keeps them"},
+        "finance": {"content": _seed("Offer 10% off")[0]},
+    }
     engine._collect(run, concord.step("propose"), list(run.answers))
-    assert [o.text for o in run.options] == ["Offer 10% off"]
+    assert [(o.label, o.text) for o in run.options] == [(FINANCE_SEED, "Offer 10% off")]
 
 
 @pytest.mark.asyncio
 async def test_prompts_say_the_tasks_title_not_its_key(in_a_task):
     (engine, _manager, channel), directive = _concord(
-        {h: [("same idea", None), ("[[mycelium: A=90]]", None)] for h in CAST}
+        {h: [ANCHORED, _seed("same idea")] for h in CAST}
     )
     await engine.run(ROOM, episode=THREAD, directive=directive, named=CAST)
-    propose = channel.ticks()[0][2]
-    assert "Decide the renewal offer" in propose
+    propose = channel.ticks()[3][2]
+    assert "<context>Decide the renewal offer: decide the renewal offer</context>" in propose
+    assert "<candidate_schema>One option for Decide the renewal offer" in propose
     assert TASK_KEY not in propose
 
 
@@ -1347,24 +1467,24 @@ def test_an_option_ending_in_a_full_stop_is_not_given_another():
     assert conductor._sentence("Renew for three years") == "Renew for three years."
 
 
-def test_options_are_lettered_in_cast_order_whatever_order_replies_arrive_in():
+def test_candidates_are_named_by_who_proposed_them_in_cast_order():
     engine, _manager, _channel = _engine({})
     concord = protocols.builtin("concord")
     assert concord is not None
     run = conductor.Run(protocol=concord, ask="", handles=CAST, bound={}, episode=THREAD)
     # Replies landed legal first, then success, then finance.
-    run.answers = {"legal": {}, "success": {}, "finance": {}}
-    run.replies = {
-        "legal": "C text",
-        "success": "A text",
-        "finance": "B text [[mycelium: stance=accept]]",
-    }
+    run.answers = {h: {"content": _seed(f"{h} text")[0]} for h in ("legal", "success", "finance")}
     engine._collect(run, concord.step("propose"), list(run.answers))
     assert [(o.label, o.text, o.authors) for o in run.options] == [
-        ("A", "A text", ["success"]),
-        ("B", "B text", ["finance"]),
-        ("C", "C text", ["legal"]),
+        (SUCCESS_SEED, "success text", ["success"]),
+        (FINANCE_SEED, "finance text", ["finance"]),
+        (LEGAL_SEED, "legal text", ["legal"]),
     ]
+    # A repair is named by its round.
+    run.repairs = {"pick": 2}
+    run.answers = {"legal": {"content": _seed("a third way")[0]}}
+    engine._collect(run, concord.step("repair"), ["legal"])
+    assert run.options[-1].label == "r2-legal"
 
 
 @pytest.mark.asyncio
@@ -1372,7 +1492,7 @@ async def test_the_record_traces_each_pick(in_a_task):
     from app.services.episode_records import episode_summary
 
     (engine, _manager, channel), directive = _concord(
-        {h: [ANCHORED, ("same idea", None), ("A: 90 - fine", None)] for h in CAST}
+        {h: [ANCHORED, _seed("same idea"), _scores({SUCCESS_SEED: (90, "fine")})] for h in CAST}
     )
     before = set(_records())
 
@@ -1804,19 +1924,22 @@ async def test_a_later_concord_in_the_task_is_shown_what_was_agreed(in_a_task):
     (engine, _m, _c), directive = _accord(AGREEING)
     await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
     (engine, _m, channel), directive = _concord(
-        {h: [ANCHORED, ("20% off", None), ("A: 90 - fine", None)] for h in CAST}
+        {h: [ANCHORED, _seed("20% off"), _scores({SUCCESS_SEED: (90, "fine")})] for h in CAST}
     )
 
     outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=CAST)
 
     assert outcome == "converged"
+    # What was agreed earlier rides CONCORD's context, inside the message.
     propose = channel.ticks()[3][2]
-    assert "What the team already agreed for this task" in propose
-    assert "Renew Acme on terms finance can sign." in propose
+    assert propose.startswith("<concord-propose-seed>")
+    context = propose.split("<context>", 1)[1].split("</context>", 1)[0]
+    assert "What the team already agreed for this task" in context
+    assert "Renew Acme on terms finance can sign." in context
     meta, body = _saved("context/decision/acme-renewal")
     assert meta["decision"]["text"] == "20% off"
     assert meta["relates-to"] == TASK_KEY
-    assert "Going with A: 20% off" in body
+    assert "Going with seed-success: 20% off" in body
 
 
 @pytest.mark.asyncio

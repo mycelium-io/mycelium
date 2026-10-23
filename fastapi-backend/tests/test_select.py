@@ -80,13 +80,58 @@ def test_the_fixer_is_the_lowest_rater_of_the_pick_among_those_who_rated():
     assert record["least_happy"] == "finance"
 
 
-def test_a_pick_failing_only_on_missing_ratings_is_stuck():
+def test_a_pick_missing_a_rating_is_not_agreed_and_goes_on_to_a_repair():
+    """No agreement over silence: the pick goes to the member who rates it
+    lowest for a repair, until the repairs allowed are used up."""
     options = _options("one option")
     ratings = {"success": {"A": 90}, "finance": {"A": 80}}
     record = choosing.pick(options, CAST, ratings, 0.7)
+    assert record["outcome"] == "infeasible"
+    assert record["least_happy"] == "finance"
+    assert record["missing"] == ["legal"]
+    record = choosing.pick(options, CAST, ratings, 0.7, repairs_done=2, max_repairs=2)
     assert record["outcome"] == "stuck"
     assert record["least_happy"] is None
-    assert record["missing"] == ["legal"]
+
+
+def test_a_rating_still_missing_after_its_retry_blocks_agreement_anywhere():
+    """Everyone rated the pick at the bar, but a rating of another option is
+    missing: CONCORD agrees nothing while any is."""
+    options = _options("first", "second")
+    ratings = {h: {"A": 90} for h in CAST} | {"success": {"A": 90, "B": 50}}
+    record = choosing.pick(options, CAST, ratings, 0.7, unrated={"legal": {"B"}})
+    assert record["pick"] == "A"
+    assert record["outcome"] == "infeasible"
+    assert record["unrated"] == {"legal": ["B"]}
+
+
+def test_the_pick_is_made_among_the_options_everyone_rated_at_the_bar():
+    """A is the better leximin, but finance never rated it; B everyone rated
+    at the bar, so B is the pick."""
+    options = _options("A text", "B text")
+    ratings = {
+        "success": {"A": 95, "B": 75},
+        "finance": {"B": 72},
+        "legal": {"A": 90, "B": 71},
+    }
+    record = choosing.pick(options, CAST, ratings, 0.7)
+    assert record["feasible"] == ["B"]
+    assert (record["pick"], record["outcome"]) == ("B", "feasible")
+
+
+def test_a_new_best_replaces_the_incumbent_only_when_better_by_eps():
+    options = _options("held", "a little better", "much better")
+    ratings = {
+        "success": {"A": 50, "B": 52, "C": 65},
+        "finance": {"A": 80, "B": 80, "C": 80},
+        "legal": {"A": 80, "B": 80, "C": 80},
+    }
+    without_c = {h: {k: v for k, v in r.items() if k != "C"} for h, r in ratings.items()}
+    held = choosing.pick(options[:2], CAST, without_c, 0.7, incumbent="A", eps=0.05)
+    # B's lowest is 0.02 higher, under eps: A stays.
+    assert (held["selected"], held["pick"], held["accepted"]) == ("B", "A", False)
+    record = choosing.pick(options, CAST, ratings, 0.7, incumbent="A", eps=0.05)
+    assert (record["selected"], record["pick"], record["accepted"]) == ("C", "C", True)
 
 
 def test_after_the_fixes_allowed_the_next_short_pick_is_stuck():
