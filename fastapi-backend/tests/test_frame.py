@@ -270,8 +270,10 @@ def test_a_disagreement_embeddings_cant_tell_apart_is_never_shown_as_agreement()
     assert f"  - a: {rejects}" in shown
     assert f"  - b: {accepts}" in shown
     assert "stated by 2 of 2" not in shown
-    assert "Said in different words, check they agree: p1" in shown
-    assert "check they agree" in framing.show_points(frame, ["a", "b"])
+    assert "Said in different words. Check they agree: p1" in shown
+    assert "p1 (constraint) said in different words. Check they agree:" in framing.show_points(
+        frame, ["a", "b"]
+    )
 
 
 def test_a_near_duplicate_over_the_bar_folds_without_a_flag():

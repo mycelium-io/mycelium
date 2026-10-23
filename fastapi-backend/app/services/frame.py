@@ -321,7 +321,7 @@ def show_points(frame: Frame, cast: list[str]) -> str:
         if not p.reworded:
             lines.append(f"{p.id} ({kind}, stated by {p.support} of {total}): {p.text}")
             continue
-        lines.append(f"{p.id} ({kind}, said in different words, check they agree):")
+        lines.append(f"{p.id} ({kind}) said in different words. Check they agree:")
         lines += [f"  {who}: {text}" for who, text in p.said]
     return "\n".join(lines)
 
@@ -409,7 +409,7 @@ def contract(
         flags.append(
             _flag(
                 "reworded",
-                f"Said in different words, check they agree: {_ids(reworded)}",
+                f"Said in different words. Check they agree: {_ids(reworded)}",
                 points=reworded,
             )
         )
@@ -533,7 +533,7 @@ def render(made: dict[str, Any]) -> str:
             by = ", ".join(p["authors"])
             wordings = p.get("wordings") or []
             if wordings:
-                lines.append(f"- **{p['id']}** said in different words by {by}, check they agree:")
+                lines.append(f"- **{p['id']}** said in different words by {by}. Check they agree:")
                 lines += [f"  - {w['member']}: {w['text']}" for w in wordings]
                 continue
             lines.append(f"- **{p['id']}** {p['text']} (stated by {p['support']} of {total}: {by})")
