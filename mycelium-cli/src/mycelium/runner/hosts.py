@@ -22,7 +22,7 @@ import platform
 import re
 import time
 from contextlib import AbstractContextManager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -100,6 +100,9 @@ class Started:
     status: str | None = None
     #: Its introduction wasn't handed over: the runner gives it once the agent is idle.
     intro_pending: bool = False
+    #: What the host answered for the person on the way, from their choice to
+    #: start it here (a first-run question its CLI asks), in its kind's words.
+    passed: list[str] = field(default_factory=list)
 
 
 class AgentHost(Protocol):
@@ -170,11 +173,12 @@ class AgentHost(Protocol):
         """
         ...
 
-    def first_run(self, ref: str, kind: str | None) -> str | None:
+    def first_run(self, ref: str, kind: str | None, passed: list[str] | None = None) -> str | None:
         """What the agent at ``ref`` waits on at a first-run screen its CLI shows
         (a sign-in), after getting it past any a key passes; ``None`` when it's
         past them or the host can't tell. Said in the kind's words, never the
-        screen's, since it goes to the hub."""
+        screen's, since it goes to the hub. What a key answered for the person
+        is added to ``passed``."""
         ...
 
     def wake(self, ref: str, text: str) -> None:
@@ -341,16 +345,27 @@ class HerdrHost:
             # It started but never read as ready, most often stopped at a prompt.
             # The pane stays open for the person to answer, and the introduction
             # waits until the agent is idle rather than being typed into it.
+            # One stopped at a first-run question the person already answered by
+            # starting it here (whether to trust the folder) is got past, and its
+            # introduction goes in once it's idle.
             status = _HERDR_STATUS.get(str(came_up.get("agent_status") or ""), "running")
-            return Started(ref=pane, workspace=workspace, status=status, intro_pending=True)
+            passed: list[str] = []
+            if status == "blocked" and not self.first_run(pane, kind, passed) and passed:
+                status = "running"
+            return Started(
+                ref=pane, workspace=workspace, status=status, intro_pending=True, passed=passed
+            )
         # Ready by herdr's reading, which a CLI's first-run screen can pass for.
         # One a key gets past is got past; one the person must answer (a
         # sign-in) leaves it waiting, its introduction held until it's idle.
-        if self.first_run(pane, kind):
-            return Started(ref=pane, workspace=workspace, status="blocked", intro_pending=True)
+        passed = []
+        if self.first_run(pane, kind, passed):
+            return Started(
+                ref=pane, workspace=workspace, status="blocked", intro_pending=True, passed=passed
+            )
         hooks.step(STEP_INTRO, pane)
         self.bridge.prompt(pane, intro, wait=False)
-        return Started(ref=pane, workspace=workspace)
+        return Started(ref=pane, workspace=workspace, passed=passed)
 
     def alive(self, ref: str) -> bool:
         return self.bridge.get_agent(ref) is not None
@@ -381,8 +396,8 @@ class HerdrHost:
         parts = [of_kind(kind).blocked_hint(), f"Answer it in its pane: herdr agent focus {ref}"]
         return "\n".join(p for p in parts if p)
 
-    def first_run(self, ref: str, kind: str | None) -> str | None:
-        return self.bridge.past_first_run(ref, kind)
+    def first_run(self, ref: str, kind: str | None, passed: list[str] | None = None) -> str | None:
+        return self.bridge.past_first_run(ref, kind, passed)
 
     def wake(self, ref: str, text: str) -> None:
         try:
@@ -633,7 +648,12 @@ class OmnigentHost:
     def blocker(self, ref: str, kind: str) -> str | None:  # noqa: ARG002
         return None
 
-    def first_run(self, ref: str, kind: str | None) -> str | None:  # noqa: ARG002
+    def first_run(
+        self,
+        ref: str,  # noqa: ARG002
+        kind: str | None,  # noqa: ARG002
+        passed: list[str] | None = None,  # noqa: ARG002
+    ) -> str | None:
         return None
 
     def wake(self, ref: str, text: str) -> None:

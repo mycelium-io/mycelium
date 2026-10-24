@@ -77,7 +77,7 @@ class Herdr:
         #: A working agent sent a key settles to idle, the way an interrupted one does.
         self.keys_settle = False
         #: What ``pane read`` shows.
-        self.screen = "Do you trust the files in this folder?\n\n  1. Yes, proceed\n  2. No, exit\n"
+        self.screen = "Allow this command?\n  make deploy\n\n  1. Yes\n  2. No, exit\n"
         #: What the screen shows after each key pressed, in turn.
         self.screens_after_keys: list[str] = []
         self.layout = HerdrLayout(self._pane)
@@ -615,7 +615,7 @@ def test_an_agent_cli_that_exits_at_start_says_so_and_is_not_started_again(
     assert failed.value.result["why"] == "exited"
     # Where to look, never what it printed: that stays on this machine.
     assert failed.value.result["pane"] == "w9:p1"
-    assert "trust the files" not in json.dumps(failed.value.result)
+    assert "make deploy" not in json.dumps(failed.value.result)
     # Once: starting it the same way again would only exit again.
     assert len(herdr.of("agent start")) == 1
 
@@ -730,7 +730,7 @@ def test_a_cli_with_no_first_run_screens_never_has_its_screen_read(
 ):
     herdr.screen = SIGN_IN
     r = make_runner()
-    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    r.launch({"room": "eng", "handle": "scout", "framework": "opencode"})
     r.refresh()
     assert herdr.of("pane read") == []
     assert len(herdr.of("agent prompt")) == 1
@@ -819,6 +819,54 @@ def test_a_start_names_its_terminal_from_the_moment_it_opens_then_introduces_it(
         {"step": "intro", "pane": "w9:p1"},
     ]
     assert len(herdr.of("agent prompt")) == 1
+
+
+def test_a_claude_start_trusts_the_folder_it_was_started_in_then_introduces_it(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """The person chose the folder and approved the start; its trust question is theirs, answered."""
+    from tests.test_agent_kinds import CLAUDE_TRUST, CLAUDE_TRUST_ON_YES
+
+    monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
+    herdr.start_leaves = "blocked"
+    herdr.screen = CLAUDE_TRUST
+    # One key refused as too soon after the question opened, then Down, then Enter.
+    herdr.screens_after_keys = [CLAUDE_TRUST, CLAUDE_TRUST_ON_YES, "> "]
+    herdr.keys_settle = True
+    r = make_runner()
+
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+
+    assert [c[3:] for c in herdr.of("pane send-keys")] == [["down"], ["down"], ["enter"]]
+    assert result["passed"] == ["Trusted the folder for Claude Code"]
+    assert "waiting" not in result
+    # Once it's idle, its introduction goes in.
+    r.refresh()
+    prompts = herdr.of("agent prompt")
+    assert len(prompts) == 1
+    assert "You are @scout" in prompts[0][3]
+    assert r.hello_body()["agents"][0]["status"] == "idle"
+
+
+def test_a_folder_whose_settings_grant_themselves_more_is_left_for_the_person(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    from tests.test_agent_kinds import CLAUDE_TRUST
+
+    monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
+    herdr.start_leaves = "blocked"
+    herdr.screen = CLAUDE_TRUST.replace(" Security guide", " These will apply without asking.")
+    r = make_runner()
+
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    r.refresh()
+
+    assert herdr.of("pane send-keys") == []
+    assert herdr.of("agent prompt") == []
+    assert "passed" not in result
+    agent = r.hello_body()["agents"][0]
+    assert agent["status"] == "blocked"
+    assert "asking whether to trust this folder" in agent["detail"]
 
 
 def test_a_launch_stopped_at_a_prompt_keeps_its_pane_and_waits_for_the_person(
@@ -1185,6 +1233,34 @@ def test_a_swarm_member_left_at_a_sign_in_is_said_to_be_waiting_there(
     # Nothing typed into it, and its pane is left for the person.
     assert herdr.of("pane send-keys") == []
     assert herdr.of("pane close") == []
+
+
+def test_a_swarm_trusts_the_folder_its_claude_members_start_in(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from tests.test_agent_kinds import CLAUDE_TRUST, CLAUDE_TRUST_ON_YES
+
+    monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
+    monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
+    herdr.start_leaves = "blocked"
+    herdr.screen = CLAUDE_TRUST
+    herdr.screens_after_keys = [CLAUDE_TRUST_ON_YES, "> "]
+    herdr.keys_settle = True
+    r = make_runner()
+    spec = {
+        "room": "eng",
+        "key": "work/fix",
+        "episode": "urn:ep:eng:t1",
+        "task": "Fix the flaky tests",
+        "team": ["agent-1"],
+        "framework": "claude",
+        "cwd": str(tmp_path),
+        "kickoff": False,
+    }
+    r.swarm(spec, "julia")
+    assert [c[3:] for c in herdr.of("pane send-keys")] == [["down"], ["enter"]]
+    # Briefed once it's past the question.
+    assert hub.of("POST", "/api/rooms/eng/memory")
 
 
 # ── asking the person at this machine ─────────────────────────────────────────
@@ -2106,7 +2182,8 @@ def test_nothing_a_pane_shows_ever_reaches_the_hub(
     sent = json.dumps([body for _m, _p, body in hub.seen])
     assert "sk-live-4f2a9c" not in sent
     assert "trust the files" not in sent
-    # By construction: the runner doesn't read a screen at all.
-    assert herdr.of("pane read") == []
+    # Read only on this machine, for a question it may answer, and only while
+    # the introduction is held; this one is none it knows, so nothing is pressed.
+    assert herdr.of("pane send-keys") == []
     assert list(r.state.agents) == ["eng/scout"]
     assert r.bridge.registry.get("eng", "scout") is not None

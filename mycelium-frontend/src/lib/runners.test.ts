@@ -22,7 +22,11 @@ describe("a start that stopped", () => {
       detail: "not a shell",
       slow: false,
       waiting: null,
+      passed: [],
     });
+    expect(startReport({ result: { passed: ["Trusted the folder for Claude Code", 3, ""] } }).passed).toEqual([
+      "Trusted the folder for Claude Code",
+    ]);
     expect(startReport({ result: { step: "shell", slow: true, pane: "w5:p1" } })).toMatchObject({ slow: true });
     // The last step, with its terminal, and a start that stopped at a prompt.
     expect(startReport({ result: { step: "intro", pane: "w5:p1" } })).toMatchObject({ step: "intro", pane: "w5:p1" });

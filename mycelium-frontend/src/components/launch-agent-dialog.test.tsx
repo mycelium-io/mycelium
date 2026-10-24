@@ -201,6 +201,19 @@ describe("LaunchAgentForm", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("says what the machine answered for the person on the way", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(
+      job({ status: "done", result: { pane: "w9:p1", passed: ["Trusted the folder for Claude Code"] } }),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "reviewer" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    expect(await screen.findByText("Trusted the folder for Claude Code")).toBeInTheDocument();
+  });
+
   it("shows the machine's reason when it could not start the agent", async () => {
     connected = [runner()];
     launchRunnerAgent.mockResolvedValue(job());

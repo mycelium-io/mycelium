@@ -220,6 +220,9 @@ export interface StartReport {
   /** Started, but stopped at something only the person there can answer (a
    *  sign-in, a question), in the runner's words; its introduction is held. */
   waiting: string | null;
+  /** What the machine answered for the person on the way, from their choice
+   *  to start it there ("Trusted the folder for Claude Code"). */
+  passed: string[];
 }
 
 const STEPS: readonly string[] = ["terminal", "shell", "agent", "intro"];
@@ -238,6 +241,7 @@ export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): 
     detail: text(r.detail),
     slow: r.slow === true,
     waiting: text(r.waiting),
+    passed: Array.isArray(r.passed) ? r.passed.filter((p): p is string => typeof p === "string" && p !== "") : [],
   };
 }
 

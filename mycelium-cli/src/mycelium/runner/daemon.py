@@ -754,7 +754,7 @@ class Runner:
                 # Not mid-turn: what herdr reads as idle, or can't read at all.
                 ready = found[0] in ("idle", "running")
                 if found[0] == "blocked":
-                    self._mark_waiting(agent)
+                    self._mark_waiting(agent, self._at_first_run(agent))
                 elif ready and (held := self._at_first_run(agent)):
                     self._mark_waiting(agent, held)
                 else:
@@ -899,14 +899,18 @@ class Runner:
             workspace=started.workspace,
             intro=intro if started.intro_pending else None,
         )
+        self._said_passed(agent, started.passed)
         if agent.status == "blocked":
             self._mark_waiting(agent, self._at_first_run(agent))
         with self._lock:
             self.state.agents[key] = agent
             self.state.save(self._state_path)
-        result = {"pane": started.ref}
+        result: dict[str, Any] = {"pane": started.ref}
         if started.workspace:
             result["workspace"] = started.workspace
+        if started.passed:
+            # What was answered for the person, for the app to say beside the start.
+            result["passed"] = started.passed
         if agent.status == "blocked":
             result["waiting"] = agent.detail or f"waiting for input on {self.label}"
             self.log.print(
@@ -995,7 +999,16 @@ class Runner:
         """
         if agent.intro is None:
             return None
-        return self.host.first_run(agent.pane, self._kind_of(agent))
+        passed: list[str] = []
+        waiting = self.host.first_run(agent.pane, self._kind_of(agent), passed)
+        self._said_passed(agent, passed)
+        return waiting
+
+    def _said_passed(self, agent: Tracked, passed: list[str]) -> None:
+        """Say in the runner's log what was answered for the person on the way."""
+        for done in passed:
+            log.info("@%s: %s (%s)", agent.handle, done, agent.cwd)
+            self.log.print(f"[green]{done}[/green] for @{agent.handle}: {agent.cwd}")
 
     def _mark_waiting(self, agent: Tracked, what: str | None = None) -> None:
         """Say ``agent`` is waiting for input, on which machine, and for how long once that's long.

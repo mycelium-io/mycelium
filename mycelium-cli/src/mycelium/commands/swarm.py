@@ -469,16 +469,19 @@ def _start_unblocked(
     """:func:`_start_when_ready`, refusing to go on past an agent waiting for input.
 
     That includes a first-run screen herdr reads as ready (Codex's welcome),
-    after getting past any a key passes. The pane is left open: what it waits
-    on is the person's to answer.
+    after getting past any a key passes, and a first-run question the person
+    answered by starting it in this folder (whether to trust it). The pane is
+    left open: what it waits on is the person's to answer.
     """
     from mycelium.integrations.herdr import HerdrError
 
     agent = _start_when_ready(bridge, handle, kind, pane, room=room, resume=resume)
-    if agent is not None and agent.get("agent_status") == "blocked":
-        waiting = "waiting for input there"
-    elif agent is None and (seen := bridge.past_first_run(pane, kind)):
+    passed: list[str] = []
+    seen = bridge.past_first_run(pane, kind, passed)
+    if seen:
         waiting = f"waiting there: {seen}"
+    elif agent is not None and agent.get("agent_status") == "blocked" and not passed:
+        waiting = "waiting for input there"
     else:
         return
     raise HerdrError(

@@ -5,9 +5,68 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
-from mycelium.integrations.agents.base import AgentKind
+from mycelium.integrations.agents.base import AgentKind, FirstRun
+
+
+@dataclass(frozen=True)
+class _Trust:
+    """One wording of the question Claude Code asks the first time it runs in a folder."""
+
+    #: The question's first line.
+    start: str
+    #: How the line after the folder it names begins; a long folder wraps
+    #: across lines, so everything between is the folder.
+    after_folder: str
+    #: Every sentence it says, as patterns over its text with the wrapping undone.
+    prose: tuple[str, ...]
+    #: Its options, in the order it lists them.
+    options: tuple[str, ...]
+    #: The one that trusts the folder.
+    yes: str
+
+
+#: The plain question, in Claude Code's current words and its older ones. It is
+#: answered only when nothing else is on it: a folder whose own settings would
+#: act without asking (pre-approved tools, extra folders, helper commands, or
+#: anything a later release adds) shows more, and is left for the person.
+_TRUST = (
+    # Claude Code 2.x: no numbers, "No, exit" first and picked, so the answer
+    # is Down to "Yes", then Enter once it's the one picked.
+    _Trust(
+        start="Accessing workspace:",
+        after_folder="Quick safety check:",
+        prose=(
+            r"Quick safety check: Is this a project you created or one you trust\? "
+            r"\(Like your own code, a well-known open source project, or work from your "
+            r"team\)\. If not, take a moment to review what.s in this folder first\.",
+            r"[\w ]{0,20}.ll be able to read, edit, and execute files here\.",
+            r"Security guide",
+        ),
+        options=("No, exit", "Yes, I trust this folder"),
+        yes="Yes, I trust this folder",
+    ),
+    _Trust(
+        start="Do you trust the files in this folder?",
+        after_folder="Claude Code may read",
+        prose=(
+            r"Claude Code may read, write, or execute files contained in this directory\. "
+            r"This can pose security risks, so only use files from trusted sources\.",
+            r"Learn more",
+        ),
+        options=("Yes, proceed", "No, exit"),
+        yes="Yes, proceed",
+    ),
+)
+#: An option line: the pointer on the one picked, a number in older versions.
+_OPTION = re.compile(r"^(❯\s*)?(?:\d\.\s*)?(.+)$")
+#: A line of key hints under the options ("Enter to confirm · Esc to cancel"):
+#: nothing but "<key> to <a word or two>" hints, so no warning passes as one.
+_HINT = r"(?:Enter|Esc|Tab|↑/↓|↑↓)\s+to\s+[a-z]+(?:\s[a-z]+)?"
+_KEYS = re.compile(rf"^{_HINT}(?:\s*·\s*{_HINT})*$")
+_BORDER = "│╭╮╰╯─ "
 
 
 @dataclass(frozen=True)
@@ -35,3 +94,55 @@ class Claude(AgentKind):
             "Claude Code asks before it works in a folder it hasn't run in, "
             "and before a command it hasn't been allowed"
         )
+
+    def first_run(self, screen: str) -> FirstRun | None:
+        # The folder was chosen and the start approved on this machine, so the
+        # plain trust question is answered as that person already did: its
+        # trusting option is picked, then confirmed. Anything on it beyond the
+        # question leaves it for the person, so a change in its wording costs
+        # them an Enter, never a yes they didn't see.
+        lines = [line.strip(_BORDER) for line in screen.splitlines()]
+        lines = [line for line in lines if line]
+        for trust in _TRUST:
+            starts = [i for i, line in enumerate(lines) if line == trust.start]
+            if not starts:
+                continue
+            held = FirstRun("Claude Code is asking whether to trust this folder")
+            # From the question's first line on; what's above it is the shell
+            # it was started from.
+            body = lines[starts[-1] + 1 :]
+            # The folder it names, over as many lines as it wraps to.
+            if body and body[0].startswith(("/", "~")):
+                folder = next(
+                    (i for i, line in enumerate(body) if line.startswith(trust.after_folder)),
+                    len(body),
+                )
+                body = body[folder:] if folder < len(body) else body[1:]
+            options: list[str] = []
+            picked: list[str] = []
+            prose: list[str] = []
+            for line in body:
+                option = _OPTION.match(line)
+                label = option.group(2).strip() if option else line
+                pointer = bool(option and option.group(1))
+                if label in trust.options or pointer:
+                    options.append(label)
+                    if pointer:
+                        picked.append(label)
+                elif not _KEYS.match(line):
+                    prose.append(line)
+            if tuple(options) != trust.options or len(picked) != 1:
+                return held
+            # A long sentence wraps in a narrow pane; each known one is taken
+            # out once, and anything left over is something it doesn't know.
+            text = re.sub(r"\s+", " ", " ".join(prose)).replace("’", "'")
+            for sentence in trust.prose:
+                text = re.sub(sentence, "", text, count=1)
+            if text.strip():
+                return held
+            if picked[0] == trust.yes:
+                return FirstRun(held.what, key="enter", done="Trusted the folder for Claude Code")
+            # Move to it; it's confirmed once it reads as the one picked.
+            up = options.index(trust.yes) < options.index(picked[0])
+            return FirstRun(held.what, key="up" if up else "down")
+        return None

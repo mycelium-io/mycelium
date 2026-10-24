@@ -182,6 +182,98 @@ def test_a_signed_in_codex_or_one_that_cant_say_starts_as_usual(
     assert agents.of_kind("claude").not_ready() is None
 
 
+#: Claude Code 2.1's folder-trust question as herdr read it from a runner's
+#: start in a 60-column pane, the folder renamed: the start's own lines above
+#: it, a rule, and the folder and sentences wrapped.
+CLAUDE_TRUST = """● ● ● ● ● ● ● ●
+ ~/code/workshop-runs/review-1
+ main  claude --allowedTools 'Bash(mycelium:*)' --permissio
+n-mode auto
+
+────────────────────────────────────────────────────────────
+ Accessing workspace:
+
+ /Users/someone/code/workshop-runs/really-long-folder-name/
+ review-1
+
+ Quick safety check: Is this a project you created or one
+ you trust? (Like your own code, a well-known open source
+ project, or work from your team). If not, take a moment to
+ review what's in this folder first.
+
+ Claude Code'll be able to read, edit, and execute files
+ here.
+
+ Security guide
+
+ ❯ No, exit
+   Yes, I trust this folder
+
+ Enter to confirm · Esc to cancel"""
+#: The same, once Down has picked its trusting option.
+CLAUDE_TRUST_ON_YES = CLAUDE_TRUST.replace(
+    " ❯ No, exit\n   Yes, I trust this folder", "   No, exit\n ❯ Yes, I trust this folder"
+)
+
+
+def _claude_key(screen: str) -> str | None:
+    """The key Claude's first run presses on ``screen``, which is a trust question."""
+    seen = agents.of_kind("claude").first_run(screen)
+    assert seen is not None, "a trust question is always seen, answered or not"
+    return seen.key
+
+
+def test_claude_picks_trust_then_confirms_it_unless_the_folder_grants_itself_more():
+    # Claude Code lists "No, exit" first and picks it, so Enter alone would exit:
+    # Down to "Yes", then Enter once it reads as the one picked.
+    assert _claude_key(CLAUDE_TRUST) == "down"
+    trust = agents.of_kind("claude").first_run(CLAUDE_TRUST_ON_YES)
+    assert trust is not None
+    assert trust.key == "enter"
+    assert trust.done == "Trusted the folder for Claude Code"
+    # Its older wording, numbered and with "Yes" first.
+    older = "Do you trust the files in this folder?\n /w\n❯ 1. Yes, proceed\n  2. No, exit"
+    assert _claude_key(older) == "enter"
+    # A folder whose own settings would act without asking is the person's to read.
+    grants = CLAUDE_TRUST_ON_YES.replace(
+        " Security guide",
+        " This folder pre-approves 3 tool permission rules in .claude/settings.json:\n"
+        "   Bash(make:*)\n These will apply without\n"
+        " asking. Only proceed if you trust this configuration.\n Security guide",
+    ).replace("No, exit", "No, continue without these permissions")
+    assert _claude_key(grants) is None
+    # Words from the question in a conversation, with no options, are none.
+    claude = agents.of_kind("claude")
+    assert claude.first_run("> why ask Is this a project you created or one you trust?") is None
+    assert claude.first_run("❯ Yes, I trust this folder") is None
+
+
+def test_claude_answers_only_the_plain_trust_question_and_nothing_it_doesnt_know():
+    """An allow-list: a line it doesn't know leaves the question for the person,
+    so a new warning in a later release costs an Enter, never a yes."""
+    # The shell it was started from, above it, and a box drawn around it, are fine.
+    framed = "~/code/tipcalc $ claude --allowedTools 'Bash(mycelium:*)'\n" + "\n".join(
+        f"│ {line} │" for line in CLAUDE_TRUST_ON_YES.splitlines()
+    )
+    assert _claude_key(framed) == "enter"
+    # One more line it doesn't know, worded any way at all, on either step.
+    for screen in (CLAUDE_TRUST, CLAUDE_TRUST_ON_YES):
+        for extra in (
+            " This folder's .mcp.json starts 2 servers.",
+            " Hooks in .claude/settings.json run on every prompt",
+            " Enter to confirm, and its servers start without asking",
+        ):
+            assert (
+                _claude_key(screen.replace(" Security guide", f" Security guide\n{extra}")) is None
+            )
+    # A third option, the trusting one worded differently, or nothing picked.
+    third = "   Yes, and allow its MCP servers\n ❯ Yes, I trust this folder"
+    assert _claude_key(CLAUDE_TRUST_ON_YES.replace(" ❯ Yes, I trust this folder", third)) is None
+    reworded = CLAUDE_TRUST_ON_YES.replace("I trust this folder", "trust it and its settings")
+    assert _claude_key(reworded) is None
+    assert _claude_key(CLAUDE_TRUST_ON_YES.replace("❯", " ")) is None
+
+
 def test_codex_knows_its_welcome_after_signing_in_from_its_sign_in():
     codex = agents.of_kind("codex")
     # Signed in in the pane, or with an auth.json its app server didn't take:
