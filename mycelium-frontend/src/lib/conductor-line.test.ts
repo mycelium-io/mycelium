@@ -83,8 +83,11 @@ describe("how satisfied each member is", () => {
       { id: "t1", sender: "conductor", conductor: turn("builder", "score"), chat: true },
       { id: "t2", sender: "conductor", conductor: turn("reviewer", "score"), chat: true },
       { id: "r1", sender: "builder", conductor: null, chat: true },
-      // A second reply from the same member stands for its ratings, not the first.
+      // Something else builder says before the pick isn't its answer.
+      { id: "aside", sender: "builder", conductor: null, chat: true },
       { id: "r2", sender: "reviewer", conductor: null, chat: true },
+      // Asked again: the answer to that asking is the one that counts.
+      { id: "t3", sender: "conductor", conductor: turn("reviewer", "score"), chat: true },
       { id: "r3", sender: "reviewer", conductor: null, chat: true },
       { id: "j", sender: "designer", conductor: null, chat: false },
       { id: "s", sender: "conductor", conductor: { event: "select", step: "pick", next: "agreed", select: record } as ConductorLine, chat: true },

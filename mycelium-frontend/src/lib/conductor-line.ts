@@ -333,24 +333,28 @@ export function ratingsByReply(
   const out = new Map<string, { record: PickRecord; member: string }>();
   // Replies to a score step waiting for the pick that reads them.
   let waiting: { id: string; member: string }[] = [];
-  const asked = new Map<string, string>();
+  // Members asked to score whose answer hasn't come yet. The answer is the
+  // first thing they say after the turn that asked them; anything else they
+  // say before the pick isn't it. A second asking is a turn of its own, so
+  // its answer replaces the first.
+  const owed = new Set<string>();
   for (const ev of events) {
     const line = ev.conductor;
     if (line?.event === "turn") {
-      asked.set(line.to, line.step);
+      if (line.step === "score" || line.step === "rescore") owed.add(line.to);
+      else owed.delete(line.to);
       continue;
     }
     if (line?.event === "select") {
       for (const w of waiting) out.set(w.id, { record: line.select, member: w.member });
       waiting = [];
+      owed.clear();
       continue;
     }
-    if (line || !ev.chat) continue;
-    const step = asked.get(ev.sender);
-    if (step === "score" || step === "rescore") {
-      waiting = waiting.filter((w) => w.member !== ev.sender);
-      waiting.push({ id: ev.id, member: ev.sender });
-    }
+    if (line || !ev.chat || !owed.has(ev.sender)) continue;
+    owed.delete(ev.sender);
+    waiting = waiting.filter((w) => w.member !== ev.sender);
+    waiting.push({ id: ev.id, member: ev.sender });
   }
   return out;
 }
