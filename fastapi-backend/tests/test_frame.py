@@ -170,8 +170,131 @@ def test_one_sense_said_several_ways_is_one_sense_and_two_senses_stay_apart():
     )
     assert [m for _t, m in framing.senses(frame, "renewal date", similar)] == [["a", "b", "c"]]
     assert framing.contested(frame, similar) == ["standard terms"]
-    # 0.88 is a sense for meanings, but under the bar for folding two points.
-    assert framing.MEANING_THRESHOLD <= 0.88 < framing.SIMILARITY_THRESHOLD
+    assert framing.MEANING_THRESHOLD <= framing.SIMILARITY_THRESHOLD
+
+
+def test_a_meaning_that_matches_two_senses_joins_them_whatever_the_order():
+    """a and c are further apart than the bar, b matches both: one sense,
+    even though c answered before b."""
+    scores = {
+        frozenset({"Exit 2 with one line.", "One stderr line, status 2."}): 0.84,
+        frozenset({"Exit 2 with one line.", "A short error, exit code 2."}): 0.88,
+        frozenset({"One stderr line, status 2.", "A short error, exit code 2."}): 0.88,
+    }
+
+    def similar(x: str, y: str) -> float:
+        return scores.get(frozenset({x, y}), 0.5)
+
+    frame = framing.Frame()
+    framing.fold(
+        frame,
+        [
+            ("a", [{"label": "term", "term": "handle", "text": "Exit 2 with one line."}]),
+            ("c", [{"label": "term", "term": "handle", "text": "One stderr line, status 2."}]),
+            ("b", [{"label": "term", "term": "handle", "text": "A short error, exit code 2."}]),
+        ],
+        similar=similar,
+    )
+    assert [m for _t, m in framing.senses(frame, "handle", similar)] == [["a", "c", "b"]]
+    assert framing.contested(frame, similar) == []
+
+
+def test_one_point_said_three_ways_folds_and_a_different_point_stays_apart():
+    """Scores shaped like a real run: one objective said three ways scored
+    0.84-0.89 pairwise, and a different point on the same task 0.83. A new
+    text joins a point when it nearly matches any text already in it; under
+    the bar for saying nothing, the point keeps every wording and asks people
+    to check they agree, rather than claiming one member said it."""
+    one = "Reject a bad amount with a clear message."
+    two = "A bad amount gives a clear error, not a crash."
+    three = "Someone who mistypes an amount is told plainly what was wrong."
+    other = "Fix the rounding so each share adds up to the total."
+    scores = {
+        frozenset({one, two}): 0.89,
+        frozenset({two, three}): 0.89,
+        frozenset({one, three}): 0.84,
+        frozenset({one, other}): 0.83,
+        frozenset({two, other}): 0.81,
+        frozenset({three, other}): 0.80,
+    }
+
+    def similar(x: str, y: str) -> float:
+        return scores.get(frozenset({x, y}), 0.5)
+
+    frame = framing.Frame()
+    framing.fold(
+        frame,
+        [
+            ("a", [_point("objective", one), _point("objective", other)]),
+            ("b", [_point("objective", two)]),
+            ("c", [_point("objective", three)]),
+        ],
+        similar=similar,
+    )
+    assert [(p.text, p.authors) for p in frame.points] == [(one, ["a", "b", "c"]), (other, ["a"])]
+    made = framing.contract(
+        frame, cast=["a", "b", "c"], ask="x", task="work/x", title="X", similar=similar
+    )
+    flagged = {f["kind"]: f["points"] for f in made["flags"] if "points" in f}
+    assert flagged["single"] == ["p2"]
+    assert flagged["reworded"] == ["p1"]
+    assert made["points"][0]["wordings"] == [
+        {"member": "a", "text": one},
+        {"member": "b", "text": two},
+        {"member": "c", "text": three},
+    ]
+
+
+def test_a_disagreement_embeddings_cant_tell_apart_is_never_shown_as_agreement():
+    """'Rejects' and 'accepts' the same thing score 0.88 by embedding. They
+    land on one point, but as two wordings to check, not one agreed line."""
+    rejects = "Reject a negative tip with an error."
+    accepts = "Accept a negative tip as a discount."
+
+    def similar(_x: str, _y: str) -> float:
+        return 0.88
+
+    frame = framing.Frame()
+    framing.fold(
+        frame,
+        [("a", [_point("constraint", rejects)]), ("b", [_point("constraint", accepts)])],
+        similar=similar,
+    )
+    made = framing.contract(
+        frame, cast=["a", "b"], ask="x", task="work/x", title="X", similar=similar
+    )
+    (point,) = made["points"]
+    assert "reworded" in point["flags"]
+    assert [w["text"] for w in point["wordings"]] == [rejects, accepts]
+    shown = framing.render(made)
+    assert f"  - a: {rejects}" in shown
+    assert f"  - b: {accepts}" in shown
+    assert "stated by 2 of 2" not in shown
+    assert "Said in different words. Check they agree: p1" in shown
+    assert "p1 (constraint) said in different words. Check they agree:" in framing.show_points(
+        frame, ["a", "b"]
+    )
+
+
+def test_a_near_duplicate_over_the_bar_folds_without_a_flag():
+    def similar(_x: str, _y: str) -> float:
+        return 0.95
+
+    frame = framing.Frame()
+    framing.fold(
+        frame,
+        [
+            ("a", [_point("objective", "Renew Acme.")]),
+            ("b", [_point("objective", "Renew the Acme deal.")]),
+        ],
+        similar=similar,
+    )
+    made = framing.contract(
+        frame, cast=["a", "b"], ask="x", task="work/x", title="X", similar=similar
+    )
+    assert "reworded" not in made["points"][0]["flags"]
+    assert "wordings" not in made["points"][0]
+    assert all(f["kind"] != "reworded" for f in made["flags"])
 
 
 def test_similarity_folds_near_duplicates_and_its_failure_falls_back_once():

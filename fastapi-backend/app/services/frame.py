@@ -39,10 +39,18 @@ logger = logging.getLogger(__name__)
 #: similarity is unavailable for the rest of the run.
 Similar = Callable[[str, str], float]
 
-#: How alike two texts must be to count as one, by embedding. Deliberately
-#: high: folding two different points into one hides a disagreement, while
-#: leaving a near-duplicate unfolded costs one extra line.
+#: How alike two texts must be to count as one point, by embedding, with
+#: nothing said about it. Deliberately high: folding two different points into
+#: one hides a disagreement. A text is compared with every text already folded
+#: into a point, so three members saying one thing three ways land together.
 SIMILARITY_THRESHOLD = 0.92
+#: How alike a text must be to join a point all the same, kept beside the
+#: others and flagged for people to check they agree. In a real run, one point
+#: said three ways scored 0.84-0.94 pairwise, all but one pair at 0.886 or more,
+#: while two different points on the same task scored up to 0.834. Embeddings
+#: don't see negation ("rejects a negative tip" against "accepts a negative tip"
+#: scores 0.88), so a fold under the first bar is never taken as agreement.
+REWORDED_THRESHOLD = 0.86
 #: How alike two meanings of a key term must be to count as one sense. Lower
 #: than for points: members define a term in their own words, with their own
 #: example, so one sense said four ways scored 0.85-0.92 in real runs, while
@@ -88,6 +96,12 @@ class Point:
     text: str
     authors: list[str]
     about: str = ""
+    #: Every wording folded into it as ``(member, text)``, ``text`` first: a new
+    #: text is compared with each.
+    said: list[tuple[str, str]] = field(default_factory=list)
+    #: A wording joined it under :data:`SIMILARITY_THRESHOLD`: the contract lists
+    #: every wording and flags it for people to check they agree.
+    reworded: bool = False
 
     @property
     def support(self) -> int:
@@ -165,15 +179,39 @@ def _cut(text: str, who: str, notes: list[str]) -> str:
 def _add_point(
     frame: Frame, kind: str, text: str, about: str, who: str, similar: Similar | None
 ) -> str | None:
-    """Fold one point in; the new point's id, or ``None`` when it joined one."""
-    for point in frame.points:
-        if point.type == kind and frame.alike(point.text, text, similar):
-            if who not in point.authors:
-                point.authors.append(who)
-            if about and not point.about:
-                point.about = about
-            return None
-    point = Point(id=f"p{len(frame.points) + 1}", type=kind, text=text, authors=[who], about=about)
+    """Fold one point in; the new point's id, or ``None`` when it joined one.
+
+    It joins the first point it says the same as, and failing that the first
+    one it says nearly the same as, which is then flagged as reworded."""
+    same = [p for p in frame.points if p.type == kind]
+    joined = next((p for p in same if any(frame.alike(t, text, similar) for _w, t in p.said)), None)
+    if joined is None:
+        joined = next(
+            (
+                p
+                for p in same
+                if any(frame.alike(t, text, similar, REWORDED_THRESHOLD) for _w, t in p.said)
+            ),
+            None,
+        )
+        if joined is not None:
+            joined.reworded = True
+    if joined is not None:
+        if who not in joined.authors:
+            joined.authors.append(who)
+        if all(_norm(t) != _norm(text) for _w, t in joined.said):
+            joined.said.append((who, text))
+        if about and not joined.about:
+            joined.about = about
+        return None
+    point = Point(
+        id=f"p{len(frame.points) + 1}",
+        type=kind,
+        text=text,
+        authors=[who],
+        about=about,
+        said=[(who, text)],
+    )
     frame.points.append(point)
     return point.id
 
@@ -237,16 +275,25 @@ def senses(frame: Frame, word: str, similar: Similar | None) -> list[tuple[str, 
     order of first use. More than one group means the word is contested.
 
     A meaning joins a sense when it says the same as any meaning already in
-    it, so four members saying one thing four ways land together."""
+    it, so four members saying one thing four ways land together. A meaning
+    that says the same as two senses joins them into one: the order members
+    answered in doesn't decide how many senses there are."""
     _shown, meanings = frame.terms[word]
     groups: list[tuple[str, list[str]]] = []
     for who, meaning in meanings.items():
-        for _text, members in groups:
-            if any(frame.alike(meanings[m], meaning, similar, MEANING_THRESHOLD) for m in members):
-                members.append(who)
-                break
-        else:
+        matching = [
+            g
+            for g in groups
+            if any(frame.alike(meanings[m], meaning, similar, MEANING_THRESHOLD) for m in g[1])
+        ]
+        if not matching:
             groups.append((meaning, [who]))
+            continue
+        first = matching[0]
+        for other in matching[1:]:
+            first[1].extend(other[1])
+            groups.remove(other)
+        first[1].append(who)
     return groups
 
 
@@ -268,10 +315,15 @@ def show_points(frame: Frame, cast: list[str]) -> str:
     if not frame.points:
         return "(nothing yet)"
     total = len(cast)
-    return "\n".join(
-        f"{p.id} ({p.type.replace('_', ' ')}, stated by {p.support} of {total}): {p.text}"
-        for p in frame.points
-    )
+    lines = []
+    for p in frame.points:
+        kind = p.type.replace("_", " ")
+        if not p.reworded:
+            lines.append(f"{p.id} ({kind}, stated by {p.support} of {total}): {p.text}")
+            continue
+        lines.append(f"{p.id} ({kind}) said in different words. Check they agree:")
+        lines += [f"  {who}: {text}" for who, text in p.said]
+    return "\n".join(lines)
 
 
 def show_terms(frame: Frame, similar: Similar | None) -> str:
@@ -352,6 +404,15 @@ def contract(
             else f"Only one person said this: {_ids(single)}"
         )
         flags.append(_flag("single", text, points=single))
+    reworded = [p.id for p in frame.points if p.reworded]
+    if reworded:
+        flags.append(
+            _flag(
+                "reworded",
+                f"Said in different words. Check they agree: {_ids(reworded)}",
+                points=reworded,
+            )
+        )
 
     points = []
     for p in frame.points:
@@ -362,6 +423,8 @@ def contract(
             mine.append("conflict")
         if p.id in unchecked:
             mine.append("unchecked")
+        if p.reworded:
+            mine.append("reworded")
         entry: dict[str, Any] = {
             "id": p.id,
             "type": p.type,
@@ -372,6 +435,8 @@ def contract(
         }
         if p.about:
             entry["about"] = p.about
+        if p.reworded:
+            entry["wordings"] = [{"member": who, "text": text} for who, text in p.said]
         points.append(entry)
     for group in clashes:
         flags.append(
@@ -466,6 +531,11 @@ def render(made: dict[str, Any]) -> str:
         lines += [f"## {HEADINGS[kind]}", ""]
         for p in mine:
             by = ", ".join(p["authors"])
+            wordings = p.get("wordings") or []
+            if wordings:
+                lines.append(f"- **{p['id']}** said in different words by {by}. Check they agree:")
+                lines += [f"  - {w['member']}: {w['text']}" for w in wordings]
+                continue
             lines.append(f"- **{p['id']}** {p['text']} (stated by {p['support']} of {total}: {by})")
         lines.append("")
     glossary = made.get("glossary") or []

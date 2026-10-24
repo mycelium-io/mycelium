@@ -764,7 +764,9 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                     "These terms are being used in different senses:\n\n{terms}\n\n"
                     "Given what the others mean, say again what you mean by each one you "
                     "defined, with units, and give an example that tells your meaning "
-                    "apart:\n\n{term_lines}\n\nKeep your meaning if it's the one you need; "
+                    "apart:\n\n{term_lines}\n\nWrite each meaning out in full, even if it "
+                    "hasn't changed or you share someone else's: \"same as above\" can't "
+                    "be matched to anything. Keep your meaning if it's the one you need; "
                     "nobody has to give way."
                 ),
                 "next": "words",
