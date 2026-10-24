@@ -42,6 +42,16 @@ describe("<MessageBody />", () => {
     expect(toggle.compareDocumentPosition(file) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("folds to the height asked, for prose that repeats what's drawn above it", () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 60 });
+    const { container, rerender } = render(<MessageBody content="A: 75 - correct math\nB: 55 - no total line" />);
+    // Short of the usual clamp: left whole.
+    expect(screen.queryByRole("button", { name: /show more/i })).toBeNull();
+    rerender(<MessageBody content="A: 75 - correct math\nB: 55 - no total line" foldTo={44} />);
+    expect(screen.getByRole("button", { name: /show more/i })).toBeInTheDocument();
+    expect((container.firstChild as HTMLElement).style.maxHeight).toBe("44px");
+  });
+
   // The case that failed: an agent wrote its picture as an embed, `![[…]]`,
   // which drew no thumbnail, and its chip opened the upload's memory tab
   // instead of the preview.

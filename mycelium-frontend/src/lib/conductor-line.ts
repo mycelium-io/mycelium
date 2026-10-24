@@ -55,6 +55,78 @@ export type ConductorLine =
       memory?: string | null;
     };
 
+/** What each of Concord's and Accord's steps has the members doing, as a word
+ *  for a run's live line. */
+const STEP_DOING: Record<string, string> = {
+  anchor: "anchoring",
+  propose: "proposing",
+  score: "scoring",
+  rescore: "scoring",
+  repair: "fixing",
+  terms: "naming terms",
+  frame: "framing",
+  more: "framing",
+  ground: "defining terms",
+  restate: "clarifying",
+};
+
+/** Where a run in a thread stands, for a line about it outside the thread. */
+export interface RunProgress {
+  protocol: string;
+  members: string[];
+  /** Still walking. */
+  open: boolean;
+  /** The step being asked, said as what the members are doing, and how many
+   *  of those asked have answered. Null between steps or once it's closed. */
+  doing: { what: string; asked: number; answered: number } | null;
+  /** The last shared summary, for Accord's counts. */
+  lock: LockRecord | null;
+}
+
+/** The latest run in one thread's events, in order, or `null` when none ran. */
+export function runProgress(
+  events: { sender: string; conductor: ConductorLine | null; chat: boolean }[],
+): RunProgress | null {
+  let run: RunProgress | null = null;
+  let asked = new Set<string>();
+  let answered = new Set<string>();
+  let step: string | null = null;
+  for (const ev of events) {
+    const line = ev.conductor;
+    if (line?.event === "open") {
+      run = { protocol: line.protocol, members: line.members, open: true, doing: null, lock: null };
+      asked = new Set();
+      answered = new Set();
+      step = null;
+      continue;
+    }
+    if (!run) continue;
+    if (line?.event === "turn") {
+      if (line.step !== step) {
+        step = line.step;
+        asked = new Set();
+        answered = new Set();
+      }
+      asked.add(line.to);
+    } else if (line?.event === "lock") {
+      run.lock = line.lock;
+    } else if (line?.event === "close") {
+      run.open = false;
+      step = null;
+    } else if (line) {
+      // A pick or a count ends the step it read.
+      step = null;
+      asked = new Set();
+    } else if (ev.chat && asked.has(ev.sender)) {
+      answered.add(ev.sender);
+    }
+  }
+  if (run && run.open && step && asked.size) {
+    run.doing = { what: STEP_DOING[step] ?? step, asked: asked.size, answered: answered.size };
+  }
+  return run;
+}
+
 /** A count the conductor made in code, asking nobody: of the points members
  *  have given so far, or of the words they gave different meanings to. */
 export type TallyRecord =
@@ -199,7 +271,10 @@ export function conductorLineOf(message: {
 }): ConductorLine | null {
   const fromMeta = asLine((message.metadata as { conductor?: unknown } | null | undefined)?.conductor);
   if (fromMeta) return fromMeta;
-  let content = message.content;
+  return asLine(payloadData(message.content)?.conductor);
+}
+
+function payloadData(content: unknown): Record<string, unknown> | null {
   if (typeof content === "string") {
     if (!content.startsWith("{")) return null;
     try {
@@ -208,11 +283,76 @@ export function conductorLineOf(message: {
       return null;
     }
   }
-  const data = (
-    (content as { l9?: { payload?: { data?: Record<string, unknown> } } } | null)?.l9?.payload
-      ?.data ?? null
+  return (
+    (content as { l9?: { payload?: { data?: Record<string, unknown> } } } | null)?.l9?.payload?.data ?? null
   );
-  return asLine(data?.conductor);
+}
+
+/** One member's standing on an option: placed 0-1 between its bad outcome
+ *  and its ideal, and why. */
+export interface Standing {
+  member: string;
+  placed: number | undefined;
+  why: string;
+}
+
+/** Every member's standing on `label`, least satisfied last. */
+export function standings(record: PickRecord, label: string): Standing[] {
+  return record.cast
+    .map((member) => ({
+      member,
+      placed: placedOf(record, label, member),
+      why: record.reasons?.[label]?.[member] ?? "",
+    }))
+    .sort((a, b) => (b.placed ?? -1) - (a.placed ?? -1));
+}
+
+/** The member least satisfied with the pick, and how far toward its ideal. */
+export function leastSatisfied(record: PickRecord): { member: string; placed: number } | null {
+  if (!record.pick) return null;
+  const rated = standings(record, record.pick).filter((s) => s.placed !== undefined);
+  const last = rated[rated.length - 1];
+  return last ? { member: last.member, placed: last.placed! } : null;
+}
+
+/** "81%": a placed rating, for a reader. */
+export function percent(placed: number): string {
+  return `${Math.round(placed * 100)}%`;
+}
+
+/**
+ * Each member's ratings, by the reply they gave them in: a reply to a score
+ * step gets that member's row of the pick that follows it. Read from the
+ * conductor's own lines (whom each turn asked, and the pick's table), never
+ * from the reply's text. A reply that carries its own (`ReplyRecord`) is drawn
+ * from that instead, so it isn't here.
+ */
+export function ratingsByReply(
+  events: { id: string; sender: string; conductor: ConductorLine | null; chat: boolean }[],
+): Map<string, { record: PickRecord; member: string }> {
+  const out = new Map<string, { record: PickRecord; member: string }>();
+  // Replies to a score step waiting for the pick that reads them.
+  let waiting: { id: string; member: string }[] = [];
+  const asked = new Map<string, string>();
+  for (const ev of events) {
+    const line = ev.conductor;
+    if (line?.event === "turn") {
+      asked.set(line.to, line.step);
+      continue;
+    }
+    if (line?.event === "select") {
+      for (const w of waiting) out.set(w.id, { record: line.select, member: w.member });
+      waiting = [];
+      continue;
+    }
+    if (line || !ev.chat) continue;
+    const step = asked.get(ev.sender);
+    if (step === "score" || step === "rescore") {
+      waiting = waiting.filter((w) => w.member !== ev.sender);
+      waiting.push({ id: ev.id, member: ev.sender });
+    }
+  }
+  return out;
 }
 
 /** One line of plain text for a conductor line, for surfaces that draw no widget. */
@@ -251,7 +391,7 @@ export function describeConductorLine(line: ConductorLine): string {
       if (line.pick) {
         said =
           line.outcome === "converged"
-            ? `Everyone meets the bar: going with ${line.pick}`
+            ? `Picked ${line.pick}`
             : line.outcome === "resolved"
               ? `Best found: ${line.pick}, below the bar for some`
               : `Couldn't get everyone there · best was ${line.pick}`;
@@ -421,12 +561,15 @@ export function turnRuns(events: { id: string; conductor: ConductorLine | null }
   return runs;
 }
 
-/** Where a pick stands, in words: "B (10% off): everyone meets the bar", or
+/** Where a pick stands, in words: "B (10% off), least satisfied: finance at 81%", or
  *  who is short and why: "B (10% off): finance is short of the bar, because margin drops". */
 export function pickSummary(record: PickRecord): string {
   if (!record.pick) return "nothing to pick yet";
   const pick = named(record.pick, record.text, optionNames(record.options));
-  if (record.outcome === "feasible") return `${pick}: everyone meets the bar`;
+  if (record.outcome === "feasible") {
+    const least = leastSatisfied(record);
+    return least ? `${pick}, least satisfied: ${least.member} at ${percent(least.placed)}` : pick;
+  }
   const short = (
     record.short ??
     views(record, record.pick)

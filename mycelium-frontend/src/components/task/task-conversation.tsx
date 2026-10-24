@@ -19,7 +19,7 @@ import { useThreadMessages } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf } from "@/lib/threads";
 import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
-import { turnRuns } from "@/lib/conductor-line";
+import { ratingsByReply, turnRuns } from "@/lib/conductor-line";
 import { FeedRow, lastChatSender, useFeedContext } from "@/components/messages/feed-row";
 import type { ConversationRows } from "@/components/messages/use-follow-latest";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -173,6 +173,11 @@ export function TaskConversation({
   const rowIds = useMemo(() => (loading && events.length === 0 ? null : events.map((ev) => ev.id)), [loading, events]);
   // A step put to several members at once reads as one row, not one per member.
   const turns = useMemo(() => turnRuns(events), [events]);
+  // A rating reply draws its ratings as bars, from the pick that read it.
+  const rated = useMemo(
+    () => ratingsByReply(events.map((ev) => ({ ...ev, chat: CHAT_TYPES.has(ev.type) }))),
+    [events],
+  );
   useEffect(() => {
     onRows?.({ rows: rowIds, sent: newestPending, onNearTop: hasOlder ? readBack : undefined });
   }, [onRows, rowIds, newestPending, hasOlder, readBack]);
@@ -207,7 +212,14 @@ export function TaskConversation({
               </div>
             )}
             {events.map((ev, i) => (
-              <FeedRow key={ev.id} ev={ev} prev={events[i - 1]} ctx={feed} turnMembers={turns.get(ev.id)} />
+              <FeedRow
+                key={ev.id}
+                ev={ev}
+                prev={events[i - 1]}
+                ctx={feed}
+                turnMembers={turns.get(ev.id)}
+                replyContext={{ rated: rated.get(ev.id) }}
+              />
             ))}
             <PendingMessageRows
               roomName={roomName}

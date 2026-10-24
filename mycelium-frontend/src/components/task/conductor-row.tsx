@@ -8,17 +8,19 @@ import { ChevronRight, Workflow } from "lucide-react";
 import {
   isSuccess,
   lockSummary,
-  midSentence,
+  named,
+  optionNames,
   pickSummary,
   placedOf,
+  standings,
   stepVerb,
   tallySummary,
-  views,
   type ConductorLine,
   type PickRecord,
 } from "@/lib/conductor-line";
 import { MessageBody } from "@/components/message-body";
 import { MemoryKeyLink } from "@/components/markdown-content";
+import { SatisfactionBars } from "@/components/task/satisfaction-bars";
 
 interface Props {
   line: ConductorLine;
@@ -146,9 +148,16 @@ export function ConductorRow({ line, text, onOpenMemory, members }: Props) {
       break;
     }
     case "select":
+      // A pick everyone clears is its name; the bars under it say how
+      // satisfied each member is. One somebody falls short of says who.
       body = line.select.pick ? (
         <>
-          <span className="font-medium text-accent">Picked</span> <span>{pickSummary(line.select)}</span>
+          <span className="font-medium text-accent">Picked</span>{" "}
+          <span>
+            {line.select.outcome === "feasible"
+              ? named(line.select.pick, line.select.text, optionNames(line.select.options))
+              : pickSummary(line.select)}
+          </span>
         </>
       ) : (
         <span>{pickSummary(line.select)}</span>
@@ -166,7 +175,7 @@ export function ConductorRow({ line, text, onOpenMemory, members }: Props) {
       // A run that picked says what it went with, or that it couldn't get there.
       const said = line.pick
         ? line.outcome === "converged"
-          ? `Everyone meets the bar: going with ${line.pick}`
+          ? `Picked ${line.pick}`
           : line.outcome === "resolved"
             ? `Best found, below the bar for some: ${line.pick}`
             : `Couldn't get everyone there. Best was ${line.pick}`
@@ -228,26 +237,16 @@ export function ConductorRow({ line, text, onOpenMemory, members }: Props) {
 }
 
 /**
- * A pick, reasons first: each member's view of the pick in words (what their
- * rating means against the bar, and why), with every option's numbers a click
- * away for anyone checking the arithmetic.
+ * A pick, as how satisfied each member is with it: a bar each, most satisfied
+ * first, with why beside it. Every option's numbers are a click away for
+ * anyone checking the arithmetic.
  */
 export function Scorecard({ record }: { record: PickRecord }) {
   const [numbers, setNumbers] = useState(false);
   if (!record.pick) return null;
   return (
     <div className="ml-9 mt-1 text-micro">
-      <ul className="space-y-0.5" aria-label={`How each member sees ${record.pick}`}>
-        {views(record, record.pick).map((v) => (
-          <li key={v.member} className="flex gap-2">
-            <span className="w-20 flex-shrink-0 truncate font-medium text-text">{v.member}</span>
-            <span className="min-w-0 text-muted-foreground">
-              <span style={{ color: v.short ? "var(--yellow)" : undefined }}>{v.verdict}</span>
-              {v.why && <span>, because {midSentence(v.why)}</span>}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <PickBars record={record} />
       <button
         type="button"
         onClick={() => setNumbers((n) => !n)}
@@ -259,6 +258,18 @@ export function Scorecard({ record }: { record: PickRecord }) {
       </button>
       {numbers && <Numbers record={record} />}
     </div>
+  );
+}
+
+/** Each member's satisfaction with the pick, least satisfied last. */
+export function PickBars({ record }: { record: PickRecord }) {
+  if (!record.pick) return null;
+  return (
+    <SatisfactionBars
+      label={`How satisfied each member is with ${record.pick}`}
+      bar={record.threshold / 100}
+      rows={standings(record, record.pick).map((s) => ({ key: s.member, label: s.member, placed: s.placed, why: s.why }))}
+    />
   );
 }
 

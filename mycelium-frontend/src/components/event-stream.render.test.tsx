@@ -249,10 +249,10 @@ describe("<EventStream /> live message rendering", () => {
         sender_handle: "system",
         created_at: CREATED,
         content: JSON.stringify({
-          content: "plan updated → plan/tasks.md",
+          content: "plan updated → work/plan-the-tasks",
           l9: {
             header: { kind: "knowledge", subkind: "distillation" },
-            payload: { type: "distillation", data: { key: "plan/tasks.md", updated_by: "aligner" } },
+            payload: { type: "distillation", data: { key: "work/plan-the-tasks", updated_by: "aligner" } },
           },
         }),
       });
@@ -261,10 +261,32 @@ describe("<EventStream /> live message rendering", () => {
     // A memory push is the room's state, not its speech: it reaches the rail
     // under the row's own name, once, and never the conversation.
     expect(await screen.findByText("Recently updated")).toBeInTheDocument();
-    expect(screen.getAllByText("plan/tasks.md")).toHaveLength(1);
+    expect(screen.getAllByText("work/plan-the-tasks")).toHaveLength(1);
     expect(screen.getByText("@aligner")).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it("keeps a run's saved decision off the rail, where it would read as a task", async () => {
+    renderWithSWR(<EventStream roomName="sprint" />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit({
+        message_type: "l9_knowledge",
+        sender_handle: "system",
+        created_at: CREATED,
+        content: JSON.stringify({
+          content: "memory updated → context/decision/make-the-shares-add-up",
+          l9: { payload: { type: "extraction", data: { key: "context/decision/make-the-shares-add-up", updated_by: "conductor" } } },
+        }),
+      });
+    });
+
+    expect(screen.queryByText("Recently updated")).not.toBeInTheDocument();
+    expect(screen.queryByText(/context\/decision/)).not.toBeInTheDocument();
   });
 
   it("opens the episode's thread when a coordination notice's tag is clicked", async () => {

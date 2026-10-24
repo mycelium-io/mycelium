@@ -41,6 +41,7 @@ import {
   Undo2,
   UserPlus,
   Vote,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -103,6 +104,8 @@ export const AGREED_ICON: EventIcon = { Icon: Handshake, tone: GREEN, label: "Ag
 export const DONE_ICON: EventIcon = { Icon: CircleCheckBig, tone: GREEN, label: "Done" };
 export const TIMEOUT_ICON: EventIcon = { Icon: TimerOff, tone: YELLOW, label: "Timed out" };
 export const JOIN_ICON: EventIcon = { Icon: UserPlus, tone: QUIET, label: "Joined" };
+export const RUN_ICON: EventIcon = { Icon: Workflow, tone: ACCENT, label: "Run started" };
+export const SHORT_ICON: EventIcon = { Icon: Handshake, tone: YELLOW, label: "Best effort" };
 
 const UNKNOWN_NOTICE: EventIcon = { Icon: SquarePlus, tone: ACCENT, label: "Task changed" };
 const UNKNOWN_UPSTREAM: EventIcon = { Icon: GitPullRequest, tone: ACCENT, label: "Pull request changed" };

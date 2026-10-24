@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import { ConductorRow } from "./conductor-row";
 
@@ -41,7 +41,7 @@ describe("ConductorRow", () => {
     expect(screen.getByTestId("conductor-row").textContent).toContain("hit the step cap (6)");
   });
 
-  it("draws a pick reasons first, with the numbers a click away", () => {
+  it("draws a pick as how satisfied each member is, with the numbers a click away", () => {
     render(
       <ConductorRow
         line={{
@@ -76,12 +76,18 @@ describe("ConductorRow", () => {
     expect(row.textContent).toContain(
       "Picked B (10% off): success is short of the bar, because ten percent won't keep them; no rating from legal",
     );
-    const seen = screen.getByRole("list", { name: "How each member sees B" });
+    // A bar each, most satisfied first, with why beside it; one under the bar
+    // is drawn in yellow, and one with no rating says so.
+    const seen = screen.getByRole("list", { name: "How satisfied each member is with B" });
     expect([...seen.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
-      "successshort of the bar, because ten percent won't keep them",
-      "financeclose to the ideal, because margin holds",
-      "legalgave no rating",
+      "finance90%margin holds",
+      "success55%Ten percent won't keep them",
+      "legalno rating",
     ]);
+    const meters = within(seen).getAllByRole("meter");
+    expect(meters.map((m) => m.getAttribute("aria-valuenow"))).toEqual(["90", "55", null]);
+    expect((meters[1].firstChild as HTMLElement).style.background).toBe("var(--yellow)");
+    expect((meters[0].firstChild as HTMLElement).style.background).toBe("var(--accent)");
     expect(screen.queryByRole("table")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /numbers/ }));
@@ -118,7 +124,8 @@ describe("ConductorRow", () => {
       />,
     );
     const row = screen.getByTestId("conductor-row").textContent;
-    expect(row).toContain("✓ Everyone meets the bar: going with C");
+    expect(row).toContain("✓ Picked C");
+    expect(row).not.toContain("meets the bar");
     expect(row).toContain("15% off for two years");
   });
 
