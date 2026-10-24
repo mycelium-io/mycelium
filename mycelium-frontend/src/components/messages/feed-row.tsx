@@ -37,6 +37,9 @@ import { RawMessageDialog } from "@/components/raw-message-dialog";
 import { SenderName } from "@/components/sender-name";
 import { VerifierLines } from "@/components/verifier-line";
 import { ConductorRow } from "@/components/task/conductor-row";
+import { ReplyValues, type ReplyContext } from "@/components/task/reply-values";
+import { conductorLineOf, type PickRecord, type RunProgress } from "@/lib/conductor-line";
+import { RunDoneLine, RunStartLine } from "@/components/messages/run-line";
 import { EpisodeTag } from "@/components/episode-tag";
 import { EventIconMark } from "@/components/event-icon";
 import { Monogram } from "@/components/ui/monogram";
@@ -316,11 +319,56 @@ interface FeedRowProps {
   /** A conductor turn put to several members at once (`turnRuns`): everyone it
    *  went to, on the run's first turn, and `null` on the turns it folds in. */
   turnMembers?: string[] | null;
+  /** In a conductor run's thread, what a member's reply is drawn against. */
+  replyContext?: ReplyContext;
+  /** In the channel, a run in this event's thread and where it stands: its
+   *  start and its end draw as lines about the run. */
+  run?: RunProgress | null;
 }
 
 /** One event as a row: a notice, a conductor line or a chat message. */
-export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit, turnMembers }: FeedRowProps) {
+export function FeedRow({
+  ev,
+  prev,
+  ctx,
+  pingLine,
+  marked = false,
+  rowRef,
+  hit,
+  turnMembers,
+  replyContext,
+  run,
+}: FeedRowProps) {
   const { threads, rowNames, onOpenThread, onOpenMemory } = ctx;
+
+  // A run seen from the channel: its start and its end, each one line named by
+  // its task, opening the thread.
+  const runThread = (ev.raw.episode as string | undefined) ?? ev.episode;
+  if (run !== undefined && runThread) {
+    const episode = runThread;
+    const title = threads.get(episode)?.title ?? threadShortId(episode) ?? "thread";
+    const onOpen = onOpenThread ? () => onOpenThread(episode) : undefined;
+    if (ev.conductor?.event === "open") {
+      return (
+        <div data-event-id={ev.id}>
+          <RunStartLine time={ev.time} at={ev.at} open={ev.conductor} progress={run} title={title} onOpen={onOpen} />
+        </div>
+      );
+    }
+    const close = conductorLineOf({ metadata: { conductor: ev.raw.conductor } });
+    if (ev.type === "coordination_consensus" && close?.event === "close") {
+      const pick = (ev.raw.select as PickRecord | undefined) ?? null;
+      // A run that picked or saved a summary says what; any other falls
+      // through to the plain Done line below.
+      if (close.pick || run?.lock?.outcome === "locked") {
+        return (
+          <div data-event-id={ev.id}>
+            <RunDoneLine time={ev.time} at={ev.at} close={close} pick={pick} progress={run} title={title} onOpen={onOpen} />
+          </div>
+        );
+      }
+    }
+  }
 
   if (ev.type === PING_TYPE) {
     if (!pingLine || !ev.thread) return null;
@@ -569,8 +617,21 @@ export function FeedRow({ ev, prev, ctx, pingLine, marked = false, rowRef, hit, 
     );
   }
 
-  return <MessageRow ev={ev} grouped={groupsWith(prev, ev)} ctx={ctx} marked={marked} rowRef={rowRef} hit={hit} />;
+  return (
+    <MessageRow
+      ev={ev}
+      grouped={groupsWith(prev, ev)}
+      ctx={ctx}
+      marked={marked}
+      rowRef={rowRef}
+      hit={hit}
+      replyContext={replyContext}
+    />
+  );
 }
+
+/** How far a reply drawn as values folds its prose: about two lines. */
+const REPLY_FOLD_PX = 44;
 
 /** A chat message: who said it (once per run), what they said, the verifier's
  *  lines under it, its hover actions and its right-click menu. */
@@ -581,6 +642,7 @@ export function MessageRow({
   marked = false,
   rowRef,
   hit,
+  replyContext,
 }: {
   ev: Event;
   grouped: boolean;
@@ -588,8 +650,10 @@ export function MessageRow({
   marked?: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
   hit?: { query: string[]; active: boolean };
+  replyContext?: ReplyContext;
 }) {
   const { roomName, agentHandles, engineHandles, agentTags, agentOwners, flagsByMessage, refreshFlags } = ctx;
+  const drawsValues = Boolean(replyContext?.rated);
   const isAgent = agentHandles.has(ev.sender);
   // Match the members panel so one sender isn't two colors in two places: an
   // agent wears its own stable tint (Monogram's default), a human the neutral seat.
@@ -635,12 +699,16 @@ export function MessageRow({
               <Ago at={ev.at} className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint" />
             </div>
           )}
+          {/* A rating reply leads with its ratings as bars; its prose says the
+              same, so it folds to a couple of lines under them. */}
+          {drawsValues && <ReplyValues context={replyContext} />}
           <MessageBody
             content={ev.content}
             hit={hit}
             claims={flags ? claimNeedles(ev.content, flags.flatMap((f) => f.quotes)) : undefined}
             onOpenMemory={ctx.onOpenMemory}
             roomName={roomName}
+            foldTo={drawsValues ? REPLY_FOLD_PX : undefined}
           />
           {ev.edited && (
             <span className="text-micro text-faint" title="revised by a later message">

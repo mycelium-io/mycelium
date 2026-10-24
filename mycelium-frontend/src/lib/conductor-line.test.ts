@@ -2,19 +2,100 @@ import { describe, expect, it } from "vitest";
 
 import {
   conductorLineOf,
+  runProgress,
   describeConductorLine,
   isSuccess,
   named,
   optionNames,
+  leastSatisfied,
   pickSummary,
+  ratingsByReply,
   shortName,
+  standings,
   stepSentence,
   turnRuns,
   verdict,
   views,
   type ConductorLine,
+  type LockRecord,
   type PickRecord,
 } from "./conductor-line";
+
+describe("a run, seen from the channel", () => {
+  const open = { event: "open", protocol: "concord", roles: {}, members: ["a", "b", "c"], steps: [] } as ConductorLine;
+  const turn = (to: string, step = "score") =>
+    ({ event: "turn", protocol: "concord", step, to, turn: 3, cap: 20 }) as ConductorLine;
+  const c = (conductor: ConductorLine) => ({ sender: "conductor", conductor, chat: true });
+  const said = (sender: string) => ({ sender, conductor: null, chat: true });
+
+  it("says what the members are doing and how many have answered, while it walks", () => {
+    const run = runProgress([c(open), c(turn("a", "anchor")), said("a"), c(turn("a")), c(turn("b")), c(turn("c")), said("b"), said("b"), said("a")]);
+    expect(run).toMatchObject({ protocol: "concord", open: true, doing: { what: "scoring", asked: 3, answered: 2 } });
+  });
+
+  it("stops being live once it closes, and keeps the summary's counts", () => {
+    const lock: LockRecord = { outcome: "locked", memory: "m", saved: true, points: 17, shared: 0, contested: 2, checks: 2, flagged: 4, quiet: [] };
+    const run = runProgress([
+      c(open),
+      c(turn("a", "verify")),
+      said("a"),
+      c({ event: "lock", step: "lock", next: "locked", lock }),
+      c({ event: "close", protocol: "accord", outcome: "resolved", steps: 7, reason: "" }),
+    ]);
+    expect(run).toMatchObject({ open: false, doing: null, lock: { points: 17 } });
+    expect(runProgress([said("a")])).toBeNull();
+  });
+
+});
+
+describe("how satisfied each member is", () => {
+  const record: PickRecord = {
+    outcome: "feasible",
+    pick: "A",
+    text: "Cents math",
+    threshold: 60,
+    options: [
+      { label: "A", text: "Cents math", authors: ["builder"] },
+      { label: "B", text: "Floats", authors: ["reviewer"] },
+    ],
+    table: { A: { builder: 90, reviewer: 80, designer: 75 }, B: { builder: 85, reviewer: 70 } },
+    placed: { A: { builder: 1, reviewer: 0.88, designer: 0.81 }, B: { builder: 0.94, reviewer: 0.75 } },
+    reasons: { A: { designer: "format left open" } },
+    cast: ["builder", "reviewer", "designer"],
+    ratings: { builder: 90, reviewer: 80, designer: 75 },
+    lowest: 0.81,
+    missing: [],
+    least_happy: null,
+  };
+
+  it("orders members most satisfied first, and names the least", () => {
+    expect(standings(record, "A").map((s) => s.member)).toEqual(["builder", "reviewer", "designer"]);
+    expect(standings(record, "B").map((s) => s.member)).toEqual(["builder", "reviewer", "designer"]);
+    expect(standings(record, "B")[2].placed).toBeUndefined();
+    expect(leastSatisfied(record)).toEqual({ member: "designer", placed: 0.81 });
+    expect(pickSummary(record)).toBe("A (Cents math), least satisfied: designer at 81%");
+  });
+
+  it("gives each rating reply its member's row of the pick that read it", () => {
+    const turn = (to: string, step: string) =>
+      ({ event: "turn", protocol: "concord", step, to, turn: 3, cap: 20 }) as ConductorLine;
+    const events = [
+      { id: "t1", sender: "conductor", conductor: turn("builder", "score"), chat: true },
+      { id: "t2", sender: "conductor", conductor: turn("reviewer", "score"), chat: true },
+      { id: "r1", sender: "builder", conductor: null, chat: true },
+      // A second reply from the same member stands for its ratings, not the first.
+      { id: "r2", sender: "reviewer", conductor: null, chat: true },
+      { id: "r3", sender: "reviewer", conductor: null, chat: true },
+      { id: "j", sender: "designer", conductor: null, chat: false },
+      { id: "s", sender: "conductor", conductor: { event: "select", step: "pick", next: "agreed", select: record } as ConductorLine, chat: true },
+      // Said after the pick, so no pick read it.
+      { id: "r4", sender: "builder", conductor: null, chat: true },
+    ];
+    const rated = ratingsByReply(events);
+    expect([...rated.keys()]).toEqual(["r1", "r3"]);
+    expect(rated.get("r1")).toEqual({ record, member: "builder" });
+  });
+});
 
 describe("a concord or accord step, as a reader follows it", () => {
   it("names an option by its first words, as the hub does", () => {
@@ -146,7 +227,7 @@ describe("an agreement's lines", () => {
       "Picked B (10% off): success is short of the bar; no rating from legal",
     );
     expect(pickSummary({ ...pick, outcome: "feasible", missing: [], ratings: { a: 80 } })).toBe(
-      "B (10% off): everyone meets the bar",
+      "B (10% off), least satisfied: success at 55%",
     );
   });
 
@@ -179,7 +260,7 @@ describe("an agreement's lines", () => {
       pick: "C",
       text: "15% off for two years",
     };
-    expect(describeConductorLine(agreed)).toBe("Everyone meets the bar: going with C");
+    expect(describeConductorLine(agreed)).toBe("Picked C");
     expect(describeConductorLine({ ...agreed, outcome: "resolved" })).toBe(
       "Best found: C, below the bar for some",
     );

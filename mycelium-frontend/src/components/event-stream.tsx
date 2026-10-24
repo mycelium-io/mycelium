@@ -20,6 +20,7 @@ import {
   upstreamInChat,
 } from "@/lib/threads";
 import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
+import { conductorLineOf, runProgress, type RunProgress } from "@/lib/conductor-line";
 import {
   applyActivity,
   expireActivity,
@@ -193,6 +194,11 @@ function ChannelSkeleton() {
  * why the raise-up notices are not asked this question — the same split the CLI
  * makes by consulting its own `in_a_thread` from the chat branch alone.
  */
+/** The thread an event belongs to: a commit names it in its envelope. */
+function runEpisode(event: Event): string | null {
+  return (event.raw.episode as string | undefined) ?? event.episode ?? null;
+}
+
 function inAThread(event: Event, room: string): boolean {
   return CHAT_TYPES.has(event.type) && !isLiveEpisode(room, event.episode);
 }
@@ -258,10 +264,10 @@ function subjectOf(event: Event, threads: Map<string, ThreadOwner>): string | nu
   if (event.type === NOTICE_TYPE) return (event.raw.taskKey as string) || null;
   if (event.type === "l9_knowledge") {
     const key = (event.raw.key as string) || null;
-    // An agent writing its own manifest is the roster's news, and the Members
-    // rail already carries it. In a room of seven agents it is otherwise seven
-    // lines saying somebody arrived.
-    return key && !key.startsWith("agents/") ? key : null;
+    // Only a task's own memory is a row here. Everything else written (an
+    // agent's manifest, a run's shared summary or decision) is the Memory
+    // rail's news, and as a row it reads as a task standing open.
+    return key?.startsWith("work/") ? key : null;
   }
   return null;
 }
@@ -698,10 +704,38 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // row, and what is left in the feed is what people actually said. The
   // verifier's `check` notice is drawn under the message it is about, so it
   // is neither a row nor rail activity of its own.
+  // A conductor run is the one thing in a thread the channel follows: where
+  // each thread's latest run stands, from its turns and replies. Its opening
+  // comes up as a line here, and its close is already one.
+  const runs = useMemo(() => {
+    const byThread = new Map<string, { sender: string; conductor: Event["conductor"]; chat: boolean }[]>();
+    for (const e of events) {
+      const episode = runEpisode(e);
+      if (!episode || isLiveEpisode(roomName, episode)) continue;
+      const list = byThread.get(episode);
+      // The close rides on the run's commit, not on a conductor post.
+      const conductor =
+        e.conductor ?? (e.type === "coordination_consensus" ? conductorLineOf({ metadata: { conductor: e.raw.conductor } }) : null);
+      const item = { sender: e.sender, conductor, chat: CHAT_TYPES.has(e.type) };
+      if (list) list.push(item);
+      else byThread.set(episode, [item]);
+    }
+    const out = new Map<string, RunProgress>();
+    for (const [episode, list] of byThread) {
+      if (!list.some((x) => x.conductor?.event === "open")) continue;
+      const run = runProgress(list);
+      if (run) out.set(episode, run);
+    }
+    return out;
+  }, [events, roomName]);
+
   const inChannel = useMemo(
     () =>
       events.filter(
-        (e) => CHANNEL_VIEW_TYPES.has(e.type) && !inAThread(e, roomName) && !isVerifierCheck(e),
+        (e) =>
+          CHANNEL_VIEW_TYPES.has(e.type) &&
+          (!inAThread(e, roomName) || e.conductor?.event === "open") &&
+          !isVerifierCheck(e),
       ),
     [events, roomName],
   );
@@ -1138,6 +1172,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                   prev={visible[idx - 1]}
                   ctx={feed}
                   pingLine={pingLines.get(ev.id)}
+                  run={runs.get(runEpisode(ev) ?? "")}
                   marked={marked}
                   rowRef={marked ? highlightRow : undefined}
                   // The row's own share of the open find: whether to mark its

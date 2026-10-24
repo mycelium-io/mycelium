@@ -11,6 +11,7 @@ import { useRoomEpisodes, useRoomMembers, useRoomMemories, useRoomRevalidate } f
 import { threadShortId } from "@/lib/threads";
 import { Findable } from "@/components/findable";
 import { FlowPanel } from "@/components/flow-panel";
+import { RunResult } from "@/components/task/run-result";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
 import { RoomChatBox } from "@/components/room-chat-box";
@@ -239,6 +240,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
           contentClassName="relative flex flex-col"
         >
           <ScrollArea className="min-h-0 flex-1" viewportRef={setScroller}>
+            <RunResult roomName={roomName} episode={target.episode} onOpenMemory={onOpenMemory} />
             {run && (
               <div className="border-b border-border">
                 <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />

@@ -22,6 +22,8 @@ const CLAMP_PX = 168;
  *  it, so it fades into whatever the message sits on: the channel's page, a
  *  thread's surface card, the memory tab's paper. */
 const CLAMP_MASK = "linear-gradient(to bottom, black calc(100% - 3.5rem), transparent)";
+/** A fold is a line or two, so it fades over less of it. */
+const FOLD_MASK = "linear-gradient(to bottom, black calc(100% - 1.25rem), transparent)";
 
 /**
  * A message's prose, clamped when it runs long.
@@ -46,6 +48,9 @@ interface MessageBodyProps {
   /** The room the message is in. With it, the files the message links are
    *  drawn under it and a link to one opens its preview. */
   roomName?: string;
+  /** Fold to this height instead (px): for prose that says again what is
+   *  drawn above it, such as a reply whose values are shown as bars. */
+  foldTo?: number;
 }
 
 /** Whether a message would draw the same: its text, where it links, and its
@@ -57,13 +62,18 @@ function sameBody(a: MessageBodyProps, b: MessageBodyProps): boolean {
     a.content === b.content &&
     a.onOpenMemory === b.onOpenMemory &&
     a.roomName === b.roomName &&
+    a.foldTo === b.foldTo &&
     a.hit?.query === b.hit?.query &&
     a.hit?.active === b.hit?.active &&
     (a.claims ?? []).join("\n") === (b.claims ?? []).join("\n")
   );
 }
 
-function MessageBodyImpl({ content, hit, claims, onOpenMemory, roomName }: MessageBodyProps) {
+function MessageBodyImpl({ content, hit, claims, onOpenMemory, roomName, foldTo }: MessageBodyProps) {
+  const clampPx = foldTo ?? CLAMP_PX;
+  // A fold is asked for, so even a little more than it folds; the usual clamp
+  // leaves a message that is only a little long alone.
+  const slack = foldTo === undefined ? 24 : 4;
   const claimKey = (claims ?? []).join("\n");
   const marks = useMemo<Highlight | undefined>(
     () => hit ?? (claimKey ? { query: claimKey.split("\n"), variant: "claim" } : undefined),
@@ -99,15 +109,15 @@ function MessageBodyImpl({ content, hit, claims, onOpenMemory, roomName }: Messa
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") {
-      if (el) setOverflows(el.scrollHeight > CLAMP_PX + 24);
+      if (el) setOverflows(el.scrollHeight > clampPx + slack);
       return;
     }
-    const measure = () => setOverflows(el.scrollHeight > CLAMP_PX + 24);
+    const measure = () => setOverflows(el.scrollHeight > clampPx + slack);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [content]);
+  }, [content, clampPx, slack]);
 
   // A find match forces the message open: the hit could be in the clamped-off
   // tail, and a highlight the reader can't see is a broken search. The manual
@@ -122,7 +132,11 @@ function MessageBodyImpl({ content, hit, claims, onOpenMemory, roomName }: Messa
         className="overflow-hidden"
         style={
           clamped
-            ? { maxHeight: CLAMP_PX, maskImage: CLAMP_MASK, WebkitMaskImage: CLAMP_MASK }
+            ? {
+                maxHeight: clampPx,
+                maskImage: foldTo === undefined ? CLAMP_MASK : FOLD_MASK,
+                WebkitMaskImage: foldTo === undefined ? CLAMP_MASK : FOLD_MASK,
+              }
             : undefined
         }
       >
