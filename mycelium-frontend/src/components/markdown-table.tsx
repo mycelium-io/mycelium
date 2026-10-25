@@ -16,7 +16,8 @@ function rule(cell: Element): string {
 }
 
 /** A rendered table back as Markdown: the text of each cell, with its
- *  column's alignment kept, and any `|` in a cell escaped. */
+ *  column's alignment kept, and any `|` in a cell escaped. Formatting in a
+ *  cell is lost, so it's only for a table whose source isn't known. */
 export function tableToMarkdown(table: HTMLTableElement): string {
   const rows = [...table.querySelectorAll("tr")].map((tr) =>
     [...tr.querySelectorAll("th, td")].map((cell) => (cell.textContent ?? "").trim().replace(/\|/g, "\\|")),
@@ -31,9 +32,10 @@ export function tableToMarkdown(table: HTMLTableElement): string {
 /**
  * A Markdown table in a message or a memory: in a rounded frame that scrolls
  * sideways when the table is wider than the pane, with a Copy button that
- * shows on hover and copies it back as Markdown.
+ * shows on hover and copies the table's Markdown: its `source` exactly as
+ * written, or rebuilt from the cells when that isn't known.
  */
-export function MarkdownTable({ children }: { children?: ReactNode }) {
+export function MarkdownTable({ children, source }: { children?: ReactNode; source?: string }) {
   const table = useRef<HTMLTableElement>(null);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -42,8 +44,9 @@ export function MarkdownTable({ children }: { children?: ReactNode }) {
     return () => clearTimeout(t);
   }, [copied]);
   const copy = () => {
-    if (!table.current) return;
-    void navigator.clipboard?.writeText(tableToMarkdown(table.current)).then(() => setCopied(true));
+    const text = source ?? (table.current ? tableToMarkdown(table.current) : "");
+    if (!text) return;
+    void navigator.clipboard?.writeText(text).then(() => setCopied(true));
   };
   return (
     <div className="md-table">

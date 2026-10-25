@@ -20,15 +20,25 @@ describe("a Markdown table", () => {
     expect(container.querySelector(".md-table-copy")).not.toBeNull();
   });
 
-  it("copies back as the Markdown it came from", async () => {
+  it("copies the table's own Markdown, with links, code and emphasis in the cells as written", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
+    const table = [
+      "| Option | Where | Note |",
+      "| --- | --- | --- |",
+      "| A | [the PR](https://example.com/pr/1) | uses `split()` |",
+      "| B | [[context/decision/split]] | **not** tested |",
+    ].join("\n");
+    render(<MarkdownContent>{`Where each option stands:\n\n${table}\n\nThat's all.`}</MarkdownContent>);
+    fireEvent.click(screen.getByRole("button", { name: "Copy table as Markdown" }));
+    expect(writeText).toHaveBeenCalledWith(table);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Copy table as Markdown" })).toHaveTextContent("Copied"));
+  });
+
+  it("rebuilds a table's Markdown from its cells when its source isn't known", () => {
     render(<MarkdownContent>{TABLE}</MarkdownContent>);
     expect(tableToMarkdown(screen.getByRole("table"))).toBe(
       ["| Option | Change | Lines |", "| :--- | --- | ---: |", "| A | Integer cents | 15 |", "| B | Round \\| each share | 4 |"].join("\n"),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Copy table as Markdown" }));
-    expect(writeText).toHaveBeenCalledWith(tableToMarkdown(screen.getByRole("table")));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Copy table as Markdown" })).toHaveTextContent("Copied"));
   });
 });

@@ -329,7 +329,14 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
           li: ({ children }) => <li>{processNode(children)}</li>,
           strong: ({ children }) => <strong>{processNode(children)}</strong>,
           em: ({ children }) => <em>{processNode(children)}</em>,
-          table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
+          // The table's own Markdown, sliced from the source by its position,
+          // so Copy keeps links, code and emphasis in the cells as written.
+          table: ({ children: rows, node }) => {
+            const start = node?.position?.start.offset;
+            const end = node?.position?.end.offset;
+            const source = start !== undefined && end !== undefined ? children.slice(start, end) : undefined;
+            return <MarkdownTable source={source}>{rows}</MarkdownTable>;
+          },
           // `style` carries the column's alignment (`:--:`, `--:`).
           td: ({ children, style }) => <td style={style}>{processNode(children)}</td>,
           th: ({ children, style }) => <th style={style}>{processNode(children)}</th>,
