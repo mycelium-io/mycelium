@@ -260,4 +260,6 @@ Mycelium builds on OSS projects we found invaluable in this space:
 - [FastAPI](https://fastapi.tiangolo.com/) + [fastembed](https://github.com/qdrant/fastembed): the moderator backend and on-device embeddings
 - [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mycelium-io/mycelium)
 
+## AI Use Disclosure
+
 Most of this repository is written and reviewed by AI coding agents with the guidance of the humans helping to contribute it.
