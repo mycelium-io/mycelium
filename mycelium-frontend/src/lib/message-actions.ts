@@ -5,13 +5,15 @@
 // added to the composer's draft, and the title and body of a task made from
 // the message. The bar itself is `components/message-actions.tsx`.
 
-/** Fired on `window` to add text to the channel's composer, which listens for
- *  it while it is the room's own (`RoomChatBox`'s `receivesInserts`). */
+/** Fired on `window` to add text to a composer: the thread's, for a message in
+ *  a thread, else the room's own (`RoomChatBox`'s `receivesInserts`). */
 export const COMPOSER_INSERT_EVENT = "mycelium:composer-insert";
 
 export interface ComposerInsert {
   room: string;
   text: string;
+  /** The thread the message was in, whose composer takes it; none for the room. */
+  episode?: string | null;
 }
 
 export function insertIntoComposer(detail: ComposerInsert): void {

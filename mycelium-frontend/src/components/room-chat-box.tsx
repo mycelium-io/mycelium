@@ -123,7 +123,8 @@ interface Props {
    *  up with the text above it. */
   inline?: boolean;
   /** Takes what a channel message's Reply and Quote add (`lib/message-actions.ts`).
-   *  Only the channel's own composer does, so one click writes into one box. */
+   *  Only the channel's own composer does, so one click writes into one box. A
+   *  thread's composer takes its own thread's without asking. */
   receivesInserts?: boolean;
 }
 
@@ -338,12 +339,13 @@ export function RoomChatBox({
   const [cursor, setCursor] = useState(0);
   const parsed = useMemo(() => parseCommand(content, cursor), [content, cursor]);
   // A message's Reply or Quote adds to the end of the draft, and the cursor
-  // goes to the end, after it, once the box has drawn it.
+  // goes to the end, after it, once the box has drawn it. A message in a
+  // thread goes to that thread's composer; one in the channel, to the room's.
   useEffect(() => {
-    if (!receivesInserts) return;
+    if (!receivesInserts && !episode) return;
     const onInsert = (e: Event) => {
-      const { room, text } = (e as CustomEvent<ComposerInsert>).detail;
-      if (room !== roomName) return;
+      const { room, text, episode: from = null } = (e as CustomEvent<ComposerInsert>).detail;
+      if (room !== roomName || from !== episode) return;
       setContent((draft) => appendToDraft(draft, text));
       requestAnimationFrame(() => {
         const el = inputRef.current;
@@ -355,7 +357,7 @@ export function RoomChatBox({
     };
     window.addEventListener(COMPOSER_INSERT_EVENT, onInsert);
     return () => window.removeEventListener(COMPOSER_INSERT_EVENT, onInsert);
-  }, [receivesInserts, roomName]);
+  }, [receivesInserts, roomName, episode]);
   // What a command that ran says afterwards (an engine added), and an agent
   // being started on a machine, followed until it is in the room.
   const [notice, setNotice] = useState<string | null>(null);

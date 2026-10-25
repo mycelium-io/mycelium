@@ -1102,4 +1102,24 @@ describe("<RoomChatBox /> reply and quote", () => {
     await new Promise((r) => requestAnimationFrame(r));
     for (const box of boxes) expect(box).toHaveValue("");
   });
+
+  it("puts a reply to a message in a thread into that thread's composer, not the room's", async () => {
+    renderWithSWR(
+      <>
+        <RoomChatBox roomName="demo" receivesInserts />
+        <RoomChatBox roomName="demo" episode="urn:ep:demo:t1" threadLabel="Fix login" />
+        <RoomChatBox roomName="demo" episode="urn:ep:demo:t2" threadLabel="Ship it" />
+      </>,
+    );
+    act(() => insertIntoComposer({ room: "demo", episode: "urn:ep:demo:t1", text: replyText("sam") }));
+    const thread = await screen.findByPlaceholderText(/Reply in Fix login/);
+    await waitFor(() => expect(thread).toHaveValue("@sam "));
+    await waitFor(() => expect(thread).toHaveFocus());
+    expect(screen.getByPlaceholderText(/Message the room/)).toHaveValue("");
+    expect(screen.getByPlaceholderText(/Reply in Ship it/)).toHaveValue("");
+    // One from the channel still goes to the room's.
+    act(() => insertIntoComposer({ room: "demo", text: replyText("ana") }));
+    await waitFor(() => expect(screen.getByPlaceholderText(/Message the room/)).toHaveValue("@ana "));
+    expect(thread).toHaveValue("@sam ");
+  });
 });

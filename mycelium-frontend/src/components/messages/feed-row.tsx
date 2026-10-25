@@ -136,13 +136,20 @@ export interface FeedContext {
   refreshFlags: () => void;
   onOpenThread?: (episode: string) => void;
   onOpenMemory?: (key: string) => void;
+  /** The thread the list is of, whose composer a row's Reply and Quote fill;
+   *  none for the room's channel. */
+  episode?: string | null;
 }
 
 /** The room's shared reads, folded once for a list's rows. Each is a shared SWR
  *  entry, so a list asking costs no request of its own. */
 export function useFeedContext(
   roomName: string,
-  { onOpenThread, onOpenMemory }: Pick<FeedContext, "onOpenThread" | "onOpenMemory"> = {},
+  {
+    onOpenThread,
+    onOpenMemory,
+    episode = null,
+  }: Pick<FeedContext, "onOpenThread" | "onOpenMemory" | "episode"> = {},
 ): FeedContext {
   const { agents } = useRoomAgents(roomName);
   const threads = useRoomThreads(roomName);
@@ -161,8 +168,9 @@ export function useFeedContext(
       refreshFlags,
       onOpenThread,
       onOpenMemory,
+      episode,
     }),
-    [roomName, agents, threads, rowNames, flagsByMessage, refreshFlags, onOpenThread, onOpenMemory],
+    [roomName, agents, threads, rowNames, flagsByMessage, refreshFlags, onOpenThread, onOpenMemory, episode],
   );
 }
 
@@ -239,6 +247,7 @@ export function SystemNotice({
  */
 export function MessageMenu({
   roomName,
+  episode = null,
   messageId,
   content,
   sender,
@@ -246,6 +255,8 @@ export function MessageMenu({
   children,
 }: {
   roomName: string;
+  /** The thread the message is drawn in, whose composer its Reply and Quote fill. */
+  episode?: string | null;
   messageId?: string | null;
   content: string;
   sender: string;
@@ -263,14 +274,14 @@ export function MessageMenu({
           <ContextMenuItem
             icon={Reply}
             action="message.reply"
-            onClick={() => insertIntoComposer({ room: roomName, text: replyText(sender) })}
+            onClick={() => insertIntoComposer({ room: roomName, episode, text: replyText(sender) })}
           >
             Reply
           </ContextMenuItem>
           <ContextMenuItem
             icon={TextQuote}
             action="message.quote"
-            onClick={() => insertIntoComposer({ room: roomName, text: quoteText(content, sender) })}
+            onClick={() => insertIntoComposer({ room: roomName, episode, text: quoteText(content, sender) })}
           >
             Quote
           </ContextMenuItem>
@@ -661,7 +672,14 @@ export function MessageRow({
   const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
   const flags = ev.messageId ? flagsByMessage.get(ev.messageId) : undefined;
   return (
-    <MessageMenu roomName={roomName} messageId={ev.messageId} content={ev.content} sender={ev.sender} wire={ev.wire}>
+    <MessageMenu
+      roomName={roomName}
+      episode={ctx.episode}
+      messageId={ev.messageId}
+      content={ev.content}
+      sender={ev.sender}
+      wire={ev.wire}
+    >
       <div
         data-event-id={ev.id}
         ref={rowRef}
@@ -719,6 +737,7 @@ export function MessageRow({
         </div>
         <MessageActions
           roomName={roomName}
+          episode={ctx.episode}
           messageId={ev.messageId}
           content={ev.content}
           sender={ev.sender}

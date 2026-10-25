@@ -86,7 +86,8 @@ export function TaskConversation({
 }: Props) {
   const { messages, loading, refresh, hasOlder, loadOlder, loadingOlder } =
     useThreadMessages(roomName, episode);
-  const feed = useFeedContext(roomName, { onOpenMemory });
+  // A row's Reply and Quote fill this thread's composer, not the room's.
+  const feed = useFeedContext(roomName, { onOpenMemory, episode });
 
   // Hand the parent our refresh once it is stable, so its composer's onSent can
   // re-read this episode after a send.

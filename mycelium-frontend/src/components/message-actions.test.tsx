@@ -70,9 +70,10 @@ describe("<MessageActions />", () => {
     fireEvent.mouseEnter(screen.getByTestId("row"));
     await userEvent.click(screen.getByRole("button", { name: "Reply" }));
     await userEvent.click(screen.getByRole("button", { name: "Quote" }));
+    // A message in the channel, so the room's own composer takes them.
     expect(seen).toEqual([
-      { room: "demo", text: "@builder " },
-      { room: "demo", text: "> @~builder: stripe payments are merged\n\n" },
+      { room: "demo", episode: null, text: "@builder " },
+      { room: "demo", episode: null, text: "> @~builder: stripe payments are merged\n\n" },
     ]);
   });
 
@@ -85,7 +86,7 @@ describe("<MessageActions />", () => {
     await userEvent.keyboard("c");
     expect(copyText).toHaveBeenCalledWith("stripe payments are merged");
     await userEvent.keyboard("r");
-    expect(seen.at(-1)).toEqual({ room: "demo", text: "@builder " });
+    expect(seen.at(-1)).toEqual({ room: "demo", episode: null, text: "@builder " });
   });
 
   it("makes a task from the message and opens its thread", async () => {
