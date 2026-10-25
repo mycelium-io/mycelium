@@ -372,6 +372,104 @@ def test_a_statement_is_kept_whole_and_unlabelled():
     )
 
 
+NO_TRACEBACK = "No input ends in a traceback."
+ONE_LINE = "Bad input prints a one-line error instead of a traceback."
+HUMAN = "Every bad input ends in a short message, not a traceback."
+
+
+def _said_three_ways() -> framing.Frame:
+    frame = framing.Frame()
+    framing.fold(
+        frame,
+        [
+            ("a", [_point("objective", NO_TRACEBACK), _point("deliverable", "A branch.")]),
+            ("b", [_point("objective", ONE_LINE)]),
+            ("c", [_point("objective", HUMAN)]),
+        ],
+        similar=None,
+    )
+    return frame
+
+
+def test_a_member_saying_points_are_the_same_folds_them_and_is_recorded():
+    frame = _said_three_ways()
+    out = framing.fold(
+        frame,
+        [
+            ("b", [{"label": "same", "points": ["p3", "p1"], "text": "p3 = p1"}]),
+            ("c", [{"label": "same", "points": ["p4", "p1"], "text": "p4 = p1"}]),
+        ],
+        similar=None,
+    )
+    assert out.added == []
+    assert [(p.id, p.authors) for p in frame.points] == [("p1", ["a", "b", "c"]), ("p2", ["a"])]
+    made = framing.contract(frame, cast=CAST, ask="", task="", title="", similar=None)
+    (folded, _branch) = made["points"]
+    assert folded["support"] == 3
+    assert "single" not in folded["flags"]
+    # Who said they're the same is recorded beside who stated it, and no
+    # wording is lost.
+    assert folded["matched_by"] == ["b", "c"]
+    assert folded["folded"] == [{"point": "p3", "by": "b"}, {"point": "p4", "by": "c"}]
+    assert [w["text"] for w in folded["wordings"]] == [NO_TRACEBACK, ONE_LINE, HUMAN]
+    body = framing.render(made)
+    assert f"- **p1** {NO_TRACEBACK} (stated by 3 of 3: a, b, c)" in body
+    assert "  - Folded in because members said they're the same: p3 (b), p4 (c)" in body
+    assert f"  - b: {ONE_LINE}" in body
+    shown = framing.show_points(frame, CAST)
+    assert f"p1 (objective, stated by 3 of 3): {NO_TRACEBACK}" in shown
+    assert "(folded in: p3 (b said it's the same), p4 (c said it's the same))" in shown
+
+
+def test_a_chain_folds_into_the_last_and_ids_stay_unique_after_a_fold():
+    frame = _said_three_ways()
+    framing.fold(
+        frame,
+        [("a", [{"label": "same", "points": ["p4", "p3", "p1"], "text": "p4 = p3 = p1"}])],
+        similar=None,
+    )
+    assert [p.id for p in frame.points] == ["p1", "p2"]
+    # A point added after a fold gets an id no point ever had.
+    out = framing.fold(frame, [("b", [_point("constraint", "Exit 1.")])], similar=None)
+    assert out.added == ["p5"]
+    # A later line naming a point already folded names where it went.
+    framing.fold(
+        frame,
+        [("c", [{"label": "same", "points": ["p3", "p1"], "text": "p3 = p1"}])],
+        similar=None,
+    )
+    assert [p.id for p in frame.points] == ["p1", "p2", "p5"]
+
+
+def test_a_check_on_a_folded_point_covers_the_point_it_went_into():
+    frame = _said_three_ways()
+    framing.fold(
+        frame,
+        [
+            ("a", [{"label": "check", "text": "Run each case.", "covers": ["p3"]}]),
+            ("b", [{"label": "same", "points": ["p3", "p1"], "text": "p3 = p1"}]),
+            ("c", [{"label": "check", "text": "Diff stderr.", "covers": ["p4", "p3"]}]),
+        ],
+        similar=None,
+    )
+    framing.known_covers(frame)
+    assert [(c.text, c.covers) for c in frame.checks] == [
+        ("Run each case.", ["p1"]),
+        ("Diff stderr.", ["p4", "p1"]),
+    ]
+
+
+def test_naming_a_point_that_isnt_there_folds_nothing_and_says_so():
+    frame = _said_three_ways()
+    out = framing.fold(
+        frame,
+        [("b", [{"label": "same", "points": ["p9", "p1"], "text": "p9 = p1"}])],
+        similar=None,
+    )
+    assert len(frame.points) == 4
+    assert out.notes == ["b said p9 matched a point, but there's no such point."]
+
+
 def test_checks_cover_points_and_the_rest_are_unchecked():
     frame = framing.Frame()
     framing.fold(

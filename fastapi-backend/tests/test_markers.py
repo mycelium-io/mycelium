@@ -102,6 +102,17 @@ def test_labelled_text_stops_at_a_blank_line():
     assert pieces == [{"label": "objective", "text": "Renew Acme.\nOn good terms."}]
 
 
+def test_a_same_line_names_the_points_to_fold_the_last_one_kept():
+    pieces = markers.plain_pieces(
+        "same: p6 = p1\n- **Same**: P11 = p6 = p1, p9 = p2\nsame: p3\nthe same: nothing"
+    )
+    assert pieces == [
+        {"label": "same", "points": ["p6", "p1"], "text": "p6 = p1"},
+        {"label": "same", "points": ["p11", "p6", "p1"], "text": "P11 = p6 = p1"},
+        {"label": "same", "points": ["p9", "p2"], "text": "p9 = p2"},
+    ]
+
+
 def test_words_checks_and_what_a_point_is_about():
     pieces = markers.labelled(
         '[[mycelium: term="hand off"]] Passing the account to the next owner.\n'

@@ -728,11 +728,22 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 "to": "all",
                 "collect": "pieces",
                 "prompt": (
-                    "What the team has said about {title} so far:\n\n{frame}\n\nIs something "
-                    "important missing, something the work would go wrong without? If so, "
-                    "add it on its own line as before, two at most. Don't add detail to "
-                    "points already there. Usually nothing is missing: then say so in a "
-                    "few words."
+                    "What the team has said about {title} so far:\n\n{frame}\n\nFirst, "
+                    "members often say the same thing in different words, and each "
+                    "wording is listed as its own point. Read the list. For each point "
+                    "that says what an earlier one says, write a line naming both, the "
+                    "later point first. For example, if the list had\n\n"
+                    "p1 (objective): No input ends in a traceback.\n"
+                    "p6 (objective): Bad input prints a one-line error instead of a "
+                    "traceback.\n\nyou would write:\n\nsame: p6 = p1\n\nThat line folds "
+                    "p6 into p1, which then counts as stated by everyone who stated "
+                    "either. Write one line per pair, for anyone's points, yours "
+                    "included. Only pair points that mean the same: two that disagree, "
+                    "or where one asks for more than the other, stay apart.\n\n"
+                    "Then: is something important missing, something the work would go "
+                    "wrong without? If so, add it on its own line as before, two at most. "
+                    "Don't add detail to points already there. Usually nothing is "
+                    "missing: then say so in a few words."
                 ),
                 "next": "added",
             },
