@@ -105,6 +105,18 @@
 /* ---- Tables: spacing as padding, which CodeMirror measures (margin it doesn't) ---- */
 /* A wide table scrolls inside its wrapper rather than widening the editor. */
 .cm-md-table-wrap { padding: 0.4em 16px; overflow-x: auto; cursor: text; }
-.cm-md-table { border-collapse: collapse; font-size: 0.95em; }
-.cm-md-table th, .cm-md-table td { border: 1px solid var(--border2); padding: 0.25em 0.6em; }
-.cm-md-table th { font-weight: 600; background: color-mix(in srgb, var(--text) 4%, transparent); }
+/* Drawn the way a message draws one: a rounded frame, a faint header band in
+ * the body font, a hairline between rows (`.markdown-body .md-table`). The
+ * table itself is the frame, since this has no wrapper of its own to round. */
+.cm-md-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 0.95em;
+  font-variant-numeric: tabular-nums;
+}
+.cm-md-table th, .cm-md-table td { padding: 0.35em 0.75em; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+.cm-md-table tr:last-child td { border-bottom: none; }
+.cm-md-table th { font-weight: 500; color: var(--muted-foreground); background: var(--hairline); }

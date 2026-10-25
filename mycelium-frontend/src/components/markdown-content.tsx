@@ -8,6 +8,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { Tooltip } from "@/components/ui/tooltip";
+import { MarkdownTable } from "@/components/markdown-table";
 import { useHighlighter, type Highlight } from "@/components/ui/highlight-text";
 import { INTERRUPT_MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
 import { typeset } from "@/lib/typeset";
@@ -328,8 +329,10 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
           li: ({ children }) => <li>{processNode(children)}</li>,
           strong: ({ children }) => <strong>{processNode(children)}</strong>,
           em: ({ children }) => <em>{processNode(children)}</em>,
-          td: ({ children }) => <td>{processNode(children)}</td>,
-          th: ({ children }) => <th>{processNode(children)}</th>,
+          table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
+          // `style` carries the column's alignment (`:--:`, `--:`).
+          td: ({ children, style }) => <td style={style}>{processNode(children)}</td>,
+          th: ({ children, style }) => <th style={style}>{processNode(children)}</th>,
           h1: ({ children }) => <h1>{processNode(children)}</h1>,
           h2: ({ children }) => <h2>{processNode(children)}</h2>,
           h3: ({ children }) => <h3>{processNode(children)}</h3>,

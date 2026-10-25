@@ -747,26 +747,65 @@ body {
   color: var(--muted);
   font-style: italic;
 }
+/* A table sits in a rounded frame that scrolls sideways in a narrow pane.
+ * Headers are sentence case in the body font, a shade quieter than the cells,
+ * on a faint band; rows are split by a hairline, with no vertical rules. The
+ * row under the pointer is lit, and Copy shows on hover (`markdown-table.tsx`). */
+.markdown-body .md-table {
+  position: relative;
+  max-width: 100%;
+  width: fit-content;
+  margin: 0.5em 0;
+  /* Room above the frame for Copy, so it never covers a header. */
+  padding-top: 22px;
+}
+.markdown-body .md-table-frame {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
 .markdown-body table {
   border-collapse: collapse;
-  margin: 0.5em 0;
   font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
 }
 .markdown-body th, .markdown-body td {
-  border: 1px solid var(--border);
-  padding: 4px 8px;
+  padding: 6px 12px;
   text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
 }
+.markdown-body tr:last-child td { border-bottom: none; }
 .markdown-body th {
-  background: var(--surface);
-  font-weight: 600;
-  color: var(--text);
-  text-transform: uppercase;
-  font-family: 'Geist Mono', 'SF Mono', Menlo, monospace;
+  background: var(--hairline);
+  font-weight: 500;
+  color: var(--muted-foreground);
   font-size: var(--text-micro);
-  letter-spacing: 0.08em;
+  white-space: nowrap;
 }
-.markdown-body td { color: var(--text2); }
+.markdown-body td { color: var(--prose); }
+.markdown-body tbody tr:hover td { background: var(--hairline); }
+.markdown-body td code { font-size: 0.92em; }
+.markdown-body .md-table-copy {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--muted-foreground);
+  font-size: var(--text-micro);
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+.markdown-body .md-table:hover .md-table-copy,
+.markdown-body .md-table-copy:focus-visible { opacity: 1; }
+.markdown-body .md-table-copy:hover { color: var(--text); }
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .markdown-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
