@@ -419,6 +419,37 @@ def test_a_member_saying_points_are_the_same_folds_them_and_is_recorded():
     shown = framing.show_points(frame, CAST)
     assert f"p1 (objective, stated by 3 of 3): {NO_TRACEBACK}" in shown
     assert "(folded in: p3 (b said it's the same), p4 (c said it's the same))" in shown
+    # One member's say-so can't quietly merge a disagreement: a wrote p1 and
+    # hasn't said these match, so it stays an open item.
+    assert "folded" in folded["flags"]
+    assert "- Folded because a member said they're the same. Check they agree: p1" in body
+
+
+def test_a_fold_needs_no_check_once_every_author_has_named_it_or_it_was_their_own():
+    frame = _said_three_ways()
+    framing.fold(
+        frame,
+        [
+            ("b", [{"label": "same", "points": ["p3", "p1"], "text": "p3 = p1"}]),
+            ("c", [{"label": "same", "points": ["p4", "p1"], "text": "p4 = p1"}]),
+            ("a", [{"label": "same", "points": ["p3", "p1"], "text": "p3 = p1"}]),
+        ],
+        similar=None,
+    )
+    made = framing.contract(frame, cast=CAST, ask="", task="", title="", similar=None)
+    assert "folded" not in [f["kind"] for f in made["flags"]], "a, b and c all said so"
+
+    own = framing.Frame()
+    framing.fold(
+        own,
+        [
+            ("a", [_point("objective", NO_TRACEBACK), _point("objective", ONE_LINE)]),
+            ("a", [{"label": "same", "points": ["p2", "p1"], "text": "p2 = p1"}]),
+        ],
+        similar=None,
+    )
+    made = framing.contract(own, cast=CAST, ask="", task="", title="", similar=None)
+    assert "folded" not in [f["kind"] for f in made["flags"]], "a folded its own two points"
 
 
 def test_a_chain_folds_into_the_last_and_ids_stay_unique_after_a_fold():

@@ -1586,6 +1586,8 @@ async def test_points_members_say_are_the_same_fold_and_say_who_matched_them(in_
     assert meta["contract"]["checks"][0]["covers"] == ["p1"]
     assert "Folded in because members said they're the same: p2 (a), p3 (b)" in body
     assert "Only one person said this" not in body
+    # c wrote one of the folded points and hasn't said they match.
+    assert "Folded because a member said they're the same. Check they agree: p1" in body
 
 
 @pytest.mark.asyncio

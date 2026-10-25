@@ -105,6 +105,9 @@ class Point:
     #: Points folded into it because a member said they're the same, as
     #: ``(member, point id)``: who said so is recorded beside who said it.
     matched: list[tuple[str, str]] = field(default_factory=list)
+    #: A point was folded in by someone who didn't write both it and this one,
+    #: so the people who did are asked to check they agree.
+    unconfirmed: bool = False
 
     @property
     def support(self) -> int:
@@ -286,12 +289,23 @@ def fold_same(frame: Frame, ids: list[str], who: str, notes: list[str]) -> None:
     missing = [pid for pid, now in zip(ids, named, strict=True) if now not in by_id]
     if missing:
         notes.append(f"{who} said {', '.join(missing)} matched a point, but there's no such point.")
+    found = [pid for pid in ids if _current(frame, pid) in by_id]
     named = [pid for pid in dict.fromkeys(named) if pid in by_id]
+    if len(named) == 1 and len(found) > 1:
+        # Points already folded together: one more member saying they match.
+        into = by_id[named[0]]
+        for pid in found:
+            if pid != into.id and (who, pid) not in into.matched:
+                into.matched.append((who, pid))
+        return
     if len(named) < 2:
         return
     into = by_id[named[-1]]
     for pid in named[:-1]:
         point = by_id[pid]
+        # Someone folding their own two points needs nobody's check.
+        own = who in point.authors and who in into.authors
+        into.unconfirmed = into.unconfirmed or point.unconfirmed or not own
         for author in point.authors:
             if author not in into.authors:
                 into.authors.append(author)
@@ -472,6 +486,22 @@ def contract(
                 points=reworded,
             )
         )
+    # A member's say-so folds points, but whoever wrote them is asked to check
+    # they agree, until every one of them has said the points match too.
+    to_check = [
+        p.id
+        for p in frame.points
+        if p.unconfirmed and not set(p.authors) <= {who for who, _pid in p.matched}
+    ]
+    if to_check:
+        flags.append(
+            _flag(
+                "folded",
+                f"Folded because a member said they're the same. Check they agree: "
+                f"{_ids(to_check)}",
+                points=to_check,
+            )
+        )
 
     points = []
     for p in frame.points:
@@ -484,6 +514,8 @@ def contract(
             mine.append("unchecked")
         if p.reworded:
             mine.append("reworded")
+        if p.id in to_check:
+            mine.append("folded")
         entry: dict[str, Any] = {
             "id": p.id,
             "type": p.type,
