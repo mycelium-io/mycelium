@@ -41,7 +41,12 @@ It runs like this, and the thread shows each step as it goes:
    ```
 
 2. **Merge.** Points that say the same thing become one, keeping who said
-   them, and everyone adds what's missing, once.
+   them, and everyone adds what's missing, once. When two points say the same
+   thing in different words, a member says so and they become one:
+
+   ```text
+   same: p6 = p1
+   ```
 3. **Terms and checks.** Members say what each key term means, with units, and
    how they'd confirm points; each check is its writer's job. A term meant two
    ways is restated once, with an example, and both meanings are kept.

@@ -1537,12 +1537,57 @@ async def test_accord_shows_the_frame_so_far_and_asks_only_for_what_is_missing(i
 
     more = channel.ticks()[3][2]
     assert "p1 (objective, stated by 2 of 3): Renew Acme on terms finance can sign." in more
-    assert "Is something important missing" in more
+    assert "is something important missing" in more
+    # Members are shown how to fold their own paraphrases, with an example.
+    assert "write a line naming both, the later point first" in more
+    assert "you would write:\n\nsame: p6 = p1\n\n" in more
     ground = channel.ticks()[6][2]
     assert "p5 (deliverable, stated by 1 of 3): A signed order form." in ground
     assert "The key terms: renewal." in ground
     assert "renewal: <what you mean, with units>" in ground
     assert "check p1, p3: <how you'd confirm them>" in ground
+
+
+@pytest.mark.asyncio
+async def test_points_members_say_are_the_same_fold_and_say_who_matched_them(in_a_task):
+    """Paraphrases an embedding can't tell from a disagreement are folded by
+    the members who say so, and the summary records who said it."""
+    (engine, _manager, channel), directive = _accord(
+        {
+            "a": [
+                ("objective: No input ends in a traceback.", None),
+                ("same: p2 = p1", None),
+                ("renewal: A new 12-month term.", None),
+            ],
+            "b": [
+                ("objective: Bad input prints a one-line error instead of a traceback.", None),
+                ("same: p3 = p1\nNothing is missing.", None),
+                ("renewal: A new 12-month term.", None),
+            ],
+            "c": [
+                ("objective: Every bad input ends in a short message, not a traceback.", None),
+                NOTHING_MORE,
+                ("check p3: Run each bad input and look for a traceback.", None),
+            ],
+        }
+    )
+
+    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    assert outcome == "resolved"
+    assert [s for s, _to, _p in channel.ticks()] == ["frame"] * 3 + ["more"] * 3 + ["ground"] * 3
+    ground = channel.ticks()[6][2]
+    assert "p1 (objective, stated by 3 of 3): No input ends in a traceback." in ground
+    meta, body = _saved()
+    (point,) = meta["contract"]["points"]
+    assert (point["id"], point["support"], point["authors"]) == ("p1", 3, TEAM)
+    assert point["matched_by"] == ["a", "b"]
+    # c's check names a point that was folded: it covers the one it went into.
+    assert meta["contract"]["checks"][0]["covers"] == ["p1"]
+    assert "Folded in because members said they're the same: p2 (a), p3 (b)" in body
+    assert "Only one person said this" not in body
+    # c wrote one of the folded points and hasn't said they match.
+    assert "Folded because a member said they're the same. Check they agree: p1" in body
 
 
 @pytest.mark.asyncio

@@ -103,7 +103,9 @@ mycelium board coordinate work/acme-renewal conductor \
    ```
 
 3. **Merge.** Points that say the same thing are combined, keeping who said
-   them, and everyone adds what's missing, once.
+   them, and everyone adds what's missing, once. The same point in different
+   words is combined when a member says so, with a line like `same: p6 = p1`,
+   and the summary records who said they match.
 4. **Terms and checks.** Everyone says what each key term means, with units,
    and how they'd confirm points (`check p1, p2: Finance signs the order
    form.`). Each check belongs to its writer. A term meant two ways is

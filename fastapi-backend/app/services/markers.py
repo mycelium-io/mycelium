@@ -33,6 +33,7 @@ flows ask for, since a model writes them reliably:
     constraint: refunds above 5000 need a person's approval
     refund window: 14 calendar days from delivery      (a key term the run named)
     check p2, p4: finance signs off the limits
+    same: p6 = p1                                      (p6 says what p1 says)
     conflict: the build needs 30 days, the summary says 14
 
 The markers keep working beside them.
@@ -196,6 +197,14 @@ _CHECK_LINE = re.compile(
 _TERM_LINE = re.compile(
     _LEAD + r"term[ \t]+([^:\n]{1,60}?)\**[ \t]*:[ \t]*(.+)$", re.MULTILINE | re.IGNORECASE
 )
+#: ``same: p6 = p1``: a member saying two points already in the frame say the
+#: same thing, the first to be folded into the last. Several on one line are
+#: comma-separated (``same: p6 = p1, p9 = p2``); a chain folds all into the last.
+_SAME_LINE = re.compile(
+    _LEAD
+    + r"same\**[ \t]*:[ \t]*(p\d+(?:[ \t]*=[ \t]*p\d+)+(?:[ \t]*,[ \t]*p\d+(?:[ \t]*=[ \t]*p\d+)+)*)",
+    re.MULTILINE | re.IGNORECASE,
+)
 #: ``conflict: what``: work that doesn't fit what was agreed.
 _CONFLICT_LINE = re.compile(_LEAD + r"conflict\**[ \t]*:[ \t]*(.+)$", re.MULTILINE | re.IGNORECASE)
 
@@ -259,8 +268,8 @@ def _point_type(raw: str) -> str:
 
 def plain_pieces(text: str, terms: list[str] | None = None) -> list[dict[str, Any]]:
     """The pieces ``text`` states in plain lines, in the order written: typed
-    points, checks, and meanings of the run's key ``terms`` (or of any word
-    after ``term``)."""
+    points, checks, meanings of the run's key ``terms`` (or of any word after
+    ``term``), and points said to be the same (``same: p6 = p1``)."""
     found: list[tuple[int, dict[str, Any]]] = []
     for m in _POINT_LINE.finditer(text):
         piece: dict[str, Any] = {"label": _point_type(m.group(1)), "text": _reason(m.group(3))}
@@ -275,6 +284,11 @@ def plain_pieces(text: str, terms: list[str] | None = None) -> list[dict[str, An
         found.append(
             (m.start(), {"label": "term", "term": m.group(1).strip(), "text": _reason(m.group(2))})
         )
+    for m in _SAME_LINE.finditer(text):
+        for group in m.group(1).split(","):
+            ids = [i.lower() for i in re.findall(r"p\d+", group, re.IGNORECASE)]
+            if len(ids) > 1:
+                found.append((m.start(), {"label": "same", "points": ids, "text": group.strip()}))
     named: list[str] = [t.strip() for t in (terms or []) if t.strip()]
     if named:
         longest_first = sorted(named, key=lambda t: len(t), reverse=True)

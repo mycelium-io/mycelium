@@ -102,6 +102,12 @@ class Point:
     #: A wording joined it under :data:`SIMILARITY_THRESHOLD`: the contract lists
     #: every wording and flags it for people to check they agree.
     reworded: bool = False
+    #: Points folded into it because a member said they're the same, as
+    #: ``(member, point id)``: who said so is recorded beside who said it.
+    matched: list[tuple[str, str]] = field(default_factory=list)
+    #: A point was folded in by someone who didn't write both it and this one,
+    #: so the people who did are asked to check they agree.
+    unconfirmed: bool = False
 
     @property
     def support(self) -> int:
@@ -130,6 +136,10 @@ class Frame:
     similarity: bool = True
     #: The frame-round cap was reached while points were still being added.
     capped: bool = False
+    #: How many point ids were ever given, so an id stays unique after a
+    #: point is folded into another; and where each folded point went.
+    minted: int = 0
+    folded_into: dict[str, str] = field(default_factory=dict)
     #: Pairs already compared, so a round never asks the model twice.
     _seen: dict[tuple[str, str], float] = field(default_factory=dict)
 
@@ -204,8 +214,9 @@ def _add_point(
         if about and not joined.about:
             joined.about = about
         return None
+    frame.minted += 1
     point = Point(
-        id=f"p{len(frame.points) + 1}",
+        id=f"p{frame.minted}",
         type=kind,
         text=text,
         authors=[who],
@@ -247,13 +258,68 @@ def fold(
                 frame.terms[_norm(word)] = (shown, meanings)
             elif label == "check":
                 if not any(_norm(c.text) == _norm(text) for c in frame.checks):
-                    frame.checks.append(Check(text=text, covers=list(piece["covers"]), owner=who))
+                    covers = list(dict.fromkeys(_current(frame, c) for c in piece["covers"]))
+                    frame.checks.append(Check(text=text, covers=covers, owner=who))
+            elif label == "same":
+                fold_same(frame, list(piece["points"]), who, out.notes)
             else:
                 about = _clean(piece.get("about") or "")
                 added = _add_point(frame, label, text, about, who, similar)
                 if added:
                     out.added.append(added)
     return out
+
+
+def _current(frame: Frame, pid: str) -> str:
+    """Where point ``pid`` is now: itself, or the point it was folded into."""
+    seen: set[str] = set()
+    while pid in frame.folded_into and pid not in seen:
+        seen.add(pid)
+        pid = frame.folded_into[pid]
+    return pid
+
+
+def fold_same(frame: Frame, ids: list[str], who: str, notes: list[str]) -> None:
+    """Fold every point ``ids`` names into the last, because ``who`` said they
+    say the same thing. Whoever stated any of them supports the one left, every
+    wording is kept, and who said they're the same is recorded on it. An id
+    that names no point is left out, with a note."""
+    by_id = {p.id: p for p in frame.points}
+    named = [_current(frame, pid) for pid in ids]
+    missing = [pid for pid, now in zip(ids, named, strict=True) if now not in by_id]
+    if missing:
+        notes.append(f"{who} said {', '.join(missing)} matched a point, but there's no such point.")
+    found = [pid for pid in ids if _current(frame, pid) in by_id]
+    named = [pid for pid in dict.fromkeys(named) if pid in by_id]
+    if len(named) == 1 and len(found) > 1:
+        # Points already folded together: one more member saying they match.
+        into = by_id[named[0]]
+        for pid in found:
+            if pid != into.id and (who, pid) not in into.matched:
+                into.matched.append((who, pid))
+        return
+    if len(named) < 2:
+        return
+    into = by_id[named[-1]]
+    for pid in named[:-1]:
+        point = by_id[pid]
+        # Someone folding their own two points needs nobody's check.
+        own = who in point.authors and who in into.authors
+        into.unconfirmed = into.unconfirmed or point.unconfirmed or not own
+        for author in point.authors:
+            if author not in into.authors:
+                into.authors.append(author)
+        for said in point.said:
+            if all(_norm(t) != _norm(said[1]) for _w, t in into.said):
+                into.said.append(said)
+        into.matched += [*point.matched, (who, pid)]
+        into.reworded = into.reworded or point.reworded
+        if point.about and not into.about:
+            into.about = point.about
+        frame.points.remove(point)
+        frame.folded_into[pid] = into.id
+        for check in frame.checks:
+            check.covers = list(dict.fromkeys(_current(frame, c) for c in check.covers))
 
 
 def add_statement(frame: Frame, who: str, text: str, *, similar: Similar | None) -> Folded:
@@ -311,6 +377,11 @@ def contested_members(frame: Frame, cast: list[str], similar: Similar | None) ->
 # ── what the prompts show ─────────────────────────────────────────────────────
 
 
+def _matched(matched: list[tuple[str, str]]) -> str:
+    """``p6 (b said it's the same), p11 (c said it's the same)``."""
+    return ", ".join(f"{pid} ({who} said it's the same)" for who, pid in matched)
+
+
 def show_points(frame: Frame, cast: list[str]) -> str:
     if not frame.points:
         return "(nothing yet)"
@@ -320,6 +391,8 @@ def show_points(frame: Frame, cast: list[str]) -> str:
         kind = p.type.replace("_", " ")
         if not p.reworded:
             lines.append(f"{p.id} ({kind}, stated by {p.support} of {total}): {p.text}")
+            if p.matched:
+                lines.append(f"  (folded in: {_matched(p.matched)})")
             continue
         lines.append(f"{p.id} ({kind}) said in different words. Check they agree:")
         lines += [f"  {who}: {text}" for who, text in p.said]
@@ -413,6 +486,22 @@ def contract(
                 points=reworded,
             )
         )
+    # A member's say-so folds points, but whoever wrote them is asked to check
+    # they agree, until every one of them has said the points match too.
+    to_check = [
+        p.id
+        for p in frame.points
+        if p.unconfirmed and not set(p.authors) <= {who for who, _pid in p.matched}
+    ]
+    if to_check:
+        flags.append(
+            _flag(
+                "folded",
+                f"Folded because a member said they're the same. Check they agree: "
+                f"{_ids(to_check)}",
+                points=to_check,
+            )
+        )
 
     points = []
     for p in frame.points:
@@ -425,6 +514,8 @@ def contract(
             mine.append("unchecked")
         if p.reworded:
             mine.append("reworded")
+        if p.id in to_check:
+            mine.append("folded")
         entry: dict[str, Any] = {
             "id": p.id,
             "type": p.type,
@@ -435,8 +526,12 @@ def contract(
         }
         if p.about:
             entry["about"] = p.about
-        if p.reworded:
+        if p.reworded or p.matched:
             entry["wordings"] = [{"member": who, "text": text} for who, text in p.said]
+        if p.matched:
+            # Who said a point folded in says the same, as support records who stated it.
+            entry["matched_by"] = list(dict.fromkeys(who for who, _pid in p.matched))
+            entry["folded"] = [{"point": pid, "by": who} for who, pid in p.matched]
         points.append(entry)
     for group in clashes:
         flags.append(
@@ -532,11 +627,16 @@ def render(made: dict[str, Any]) -> str:
         for p in mine:
             by = ", ".join(p["authors"])
             wordings = p.get("wordings") or []
-            if wordings:
+            if "reworded" in (p.get("flags") or []):
                 lines.append(f"- **{p['id']}** said in different words by {by}. Check they agree:")
                 lines += [f"  - {w['member']}: {w['text']}" for w in wordings]
                 continue
             lines.append(f"- **{p['id']}** {p['text']} (stated by {p['support']} of {total}: {by})")
+            folded = p.get("folded") or []
+            if folded:
+                said = ", ".join(f"{f['point']} ({f['by']})" for f in folded)
+                lines.append(f"  - Folded in because members said they're the same: {said}")
+                lines += [f"  - {w['member']}: {w['text']}" for w in wordings[1:]]
         lines.append("")
     glossary = made.get("glossary") or []
     if glossary:
@@ -589,4 +689,5 @@ def known_covers(frame: Frame) -> None:
     claimed for something that does not exist."""
     ids = {p.id for p in frame.points}
     for check in frame.checks:
-        check.covers = [c for c in check.covers if _ID_RE.match(c) and c in ids]
+        covers = dict.fromkeys(_current(frame, c) for c in check.covers if _ID_RE.match(c))
+        check.covers = [c for c in covers if c in ids]
