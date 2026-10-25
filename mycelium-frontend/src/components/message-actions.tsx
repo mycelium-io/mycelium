@@ -32,6 +32,8 @@ import { RawMessageDialog } from "@/components/raw-message-dialog";
 
 interface Props {
   roomName: string;
+  /** The thread the message is drawn in, whose composer Reply and Quote fill. */
+  episode?: string | null;
   messageId?: string | null;
   content: string;
   sender: string;
@@ -95,6 +97,7 @@ export function MessageActions(props: Props) {
 
 function Bar({
   roomName,
+  episode = null,
   messageId,
   content,
   sender,
@@ -116,8 +119,8 @@ function Bar({
   }, [copied]);
 
   const link = messageId ? absoluteUrl(messagePath(roomName, messageId)) : null;
-  const reply = () => insertIntoComposer({ room: roomName, text: replyText(sender) });
-  const quote = () => insertIntoComposer({ room: roomName, text: quoteText(content, sender) });
+  const reply = () => insertIntoComposer({ room: roomName, episode, text: replyText(sender) });
+  const quote = () => insertIntoComposer({ room: roomName, episode, text: quoteText(content, sender) });
   const copy = () => void copyText(content).then(() => setCopied("text"));
   // Bound only while this bar is drawn, which is while its message is hovered.
   useKeyAction("message.reply", reply);
