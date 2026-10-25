@@ -77,7 +77,7 @@ class Codex(AgentKind):
             "folder it hasn't run in, and before a command its sandbox doesn't allow"
         )
 
-    def first_run(self, screen: str) -> FirstRun | None:
+    def first_run(self, screen: str, folder: str | None = None) -> FirstRun | None:  # noqa: ARG002 - its screens name no folder
         # Codex runs its onboarding whenever its app server finds no usable
         # sign-in, even with an auth.json on disk, and herdr reads those screens
         # as idle. After a sign-in it waits on "Press enter to continue" with

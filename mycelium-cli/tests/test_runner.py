@@ -80,6 +80,8 @@ class Herdr:
         self.screen = "Allow this command?\n  make deploy\n\n  1. Yes\n  2. No, exit\n"
         #: What the screen shows after each key pressed, in turn.
         self.screens_after_keys: list[str] = []
+        #: The folder herdr says an agent's process runs in.
+        self.agent_cwd: str | None = None
         self.layout = HerdrLayout(self._pane)
 
     def _pane(self, workspace: str = "w9") -> str:
@@ -144,9 +146,10 @@ class Herdr:
             return _proc("")
         if head == "agent get":
             status = self.live.get(args[2])
-            return _proc(
-                _ok({"agent": {"pane_id": args[2], "agent_status": status}} if status else {})
-            )
+            agent = {"pane_id": args[2], "agent_status": status}
+            if self.agent_cwd:
+                agent["foreground_cwd"] = self.agent_cwd
+            return _proc(_ok({"agent": agent} if status else {}))
         if head == "pane close":
             self.live.pop(args[2], None)
             if args[2] in self.panes:
@@ -825,10 +828,11 @@ def test_a_claude_start_trusts_the_folder_it_was_started_in_then_introduces_it(
     make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
 ):
     """The person chose the folder and approved the start; its trust question is theirs, answered."""
-    from tests.test_agent_kinds import CLAUDE_TRUST, CLAUDE_TRUST_ON_YES
+    from tests.test_agent_kinds import CLAUDE_TRUST, CLAUDE_TRUST_FOLDER, CLAUDE_TRUST_ON_YES
 
     monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
     herdr.start_leaves = "blocked"
+    herdr.agent_cwd = CLAUDE_TRUST_FOLDER
     herdr.screen = CLAUDE_TRUST
     # One key refused as too soon after the question opened, then Down, then Enter.
     herdr.screens_after_keys = [CLAUDE_TRUST, CLAUDE_TRUST_ON_YES, "> "]
@@ -1238,11 +1242,12 @@ def test_a_swarm_member_left_at_a_sign_in_is_said_to_be_waiting_there(
 def test_a_swarm_trusts_the_folder_its_claude_members_start_in(
     make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    from tests.test_agent_kinds import CLAUDE_TRUST, CLAUDE_TRUST_ON_YES
+    from tests.test_agent_kinds import CLAUDE_TRUST, CLAUDE_TRUST_FOLDER, CLAUDE_TRUST_ON_YES
 
     monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
     monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
     herdr.start_leaves = "blocked"
+    herdr.agent_cwd = CLAUDE_TRUST_FOLDER
     herdr.screen = CLAUDE_TRUST
     herdr.screens_after_keys = [CLAUDE_TRUST_ON_YES, "> "]
     herdr.keys_settle = True

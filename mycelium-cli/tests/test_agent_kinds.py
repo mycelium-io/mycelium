@@ -214,11 +214,13 @@ n-mode auto
 CLAUDE_TRUST_ON_YES = CLAUDE_TRUST.replace(
     " ❯ No, exit\n   Yes, I trust this folder", "   No, exit\n ❯ Yes, I trust this folder"
 )
+#: The folder that question names, as herdr reports the agent's own.
+CLAUDE_TRUST_FOLDER = "/Users/someone/code/workshop-runs/really-long-folder-name/review-1"
 
 
-def _claude_key(screen: str) -> str | None:
+def _claude_key(screen: str, folder: str | None = CLAUDE_TRUST_FOLDER) -> str | None:
     """The key Claude's first run presses on ``screen``, which is a trust question."""
-    seen = agents.of_kind("claude").first_run(screen)
+    seen = agents.of_kind("claude").first_run(screen, folder)
     assert seen is not None, "a trust question is always seen, answered or not"
     return seen.key
 
@@ -227,13 +229,17 @@ def test_claude_picks_trust_then_confirms_it_unless_the_folder_grants_itself_mor
     # Claude Code lists "No, exit" first and picks it, so Enter alone would exit:
     # Down to "Yes", then Enter once it reads as the one picked.
     assert _claude_key(CLAUDE_TRUST) == "down"
-    trust = agents.of_kind("claude").first_run(CLAUDE_TRUST_ON_YES)
+    trust = agents.of_kind("claude").first_run(CLAUDE_TRUST_ON_YES, CLAUDE_TRUST_FOLDER)
     assert trust is not None
     assert trust.key == "enter"
     assert trust.done == "Trusted the folder for Claude Code"
     # Its older wording, numbered and with "Yes" first.
-    older = "Do you trust the files in this folder?\n /w\n❯ 1. Yes, proceed\n  2. No, exit"
-    assert _claude_key(older) == "enter"
+    older = (
+        "Do you trust the files in this folder?\n /w\n Claude Code may read, write, or execute"
+        " files contained in this directory. This can pose security risks, so only use files"
+        " from trusted sources.\n❯ 1. Yes, proceed\n  2. No, exit"
+    )
+    assert _claude_key(older, "/w") == "enter"
     # A folder whose own settings would act without asking is the person's to read.
     grants = CLAUDE_TRUST_ON_YES.replace(
         " Security guide",
@@ -272,6 +278,36 @@ def test_claude_answers_only_the_plain_trust_question_and_nothing_it_doesnt_know
     reworded = CLAUDE_TRUST_ON_YES.replace("I trust this folder", "trust it and its settings")
     assert _claude_key(reworded) is None
     assert _claude_key(CLAUDE_TRUST_ON_YES.replace("❯", " ")) is None
+
+
+def test_claude_answers_the_trust_question_only_for_the_folder_it_was_started_in(
+    tmp_path: Path,
+):
+    """The one stretch the allow-list doesn't read is the folder; it has to be
+    the one the agent runs in, or the question waits for the person."""
+    assert _claude_key(CLAUDE_TRUST_ON_YES) == "enter"
+    # Another folder, one nobody can say, or something else where the folder goes.
+    assert _claude_key(CLAUDE_TRUST_ON_YES, "/Users/someone/code/elsewhere") is None
+    assert _claude_key(CLAUDE_TRUST_ON_YES, None) is None
+    not_a_folder = CLAUDE_TRUST_ON_YES.replace(
+        " /Users/someone/code/workshop-runs/really-long-folder-name/\n review-1",
+        " This folder's settings start 2 MCP servers",
+    )
+    assert _claude_key(not_a_folder) is None
+    # The same folder written as home, or through a link, is the same folder.
+    real = tmp_path / "real"
+    real.mkdir()
+    (tmp_path / "link").symlink_to(real)
+    linked = CLAUDE_TRUST_ON_YES.replace(
+        " /Users/someone/code/workshop-runs/really-long-folder-name/\n review-1",
+        f" {tmp_path / 'link'}",
+    )
+    assert _claude_key(linked, str(real)) == "enter"
+    home = CLAUDE_TRUST_ON_YES.replace(
+        " /Users/someone/code/workshop-runs/really-long-folder-name/\n review-1",
+        " ~/code/tipcalc",
+    )
+    assert _claude_key(home, str(Path.home() / "code" / "tipcalc")) == "enter"
 
 
 def test_codex_knows_its_welcome_after_signing_in_from_its_sign_in():
