@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 
@@ -69,6 +70,23 @@ _KEYS = re.compile(rf"^{_HINT}(?:\s*·\s*{_HINT})*$")
 _BORDER = "│╭╮╰╯─ "
 
 
+def _same_folder(shown: str, folder: str | None) -> bool:
+    """Whether ``shown`` (the folder a screen names, its wrapped lines joined)
+    is ``folder``, the one the agent runs in.
+
+    Both are made whole the same way: ``~`` for home, links followed (macOS
+    shows a temporary folder under ``/var`` that is ``/private/var``), and
+    spaces dropped, since a line can wrap at one.
+    """
+    if not folder or not shown.startswith(("/", "~")):
+        return False
+
+    def whole(path: str) -> str:
+        return re.sub(r"\s+", "", os.path.realpath(os.path.expanduser(path))).rstrip("/")
+
+    return whole(shown) == whole(folder)
+
+
 @dataclass(frozen=True)
 class Claude(AgentKind):
     def launch_args(self) -> list[str]:
@@ -95,12 +113,13 @@ class Claude(AgentKind):
             "and before a command it hasn't been allowed"
         )
 
-    def first_run(self, screen: str) -> FirstRun | None:
+    def first_run(self, screen: str, folder: str | None = None) -> FirstRun | None:
         # The folder was chosen and the start approved on this machine, so the
         # plain trust question is answered as that person already did: its
         # trusting option is picked, then confirmed. Anything on it beyond the
         # question leaves it for the person, so a change in its wording costs
-        # them an Enter, never a yes they didn't see.
+        # them an Enter, never a yes they didn't see. So does a folder on it
+        # that isn't the one the agent was started in, or one nobody can say.
         lines = [line.strip(_BORDER) for line in screen.splitlines()]
         lines = [line for line in lines if line]
         for trust in _TRUST:
@@ -112,12 +131,12 @@ class Claude(AgentKind):
             # it was started from.
             body = lines[starts[-1] + 1 :]
             # The folder it names, over as many lines as it wraps to.
-            if body and body[0].startswith(("/", "~")):
-                folder = next(
-                    (i for i, line in enumerate(body) if line.startswith(trust.after_folder)),
-                    len(body),
-                )
-                body = body[folder:] if folder < len(body) else body[1:]
+            ends = next(
+                (i for i, line in enumerate(body) if line.startswith(trust.after_folder)), 0
+            )
+            if not ends or not _same_folder("".join(body[:ends]), folder):
+                return held
+            body = body[ends:]
             options: list[str] = []
             picked: list[str] = []
             prose: list[str] = []

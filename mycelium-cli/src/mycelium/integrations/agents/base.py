@@ -73,13 +73,15 @@ class AgentKind:
         keys. Escape for the agent TUIs this table knows."""
         return "esc"
 
-    def first_run(self, screen: str) -> FirstRun | None:  # noqa: ARG002 - a CLI with such screens says which
+    def first_run(self, screen: str, folder: str | None = None) -> FirstRun | None:  # noqa: ARG002 - a CLI with such screens says which
         """The first-run screen ``screen`` (a pane's last lines) shows, if any.
 
         A host reads an agent as ready from its own signals, and some CLIs open on
         a screen those read as idle: an introduction or a wake typed there is
         lost, or its Enter is spent getting past it. So the pane is looked at
-        after a start and before a wake, for the screens its CLI is known to show.
+        after a start and before its introduction, for the screens its CLI is
+        known to show. ``folder`` is the one the agent runs in, when the host
+        can say, for a screen that names it.
         """
         return None
 

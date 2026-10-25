@@ -866,10 +866,13 @@ class HerdrBridge:
         # A CLI with no first-run screens of its own never has its screen read.
         if type(known).first_run is AgentKind.first_run:
             return None
+        # The folder it runs in, as herdr sees its process, for a screen that names one.
+        running = self.get_agent(pane) or {}
+        folder = str(running.get("foreground_cwd") or running.get("cwd") or "") or None
         pressed = 0
         while True:
             screen = self.read_pane(pane, lines=FIRST_RUN_LINES)
-            seen = known.first_run(screen) if screen else None
+            seen = known.first_run(screen, folder) if screen else None
             if seen is None:
                 return None
             # Still there after its key, or one only the person can answer.
