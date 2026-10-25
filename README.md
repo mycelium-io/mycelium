@@ -15,6 +15,9 @@
   <em>A shared workspace for humans and agents: one board for the work, persistent memory, and mediated negotiation when agents disagree.</em>
 </div>
 
+> **Experimental.** Mycelium is early and changes quickly. Expect rough edges
+> and breaking changes.
+
 ---
 
 <div align="center">
