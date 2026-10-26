@@ -110,11 +110,15 @@ const ENDS: Partial<Record<WorkshopTake, { after: RegExp; sender: string; line: 
   },
 };
 
+/** Takes that play a step's first run when it was run more than once. Concord
+ *  was rerun with a higher bar, and the first run is the one the video shows. */
+const PLAY_FIRST = new Set<WorkshopTake>(["concord"]);
+
 /**
  * The run's messages: before the take's step, and the step itself. A step run
- * more than once (Concord, rerun with a higher bar) plays its last run, and
- * the room opens as it stood before the first, so the earlier attempt isn't
- * in it. `cutoff` is when the first began: what the run wrote after it waits.
+ * more than once plays its last run (or its first, `PLAY_FIRST`), and the room
+ * opens as it stood before the first, so another attempt isn't in it.
+ * `cutoff` is when the first began: what the run wrote after it waits.
  */
 function cut(take: WorkshopTake): { before: SnapMessage[]; step: SnapMessage[]; cutoff: number } {
   const msgs = runOf(take).messages;
@@ -123,9 +127,9 @@ function cut(take: WorkshopTake): { before: SnapMessage[]; step: SnapMessage[]; 
   const mine = opensAt(STEP_OPENS[take]);
   if (mine.length === 0) return { before: msgs, step: [], cutoff: Infinity };
   const first = mine[0];
-  const at = mine.at(-1)!;
-  const others = (Object.keys(STEP_OPENS) as WorkshopTake[]).filter((t) => t !== take).flatMap((t) => opensAt(STEP_OPENS[t]));
-  let next = others.filter((i) => i > at).sort((a, b) => a - b)[0] ?? msgs.length;
+  const at = PLAY_FIRST.has(take) ? first : mine.at(-1)!;
+  const all = (Object.keys(STEP_OPENS) as WorkshopTake[]).flatMap((t) => opensAt(STEP_OPENS[t]));
+  let next = all.filter((i) => i > at).sort((a, b) => a - b)[0] ?? msgs.length;
   const end = ENDS[take];
   if (end) {
     const stop = msgs.findIndex((m, i) => i > at && end.after.test(m.content ?? ""));
@@ -299,7 +303,12 @@ async function replay(fx: RoomFixture, take: WorkshopTake): Promise<void> {
   const { step } = cut(take);
   if (step.length === 0) return;
   const live = liveEpisode(WORKSHOP_ROOM);
-  const kept = fx.episodes.slice();
+  // The run's earlier episodes are timed on the replay's clock along with the
+  // step's, so the step's stays the newest whatever the server's start time.
+  const source = runOf(take);
+  const runIds = new Set(source.episodes.map((e) => e.short_id));
+  const kept = fx.episodes.filter((e) => !runIds.has(e.short_id));
+  const earlier = source.episodes.filter((e) => fx.episodes.some((x) => x.short_id === e.short_id));
   const since = ms(step[0].created_at);
   // What the step wrote, at the time it last wrote it (a rerun rewrites the decision).
   const runMemories = runOf(take).memories.filter((m) => ms(m.updated_at) >= since);
@@ -332,7 +341,12 @@ async function replay(fx: RoomFixture, take: WorkshopTake): Promise<void> {
       fx.memories = fx.memories.filter((x) => x.key !== row.key).concat(row);
       publish(WORKSHOP_ROOM, memoryChangedFrame(row.key, row.version, row.updated_by ?? "conductor"));
     }
-    fx.episodes = [...kept, ...episodesAt(runOf(take), previous, since - 60_000, toNow)];
+    // Newest first, as the hub lists them: the thread's flow panel shows the first.
+    fx.episodes = [
+      ...episodesAt(source, previous, since - 60_000, toNow),
+      ...earlier.map((e) => shiftEpisode(e, toNow)),
+      ...kept,
+    ];
   }
 
   // The person's line the take ends on, a beat after the last agent's.
