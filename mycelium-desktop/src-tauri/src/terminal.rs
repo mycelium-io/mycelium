@@ -214,11 +214,20 @@ pub fn screen(room: &str, handle: &str) -> Result<Screen, String> {
     let registry = paths::home().join(".mycelium").join("herdr").join("registry.json");
     let pane = agent_pane(&registry, room, handle).ok_or(NOT_HERE)?;
     let bin = herdr()?;
-    let out = paths::command(&bin)
-        .args(["pane", "read", &pane, "--source", "recent", "--lines", SCREEN_LINES, "--format", "ansi"])
-        .env("PATH", paths::shell_path())
-        .output()
-        .map_err(|e| e.to_string())?;
+    let read = |args: &[&str]| {
+        paths::command(&bin)
+            .args(["pane", "read", &pane])
+            .args(args)
+            .args(["--format", "ansi"])
+            .env("PATH", paths::shell_path())
+            .output()
+            .map_err(|e| e.to_string())
+    };
+    let mut out = read(&["--source", "recent", "--lines", SCREEN_LINES])?;
+    // A herdr without the scrollback read still has its screen.
+    if !out.status.success() {
+        out = read(&["--source", "visible"])?;
+    }
     if !out.status.success() {
         return Err("herdr couldn't read that terminal. It may have closed.".into());
     }

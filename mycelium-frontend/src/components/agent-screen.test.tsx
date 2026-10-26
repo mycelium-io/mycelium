@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Runner } from "@/lib/api";
 import { renderWithSWR } from "@/test/swr";
@@ -38,6 +38,8 @@ function runner(id: string, agents: { room: string; handle: string; pane: string
 }
 
 const calls: [string, unknown][] = [];
+/** What @builder's terminal shows on the app's next read. */
+let builderScreen = "\x1b[32m● Reading src/payments.ts\x1b[0m\r\n> ";
 
 /**
  * The desktop app's own hub UI: its user agent, and the command bridge it
@@ -53,7 +55,7 @@ function inTheApp(machine: string | null = "here", refuse?: string) {
       if (command === "this_machine") return machine;
       if (command === "agent_screen") {
         if (args?.room === "checkout" && args?.handle === "builder")
-          return { pane: "w3:p1", text: "\x1b[32m● Reading src/payments.ts\x1b[0m\r\n> " };
+          return { pane: "w3:p1", text: builderScreen };
         throw "That agent isn't running in a terminal on this machine.";
       }
       return null;
@@ -64,6 +66,7 @@ function inTheApp(machine: string | null = "here", refuse?: string) {
 beforeEach(() => {
   calls.length = 0;
   runners = [];
+  builderScreen = "\x1b[32m● Reading src/payments.ts\x1b[0m\r\n> ";
 });
 
 afterEach(() => {
@@ -104,6 +107,30 @@ describe("an agent's terminal", () => {
     renderWithSWR(<AgentScreen room="checkout" handle="builder" />);
     const view = await screen.findByLabelText("Its terminal");
     expect(view.scrollTop).toBe(1000);
+  });
+
+  it("holds what was on it while scrolled up, and follows again back at the bottom", async () => {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1000);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
+    inTheApp();
+    renderWithSWR(<AgentScreen room="checkout" handle="builder" />);
+    const view = await screen.findByLabelText("Its terminal");
+    await screen.findByText("● Reading src/payments.ts");
+
+    // Scrolled up to read; the terminal moves on meanwhile.
+    view.scrollTop = 100;
+    fireEvent.scroll(view);
+    builderScreen = "● Running the tests\r\n> ";
+    await waitFor(() => expect(calls.filter(([c]) => c === "agent_screen").length).toBeGreaterThan(1), {
+      timeout: 3000,
+    });
+    expect(screen.getByText("● Reading src/payments.ts")).toBeInTheDocument();
+    expect(screen.queryByText("● Running the tests")).not.toBeInTheDocument();
+
+    // Back at the bottom: where the terminal is now.
+    view.scrollTop = 800;
+    fireEvent.scroll(view);
+    expect(await screen.findByText("● Running the tests")).toBeInTheDocument();
   });
 
   it("names your other machine when the app says the agent isn't here", async () => {

@@ -112,13 +112,16 @@ const FOLLOW_SLACK_PX = 24;
 function Screen({ text, error }: { text: string | null; error: string | null }) {
   const lines = useMemo(() => (text ? parseAnsi(text) : []), [text]);
   // It reads the scrollback too, so it opens at the bottom, where the terminal
-  // is now, and stays there as lines arrive, unless it's been scrolled up.
+  // is now, and stays there as lines arrive. Scrolled up, it holds what was
+  // on it then: the read is a rolling window, so new lines would push what's
+  // being read up and off; back at the bottom, it follows again.
   const ref = useRef<HTMLPreElement | null>(null);
-  const following = useRef(true);
+  const [held, setHeld] = useState<typeof lines | null>(null);
+  const shown = held ?? lines;
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el && following.current) el.scrollTop = el.scrollHeight;
-  }, [lines]);
+    if (el && !held) el.scrollTop = el.scrollHeight;
+  }, [lines, held]);
   if (error && text === null) return <Note>{error}</Note>;
   if (text === null) return <Note>Reading its terminal…</Note>;
   return (
@@ -126,12 +129,14 @@ function Screen({ text, error }: { text: string | null; error: string | null }) 
       ref={ref}
       onScroll={(e) => {
         const el = e.currentTarget;
-        following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX;
+        const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX;
+        if (atBottom) setHeld(null);
+        else if (!held) setHeld(lines);
       }}
       aria-label="Its terminal"
       className="min-h-0 flex-1 overflow-auto bg-bg px-3 py-2 font-mono text-micro leading-snug text-text"
     >
-      {lines.map((runs, i) => (
+      {shown.map((runs, i) => (
         <div key={i} className="min-h-[1lh] whitespace-pre">
           {runs.map((r, j) => (
             <span key={j} style={cssOf(r.style)}>
