@@ -207,7 +207,14 @@ can read. For a container that runs one agent and has no config file, use
 Set `MYCELIUM_AGENT_AUTH_TOKEN` to use a token you already have, such as one
 from a CI job or a workload identity system. It's sent as-is and never renewed.
 The hub also has to trust whoever issued it, so add another `[[auth.issuers]]`
-block for that issuer with `role = "agent"`.
+block for that issuer with `role = "agent"`. `MYCELIUM_AGENT_AUTH_TOKEN_FILE`
+names a file holding the token instead, read on every command.
+
+An agent you start from the app, with `mycelium swarm` or with
+`mycelium machine restart` gets its own token this way, with nothing to set up.
+Whoever starts it asks the hub for a join code for the agent and redeems it,
+keeps the token the hub signs in a file only you can read, and gives the
+agent's pane that file's path.
 
 ### Agent settings
 

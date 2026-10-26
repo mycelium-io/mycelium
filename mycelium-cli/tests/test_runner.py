@@ -429,6 +429,28 @@ def test_a_runner_id_is_made_once_and_kept(tmp_path: Path):
 # ── launch ────────────────────────────────────────────────────────────────────
 
 
+def test_a_launched_agent_is_given_its_own_token_file_on_a_hub_with_auth_on(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium import agent_credentials
+
+    issued: list[tuple[str, str]] = []
+
+    def issue(_config: Any, room: str, handle: str) -> Path:
+        issued.append((room, handle))
+        return tmp_path / "scout.token"
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", issue)
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+
+    assert issued == [("eng", "scout")]
+    create = herdr.of("workspace create")[0]
+    # The path, never the token: a pane's environment is easy to print.
+    assert f"MYCELIUM_AGENT_AUTH_TOKEN_FILE={tmp_path / 'scout.token'}" in create
+    assert not any(arg.startswith("MYCELIUM_AGENT_AUTH_TOKEN=") for arg in create)
+
+
 def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(
     make_runner, herdr: Herdr, hub: Hub, tmp_path: Path
 ):
