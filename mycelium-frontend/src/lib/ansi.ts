@@ -69,6 +69,53 @@ function rgb(r: number, g: number, b: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
+/** A `#rgb`, `#rrggbb` or `rgb()`/`rgba()` color as its channels; null for anything else. */
+export function channels(color: string): [number, number, number] | null {
+  const hex = color.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const h = hex[1].length === 3 ? [...hex[1]].map((c) => c + c).join("") : hex[1];
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
+  }
+  const fn = color.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
+  return fn ? [Number(fn[1]), Number(fn[2]), Number(fn[3])] : null;
+}
+
+function luminance([r, g, b]: [number, number, number]): number {
+  const lin = (v: number) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function contrast(a: [number, number, number], b: [number, number, number]): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** The contrast a terminal color needs against what it's drawn on (WCAG's for body text). */
+export const MIN_CONTRAST = 4.5;
+
+/**
+ * `fg` as it can be read on `bg`: unchanged when it already can, else moved
+ * toward black on a light background or white on a dark one, only as far as
+ * it takes. A terminal's colors are picked for its own background, usually a
+ * dark one, so white or pale green text would vanish on a light page. Colors
+ * it can't read are left as they are.
+ */
+export function readable(fg: string, bg: string): string {
+  const f = channels(fg);
+  const b = channels(bg);
+  if (!f || !b || contrast(f, b) >= MIN_CONTRAST) return fg;
+  const to = luminance(b) > 0.5 ? 0 : 255;
+  for (let step = 1; step <= 20; step++) {
+    const t = step / 20;
+    const mixed = f.map((v) => Math.round(v + (to - v) * t)) as [number, number, number];
+    if (contrast(mixed, b) >= MIN_CONTRAST) return rgb(...mixed);
+  }
+  return rgb(to, to, to);
+}
+
 /** Apply one SGR sequence's parameters to `style`. */
 function apply(style: AnsiStyle, params: number[]): AnsiStyle {
   const next = { ...style };

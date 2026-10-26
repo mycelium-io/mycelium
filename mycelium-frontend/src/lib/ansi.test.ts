@@ -2,7 +2,42 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { color256, parseAnsi } from "./ansi";
+import { channels, color256, MIN_CONTRAST, parseAnsi, readable } from "./ansi";
+
+/** WCAG contrast between two colors, for checking what `readable` gives. */
+function contrastOf(a: string, b: string): number {
+  const lum = (c: string) => {
+    const [r, g, bl] = channels(c)!.map((v) => {
+      const x = v / 255;
+      return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+describe("a terminal color on the page", () => {
+  const cream = "rgb(250, 245, 230)";
+  const night = "rgb(20, 22, 26)";
+
+  it("is made readable where a dark terminal's color would vanish", () => {
+    for (const fg of ["#eeeeec", "#8ae234", "rgb(255, 255, 255)"]) {
+      const shown = readable(fg, cream);
+      expect(shown).not.toBe(fg);
+      expect(contrastOf(shown, cream)).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    }
+    // Dark text on a dark view, the other way round.
+    expect(contrastOf(readable("#2e3436", night), night)).toBeGreaterThanOrEqual(MIN_CONTRAST);
+  });
+
+  it("is left alone when it can already be read, or isn't a color it can read", () => {
+    expect(readable("#2e3436", cream)).toBe("#2e3436");
+    expect(readable("#eeeeec", night)).toBe("#eeeeec");
+    expect(readable("var(--text)", cream)).toBe("var(--text)");
+    expect(readable("#eeeeec", "var(--bg)")).toBe("#eeeeec");
+  });
+});
 
 describe("a terminal snapshot's colors", () => {
   it("reads each line into runs of styled text", () => {
