@@ -67,8 +67,20 @@ describe("a start that stopped", () => {
     const refused = startHelp("host", { ...names, detail: "agent name reviewer is already used" });
     expect(refused.happened).toBe("studio-mini couldn't start Codex: agent name reviewer is already used");
     expect(refused.steps.join(" ")).not.toContain("run it yourself");
+    // A machine not signed in to a hub with sign-in on is told to sign in there,
+    // in the runner's words when it gave them.
+    const signedOut = startHelp("signin", names);
+    expect(signedOut.happened).toBe(
+      "studio-mini isn't signed in to this hub, so @reviewer couldn't get its own credential here.",
+    );
+    expect(signedOut.steps[0]).toBe("In a terminal on studio-mini, run mycelium login and finish signing in.");
+    expect(signedOut.short).toBe("studio-mini isn't signed in to this hub");
+    expect(startHelp("signin", { ...names, detail: "Sign in here as its owner." }).happened).toBe(
+      "Sign in here as its owner.",
+    );
+    expect(startReport({ result: { why: "signin" } }).why).toBe("signin");
     // Plain words for people: no em dashes anywhere in it.
-    for (const help of [shell, cli, exited, missing, setup, startHelp(null, names)]) {
+    for (const help of [shell, cli, exited, missing, setup, signedOut, startHelp(null, names)]) {
       expect([help.happened, help.short, ...help.steps].join(" ")).not.toContain("—");
     }
   });

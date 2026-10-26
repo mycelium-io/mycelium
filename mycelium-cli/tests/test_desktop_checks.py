@@ -207,3 +207,42 @@ def test_doctor_checks_what_the_app_runs_once_it_is_set_up(setting, monkeypatch)
     result = CliRunner().invoke(app, ["--json", "doctor"])
     assert '"mode": "desktop"' in result.output
     assert "Docker containers" not in result.output
+
+
+def _hub_answers(monkeypatch: pytest.MonkeyPatch, status: int, body: dict) -> list[dict]:
+    import httpx
+
+    asked: list[dict] = []
+
+    def get(url: str, **kw):
+        asked.append(kw.get("headers") or {})
+        return httpx.Response(status, json=body, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", get)
+    monkeypatch.setattr("mycelium.runner.daemon.runner_id", lambda: "julias-mbp-ab12")
+    return asked
+
+
+def test_the_runner_check_asks_as_this_machine_and_says_when_it_is_connected(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "mycelium.client.auth_headers", lambda *_a, **_k: {"Authorization": "Bearer me"}
+    )
+    asked = _hub_answers(monkeypatch, 200, {"connected": True})
+    found = checks.runner("https://hub.example.com")
+    assert (found.status, found.message) == ("ok", "connected as julias-mbp-ab12")
+    assert asked == [{"Authorization": "Bearer me"}]
+
+
+def test_a_hub_that_refuses_this_machine_says_to_sign_in_not_stopped_checking_in(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _hub_answers(monkeypatch, 401, {"detail": "missing bearer token"})
+    found = checks.runner("https://hub.example.com/")
+    assert found.status == "error"
+    assert found.message == "this computer isn't signed in to the hub"
+    assert found.details == [
+        "This computer isn't signed in to https://hub.example.com. "
+        "Run `mycelium login` in a terminal here."
+    ]

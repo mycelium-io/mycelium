@@ -63,7 +63,7 @@ from rich.console import Console
 
 from mycelium import __version__
 from mycelium import machine as this_machine
-from mycelium.agent_credentials import agent_token_env
+from mycelium.agent_credentials import MemberTokenRefused, agent_token_env
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
@@ -258,6 +258,15 @@ def _stacks() -> str:
 
 def machine_label() -> str:
     return socket.gethostname().removesuffix(".local") or "this machine"
+
+
+def signed_out_message(hub: str) -> str:
+    """What this machine needs when a hub with sign-in on refuses it: the one
+    command that fixes it. The app and ``mycelium doctor`` say this."""
+    return (
+        f"This computer isn't signed in to {hub.rstrip('/')}. "
+        "Run `mycelium login` in a terminal here."
+    )
 
 
 def runner_id(path: Path | None = None) -> str:
@@ -482,6 +491,10 @@ class Runner:
         self._panes = threading.Lock()
         self._stop = threading.Event()
         self.connected = False
+        #: The hub has sign-in on and refused this machine's (401): nothing
+        #: here can work until someone signs in on this computer, so the app
+        #: and doctor say that rather than "stopped checking in".
+        self.signed_out = False
         #: ``(number, monotonic start)`` of the sync pass running now, if one is.
         self._pass: tuple[int, float] | None = None
         self._passes = 0
@@ -672,14 +685,20 @@ class Runner:
             with hub_client(self.config, timeout=10) as client:
                 client.post("/api/runners", json=self.hello_body()).raise_for_status()
         except httpx.HTTPError as e:
-            if self.connected:
+            refused = isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 401
+            if refused and not self.signed_out:
+                log.warning("%s", signed_out_message(self.config.server.api_url))
+                self.log.print(f"[yellow]{signed_out_message(self.config.server.api_url)}[/yellow]")
+            elif self.connected:
                 log.warning("lost the hub at %s: %s", self.config.server.api_url, e)
                 self.log.print(f"[yellow]lost the hub:[/yellow] {e}")
+            self.signed_out = refused
             self.connected = False
             return False
         if not self.connected:
             log.info("connected to %s as %s", self.config.server.api_url, self.id)
             self.log.print(f"[green]connected[/green] to {self.config.server.api_url} as {self.id}")
+        self.signed_out = False
         self.connected = True
         return True
 
@@ -799,7 +818,12 @@ class Runner:
     def pane_env(self, room: str, handle: str) -> dict[str, str]:
         # A host that tells an agent who it is by a join code takes no
         # environment; the code gives it its token.
-        token = {} if self.host.joins else agent_token_env(self.config, room, handle)
+        try:
+            token = {} if self.host.joins else agent_token_env(self.config, room, handle)
+        except MemberTokenRefused as e:
+            # Started anyway, the agent could do nothing on this hub: the
+            # start stops here, before anything opens, and the app says why.
+            raise JobError(e.reason(), result={"why": "signin", "detail": e.reason()}) from e
         return {
             "MYCELIUM_API_URL": self.config.server.api_url,
             "MYCELIUM_AGENT_HANDLE": handle,
