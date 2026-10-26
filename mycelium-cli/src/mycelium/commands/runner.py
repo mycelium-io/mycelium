@@ -233,7 +233,10 @@ def runner_status(as_json: bool = False) -> None:
         # runner's, so it points at whoami rather than at signing in.
         said = f"The hub answered {resp.status_code}, so this can't say whether the runner is connected."
         if resp.status_code == 401:
-            said += " It refused the credential this terminal uses: `mycelium whoami --sources`."
+            said += (
+                " It refused the credential this terminal uses."
+                " Run `mycelium whoami --sources` to see which credential that is."
+            )
         if as_json:
             state["hub_error"] = said
             typer.echo(json.dumps(state, indent=2, default=str))
