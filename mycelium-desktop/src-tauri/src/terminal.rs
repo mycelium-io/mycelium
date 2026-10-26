@@ -198,10 +198,14 @@ pub fn focus_pane(pane: &str) {
     }
 }
 
-/// What @`handle`'s terminal in `room` shows right now, in color, read from
-/// herdr on this machine for the app's own pages to draw. It goes nowhere
-/// else: no hub, no network, so a screen with a key or private code on it
-/// stays here.
+/// How many of a terminal's recent lines a page gets: its screen and the
+/// scrollback above it, so a view taller than the herdr pane is filled.
+const SCREEN_LINES: &str = "500";
+
+/// What @`handle`'s terminal in `room` shows, in color, with the recent lines
+/// above its screen, read from herdr on this machine for the app's own pages
+/// to draw. It goes nowhere else: no hub, no network, so a screen with a key
+/// or private code on it stays here.
 ///
 /// The page names an agent, never a pane: the pane is looked up in the herdr
 /// registry Mycelium keeps of its agents, so a page can't read the person's
@@ -210,11 +214,20 @@ pub fn screen(room: &str, handle: &str) -> Result<Screen, String> {
     let registry = paths::home().join(".mycelium").join("herdr").join("registry.json");
     let pane = agent_pane(&registry, room, handle).ok_or(NOT_HERE)?;
     let bin = herdr()?;
-    let out = paths::command(&bin)
-        .args(["pane", "read", &pane, "--source", "visible", "--format", "ansi"])
-        .env("PATH", paths::shell_path())
-        .output()
-        .map_err(|e| e.to_string())?;
+    let read = |args: &[&str]| {
+        paths::command(&bin)
+            .args(["pane", "read", &pane])
+            .args(args)
+            .args(["--format", "ansi"])
+            .env("PATH", paths::shell_path())
+            .output()
+            .map_err(|e| e.to_string())
+    };
+    let mut out = read(&["--source", "recent", "--lines", SCREEN_LINES])?;
+    // A herdr without the scrollback read still has its screen.
+    if !out.status.success() {
+        out = read(&["--source", "visible"])?;
+    }
     if !out.status.success() {
         return Err("herdr couldn't read that terminal. It may have closed.".into());
     }
