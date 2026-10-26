@@ -16,8 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Node.js + the Pi coding agent — the aligner's SAO mediator runs on a persistent
 # `pi` session (its brain), so `pi` must be on PATH in the backend runtime.
 # OpenShell sandboxing (ALIGNER_PI_OPENSHELL) is optional and layered on top.
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+# Node 24, at 24.22.1 or newer: earlier releases decompress Brotli unsafely
+# (CVE-2026-111497), and Pi fetches over HTTPS.
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
+    && node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); if (a<24||(a===24&&(b<22||(b===22&&c<1)))) { console.error("node "+process.version+" is older than 24.22.1"); process.exit(1) }' \
     && npm install -g npm@11.21.0 \
     && npm install -g @earendil-works/pi-coding-agent \
     && npm cache clean --force \
