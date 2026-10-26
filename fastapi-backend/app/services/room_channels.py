@@ -395,8 +395,12 @@ class RoomChannelManager:
         # backend can't see the host's herdr socket). Purely a presence/UI surface —
         # it never enters `members()` (the mediator roster), so a herdr-alive-but-
         # not-joined agent is *visible* without being made a negotiation participant.
-        # Entries lapse on their TTL if sync stops.
-        self._herdr: dict[str, dict[str, tuple[str | None, str | None, float, float]]] = {}
+        # Entries lapse on their TTL if sync stops. Kept per source (the machine
+        # that pushed them), so one machine's push never removes another's
+        # agents: room → source → handle → (status, title, expires, last_seen).
+        self._herdr: dict[
+            str, dict[str, dict[str, tuple[str | None, str | None, float, float]]]
+        ] = {}
         # herdr wake queue: room → list of pending {handle, ts} "doorbells". A tag
         # of a herdr-present handle enqueues one entry (deduped by handle — the
         # wake is a nudge, not a payload; the agent reads the room itself, so extra
@@ -516,36 +520,61 @@ class RoomChannelManager:
                 out[h] = MemberPresence(kind="herdr", wake_pending=True)
         return out
 
-    def _live_herdr(self, room: str) -> dict[str, tuple[str | None, str | None, float]]:
-        """Unexpired herdr presence for ``room``: handle → (status, title, last_seen).
+    def _live_by_source(
+        self, room: str
+    ) -> dict[str, dict[str, tuple[str | None, str | None, float]]]:
+        """Unexpired herdr presence for ``room`` by source: source → handle →
+        (status, title, last_seen).
 
-        Opportunistically drops lapsed entries so a handle whose sync stopped
-        (herdr closed, bridge killed) disappears from the surface on its own.
+        Opportunistically drops lapsed entries, and sources left with none, so a
+        handle whose sync stopped (herdr closed, runner stopped) disappears from
+        the surface on its own.
         """
         now = time.monotonic()
-        entries = self._herdr.get(room)
-        if not entries:
+        sources = self._herdr.get(room)
+        if not sources:
             return {}
-        live = {
-            h: (status, title, seen)
-            for h, (status, title, exp, seen) in entries.items()
-            if exp > now
-        }
-        if len(live) != len(entries):
-            self._herdr[room] = {h: e for h, e in entries.items() if e[2] > now}
+        live: dict[str, dict[str, tuple[str | None, str | None, float]]] = {}
+        kept: dict[str, dict[str, tuple[str | None, str | None, float, float]]] = {}
+        for source, entries in sources.items():
+            fresh = {h: e for h, e in entries.items() if e[2] > now}
+            if fresh:
+                kept[source] = fresh
+                live[source] = {h: (s, t, seen) for h, (s, t, _exp, seen) in fresh.items()}
+        self._herdr[room] = kept
         return live
 
+    def _live_herdr(self, room: str) -> dict[str, tuple[str | None, str | None, float]]:
+        """Unexpired herdr presence for ``room``, merged across the machines that
+        push it: handle → (status, title, last_seen). A handle more than one
+        machine reports takes the most recent report."""
+        merged: dict[str, tuple[str | None, str | None, float]] = {}
+        for entries in self._live_by_source(room).values():
+            for handle, entry in entries.items():
+                if handle not in merged or entry[2] > merged[handle][2]:
+                    merged[handle] = entry
+        return merged
+
     def set_herdr_presence(
-        self, room: str, statuses: dict[str, str | dict], *, ttl_s: float = 90.0
+        self,
+        room: str,
+        statuses: dict[str, str | dict],
+        *,
+        ttl_s: float = 90.0,
+        source: str = "",
     ) -> None:
-        """Replace the herdr liveness overlay for ``room`` (the sync bridge's push).
+        """Replace ``source``'s herdr liveness for ``room`` (a sync bridge's push).
 
         ``statuses`` maps handle → herdr agent state, either a bare status string or
         ``{"status": ..., "title": ...}`` (the title is herdr's terminal title, the
         agent's current task). Each entry is stamped with a fresh ``ttl_s`` expiry; a
         handle omitted from a later push lapses on its own once its TTL elapses (so a
-        closed pane clears without an explicit delete). Replaces rather than merges —
-        the push is the full current view.
+        closed pane clears without an explicit delete).
+
+        A push is the full current view of the machine that sent it, so it
+        replaces that ``source``'s entries and no other's: two machines' agents
+        in one room are both present, whichever pushed last. A bridge that names
+        no source shares the one ``""`` source with any other that doesn't.
         """
         now_m = time.monotonic()
         now_w = time.time()
@@ -557,12 +586,17 @@ class RoomChannelManager:
             else:
                 status, title = value, None
             overlay[handle] = (status, title, now_m + ttl_s, now_w)
-        self._herdr[room] = overlay
+        self._herdr.setdefault(room, {})[source] = overlay
 
     def herdr_status(self, room: str, handle: str) -> str | None:
         """The live herdr state for ``handle`` in ``room``, or ``None`` if not
         herdr-present. Used to decide whether a mention should enqueue a wake."""
         return self._live_herdr(room).get(handle, (None,))[0]
+
+    def herdr_handles_from(self, room: str, source: str) -> set[str]:
+        """The handles ``source``'s latest push reports live in ``room``: the
+        agents whose panes that machine holds."""
+        return set(self._live_by_source(room).get(source, {}))
 
     def enqueue_herdr_wake(
         self,
@@ -795,7 +829,9 @@ class RoomChannelManager:
         now = time.monotonic()
         return {w["handle"] for w in queue if now - float(w.get("ts", now)) <= hold_ttl_s}
 
-    def drain_herdr_wakes(self, room: str, *, hold_ttl_s: float = 600.0) -> list[dict]:
+    def drain_herdr_wakes(
+        self, room: str, *, hold_ttl_s: float = 600.0, source: str | None = None
+    ) -> list[dict]:
         """Release wakes for handles that are **currently idle**; hold the rest.
 
         The "agent hold": a queued wake is returned to the bridge only once herdr
@@ -808,6 +844,11 @@ class RoomChannelManager:
         A paused agent's wake is held whatever its state and however long, and
         never dropped: its resume (``reason="resumed"``) takes its place, and
         that digest covers everything that arrived during the pause.
+
+        With ``source``, only wakes for handles that machine's own push reports
+        are released: the others are held for the machine whose panes they are,
+        so a runner never takes a wake it can't deliver. With none (a bridge
+        that names no source), any wake is released, as before.
         """
         queue = self._herdr_wakes.get(room)
         if not queue:
@@ -816,6 +857,7 @@ class RoomChannelManager:
 
         now = time.monotonic()
         live = self._live_herdr(room)
+        mine = self.herdr_handles_from(room, source) if source is not None else None
         paused = pauses.paused_in(room)
         released: list[dict] = []
         held: list[dict] = []
@@ -836,6 +878,9 @@ class RoomChannelManager:
                     "(no runner syncing this room)"
                 )
                 wake_log.dropped(room, w, why)
+                continue
+            if mine is not None and w["handle"] not in mine:
+                held.append(w)  # another machine's agent: that runner takes it
                 continue
             if status in {"idle", "done", "unknown"}:
                 released.append(w)
@@ -1601,9 +1646,9 @@ class RoomChannelManager:
         for times in (self._leases.get(room), self._last_seen.get(room)):
             if times and old in times:
                 times[new] = times.pop(old)
-        herdr = self._herdr.get(room)
-        if herdr and old in herdr:
-            herdr[new] = herdr.pop(old)
+        for entries in self._herdr.get(room, {}).values():
+            if old in entries:
+                entries[new] = entries.pop(old)
         for wake in self._herdr_wakes.get(room, []):
             if wake.get("handle") == old:
                 wake["handle"] = new

@@ -876,6 +876,24 @@ def _collect_presence(
     return view
 
 
+@functools.cache
+def sync_source() -> str | None:
+    """This machine, as the hub tells its pushes apart: its runner id.
+
+    Several machines' agents can share a room, each machine's sync pushing
+    only its own agents, so the hub keeps each machine's push apart rather
+    than letting one replace another's, and hands a machine only the wakes
+    for agents it reported. ``None`` when the id can't be read or made.
+    """
+    try:
+        from mycelium.runner.daemon import runner_id
+
+        return runner_id()
+    except Exception as e:  # noqa: BLE001 - without it, the hub treats the push as before
+        _sync.warning("no runner id for this machine: %s", e)
+        return None
+
+
 def _push_presence(
     config: MyceliumConfig, room: str, statuses: dict[str, dict[str, str | None]], ttl_s: float
 ) -> bool:
@@ -886,11 +904,14 @@ def _push_presence(
 
     what = f"hub presence for {room}"
     started = time.monotonic()
+    body: dict = {"statuses": statuses, "ttl_s": ttl_s}
+    if (source := sync_source()) is not None:
+        body["source"] = source
     try:
         url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-presence"
         resp = httpx.post(
             url,
-            json={"statuses": statuses, "ttl_s": ttl_s},
+            json=body,
             timeout=5.0,
             headers=auth_headers(config),
         )
@@ -927,8 +948,9 @@ def wake_prompt_for(room: str, wake: dict) -> str:
 def fetch_wakes(config: MyceliumConfig, room: str) -> list[dict]:
     """Take a room's queued wakes off the backend; ``[]`` when it can't be reached.
 
-    Taking them drains the queue, so whoever fetches delivers. Any runner host
-    delivers from here: the queue is about handles, not panes.
+    Taking them drains the queue, so whoever fetches delivers. This machine
+    asks only for the wakes of the agents its own push reported
+    (:func:`sync_source`), so another machine's wakes wait for that machine.
     """
     import httpx
 
@@ -936,9 +958,15 @@ def fetch_wakes(config: MyceliumConfig, room: str) -> list[dict]:
 
     what = f"hub wakes for {room}"
     started = time.monotonic()
+    source = sync_source()
     try:
         url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-wakes"
-        resp = httpx.get(url, timeout=5.0, headers=auth_headers(config))
+        resp = httpx.get(
+            url,
+            params={"source": source} if source is not None else None,
+            timeout=5.0,
+            headers=auth_headers(config),
+        )
         resp.raise_for_status()
         wakes = resp.json().get("wakes", [])
     except Exception as e:  # noqa: BLE001 - the queue keeps them for the next pass
