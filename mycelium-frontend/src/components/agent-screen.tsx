@@ -14,7 +14,7 @@
  *   <AgentScreenDrawer … />            the same, in a drawer
  */
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Lock, SquareTerminal } from "lucide-react";
 import { parseAnsi, type AnsiStyle } from "@/lib/ansi";
 import { placeOf } from "@/lib/agent-place";
@@ -106,12 +106,28 @@ function Note({ children }: { children: React.ReactNode }) {
   return <p className="px-4 py-3 text-label text-muted-foreground">{children}</p>;
 }
 
+/** How close to the bottom, in pixels, still counts as following the terminal. */
+const FOLLOW_SLACK_PX = 24;
+
 function Screen({ text, error }: { text: string | null; error: string | null }) {
   const lines = useMemo(() => (text ? parseAnsi(text) : []), [text]);
+  // It reads the scrollback too, so it opens at the bottom, where the terminal
+  // is now, and stays there as lines arrive, unless it's been scrolled up.
+  const ref = useRef<HTMLPreElement | null>(null);
+  const following = useRef(true);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && following.current) el.scrollTop = el.scrollHeight;
+  }, [lines]);
   if (error && text === null) return <Note>{error}</Note>;
   if (text === null) return <Note>Reading its terminal…</Note>;
   return (
     <pre
+      ref={ref}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX;
+      }}
       aria-label="Its terminal"
       className="min-h-0 flex-1 overflow-auto bg-bg px-3 py-2 font-mono text-micro leading-snug text-text"
     >

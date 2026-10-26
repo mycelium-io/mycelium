@@ -95,6 +95,17 @@ describe("an agent's terminal", () => {
     expect(await screen.findByText("● Reading src/payments.ts")).toBeInTheDocument();
   });
 
+  it("opens at the bottom of the scrollback, where the terminal is now", async () => {
+    // A view over a terminal with more lines than fit shows the newest, not
+    // the oldest lines it was handed.
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1000);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
+    inTheApp();
+    renderWithSWR(<AgentScreen room="checkout" handle="builder" />);
+    const view = await screen.findByLabelText("Its terminal");
+    expect(view.scrollTop).toBe(1000);
+  });
+
   it("names your other machine when the app says the agent isn't here", async () => {
     inTheApp();
     runners = [runner("elsewhere", [{ room: "checkout", handle: "api", pane: "w1:p1" }])];
