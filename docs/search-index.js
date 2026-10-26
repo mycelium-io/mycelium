@@ -1502,7 +1502,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-using-a-token-from-somewhere-else",
     "t": "Using a token from somewhere else",
     "s": "Security › Authentication",
-    "x": "Set MYCELIUM_AGENT_AUTH_TOKEN to use a token you already have, such as one from a CI job or a workload identity system. It's sent as-is and never renewed. The hub also has to trust whoever issued it, so add another [[auth.issuers]] block for that issuer with role = \"agent\".",
+    "x": "Set MYCELIUM_AGENT_AUTH_TOKEN to use a token you already have, such as one from a CI job or a workload identity system. It's sent as-is and never renewed. The hub also has to trust whoever issued it, so add another [[auth.issuers]] block for that issuer with role = \"agent\". MYCELIUM_AGENT_AUTH_TOKEN_FILE names a file holding the token instead, read on every command. An agent you start from the app, with mycelium swar",
     "p": "Guides"
   },
   {

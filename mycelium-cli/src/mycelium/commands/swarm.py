@@ -518,11 +518,15 @@ def start_local(
     carried = {k: os.environ[k] for k in CARRIED_ENV if os.environ.get(k)} | (carry or {})
 
     def env(handle: str) -> dict[str, str]:
+        from mycelium.agent_credentials import agent_token_env
+
         return {
             **carried,
             "MYCELIUM_AGENT_HANDLE": handle,
             "MYCELIUM_ROOM_ID": room,
             "MYCELIUM_AGENT_PANE": handle,  # an agent's pane (``caller.in_agent_pane``)
+            # Its own token on a hub with auth on, so it acts as itself.
+            **agent_token_env(config, room, handle),
         }
 
     dirs = {h: (member_worktree(cwd, room, h) if worktree else cwd) for h in team}

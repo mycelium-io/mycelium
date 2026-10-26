@@ -338,6 +338,7 @@ def backend(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
 #: bare one. The suite owns its environment, so every test starts without them.
 AGENT_AUTH_ENV_VARS = (
     "MYCELIUM_AGENT_AUTH_TOKEN",
+    "MYCELIUM_AGENT_AUTH_TOKEN_FILE",
     "MYCELIUM_AGENT_AUTH_CLIENT_ID",
     "MYCELIUM_AGENT_AUTH_CLIENT_SECRET",
     "MYCELIUM_AGENT_AUTH_ISSUER",
@@ -360,6 +361,12 @@ def _no_ambient_agent_auth(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """
     for name in AGENT_AUTH_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
+    # Starting an agent asks the hub for its token, through the real client:
+    # no test does that unless it says so (``test_agent_member_token``), so a
+    # runner or swarm test never reaches whatever hub is on localhost.
+    from mycelium import agent_credentials
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", lambda *_a, **_k: None)
     # Nor a pane: the developer's own terminal may be an agent's herdr pane.
     for name in ("HERDR_PANE_ID", "MYCELIUM_AGENT_PANE"):
         monkeypatch.delenv(name, raising=False)

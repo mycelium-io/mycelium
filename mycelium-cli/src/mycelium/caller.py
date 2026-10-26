@@ -400,6 +400,7 @@ def _env_credential() -> bool:
         os.environ.get(name)
         for name in (
             agent_credentials.STATIC_TOKEN_ENV,
+            agent_credentials.STATIC_TOKEN_FILE_ENV,
             agent_credentials.CLIENT_ID_ENV,
         )
     )

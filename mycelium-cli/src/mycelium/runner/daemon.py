@@ -63,6 +63,7 @@ from rich.console import Console
 
 from mycelium import __version__
 from mycelium import machine as this_machine
+from mycelium.agent_credentials import agent_token_env
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
@@ -796,6 +797,9 @@ class Runner:
         return path
 
     def pane_env(self, room: str, handle: str) -> dict[str, str]:
+        # A host that tells an agent who it is by a join code takes no
+        # environment; the code gives it its token.
+        token = {} if self.host.joins else agent_token_env(self.config, room, handle)
         return {
             "MYCELIUM_API_URL": self.config.server.api_url,
             "MYCELIUM_AGENT_HANDLE": handle,
@@ -803,6 +807,9 @@ class Runner:
             # Marks the pane as an agent's: the CLI never uses the person's
             # sign-in here (``caller.in_agent_pane``).
             "MYCELIUM_AGENT_PANE": handle,
+            # So the agent acts as itself on a hub with auth on: its own token,
+            # in a file (``agent_credentials.issue_member_token``).
+            **token,
         }
 
     def join_code(self, room: str, handle: str) -> str:
