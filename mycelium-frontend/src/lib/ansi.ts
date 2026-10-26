@@ -69,15 +69,24 @@ function rgb(r: number, g: number, b: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-/** A `#rgb`, `#rrggbb` or `rgb()`/`rgba()` color as its channels; null for anything else. */
+/**
+ * A solid `#rgb`, `#rrggbb` or `rgb()`/`rgba()` color as its channels; null
+ * for anything else. A translucent one is null too: what it looks like depends
+ * on what's under it (a glass theme's background over a dark page), so it
+ * can't be said to be light or dark.
+ */
 export function channels(color: string): [number, number, number] | null {
   const hex = color.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
   if (hex) {
     const h = hex[1].length === 3 ? [...hex[1]].map((c) => c + c).join("") : hex[1];
     return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
   }
-  const fn = color.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
-  return fn ? [Number(fn[1]), Number(fn[2]), Number(fn[3])] : null;
+  const fn = color
+    .trim()
+    .match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*(?:[,/]\s*([\d.]+)(%?))?\s*\)$/i);
+  if (!fn) return null;
+  const alpha = fn[4] === undefined ? 1 : Number(fn[4]) / (fn[5] ? 100 : 1);
+  return alpha < 1 ? null : [Number(fn[1]), Number(fn[2]), Number(fn[3])];
 }
 
 function luminance([r, g, b]: [number, number, number]): number {

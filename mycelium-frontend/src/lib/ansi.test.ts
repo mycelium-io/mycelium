@@ -37,6 +37,18 @@ describe("a terminal color on the page", () => {
     expect(readable("var(--text)", cream)).toBe("var(--text)");
     expect(readable("#eeeeec", "var(--bg)")).toBe("#eeeeec");
   });
+
+  it("leaves text alone on a translucent background, which is neither light nor dark by itself", () => {
+    // A glass theme's faint white over a dark page: read as solid white, the
+    // text would be darkened and vanish on the dark page beneath.
+    for (const glass of ["rgba(255, 255, 255, 0.08)", "rgb(255 255 255 / 8%)", "rgba(0, 0, 0, 0)"]) {
+      expect(channels(glass)).toBeNull();
+      expect(readable("#eeeeec", glass)).toBe("#eeeeec");
+    }
+    // A translucent run color too; a solid one written with its alpha is still read.
+    expect(readable("rgba(238, 238, 236, 0.5)", cream)).toBe("rgba(238, 238, 236, 0.5)");
+    expect(channels("rgba(250, 245, 230, 1)")).toEqual([250, 245, 230]);
+  });
 });
 
 describe("a terminal snapshot's colors", () => {
