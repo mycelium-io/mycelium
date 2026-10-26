@@ -1122,4 +1122,25 @@ describe("<RoomChatBox /> reply and quote", () => {
     await waitFor(() => expect(screen.getByPlaceholderText(/Message the room/)).toHaveValue("@ana "));
     expect(thread).toHaveValue("@sam ");
   });
+
+  it("with a thread open in two places, fills only the composer beside the message clicked", async () => {
+    renderWithSWR(
+      <>
+        <section data-thread="urn:ep:demo:t1" data-testid="pane">
+          <p data-testid="pane-message">a message</p>
+          <RoomChatBox roomName="demo" episode="urn:ep:demo:t1" threadLabel="in the pane" />
+        </section>
+        <section data-thread="urn:ep:demo:t1" data-testid="page">
+          <p data-testid="page-message">the same message</p>
+          <RoomChatBox roomName="demo" episode="urn:ep:demo:t1" threadLabel="on the page" />
+        </section>
+      </>,
+    );
+    const inPane = await screen.findByPlaceholderText(/Reply in in the pane/);
+    const onPage = screen.getByPlaceholderText(/Reply in on the page/);
+    const from = screen.getByTestId("page-message");
+    act(() => insertIntoComposer({ room: "demo", episode: "urn:ep:demo:t1", text: replyText("sam"), from }));
+    await waitFor(() => expect(onPage).toHaveValue("@sam "));
+    expect(inPane).toHaveValue("");
+  });
 });

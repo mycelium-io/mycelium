@@ -70,11 +70,19 @@ describe("<MessageActions />", () => {
     fireEvent.mouseEnter(screen.getByTestId("row"));
     await userEvent.click(screen.getByRole("button", { name: "Reply" }));
     await userEvent.click(screen.getByRole("button", { name: "Quote" }));
-    // A message in the channel, so the room's own composer takes them.
+    // A message in the channel, so the room's own composer takes them; each
+    // says the row it came from, for a thread open in two places.
+    const row = screen.getByTestId("row");
     expect(seen).toEqual([
-      { room: "demo", episode: null, text: "@builder " },
-      { room: "demo", episode: null, text: "> @~builder: stripe payments are merged\n\n" },
+      { room: "demo", episode: null, text: "@builder ", from: expect.any(HTMLElement) },
+      {
+        room: "demo",
+        episode: null,
+        text: "> @~builder: stripe payments are merged\n\n",
+        from: expect.any(HTMLElement),
+      },
     ]);
+    expect(seen.every((d) => d.from && row.contains(d.from))).toBe(true);
   });
 
   it("answers R, Q and C only while its message is hovered", async () => {
@@ -86,7 +94,7 @@ describe("<MessageActions />", () => {
     await userEvent.keyboard("c");
     expect(copyText).toHaveBeenCalledWith("stripe payments are merged");
     await userEvent.keyboard("r");
-    expect(seen.at(-1)).toEqual({ room: "demo", episode: null, text: "@builder " });
+    expect(seen.at(-1)).toMatchObject({ room: "demo", episode: null, text: "@builder " });
   });
 
   it("makes a task from the message and opens its thread", async () => {
