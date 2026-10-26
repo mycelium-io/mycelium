@@ -168,10 +168,14 @@ class Hub:
     def __init__(self, notes_for: str | None = None) -> None:
         self.seen: list[tuple[str, str, Any]] = []
         self.notes_for = notes_for
+        #: A hub with sign-in on that this machine isn't signed in to.
+        self.signed_out = False
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else None
         self.seen.append((request.method, request.url.path, body))
+        if self.signed_out:
+            return httpx.Response(401, json={"detail": "missing bearer token"})
         if request.method == "GET" and request.url.path.endswith("/notes"):
             if self.notes_for and f"/agents/{self.notes_for}/" in request.url.path:
                 return httpx.Response(200, json={"key": "n", "value": "Be terse."})
@@ -351,6 +355,18 @@ def test_the_hello_says_what_this_machine_has(make_runner):
     assert body["agents"] == []
 
 
+def test_a_hub_that_refuses_this_machine_is_said_as_a_sign_in_and_clears_on_one(
+    make_runner, hub: Hub
+):
+    r = make_runner()
+    hub.signed_out = True
+    assert r.hello() is False
+    assert (r.connected, r.signed_out) == (False, True)
+    hub.signed_out = False
+    assert r.hello() is True
+    assert (r.connected, r.signed_out) == (True, False)
+
+
 def test_the_owner_is_a_handle_a_person_reads(make_runner, monkeypatch: pytest.MonkeyPatch):
     r = make_runner()
     monkeypatch.setattr("getpass.getuser", lambda: "Julia.Valenti")
@@ -449,6 +465,26 @@ def test_a_launched_agent_is_given_its_own_token_file_on_a_hub_with_auth_on(
     # The path, never the token: a pane's environment is easy to print.
     assert f"MYCELIUM_AGENT_AUTH_TOKEN_FILE={tmp_path / 'scout.token'}" in create
     assert not any(arg.startswith("MYCELIUM_AGENT_AUTH_TOKEN=") for arg in create)
+
+
+def test_a_machine_signed_out_of_a_gated_hub_starts_nothing_and_says_why(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium import agent_credentials
+
+    def refuse(_config: Any, _room: str, handle: str) -> Path:
+        raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 401, "")
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", refuse)
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="isn't signed in to https://hub.example") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+
+    # The app shows the sign-in reason, and nothing was opened on the machine.
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "signin"
+    assert herdr.of("workspace create") == []
+    assert herdr.of("agent start") == []
 
 
 def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(

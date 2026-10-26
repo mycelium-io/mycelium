@@ -153,10 +153,27 @@ def ui() -> CheckResult:
 
 
 def runner(api_url: str) -> CheckResult:
-    from mycelium.runner.daemon import runner_id
+    from mycelium.client import auth_headers
+    from mycelium.config import MyceliumConfig
+    from mycelium.runner.daemon import runner_id, signed_out_message
 
     rid = runner_id()
-    resp = _get(f"{api_url.rstrip('/')}/api/runners/{rid}")
+    url = f"{api_url.rstrip('/')}/api/runners/{rid}"
+    try:
+        # Asked as this machine, the way the runner itself asks: a hub with
+        # sign-in on answers nobody else about it.
+        resp: httpx.Response | None = httpx.get(
+            url, timeout=3.0, headers=auth_headers(MyceliumConfig.load())
+        )
+    except httpx.HTTPError:
+        resp = None
+    if resp is not None and resp.status_code == 401:
+        return CheckResult(
+            name="Runner",
+            status="error",
+            message="this computer isn't signed in to the hub",
+            details=[signed_out_message(api_url)],
+        )
     if resp is None or resp.status_code == 404:
         return CheckResult(
             name="Runner",

@@ -1106,6 +1106,12 @@ class Supervisor:
         if self.runner.connected:
             state: State = "running"
             detail = None if self.runner.herdr else "herdr isn't running, so agents can't start"
+        elif getattr(self.runner, "signed_out", False):
+            # Not a connection that will come back by itself: someone has to
+            # sign in on this computer, so the app says so and how.
+            from mycelium.runner.daemon import signed_out_message
+
+            state, detail = "failed", signed_out_message(self.api_url)
         else:
             state, detail = "starting", f"connecting to {self.api_url}"
         if (state, detail) != (self.runner_state, self.runner_detail):

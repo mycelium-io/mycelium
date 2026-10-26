@@ -518,15 +518,19 @@ def start_local(
     carried = {k: os.environ[k] for k in CARRIED_ENV if os.environ.get(k)} | (carry or {})
 
     def env(handle: str) -> dict[str, str]:
-        from mycelium.agent_credentials import agent_token_env
+        from mycelium.agent_credentials import MemberTokenRefused, agent_token_env
 
+        try:
+            # Its own token on a hub with auth on, so it acts as itself.
+            token = agent_token_env(config, room, handle)
+        except MemberTokenRefused as e:
+            raise SwarmError(e.reason()) from e
         return {
             **carried,
             "MYCELIUM_AGENT_HANDLE": handle,
             "MYCELIUM_ROOM_ID": room,
             "MYCELIUM_AGENT_PANE": handle,  # an agent's pane (``caller.in_agent_pane``)
-            # Its own token on a hub with auth on, so it acts as itself.
-            **agent_token_env(config, room, handle),
+            **token,
         }
 
     dirs = {h: (member_worktree(cwd, room, h) if worktree else cwd) for h in team}

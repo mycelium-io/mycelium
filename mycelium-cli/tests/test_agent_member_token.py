@@ -102,8 +102,24 @@ def test_a_pane_given_the_file_acts_as_its_agent_with_that_token(
     assert answer.source == caller.ENVIRONMENT
 
 
-def test_with_auth_off_or_a_refusal_there_is_nothing_to_give(hub: Hub) -> None:
+def test_with_auth_off_there_is_nothing_to_give(hub: Hub) -> None:
     hub.token = None
     assert agent_credentials.agent_token_env(_config(), "eng", "scout") == {}
-    hub.token, hub.joins = "t", 403
-    assert agent_credentials.agent_token_env(_config(), "eng", "scout") == {}
+
+
+def test_a_hub_that_refuses_this_machine_says_why_rather_than_giving_nothing(hub: Hub) -> None:
+    # Signed out here: the agent could do nothing on this hub, so the start is
+    # told to say so rather than starting it anyway.
+    hub.joins = 401
+    with pytest.raises(agent_credentials.MemberTokenRefused) as signed_out:
+        agent_credentials.agent_token_env(_config(), "eng", "scout")
+    assert signed_out.value.signed_out
+    assert "isn't signed in to http://hub:8000" in signed_out.value.reason()
+    assert "`mycelium login`" in signed_out.value.reason()
+    # Signed in as someone who doesn't own it: the hub's own words, and who to ask.
+    hub.joins = 403
+    with pytest.raises(agent_credentials.MemberTokenRefused) as not_yours:
+        agent_credentials.agent_token_env(_config(), "eng", "scout")
+    assert not not_yours.value.signed_out
+    assert "not yours" in not_yours.value.reason()
+    assert "its owner's computer" in not_yours.value.reason()

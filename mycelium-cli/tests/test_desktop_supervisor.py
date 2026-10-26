@@ -311,6 +311,21 @@ def test_the_runner_trusts_only_a_hub_the_app_started():
     assert not client._own_hub()
 
 
+def test_a_runner_the_hub_refuses_shows_as_a_sign_in_not_as_connecting():
+    from types import SimpleNamespace
+
+    sup = Supervisor("client", hub_url="https://hub.example.com", emit=Events(), env={})
+    sup.runner = SimpleNamespace(connected=False, signed_out=True, herdr=True)  # type: ignore[assignment]
+    sup._tick_runner()
+    assert sup.runner_state == "failed"
+    assert "isn't signed in to https://hub.example.com" in (sup.runner_detail or "")
+    assert "`mycelium login`" in (sup.runner_detail or "")
+    # Signing in clears it on the next heartbeat.
+    sup.runner = SimpleNamespace(connected=True, signed_out=False, herdr=True)  # type: ignore[assignment]
+    sup._tick_runner()
+    assert (sup.runner_state, sup.runner_detail) == ("running", None)
+
+
 def test_a_missing_program_says_what_to_install():
     def missing() -> tuple[list[str], Path | None]:
         raise LocateError("slimctl isn't installed")

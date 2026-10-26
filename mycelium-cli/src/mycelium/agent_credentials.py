@@ -245,6 +245,43 @@ def member_token_path(room: str, handle: str) -> Path:
     return folder / f"{safe_handle}.token"
 
 
+class MemberTokenRefused(Exception):
+    """The hub has sign-in on and won't give this agent a token for this
+    machine: it isn't signed in (401), or whoever it's signed in as doesn't
+    own the agent (403). Started anyway, the agent could do nothing, so
+    whoever starts it says why instead."""
+
+    def __init__(self, handle: str, hub: str, status: int, detail: str) -> None:
+        self.handle, self.hub, self.status, self.detail = handle, hub, status, detail
+        super().__init__(self.reason())
+
+    @property
+    def signed_out(self) -> bool:
+        return self.status == 401
+
+    def reason(self) -> str:
+        if self.signed_out:
+            return (
+                f"This computer isn't signed in to {self.hub}, so @{self.handle} can't get "
+                "its own credential there. Run `mycelium login` in a terminal here, then "
+                "start it again."
+            )
+        return (
+            f"{self.hub} won't give @{self.handle} a credential for whoever this computer "
+            f"is signed in as: {self.detail} Sign in here as its owner, or start it from "
+            "its owner's computer."
+        )
+
+
+def _hub_detail(resp: Any) -> str:
+    try:
+        body = resp.json()
+    except ValueError:
+        return resp.text.strip()[:200]
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return str(detail)[:200] if detail else resp.text.strip()[:200]
+
+
 def issue_member_token(config: MyceliumConfig, room: str, handle: str) -> Path | None:
     """Get ``@handle`` its own token for ``room`` and keep it in a file; the file's path.
 
@@ -254,8 +291,10 @@ def issue_member_token(config: MyceliumConfig, room: str, handle: str) -> Path |
     token is written to :func:`member_token_path` (``0600``) and the pane is
     given the path in :data:`STATIC_TOKEN_FILE_ENV`, so the token is never in
     its environment listing, a typed command or its screen. ``None`` with auth
-    off (no token to keep) or when the hub won't give one; the agent then
-    starts as before.
+    off (no token to keep), or when the hub can't be asked; the agent then
+    starts as before. Raises :class:`MemberTokenRefused` when the hub has
+    sign-in on and refuses this machine, since the agent would start unable
+    to do anything.
     """
     import httpx
 
@@ -265,6 +304,10 @@ def issue_member_token(config: MyceliumConfig, room: str, handle: str) -> Path |
     try:
         with hub_client(config, timeout=15) as client:
             made = client.post(f"/api/rooms/{room}/joins", json={"handle": name})
+        if made.status_code in (401, 403):
+            raise MemberTokenRefused(
+                name, config.server.api_url.rstrip("/"), made.status_code, _hub_detail(made)
+            )
         if made.status_code != 201:
             _warn_once(
                 name, f"[yellow]No token for @{name}:[/yellow] the hub said {made.text[:200]}"
@@ -293,7 +336,8 @@ def issue_member_token(config: MyceliumConfig, room: str, handle: str) -> Path |
 
 def agent_token_env(config: MyceliumConfig, room: str, handle: str) -> dict[str, str]:
     """The environment that gives an agent's pane its own token: the file's
-    path, or nothing when there's no token to give (auth off, or refused)."""
+    path, or nothing when there's no token to give (auth off). Raises
+    :class:`MemberTokenRefused` when the hub refuses this machine."""
     path = issue_member_token(config, room, handle)
     return {STATIC_TOKEN_FILE_ENV: str(path)} if path is not None else {}
 

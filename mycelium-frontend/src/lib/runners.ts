@@ -203,9 +203,11 @@ export type StartStep = "terminal" | "shell" | "agent" | "intro";
  * never reached a prompt, the agent CLI ran but is showing something of its
  * own (an update, a sign-in, a first-run question), it exited before it came
  * up, it isn't installed on the machine, it needs setting up there first (a
- * sign-in, found before anything started), or the host refused.
+ * sign-in, found before anything started), the machine isn't signed in to a
+ * hub with sign-in on (so the agent could get no credential of its own; also
+ * found before anything started), or the host refused.
  */
-export type StartWhy = "shell" | "cli" | "exited" | "missing" | "setup" | "host";
+export type StartWhy = "shell" | "cli" | "exited" | "missing" | "setup" | "signin" | "host";
 
 export interface StartReport {
   step: StartStep | null;
@@ -226,7 +228,7 @@ export interface StartReport {
 }
 
 const STEPS: readonly string[] = ["terminal", "shell", "agent", "intro"];
-const WHYS: readonly string[] = ["shell", "cli", "exited", "missing", "setup", "host"];
+const WHYS: readonly string[] = ["shell", "cli", "exited", "missing", "setup", "signin", "host"];
 
 /** What a start job's result says about how far it got. Empty for any other job. */
 export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): StartReport {
@@ -291,6 +293,19 @@ export function startHelp(
         ? [detail]
         : [`Run ${cli} once in a terminal on ${machine} and finish its first-run setup.`, `Then try again.`],
       short: `${cli} needs setting up on ${machine}`,
+    };
+  }
+  if (why === "signin") {
+    // Found before anything started: the hub has sign-in on and wouldn't give
+    // the agent a credential for this machine, so nothing was opened.
+    return {
+      happened:
+        detail ?? `${machine} isn't signed in to this hub, so @${handle} couldn't get its own credential here.`,
+      steps: [
+        `In a terminal on ${machine}, run mycelium login and finish signing in.`,
+        `Then try again. @${handle} is already in the room; starting it again picks up where this stopped.`,
+      ],
+      short: `${machine} isn't signed in to this hub`,
     };
   }
   if (why === "missing") {

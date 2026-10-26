@@ -660,15 +660,19 @@ def restart(
         if renamed_from
         else restart_prompt(agent, resumed=bool(resume))
     )
-    from mycelium.agent_credentials import agent_token_env
+    from mycelium.agent_credentials import MemberTokenRefused, agent_token_env
 
+    try:
+        # Its own token on a hub with auth on. Only the file's path, since a
+        # stopped pane is given these as a typed `export`, which its screen shows.
+        token = agent_token_env(config, agent.room, agent.handle)
+    except MemberTokenRefused as e:
+        raise MachineError(e.reason()) from e
     env = {
         "MYCELIUM_API_URL": config.server.api_url,
         "MYCELIUM_AGENT_HANDLE": agent.handle,
         "MYCELIUM_ROOM_ID": agent.room,
-        # Its own token on a hub with auth on. Only the file's path, since a
-        # stopped pane is given these as a typed `export`, which its screen shows.
-        **agent_token_env(config, agent.room, agent.handle),
+        **token,
     }
     try:
         if agent.state == "stopped":

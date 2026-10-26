@@ -855,8 +855,11 @@ function LaunchProgress({
   if (status === "waiting" && !asked) setAsked(true);
   const paired = job?.pairing?.accepted ? job.pairing.name : null;
   // Stopped before anything started because the CLI needs setting up there
-  // (a sign-in): approved, with no terminal opened.
-  const setup = failed && report.why === "setup";
+  // (a sign-in), or the machine isn't signed in to this hub: approved, with no
+  // terminal opened.
+  const setup = failed && (report.why === "setup" || report.why === "signin");
+  const setupLabel =
+    report.why === "signin" ? `${machine} is signed in to this hub` : `${frameworkName} is set up on ${machine}`;
   // Nothing past the approval reads as failed when the approval is what failed.
   const declined = failed && asked && !report.step && !setup;
   const steps: { label: string; state: StepState }[] = [
@@ -872,7 +875,7 @@ function LaunchProgress({
         ]
       : []),
     ...(setup
-      ? [{ label: `${frameworkName} is set up on ${machine}`, state: "failed" as StepState }]
+      ? [{ label: setupLabel, state: "failed" as StepState }]
       : machineSteps({
           herdr,
           host: hostOf(runner).name,
