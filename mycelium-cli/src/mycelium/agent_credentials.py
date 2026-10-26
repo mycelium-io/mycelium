@@ -232,14 +232,17 @@ def env_static_token() -> str | None:
 
 
 def member_token_path(room: str, handle: str) -> Path:
-    """Where the runner keeps the member token it got for ``@handle`` in ``room``."""
+    """Where the runner keeps the member token it got for ``@handle`` in ``room``.
+
+    Beside the config rather than in the agent-state folder: an agent only
+    reads its token, and a sandboxed agent (Codex) can write the agent-state
+    folder, so one agent there could replace another's."""
     from mycelium.config import MyceliumConfig
 
     safe_room = _UNSAFE.sub("-", room.lower()) or "room"
     safe_handle = _UNSAFE.sub("-", normalize_handle(handle) or "agent") or "agent"
-    return (
-        MyceliumConfig.get_agent_state_dir() / "member-tokens" / safe_room / f"{safe_handle}.token"
-    )
+    folder = MyceliumConfig.get_global_config_dir() / "member-tokens" / safe_room
+    return folder / f"{safe_handle}.token"
 
 
 def issue_member_token(config: MyceliumConfig, room: str, handle: str) -> Path | None:
