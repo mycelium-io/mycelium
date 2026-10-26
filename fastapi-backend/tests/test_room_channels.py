@@ -229,6 +229,57 @@ def test_pending_herdr_wakes_peeks_without_draining(
     assert manager.pending_herdr_wakes("room-a", hold_ttl_s=-1.0) == set()
 
 
+def test_two_machines_pushing_in_turn_keep_both_machines_agents_present(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # Each machine's runner pushes only its own agents, every few seconds. Many
+    # passes in alternation: neither push removes the other machine's agents.
+    for _ in range(20):
+        manager.set_herdr_presence("room-a", {"ana-agent": "idle"}, source="laptop-ana")
+        manager.set_herdr_presence("room-a", {"ben-agent": "working"}, source="laptop-ben")
+        assert manager.herdr_status("room-a", "ana-agent") == "idle"
+        assert manager.herdr_status("room-a", "ben-agent") == "working"
+    # A machine's own push still replaces its own view: a pane it no longer
+    # reports is gone, the other machine's stays.
+    manager.set_herdr_presence("room-a", {}, source="laptop-ben")
+    assert manager.herdr_status("room-a", "ben-agent") is None
+    assert manager.herdr_status("room-a", "ana-agent") == "idle"
+
+
+def test_a_mention_of_the_other_machines_agent_rings_and_reaches_only_its_runner(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    manager.set_herdr_presence("room-a", {"ana-agent": "idle"}, source="laptop-ana")
+    manager.set_herdr_presence("room-a", {"ben-agent": "idle"}, source="laptop-ben")
+    # Ana's runner pushed last, after Ben's: Ben's agent is still rung.
+    manager.set_herdr_presence("room-a", {"ana-agent": "idle"}, source="laptop-ana")
+    assert manager.ring_asked("room-a", "ben-agent", "mention", sender="ana")
+    assert manager.ring_asked("room-a", "ana-agent", "mention", sender="ben")
+    # Ana's runner drains first and takes only its own agent's wake; Ben's
+    # stays queued for Ben's runner rather than being lost on the wrong machine.
+    taken = manager.drain_herdr_wakes("room-a", source="laptop-ana")
+    assert [w["handle"] for w in taken] == ["ana-agent"]
+    assert manager.pending_herdr_wakes("room-a") == {"ben-agent"}
+    taken = manager.drain_herdr_wakes("room-a", source="laptop-ben")
+    assert [w["handle"] for w in taken] == ["ben-agent"]
+    assert manager.pending_herdr_wakes("room-a") == set()
+
+
+def test_a_bridge_that_names_no_source_drains_as_before(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # An older CLI sends no source: its pushes share one source and its drain
+    # takes any wake, as it always did.
+    manager.set_herdr_presence("room-a", {"ana-agent": "idle"})
+    manager.set_herdr_presence("room-a", {"ben-agent": "idle"}, source="laptop-ben")
+    manager.enqueue_herdr_wake("room-a", "ana-agent")
+    manager.enqueue_herdr_wake("room-a", "ben-agent")
+    assert sorted(w["handle"] for w in manager.drain_herdr_wakes("room-a")) == [
+        "ana-agent",
+        "ben-agent",
+    ]
+
+
 # Who a message asks is ``asks``'s rule, held end to end in
 # ``test_wake_paths_table``; these hold what ringing one does.
 

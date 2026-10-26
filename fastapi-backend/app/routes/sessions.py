@@ -19,9 +19,10 @@ DELETE /rooms/{room}/sessions/{id}  — leave a room (SLIM remove)
 
 import logging
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.bus import bus, room_channel
@@ -81,6 +82,14 @@ class HerdrPresenceBody(BaseModel):
     ttl_s: float | None = Field(
         default=None,
         description="Seconds an entry stays live without a refresh (default 90).",
+    )
+    source: str | None = Field(
+        default=None,
+        max_length=128,
+        description=(
+            "The machine pushing (its runner id). A push replaces only its own "
+            "source's agents, so machines sharing a room don't remove each other's."
+        ),
     )
 
 
@@ -282,7 +291,10 @@ async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
         for h, v in body.statuses.items()
     }
     room_channels.manager.set_herdr_presence(
-        room_name, normalized, ttl_s=body.ttl_s if body.ttl_s else 90.0
+        room_name,
+        normalized,
+        ttl_s=body.ttl_s if body.ttl_s else 90.0,
+        source=body.source or "",
     )
 
 
@@ -293,16 +305,27 @@ NEEDS_A_MESSAGE = frozenset({"mention", "turn", "interrupt", "subscribed"})
 
 
 @router.get("/herdr-wakes")
-async def drain_herdr_wakes(room_name: str):
+async def drain_herdr_wakes(
+    room_name: str,
+    source: Annotated[
+        str | None,
+        Query(
+            max_length=128,
+            description="The machine draining (its runner id): only its own agents' wakes.",
+        ),
+    ] = None,
+):
     """Drain pending herdr wake requests for a room (the sync bridge polls this).
 
     Returns and clears the queue the backend filled when a tag mentioned a
     herdr-present-but-not-joined handle. The bridge — the only actor that can
     reach the host's herdr socket — then runs the actual ``herdr agent prompt``.
+    With ``source``, only the wakes for the agents that machine's push reports
+    are handed over; the rest wait for their own machine.
     """
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
-    wakes = room_channels.manager.drain_herdr_wakes(room_name)
+    wakes = room_channels.manager.drain_herdr_wakes(room_name, source=source)
     # Each carries the digest its agent is told (``prompt``), built now rather
     # than when it was queued, so what it says is current when it's typed.
     managed = room_channels.manager.get(room_name)

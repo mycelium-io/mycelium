@@ -3893,7 +3893,7 @@
           "sessions"
         ],
         "summary": "Drain Herdr Wakes",
-        "description": "Drain pending herdr wake requests for a room (the sync bridge polls this).\n\nReturns and clears the queue the backend filled when a tag mentioned a\nherdr-present-but-not-joined handle. The bridge \u2014 the only actor that can\nreach the host's herdr socket \u2014 then runs the actual ``herdr agent prompt``.",
+        "description": "Drain pending herdr wake requests for a room (the sync bridge polls this).\n\nReturns and clears the queue the backend filled when a tag mentioned a\nherdr-present-but-not-joined handle. The bridge \u2014 the only actor that can\nreach the host's herdr socket \u2014 then runs the actual ``herdr agent prompt``.\nWith ``source``, only the wakes for the agents that machine's push reports\nare handed over; the rest wait for their own machine.",
         "operationId": "drain_herdr_wakes_api_rooms__room_name__sessions_herdr_wakes_get",
         "parameters": [
           {
@@ -3904,6 +3904,25 @@
               "type": "string",
               "title": "Room Name"
             }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The machine draining (its runner id): only its own agents' wakes.",
+              "title": "Source"
+            },
+            "description": "The machine draining (its runner id): only its own agents' wakes."
           }
         ],
         "responses": {
@@ -9597,6 +9616,19 @@
             ],
             "title": "Ttl S",
             "description": "Seconds an entry stays live without a refresh (default 90)."
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "The machine pushing (its runner id). A push replaces only its own source's agents, so machines sharing a room don't remove each other's."
           }
         },
         "type": "object",

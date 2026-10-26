@@ -273,7 +273,7 @@ def test_a_delivered_wake_says_its_agent_is_responding(monkeypatch, tmp_path):
     monkeypatch.setattr(
         room_channels.manager,
         "drain_herdr_wakes",
-        lambda _r: [{"handle": "builder", "reason": "mention", "from": "hay"}],
+        lambda _r, **_kw: [{"handle": "builder", "reason": "mention", "from": "hay"}],
     )
     monkeypatch.setattr(room_channels.manager, "get", lambda _r: None)
 
