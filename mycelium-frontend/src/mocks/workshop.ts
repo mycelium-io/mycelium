@@ -7,12 +7,11 @@
  *
  * `MYCELIUM_UI_MOCK_SCENARIO=workshop:<take>` adds the `release-planning` room,
  * built from a snapshot of a real hub (`workshop/release-planning.json`, taken
- * by `mycelium-promo/workshop/snapshot.mjs`). Three people share it, each with
- * an agent on their own laptop. The room opens as it stood just before the
- * take's step, and when the app first reads the task's thread, that step's
- * messages play back in the order they were said, word for word. Only the
- * waits are shorter, so an agent's thinking goes by fast and a key moment
- * still has time to land.
+ * by `mycelium-promo/workshop/snapshot.mjs`), on a team's hub with its other
+ * rooms (`workshop-room.ts`). Three people share it, each with an agent on
+ * their own laptop. The task's thread opens on its description alone; when a
+ * person sends the take's opening message, that step's messages play back in
+ * the order they were said, word for word, at reading speed.
  *
  * `mycelium-promo/workshop/record.mjs` records a take per server.
  */
@@ -22,6 +21,9 @@ import { once, nowIso, sleep } from "./director";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
 import { liveEpisode, memoryChangedFrame, pingFrame, publish, respondingFrame } from "./live";
 import taken from "./workshop/release-planning.json";
+import { WORKSHOP_TEAMMATES, liveIn, workshopOtherRooms } from "./workshop-room";
+
+export { WORKSHOP_HUB_URL, WORKSHOP_TEAMMATES, workshopFolders } from "./workshop-room";
 
 /** A message, memory and episode as the hub served them when the snapshot was taken. */
 interface SnapMessage {
@@ -228,50 +230,65 @@ export function workshopRoom(): RoomFixture | null {
     byKey.set(m.key, m);
   }
   const memories = [...byKey.values(), ...WORKSHOP_CAST.map(manifestOf)];
+  // Each take opens on the task's description alone: what the run said in the
+  // thread before the step (and the flows it ran) belongs to an earlier take.
+  // The room's notices stay.
   const messages = [
     ...history.flatMap((h) => h.messages.map((m) => asMessage(m, past(m.created_at)))),
-    ...before.map((m) => asMessage(m, run(m.created_at))),
+    ...before.filter((m) => m.message_type !== "broadcast").map((m) => asMessage(m, run(m.created_at))),
   ];
-  const episodes = [
-    ...history.flatMap((h) => (h.episodes as EpisodeSummary[]).map((e) => shiftEpisode(e, past))),
-    ...runOf(take).episodes
-      .filter((e) => (e.trace?.at(-1)?.at ? ms(e.trace.at(-1)!.at!) < stepStart : false))
-      .map((e) => shiftEpisode(e, run)),
-  ];
-  return {
+  const episodes = history.flatMap((h) => (h.episodes as EpisodeSummary[]).map((e) => shiftEpisode(e, past)));
+  const fx: RoomFixture = {
     room: {
       id: 9101,
       name: WORKSHOP_ROOM,
       is_public: false,
       is_persistent: true,
       owner: WORKSHOP_CAST[0].handle,
-      created_at: past(history[0]?.messages[0]?.created_at ?? new Date(BOOT).toISOString()),
+      members: WORKSHOP_PEOPLE,
+      created_at: new Date(BOOT - 45 * 24 * 3_600_000).toISOString(),
     },
     memories,
     messages,
     episodes,
     episodeDetails: {},
-    // No presence: an agent that isn't mid-turn reads by where it runs ("on
-    // jodees-macbook"), which is the point of the room.
-    presence: [],
   };
+  // The team's two weeks around the run, with its agents at work. Multiplayer
+  // is about three laptops, so there the cast's agents read by the machine
+  // each runs on, which the rail names only for an agent that isn't active.
+  liveIn(
+    fx,
+    take === "multiplayer"
+      ? []
+      : [
+          { handle: "eng", status: "working" },
+          { handle: "product", status: "working" },
+          { handle: "design", status: "idle" },
+        ],
+  );
+  return fx;
 }
 
-/** How the run's waits play back: a share of each, at least `floor` ms so a
- *  line can be read, at most `ceiling` so thinking goes by fast. */
-const PACE: Record<WorkshopTake, { share: number; floor: number; ceiling: number }> = {
-  multiplayer: { share: 0.12, floor: 2000, ceiling: 3800 },
-  accord: { share: 0.25, floor: 650, ceiling: 3000 },
-  concord: { share: 0.45, floor: 900, ceiling: 3600 },
+/** Everyone on the team, the cast first. */
+export const WORKSHOP_PEOPLE: string[] = [...WORKSHOP_CAST.map((c) => c.handle), ...WORKSHOP_TEAMMATES.map((t) => t.handle)];
+
+/** The hub's other rooms, for the sidebar. */
+export function workshopRooms(): Record<string, RoomFixture> {
+  return isWorkshopScenario() ? workshopOtherRooms(WORKSHOP_CAST[0].handle, WORKSHOP_PEOPLE) : {};
+}
+
+/** Reading speed, not the run's own: an agent's message comes after a beat of
+ *  it responding (`think`), then has the screen to itself for `read`, so its
+ *  first lines can be read. The conductor's lines and the room's bookkeeping
+ *  go by quickly. Only the waiting is shortened, never the reading. */
+const PACE: Record<WorkshopTake, { think: number; read: number }> = {
+  multiplayer: { think: 1000, read: 3800 },
+  accord: { think: 900, read: 3400 },
+  concord: { think: 1000, read: 3800 },
 };
 
-/** A conductor's turn lines go by quickly; an answer takes its share of the wait. */
-function waitFor(m: SnapMessage, gap: number, take: WorkshopTake): number {
-  const { share, floor, ceiling } = PACE[take];
-  const quick = m.sender_handle === "conductor" || m.message_type !== "broadcast";
-  if (quick) return Math.min(Math.max(gap * share, 250), 900);
-  return Math.min(Math.max(gap * share, floor), ceiling);
-}
+const isAgentLine = (m: SnapMessage): boolean =>
+  m.message_type === "broadcast" && !PEOPLE.has(m.sender_handle) && m.sender_handle !== "conductor";
 
 /** The step's episodes, as they stand at `clock` on the run's own time: a
  *  step is there once it was taken, and the outcome once the run ended.
@@ -298,10 +315,12 @@ function episodesAt(source: Source, clock: number, since: number, at: (iso: stri
   });
 }
 
-/** Play the take's step: each message in turn, the episode keeping pace. */
+/** Play the take's step: each message in turn, the episode keeping pace. The
+ *  step's opening message was just typed in the app, so it isn't played again. */
 async function replay(fx: RoomFixture, take: WorkshopTake): Promise<void> {
   const { step } = cut(take);
   if (step.length === 0) return;
+  const { think, read } = PACE[take];
   const live = liveEpisode(WORKSHOP_ROOM);
   // The run's earlier episodes are timed on the replay's clock along with the
   // step's, so the step's stays the newest whatever the server's start time.
@@ -317,20 +336,25 @@ async function replay(fx: RoomFixture, take: WorkshopTake): Promise<void> {
   // The run's clock, mapped onto now: what has played is "now", what hasn't is to come.
   const toNow = (iso: string): string => new Date(Date.now() - (lastPlayed - ms(iso))).toISOString();
   let lastPlayed = previous;
-  for (const m of step) {
-    const gap = ms(m.created_at) - previous;
-    const wait = waitFor(m, gap, take);
-    const agent = m.message_type === "broadcast" && !PEOPLE.has(m.sender_handle) && m.sender_handle !== "conductor";
-    if (agent) publish(WORKSHOP_ROOM, respondingFrame(m.sender_handle, m.episode ?? null));
-    await sleep(wait);
+  for (const [i, m] of step.entries()) {
+    const agent = isAgentLine(m);
+    if (agent) {
+      publish(WORKSHOP_ROOM, respondingFrame(m.sender_handle, m.episode ?? null));
+      await sleep(think);
+    } else {
+      await sleep(m.sender_handle === "conductor" ? 450 : 120);
+    }
     previous = ms(m.created_at);
     lastPlayed = previous;
 
-    const msg: MockMessage = { ...asMessage(m, nowIso()), id: `${m.id}-replay` };
-    fx.messages.push(msg);
-    publish(WORKSHOP_ROOM, { ...msg, room_name: WORKSHOP_ROOM });
-    if (msg.episode && msg.episode !== live && msg.message_type === "broadcast") {
-      publish(WORKSHOP_ROOM, pingFrame(WORKSHOP_ROOM, { episode: msg.episode, sender: msg.sender_handle, message: msg.id }));
+    // The opening message is the one just typed: the room already has it.
+    if (i > 0 || !PEOPLE.has(m.sender_handle)) {
+      const msg: MockMessage = { ...asMessage(m, nowIso()), id: `${m.id}-replay` };
+      fx.messages.push(msg);
+      publish(WORKSHOP_ROOM, { ...msg, room_name: WORKSHOP_ROOM });
+      if (msg.episode && msg.episode !== live && msg.message_type === "broadcast") {
+        publish(WORKSHOP_ROOM, pingFrame(WORKSHOP_ROOM, { episode: msg.episode, sender: msg.sender_handle, message: msg.id }));
+      }
     }
 
     // Memories the run wrote by now, and its episodes as they stood.
@@ -347,6 +371,7 @@ async function replay(fx: RoomFixture, take: WorkshopTake): Promise<void> {
       ...earlier.map((e) => shiftEpisode(e, toNow)),
       ...kept,
     ];
+    if (agent) await sleep(read);
   }
 
   // The person's line the take ends on, a beat after the last agent's.
@@ -367,15 +392,11 @@ async function replay(fx: RoomFixture, take: WorkshopTake): Promise<void> {
   }
 }
 
-/** The task's thread, read in the app: the take starts playing. */
-export function workshopOnThreadRead(fx: RoomFixture, room: string, episode: string): void {
+/** A person sent the take's opening message in the app (typed on screen, as
+ *  the run's person did): the step plays from there. */
+export function workshopOnMessage(fx: RoomFixture, room: string, m: MockMessage): void {
   const take = workshopTake();
-  if (room !== WORKSHOP_ROOM || !take) return;
-  const opens = cut(take).step[0];
-  if (!opens || opens.episode !== episode || !once(`workshop:${take}`)) return;
-  void (async () => {
-    // A beat on the room as it was, before anything moves.
-    await sleep(2500);
-    await replay(fx, take);
-  })();
+  if (room !== WORKSHOP_ROOM || !take || !PEOPLE.has(m.sender_handle)) return;
+  if (!STEP_OPENS[take].test(m.content.trim()) || !once(`workshop:${take}`)) return;
+  void replay(fx, take);
 }

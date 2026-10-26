@@ -40,7 +40,7 @@ import type {
 import type { RoomStatus } from "@/lib/board/upstream";
 import { demoCheckout, isDemoScenario } from "./demo";
 import { LEARN_ROOM, learnRoom } from "./learn";
-import { WORKSHOP_ROOM, workshopRoom } from "./workshop";
+import { WORKSHOP_ROOM, workshopRoom, workshopRooms } from "./workshop";
 import { PATTERN_ROOMS } from "./patterns";
 
 // A fixed "now" so relative timestamps render deterministically. Callers
@@ -2419,9 +2419,13 @@ export const ROOM_FIXTURES: Record<string, RoomFixture> = (store.__myceliumMockR
 const learn = learnRoom();
 if (learn && !ROOM_FIXTURES[LEARN_ROOM]) ROOM_FIXTURES[LEARN_ROOM] = learn;
 
-// A workshop take (see workshop.ts) adds the room its replay plays in.
+// A workshop take (see workshop.ts) is a team's hub: the room its replay plays
+// in and the team's other rooms, in place of the demo's.
 const workshop = workshopRoom();
-if (workshop && !ROOM_FIXTURES[WORKSHOP_ROOM]) ROOM_FIXTURES[WORKSHOP_ROOM] = workshop;
+if (workshop && !ROOM_FIXTURES[WORKSHOP_ROOM]) {
+  for (const name of Object.keys(ROOM_FIXTURES)) delete ROOM_FIXTURES[name];
+  Object.assign(ROOM_FIXTURES, { [WORKSHOP_ROOM]: workshop, ...workshopRooms() });
+}
 
 export const ROOMS: MockRoom[] = Object.values(ROOM_FIXTURES).map((f) => f.room);
 

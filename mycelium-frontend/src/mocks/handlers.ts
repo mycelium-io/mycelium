@@ -42,7 +42,14 @@ import {
   learnOnTask,
   learnOnThreadRead,
 } from "./learn";
-import { WORKSHOP_CAST, isWorkshopScenario, workshopOnThreadRead } from "./workshop";
+import {
+  WORKSHOP_CAST,
+  WORKSHOP_PEOPLE,
+  WORKSHOP_TEAMMATES,
+  isWorkshopScenario,
+  workshopFolders,
+  workshopOnMessage,
+} from "./workshop";
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
@@ -341,7 +348,7 @@ const MOCK_USERS = new Map<string, { handle: string; display_name: string; teams
           [LEARN_TEAMMATE.handle, LEARN_TEAMMATE.name],
         ]
       : []),
-    ...(isWorkshopScenario() ? WORKSHOP_CAST.map((c) => [c.handle, c.name]) : []),
+    ...(isWorkshopScenario() ? [...WORKSHOP_CAST, ...WORKSHOP_TEAMMATES].map((c) => [c.handle, c.name]) : []),
   ].map(([handle, display_name]) => [handle, { handle, display_name, teams: [], notify: null, owns: [] }]),
 );
 
@@ -384,8 +391,11 @@ async function handleUsers(req: Request, method: string, rest: string[]): Promis
 }
 
 /** Each person's room folders, kept until the mock restarts. Everyone starts
- *  with none, so the rooms list looks as it always has until someone files one. */
-const MOCK_ROOM_FOLDERS = new Map<string, { folders: unknown[] }>();
+ *  with none, so the rooms list looks as it always has until someone files one,
+ *  except on the workshop's team hub, where the team's rooms are foldered. */
+const MOCK_ROOM_FOLDERS = new Map<string, { folders: unknown[] }>(
+  isWorkshopScenario() ? WORKSHOP_PEOPLE.map((h) => [h, workshopFolders()]) : [],
+);
 
 /** The pre-checks the hub runs, as its list read names them. */
 const MOCK_SCHEDULE_CHECKS: Record<string, string> = {
@@ -805,9 +815,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         // before the count, as the backend counts it — `total` is what is older
         // than the cursor, which is how a reader knows it has reached the start.
         const before = searchParams.get("before");
-        if (episode && isLearnScenario()) learnOnThreadRead(fx, roomName, episode);
-        if (episode && isWorkshopScenario()) workshopOnThreadRead(fx, roomName, episode);
-        const scoped = fx.messages.filter(
+        if (episode && isLearnScenario()) learnOnThreadRead(fx, roomName, episode);        const scoped = fx.messages.filter(
           (m) => (!episode || m.episode === episode) && olderThan(m.created_at, before),
         );
         const ordered = [...scoped].reverse();
@@ -819,7 +827,8 @@ export async function handleMock(req: Request): Promise<Response | null> {
         // appends what arrives live, and a thread refetches when its episode moves.
         const body = await readJson(req);
         const msg: MockMessage = {
-          id: `sent-${fx.messages.length + 1}`,
+          // Unique across rooms, as the hub's ids are: the bell drops a repeat id.
+          id: `sent-${roomName}-${fx.messages.length + 1}`,
           sender_handle: String(body.sender_handle ?? "operator"),
           message_type: String(body.message_type ?? "broadcast"),
           content: String(body.content ?? ""),
@@ -830,6 +839,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         publish(roomName, { ...msg, room_name: roomName });
         if (isDemoScenario()) demoOnMessage(fx, roomName, msg);
         if (isLearnScenario()) learnOnMessage(fx, roomName, msg);
+        if (isWorkshopScenario()) workshopOnMessage(fx, roomName, msg);
         return json(msg, 201);
       }
       return null;

@@ -34,22 +34,44 @@ const SCRATCH = join(repo, ".shotkit/workshop");
  *  machine each agent runs on (it names only your own). */
 const DEFAULTS = {
   route: "/room/release-planning",
-  viewport: "1920x1080@1",
+  // 1920x1080 out, from a 1280x720 window at 1.5x: the app fills the frame
+  // at a size a room can read, rather than a wide window of small type.
+  // (Given as width, height and scale: a take ignores a viewport's ratio.
+  // The screencast sends CSS pixels, so the frames are screenshots.)
+  width: 1280,
+  height: 720,
+  scale: 1.5,
+  capture: "shots",
   theme: "dark",
   format: "mp4",
   fps: 30,
-  maxSeconds: 150,
+  maxSeconds: 240,
   actionTimeout: 90000,
   moveMs: 650,
   dwell: 450,
   leadIn: 700,
   tail: 1600,
+  // The page is the team's app in a browser: the offers to install the app
+  // and the CLI are for someone new.
+  hide: ["a:has(> .lucide-download)", 'button[aria-label="Install CLI"]'],
   storage: {
     "mycelium.principal": "julia",
     "mycelium.name-asked": "1",
     "mycelium.machines": JSON.stringify(["julias-mbp", "jodees-mbp", "marcs-mbp"]),
   },
 };
+
+/** The team talking in its other rooms as the take opens, so three of them
+ *  wear an unread badge. Said live: a badge is what arrives while you're here. */
+const OTHER_ROOMS = [
+  ["roadmap", "jodee", "Moved widgets to Q1."],
+  ["roadmap", "marc", "Agreed, after offline mode."],
+  ["support-escalations", "lena", "Two more tickets about lost changes."],
+  ["support-escalations", "lena", "One is the pilot customer."],
+  ["support-escalations", "sam", "Looking now."],
+  ["mobile-app", "priya", "4.12 branch builds on both platforms."],
+];
+const OTHER_ROOMS_TALK = `eval:(async () => { for (const [room, sender_handle, content] of ${JSON.stringify(OTHER_ROOMS)}) await fetch('/api/rooms/' + room + '/messages', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sender_handle, content }) }); })()`;
 
 const argv = process.argv.slice(2);
 const raw = argv.includes("--raw");
@@ -77,7 +99,14 @@ const mb = (path) => (statSync(path).size / 1e6).toFixed(1);
 for (const take of takes) {
   const spec = JSON.parse(readFileSync(join(here, "takes", `${take}.json`), "utf8"));
   const { $comment, poster = 3, ...flow } = spec;
-  const shot = { ...DEFAULTS, ...flow, storage: { ...DEFAULTS.storage, ...(flow.storage ?? {}) } };
+  const [first, ...rest] = flow.do;
+  const shot = {
+    ...DEFAULTS,
+    ...flow,
+    storage: { ...DEFAULTS.storage, ...(flow.storage ?? {}) },
+    // Once the room is up, the rest of the team talks elsewhere.
+    do: [first, OTHER_ROOMS_TALK, ...rest],
+  };
   const { baseUrl, stop } = await startScenario(`workshop:${take}`, [shot.route]);
   try {
     const recorded = join(SCRATCH, `${take}.mp4`);
