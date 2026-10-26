@@ -14,6 +14,9 @@ export interface ComposerInsert {
   text: string;
   /** The thread the message was in, whose composer takes it; none for the room. */
   episode?: string | null;
+  /** Where the click came from. A thread open in two places (its pane and its
+   *  task's page) has two composers; only the one beside it takes the text. */
+  from?: Element | null;
 }
 
 export function insertIntoComposer(detail: ComposerInsert): void {

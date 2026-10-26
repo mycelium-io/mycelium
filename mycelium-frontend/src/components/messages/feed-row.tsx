@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AtSign, Braces, Copy, Link2, MessageSquare, Reply, TextQuote } from "lucide-react";
 import type { VerifierFlag } from "@/lib/api";
 import type { Event } from "@/lib/room-events";
@@ -264,24 +264,26 @@ export function MessageMenu({
   children: React.ReactElement;
 }) {
   const [rawOpen, setRawOpen] = useState(false);
+  // The row right-clicked, which says which pane Reply and Quote are from:
+  // the menu itself is drawn outside it.
+  const row = useRef<Element | null>(null);
+  const insert = (text: string) => insertIntoComposer({ room: roomName, episode, text, from: row.current });
   return (
     <>
       {/* Mounted only while open, so a long list doesn't carry one per message. */}
       {rawOpen && wire && <RawMessageDialog open onClose={() => setRawOpen(false)} message={wire} />}
       <ContextMenu>
-        <ContextMenuTrigger>{children}</ContextMenuTrigger>
+        <ContextMenuTrigger onContextMenuCapture={(e) => (row.current = e.currentTarget)}>
+          {children}
+        </ContextMenuTrigger>
         <ContextMenuContent>
-          <ContextMenuItem
-            icon={Reply}
-            action="message.reply"
-            onClick={() => insertIntoComposer({ room: roomName, episode, text: replyText(sender) })}
-          >
+          <ContextMenuItem icon={Reply} action="message.reply" onClick={() => insert(replyText(sender))}>
             Reply
           </ContextMenuItem>
           <ContextMenuItem
             icon={TextQuote}
             action="message.quote"
-            onClick={() => insertIntoComposer({ room: roomName, episode, text: quoteText(content, sender) })}
+            onClick={() => insert(quoteText(content, sender))}
           >
             Quote
           </ContextMenuItem>

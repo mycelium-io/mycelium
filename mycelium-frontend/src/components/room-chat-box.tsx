@@ -341,11 +341,14 @@ export function RoomChatBox({
   // A message's Reply or Quote adds to the end of the draft, and the cursor
   // goes to the end, after it, once the box has drawn it. A message in a
   // thread goes to that thread's composer; one in the channel, to the room's.
+  // A thread open in two places goes to the composer in the one clicked in.
   useEffect(() => {
     if (!receivesInserts && !episode) return;
     const onInsert = (e: Event) => {
-      const { room, text, episode: from = null } = (e as CustomEvent<ComposerInsert>).detail;
-      if (room !== roomName || from !== episode) return;
+      const { room, text, episode: thread = null, from } = (e as CustomEvent<ComposerInsert>).detail;
+      if (room !== roomName || thread !== episode) return;
+      const pane = episode ? inputRef.current?.closest("[data-thread]") : null;
+      if (from && pane && !pane.contains(from)) return;
       setContent((draft) => appendToDraft(draft, text));
       requestAnimationFrame(() => {
         const el = inputRef.current;

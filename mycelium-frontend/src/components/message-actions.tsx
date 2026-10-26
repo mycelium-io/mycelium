@@ -119,8 +119,11 @@ function Bar({
   }, [copied]);
 
   const link = messageId ? absoluteUrl(messagePath(roomName, messageId)) : null;
-  const reply = () => insertIntoComposer({ room: roomName, episode, text: replyText(sender) });
-  const quote = () => insertIntoComposer({ room: roomName, episode, text: quoteText(content, sender) });
+  // The bar sits in its message's row, so it says which pane the click is from.
+  const bar = useRef<HTMLDivElement>(null);
+  const insert = (text: string) => insertIntoComposer({ room: roomName, episode, text, from: bar.current });
+  const reply = () => insert(replyText(sender));
+  const quote = () => insert(quoteText(content, sender));
   const copy = () => void copyText(content).then(() => setCopied("text"));
   // Bound only while this bar is drawn, which is while its message is hovered.
   useKeyAction("message.reply", reply);
@@ -146,6 +149,7 @@ function Bar({
 
   return (
     <div
+      ref={bar}
       role="toolbar"
       aria-label="Message actions"
       className="absolute -top-3.5 right-4 z-10 flex items-center gap-px rounded-lg border border-border2 bg-elevated p-0.5 shadow-md"

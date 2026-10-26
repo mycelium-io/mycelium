@@ -57,7 +57,7 @@ export function TaskDiscussion({ roomName, episode, onOpenMemory, className, onR
   }, []);
 
   return (
-    <section data-testid="task-discussion" className={cn("border-t border-border pt-4 pb-6", className)}>
+    <section data-testid="task-discussion" data-thread={episode} className={cn("border-t border-border pt-4 pb-6", className)}>
       <h2 className="text-label font-medium text-text">Discussion</h2>
       <div className="-mx-5">
         <TaskConversation
