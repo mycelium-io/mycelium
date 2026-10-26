@@ -16,7 +16,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Lock, SquareTerminal } from "lucide-react";
-import { parseAnsi, type AnsiStyle } from "@/lib/ansi";
+import { parseAnsi, readable, type AnsiRun, type AnsiStyle } from "@/lib/ansi";
 import { placeOf } from "@/lib/agent-place";
 import { terminalLink, useAgentScreen, useIsDesktop, useThisMachine } from "@/lib/desktop";
 import { runnerName, useRunners } from "@/lib/runners";
@@ -109,6 +109,55 @@ function Note({ children }: { children: React.ReactNode }) {
 /** How close to the bottom, in pixels, still counts as following the terminal. */
 const FOLLOW_SLACK_PX = 24;
 
+/** How much larger than its usual size a terminal's text may grow to fill the view's width. */
+const MAX_FIT = 2.25;
+
+/** The widest line's length in characters: the terminal's width, near enough. */
+function columnsOf(lines: AnsiRun[][]): number {
+  let widest = 0;
+  for (const runs of lines) {
+    let n = 0;
+    for (const r of runs) n += Array.from(r.text).length;
+    widest = Math.max(widest, n);
+  }
+  return widest;
+}
+
+/**
+ * A font size that spreads `cols` characters across `ref`'s width, so a
+ * terminal narrower than the view fills it rather than hugging its left side.
+ * Never smaller than the view's own size, and never more than `MAX_FIT` times
+ * it; `null` until it's measured.
+ */
+function useFitWidth(ref: React.RefObject<HTMLElement | null>, cols: number): number | null {
+  const [size, setSize] = useState<number | null>(null);
+  const base = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || cols === 0) return;
+    const fit = () => {
+      const style = getComputedStyle(el);
+      base.current ??= parseFloat(style.fontSize);
+      const probe = document.createElement("span");
+      probe.textContent = "0".repeat(20);
+      probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font-family:${style.fontFamily};font-size:${base.current}px`;
+      el.appendChild(probe);
+      const ch = probe.getBoundingClientRect().width / 20;
+      probe.remove();
+      const room = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      if (!ch || !base.current || room <= 0) return;
+      const scale = Math.min(MAX_FIT, Math.max(1, room / (cols * ch)));
+      setSize(Math.floor(base.current * scale * 10) / 10);
+    };
+    fit();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(fit);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [ref, cols]);
+  return size;
+}
+
 function Screen({ text, error }: { text: string | null; error: string | null }) {
   const lines = useMemo(() => (text ? parseAnsi(text) : []), [text]);
   // It reads the scrollback too, so it opens at the bottom, where the terminal
@@ -118,15 +167,19 @@ function Screen({ text, error }: { text: string | null; error: string | null }) 
   const ref = useRef<HTMLPreElement | null>(null);
   const [held, setHeld] = useState<typeof lines | null>(null);
   const shown = held ?? lines;
+  const surface = useSurface(ref, text !== null);
+  const cols = useMemo(() => columnsOf(shown), [shown]);
+  const fontSize = useFitWidth(ref, cols);
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && !held) el.scrollTop = el.scrollHeight;
-  }, [lines, held]);
+  }, [lines, held, fontSize]);
   if (error && text === null) return <Note>{error}</Note>;
   if (text === null) return <Note>Reading its terminal…</Note>;
   return (
     <pre
       ref={ref}
+      style={fontSize ? { fontSize } : undefined}
       onScroll={(e) => {
         const el = e.currentTarget;
         const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX;
@@ -139,7 +192,7 @@ function Screen({ text, error }: { text: string | null; error: string | null }) 
       {shown.map((runs, i) => (
         <div key={i} className="min-h-[1lh] whitespace-pre">
           {runs.map((r, j) => (
-            <span key={j} style={cssOf(r.style)}>
+            <span key={j} style={cssOf(r.style, surface)}>
               {r.text}
             </span>
           ))}
@@ -166,14 +219,20 @@ export function AgentPeek({ room, handle }: { room: string; handle: string }) {
     const used = all.filter((runs) => runs.some((r) => r.text.trim()));
     return used.slice(-PEEK_LINES);
   }, [screen.text]);
-  if (!desktop || screen.unasked || screen.notHere || lines.length === 0) return null;
+  const shows = desktop && !screen.unasked && !screen.notHere && lines.length > 0;
+  const card = useRef<HTMLSpanElement | null>(null);
+  const surface = useSurface(card, shows);
+  if (!shows) return null;
   return (
-    <span className="block w-[28rem] max-w-[80vw] rounded-md border border-border bg-surface p-2 text-left shadow-lg">
+    <span
+      ref={card}
+      className="block w-[28rem] max-w-[80vw] rounded-md border border-border bg-surface p-2 text-left text-text shadow-lg"
+    >
       <span className="block overflow-hidden font-mono text-[11px] leading-snug text-text">
         {lines.map((runs, i) => (
           <span key={i} className="block truncate whitespace-pre">
             {runs.map((r, j) => (
-              <span key={j} style={cssOf(r.style)}>
+              <span key={j} style={cssOf(r.style, surface)}>
                 {r.text}
               </span>
             ))}
@@ -188,11 +247,49 @@ export function AgentPeek({ room, handle }: { room: string; handle: string }) {
   );
 }
 
-function cssOf(s: AnsiStyle): CSSProperties | undefined {
-  const fg = s.inverse ? (s.bg ?? "var(--bg)") : s.fg;
-  const bg = s.inverse ? (s.fg ?? "var(--text)") : s.bg;
+/** The colors a terminal view is drawn in, as the page has them now. */
+interface Surface {
+  fg: string;
+  bg: string;
+}
+
+const THEME_SURFACE: Surface = { fg: "var(--text)", bg: "var(--bg)" };
+
+/** `ref`'s own text and background colors, read from the page once it's
+ *  `drawn` and again when the theme changes; the theme's names for them
+ *  until then. */
+function useSurface(ref: React.RefObject<HTMLElement | null>, drawn: boolean): Surface {
+  const [surface, setSurface] = useState<Surface>(THEME_SURFACE);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !drawn) return;
+    const read = () => {
+      const style = getComputedStyle(el);
+      const next = { fg: style.color, bg: style.backgroundColor };
+      if (!next.fg || !next.bg) return;
+      setSurface((prev) => (prev.fg === next.fg && prev.bg === next.bg ? prev : next));
+    };
+    read();
+    // A theme is set on the page's root, or follows the system's.
+    const root = new MutationObserver(read);
+    root.observe(document.documentElement, { attributes: true });
+    const system = window.matchMedia?.("(prefers-color-scheme: dark)");
+    system?.addEventListener?.("change", read);
+    return () => {
+      root.disconnect();
+      system?.removeEventListener?.("change", read);
+    };
+  }, [ref, drawn]);
+  return surface;
+}
+
+function cssOf(s: AnsiStyle, surface: Surface = THEME_SURFACE): CSSProperties | undefined {
+  const fg = s.inverse ? (s.bg ?? surface.bg) : s.fg;
+  const bg = s.inverse ? (s.fg ?? surface.fg) : s.bg;
   const css: CSSProperties = {};
-  if (fg) css.color = fg;
+  // Colors picked for a dark terminal can vanish on a light page (white or
+  // pale green text): each is made readable on what it's drawn on.
+  if (fg || bg) css.color = readable(fg ?? surface.fg, bg ?? surface.bg);
   if (bg) css.backgroundColor = bg;
   if (s.bold) css.fontWeight = 600;
   if (s.dim) css.opacity = 0.6;

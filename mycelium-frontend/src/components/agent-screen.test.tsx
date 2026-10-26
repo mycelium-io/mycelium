@@ -98,6 +98,34 @@ describe("an agent's terminal", () => {
     expect(await screen.findByText("● Reading src/payments.ts")).toBeInTheDocument();
   });
 
+  it("fills a view wider than the terminal, and keeps a dark terminal's colors readable on a light page", async () => {
+    // A light page, a view 1200px wide and characters 6px wide at its usual 12px.
+    const real = window.getComputedStyle;
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      (el) =>
+        ({
+          color: "rgb(30, 30, 30)",
+          backgroundColor: "rgb(250, 245, 230)",
+          fontSize: "12px",
+          fontFamily: "monospace",
+          paddingLeft: "12px",
+          paddingRight: "12px",
+          getPropertyValue: (name: string) => real(el).getPropertyValue(name),
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1200);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ width: 120 } as DOMRect);
+    inTheApp();
+    renderWithSWR(<AgentScreen room="checkout" handle="builder" />);
+
+    const line = await screen.findByText("● Reading src/payments.ts");
+    // Its text grows to fill the width, up to 2.25 times its size.
+    await waitFor(() => expect(screen.getByLabelText("Its terminal").style.fontSize).toBe("27px"));
+    // The terminal's green, picked for a dark background, is darkened to be read on cream.
+    await waitFor(() => expect(line.style.color).not.toBe("rgb(78, 154, 6)"));
+    expect(line.style.color).toMatch(/^rgb\(/);
+  });
+
   it("opens at the bottom of the scrollback, where the terminal is now", async () => {
     // A view over a terminal with more lines than fit shows the newest, not
     // the oldest lines it was handed.
