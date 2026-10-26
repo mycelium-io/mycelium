@@ -17,8 +17,8 @@
 # binary the runner copies is the one the build stages ran. Bump the two
 # together: ALPINE_IMAGE is the Alpine release this node image is built on
 # (`cat /etc/alpine-release` in it), so its libraries match the binary.
-ARG NODE_IMAGE=node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
-ARG ALPINE_IMAGE=alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+ARG NODE_IMAGE=node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
+ARG ALPINE_IMAGE=alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 
 # ─── node ─────────────────────────────────────────────────────────────────────
 FROM ${NODE_IMAGE} AS node

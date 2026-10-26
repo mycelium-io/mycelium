@@ -38,7 +38,7 @@ set -euo pipefail
 # At least mycelium.integrations.herdr.bridge.MIN_VERSION.
 HERDR_TAG="v0.9.3"
 SLIMCTL_TAG="slimctl-v2.1.1"
-NODE_VERSION="24.19.0"
+NODE_VERSION="24.22.1"
 PI_VERSION="0.87.1"
 EMBEDDING_MODEL="BAAI/bge-small-en-v1.5"
 
