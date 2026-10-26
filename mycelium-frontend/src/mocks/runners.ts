@@ -14,6 +14,7 @@
 
 import { DEMO_PERSON, isDemoScenario } from "./demo";
 import { LEARN_PERSON, LEARN_ROOTS, isLearnScenario } from "./learn";
+import { WORKSHOP_CAST, WORKSHOP_ROOM, isWorkshopScenario } from "./workshop";
 import type {
   Framework,
   MachineAgent,
@@ -228,7 +229,7 @@ const runners: Runner[] = [
 /** A remote machine: it starts what a paired device asks for without approval. */
 export const MOCK_MINI_ID = "studio-mini";
 
-if (!isDemoScenario() && !isLearnScenario()) {
+if (!isDemoScenario() && !isLearnScenario() && !isWorkshopScenario()) {
   runners.push({
     id: MOCK_MINI_ID,
     label: "studio-mini",
@@ -275,6 +276,34 @@ if (isLearnScenario()) {
     roots: LEARN_ROOTS,
     agents: [],
   });
+}
+
+// The workshop's room is three people's, each with an agent on their own laptop.
+if (isWorkshopScenario()) {
+  runners.splice(
+    0,
+    runners.length,
+    ...WORKSHOP_CAST.map((c, i) => ({
+      ...runners[0],
+      id: c.machine,
+      label: c.machine,
+      owner: c.handle,
+      roots: [`/Users/${c.handle}/code/app`],
+      agents: [
+        {
+          handle: c.agent,
+          room: WORKSHOP_ROOM,
+          framework: "claude",
+          status: "idle" as const,
+          pane: `w1:p${i + 1}`,
+          cwd: `/Users/${c.handle}/code/app`,
+          started_at: iso(60 * 3),
+          detail: null,
+        },
+      ],
+      machine: undefined,
+    })),
+  );
 }
 
 interface StoredJob extends Omit<RunnerJob, "status" | "updated_at"> {

@@ -1,0 +1,33 @@
+{
+  "$comment": "Three people, three laptops, one room. The Members rail shows each agent with its owner and the machine it runs on; Julia asks the three agents when offline mode should ship, each answers from its own laptop, eng and product settle the dates between them, and Jodee answers Julia.",
+  "poster": 4,
+  "do": [
+    "wait-text:When does offline mode ship?",
+    "hold:1400",
+    "zoom:text=Idle agents@1.7",
+    "hold:2600",
+    "zoomout",
+    "hold:400",
+    "click:Board",
+    "hold:500",
+    "click:css=button[data-board-row]:has-text(\"When does offline mode ship?\")",
+    "wait-text:Offline mode is our most requested feature",
+    "eval:(() => { const s = document.querySelector('[aria-label=\"Resize the open tabs\"]'); if (!s) return; const r = s.getBoundingClientRect(); s.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: r.x, clientY: r.y + 10 })); const box = s.parentElement.getBoundingClientRect(); window.dispatchEvent(new PointerEvent('pointermove', { clientX: box.left + box.width * 0.26 })); window.dispatchEvent(new PointerEvent('pointerup', {})); })()",
+    "hover:text=Idle agents",
+    "eval:(() => { const c = document.querySelector('[data-testid=\"thread-conversation\"]'); if (!c) return; let n = c; while (n && !/(auto|scroll)/.test(getComputedStyle(n).overflowY)) n = n.parentElement; if (!n) return; const go = () => n.scrollTo({ top: n.scrollHeight, behavior: 'smooth' }); go(); new MutationObserver(go).observe(c, { childList: true, subtree: true }); })()",
+    "wait-text:when should offline mode ship",
+    "hold:1600",
+    "wait-text:Product view",
+    "hold:1200",
+    "wait-text:Engineering position",
+    "hold:1200",
+    "wait-text:a Nov 6 submission",
+    "zoom:css=section[aria-label^=\"Thread\"]@1.25",
+    "hold:2400",
+    "wait-text:Product accepts",
+    "hold:2600",
+    "wait-text:deciding the same thing",
+    "hold:3400",
+    "zoomout"
+  ]
+}

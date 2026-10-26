@@ -42,6 +42,7 @@ import {
   learnOnTask,
   learnOnThreadRead,
 } from "./learn";
+import { WORKSHOP_CAST, isWorkshopScenario, workshopOnThreadRead } from "./workshop";
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
@@ -340,6 +341,7 @@ const MOCK_USERS = new Map<string, { handle: string; display_name: string; teams
           [LEARN_TEAMMATE.handle, LEARN_TEAMMATE.name],
         ]
       : []),
+    ...(isWorkshopScenario() ? WORKSHOP_CAST.map((c) => [c.handle, c.name]) : []),
   ].map(([handle, display_name]) => [handle, { handle, display_name, teams: [], notify: null, owns: [] }]),
 );
 
@@ -804,6 +806,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         // than the cursor, which is how a reader knows it has reached the start.
         const before = searchParams.get("before");
         if (episode && isLearnScenario()) learnOnThreadRead(fx, roomName, episode);
+        if (episode && isWorkshopScenario()) workshopOnThreadRead(fx, roomName, episode);
         const scoped = fx.messages.filter(
           (m) => (!episode || m.episode === episode) && olderThan(m.created_at, before),
         );
