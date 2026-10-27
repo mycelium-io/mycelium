@@ -54,6 +54,28 @@ const DEFAULTS = {
   // The page is the team's app in a browser: the offers to install the app
   // and the CLI are for someone new.
   hide: ["a:has(> .lucide-download)", 'button[aria-label="Install CLI"]'],
+  // A flow take's captions say what each step does. They're a popover beside
+  // the thread, over the board (no take needs it then), pointing at the flow,
+  // in the docs' type: the step's name in the title face, the line in the text face.
+  css: `
+    @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,600&family=IBM+Plex+Sans:wght@400;500&display=swap");
+    #__shotkit-overlay #__shotkit-caption {
+      left: 2.2%; right: auto; top: 15%; bottom: auto;
+      width: 33%; max-width: none; transform: translateX(-8px);
+      padding: 16px 20px 18px; border-radius: 10px; text-align: left;
+      background: rgba(14, 17, 21, 0.96); border: 1px solid rgba(93, 212, 224, 0.45);
+      font: italic 600 30px/1.1 "Cormorant Garamond", Georgia, serif; color: #5dd4e0;
+    }
+    #__shotkit-overlay #__shotkit-caption.__shotkit-on { transform: translateX(0); }
+    #__shotkit-overlay #__shotkit-caption::after {
+      content: ""; position: absolute; right: -7px; top: 26px; width: 12px; height: 12px;
+      background: inherit; border: inherit; border-left: 0; border-bottom: 0; transform: rotate(45deg);
+    }
+    #__shotkit-overlay #__shotkit-caption .__shotkit-sub {
+      margin-top: 8px; opacity: 1; color: #e6e9ec;
+      font: 400 17px/1.45 "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+    }
+  `,
   storage: {
     "mycelium.principal": "julia",
     "mycelium.name-asked": "1",
@@ -71,7 +93,42 @@ const OTHER_ROOMS = [
   ["support-escalations", "sam", "Looking now."],
   ["mobile-app", "priya", "4.12 branch builds on both platforms."],
 ];
-const OTHER_ROOMS_TALK = `eval:(async () => { for (const [room, sender_handle, content] of ${JSON.stringify(OTHER_ROOMS)}) await fetch('/api/rooms/' + room + '/messages', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sender_handle, content }) }); })()`;
+/** A spotlight instead of a camera move: everything but one area is softly
+ *  blurred and dimmed, and the area follows its element as the page scrolls.
+ *  A take calls `window.__spot(css, text?, exact?, withNext?)`, or passes an
+ *  element; `window.__spot()` lifts it. `withNext` takes in the element after
+ *  the match too (a heading and what's under it). */
+const SPOTLIGHT = `eval:(() => {
+  if (window.__spot) return;
+  const veil = document.createElement('div');
+  Object.assign(veil.style, {
+    position: 'fixed', inset: '0', zIndex: '2147483000', pointerEvents: 'none', opacity: '0',
+    backdropFilter: 'blur(2.5px) brightness(0.55)', transition: 'opacity 450ms ease',
+  });
+  document.body.appendChild(veil);
+  let target = null;
+  const rect = () => {
+    const r = target[0].getBoundingClientRect();
+    const s = target[1]?.getBoundingClientRect() ?? r;
+    return { left: Math.min(r.left, s.left), top: Math.min(r.top, s.top), right: Math.max(r.right, s.right), bottom: Math.max(r.bottom, s.bottom) };
+  };
+  const tick = () => {
+    if (target && target[0].isConnected) {
+      const r = rect(), p = 8;
+      const [x1, y1, x2, y2] = [r.left - p, r.top - p, r.right + p, r.bottom + p].map((v) => v + 'px');
+      veil.style.clipPath = 'polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ' + [x1 + ' ' + y1, x2 + ' ' + y1, x2 + ' ' + y2, x1 + ' ' + y2, x1 + ' ' + y1].join(', ') + ')';
+    }
+    requestAnimationFrame(tick);
+  };
+  tick();
+  window.__spot = (what, text, exact, withNext) => {
+    const el = what instanceof Element ? what : !what ? null
+      : [...document.querySelectorAll(what)].filter((e) => !text || (exact ? e.textContent.trim() === text : e.textContent.includes(text))).at(-1);
+    target = el ? [el, withNext ? el.nextElementSibling : null] : null;
+    veil.style.opacity = target ? '1' : '0';
+  };
+})()`;
+const OTHER_ROOMS_TALK =`eval:(async () => { for (const [room, sender_handle, content] of ${JSON.stringify(OTHER_ROOMS)}) await fetch('/api/rooms/' + room + '/messages', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sender_handle, content }) }); })()`;
 
 const argv = process.argv.slice(2);
 const raw = argv.includes("--raw");
@@ -105,7 +162,7 @@ for (const take of takes) {
     ...flow,
     storage: { ...DEFAULTS.storage, ...(flow.storage ?? {}) },
     // Once the room is up, the rest of the team talks elsewhere.
-    do: [first, OTHER_ROOMS_TALK, ...rest],
+    do: [first, OTHER_ROOMS_TALK, SPOTLIGHT, ...rest],
   };
   const { baseUrl, stop } = await startScenario(`workshop:${take}`, [shot.route]);
   try {
