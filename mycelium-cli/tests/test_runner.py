@@ -170,12 +170,19 @@ class Hub:
         self.notes_for = notes_for
         #: A hub with sign-in on that this machine isn't signed in to.
         self.signed_out = False
+        #: Agent tokens the hub no longer accepts.
+        self.refused_tokens: set[str] = set()
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else None
         self.seen.append((request.method, request.url.path, body))
         if self.signed_out:
             return httpx.Response(401, json={"detail": "missing bearer token"})
+        if request.url.path == "/api/whoami":
+            token = request.headers.get("authorization", "").removeprefix("Bearer ")
+            if token in self.refused_tokens:
+                return httpx.Response(401, json={"detail": "invalid token"})
+            return httpx.Response(200, json={"gated": True, "handle": "scout"})
         if request.method == "GET" and request.url.path.endswith("/notes"):
             if self.notes_for and f"/agents/{self.notes_for}/" in request.url.path:
                 return httpx.Response(200, json={"key": "n", "value": "Be terse."})
@@ -191,8 +198,10 @@ def hub(monkeypatch: pytest.MonkeyPatch) -> Hub:
     hub = Hub()
 
     @contextmanager
-    def client(_config: Any = None, **_kw: Any):
-        with httpx.Client(base_url="http://hub", transport=httpx.MockTransport(hub.handler)) as c:
+    def client(_config: Any = None, *, headers: dict | None = None, **_kw: Any):
+        with httpx.Client(
+            base_url="http://hub", transport=httpx.MockTransport(hub.handler), headers=headers
+        ) as c:
             yield c
 
     monkeypatch.setattr(daemon, "hub_client", client)
@@ -608,6 +617,95 @@ def test_a_computer_not_signed_in_is_asked_about_every_round(
     r.keep_credentials(now=1000.0)
     r.keep_credentials(now=1060.0)
     assert asked == ["mine", "mine"]
+
+
+def _agent_here(r: daemon.Runner, herdr: Herdr, handle: str, pane: str = "w9:p1") -> None:
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    herdr.live[pane] = "idle"
+    r.bridge.registry.set(HerdrPaneMapping(room="eng", handle=handle, pane=pane, kind="claude"))
+
+
+def test_the_heartbeat_says_which_agents_can_reply_and_why_not(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """The runner that keeps the tokens is the one that knows; the room reads its word."""
+    from mycelium import agent_credentials
+
+    now = 2_000_000_000.0
+    token = _token_until(now + 30 * 86400)
+
+    def issue(_config: Any, room: str, handle: str) -> Path:
+        if handle == "theirs":
+            raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 403, "")
+        path = agent_credentials.member_token_path(room, handle)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # The hub answers every token it accepts as @scout, so @coder's file
+        # holds a token for someone else.
+        path.write_text(f"{token}-revoked" if handle == "revoked" else token)
+        return path
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", issue)
+    hub.refused_tokens.add(f"{token}-revoked")
+    r = make_runner()
+    _agent_here(r, herdr, "scout", "w9:p1")
+    _agent_here(r, herdr, "revoked", "w9:p2")
+    _agent_here(r, herdr, "theirs", "w9:p3")
+    _agent_here(r, herdr, "coder", "w9:p4")
+
+    r.keep_credentials(now=now)
+    said = {c["handle"]: (c["can_reply"], c["why"]) for c in r.hello_body()["credentials"]}
+    assert said["scout"] == (True, None)
+    assert said["revoked"] == (False, f"The hub refused its token ({r.label}).")
+    assert said["theirs"] == (
+        False,
+        f"The hub won't give it a token for whoever {r.label} is signed in as.",
+    )
+    assert said["coder"] == (False, f"Its token is for @scout, not @coder ({r.label}).")
+
+    # Its pane closed: nothing more to say about it.
+    del herdr.live["w9:p2"]
+    r.keep_credentials(now=now + 60)
+    assert "revoked" not in {c["handle"] for c in r.credentials_report()}
+
+
+def test_a_signed_out_computer_says_its_agents_cant_reply_only_once_their_tokens_ran_out(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium import agent_credentials
+
+    now = 2_000_000_000.0
+
+    def signed_out(_config: Any, _room: str, handle: str) -> Path:
+        raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 401, "")
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", signed_out)
+    r = make_runner()
+    _agent_here(r, herdr, "mine")
+    path = agent_credentials.member_token_path("eng", "mine")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Three days left: a renewal refused changes nothing yet.
+    path.write_text(_token_until(now + 3 * 86400))
+    r.keep_credentials(now=now)
+    assert ("eng", "mine") not in r.can_reply or r.can_reply[("eng", "mine")][0]
+    # Run out.
+    r.keep_credentials(now=now + 4 * 86400)
+    assert r.can_reply[("eng", "mine")] == (
+        False,
+        f"This computer isn't signed in to the hub ({r.label}).",
+    )
+
+
+def test_with_sign_in_off_there_is_no_verdict_on_anyone(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium import agent_credentials
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", lambda *_a: None)
+    r = make_runner()
+    _agent_here(r, herdr, "mine")
+    r.keep_credentials(now=1000.0)
+    assert r.credentials_report() == []
 
 
 def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(

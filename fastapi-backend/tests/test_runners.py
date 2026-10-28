@@ -685,3 +685,52 @@ async def test_an_adopted_member_stays_once_the_job_is_done(
         json={"status": "done", "result": {"pane": "w3:p1", "introduced": True}},
     )
     assert _manifest(room, "kept")["runner"] == RUNNER
+
+
+async def test_members_say_which_agents_cant_reply_as_their_runner_knows_it(client, room):
+    """The runner keeping an agent's token says whether it works; the members
+    read carries that, and nothing for an agent no runner has a verdict on."""
+    from datetime import timedelta
+
+    from app.services import room_channels
+
+    room_channels.manager.set_herdr_presence(
+        room, {"coder": "idle", "scout": "idle", "reviewer": "idle"}
+    )
+    try:
+        resp = await client.post(
+            "/api/runners",
+            json=hello(
+                credentials=[
+                    {"room": room, "handle": "coder", "can_reply": True},
+                    {
+                        "room": room,
+                        "handle": "scout",
+                        "can_reply": False,
+                        "why": "This computer isn't signed in to the hub (Julia's MacBook).",
+                    },
+                    {"room": "elsewhere", "handle": "reviewer", "can_reply": False, "why": "x"},
+                ]
+            ),
+        )
+        assert resp.status_code == 200, resp.text
+        got = {
+            m["handle"]: (m["can_reply"], m["cant_reply_why"])
+            for m in (await client.get(f"/api/rooms/{room}/sessions/members")).json()["members"]
+        }
+        assert got["coder"] == (True, None)
+        assert got["scout"] == (
+            False,
+            "This computer isn't signed in to the hub (Julia's MacBook).",
+        )
+        assert got["reviewer"] == (None, None), "another room's verdict isn't this one's"
+
+        # A runner that stopped checking in leaves no stale verdict behind.
+        runners.registry._runners[RUNNER].last_seen -= timedelta(minutes=5)
+        got = {
+            m["handle"]: m["can_reply"]
+            for m in (await client.get(f"/api/rooms/{room}/sessions/members")).json()["members"]
+        }
+        assert got["scout"] is None
+    finally:
+        room_channels.manager.set_herdr_presence(room, {})
