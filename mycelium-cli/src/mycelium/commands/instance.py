@@ -789,7 +789,13 @@ def status(ctx: typer.Context) -> None:
         backend_error: str | None = None
         with MyceliumHTTPClient(config=config) as client:
             try:
-                health_resp = client.get("/health", params={"check_llm": "true"})
+                try:
+                    health_resp = client.get("/health", params={"check_llm": "true"})
+                except httpx.HTTPStatusError as missing:
+                    # A hub reached at its app's address answers only under /api.
+                    if missing.response.status_code != 404:
+                        raise
+                    health_resp = client.get("/api/health", params={"check_llm": "true"})
                 health_data = health_resp.json()
                 backend_running = health_data.get("status") in ("ok", "degraded")
             except Exception as exc:
@@ -817,6 +823,10 @@ def status(ctx: typer.Context) -> None:
                 except Exception:
                     pass
 
+        from mycelium.hub_check import credential
+
+        check = credential(config) if backend_running else None
+
         # -- Client-side checks (no backend needed) --------------------------
         docker_info = _check_docker_containers()
         disk_info = _check_disk_space()
@@ -836,6 +846,14 @@ def status(ctx: typer.Context) -> None:
                         "status": health_data.get("status", "down"),
                         "running": backend_running,
                         "room_count": backend_room_count,
+                        "credential": None
+                        if check is None
+                        else {
+                            "accepted": check.accepted,
+                            "as": check.handle,
+                            "source": check.source,
+                            "fix": check.fix,
+                        },
                     },
                     "database": health_data.get("database"),
                     "llm": health_data.get("llm"),
@@ -869,6 +887,19 @@ def status(ctx: typer.Context) -> None:
                 if backend_room_count > 0:
                     msg += f" ({backend_room_count} rooms)"
                 services.append(CheckResult(name="Backend", status="ok", message=msg))
+                if check is not None and check.accepted:
+                    services.append(
+                        CheckResult(name="Credential", status="ok", message=check.line())
+                    )
+                elif check is not None:
+                    services.append(
+                        CheckResult(
+                            name="Credential",
+                            status="error",
+                            message=check.problem(),
+                            details=[check.fix or ""],
+                        )
+                    )
             else:
                 services.append(
                     CheckResult(
