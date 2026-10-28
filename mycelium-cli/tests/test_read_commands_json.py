@@ -226,6 +226,33 @@ def test_runner_status_prints_json(monkeypatch: pytest.MonkeyPatch) -> None:
     assert state["hub"] == seen
 
 
+@pytest.mark.parametrize("code", [401, 502])
+def test_runner_status_says_what_the_hub_answered_rather_than_not_connected(
+    monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    # A refusal or a proxy's error page is not the hub saying the runner is
+    # gone: it says nothing about it either way.
+    import mycelium.client
+    import mycelium.runner.daemon
+
+    def not_json() -> Any:
+        raise ValueError("<html>Bad Gateway</html>")
+
+    @contextmanager
+    def fake_hub_client(*_a: object, **_k: object) -> Iterator[SimpleNamespace]:
+        yield SimpleNamespace(get=lambda _path: SimpleNamespace(status_code=code, json=not_json))
+
+    monkeypatch.setattr(mycelium.client, "hub_client", fake_hub_client)
+    monkeypatch.setattr(mycelium.runner.daemon, "runner_id", lambda: "abc123")
+    result = runner.invoke(app, ["runner", "status"])
+    assert result.exit_code == 1
+    assert f"The hub answered {code}" in result.output
+    assert "not connected" not in result.output
+    assert ("whoami --sources" in result.output) == (code == 401)
+    as_json = runner.invoke(app, ["runner", "status", "--json"])
+    assert f"answered {code}" in json.loads(as_json.stdout)["hub_error"]
+
+
 def test_ui_status_prints_json(monkeypatch: pytest.MonkeyPatch) -> None:
     from mycelium.commands import ui
 

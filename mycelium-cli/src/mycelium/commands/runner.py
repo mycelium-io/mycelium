@@ -23,6 +23,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from mycelium.cli_options import emits_json
@@ -225,6 +226,23 @@ def runner_status(as_json: bool = False) -> None:
             return
         console.print("[dim]The hub hasn't heard from it.[/dim]")
         return
+    if resp.status_code != 200:
+        # What the hub answered, not a reading of it: a refusal or a proxy's
+        # error page says nothing about whether the runner is connected.
+        # Asked from an agent's pane, a 401 is the pane's credential, not the
+        # runner's, so it points at whoami rather than at signing in.
+        said = f"The hub answered {resp.status_code}, so this can't say whether the runner is connected."
+        if resp.status_code == 401:
+            said += (
+                " It refused the credential this terminal uses."
+                " Run `mycelium whoami --sources` to see which credential that is."
+            )
+        if as_json:
+            state["hub_error"] = said
+            typer.echo(json.dumps(state, indent=2, default=str))
+        else:
+            console.print(f"[yellow]{escape(said)}[/yellow]")
+        raise typer.Exit(1)
     seen = resp.json()
     if as_json:
         state["hub"] = seen
