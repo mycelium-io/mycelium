@@ -155,9 +155,28 @@ def ui() -> CheckResult:
 def runner(api_url: str) -> CheckResult:
     from mycelium.client import auth_headers
     from mycelium.config import MyceliumConfig
-    from mycelium.runner.daemon import runner_id, signed_out_message
+    from mycelium.runner.daemon import read_sync, runner_dir, runner_id, signed_out_message
 
     rid = runner_id()
+    # The running runner's own word first: true whoever runs the check, where
+    # the hub shows a runner only to its owner (an agent's pane isn't).
+    hub = (read_sync() or {}).get("hub")
+    if isinstance(hub, dict):
+        if hub.get("connected"):
+            return CheckResult(name="Runner", status="ok", message=f"connected as {rid}")
+        if hub.get("signed_out"):
+            return CheckResult(
+                name="Runner",
+                status="error",
+                message="this computer isn't signed in to the hub",
+                details=[signed_out_message(api_url)],
+            )
+        return CheckResult(
+            name="Runner",
+            status="error",
+            message="running, but can't reach the hub",
+            details=[f"It keeps trying; its log says why: {runner_dir() / 'runner.log'}"],
+        )
     url = f"{api_url.rstrip('/')}/api/runners/{rid}"
     try:
         # Asked as this machine, the way the runner itself asks: a hub with

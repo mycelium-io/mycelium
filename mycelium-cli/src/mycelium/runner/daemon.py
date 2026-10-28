@@ -513,6 +513,8 @@ class Runner:
         #: here can work until someone signs in on this computer, so the app
         #: and doctor say that rather than "stopped checking in".
         self.signed_out = False
+        #: When the last heartbeat got through to the hub, as the runner saw it.
+        self.last_hello_at: str | None = None
         #: ``(number, monotonic start)`` of the sync pass running now, if one is.
         self._pass: tuple[int, float] | None = None
         self._passes = 0
@@ -752,6 +754,7 @@ class Runner:
             self.log.print(f"[green]connected[/green] to {self.config.server.api_url} as {self.id}")
         self.signed_out = False
         self.connected = True
+        self.last_hello_at = _now()
         return True
 
     def goodbye(self) -> None:
@@ -1874,12 +1877,28 @@ class Runner:
             if self._stop.wait(CREDENTIALS_S):
                 return
 
+    def local_report(self) -> dict[str, Any]:
+        """What the watchdog writes to ``sync.json`` (:func:`read_sync`): how the
+        sync pass is doing, and whether the hub hears this runner, as the runner
+        knows it. True whoever reads it, where the hub shows a runner only to
+        its owner."""
+        return {
+            "pid": os.getpid(),
+            "at": _now(),
+            **self.sync_health(),
+            "hub": {
+                "url": self.config.server.api_url,
+                "connected": self.connected,
+                "signed_out": self.signed_out,
+                "last_heartbeat_at": self.last_hello_at,
+            },
+        }
+
     def _watch_loop(self) -> None:
         while not self._stop.wait(WATCH_S):
             self.watch()
             try:
-                body = {"pid": os.getpid(), "at": _now(), **self.sync_health()}
-                self._sync_path.write_text(json.dumps(body) + "\n")
+                self._sync_path.write_text(json.dumps(self.local_report()) + "\n")
             except OSError as e:
                 failing(log, "sync.json", f"couldn't write {self._sync_path}: {e}")
 
@@ -1910,6 +1929,9 @@ class Runner:
             self.config.server.api_url,
             ", ".join(str(r) for r in self.roots),
         )
+        # Writing down how it's doing starts now, so a runner still trying to
+        # reach the hub says so to `runner status` and doctor.
+        threading.Thread(target=self._watch_loop, name="runner-watchdog", daemon=True).start()
         while not self.hello():
             self.log.print(
                 f"[dim]hub not reachable at {self.config.server.api_url}; retrying…[/dim]"
@@ -1919,7 +1941,6 @@ class Runner:
         for name, loop in (
             ("runner-heartbeat", self._heartbeat_loop),
             ("runner-sync", self._sync_loop),
-            ("runner-watchdog", self._watch_loop),
             ("runner-credentials", self._credentials_loop),
         ):
             threading.Thread(target=loop, name=name, daemon=True).start()
