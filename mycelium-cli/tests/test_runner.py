@@ -623,7 +623,9 @@ def test_the_heartbeat_says_which_agents_can_reply_and_why_not(
             raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 403, "")
         path = agent_credentials.member_token_path(room, handle)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(token if handle == "scout" else f"{token}-revoked")
+        # The hub answers every token it accepts as @scout, so @coder's file
+        # holds a token for someone else.
+        path.write_text(f"{token}-revoked" if handle == "revoked" else token)
         return path
 
     monkeypatch.setattr(agent_credentials, "issue_member_token", issue)
@@ -632,6 +634,7 @@ def test_the_heartbeat_says_which_agents_can_reply_and_why_not(
     _agent_here(r, herdr, "scout", "w9:p1")
     _agent_here(r, herdr, "revoked", "w9:p2")
     _agent_here(r, herdr, "theirs", "w9:p3")
+    _agent_here(r, herdr, "coder", "w9:p4")
 
     r.keep_credentials(now=now)
     said = {c["handle"]: (c["can_reply"], c["why"]) for c in r.hello_body()["credentials"]}
@@ -641,6 +644,7 @@ def test_the_heartbeat_says_which_agents_can_reply_and_why_not(
         False,
         f"The hub won't give it a token for whoever {r.label} is signed in as.",
     )
+    assert said["coder"] == (False, f"Its token is for @scout, not @coder ({r.label}).")
 
     # Its pane closed: nothing more to say about it.
     del herdr.live["w9:p2"]

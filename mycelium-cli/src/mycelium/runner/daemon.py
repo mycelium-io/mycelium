@@ -1901,8 +1901,9 @@ class Runner:
         return f"The hub won't give it a token for whoever {self.label} is signed in as."
 
     def _check_token(self, key: tuple[str, str], path: Path, now: float) -> None:
-        """Ask the hub who the token at ``path`` is, as that token: it works, or
-        the hub refused it. A hub that can't be asked leaves the verdict alone."""
+        """Ask the hub who the token at ``path`` is, as that token: it works for
+        this agent, it's someone else's, or the hub refused it. A hub that can't
+        be asked leaves the verdict alone."""
         try:
             token = path.read_text().strip()
             with hub_client(
@@ -1914,8 +1915,22 @@ class Runner:
         self._checked[key] = now
         if resp.status_code == 401:
             self.can_reply[key] = (False, f"The hub refused its token ({self.label}).")
-        elif resp.status_code == 200:
-            self.can_reply[key] = (True, None)
+            return
+        if resp.status_code != 200:
+            return
+        try:
+            said = str(resp.json().get("handle") or "")
+        except (ValueError, AttributeError):
+            return
+        handle = key[1]
+        if said and said.lstrip("@").lower() != handle.lstrip("@").lower():
+            # Every write would be refused as the wrong handle.
+            self.can_reply[key] = (
+                False,
+                f"Its token is for @{said.lstrip('@')}, not @{handle} ({self.label}).",
+            )
+            return
+        self.can_reply[key] = (True, None)
 
     def credentials_report(self) -> list[dict[str, Any]]:
         """Each agent's verdict, for the heartbeat."""
