@@ -9,7 +9,6 @@ and the JSON path.
 from __future__ import annotations
 
 import json
-import re
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
@@ -94,10 +93,10 @@ def _patch(
     def _get(path: str) -> SimpleNamespace:
         if path == "/health":
             return SimpleNamespace(json=lambda: health)
-        route = re.fullmatch(r"/api/rooms/([^/]+)/a2a/state", path)
-        if a2a_fails or route is None:
+        served = path.startswith("/api/rooms/") and path.endswith("/a2a/state")
+        if a2a_fails or not served:
             raise httpx.HTTPStatusError("404", request=Mock(), response=Mock())
-        room = route.group(1)
+        room = path.removeprefix("/api/rooms/").removesuffix("/a2a/state")
         state = states.get(room, _a2a_state(room))
         return SimpleNamespace(json=lambda: state)
 
