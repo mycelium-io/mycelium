@@ -83,9 +83,25 @@ _manifest_seen: dict[tuple[str, str], float] = {}
 _unknown_rooms: dict[str, float] = {}
 
 
-def _not_on_hub(room: str, resp: object) -> bool:
-    """Whether ``resp`` says the hub has no such room; if so, leave it out for a while."""
-    if getattr(resp, "status_code", None) != 404:
+#: What the hub's session routes answer for a room they don't have.
+ROOM_NOT_FOUND = "Room not found"
+
+
+def _not_on_hub(room: str, resp: httpx.Response) -> bool:
+    """Whether ``resp`` is the hub saying it has no such room; if so, leave it out
+    for a while.
+
+    Only the hub's own answer counts: a proxy or the app's address can answer
+    404 for a path it isn't routing during a redeploy, and taking that for a
+    missing room would stop the room's wakes on a guess.
+    """
+    if resp.status_code != 404:
+        return False
+    try:
+        detail = resp.json().get("detail")
+    except (ValueError, AttributeError):
+        return False
+    if detail != ROOM_NOT_FOUND:
         return False
     if room not in _unknown_rooms:
         _sync.warning(

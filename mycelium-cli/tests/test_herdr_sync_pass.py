@@ -26,12 +26,16 @@ class Hub:
         self.clients = 0
         self.credentials = 0
         self.missing = missing
+        #: Rooms whose paths a proxy in front of the hub answers 404 for.
+        self.unrouted: tuple[str, ...] = ()
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         room = request.url.path.split("/")[3]
         self.calls[f"{request.method} {room} {request.url.path.rsplit('/', 1)[-1]}"] += 1
         if room in self.missing:
             return httpx.Response(404, json={"detail": "Room not found"})
+        if room in self.unrouted:
+            return httpx.Response(404, text="<html>Not Found</html>")
         if request.url.path.endswith("herdr-wakes"):
             return httpx.Response(200, json={"wakes": []})
         return httpx.Response(204)
@@ -121,3 +125,18 @@ def test_a_room_the_hub_doesnt_have_is_left_out_and_said_once(
     assert hub.calls["GET room-0 herdr-wakes"] == 3
     said = [r for r in caplog.records if "has no room room-1" in r.getMessage()]
     assert len(said) == 1
+
+
+def test_a_404_that_isnt_the_hub_saying_so_leaves_the_room_in(
+    hub: Hub, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A proxy answering 404 mid-redeploy is no reason to stop a room's wakes."""
+    monkeypatch.setattr(herdr, "_manifest_on_hub", lambda *_a: True)
+    hub.unrouted = ("room-1",)
+    bridge, targets = _bridge(tmp_path, rooms=2)
+
+    _passes(bridge, targets, 3)
+
+    assert hub.calls["POST room-1 herdr-presence"] == 3
+    assert hub.calls["GET room-1 herdr-wakes"] == 3
+    assert herdr._unknown_rooms == {}
