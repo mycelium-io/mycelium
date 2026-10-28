@@ -10,7 +10,7 @@ import sys
 import types
 
 import pytest
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel
 
@@ -23,7 +23,9 @@ class _Said(BaseModel):
 
 def _app() -> tuple[FastAPI, types.ModuleType]:
     """An app with one route whose model is missing a key its handler returns,
-    defined in a module of its own, as a route module is."""
+    defined in a module of its own and mounted through a router with a prefix,
+    as the hub's routes are (FastAPI serves an included router's routes from
+    copies, so a guard on the original alone would see nothing)."""
     module = types.ModuleType("tests._guarded_route")
 
     async def members() -> dict:
@@ -32,8 +34,10 @@ def _app() -> tuple[FastAPI, types.ModuleType]:
     members.__module__ = module.__name__
     module.members = members  # type: ignore[attr-defined]
     sys.modules[module.__name__] = module
+    router = APIRouter()
+    router.get("/members", response_model=_Said)(members)
     app = FastAPI()
-    app.get("/members", response_model=_Said)(members)
+    app.include_router(router, prefix="/api")
     return app, module
 
 
@@ -50,7 +54,7 @@ async def test_a_route_called_over_http_fails_on_a_dropped_key(
     answer_guard.install(app, monkeypatch)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         with pytest.raises(AssertionError, match="can_reply"):
-            await client.get("/members")
+            await client.get("/api/members")
 
 
 async def test_a_route_called_as_a_function_fails_on_a_dropped_key(
@@ -64,7 +68,7 @@ async def test_a_route_called_as_a_function_fails_on_a_dropped_key(
 
 def test_a_route_that_drops_on_purpose_is_declared(monkeypatch: pytest.MonkeyPatch) -> None:
     app, module = _app()
-    monkeypatch.setitem(answer_guard.DROPS_ON_PURPOSE, ("GET", "/members"), "a test")
+    monkeypatch.setitem(answer_guard.DROPS_ON_PURPOSE, "test_answer_guard.py:members", "a test")
     answer_guard.install(app, monkeypatch)
     import asyncio
 
