@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Hub calls outside the typed client still carry the caller's credential.
+"""Demo's and metrics' hub calls carry the caller's credential.
 
 On a hub with sign-in on, a call that sends none is refused with a 401, and
 the commands below used to read that as "no rooms" or "not reachable". Each
-goes through ``hub_client`` now, which attaches the credential for the hub
+goes through the typed client now, which attaches the credential for the hub
 that issued it.
 """
 
@@ -33,9 +33,24 @@ class _Hub:
         if request.headers.get("Authorization") != "Bearer t":
             return httpx.Response(401, json={"detail": "Not authenticated"}, request=request)
         if request.url.path == "/api/rooms":
-            return httpx.Response(200, json=[{"name": "lobby", "mas_id": "m1"}], request=request)
-        messages = [{"sender_handle": "Growth"}, {"sender_handle": "risk"}]
-        return httpx.Response(200, json={"messages": messages}, request=request)
+            room = {"id": 1, "name": "lobby", "mas_id": "m1", "is_public": True, "created_at": _AT}
+            return httpx.Response(200, json=[room], request=request)
+        messages = [_message("Growth"), _message("risk")]
+        return httpx.Response(200, json={"messages": messages, "total": 2}, request=request)
+
+
+_AT = "2026-08-24T10:00:00+00:00"
+
+
+def _message(sender: str) -> dict:
+    """A message as the hub's ``MessageRead`` answers it."""
+    return {
+        "id": "00000000-0000-0000-0000-000000000000",
+        "sender_handle": sender,
+        "message_type": "message",
+        "content": "hi",
+        "created_at": _AT,
+    }
 
 
 @pytest.fixture

@@ -209,8 +209,10 @@ def runner_status(
     """
     import httpx
 
-    from mycelium.client import hub_client
+    from mycelium.client import typed_client
     from mycelium.runner.daemon import read_sync, runner_id
+    from mycelium_backend_client.api.runners import get_runner_api_runners_runner_id_get
+    from mycelium_backend_client.models import RunnerRead
 
     pid = running_pid()
     rid = runner_id()
@@ -233,16 +235,22 @@ def runner_status(
             typer.echo(json.dumps(state, indent=2, default=str))
         return
     try:
-        with hub_client(MyceliumConfig.load(), timeout=5) as client:
-            resp = client.get(f"/api/runners/{rid}")
-    except httpx.HTTPError as e:
+        with typed_client(
+            MyceliumConfig.load(), timeout=5, raise_on_unexpected_status=False
+        ) as client:
+            resp = get_runner_api_runners_runner_id_get.sync_detailed(rid, client=client)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+        # Not reached, or reached something that didn't answer as the hub does
+        # (a proxy's page on a status the route declares).
+        reached = not isinstance(e, httpx.HTTPError)
+        said = "the hub's answer couldn't be read" if reached else f"hub unreachable: {e}"
         if as_json:
-            state["hub_error"] = str(e)
+            state["hub_error"] = said if reached else str(e)
             typer.echo(json.dumps(state, indent=2, default=str))
         else:
-            console.print(f"[yellow]hub unreachable:[/yellow] {e}")
+            console.print(f"[yellow]{escape(said)}[/yellow]")
         raise typer.Exit(1) from None
-    if resp.status_code == 404:
+    if resp.status_code == 404:  # noqa: PLR2004
         # The hub answers 404 for a runner it never heard from, and for one
         # the caller doesn't own (it shows a runner only to its owner).
         said = "The hub has no runner by that id that this terminal's credential can see."
@@ -254,7 +262,8 @@ def runner_status(
             return
         console.print(f"[dim]{escape(said)}[/dim]")
         return
-    if resp.status_code != 200:
+    seen = resp.parsed
+    if not isinstance(seen, RunnerRead):
         # What the hub answered, not a reading of it: a refusal or a proxy's
         # error page says nothing about whether the runner is connected.
         # Asked from an agent's pane, a 401 is the pane's credential, not the
@@ -271,15 +280,14 @@ def runner_status(
         else:
             console.print(f"[yellow]{escape(said)}[/yellow]")
         raise typer.Exit(1)
-    seen = resp.json()
     if as_json:
-        state["hub"] = seen
+        state["hub"] = seen.to_dict()
         typer.echo(json.dumps(state, indent=2, default=str))
         return
-    connected = "[green]connected[/]" if seen.get("connected") else "[yellow]not connected[/]"
-    console.print(f"hub: {connected} · herdr {'yes' if seen.get('herdr') else 'no'}")
-    for a in seen.get("agents") or []:
-        console.print(f"  @{a['handle']} in {a['room']} · {a['framework']} · {a['status']}")
+    connected = "[green]connected[/]" if seen.connected else "[yellow]not connected[/]"
+    console.print(f"hub: {connected} · herdr {'yes' if seen.herdr else 'no'}")
+    for a in seen.agents or []:
+        console.print(f"  @{a.handle} in {a.room} · {a.framework} · {a.status}")
 
 
 def _local_facts(sync: dict | None) -> dict | None:

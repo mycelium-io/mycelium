@@ -24,6 +24,7 @@ from mycelium import caller, identity
 from mycelium.cli import app
 from mycelium.client import auth_headers
 from mycelium.config import MyceliumConfig
+from tests.conftest import install_stand_in_hub
 
 runner = CliRunner()
 
@@ -155,7 +156,7 @@ class _Hub:
     """Stands in for ``POST /api/joins/redeem``."""
 
     def __init__(self, status: int = 200, body: dict | None = None) -> None:
-        self.calls: list[tuple[str, dict, dict]] = []
+        self.calls: list[tuple[str, dict, httpx.Headers]] = []
         self.status = status
         self.body = body or {
             "room": "checkout",
@@ -164,25 +165,27 @@ class _Hub:
             "token_expires_at": None,
         }
 
-    def post(self, url: str, *, json: dict, timeout: float, **kwargs: Any) -> httpx.Response:
-        self.calls.append((url, json, kwargs))
-        return httpx.Response(self.status, json=self.body, request=httpx.Request("POST", url))
+    def answer(self, request: httpx.Request) -> tuple[int, dict]:
+        self.calls.append((str(request.url), json.loads(request.content), request.headers))
+        return self.status, self.body
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> _Hub:
+        install_stand_in_hub(monkeypatch).answer = self.answer
+        return self
 
 
 @pytest.fixture
 def hub(monkeypatch: pytest.MonkeyPatch) -> _Hub:
-    fake = _Hub()
-    monkeypatch.setattr("mycelium.commands.join.httpx.post", fake.post)
-    return fake
+    return _Hub().install(monkeypatch)
 
 
 def test_join_saves_the_membership_and_sends_no_credential(isolated_home: Path, hub: _Hub):
     result = runner.invoke(app, ["join", "abcd-efgh-jkmn", "--hub", "http://hub.test:8000/"])
     assert result.exit_code == 0, result.output
-    url, body, extra = hub.calls[0]
+    url, body, headers = hub.calls[0]
     assert url == "http://hub.test:8000/api/joins/redeem"
     assert body == {"code": "abcd-efgh-jkmn"}
-    assert "headers" not in extra
+    assert "authorization" not in headers
     member = caller.find_membership()
     assert member is not None
     assert (member.hub, member.room, member.handle) == (
@@ -209,8 +212,7 @@ def test_join_refuses_a_folder_that_belongs_to_a_member_without_spending_the_cod
 
 
 def test_join_reports_a_refused_code(isolated_home: Path, monkeypatch: pytest.MonkeyPatch):
-    fake = _Hub(status=400, body={"detail": "that join code isn't valid"})
-    monkeypatch.setattr("mycelium.commands.join.httpx.post", fake.post)
+    _Hub(status=400, body={"detail": "that join code isn't valid"}).install(monkeypatch)
     result = runner.invoke(app, ["join", "nope-nope-nope", "--hub", "http://hub.test:8000"])
     assert result.exit_code == 1
     assert "isn't valid" in result.output

@@ -17,7 +17,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from app.schemas import EpisodeDetailRead, EpisodeListResponse
+from app.schemas import EpisodeDetailRead, EpisodeListResponse, refusals
 from app.services.episode_records import (
     EPISODES_PREFIX,
     episode_summary,
@@ -36,14 +36,14 @@ def _require_room(room_name: str) -> None:
         raise HTTPException(status_code=404, detail="Room not found")
 
 
-@router.get("", response_model=EpisodeListResponse)
+@router.get("", response_model=EpisodeListResponse, responses=refusals(404))
 async def list_episodes(room_name: str, limit: int = 50):
     """List episode summaries for a room, newest first (an in-progress one first)."""
     _require_room(room_name)
     return {"episodes": room_episodes(room_name, limit=limit)}
 
 
-@router.get("/{short_id}", response_model=EpisodeDetailRead)
+@router.get("/{short_id}", response_model=EpisodeDetailRead, responses=refusals(404))
 async def get_episode(room_name: str, short_id: str):
     """Return one episode: its summary plus the full message chain."""
     _require_room(room_name)

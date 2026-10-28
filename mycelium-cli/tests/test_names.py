@@ -6,11 +6,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
 from mycelium import names
-from mycelium.commands.participate import _sender_label, _with_name
+from mycelium.commands.participate import _as_json, _sender_label
+from mycelium_backend_client.models import AwaitTurn
 
 
 @pytest.fixture(autouse=True)
@@ -48,12 +50,28 @@ def test_the_hub_is_asked_once_and_again_only_after_a_while(hub_users, monkeypat
     assert len(hub_users) == 2
 
 
+def _turn(**fields: Any) -> AwaitTurn:
+    """A turn as the hub's ``await`` hands it over, with ``fields`` laid over."""
+    return AwaitTurn.from_dict(
+        {
+            "room": "r",
+            "handle": "builder",
+            "prompt": "",
+            "sender": None,
+            "episode": None,
+            "topic": None,
+            "message_id": None,
+            **fields,
+        }
+    )
+
+
 def test_await_tells_an_agent_who_is_talking():
-    turn = _with_name({"sender": "julia", "prompt": "review the diff"})
+    turn = _as_json(_turn(sender="julia", prompt="review the diff"))
     assert turn["sender_name"] == "Julia Valenti"
-    assert _sender_label(turn) == "Julia Valenti (@julia)"
-    assert "sender_name" not in _with_name({"sender": "codex", "prompt": "hi"})
-    assert _sender_label({"sender": "codex"}) == "@codex"
+    assert _sender_label(turn["sender"]) == "Julia Valenti (@julia)"
+    assert "sender_name" not in _as_json(_turn(sender="codex", prompt="hi"))
+    assert _sender_label("codex") == "@codex"
 
 
 def test_await_prints_every_ask_it_handed_over_each_in_a_box(capsys):
@@ -66,7 +84,7 @@ def test_await_prints_every_ask_it_handed_over_each_in_a_box(capsys):
         "task": "work/t",
         "id": "bbbbbbbb-2",
     }
-    _print_turn({**turn, "asks": [first, turn]}, "builder")
+    _print_turn(_turn(**turn, asks=[first, turn]), "builder")
     lines = [line.strip() for line in capsys.readouterr().out.splitlines()]
     assert "⟫  2 messages asking for @builder, oldest first; the last is the turn:" in lines
     assert lines.index("┌ @codex → @builder · aaaaaaaa") < lines.index(
@@ -83,14 +101,14 @@ def test_an_exec_script_reading_only_the_prompt_gets_every_ask(monkeypatch):
     monkeypatch.setattr(participate.subprocess, "run", lambda *a, **kw: seen.update(kw["env"]))
     first = {"sender": "codex", "prompt": "the older ask", "id": "aaaaaaaa-1"}
     turn = {"sender": "julia", "prompt": "the newest ask", "id": "bbbbbbbb-2"}
-    participate._run_exec("./drive.sh", {**turn, "asks": [first, turn]}, "r", "builder")
+    participate._run_exec("./drive.sh", _turn(**turn, asks=[first, turn]), "r", "builder")
     assert seen["MYCELIUM_ASKS"] == "2"
     assert "│ the older ask" in seen["MYCELIUM_PROMPT"]
     assert seen["MYCELIUM_PROMPT"].index("the older ask") < seen["MYCELIUM_PROMPT"].index(
         "the newest ask"
     )
 
-    participate._run_exec("./drive.sh", {**turn, "asks": [turn]}, "r", "builder")
+    participate._run_exec("./drive.sh", _turn(**turn, asks=[turn]), "r", "builder")
     assert seen["MYCELIUM_PROMPT"] == "the newest ask"
 
 

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 import typer
 
+from mycelium.client import answered
 from mycelium.client import typed_client as _typed_client
 from mycelium.names import who
 
@@ -48,7 +49,7 @@ def post(
     from mycelium_backend_client.api.messages import (
         send_message_api_rooms_room_name_messages_post as send_api,
     )
-    from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
+    from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType, MessageRead
     from mycelium_backend_client.types import UNSET
 
     with _typed_client(config) as client:
@@ -58,11 +59,12 @@ def post(
             content=content,
             episode=episode or UNSET,
         )
-        result = send_api.sync(room_name=room_name, client=client, body=body)
+        result = answered(
+            send_api.sync_detailed(room_name=room_name, client=client, body=body), MessageRead
+        )
 
-    if json_output and result:
-        msg_dict = result.to_dict() if hasattr(result, "to_dict") else str(result)
-        typer.echo(json_module.dumps(msg_dict, indent=2, default=str))
+    if json_output:
+        typer.echo(json_module.dumps(result.to_dict(), indent=2, default=str))
         return
 
     preview = content[:80] + ("…" if len(content) > 80 else "")
@@ -105,13 +107,15 @@ def _checks(config: MyceliumConfig, room_name: str, *, since: datetime) -> dict[
 
     try:
         with _typed_client(config) as client:
-            flags = flags_api.sync(room_name=room_name, client=client, since=since)
+            flags = answered(
+                flags_api.sync_detailed(room_name=room_name, client=client, since=since), list
+            )
     except Exception:  # noqa: BLE001 - a line under a message is never worth failing the read
         return {}
     from mycelium_backend_client.models import VerifierFlagRead
 
     out: dict[str, list[str]] = {}
-    for flag in flags if isinstance(flags, list) else []:
+    for flag in flags:
         if isinstance(flag, VerifierFlagRead) and flag.state == "shown":
             out.setdefault(flag.message_id, []).append(flag.line)
     return out
@@ -213,34 +217,33 @@ def read(
     from mycelium_backend_client.api.messages import (
         list_messages_api_rooms_room_name_messages_get as list_api,
     )
-    from mycelium_backend_client.models import HTTPValidationError
+    from mycelium_backend_client.models import MessageListResponse
     from mycelium_backend_client.types import UNSET
 
     with _typed_client(config) as client:
-        result = list_api.sync(
-            room_name=room_name,
-            client=client,
-            limit=limit,
-            sender=sender or UNSET,
-            message_type=message_type or UNSET,
-            episode=episode or UNSET,
-            since=since or UNSET,
-            before=before or UNSET,
-            id=message_id or UNSET,
+        listed = answered(
+            list_api.sync_detailed(
+                room_name=room_name,
+                client=client,
+                limit=limit,
+                sender=sender or UNSET,
+                message_type=message_type or UNSET,
+                episode=episode or UNSET,
+                since=since or UNSET,
+                before=before or UNSET,
+                id=message_id or UNSET,
+            ),
+            MessageListResponse,
         )
 
-    msgs = [] if not result or isinstance(result, HTTPValidationError) else result.messages
+    msgs = listed.messages
     # Newest first, so the last line is the oldest shown; ``total`` counts every
     # message the filters matched, so a total past the page means older ones exist.
-    total = getattr(result, "total", len(msgs)) if msgs else 0
+    total = listed.total if msgs else 0
     older_before = msgs[-1].created_at.isoformat() if msgs and total > len(msgs) else None
 
     if json_output:
-        payload: dict[str, Any] = (
-            result.to_dict()
-            if result and not isinstance(result, HTTPValidationError)
-            else {"messages": [], "total": 0}
-        )
+        payload: dict[str, Any] = listed.to_dict()
         payload["older_before"] = older_before
         typer.echo(json_module.dumps(payload, indent=2, default=str))
         return

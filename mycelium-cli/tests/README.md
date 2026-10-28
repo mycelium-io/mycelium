@@ -5,40 +5,32 @@ Unit tests run **without a SLIM node, a running backend, or live HTTP.**
 `tests.conftest`, or take the fixtures by name (pytest injects them). There is
 exactly one of each fake — don't re-declare them per file.
 
+No test reaches a real hub: an autouse guard in `conftest.py` fails every real
+HTTP request, so a test that stubs the wrong layer fails rather than writing to
+whatever hub answers on the developer's machine.
+
 ## Test a command / connector without a live stack
 
 | You're testing… | Use | It stands in for |
 | --- | --- | --- |
-| A command that calls the backend (`room`, `memory`, `plan`, …) | the `backend` fixture + patch the one generated `…​.sync` | the typed `mycelium_backend_client` plumbing |
-| Connector HTTP (`slim.member.announce_presence`, briefing fetch) | the `fake_httpx` fixture, `FakeResp` | `httpx.AsyncClient` / `httpx.Client` |
+| A command that calls the hub | `install_stand_in_hub(monkeypatch)` (or the `stand_in_hub` fixture), answering each request with the hub's real shape (`memory_read(...)` fills a memory) | the hub, behind every client: the typed client and `hub_client` alike |
+| One generated call in isolation | patch its `…​.sync_detailed` with `tests.hub_answers.ok(model)` / `refused(status)` | that one route |
 | Joining/publishing over SLIM (`slim.member.publish_once`, the `message send`/`slim send` plumbing) | `FakeSlimClient` (or the `fake_slim_client` fixture) | `slim.client.SlimClient` |
 | Anything that touches `~/.mycelium` | the `isolated_home` fixture | points `Path.home()` at a temp dir |
 
-### Example — a command test (typed backend client)
+### Example — a command test (the stand-in hub)
 
 ```python
-from mycelium.commands import room as room_cmd
+from tests.conftest import install_stand_in_hub, memory_read
 
-def test_list_rooms(backend, monkeypatch):
-    backend(room_cmd, room="demo")          # stub config/_typed_client/_resolve_room
-    monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync",
-        lambda **kw: RoomListResponse(rooms=[...]),
-    )
-    result = CliRunner().invoke(room_cmd.app, ["list"])
+def test_board_new_files_the_task(monkeypatch):
+    hub = install_stand_in_hub(monkeypatch)
+    # The typed client parses what comes back against openapi.json, so answer
+    # with the hub's real shape and status (a task is a 201 MemoryRead).
+    hub.answer = lambda request: (201, memory_read("work/x", "demo", episode="urn:…"))
+    result = CliRunner().invoke(board_cmd.app, ["new", "Ship it"])
     assert result.exit_code == 0
-```
-
-### Example — a connector HTTP test (`fake_httpx`)
-
-```python
-from tests.conftest import FakeHTTPX, FakeResp
-
-async def test_announce(fake_httpx: FakeHTTPX):
-    await member.announce_presence("http://localhost:8000", "myroom", "agent-a")
-    assert fake_httpx.calls == [("POST", ".../api/rooms/myroom/sessions", {"agent_handle": "agent-a"})]
-
-    fake_httpx.respond_with(lambda *_: FakeResp(boom=True))   # exercise the error branch
+    assert hub.sent("POST", "/api/rooms/demo/tasks")
 ```
 
 ### Example — joining + publishing over SLIM (`FakeSlimClient`)

@@ -3,7 +3,7 @@
 
 """Unit tests for ``mycelium room`` (list / create / use) on a fake backend.
 
-Node-free: the generated ``rooms`` API ``.sync`` calls are stubbed and the typed
+Node-free: the generated ``rooms`` API ``.sync_detailed`` calls are stubbed and the typed
 client is a no-op context manager, so these exercise the command plumbing —
 rendering, the active-room switch, and the empty case — without a backend server.
 """
@@ -16,6 +16,7 @@ import pytest
 from typer.testing import CliRunner
 
 from mycelium.commands import room as room_cmd
+from tests.hub_answers import ok
 
 runner = CliRunner()
 
@@ -63,8 +64,8 @@ def _room(name: str, *, is_public: bool = True) -> object:
 
 def test_room_list_renders_rooms(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync",
-        lambda **_kw: [_room("alpha"), _room("beta")],
+        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync_detailed",
+        lambda **_kw: ok([_room("alpha"), _room("beta")]),
     )
     result = runner.invoke(room_cmd.app, ["ls"])
     assert result.exit_code == 0, result.output
@@ -74,8 +75,8 @@ def test_room_list_renders_rooms(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_room_list_empty_prints_hint(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync",
-        lambda **_kw: [],
+        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync_detailed",
+        lambda **_kw: ok([]),
     )
     result = runner.invoke(room_cmd.app, ["ls"])
     assert result.exit_code == 0, result.output
@@ -87,10 +88,10 @@ def test_room_list_passes_limit_and_name(monkeypatch: pytest.MonkeyPatch) -> Non
 
     def fake_sync(**kwargs):
         captured.update(kwargs)
-        return [_room("alpha")]
+        return ok([_room("alpha")])
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync", fake_sync
+        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync_detailed", fake_sync
     )
     result = runner.invoke(room_cmd.app, ["ls", "--limit", "7", "--name", "alpha"])
     assert result.exit_code == 0, result.output
@@ -102,8 +103,8 @@ def test_room_list_takes_json_after_the_command(monkeypatch: pytest.MonkeyPatch)
     import json
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync",
-        lambda **_kw: [_room("alpha"), _room("beta")],
+        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync_detailed",
+        lambda **_kw: ok([_room("alpha"), _room("beta")]),
     )
     result = runner.invoke(room_cmd.app, ["ls", "--json"])
     assert result.exit_code == 0, result.output
@@ -112,8 +113,8 @@ def test_room_list_takes_json_after_the_command(monkeypatch: pytest.MonkeyPatch)
 
 def test_room_create_writes_local_dir_and_reports(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.create_room_api_rooms_post.sync",
-        lambda **_kw: _room("gamma"),
+        "mycelium_backend_client.api.rooms.create_room_api_rooms_post.sync_detailed",
+        lambda **_kw: ok(_room("gamma"), 201),
     )
     result = runner.invoke(room_cmd.app, ["create", "gamma"])
     assert result.exit_code == 0, result.output
@@ -132,10 +133,10 @@ def test_room_list_names_the_viewer_and_marks_private(monkeypatch: pytest.Monkey
 
     def fake_sync(**kwargs):
         captured.update(kwargs)
-        return [_room("alpha"), mine]
+        return ok([_room("alpha"), mine])
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync", fake_sync
+        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync_detailed", fake_sync
     )
     result = runner.invoke(room_cmd.app, ["ls"])
     assert result.exit_code == 0, result.output
@@ -150,10 +151,10 @@ def test_room_create_private_names_its_owner(monkeypatch: pytest.MonkeyPatch) ->
 
     def fake_sync(**kwargs):
         captured.update(kwargs)
-        return _room("scratch")
+        return ok(_room("scratch"), 201)
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.create_room_api_rooms_post.sync", fake_sync
+        "mycelium_backend_client.api.rooms.create_room_api_rooms_post.sync_detailed", fake_sync
     )
     result = runner.invoke(room_cmd.app, ["create", "scratch", "--private"])
     assert result.exit_code == 0, result.output
@@ -166,10 +167,10 @@ def test_room_create_shared_names_no_owner(monkeypatch: pytest.MonkeyPatch) -> N
 
     def fake_sync(**kwargs):
         captured.update(kwargs)
-        return _room("gamma")
+        return ok(_room("gamma"), 201)
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.create_room_api_rooms_post.sync", fake_sync
+        "mycelium_backend_client.api.rooms.create_room_api_rooms_post.sync_detailed", fake_sync
     )
     result = runner.invoke(room_cmd.app, ["create", "gamma"])
     assert result.exit_code == 0, result.output

@@ -18,10 +18,12 @@ from typer.testing import CliRunner
 
 from mycelium import cli_options
 from mycelium.commands import room as room_cmd
+from mycelium_backend_client.types import Response
+from tests.hub_answers import ok, refused
 
 _AMEND_SYNC = (
     "mycelium_backend_client.api.messages"
-    ".amend_message_api_rooms_room_name_messages_message_id_amend_post.sync"
+    ".amend_message_api_rooms_room_name_messages_message_id_amend_post.sync_detailed"
 )
 
 
@@ -37,7 +39,12 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch, sync_fn) -> None:
     fake_cm.__enter__.return_value = Mock(name="client")
     fake_cm.__exit__.return_value = None
     monkeypatch.setattr(room_cmd, "_typed_client", lambda _c: fake_cm)
-    monkeypatch.setattr(_AMEND_SYNC, sync_fn)
+
+    def _answer(**kwargs):
+        answer = sync_fn(**kwargs)
+        return answer if isinstance(answer, Response) else ok(answer, 201)
+
+    monkeypatch.setattr(_AMEND_SYNC, _answer)
 
 
 def _revised(content: str = "TTL is 300s", replaced: str = "TTL is 30s", task: str | None = None):
@@ -167,7 +174,7 @@ def test_a_wrong_edit_shows_the_replaced_text_whole_to_put_it_back() -> None:
 
 def test_room_amend_reports_a_message_it_cannot_revise(monkeypatch: pytest.MonkeyPatch) -> None:
     """A refusal (not yours, or no such message) exits non-zero and says so."""
-    _patch_common(monkeypatch, lambda **_kw: None)
+    _patch_common(monkeypatch, lambda **_kw: refused(404, "Message not found in this room"))
 
     result = CliRunner().invoke(room_cmd.app, ["amend", "deadbeef", "nope"])
 

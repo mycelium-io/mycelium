@@ -11,55 +11,50 @@ invariants for the new family.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from unittest.mock import MagicMock
+import json
 
+import httpx
 import pytest
 from typer.testing import CliRunner
 
 from mycelium.commands import agent as agent_cmd
 from mycelium.integrations import get_adapter
 from mycelium.protocol import AGENT_ADAPTERS, AgentManifest
+from tests.conftest import install_stand_in_hub
 
 runner = CliRunner()
 
 
 @pytest.fixture
 def fake_hub(monkeypatch):
-    """Route the create command's config + hub call through fakes."""
-    monkeypatch.setattr(agent_cmd.MyceliumConfig, "load", staticmethod(lambda: MagicMock()))
+    """Route the create command's room and its hub call through fakes."""
     monkeypatch.setattr(agent_cmd, "_resolve_room", lambda _c, _r: "portfolio")
     monkeypatch.setattr(agent_cmd, "_default_owner", lambda owner, handle: owner or handle)
 
     posts: list[dict] = []
+    hub = install_stand_in_hub(monkeypatch)
 
-    def _install(response):
-        @contextmanager
-        def _client(_config, **_kwargs):
-            fake = MagicMock()
+    def _install(status: int, payload: dict | None = None):
+        def answer(request: httpx.Request):
+            posts.append({"url": request.url.path, "json": json.loads(request.content)})
+            return status, payload or {}
 
-            def _post(url, json):
-                posts.append({"url": url, "json": json})
-                return response
-
-            fake.post = _post
-            yield fake
-
-        monkeypatch.setattr(agent_cmd, "hub_client", _client)
+        hub.answer = answer
 
     return _install, posts
 
 
 def test_create_a2a_posts_to_backend(fake_hub):
     install, posts = fake_hub
-    resp = MagicMock(status_code=201)
-    resp.json.return_value = {
-        "handle": "researcher",
-        "adapter": "a2a",
-        "a2a_endpoint": "https://remote.example/rpc",
-        "a2a_skills": ["deep_search"],
-    }
-    install(resp)
+    install(
+        201,
+        {
+            "handle": "researcher",
+            "adapter": "a2a",
+            "a2a_endpoint": "https://remote.example/rpc",
+            "a2a_skills": ["deep_search"],
+        },
+    )
 
     result = runner.invoke(
         agent_cmd.app,
@@ -73,7 +68,7 @@ def test_create_a2a_posts_to_backend(fake_hub):
 
 def test_create_a2a_requires_card(fake_hub):
     install, _posts = fake_hub
-    install(MagicMock(status_code=201))
+    install(201)
     result = runner.invoke(agent_cmd.app, ["create", "researcher", "--adapter", "a2a"])
     assert result.exit_code == 1
     assert "--card" in result.output
@@ -81,9 +76,7 @@ def test_create_a2a_requires_card(fake_hub):
 
 def test_create_a2a_surfaces_bad_card_detail(fake_hub):
     install, _posts = fake_hub
-    resp = MagicMock(status_code=502)
-    resp.json.return_value = {"detail": "Could not resolve A2A card: no card found"}
-    install(resp)
+    install(502, {"detail": "Could not resolve A2A card: no card found"})
 
     result = runner.invoke(
         agent_cmd.app,

@@ -317,8 +317,8 @@ def person(config: MyceliumConfig, *, ask_hub: bool = True) -> str | None:
 
     if ask_hub:
         who = _hub_whoami(config)
-        if who and who.get("handle"):
-            return str(who["handle"])
+        if who and who.handle:
+            return str(who.handle)
     return get_current_handle(config) or config.identity.name or None
 
 

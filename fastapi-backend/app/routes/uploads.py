@@ -35,6 +35,7 @@ from app.schemas import (
     UploadListResponse,
     UploadOrigin,
     UploadRead,
+    refusals,
 )
 from app.services import actor, links, search_index, upload_origins, uploads
 from app.services.filesystem import (
@@ -129,7 +130,12 @@ async def _read_capped(file: UploadFile, limit: int) -> bytes:
     return b"".join(parts)
 
 
-@router.post("", response_model=UploadRead, status_code=201)
+@router.post(
+    "",
+    response_model=UploadRead,
+    status_code=201,
+    responses=refusals(403, 404, 409, 413, 415, 422),
+)
 async def create_upload(
     room_name: str,
     request: Request,
@@ -192,7 +198,7 @@ def _find_read(room_name: str, key: str) -> UploadRead:
     return _upload_read(room_name, key, found[0])
 
 
-@router.get("", response_model=UploadListResponse)
+@router.get("", response_model=UploadListResponse, responses=refusals(404))
 async def list_room_uploads(room_name: str) -> UploadListResponse:
     """The room's uploads, newest first, with what this hub accepts.
 
@@ -212,7 +218,7 @@ async def list_room_uploads(room_name: str) -> UploadListResponse:
     )
 
 
-@router.get("/{name}", response_model=UploadRead)
+@router.get("/{name}", response_model=UploadRead, responses=refusals(404))
 async def get_upload(room_name: str, name: str) -> UploadRead:
     """One upload's record."""
     _require_room(room_name)
@@ -222,7 +228,7 @@ async def get_upload(room_name: str, name: str) -> UploadRead:
     return _upload_read(room_name, key, meta, found.get(key))
 
 
-@router.get("/{name}/raw", response_class=FileResponse)
+@router.get("/{name}/raw", response_class=FileResponse, responses=refusals(404))
 async def get_upload_bytes(
     room_name: str,
     name: str,
@@ -249,7 +255,7 @@ async def get_upload_bytes(
     )
 
 
-@router.get("/{name}/thumb", response_class=FileResponse)
+@router.get("/{name}/thumb", response_class=FileResponse, responses=refusals(404))
 async def get_upload_thumbnail(room_name: str, name: str) -> FileResponse:
     """A small WebP of an image upload, so a gallery doesn't load every full image.
 
@@ -279,7 +285,7 @@ async def get_upload_thumbnail(room_name: str, name: str) -> FileResponse:
     )
 
 
-@router.delete("/{name}", status_code=204)
+@router.delete("/{name}", status_code=204, responses=refusals(404))
 async def delete_upload(room_name: str, name: str) -> None:
     """Remove an upload's record, and its bytes once nothing else names them."""
     _require_room(room_name)

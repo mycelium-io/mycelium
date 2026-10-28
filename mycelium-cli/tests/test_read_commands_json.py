@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -17,9 +16,9 @@ import pytest
 from typer.testing import CliRunner
 
 from mycelium.cli import app
+from mycelium_backend_client.models import RunnerRead
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
 
 runner = CliRunner()
@@ -210,20 +209,25 @@ def test_herdr_status_prints_json(herdr: None) -> None:
 
 
 def test_runner_status_prints_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    import mycelium.client
     import mycelium.runner.daemon
+    from tests.conftest import install_stand_in_hub
 
-    seen = {"connected": True, "herdr": True, "agents": []}
+    seen = {
+        "id": "abc123",
+        "label": "abc123",
+        "connected": True,
+        "last_seen": "2026-10-28T10:00:00Z",
+        "started_at": "2026-10-28T09:00:00Z",
+        "herdr": True,
+        "agents": [],
+    }
 
-    @contextmanager
-    def fake_hub_client(*_a: object, **_k: object) -> Iterator[SimpleNamespace]:
-        yield SimpleNamespace(get=lambda _path: SimpleNamespace(status_code=200, json=lambda: seen))
-
-    monkeypatch.setattr(mycelium.client, "hub_client", fake_hub_client)
+    install_stand_in_hub(monkeypatch).answer = lambda _request: seen
     monkeypatch.setattr(mycelium.runner.daemon, "runner_id", lambda: "abc123")
     state = _json(["runner", "status", "--json"])
     assert state["runner"] == "abc123"
-    assert state["hub"] == seen
+    # The hub's record as the client reads it (its stamps written ``+00:00``).
+    assert state["hub"] == RunnerRead.from_dict(seen).to_dict()
 
 
 @pytest.mark.parametrize("code", [401, 502])
@@ -232,17 +236,17 @@ def test_runner_status_says_what_the_hub_answered_rather_than_not_connected(
 ) -> None:
     # A refusal or a proxy's error page is not the hub saying the runner is
     # gone: it says nothing about it either way.
-    import mycelium.client
+    import httpx
+
     import mycelium.runner.daemon
+    from tests.conftest import install_stand_in_hub
 
-    def not_json() -> Any:
-        raise ValueError("<html>Bad Gateway</html>")
+    def refused_or_not_json(request: httpx.Request) -> httpx.Response:
+        if code == 401:  # the hub's own refusal, in the shape it sends one
+            return httpx.Response(code, json={"detail": "missing bearer token"}, request=request)
+        return httpx.Response(code, text="<html>Bad Gateway</html>", request=request)
 
-    @contextmanager
-    def fake_hub_client(*_a: object, **_k: object) -> Iterator[SimpleNamespace]:
-        yield SimpleNamespace(get=lambda _path: SimpleNamespace(status_code=code, json=not_json))
-
-    monkeypatch.setattr(mycelium.client, "hub_client", fake_hub_client)
+    install_stand_in_hub(monkeypatch).answer = refused_or_not_json
     monkeypatch.setattr(mycelium.runner.daemon, "runner_id", lambda: "abc123")
     result = runner.invoke(app, ["runner", "status"])
     assert result.exit_code == 1
@@ -255,20 +259,18 @@ def test_runner_status_says_what_the_hub_answered_rather_than_not_connected(
 
 def _hub_404(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """The hub's answer for a runner the caller doesn't own, or never heard from."""
-    import mycelium.client
+    import httpx
+
     import mycelium.runner.daemon
+    from tests.conftest import install_stand_in_hub
 
     asked: list[str] = []
 
-    @contextmanager
-    def fake_hub_client(*_a: object, **_k: object) -> Iterator[SimpleNamespace]:
-        def get(path: str) -> SimpleNamespace:
-            asked.append(path)
-            return SimpleNamespace(status_code=404, json=lambda: {"detail": "x"})
+    def answer(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        return httpx.Response(404, json={"detail": "x"})
 
-        yield SimpleNamespace(get=get)
-
-    monkeypatch.setattr(mycelium.client, "hub_client", fake_hub_client)
+    install_stand_in_hub(monkeypatch).answer = answer
     monkeypatch.setattr(mycelium.runner.daemon, "runner_id", lambda: "abc123")
     return asked
 

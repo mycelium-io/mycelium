@@ -21,21 +21,24 @@ import urllib.parse
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mycelium_backend_client import Client
+    from mycelium_backend_client.types import Response
 
 
-class Response(Protocol):
-    status_code: int
+def _answer(resp: Response[Any]) -> Any:
+    """A page's body, exactly as the hub sent it.
 
-    def json(self) -> Any: ...
+    Read from the raw bytes rather than ``parsed``: the export writes what the
+    hub said, and a parsed model would re-serialize its datetimes.
+    """
+    if resp.status_code >= 400:  # noqa: PLR2004
+        from mycelium_backend_client.errors import UnexpectedStatus
 
-    def raise_for_status(self) -> Any: ...
-
-
-class Hub(Protocol):
-    """What an export reads with: an ``httpx.Client`` from ``hub_client``."""
-
-    def get(self, url: str, *, params: dict[str, Any] | None = None) -> Response: ...
+        raise UnexpectedStatus(resp.status_code, resp.content)
+    return json.loads(resp.content)
 
 
 MESSAGES_FILE = "messages.jsonl"
@@ -99,7 +102,7 @@ def _stamp(frame: dict[str, Any]) -> datetime | None:
 
 
 def read_wire(
-    client: Hub,
+    hub: Client,
     room: str,
     *,
     after_id: str | None = None,
@@ -116,16 +119,16 @@ def read_wire(
     already holds every frame at it the hub will page to, so the next one starts
     strictly before it.
     """
+    from mycelium_backend_client.api.messages import list_wire_api_rooms_room_name_messages_wire_get
+
     frames: list[dict[str, Any]] = []
     seen: set[str] = set()
     before: datetime | None = None
     while True:
-        params: dict[str, Any] = {"limit": WIRE_PAGE}
-        if before:
-            params["before"] = before.isoformat()
-        resp = client.get(f"/api/rooms/{room}/messages/wire", params=params)
-        resp.raise_for_status()
-        page = resp.json()
+        resp = list_wire_api_rooms_room_name_messages_wire_get.sync_detailed(
+            room, client=hub, limit=WIRE_PAGE, before=before
+        )
+        page = _answer(resp)
         added = 0
         for frame in reversed(page):
             fid = frame.get("id")
@@ -144,18 +147,18 @@ def read_wire(
         before = oldest if one_stamp else oldest + timedelta(microseconds=1)
 
 
-def read_board(client: Hub, room: str) -> list[dict[str, Any]]:
+def read_board(hub: Client, room: str) -> list[dict[str, Any]]:
     """Every row in the board's namespaces, with its status, holder and thread."""
+    from mycelium_backend_client.api.memory import list_memories_api_rooms_room_name_memory_get
+
     rows = []
     for prefix in BOARD_PREFIXES:
         offset = 0
         while True:
-            resp = client.get(
-                f"/api/rooms/{room}/memory",
-                params={"prefix": prefix, "limit": MEMORY_PAGE, "offset": offset},
+            resp = list_memories_api_rooms_room_name_memory_get.sync_detailed(
+                room, client=hub, prefix=prefix, limit=MEMORY_PAGE, offset=offset
             )
-            resp.raise_for_status()
-            page = resp.json()
+            page = _answer(resp)
             for mem in page:
                 text = mem.get("content_text") or ""
                 rows.append(
@@ -178,24 +181,34 @@ def read_board(client: Hub, room: str) -> list[dict[str, Any]]:
     return rows
 
 
-def read_roster(client: Hub, room: str) -> dict[str, str]:
+def read_roster(hub: Client, room: str) -> dict[str, str]:
     """Handle → ``person`` or ``agent``, from the hub's users and the room's members.
 
     Engines are not listed here; a sender that isn't is placed by the role its
     envelope gives it.
     """
+    from mycelium_backend_client.api.agents import list_agents_api_rooms_room_name_agents_get
+    from mycelium_backend_client.api.users import list_users_api_users_get
+    from mycelium_backend_client.errors import UnexpectedStatus
+    from mycelium_backend_client.models import AgentRead, UserListResponse
+
     kinds: dict[str, str] = {"system": "system"}
-    resp = client.get(f"/api/rooms/{room}/agents")
-    if resp.status_code == 200:  # noqa: PLR2004
-        for agent in resp.json():
-            if agent.get("handle"):
-                kinds[agent["handle"]] = "agent"
-    resp = client.get("/api/users")
-    if resp.status_code == 200:  # noqa: PLR2004
-        body = resp.json()
-        for user in body.get("users", []) if isinstance(body, dict) else body:
-            if user.get("handle"):
-                kinds[user["handle"]] = "person"
+    try:
+        agents = list_agents_api_rooms_room_name_agents_get.sync_detailed(room, client=hub)
+    except UnexpectedStatus:
+        agents = None  # a client that raises on a refusal; the roster goes without
+    if agents is not None and isinstance(agents.parsed, list):
+        for agent in agents.parsed:
+            if isinstance(agent, AgentRead) and agent.handle:
+                kinds[agent.handle] = "agent"
+    try:
+        users = list_users_api_users_get.sync_detailed(client=hub)
+    except UnexpectedStatus:
+        users = None
+    if users is not None and isinstance(users.parsed, UserListResponse):
+        for user in users.parsed.users:
+            if user.handle:
+                kinds[user.handle] = "person"
     return kinds
 
 
@@ -413,7 +426,7 @@ def _read_cursor(out: Path, room: str, *, redacted: bool) -> dict[str, Any] | No
 
 
 def export_room(
-    client: Hub,
+    client: Client,
     room: str,
     out: Path,
     *,

@@ -2,15 +2,13 @@
 
 The command reads the backend's ``/health`` coordination block and renders the
 node, channel counters, and per-room membership/telemetry. These tests patch the
-config plumbing and the HTTP client, and assert on rendering, the room filter,
+config plumbing and answer through a stand-in hub, and assert on rendering, the room filter,
 and the JSON path.
 """
 
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
-from unittest.mock import MagicMock, Mock
 
 import httpx
 import pytest
@@ -18,11 +16,15 @@ import typer
 from typer.testing import CliRunner
 
 from mycelium.commands import network as net_cmd
+from mycelium.config import MyceliumConfig, ServerConfig
+from tests.conftest import install_stand_in_hub
 
 
 def _health(rooms: list[dict]) -> dict:
     return {
         "status": "ok",
+        "service": "mycelium-backend",
+        "version": "0.0.0-test",
         "coordination": {
             "endpoint": "http://slim:46357",
             "slim_enabled": True,
@@ -39,11 +41,17 @@ def _room(name: str, members: list[str] | None = None, **over: object) -> dict:
     base: dict[str, object] = {
         "room": name,
         "provisioned": True,
+        "persister_alive": True,
         "members": members or [],
         "deferred_invites": 0,
         "episode_active": False,
         "reserves": 0,
+        "reserve_failures": 0,
+        "reserve_skipped": 0,
         "receive_errors": 0,
+        "transient_errors": 0,
+        "knowledge_applied": 0,
+        "knowledge_conflicts": 0,
     }
     base.update(over)
     return base
@@ -82,30 +90,25 @@ def _patch(
 ) -> None:
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text("x")
-    fake_config = SimpleNamespace(server=SimpleNamespace(api_url="http://localhost:8000"))
+    config = MyceliumConfig(server=ServerConfig(api_url="http://localhost:8000"))
     monkeypatch.setattr(
         net_cmd.MyceliumConfig, "get_config_path", classmethod(lambda _cls: cfg_path)
     )
-    monkeypatch.setattr(net_cmd.MyceliumConfig, "load", classmethod(lambda _cls: fake_config))
+    monkeypatch.setattr(net_cmd.MyceliumConfig, "load", classmethod(lambda _cls: config))
 
     states = a2a or {}
 
-    def _get(path: str) -> SimpleNamespace:
+    def _answer(request: httpx.Request) -> object:
+        path = request.url.path
         if path == "/health":
-            return SimpleNamespace(json=lambda: health)
+            return health
         served = path.startswith("/api/rooms/") and path.endswith("/a2a/state")
         if a2a_fails or not served:
-            raise httpx.HTTPStatusError("404", request=Mock(), response=Mock())
+            return (404, {"detail": "Not Found"})
         room = path.removeprefix("/api/rooms/").removesuffix("/a2a/state")
-        state = states.get(room, _a2a_state(room))
-        return SimpleNamespace(json=lambda: state)
+        return states.get(room, _a2a_state(room))
 
-    client = Mock()
-    client.get.side_effect = _get
-    cm = MagicMock()
-    cm.__enter__.return_value = client
-    cm.__exit__.return_value = None
-    monkeypatch.setattr(net_cmd, "MyceliumHTTPClient", lambda **_kw: cm)
+    install_stand_in_hub(monkeypatch).answer = _answer
 
 
 def _app(json_flag: bool = False) -> typer.Typer:

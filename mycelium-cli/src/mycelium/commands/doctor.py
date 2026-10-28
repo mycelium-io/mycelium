@@ -203,42 +203,34 @@ def _check_llm_connectivity(
             message="Skipped (cannot load config)",
         )
 
-    try:
-        import httpx
+    from mycelium.hub_check import health
 
-        resp = httpx.get(
-            f"{api_url}/health",
-            params={"check_llm": "true", "llm_probe": "completion"},
-            timeout=30,
-        )
-    except Exception as exc:
+    said = health(api_url, check_llm=True, probe="completion", timeout=30)
+    if not said.answered:
         return CheckResult(
             name="LLM connectivity",
             status="warning",
             message="Skipped (backend unreachable)",
-            details=[str(exc), f"Start the backend: {_start_hub()}"],
+            details=[said.error or "", f"Start the backend: {_start_hub()}"],
         )
-
-    if resp.status_code >= 500:
+    if said.read is None:
         return CheckResult(
             name="LLM connectivity",
             status="warning",
-            message=f"Backend /health returned HTTP {resp.status_code}",
+            message=f"Backend /health: {said.error}",
         )
-
-    try:
-        llm = resp.json().get("llm", {}) or {}
-    except Exception:
+    llm = said.llm
+    if llm is None:
         return CheckResult(
             name="LLM connectivity",
             status="warning",
-            message="Backend returned non-JSON response",
+            message="This hub doesn't report its model",
         )
 
-    status = llm.get("status", "unknown")
-    model = llm.get("model", "") or "<unset>"
-    message = llm.get("message", "") or ""
-    remediation = llm.get("remediation") or ""
+    status = llm.status
+    model = llm.model or "<unset>"
+    message = llm.message or ""
+    remediation = llm.remediation or ""
 
     details: list[str] = []
     if message:
@@ -441,35 +433,29 @@ def _check_backend_reachable(*, local_backend: bool = True) -> CheckResult:
 
     api_url = config.server.api_url
 
-    try:
-        import httpx
+    from mycelium.hub_check import health
 
-        resp = httpx.get(f"{api_url}/health", timeout=5)
-        if resp.status_code < 500:
-            data = resp.json()
-            status = data.get("status", "unknown")
-            version = data.get("version", "")
-            label = f"{api_url} ({status})"
-            if version:
-                label += f" v{version}"
-            return CheckResult(
-                name="Backend reachable",
-                status="ok" if status in ("ok", "degraded") else "warning",
-                message=label,
-            )
-        return CheckResult(
-            name="Backend reachable",
-            status="error",
-            message=f"{api_url} returned HTTP {resp.status_code}",
-        )
-    except Exception as exc:
+    said = health(api_url, timeout=5)
+    if not said.answered:
         hint = f"Run: {_start_hub()}" if local_backend else f"Check the remote backend at {api_url}"
         return CheckResult(
             name="Backend reachable",
             status="error",
             message=f"Cannot connect to {api_url}",
-            details=[str(exc), hint],
+            details=[said.error or "", hint],
         )
+    if said.read is None:
+        return CheckResult(
+            name="Backend reachable",
+            status="error",
+            message=f"{api_url}: {said.error}",
+        )
+    label = f"{api_url} ({said.read.status}) v{said.read.version}"
+    return CheckResult(
+        name="Backend reachable",
+        status="ok" if said.read.status in ("ok", "degraded") else "warning",
+        message=label,
+    )
 
 
 def _read_env_master_secret() -> str | None:
@@ -492,19 +478,19 @@ def _check_http_auth_gate(*, api_url: str) -> CheckResult:
     """Warn when the hub HTTP API is reachable but auth is off on a remote URL."""
     host = (urlparse(api_url).hostname or "").lower()
     remote_target = host not in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
-    try:
-        import httpx
+    from mycelium.hub_check import health
 
-        resp = httpx.get(f"{api_url.rstrip('/')}/health", timeout=5)
-        if resp.status_code >= 500:
-            return CheckResult(
-                name="HTTP API auth",
-                status="warning",
-                message="Could not read auth status from /health",
-            )
-        auth = resp.json().get("auth") or {}
-        if auth.get("enabled"):
-            details = [str(w) for w in auth.get("warnings") or []]
+    said = health(api_url, timeout=5)
+    auth = said.auth
+    if auth is None:
+        return CheckResult(
+            name="HTTP API auth",
+            status="warning",
+            message="Could not read auth status from /health",
+        )
+    try:
+        if auth.enabled:
+            details = [str(w) for w in auth.warnings or []]
             status = "warning" if details else "ok"
             return CheckResult(
                 name="HTTP API auth",
@@ -715,39 +701,25 @@ def _check_runtime_config_drift() -> CheckResult:
             message="Skipped (cannot load config)",
         )
 
-    try:
-        import httpx
+    from mycelium.hub_check import health
 
-        resp = httpx.get(
-            f"{api_url}/health",
-            params={"check_llm": "true"},
-            timeout=5,
-        )
-    except Exception:
+    said = health(api_url, check_llm=True, timeout=5)
+    if not said.answered:
         return CheckResult(
             name="Runtime config drift",
             status="ok",
             message="Skipped (backend unreachable)",
         )
-
-    if resp.status_code >= 500:
+    llm = said.llm
+    if llm is None:
         return CheckResult(
             name="Runtime config drift",
             status="ok",
-            message=f"Skipped (backend HTTP {resp.status_code})",
+            message=f"Skipped (backend: {said.error or 'no model reported'})",
         )
 
-    try:
-        llm = resp.json().get("llm") or {}
-    except Exception:
-        return CheckResult(
-            name="Runtime config drift",
-            status="ok",
-            message="Skipped (backend returned non-JSON)",
-        )
-
-    runtime_model = (llm.get("model", "") or "").strip()
-    runtime_key_hint = (llm.get("key_hint", "") or "").strip()
+    runtime_model = (llm.model or "").strip()
+    runtime_key_hint = (llm.key_hint or "").strip()
     runtime_key_tail = runtime_key_hint[-4:] if len(runtime_key_hint) >= 4 else ""
 
     mismatches: list[str] = []

@@ -26,9 +26,11 @@ from app.schemas import (
     JoinRead,
     JoinRedeem,
     MembershipRead,
+    refusals,
 )
 from app.services import actor, member_tokens, principals
 from app.services.agent_registry import norm_handle, write_agent_manifest
+from app.services.auth import GATE_REFUSALS
 from app.services.filesystem import room_exists
 from app.services.joins import CODE_TTL_S, JoinError, joins
 
@@ -39,7 +41,12 @@ def _when(epoch: float) -> datetime:
     return datetime.fromtimestamp(epoch, tz=UTC)
 
 
-@router.post("/rooms/{room_name}/joins", response_model=JoinRead, status_code=201)
+@router.post(
+    "/rooms/{room_name}/joins",
+    response_model=JoinRead,
+    status_code=201,
+    responses={**GATE_REFUSALS, **refusals(403, 404)},
+)
 def create_join(room_name: str, body: JoinCreate, request: Request) -> JoinRead:
     """A single-use code an agent redeems with ``mycelium join`` to become ``handle`` here."""
     if not room_exists(room_name):
@@ -64,7 +71,12 @@ _HANDLE_RE = re.compile(HANDLE_PATTERN)
 INVITED_FRAMEWORK = "external"
 
 
-@router.post("/rooms/{room_name}/invites", response_model=JoinRead, status_code=201)
+@router.post(
+    "/rooms/{room_name}/invites",
+    response_model=JoinRead,
+    status_code=201,
+    responses={**GATE_REFUSALS, **refusals(403, 404, 409, 422)},
+)
 async def create_invite(room_name: str, body: InviteCreate, request: Request) -> JoinRead:
     """A join code for ``handle``, adding it to the room first if it's new.
 
@@ -112,7 +124,7 @@ async def create_invite(room_name: str, body: InviteCreate, request: Request) ->
     return JoinRead(code=code, room=room_name, handle=handle, expires_at=_when(join.expires_at))
 
 
-@router.post("/joins/redeem", response_model=MembershipRead)
+@router.post("/joins/redeem", response_model=MembershipRead, responses=refusals(400, 404))
 def redeem_join(body: JoinRedeem) -> MembershipRead:
     """Trade a join code for membership: the room, the handle, and a token when the hub needs one."""
     try:

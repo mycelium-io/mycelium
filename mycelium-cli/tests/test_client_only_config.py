@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import datetime
 import json
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, Mock
 
@@ -27,6 +26,9 @@ from mycelium.commands import instance as instance_cmd
 from mycelium.commands import network as net_cmd
 from mycelium.commands import room as room_cmd
 from mycelium.config import MyceliumConfig
+from mycelium_backend_client.models import WhoamiRead
+from tests.conftest import install_stand_in_hub
+from tests.hub_answers import ok
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -54,17 +56,16 @@ def _no_op_typed_client(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(room_cmd, "_typed_client", lambda _c: cm)
 
 
-def _fake_http(monkeypatch: pytest.MonkeyPatch, module: object, health: dict) -> Mock:
-    """Stand in for ``MyceliumHTTPClient`` on ``module``, answering ``/health``."""
-    client = Mock()
-    client.get.side_effect = lambda path, **_kw: SimpleNamespace(
-        json=lambda: health if path == "/health" else {}
+def _health(**sections: object) -> dict:
+    """A hub's ``/health`` answer at 3.0.1, with ``sections``."""
+    return {"status": "ok", "service": "mycelium-backend", "version": "3.0.1", **sections}
+
+
+def _stand_in_hub(monkeypatch: pytest.MonkeyPatch, health: dict, *, at: str = "/health") -> None:
+    """A hub answering ``health`` at ``at`` and 404 everywhere else."""
+    install_stand_in_hub(monkeypatch).answer = lambda request: (
+        health if request.url.path == at else (404, {"detail": "Not Found"})
     )
-    cm = MagicMock()
-    cm.__enter__.return_value = client
-    cm.__exit__.return_value = None
-    monkeypatch.setattr(module, "MyceliumHTTPClient", lambda **_kw: cm)
-    return client
 
 
 def test_config_loads_from_env_with_no_file() -> None:
@@ -76,15 +77,17 @@ def test_room_ls_runs(monkeypatch: pytest.MonkeyPatch) -> None:
 
     _no_op_typed_client(monkeypatch)
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync",
-        lambda **_kw: [
-            RoomRead(
-                id=1,
-                name="a2a-test",
-                is_public=True,
-                created_at=datetime.datetime(2026, 6, 1),  # noqa: DTZ001
-            )
-        ],
+        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync_detailed",
+        lambda **_kw: ok(
+            [
+                RoomRead(
+                    id=1,
+                    name="a2a-test",
+                    is_public=True,
+                    created_at=datetime.datetime(2026, 6, 1),  # noqa: DTZ001
+                )
+            ]
+        ),
     )
     result = runner.invoke(room_cmd.app, ["ls"])
     assert result.exit_code == 0, result.output
@@ -97,12 +100,15 @@ def test_room_create_runs(monkeypatch: pytest.MonkeyPatch) -> None:
 
     _no_op_typed_client(monkeypatch)
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.create_room_api_rooms_post.sync",
-        lambda **_kw: RoomRead(
-            id=2,
-            name="fresh",
-            is_public=True,
-            created_at=datetime.datetime(2026, 6, 1),  # noqa: DTZ001
+        "mycelium_backend_client.api.rooms.create_room_api_rooms_post.sync_detailed",
+        lambda **_kw: ok(
+            RoomRead(
+                id=2,
+                name="fresh",
+                is_public=True,
+                created_at=datetime.datetime(2026, 6, 1),  # noqa: DTZ001
+            ),
+            201,
         ),
     )
     result = runner.invoke(room_cmd.app, ["create", "fresh"])
@@ -114,7 +120,7 @@ def test_room_delete_runs(monkeypatch: pytest.MonkeyPatch) -> None:
     _no_op_typed_client(monkeypatch)
     monkeypatch.setattr(
         "mycelium_backend_client.api.rooms.delete_room_api_rooms_room_name_delete.sync_detailed",
-        lambda **_kw: SimpleNamespace(status_code=204),
+        lambda **_kw: ok(None, 204),
     )
     result = runner.invoke(room_cmd.app, ["delete", "doomed", "--force"])
     assert result.exit_code == 0, result.output
@@ -134,12 +140,10 @@ def _network_app() -> typer.Typer:
 
 
 def test_network_runs(monkeypatch: pytest.MonkeyPatch) -> None:
-    _fake_http(
+    _stand_in_hub(
         monkeypatch,
-        net_cmd,
-        {
-            "status": "ok",
-            "coordination": {
+        _health(
+            coordination={
                 "endpoint": "http://slim:46357",
                 "slim_enabled": True,
                 "channels_live": 0,
@@ -148,7 +152,7 @@ def test_network_runs(monkeypatch: pytest.MonkeyPatch) -> None:
                 "invite_failures": 0,
                 "rooms": [],
             },
-        },
+        ),
     )
     result = runner.invoke(_network_app(), ["network"])
     assert result.exit_code == 0, result.output
@@ -178,7 +182,7 @@ def _no_docker(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.usefixtures("_no_docker")
 def test_status_runs_and_reports_the_absent_file(monkeypatch: pytest.MonkeyPatch) -> None:
-    _fake_http(monkeypatch, instance_cmd, {"status": "ok", "version": "3.0.1"})
+    _stand_in_hub(monkeypatch, _health())
     result = runner.invoke(_status_app(), ["status"])
     assert result.exit_code == 0, result.output
     assert "All systems operational" in result.output
@@ -191,20 +195,9 @@ def test_status_asks_a_hub_at_its_apps_address_under_api_and_says_a_refused_cred
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """At the app's address /health is the app's 404; a missing credential is said as that."""
-    import httpx
-
-    def get(path: str, **_kw: object) -> SimpleNamespace:
-        if path == "/health":
-            response = httpx.Response(404, request=httpx.Request("GET", f"{HUB_URL}/health"))
-            raise httpx.HTTPStatusError("not found", request=response.request, response=response)
-        return SimpleNamespace(
-            json=lambda: {"status": "ok", "version": "3.0.1"} if path == "/api/health" else {}
-        )
-
-    client = _fake_http(monkeypatch, instance_cmd, {})
-    client.get.side_effect = get
+    _stand_in_hub(monkeypatch, _health(), at="/api/health")
     monkeypatch.setattr(
-        "mycelium.identity._hub_whoami", lambda _config: {"gated": True, "handle": None}
+        "mycelium.identity._hub_whoami", lambda _config: WhoamiRead(gated=True, handle=None)
     )
     result = runner.invoke(_status_app(), ["status"])
     out = " ".join(result.output.split())
@@ -216,7 +209,7 @@ def test_status_asks_a_hub_at_its_apps_address_under_api_and_says_a_refused_cred
 
 @pytest.mark.usefixtures("_no_docker")
 def test_status_json_marks_the_file_absent(monkeypatch: pytest.MonkeyPatch) -> None:
-    _fake_http(monkeypatch, instance_cmd, {"status": "ok", "version": "3.0.1"})
+    _stand_in_hub(monkeypatch, _health())
     result = runner.invoke(_status_app(json_flag=True), ["status"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)

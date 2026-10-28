@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import stat
 from collections.abc import Iterator
-from contextlib import contextmanager
 from typing import Any
 
 import httpx
@@ -22,6 +21,7 @@ import pytest
 from mycelium import agent_credentials, caller
 from mycelium.agent_credentials import issue_member_token as real_issue
 from mycelium.config import MyceliumConfig
+from tests.conftest import install_stand_in_hub
 
 
 class Hub:
@@ -34,32 +34,21 @@ class Hub:
         if request.url.path.endswith("/joins"):
             if self.joins != 201:
                 return httpx.Response(self.joins, json={"detail": "not yours"})
-            return httpx.Response(201, json={"code": "abcd-efgh-jkmn"})
+            join = {"code": "abcd-efgh-jkmn", "room": "eng", "handle": "scout"}
+            return httpx.Response(201, json=join | {"expires_at": "2026-08-24T10:00:00+00:00"})
         if request.url.path == "/api/joins/redeem":
             return httpx.Response(200, json={"room": "eng", "handle": "scout", "token": self.token})
-        return httpx.Response(404)
+        return httpx.Response(404, json={"detail": "not found"})
 
 
 @pytest.fixture
 def hub(monkeypatch: pytest.MonkeyPatch) -> Iterator[Hub]:
     hub = Hub()
-    transport = httpx.MockTransport(lambda r: hub.handler(r))
-
-    @contextmanager
-    def client(_config: Any = None, **_kw: Any):
-        with httpx.Client(
-            base_url="http://hub:8000",
-            transport=transport,
-            headers={"authorization": "Bearer person"},
-        ) as c:
-            yield c
-
-    def post(url: str, **kw: Any) -> httpx.Response:
-        with httpx.Client(transport=transport) as c:
-            return c.post(url, **kw)
-
-    monkeypatch.setattr("mycelium.client.hub_client", client)
-    monkeypatch.setattr(httpx, "post", post)
+    install_stand_in_hub(monkeypatch).answer = hub.handler
+    # This machine is signed in as a person, whose login the typed client carries.
+    monkeypatch.setattr(
+        "mycelium.client.auth_headers", lambda *_a, **_k: {"Authorization": "Bearer person"}
+    )
     # The suite turns issuing off; these tests are the ones that use it.
     monkeypatch.setattr(agent_credentials, "issue_member_token", real_issue)
     yield hub

@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from app.routes.engines import EngineCreate, create_engine
 from app.routes.messages import send_message
 from app.routes.runners import _runner_or_404, existing_runner_of, runner_manifest
-from app.schemas import DeviceSignature, MessageCreate, MessageType
+from app.schemas import DeviceSignature, MessageCreate, MessageType, refusals
 from app.services import actor, runners, swarm, tasks, worker_engine, workspace
 from app.services.agent_registry import write_agent_manifest
 from app.services.filesystem import get_room_dir, read_memory_file, room_exists
@@ -175,7 +175,7 @@ async def _start_on_runner(
     return SwarmRead(room=room_name, key=row.key, episode=episode, members=team, job=job.id)
 
 
-@router.post("", response_model=SwarmRead, status_code=201)
+@router.post("", response_model=SwarmRead, status_code=201, responses=refusals(403, 404, 409, 422))
 async def start_swarm(room_name: str, payload: SwarmCreate, request: Request) -> SwarmRead:
     """Start a team of workers on a task in this room and return where to watch it."""
     if not room_exists(room_name):

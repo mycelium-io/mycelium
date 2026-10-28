@@ -28,9 +28,8 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import httpx
 import typer
 import yaml
 from rich.console import Console
@@ -38,10 +37,15 @@ from rich.table import Table
 
 from mycelium import identity
 from mycelium.cli_options import acts_as, emits_json
-from mycelium.client import hub_client, hub_error_detail
+from mycelium.client import answered, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
+
+if TYPE_CHECKING:
+    from mycelium_backend_client import Client
+    from mycelium_backend_client.models import PatternList, PatternLoaded
+    from mycelium_backend_client.types import Response
 
 app = typer.Typer(
     help="Load a multi-agent design pattern as a room, ready to run.", no_args_is_help=True
@@ -156,30 +160,45 @@ def _git(args: list[str], source: str) -> None:
 # ── the hub ──────────────────────────────────────────────────────────────────
 
 
-def _checked(resp: httpx.Response, what: str) -> Any:
-    """The response's JSON, or the hub's reason it refused."""
-    if resp.status_code >= 400:
-        detail = hub_error_detail(resp.content) or resp.text.strip() or f"HTTP {resp.status_code}"
+def _checked[T](resp: Response[Any], expected: type[T], what: str) -> T:
+    """The hub's answer, or the hub's reason it refused."""
+    if resp.status_code >= 400:  # noqa: PLR2004
+        said = resp.content.decode(errors="replace").strip()
+        detail = hub_error_detail(resp.content) or said or f"HTTP {resp.status_code}"
         raise PatternError(f"could not {what}: {detail}")
-    return resp.json()
+    return answered(resp, expected)
 
 
-def hub_patterns(client: httpx.Client) -> dict[str, Any]:
-    return _checked(client.get("/api/patterns"), "list the hub's patterns")
+def hub_patterns(client: Client) -> PatternList:
+    from mycelium_backend_client.api.patterns import list_patterns_api_patterns_get
+    from mycelium_backend_client.models import PatternList
+
+    resp = list_patterns_api_patterns_get.sync_detailed(client=client)
+    return _checked(resp, PatternList, "list the hub's patterns")
 
 
 def load_on_hub(
-    client: httpx.Client,
+    client: Client,
     name: str,
     options: dict[str, Any],
     pack: Pack | None,
-) -> dict[str, Any]:
+) -> PatternLoaded:
     """Ask the hub to load ``name``: from its own pack, or with a scenario of yours."""
+    from mycelium_backend_client.api.patterns import (
+        load_inline_api_patterns_load_post as load_inline_api,
+    )
+    from mycelium_backend_client.api.patterns import (
+        load_pattern_api_patterns_name_load_post as load_api,
+    )
+    from mycelium_backend_client.models import PatternLoad, PatternLoaded, PatternLoadInline
+
     if pack is None:
-        return _checked(client.post(f"/api/patterns/{name}/load", json=options), f"load {name}")
+        resp = load_api.sync_detailed(name, client=client, body=PatternLoad.from_dict(options))
+        return _checked(resp, PatternLoaded, f"load {name}")
     scenario, flow = pack.read(name)
-    body = {**options, "scenario": scenario, "flow": flow}
-    return _checked(client.post("/api/patterns/load", json=body), f"load {name}")
+    body = PatternLoadInline.from_dict({**options, "scenario": scenario, "flow": flow})
+    resp = load_inline_api.sync_detailed(client=client, body=body)
+    return _checked(resp, PatternLoaded, f"load {name}")
 
 
 # ── commands ─────────────────────────────────────────────────────────────────
@@ -225,9 +244,11 @@ def pattern_ls(
                     }
                 )
         else:
-            with hub_client() as client:
+            with typed_client(timeout=30, raise_on_unexpected_status=False) as client:
                 listed = hub_patterns(client)
-            rows, skipped = listed["patterns"], listed.get("skipped", {})
+            # The table takes a pack's own rows raw, so the hub's go in the same shape.
+            rows = [p.to_dict() for p in listed.patterns]
+            skipped = listed.skipped.to_dict() if listed.skipped else {}
 
         if ctx.obj and ctx.obj.get("json"):
             typer.echo(json_module.dumps({"patterns": rows, "skipped": skipped}, indent=2))
@@ -292,11 +313,13 @@ def pattern_use(
             "dry_run": dry_run,
             "created_by": me,
         }
-        with hub_client(config, handle=me) as client:
+        with typed_client(
+            config, timeout=30, handle=me, raise_on_unexpected_status=False
+        ) as client:
             loaded = load_on_hub(client, pattern, options, pack)
 
         if ctx.obj and ctx.obj.get("json"):
-            typer.echo(json_module.dumps(loaded, indent=2))
+            typer.echo(json_module.dumps(loaded.to_dict(), indent=2))
             return
         _print_loaded(loaded, me)
     except PatternError as exc:
@@ -309,30 +332,31 @@ def pattern_use(
         raise typer.Exit(1) from None
 
 
-def _print_loaded(loaded: dict[str, Any], me: str) -> None:
-    room = loaded["room"]
-    dry = bool(loaded.get("dry_run"))
+def _print_loaded(loaded: PatternLoaded, me: str) -> None:
+    room = loaded.room
+    dry = bool(loaded.dry_run)
     console.print(
         f"[bold]{'Would create' if dry else 'Loaded'}[/bold] room [cyan]{room}[/cyan]: "
-        f"{loaded.get('title', '')}"
+        f"{loaded.title}"
     )
-    for handle in loaded.get("members", []):
+    for handle in loaded.members:
         console.print(f"  [dim]engine[/dim] @{handle}")
     console.print(f"  [dim]you[/dim]    @{me}")
-    console.print(f"  [dim]{len(loaded.get('memories', []))} memories written[/dim]")
-    summon = loaded.get("summon")
+    console.print(f"  [dim]{len(loaded.memories)} memories written[/dim]")
+    summon = loaded.summon
+    key = loaded.key or None
     if dry:
         return
     if not summon:
         console.print("\n[dim]No flow to run: the room is ready to work in.[/dim]")
-    elif loaded.get("ran"):
-        console.print(f"\n[green]Started[/green] on {loaded.get('key')}.")
+    elif loaded.ran:
+        console.print(f"\n[green]Started[/green] on {key}.")
     else:
         ask = str(summon).removeprefix(f"@{CONDUCTOR} ")
         console.print("\nIt is [bold]paused[/bold]. Start it with:")
         # One unbroken line: it is meant to be copied.
         console.print(
-            f'  mycelium board coordinate {loaded.get("key")} {CONDUCTOR} "{ask}" --room {room}',
+            f'  mycelium board coordinate {key} {CONDUCTOR} "{ask}" --room {room}',
             soft_wrap=True,
             markup=False,
         )

@@ -103,6 +103,14 @@ export interface MockMessage {
   metadata?: Record<string, unknown> | null;
 }
 
+/** A subscription as the hub sends it (`WakeSubscriptionRead`): the app reads
+ *  only `RoomSubscription`'s fields, but the hub always sends these too. */
+export interface MockSubscription extends RoomSubscription {
+  parts: boolean;
+  task: string | null;
+  created_at: string;
+}
+
 export interface RoomFixture {
   room: MockRoom;
   memories: MockMemory[];
@@ -116,7 +124,7 @@ export interface RoomFixture {
   /** Floors held in the room's threads right now, served beside presence. */
   floors?: RoomFloor[];
   /** What the room's agents subscribed to, served beside presence. */
-  subscriptions?: RoomSubscription[];
+  subscriptions?: MockSubscription[];
   /** The room's link graph (#599/#611) — undefined means "no link index yet",
    *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
@@ -163,7 +171,10 @@ function buildMockGraph(
     outbound: outbound.get(m.key) ?? 0,
     inbound: inbound.get(m.key) ?? 0,
   }));
-  return { nodes, edges };
+  // The hub always sends `relation` and `error`, null when an edge has none,
+  // so the hand-written edges only need to name them when they're set.
+  const full = edges.map((e) => ({ ...e, relation: e.relation ?? null, error: e.error ?? null }));
+  return { nodes, edges: full };
 }
 
 // ── agent manifests (YAML strings — the UI parses description/adapter) ─────────
@@ -1395,8 +1406,8 @@ const checkout: RoomFixture = {
   // reviewer watches the Apple Pay work and every merge, so it hears about
   // both without anyone mentioning it.
   subscriptions: [
-    { id: "5c1e0a7b", handle: "reviewer", kind: "task", target: "work/add-apple-pay", describe: "work/add-apple-pay and its parts", until: null },
-    { id: "9d42f3e1", handle: "reviewer", kind: "notice", target: "upstream:merged", describe: "upstream:merged notices", until: null },
+    { id: "5c1e0a7b", handle: "reviewer", kind: "task", target: "work/add-apple-pay", parts: true, task: null, created_at: iso(140), describe: "work/add-apple-pay and its parts", until: null },
+    { id: "9d42f3e1", handle: "reviewer", kind: "notice", target: "upstream:merged", parts: false, task: null, created_at: iso(320), describe: "upstream:merged notices", until: null },
   ],
   // builder holds an open SLIM socket; reviewer is present on a server-held
   // await lease. Both are agents in the roster, so the board projects a resident

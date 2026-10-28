@@ -234,7 +234,9 @@ def test_a_missing_memory_is_none_and_a_hub_error_still_raises() -> None:
             base_url="http://hub",
             raise_on_unexpected_status=True,
             httpx_args={
-                "transport": httpx.MockTransport(lambda _r: httpx.Response(status, json={}))
+                "transport": httpx.MockTransport(
+                    lambda _r: httpx.Response(status, json={"detail": "Memory not found"})
+                )
             },
         )
 

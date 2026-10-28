@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.bus import app_channel, bus
-from app.schemas import RoomCreate, RoomRead
+from app.schemas import RoomCreate, RoomRead, RoomReindexRead, refusals
 from app.services import actor, pauses, room_access, room_channels, room_people
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import (
@@ -55,7 +55,7 @@ def _last_activity(room: RoomRead) -> datetime:
         return room.created_at
 
 
-@router.post("", response_model=RoomRead, status_code=201)
+@router.post("", response_model=RoomRead, status_code=201, responses=refusals(400, 403, 404, 422))
 async def create_room(room: RoomCreate, request: Request):
     """Create a new room (directory + metadata sidecar).
 
@@ -167,7 +167,7 @@ async def list_rooms(
     return visible[skip : skip + limit]
 
 
-@router.get("/{room_name}", response_model=RoomRead)
+@router.get("/{room_name}", response_model=RoomRead, responses=refusals(404))
 async def get_room(room_name: str):
     """Get a room by name."""
     result = _room_read(room_name)
@@ -189,7 +189,7 @@ class RoomUpdate(BaseModel):
     )
 
 
-@router.patch("/{room_name}", response_model=RoomRead)
+@router.patch("/{room_name}", response_model=RoomRead, responses=refusals(400, 403, 404, 422))
 async def update_room(room_name: str, payload: RoomUpdate, request: Request):
     """Change a room's own attributes: its title, and whether it's private.
 
@@ -245,7 +245,12 @@ async def update_room(room_name: str, payload: RoomUpdate, request: Request):
     return result
 
 
-@router.post("/{room_name}/reindex", status_code=200)
+@router.post(
+    "/{room_name}/reindex",
+    status_code=200,
+    response_model=RoomReindexRead,
+    responses=refusals(404),
+)
 async def reindex_room(room_name: str):
     """Re-index a room's filesystem into the JSONL search index."""
     if not room_exists(room_name):
@@ -257,7 +262,7 @@ async def reindex_room(room_name: str):
     return {"status": "complete", **stats}
 
 
-@router.delete("/{room_name}", status_code=204)
+@router.delete("/{room_name}", status_code=204, responses=refusals(400, 404))
 async def delete_room(room_name: str):
     """Delete a room and its filesystem directory."""
     if room_name in RESERVED_ROOMS:

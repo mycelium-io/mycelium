@@ -28,7 +28,7 @@ from rich.table import Table
 
 from mycelium import identity
 from mycelium.cli_options import acts_as, emits_json
-from mycelium.client import current_token
+from mycelium.client import answered, current_token
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -95,12 +95,11 @@ def _fetch_user(handle: str, *, client: Any = None) -> UserRead | None:
     from mycelium_backend_client.models import UserRead
 
     try:
-        result = get_api.sync(handle=_norm_handle(handle), client=client)
+        return answered(get_api.sync_detailed(handle=_norm_handle(handle), client=client), UserRead)
     except UnexpectedStatus as exc:
         if exc.status_code == 404:
             return None
         raise
-    return result if isinstance(result, UserRead) else None
 
 
 def load_user(handle: str) -> UserManifest | None:
@@ -116,11 +115,11 @@ def load_user(handle: str) -> UserManifest | None:
 def list_users() -> list[UserManifest]:
     """Every user registered on the hub."""
     from mycelium_backend_client.api.users import list_users_api_users_get as list_api
+    from mycelium_backend_client.models import UserListResponse
 
     with _typed_client(MyceliumConfig.load()) as client:
-        result = list_api.sync(client=client)
-    reads = _unset_to_none(getattr(result, "users", None)) or []
-    return [u for u in (_manifest_from_read(r) for r in reads) if u is not None]
+        result = answered(list_api.sync_detailed(client=client), UserListResponse)
+    return [u for u in (_manifest_from_read(r) for r in result.users) if u is not None]
 
 
 def _write_user(user: UserManifest, created_by: str) -> None:
@@ -130,7 +129,7 @@ def _write_user(user: UserManifest, created_by: str) -> None:
     unchanged record, and the frontmatter it lands in are all its business.
     """
     from mycelium_backend_client.api.users import create_user_api_users_post as create_api
-    from mycelium_backend_client.models import UserCreate
+    from mycelium_backend_client.models import UserCreate, UserRead
 
     body = UserCreate(
         handle=user.handle,
@@ -140,7 +139,7 @@ def _write_user(user: UserManifest, created_by: str) -> None:
         created_by=created_by,
     )
     with _typed_client(MyceliumConfig.load()) as client:
-        create_api.sync(client=client, body=body)
+        answered(create_api.sync_detailed(client=client, body=body), UserRead)
 
 
 def align_identity(

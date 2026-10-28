@@ -22,13 +22,16 @@ from typer.testing import CliRunner
 from mycelium.cli import app as root_app
 from mycelium.commands import user as user_cmd
 from mycelium.protocol import UserManifest
+from tests.hub_answers import ok
 
 runner = CliRunner()
 
-USER_GET_SYNC = "mycelium_backend_client.api.users.get_user_api_users_handle_get.sync"
-USER_LIST_SYNC = "mycelium_backend_client.api.users.list_users_api_users_get.sync"
-USER_CREATE_SYNC = "mycelium_backend_client.api.users.create_user_api_users_post.sync"
-ROOMS_LIST_SYNC = "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync"
+USER_GET_SYNC = "mycelium_backend_client.api.users.get_user_api_users_handle_get.sync_detailed"
+USER_LIST_SYNC = "mycelium_backend_client.api.users.list_users_api_users_get.sync_detailed"
+USER_CREATE_SYNC = "mycelium_backend_client.api.users.create_user_api_users_post.sync_detailed"
+ROOMS_LIST_SYNC = "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync_detailed"
+#: What each route answers a success with.
+_SUCCESS = {USER_CREATE_SYNC: 201}
 
 
 @pytest.fixture(autouse=True)
@@ -37,7 +40,7 @@ def _home(isolated_home) -> None:  # noqa: ANN001
 
 
 # No client stub: ``typed_client`` only constructs a client, and every generated
-# ``.sync`` a command reaches is scripted below, so nothing leaves the process.
+# ``.sync_detailed`` a command reaches is scripted below, so nothing leaves the process.
 
 
 def _user_read(handle: str, *, owns: list[dict[str, str]] | None = None, **fields: Any):  # noqa: ANN202
@@ -59,7 +62,8 @@ def _stub(monkeypatch: pytest.MonkeyPatch, target: str, outcome: Any) -> list[di
         calls.append(kwargs)
         if isinstance(outcome, Exception):
             raise outcome
-        return outcome(**kwargs) if callable(outcome) else outcome
+        parsed = outcome(**kwargs) if callable(outcome) else outcome
+        return ok(parsed, _SUCCESS.get(target, 200))
 
     monkeypatch.setattr(target, _sync)
     return calls

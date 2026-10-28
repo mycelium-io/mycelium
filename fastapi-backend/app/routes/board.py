@@ -19,6 +19,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.schemas import refusals
 from app.services import board, waiting
 from app.services.filesystem import room_exists
 
@@ -86,14 +87,14 @@ def _require_room(room_name: str) -> None:
         raise HTTPException(status_code=404, detail="Room not found")
 
 
-@router.get("/board", response_model=BoardRead)
+@router.get("/board", response_model=BoardRead, responses=refusals(404))
 async def read_board(room_name: str) -> BoardRead:
     """The room's open epics, each with its parts in path order, and its other open tasks."""
     _require_room(room_name)
     return BoardRead.model_validate(board.board(room_name, datetime.now(UTC)))
 
 
-@router.get("/board/{key:path}", response_model=BoardEpic)
+@router.get("/board/{key:path}", response_model=BoardEpic, responses=refusals(404))
 async def read_board_row(room_name: str, key: str) -> BoardEpic:
     """One board row as the board reads it, settled or not, with its parts."""
     _require_room(room_name)
@@ -103,7 +104,7 @@ async def read_board_row(room_name: str, key: str) -> BoardEpic:
     return BoardEpic.model_validate(found)
 
 
-@router.get("/waiting", response_model=WaitingRead)
+@router.get("/waiting", response_model=WaitingRead, responses=refusals(404))
 async def read_waiting(
     room_name: str,
     handle: str = Query(..., alias="for", description="The member to read for"),

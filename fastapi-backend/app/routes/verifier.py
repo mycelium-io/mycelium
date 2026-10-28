@@ -19,7 +19,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from app.schemas import VerifierFineRequest, VerifierFlagRead, VerifierSettingsRead
+from app.schemas import VerifierFineRequest, VerifierFlagRead, VerifierSettingsRead, refusals
 from app.services import actor, verifier
 from app.services.filesystem import room_exists
 
@@ -31,7 +31,11 @@ def _require_room(room_name: str) -> None:
         raise HTTPException(status_code=404, detail="Room not found")
 
 
-@router.get("/rooms/{room_name}/verifier/flags", response_model=list[VerifierFlagRead])
+@router.get(
+    "/rooms/{room_name}/verifier/flags",
+    response_model=list[VerifierFlagRead],
+    responses=refusals(404),
+)
 async def list_flags(
     room_name: str,
     since: datetime | None = Query(None, description="Only flags raised at or after this time"),
@@ -41,7 +45,11 @@ async def list_flags(
     return [VerifierFlagRead.model_validate(f) for f in verifier.flags_since(room_name, since)]
 
 
-@router.post("/rooms/{room_name}/verifier/flags/{flag_id}/fine", response_model=VerifierFlagRead)
+@router.post(
+    "/rooms/{room_name}/verifier/flags/{flag_id}/fine",
+    response_model=VerifierFlagRead,
+    responses=refusals(403, 404),
+)
 async def mark_fine(
     room_name: str, flag_id: str, payload: VerifierFineRequest, request: Request
 ) -> VerifierFlagRead:
@@ -62,7 +70,12 @@ async def get_settings(request: Request) -> VerifierSettingsRead:
     return VerifierSettingsRead.model_validate(view)
 
 
-@router.post("/verifier/learn", response_model=VerifierSettingsRead, status_code=202)
+@router.post(
+    "/verifier/learn",
+    response_model=VerifierSettingsRead,
+    status_code=202,
+    responses=refusals(403, 409),
+)
 async def start_learn(request: Request) -> VerifierSettingsRead:
     """Label the past messages of the rooms it checks with the hub's model, once,
     then fit the claim spotter to them. Runs in the background; poll the settings.

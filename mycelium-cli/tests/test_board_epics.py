@@ -9,6 +9,7 @@ from pathlib import Path
 from rich.console import Console
 
 from mycelium.board import epics
+from mycelium_backend_client.models import WaitingItem
 
 CONTRACT = json.loads(
     (Path(__file__).resolve().parents[2] / "contracts" / "board-vocabulary.json").read_text()
@@ -89,15 +90,17 @@ def test_a_waiting_item_says_who_asked_where_and_which_epic():
     line = plain(
         [
             epics.waiting_line(
-                {
-                    "kind": "ask",
-                    "key": "work/double",
-                    "title": "Fix the double charges",
-                    "epic_title": "Apple Pay for everyone",
-                    "sender": "builder",
-                    "text": "Refund automatically, or send to support first?",
-                    "count": 2,
-                }
+                WaitingItem.from_dict(
+                    {
+                        "kind": "ask",
+                        "key": "work/double",
+                        "title": "Fix the double charges",
+                        "epic_title": "Apple Pay for everyone",
+                        "sender": "builder",
+                        "text": "Refund automatically, or send to support first?",
+                        "count": 2,
+                    }
+                )
             )
         ]
     )

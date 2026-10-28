@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.routes.memory import remove_memory, upsert_memories
-from app.schemas import MemoryBatchCreate, MemoryCreate
+from app.schemas import MemoryBatchCreate, MemoryCreate, refusals
 from app.services import actor, room_settings
 from app.services.filesystem import room_exists
 
@@ -63,14 +63,14 @@ def _read(room_name: str, setting_id: str) -> RoomSettingRead:
     return RoomSettingRead(**entry)
 
 
-@router.get("", response_model=list[RoomSettingRead])
+@router.get("", response_model=list[RoomSettingRead], responses=refusals(404))
 async def list_room_settings(room_name: str) -> list[RoomSettingRead]:
     """Every room setting, with the room's own value where it set one."""
     _require(room_name)
     return [RoomSettingRead(**e) for e in room_settings.describe(room_name)]
 
 
-@router.put("/{setting_id}", response_model=RoomSettingRead)
+@router.put("/{setting_id}", response_model=RoomSettingRead, responses=refusals(403, 404, 409, 422))
 async def set_room_setting(
     room_name: str, setting_id: str, payload: RoomSettingWrite, request: Request
 ) -> RoomSettingRead:
@@ -96,7 +96,7 @@ async def set_room_setting(
     return _read(room_name, setting_id)
 
 
-@router.delete("/{setting_id}", response_model=RoomSettingRead)
+@router.delete("/{setting_id}", response_model=RoomSettingRead, responses=refusals(404, 409, 422))
 async def reset_room_setting(room_name: str, setting_id: str) -> RoomSettingRead:
     """Drop the room's own value, so it runs with the hub's (or the default) again."""
     _require(room_name, setting_id)

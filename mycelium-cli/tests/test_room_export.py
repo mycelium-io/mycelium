@@ -8,16 +8,18 @@ cover paging, the cursor, the flat record, redaction and the command's output.
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from typer.testing import CliRunner
 
 from mycelium import room_export
 from mycelium.commands import room as room_cmd
+from mycelium.config import MyceliumConfig
+from mycelium_backend_client import Client
+from tests.conftest import install_stand_in_hub, memory_read
 
 ROOM = "r1"
 T0 = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
@@ -56,60 +58,70 @@ def _frame(
     }
 
 
-class _Resp:
-    def __init__(self, body: Any, status: int = 200) -> None:
-        self._body = body
-        self.status_code = status
-
-    def json(self) -> Any:
-        return self._body
-
-    def raise_for_status(self) -> None:
-        if self.status_code >= 400:  # noqa: PLR2004
-            raise RuntimeError(self.status_code)
-
-
-class FakeHub:
+class FakeHub(httpx.Client):
     """Answers like the hub: the wire replay is oldest first, the last ``limit``
-    frames strictly before ``before``."""
+    frames strictly before ``before``.
+
+    An ``httpx.Client`` like the one ``hub_client`` gives the command, answering
+    at its transport, so the export's typed calls parse what it says. A command
+    test hands :meth:`answer` to the stand-in hub instead (``_patch_command``).
+    """
 
     def __init__(self, frames: list[dict[str, Any]], rows: list[dict[str, Any]] | None = None):
+        super().__init__(
+            base_url="http://localhost:8000", transport=httpx.MockTransport(self._send)
+        )
         self.frames = frames
         self.rows = rows or []
         self.wire_calls = 0
 
-    def get(self, url: str, *, params: dict[str, Any] | None = None) -> _Resp:
-        params = params or {}
-        path = url
+    def _send(self, request: httpx.Request) -> httpx.Response:
+        answered = self.answer(request)
+        status, payload = answered if isinstance(answered, tuple) else (200, answered)
+        return httpx.Response(status, json=payload, request=request)
+
+    def answer(self, request: httpx.Request) -> Any:
+        params = request.url.params
+        path = request.url.path
         if path.endswith("/messages/wire"):
             self.wire_calls += 1
             frames = self.frames
             if params.get("before"):
                 cut = datetime.fromisoformat(params["before"])
                 frames = [f for f in frames if datetime.fromisoformat(f["created_at"]) < cut]
-            return _Resp(frames[-params["limit"] :])
+            return frames[-int(params["limit"]) :]
         if path.endswith("/memory"):
-            prefix = params["prefix"]
+            prefix, offset, limit = params["prefix"], int(params["offset"]), int(params["limit"])
             page = [r for r in self.rows if r["key"].startswith(prefix)]
-            return _Resp(page[params["offset"] : params["offset"] + params["limit"]])
+            return page[offset : offset + limit]
         if path.endswith("/agents"):
-            return _Resp([{"handle": "coder"}, {"handle": "reviewer"}])
+            return [
+                {"handle": "coder", "adapter": "claude-code"},
+                {"handle": "reviewer", "adapter": "claude-code"},
+            ]
         if path == "/api/users":
-            return _Resp({"users": [{"handle": "julia"}]})
-        return _Resp({"detail": "Not Found"}, 404)
+            return {"users": [{"handle": "julia"}], "total": 1}
+        return 404, {"detail": "Not Found"}
 
 
-ROW = {
-    "key": "work/fix-login",
-    "content_text": "Fix login\n\nThe body.",
-    "episode": f"urn:ioc:mycelium:episode:{ROOM}:abc123",
-    "meta": {"status": "open", "assignee": "coder"},
-    "created_by": "julia",
-    "updated_by": "julia",
-    "version": 1,
-    "created_at": T0.isoformat(),
-    "updated_at": T0.isoformat(),
-}
+ROW = memory_read(
+    "work/fix-login",
+    ROOM,
+    content_text="Fix login\n\nThe body.",
+    episode=f"urn:ioc:mycelium:episode:{ROOM}:abc123",
+    meta={"status": "open", "assignee": "coder"},
+    created_by="julia",
+    updated_by="julia",
+    version=1,
+    created_at=T0.isoformat(),
+    updated_at=T0.isoformat(),
+)
+
+
+def _typed(hub: FakeHub) -> Client:
+    """The typed client the command hands the export, over ``hub``."""
+    client = Client(base_url=str(hub.base_url), raise_on_unexpected_status=False)
+    return client.set_httpx_client(hub)
 
 
 def _read(out) -> list[dict[str, Any]]:
@@ -121,11 +133,22 @@ def test_pages_back_through_the_whole_room_in_order(tmp_path, monkeypatch) -> No
     monkeypatch.setattr(room_export, "WIRE_PAGE", 2)
     hub = FakeHub([_frame(n, "coder", text=f"msg {n}") for n in range(5)])
 
-    result = room_export.export_room(hub, ROOM, tmp_path)
+    result = room_export.export_room(_typed(hub), ROOM, tmp_path)
 
     assert [r["id"] for r in _read(tmp_path)] == ["m0", "m1", "m2", "m3", "m4"]
     assert hub.wire_calls > 1
     assert (result.new, result.total, result.from_start) == (5, 5, True)
+
+
+def test_stamps_are_written_as_the_hub_sent_them(tmp_path) -> None:
+    frame = _frame(0, "coder", text="hi")
+    frame["created_at"] = "2026-10-01T12:00:00Z"
+    row = {**ROW, "created_at": "2026-10-01T12:00:00Z"}
+
+    room_export.export_room(_typed(FakeHub([frame], rows=[row])), ROOM, tmp_path)
+
+    assert '"at": "2026-10-01T12:00:00Z"' in (tmp_path / "messages.jsonl").read_text()
+    assert '"created_at": "2026-10-01T12:00:00Z"' in (tmp_path / "board.json").read_text()
 
 
 def test_frames_sharing_a_stamp_across_a_page_boundary_are_all_kept(tmp_path, monkeypatch) -> None:
@@ -134,7 +157,7 @@ def test_frames_sharing_a_stamp_across_a_page_boundary_are_all_kept(tmp_path, mo
     frames[1]["created_at"] = frames[2]["created_at"]  # m1 and m2 share a stamp
     hub = FakeHub(frames)
 
-    room_export.export_room(hub, ROOM, tmp_path)
+    room_export.export_room(_typed(hub), ROOM, tmp_path)
 
     assert [r["id"] for r in _read(tmp_path)] == ["m0", "m1", "m2", "m3"]
 
@@ -142,7 +165,7 @@ def test_frames_sharing_a_stamp_across_a_page_boundary_are_all_kept(tmp_path, mo
 def test_files_are_utf8_whatever_the_platform(tmp_path) -> None:
     hub = FakeHub([_frame(0, "coder", text="ship it 🚀, Zoë, 東京")], rows=[ROW])
 
-    room_export.export_room(hub, ROOM, tmp_path)
+    room_export.export_room(_typed(hub), ROOM, tmp_path)
 
     raw = (tmp_path / "messages.jsonl").read_bytes()
     assert "ship it 🚀, Zoë, 東京".encode() in raw
@@ -180,7 +203,7 @@ def test_a_record_is_flat_and_says_who_where_and_what(tmp_path) -> None:
         rows=[ROW],
     )
 
-    room_export.export_room(hub, ROOM, tmp_path)
+    room_export.export_room(_typed(hub), ROOM, tmp_path)
     ask, reply, notice, engine = _read(tmp_path)
 
     assert ask["sender_kind"] == "person"
@@ -210,24 +233,24 @@ def test_a_record_is_flat_and_says_who_where_and_what(tmp_path) -> None:
 
 def test_a_second_run_appends_only_what_is_new(tmp_path) -> None:
     hub = FakeHub([_frame(n, "coder", text=f"msg {n}") for n in range(3)])
-    room_export.export_room(hub, ROOM, tmp_path)
+    room_export.export_room(_typed(hub), ROOM, tmp_path)
 
     hub.frames += [_frame(n, "coder", text=f"msg {n}") for n in range(3, 5)]
-    result = room_export.export_room(hub, ROOM, tmp_path)
+    result = room_export.export_room(_typed(hub), ROOM, tmp_path)
 
     assert (result.new, result.total, result.from_start) == (2, 5, False)
     assert [r["id"] for r in _read(tmp_path)] == ["m0", "m1", "m2", "m3", "m4"]
 
-    again = room_export.export_room(hub, ROOM, tmp_path)
+    again = room_export.export_room(_typed(hub), ROOM, tmp_path)
     assert (again.new, again.total) == (0, 5)
 
 
 def test_a_cursor_whose_frame_is_gone_still_stops_where_it_did(tmp_path) -> None:
     hub = FakeHub([_frame(n, "coder", text=f"msg {n}") for n in range(3)])
-    room_export.export_room(hub, ROOM, tmp_path)
+    room_export.export_room(_typed(hub), ROOM, tmp_path)
 
     hub.frames = [f for f in hub.frames if f["id"] != "m2"] + [_frame(3, "coder", text="new")]
-    result = room_export.export_room(hub, ROOM, tmp_path)
+    result = room_export.export_room(_typed(hub), ROOM, tmp_path)
 
     assert result.new == 1
     assert [r["id"] for r in _read(tmp_path)] == ["m0", "m1", "m2", "m3"]
@@ -236,7 +259,7 @@ def test_a_cursor_whose_frame_is_gone_still_stops_where_it_did(tmp_path) -> None
 def test_since_bounds_a_first_export(tmp_path) -> None:
     hub = FakeHub([_frame(n, "coder", text=f"msg {n}") for n in range(5)])
 
-    room_export.export_room(hub, ROOM, tmp_path, since=T0 + timedelta(minutes=3))
+    room_export.export_room(_typed(hub), ROOM, tmp_path, since=T0 + timedelta(minutes=3))
 
     assert [r["id"] for r in _read(tmp_path)] == ["m3", "m4"]
 
@@ -248,7 +271,7 @@ def test_redact_replaces_secrets_and_keeps_github(tmp_path) -> None:
     )
     hub = FakeHub([_frame(0, "coder", text=text)])
 
-    room_export.export_room(hub, ROOM, tmp_path, redacted=True)
+    room_export.export_room(_typed(hub), ROOM, tmp_path, redacted=True)
     (line,) = _read(tmp_path)
 
     assert line["text"] == (
@@ -259,24 +282,21 @@ def test_redact_replaces_secrets_and_keeps_github(tmp_path) -> None:
 
 def test_an_export_directory_belongs_to_one_room_and_one_mode(tmp_path) -> None:
     hub = FakeHub([_frame(0, "coder", text="hi")])
-    room_export.export_room(hub, ROOM, tmp_path)
+    room_export.export_room(_typed(hub), ROOM, tmp_path)
 
     with pytest.raises(room_export.ExportError, match="not 'other'"):
-        room_export.export_room(hub, "other", tmp_path)
+        room_export.export_room(_typed(hub), "other", tmp_path)
     with pytest.raises(room_export.ExportError, match="not redacted"):
-        room_export.export_room(hub, ROOM, tmp_path, redacted=True)
+        room_export.export_room(_typed(hub), ROOM, tmp_path, redacted=True)
 
 
 def _patch_command(monkeypatch: pytest.MonkeyPatch, hub: FakeHub) -> None:
-    fake_config = SimpleNamespace(server=SimpleNamespace(api_url="http://localhost:8000"))
-    monkeypatch.setattr(room_cmd.MyceliumConfig, "load", classmethod(lambda _cls: fake_config))
+    fake_config = MyceliumConfig()
+    fake_config.server.api_url = "http://localhost:8000"
+    monkeypatch.setattr(MyceliumConfig, "load", classmethod(lambda _cls, *_a, **_k: fake_config))
     monkeypatch.setattr(room_cmd, "_resolve_room", lambda _c, r: r or ROOM)
-
-    @contextmanager
-    def fake_client(*_args: Any, **_kwargs: Any):
-        yield hub
-
-    monkeypatch.setattr(room_cmd, "hub_client", fake_client)
+    monkeypatch.setattr("mycelium.caller.find_membership", lambda *_a, **_k: None)
+    install_stand_in_hub(monkeypatch).answer = hub.answer
 
 
 def test_the_command_says_what_it_wrote(tmp_path, monkeypatch) -> None:

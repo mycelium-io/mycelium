@@ -17,15 +17,13 @@ import shutil
 import subprocess
 from pathlib import Path
 
-import httpx
 import typer
 
 from mycelium.cli_options import confirms, emits_json
-from mycelium.client import hub_error_detail
+from mycelium.client import typed_client
 from mycelium.config import MyceliumConfig, ServerConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
-from mycelium.http_client import MyceliumHTTPClient  # kept for health check
 from mycelium.ui_status import (
     CheckResult,
     print_check,
@@ -782,46 +780,27 @@ def status(ctx: typer.Context) -> None:
         from mycelium import __version__ as cli_version
 
         # -- Backend health (includes LLM, embedding, version) ---------------
-        backend_running = False
+        from mycelium.hub_check import health as hub_health
+
         backend_room_count = 0
-        health_data: dict = {}
-
+        said = hub_health(config.server.api_url, check_llm=True, timeout=30.0)
+        read = said.read
+        backend_running = read is not None and read.status in ("ok", "degraded")
         backend_error: str | None = None
-        with MyceliumHTTPClient(config=config) as client:
-            try:
-                try:
-                    health_resp = client.get("/health", params={"check_llm": "true"})
-                except httpx.HTTPStatusError as missing:
-                    # A hub reached at its app's address answers only under /api.
-                    if missing.response.status_code != 404:
-                        raise
-                    health_resp = client.get("/api/health", params={"check_llm": "true"})
-                health_data = health_resp.json()
-                backend_running = health_data.get("status") in ("ok", "degraded")
-            except Exception as exc:
-                backend_running = False
-                if isinstance(exc, httpx.ConnectError):
-                    backend_error = f"Cannot connect to {config.server.api_url}"
-                elif isinstance(exc, httpx.TimeoutException):
-                    backend_error = f"Timeout connecting to {config.server.api_url}"
-                elif isinstance(exc, httpx.HTTPStatusError):
-                    detail = hub_error_detail(exc.response.content)
-                    if detail:
-                        backend_error = (
-                            f"Backend returned HTTP {exc.response.status_code}: {detail}"
-                        )
-                    else:
-                        backend_error = f"Backend returned HTTP {exc.response.status_code}"
-                else:
-                    backend_error = str(exc)
+        if not said.answered:
+            backend_error = f"Cannot reach {config.server.api_url}: {said.error}"
+        elif read is None:
+            backend_error = f"Backend at {said.url}: {said.error}"
 
-            if backend_running:
-                try:
-                    response = client.get("/api/rooms")
-                    rooms = response.json()
-                    backend_room_count = len(rooms) if isinstance(rooms, list) else 0
-                except Exception:
-                    pass
+        if backend_running:
+            from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get
+
+            try:
+                with typed_client(config, timeout=30) as rooms_client:
+                    rooms = list_rooms_api_rooms_get.sync(client=rooms_client)
+                backend_room_count = len(rooms) if isinstance(rooms, list) else 0
+            except Exception:
+                pass
 
         from mycelium.hub_check import credential
 
@@ -838,12 +817,12 @@ def status(ctx: typer.Context) -> None:
             output: dict = {
                 "versions": {
                     "cli": cli_version,
-                    "backend": health_data.get("version"),
+                    "backend": said.version,
                 },
                 "services": {
                     "backend": {
                         "url": config.server.api_url,
-                        "status": health_data.get("status", "down"),
+                        "status": read.status if read else "down",
                         "running": backend_running,
                         "room_count": backend_room_count,
                         "credential": None
@@ -855,9 +834,9 @@ def status(ctx: typer.Context) -> None:
                             "fix": check.fix,
                         },
                     },
-                    "database": health_data.get("database"),
-                    "llm": health_data.get("llm"),
-                    "embedding": health_data.get("embedding"),
+                    "storage": said.storage.to_dict() if said.storage else None,
+                    "llm": said.llm.to_dict() if said.llm else None,
+                    "embedding": said.embedding.to_dict() if said.embedding else None,
                     "docker": docker_info,
                 },
                 "system": {
@@ -873,7 +852,7 @@ def status(ctx: typer.Context) -> None:
             }
             typer.echo(json.dumps(output, indent=2))
         else:
-            backend_version = health_data.get("version")
+            backend_version = said.version
             version_line = f"CLI {cli_version}"
             if backend_version:
                 version_line += f"  /  Backend {backend_version}"
@@ -910,45 +889,32 @@ def status(ctx: typer.Context) -> None:
                     )
                 )
 
-            db_info = health_data.get("database") or {}
-            if db_info:
+            if storage := said.storage:
                 services.append(
-                    CheckResult(
-                        name="Database",
-                        status=db_info.get("status", "unknown"),
-                        message=db_info.get("message", "Unknown"),
-                    )
+                    CheckResult(name="Storage", status=storage.status, message=storage.message)
                 )
 
-            llm_info = health_data.get("llm") or {}
-            if llm_info:
-                llm_status = llm_info.get("status", "unknown")
-                model = llm_info.get("model", "") or "<unset>"
-                key_hint = llm_info.get("key_hint") or ""
-                if llm_status == "ok":
+            if llm := said.llm:
+                model = llm.model or "<unset>"
+                key_hint = llm.key_hint or ""
+                if llm.status == "ok":
                     msg = f"{model}" + (f" ({key_hint})" if key_hint else "")
                 else:
-                    label = llm_status.replace("_", " ").title()
+                    label = llm.status.replace("_", " ").title()
                     msg = f"{label}: {model}" + (f" ({key_hint})" if key_hint else "")
-                llm_details = []
-                if llm_info.get("message") and llm_status != "ok":
-                    llm_details.append(llm_info["message"])
+                llm_details = [llm.message] if llm.message and llm.status != "ok" else []
                 services.append(
-                    CheckResult(name="LLM", status=llm_status, message=msg, details=llm_details)
+                    CheckResult(name="LLM", status=llm.status, message=msg, details=llm_details)
                 )
 
-            embed_info = health_data.get("embedding") or {}
-            if embed_info:
-                model = embed_info.get("model", "") or "<unset>"
-                msg_text = embed_info.get("message", "")
+            if embed := said.embedding:
+                model = embed.model or "<unset>"
                 msg = f"{model}" + (
-                    f" ({msg_text})" if msg_text and msg_text != "Model loaded" else " (loaded)"
+                    f" ({embed.message})"
+                    if embed.message and embed.message != "Model loaded"
+                    else " (loaded)"
                 )
-                services.append(
-                    CheckResult(
-                        name="Embedding", status=embed_info.get("status", "unknown"), message=msg
-                    )
-                )
+                services.append(CheckResult(name="Embedding", status=embed.status, message=msg))
 
             print_section("Services")
             for r in services:
@@ -1014,7 +980,7 @@ def status(ctx: typer.Context) -> None:
             # ── Verdict ───────────────────────────────────────────────
             from mycelium.desktop.checks import start_hub
 
-            overall_status = health_data.get("status", "down")
+            overall_status = read.status if read else "down"
             if not backend_running:
                 fail_msg = (
                     f"Backend unreachable: {backend_error}"
@@ -1309,14 +1275,13 @@ def pull(
         typer.echo("  Waiting for health...")
         deadline = time.time() + 60
         healthy = False
+        from mycelium.hub_check import health
+
         while time.time() < deadline:
-            try:
-                r = httpx.get(f"{api_url}/health", timeout=3)
-                if r.status_code < 500:
-                    healthy = True
-                    break
-            except Exception:
-                pass
+            said = health(api_url, timeout=3)
+            if said.status_code is not None and said.status_code < 500:  # noqa: PLR2004
+                healthy = True
+                break
             time.sleep(3)
 
         if healthy:

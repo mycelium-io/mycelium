@@ -16,6 +16,7 @@ import pytest
 from typer.testing import CliRunner
 
 from mycelium.commands import room as room_cmd
+from tests.hub_answers import ok
 
 
 def _make_messages() -> list:
@@ -53,8 +54,8 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch, sync_fn) -> None:
     monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: fake_cm)
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync",
-        sync_fn,
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
+        lambda **kw: ok(sync_fn(**kw)),
     )
 
 
@@ -408,8 +409,8 @@ def test_a_verifier_line_shows_under_its_message(monkeypatch: pytest.MonkeyPatch
         flag(str(msgs[0].id), "Someone said this one is fine.", VerifierFlagReadState.FINE),
     ]
     monkeypatch.setattr(
-        "mycelium_backend_client.api.verifier.list_flags_api_rooms_room_name_verifier_flags_get.sync",
-        lambda **_kw: flags,
+        "mycelium_backend_client.api.verifier.list_flags_api_rooms_room_name_verifier_flags_get.sync_detailed",
+        lambda **_kw: ok(flags),
     )
 
     result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest"])

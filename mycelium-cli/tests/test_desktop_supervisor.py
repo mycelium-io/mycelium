@@ -577,11 +577,14 @@ def test_a_taken_ui_port_is_said_and_the_ui_goes_on_another(monkeypatch: pytest.
     assert (sup.ui_port, ui.running_detail) == (port, None)
 
 
-def test_the_ui_counts_as_up_only_once_it_proves_it_holds_the_token():
+def test_the_ui_counts_as_up_only_once_it_proves_it_holds_the_token(
+    monkeypatch: pytest.MonkeyPatch,
+):
     """Whatever answers on the port must answer a fresh nonce with the HMAC
     only this launch's token makes; a program that took the port can't."""
-    import http.server
-    from urllib.parse import parse_qs, urlparse
+    import httpx
+
+    from tests.conftest import install_stand_in_hub
 
     token = "a" * 64
     # The same vector as the UI server's test (`ui-guard.test.ts`).
@@ -589,30 +592,12 @@ def test_the_ui_counts_as_up_only_once_it_proves_it_holds_the_token():
         "e09458aaecee116ce381f943381097f89f5e436f943082fc27346c2457188ff9"
     )
 
-    def serve(answer) -> http.server.HTTPServer:
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self) -> None:  # noqa: N802
-                nonce = parse_qs(urlparse(self.path).query).get("nonce", [""])[0]
-                body = answer(nonce).encode()
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
-                pass
-
-        server = http.server.HTTPServer((sv.HOST, 0), Handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        return server
-
+    on_the_port = install_stand_in_hub(monkeypatch)
     for answer, proves in ((lambda n: "ok", False), (lambda n: sv.ui_proof(n, token), True)):
-        server = serve(answer)
-        try:
-            url = f"http://{sv.HOST}:{server.server_address[1]}"
-            assert sv.proves_token(url, token) is proves
-        finally:
-            server.shutdown()
+        on_the_port.answer = lambda request, answer=answer: httpx.Response(
+            200, text=answer(request.url.params.get("nonce", ""))
+        )
+        assert sv.proves_token(f"http://{sv.HOST}:3000", token) is proves
 
 
 @pytest.mark.parametrize(("share", "sent"), [(True, "true"), (False, "false"), (None, None)])

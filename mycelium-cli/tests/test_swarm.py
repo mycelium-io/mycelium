@@ -26,9 +26,13 @@ from mycelium.commands.herdr import wake_prompt_for
 from mycelium.config import MyceliumConfig, SwarmConfig
 from mycelium.integrations.herdr import HerdrBridge, HerdrError
 from mycelium.protocol import AgentManifest
+from mycelium_backend_client import Client
+from mycelium_backend_client.models import HerdrWakeRead
+from tests.conftest import memory_read
 from tests.herdr_layout import HerdrLayout
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from mycelium.config import MyceliumConfig
@@ -136,30 +140,65 @@ def test_the_brief_says_who_you_are_and_how_the_team_works():
 # ── the hub ───────────────────────────────────────────────────────────────────
 
 
-def _hub(existing_room: bool = False) -> tuple[httpx.Client, list[tuple[str, str, Any]]]:
+def _client(handle: Callable[[httpx.Request], httpx.Response]) -> Client:
+    """The typed client the swarm opens, answered by ``handle``."""
+    return Client(
+        base_url="http://hub",
+        raise_on_unexpected_status=False,
+        httpx_args={"transport": httpx.MockTransport(handle)},
+    )
+
+
+def _room(name: str) -> dict[str, Any]:
+    """A room as the hub's ``RoomRead`` answers it."""
+    return {"id": 1, "name": name, "is_public": True, "created_at": "2026-08-24T10:00:00Z"}
+
+
+def _hub(existing_room: bool = False) -> tuple[Client, list[tuple[str, str, Any]]]:
+    handle, seen = _answers(existing_room)
+    return _client(handle), seen
+
+
+def _answers(
+    existing_room: bool,
+) -> tuple[Callable[[httpx.Request], httpx.Response], list[tuple[str, str, Any]]]:
     seen: list[tuple[str, str, Any]] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else None
         seen.append((request.method, request.url.path, body))
+        sent: dict[str, Any] = body or {}
         path = request.url.path
         if request.method == "GET" and path == "/api/rooms/fix-tests":
-            return httpx.Response(200 if existing_room else 404, json={})
+            if existing_room:
+                return httpx.Response(200, json=_room("fix-tests"))
+            return httpx.Response(404, json={"detail": "Room not found"})
         if path == "/api/rooms":
-            return httpx.Response(201, json={"name": "fix-tests"})
+            return httpx.Response(201, json=_room("fix-tests"))
         if path.endswith("/engines"):
-            code = 409 if body and body["handle"] == "conductor" else 201
-            return httpx.Response(code, json={})
+            if sent.get("handle") == "conductor":
+                return httpx.Response(409, json={"detail": "already registered"})
+            return httpx.Response(201, json={"handle": sent.get("handle"), "adapter": "engine"})
         if path.endswith("/tasks"):
             return httpx.Response(
-                201, json={"key": "work/fix-the-tests", "episode": "urn:ep:fix-tests:t1"}
+                201,
+                json=memory_read("work/fix-the-tests", "fix-tests", episode="urn:ep:fix-tests:t1"),
             )
-        if path.endswith(("/messages", "/memory")):
-            return httpx.Response(201, json={})
+        if path.endswith("/messages"):
+            message = {
+                "id": "00000000-0000-0000-0000-000000000001",
+                "sender_handle": sent.get("sender_handle"),
+                "message_type": sent.get("message_type"),
+                "content": sent.get("content"),
+                "created_at": "2026-08-24T10:00:00Z",
+            }
+            return httpx.Response(201, json=message)
+        if path.endswith("/memory"):
+            items = [memory_read(i["key"], "fix-tests") for i in sent.get("items", [])]
+            return httpx.Response(201, json=items)
         return httpx.Response(500, text="unexpected")
 
-    client = httpx.Client(base_url="http://hub", transport=httpx.MockTransport(handle))
-    return client, seen
+    return handle, seen
 
 
 def test_a_swarm_joins_a_room_and_never_makes_one():
@@ -176,10 +215,11 @@ def test_a_swarm_joins_a_room_and_never_makes_one():
 
 
 def test_the_kickoff_summons_the_conductor_in_the_tasks_thread():
-    client, seen = _hub()
+    client, _seen = _hub()
     key, episode = swarm.file_task(client, "fix-tests", "Fix the tests", "julia")
     assert (key, episode) == ("work/fix-the-tests", "urn:ep:fix-tests:t1")
 
+    client, seen = _hub()
     swarm.kick_off(client, "fix-tests", episode, ["agent-1", "agent-2"], "Fix the tests", "julia")
 
     _m, path, body = seen[-1]
@@ -190,10 +230,7 @@ def test_the_kickoff_summons_the_conductor_in_the_tasks_thread():
 
 
 def test_a_refusal_from_the_hub_is_a_swarm_error():
-    client = httpx.Client(
-        base_url="http://hub",
-        transport=httpx.MockTransport(lambda _r: httpx.Response(403, text="not yours")),
-    )
+    client = _client(lambda _r: httpx.Response(403, json={"detail": "not yours"}))
     with pytest.raises(swarm.SwarmError, match="not yours"):
         swarm.file_task(client, "r", "t", "julia")
 
@@ -309,25 +346,30 @@ def test_each_local_member_is_handed_its_brief_through_the_room(
     assert "`mycelium memory get agents/agent-2/notes`" in prompts[1][3]
 
 
+def _wake(**fields: Any) -> HerdrWakeRead:
+    """A wake as the hub's drain hands it over."""
+    return HerdrWakeRead.from_dict(fields)
+
+
 def test_a_wake_is_worded_by_why_it_was_queued():
-    turn = wake_prompt_for("r", {"handle": "agent-1", "reason": "turn"})
+    turn = wake_prompt_for("r", _wake(handle="agent-1", reason="turn"))
     assert "mycelium await --room r --handle agent-1" in turn
     assigned = wake_prompt_for(
-        "r", {"handle": "agent-2", "reason": "assigned", "key": "work/x", "title": "Do X"}
+        "r", _wake(handle="agent-2", reason="assigned", key="work/x", title="Do X")
     )
     assert "'Do X' (work/x)" in assigned
     assert "board claim work/x --room r --to @agent-2" in assigned
     # A mention is read through await too, so the room sees the agent
     # responding and the reply lands where it was asked.
-    mention = wake_prompt_for("r", {"handle": "agent-3"})
+    mention = wake_prompt_for("r", _wake(handle="agent-3"))
     assert "mycelium await --room r --handle agent-3" in mention
 
 
 def test_a_wake_types_the_hubs_digest_when_it_sends_one():
     digest = "mycelium wake for @agent-3 in r\n\nWhy:     @hay mentioned you in the room (r)"
-    assert wake_prompt_for("r", {"handle": "agent-3", "prompt": digest}) == digest
+    assert wake_prompt_for("r", _wake(handle="agent-3", prompt=digest)) == digest
     # A blank one is no digest: the wording by reason stands in.
-    assert "mycelium await" in wake_prompt_for("r", {"handle": "agent-3", "prompt": "  "})
+    assert "mycelium await" in wake_prompt_for("r", _wake(handle="agent-3", prompt="  "))
 
 
 # ── the live view ─────────────────────────────────────────────────────────────
@@ -593,33 +635,35 @@ def test_a_slow_shell_is_said_once_and_still_waited_for(monkeypatch: pytest.Monk
 
 
 def test_an_older_hub_without_the_conductor_says_what_to_do():
-    client = httpx.Client(
-        base_url="http://hub",
-        transport=httpx.MockTransport(
-            lambda _r: httpx.Response(422, text="Unknown engine kind 'conductor'; known: [...]")
-        ),
+    client = _client(
+        lambda _r: httpx.Response(
+            422, json={"detail": "Unknown engine kind 'conductor'; known: [...]"}
+        )
     )
     with pytest.raises(swarm.SwarmError, match="mycelium upgrade"):
         swarm.ensure_engine(client, "r", "conductor", "conductor", "julia")
 
 
-def _swarms_hub(response: httpx.Response) -> tuple[httpx.Client, list[dict[str, Any]]]:
+def _swarms_hub(response: httpx.Response) -> tuple[Client, list[dict[str, Any]]]:
     sent: list[dict[str, Any]] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
         if request.method == "GET":
             assert request.url.path == "/api/rooms/r"
-            return httpx.Response(200, json={"name": "r"})
+            return httpx.Response(200, json=_room("r"))
         assert (request.method, request.url.path) == ("POST", "/api/rooms/r/swarms")
         sent.append(json.loads(request.content))
         return response
 
-    return httpx.Client(base_url="http://hub", transport=httpx.MockTransport(handle)), sent
+    return _client(handle), sent
 
 
 def test_a_hub_team_is_set_up_by_the_hub_and_kicked_off_by_the_view():
     client, sent = _swarms_hub(
-        httpx.Response(201, json={"room": "r", "key": "work/x", "episode": "urn:ep:r:t1"})
+        httpx.Response(
+            201,
+            json={"room": "r", "key": "work/x", "episode": "urn:ep:r:t1", "members": []},
+        )
     )
 
     got = swarm.start_on_hub(client, "Add a health check", 3, "r", "julia", "git@host:org/api")

@@ -17,6 +17,13 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.schemas import (
+    ExpandedMemoryRead,
+    LinkGraphRead,
+    LinkIntegrityRead,
+    MemoryLinksRead,
+    refusals,
+)
 from app.services import links
 from app.services.filesystem import room_exists
 
@@ -30,7 +37,7 @@ def _require_room(room_name: str) -> None:
         raise HTTPException(status_code=404, detail="Room not found")
 
 
-@router.get("")
+@router.get("", response_model=MemoryLinksRead, responses=refusals(404))
 async def get_links(
     room_name: str,
     key: str = Query(..., description="Memory key to resolve links for"),
@@ -44,21 +51,21 @@ async def get_links(
     }
 
 
-@router.get("/graph")
+@router.get("/graph", response_model=LinkGraphRead, responses=refusals(404))
 async def get_graph(room_name: str):
     """The room's link graph — one node per memory, one edge per link."""
     _require_room(room_name)
     return links.graph(room_name)
 
 
-@router.get("/integrity")
+@router.get("/integrity", response_model=LinkIntegrityRead, responses=refusals(404))
 async def get_integrity(room_name: str):
     """Broken links, orphans, roots, and leaves across the room."""
     _require_room(room_name)
     return links.integrity(room_name)
 
 
-@router.get("/expand")
+@router.get("/expand", response_model=ExpandedMemoryRead, responses=refusals(404))
 async def get_expanded(
     room_name: str,
     key: str = Query(..., description="Memory key to render"),

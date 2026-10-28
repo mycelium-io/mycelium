@@ -4,7 +4,7 @@
 """Unit tests for ``mycelium memory`` (set / get / ls / search).
 
 Node-free and file-free: every command resolves against the hub, so the API
-``.sync`` functions are stubbed. The temp home (``isolated_home``) deliberately
+``.sync_detailed`` functions are stubbed. The temp home (``isolated_home``) deliberately
 holds no ``rooms/`` files — that is the point of the thin client, and the reads
 below still return the hub's memories.
 """
@@ -23,6 +23,7 @@ from typer.testing import CliRunner
 
 from mycelium.commands import memory as memory_cmd
 from mycelium_backend_client.errors import UnexpectedStatus
+from tests.hub_answers import ok
 
 runner = CliRunner()
 
@@ -50,6 +51,8 @@ def _hub(monkeypatch: pytest.MonkeyPatch) -> None:
 def _record(key: str, value: Any, **overrides: Any) -> dict[str, Any]:
     """A memory as the hub's list endpoint serializes it."""
     return {
+        "id": str(uuid.uuid4()),
+        "room_name": "demo",
         "key": key,
         "value": value,
         "created_by": "tester",
@@ -89,26 +92,28 @@ def _stub_get(monkeypatch: pytest.MonkeyPatch, result: Any) -> None:
     def _sync(**_kw: Any):
         if isinstance(result, Exception):
             raise result
-        return result
+        return ok(result)
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.memory.get_memory_api_rooms_room_name_memory_key_get.sync",
+        "mycelium_backend_client.api.memory.get_memory_api_rooms_room_name_memory_key_get.sync_detailed",
         _sync,
     )
 
 
 def _stub_list(monkeypatch: pytest.MonkeyPatch, result: Any) -> list[dict[str, Any]]:
     """Stub list-memories API; return call kwargs."""
+    from mycelium_backend_client.models import MemoryRead
+
     calls: list[dict[str, Any]] = []
 
     def _sync(**kwargs: Any):
         calls.append(kwargs)
         if isinstance(result, Exception):
             raise result
-        return result
+        return ok([MemoryRead.from_dict(r) for r in result])
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.memory.list_memories_api_rooms_room_name_memory_get.sync",
+        "mycelium_backend_client.api.memory.list_memories_api_rooms_room_name_memory_get.sync_detailed",
         _sync,
     )
     return calls
@@ -121,10 +126,11 @@ def _stub_create(monkeypatch: pytest.MonkeyPatch) -> list:
     def _sync(*, room_name: str, client, body):  # noqa: ANN001, ARG001
         captured.append(body)
         item = body.items[0]
-        return [_memory_read(item.key, item.value, room_name=room_name, created_by=item.created_by)]
+        saved = _memory_read(item.key, item.value, room_name=room_name, created_by=item.created_by)
+        return ok([saved], 201)
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.memory.create_memories_api_rooms_room_name_memory_post.sync",
+        "mycelium_backend_client.api.memory.create_memories_api_rooms_room_name_memory_post.sync_detailed",
         _sync,
     )
     return captured
@@ -379,7 +385,7 @@ def test_memory_set_403_surfaces_backend_detail(monkeypatch: pytest.MonkeyPatch)
         raise UnexpectedStatus(403, json.dumps({"detail": detail_msg}).encode())
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.memory.create_memories_api_rooms_room_name_memory_post.sync",
+        "mycelium_backend_client.api.memory.create_memories_api_rooms_room_name_memory_post.sync_detailed",
         _sync,
     )
 
@@ -471,8 +477,8 @@ def test_memory_search_renders_backend_results(monkeypatch: pytest.MonkeyPatch) 
     resp = MemorySearchResponse(results=[MemorySearchResult(memory=mem, similarity=0.91)], total=1)
     monkeypatch.setattr(
         "mycelium_backend_client.api.memory."
-        "search_memories_api_rooms_room_name_memory_search_post.sync",
-        lambda **_kw: resp,
+        "search_memories_api_rooms_room_name_memory_search_post.sync_detailed",
+        lambda **_kw: ok(resp),
     )
 
     result = runner.invoke(memory_cmd.app, ["search", "database choice", "--room", "demo"])
@@ -487,8 +493,8 @@ def test_memory_search_no_results(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         "mycelium_backend_client.api.memory."
-        "search_memories_api_rooms_room_name_memory_search_post.sync",
-        lambda **_kw: MemorySearchResponse(results=[], total=0),
+        "search_memories_api_rooms_room_name_memory_search_post.sync_detailed",
+        lambda **_kw: ok(MemorySearchResponse(results=[], total=0)),
     )
 
     result = runner.invoke(memory_cmd.app, ["search", "nothing", "--room", "demo"])
@@ -543,8 +549,8 @@ def test_memory_search_json(monkeypatch: pytest.MonkeyPatch) -> None:
     resp = MemorySearchResponse(results=[MemorySearchResult(memory=mem, similarity=0.91)], total=1)
     monkeypatch.setattr(
         "mycelium_backend_client.api.memory."
-        "search_memories_api_rooms_room_name_memory_search_post.sync",
-        lambda **_kw: resp,
+        "search_memories_api_rooms_room_name_memory_search_post.sync_detailed",
+        lambda **_kw: ok(resp),
     )
 
     result = runner.invoke(memory_cmd.app, ["search", "db", "--room", "demo", "--json"])
@@ -563,7 +569,7 @@ def test_memory_rm_skips_the_prompt(monkeypatch: pytest.MonkeyPatch, flag: str) 
     monkeypatch.setattr(
         "mycelium_backend_client.api.memory."
         "delete_memory_api_rooms_room_name_memory_key_delete.sync_detailed",
-        lambda **kw: deleted.append(kw["key"]),
+        lambda **kw: deleted.append(kw["key"]) or ok(None, 204),
     )
 
     result = runner.invoke(memory_cmd.app, ["rm", "decisions/db", "--room", "demo", flag])

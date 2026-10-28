@@ -10,13 +10,12 @@ The mediator-Pi check has its own file (``test_doctor_mediator_pi``).
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from mycelium.commands import doctor
 from mycelium.config import MyceliumConfig
 from mycelium.slim import naming
+from tests.conftest import install_stand_in_hub
 
 
 @pytest.mark.parametrize(
@@ -65,11 +64,18 @@ def test_check_config_files_ok_when_configured_from_env(
     assert "environment" in result.message
 
 
+def _ungated_hub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A hub whose ``/health`` says its sign-in gate is off."""
+    install_stand_in_hub(monkeypatch).answer = lambda _request: {
+        "status": "ok",
+        "service": "mycelium-backend",
+        "version": "0.0.0-test",
+        "auth": {"enabled": False, "issuers": [], "localhost_bypass": False, "audience": None},
+    }
+
+
 def test_check_http_auth_gate_warns_on_remote_ungated(monkeypatch: pytest.MonkeyPatch) -> None:
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"auth": {"enabled": False}}
-    monkeypatch.setattr("httpx.get", lambda *a, **k: mock_resp)
+    _ungated_hub(monkeypatch)
 
     result = doctor._check_http_auth_gate(api_url="http://hub.lan:8000")
     assert result.status == "warning"
@@ -77,10 +83,7 @@ def test_check_http_auth_gate_warns_on_remote_ungated(monkeypatch: pytest.Monkey
 
 
 def test_check_http_auth_gate_ok_on_localhost_ungated(monkeypatch: pytest.MonkeyPatch) -> None:
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"auth": {"enabled": False}}
-    monkeypatch.setattr("httpx.get", lambda *a, **k: mock_resp)
+    _ungated_hub(monkeypatch)
 
     result = doctor._check_http_auth_gate(api_url="http://localhost:8000")
     assert result.status == "ok"

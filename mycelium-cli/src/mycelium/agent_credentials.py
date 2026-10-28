@@ -49,6 +49,7 @@ from rich.console import Console
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
+    from mycelium_backend_client.types import Response
 
 #: Overrides the credential store location (tests, CI runners with a shared home).
 CREDENTIAL_STORE_ENV = "MYCELIUM_AGENT_CREDENTIALS_FILE"
@@ -273,13 +274,29 @@ class MemberTokenRefused(Exception):
         )
 
 
-def _hub_detail(resp: Any) -> str:
-    try:
-        body = resp.json()
-    except ValueError:
-        return resp.text.strip()[:200]
-    detail = body.get("detail") if isinstance(body, dict) else None
-    return str(detail)[:200] if detail else resp.text.strip()[:200]
+def _hub_detail(resp: Response[Any]) -> str:
+    from mycelium.client import hub_error_detail
+
+    return hub_error_detail(resp.content)[:200]
+
+
+def redeem_join_code(hub_url: str, code: str) -> Response[Any]:
+    """Redeem a join code at ``hub_url``: the membership it names, or the hub's refusal.
+
+    No credential on this call: the code is the credential, and a hub pointed
+    somewhere unexpected is never sent this machine's login. So it goes on a
+    bare generated client rather than ``typed_client``.
+    """
+    import httpx
+
+    from mycelium_backend_client import Client
+    from mycelium_backend_client.api.joins import redeem_join_api_joins_redeem_post as redeem_api
+    from mycelium_backend_client.models import JoinRedeem
+
+    with Client(
+        base_url=hub_url, timeout=httpx.Timeout(15.0), raise_on_unexpected_status=False
+    ) as client:
+        return redeem_api.sync_detailed(client=client, body=JoinRedeem(code=code))
 
 
 def issue_member_token(config: MyceliumConfig, room: str, handle: str) -> Path | None:
@@ -298,29 +315,28 @@ def issue_member_token(config: MyceliumConfig, room: str, handle: str) -> Path |
     """
     import httpx
 
-    from mycelium.client import hub_client
+    from mycelium.client import answered, typed_client
+    from mycelium_backend_client.api.joins import (
+        create_join_api_rooms_room_name_joins_post as joins_api,
+    )
+    from mycelium_backend_client.errors import UnexpectedStatus
+    from mycelium_backend_client.models import JoinCreate, JoinRead, MembershipRead
 
     name = normalize_handle(handle) or handle
     try:
-        with hub_client(config, timeout=15) as client:
-            made = client.post(f"/api/rooms/{room}/joins", json={"handle": name})
+        with typed_client(config, timeout=15, raise_on_unexpected_status=False) as client:
+            made = joins_api.sync_detailed(room, client=client, body=JoinCreate(handle=name))
         if made.status_code in (401, 403):
             raise MemberTokenRefused(
                 name, config.server.api_url.rstrip("/"), made.status_code, _hub_detail(made)
             )
-        if made.status_code != 201:
-            _warn_once(
-                name, f"[yellow]No token for @{name}:[/yellow] the hub said {made.text[:200]}"
-            )
+        if not isinstance(made.parsed, JoinRead):
+            said = made.content.decode(errors="replace")[:200]
+            _warn_once(name, f"[yellow]No token for @{name}:[/yellow] the hub said {said}")
             return None
-        hub_url = config.server.api_url.rstrip("/")
-        # The code is the credential here: nobody's login rides on this call.
-        redeemed = httpx.post(
-            f"{hub_url}/api/joins/redeem", json={"code": made.json()["code"]}, timeout=15.0
-        )
-        redeemed.raise_for_status()
-        token = redeemed.json().get("token")
-    except (httpx.HTTPError, KeyError, ValueError) as e:
+        redeemed = redeem_join_code(config.server.api_url.rstrip("/"), made.parsed.code)
+        token = answered(redeemed, MembershipRead).token or None
+    except (httpx.HTTPError, UnexpectedStatus, KeyError, ValueError, TypeError) as e:
         _warn_once(name, f"[yellow]No token for @{name}:[/yellow] {e}")
         return None
     if not token:

@@ -440,37 +440,26 @@ def _compose_up(compose_path: Path, env_path: Path) -> tuple[bool, bool]:
     return result.returncode == 0, needs_build
 
 
-def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
-    try:
-        import httpx
-    except ImportError:
-        typer.echo("  ⚠ httpx not installed, skipping health check")
-        return False
+def _wait_for_health(api_url: str, timeout: int = 120) -> bool:
+    """Wait for the hub at ``api_url`` to answer its health check, for up to ``timeout`` s."""
+    from mycelium.hub_check import health
 
     deadline = time.time() + timeout
-    pending = list(urls)
+    up = False
 
     sys.stdout.write("  Waiting for services to become healthy")
     sys.stdout.flush()
 
-    while pending and time.time() < deadline:
+    while not up and time.time() < deadline:
         time.sleep(3)
         sys.stdout.write(".")
         sys.stdout.flush()
-        still_pending = []
-        for url in pending:
-            try:
-                r = httpx.get(url, timeout=3)
-                if r.status_code < 500:
-                    continue
-            except Exception:
-                pass
-            still_pending.append(url)
-        pending = still_pending
+        said = health(api_url, timeout=3)
+        up = said.status_code is not None and said.status_code < 500  # noqa: PLR2004
 
     print()
-    if pending:
-        typer.secho(f"  ⚠  Timed out waiting for: {', '.join(pending)}", fg=typer.colors.YELLOW)
+    if not up:
+        typer.secho(f"  ⚠  Timed out waiting for: {api_url}/health", fg=typer.colors.YELLOW)
         return False
     return True
 
@@ -488,34 +477,15 @@ def _probe_llm_via_backend(api_url: str) -> tuple[str, str, str, str]:
     unreachable | not_configured | unchecked | error) or the special value
     ``"backend_down"`` when the backend itself isn't reachable.
     """
-    try:
-        import httpx
-    except ImportError:
-        return ("backend_down", "", "httpx not installed", "")
+    from mycelium.hub_check import health
 
-    try:
-        resp = httpx.get(
-            f"{api_url}/health",
-            params={"check_llm": "true", "llm_probe": "completion"},
-            timeout=30,
-        )
-    except Exception as exc:
-        return ("backend_down", "", f"cannot reach backend: {exc}", "")
-
-    if resp.status_code >= 500:
-        return ("backend_down", "", f"backend returned HTTP {resp.status_code}", "")
-
-    try:
-        llm = resp.json().get("llm", {}) or {}
-    except Exception:
-        return ("backend_down", "", "backend returned non-JSON response", "")
-
-    return (
-        llm.get("status", "unknown") or "unknown",
-        llm.get("model", "") or "",
-        llm.get("message", "") or "",
-        llm.get("remediation") or "",
-    )
+    said = health(api_url, check_llm=True, probe="completion", timeout=30)
+    if not said.answered:
+        return ("backend_down", "", f"cannot reach backend: {said.error}", "")
+    llm = said.llm
+    if llm is None:
+        return ("backend_down", "", f"backend: {said.error or 'no model reported'}", "")
+    return (llm.status or "unknown", llm.model or "", llm.message or "", llm.remediation or "")
 
 
 def _report_llm_probe_result(
@@ -885,7 +855,7 @@ def install(
 
             api_url = f"http://localhost:{custom_ports['backend']}"
             health_timeout = 300 if needs_build else 120
-            _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
+            _wait_for_health(api_url, timeout=health_timeout)
 
             _write_mycelium_config(
                 api_url,
@@ -1104,7 +1074,7 @@ def install(
         api_url = f"http://localhost:{custom_ports['backend']}"
         health_timeout = 300 if needs_build else 120
         print()
-        _wait_for_health([f"{api_url}/health"], timeout=health_timeout)
+        _wait_for_health(api_url, timeout=health_timeout)
 
         # ── Phase 5: Write config ─────────────────────────────────────────
         print()

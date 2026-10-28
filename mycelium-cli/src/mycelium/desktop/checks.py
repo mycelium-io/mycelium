@@ -82,13 +82,9 @@ def _get(url: str, timeout: float = 3.0) -> httpx.Response | None:
 
 
 def hub(api_url: str) -> CheckResult:
-    base = api_url.rstrip("/")
-    resp = _get(f"{base}/health")
-    # A hub reached at its UI's address answers only under /api, where the UI
-    # maps /api/health onto the hub's /health.
-    if resp is not None and resp.status_code == 404:
-        resp = _get(f"{base}/api/health")
-    if resp is not None and resp.status_code == 200:
+    from mycelium.hub_check import health
+
+    if health(api_url).status_code == 200:  # noqa: PLR2004
         return CheckResult(name="Hub", status="ok", message=f"answering at {api_url}")
     return CheckResult(
         name="Hub",
@@ -153,9 +149,12 @@ def ui() -> CheckResult:
 
 
 def runner(api_url: str) -> CheckResult:
-    from mycelium.client import auth_headers
+    from mycelium.client import auth_headers, typed_client
     from mycelium.config import MyceliumConfig
     from mycelium.runner.daemon import read_sync, runner_dir, runner_id, signed_out_message
+    from mycelium_backend_client.api.runners import get_runner_api_runners_runner_id_get
+    from mycelium_backend_client.models import RunnerRead
+    from mycelium_backend_client.types import Response
 
     rid = runner_id()
     # The running runner's own word first: true whoever runs the check, where
@@ -177,14 +176,19 @@ def runner(api_url: str) -> CheckResult:
             message="running, but can't reach the hub",
             details=[f"It keeps trying; its log says why: {runner_dir() / 'runner.log'}"],
         )
-    url = f"{api_url.rstrip('/')}/api/runners/{rid}"
+    cfg = MyceliumConfig.load()
+    resp: Response[Any] | None
     try:
         # Asked as this machine, the way the runner itself asks: a hub with
-        # sign-in on answers nobody else about it.
-        resp: httpx.Response | None = httpx.get(
-            url, timeout=3.0, headers=auth_headers(MyceliumConfig.load())
+        # sign-in on answers nobody else about it. The app's hub is this
+        # machine's, so its credential goes whichever address the app names.
+        client = typed_client(
+            cfg, base_url=api_url.rstrip("/"), timeout=3.0, raise_on_unexpected_status=False
         )
-    except httpx.HTTPError:
+        with client.with_headers(auth_headers(cfg)) as client:
+            resp = get_runner_api_runners_runner_id_get.sync_detailed(rid, client=client)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        # Not reached, or an answer that isn't the hub's (a proxy's page).
         resp = None
     if resp is not None and resp.status_code == 401:
         return CheckResult(
@@ -200,8 +204,7 @@ def runner(api_url: str) -> CheckResult:
             message="the hub hasn't heard from this computer",
             details=["Without it the app can't start agents here."],
         )
-    seen = resp.json()
-    if not seen.get("connected"):
+    if not isinstance(resp.parsed, RunnerRead) or not resp.parsed.connected:
         return CheckResult(name="Runner", status="error", message="stopped checking in")
     return CheckResult(name="Runner", status="ok", message=f"connected as {rid}")
 

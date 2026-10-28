@@ -40,6 +40,7 @@ from mycelium.runner.log import ms
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
     from mycelium.runner.daemon import State, Tracked
+    from mycelium_backend_client.models import WakeOutcome
 
 
 #: Wakes delivered, in the runner's log.
@@ -709,9 +710,9 @@ class OmnigentHost:
                 {h: {"status": a.status, "title": a.detail} for h, a in members.items()},
                 self._ttl_s,
             )
-            outcomes: list[dict | None] = []
+            outcomes: list[WakeOutcome | None] = []
             for wake in fetch_wakes(config, room):
-                handle, reason = str(wake.get("handle") or ""), wake.get("reason") or "mention"
+                handle, reason = wake.handle, wake.reason or "mention"
                 agent = members.get(handle)
                 if agent is None:
                     _log.warning("wake @%s (%s) in %s: no session here is it", handle, reason, room)
@@ -730,8 +731,7 @@ class OmnigentHost:
                     continue
                 _log.info("%s ok %dms", line, ms(started))
                 log.print(
-                    f"[green]↯ woke[/green] @{agent.handle} "
-                    f"[dim]on {wake.get('reason') or 'mention'} → {agent.pane}[/dim]"
+                    f"[green]↯ woke[/green] @{agent.handle} [dim]on {reason} → {agent.pane}[/dim]"
                 )
                 outcomes.append(outcome(wake, delivered=True))
             report_wakes(config, room, outcomes)

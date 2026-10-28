@@ -9,9 +9,13 @@ from typer.testing import CliRunner
 
 from mycelium import __version__
 from mycelium.cli import app
-from mycelium.commands import version as version_cmd
+from mycelium_backend_client.models import WhoamiRead
+from tests.conftest import install_stand_in_hub
 
 runner = CliRunner()
+
+#: What a hub at 9.9.9 answers on ``/health``.
+_HEALTH = {"status": "ok", "service": "mycelium-backend", "version": "9.9.9"}
 
 
 @pytest.fixture
@@ -19,23 +23,27 @@ def hub(monkeypatch: pytest.MonkeyPatch) -> dict:
     from mycelium import identity
 
     state: dict = {
-        "response": httpx.Response(200, json={"status": "ok", "version": "9.9.9"}),
+        "response": httpx.Response(200, json=_HEALTH),
         # What /api/whoami answers; None is a hub with sign-in off answering nothing.
         "whoami": None,
     }
 
-    def fake_get(url: str, timeout: float) -> httpx.Response:
+    def answer(request: httpx.Request) -> httpx.Response:
+        url = str(request.url.copy_with(query=None))
         state["url"] = url
         response = state["response"]
         if isinstance(response, Exception):
             raise response
         if callable(response):
             response = response(url)
-        response.request = httpx.Request("GET", url)
         return response
 
-    monkeypatch.setattr(version_cmd.httpx, "get", fake_get)
-    monkeypatch.setattr(identity, "_hub_whoami", lambda _config: state["whoami"])
+    install_stand_in_hub(monkeypatch).answer = answer
+    monkeypatch.setattr(
+        identity,
+        "_hub_whoami",
+        lambda _config: WhoamiRead.from_dict(state["whoami"]) if state["whoami"] else None,
+    )
     monkeypatch.setenv("MYCELIUM_API_URL", "http://hub.test:8000")
     for name in ("MYCELIUM_AGENT_PANE", "MYCELIUM_AGENT_HANDLE", "HERDR_PANE_ID"):
         monkeypatch.delenv(name, raising=False)
@@ -84,7 +92,7 @@ def test_a_hub_reached_at_its_apps_address_is_asked_under_api(hub: dict) -> None
 
     def app_address(url: str) -> httpx.Response:
         if url.endswith("/api/health"):
-            return httpx.Response(200, json={"status": "ok", "version": "9.9.9"})
+            return httpx.Response(200, json=_HEALTH)
         return httpx.Response(404)
 
     hub["response"] = app_address

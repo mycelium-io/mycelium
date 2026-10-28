@@ -7,7 +7,6 @@ was in is renamed with it. The restart under the new handle is the runner's
 
 from __future__ import annotations
 
-import contextlib
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +16,7 @@ from typer.testing import CliRunner
 
 from mycelium.cli import app
 from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry
+from tests.conftest import install_stand_in_hub
 from tests.test_herdr_bridge import ScriptedRunner, _ok, _proc
 
 if TYPE_CHECKING:
@@ -63,12 +63,7 @@ def _hub(monkeypatch: pytest.MonkeyPatch, answer: httpx.Response) -> list[tuple[
         seen.append((request.url.path, json.loads(request.content)))
         return answer
 
-    @contextlib.contextmanager
-    def client(_config: Any = None, **_kw: Any):
-        with httpx.Client(base_url="http://hub", transport=httpx.MockTransport(handler)) as c:
-            yield c
-
-    monkeypatch.setattr("mycelium.commands.agent.hub_client", client)
+    install_stand_in_hub(monkeypatch).answer = handler
     return seen
 
 

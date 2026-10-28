@@ -3,8 +3,8 @@
 
 """``mycelium runner``: this machine, dialed in, starting agents in herdr.
 
-No hub and no herdr: the hub is an ``httpx.MockTransport`` and herdr a scripted
-runner. These hold what the scan reports (herdr decides what is startable),
+No hub and no herdr: the hub is a stand-in answering at httpx's transport, with
+the shapes the real hub answers, and herdr a scripted runner. These hold what the scan reports (herdr decides what is startable),
 what a launch does in herdr and says to the agent, the folders a job may use,
 a stop, a swarm the hub set up, and that every job is reported back.
 """
@@ -15,7 +15,6 @@ import json
 import re
 import subprocess
 import threading
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +27,8 @@ from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry, HerdrUnavail
 from mycelium.integrations.herdr.bridge import CALL_TIMEOUT_S, call_timeout
 from mycelium.runner import approvals, daemon, frameworks
 from mycelium.runner.log import open_log
+from mycelium_backend_client.models import HerdrWakeRead
+from tests.conftest import install_stand_in_hub, memory_read
 from tests.herdr_layout import HerdrLayout
 
 #: The real install folders, which every test but the one about them has stubbed out.
@@ -162,6 +163,45 @@ class Herdr:
         return [c for c in self.calls if " ".join(c[:2]) == head and "--help" not in c]
 
 
+_AT = "2026-08-24T10:00:00+00:00"
+
+
+def _runner_read(hello: dict) -> dict:
+    """The hub's ``RunnerRead`` for a hello: the runner it now has."""
+    keep = ("id", "label", "owner", "platform", "version", "herdr", "host", "roots")
+    return {k: hello[k] for k in keep if k in hello} | {
+        "connected": True,
+        "last_seen": _AT,
+        "started_at": _AT,
+    }
+
+
+def _job_read(runner: str, job: str, report: dict) -> dict:
+    """The hub's ``RunnerJobRead`` for a report: the job as it now stands."""
+    return {
+        "id": job,
+        "runner": runner,
+        "kind": "launch",
+        "created_at": _AT,
+        "updated_at": _AT,
+        "status": report.get("status", "queued"),
+        "result": report.get("result"),
+        "error": report.get("error"),
+    }
+
+
+def _message_read(sent: dict) -> dict:
+    """The hub's 201 ``MessageRead`` for a posted message."""
+    return {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "sender_handle": sent.get("sender_handle", ""),
+        "message_type": sent.get("message_type", "broadcast"),
+        "content": sent.get("content", ""),
+        "created_at": _AT,
+        "episode": sent.get("episode"),
+    }
+
+
 class Hub:
     """The hub's side of a runner: what it was sent, and a notes memory for one handle."""
 
@@ -178,15 +218,42 @@ class Hub:
         self.seen.append((request.method, request.url.path, body))
         if self.signed_out:
             return httpx.Response(401, json={"detail": "missing bearer token"})
-        if request.url.path == "/api/whoami":
+        method, path = request.method, request.url.path
+        parts = path.strip("/").split("/")
+        if path == "/api/whoami":
             token = request.headers.get("authorization", "").removeprefix("Bearer ")
             if token in self.refused_tokens:
                 return httpx.Response(401, json={"detail": "invalid token"})
             return httpx.Response(200, json={"gated": True, "handle": "scout"})
-        if request.method == "GET" and request.url.path.endswith("/notes"):
-            if self.notes_for and f"/agents/{self.notes_for}/" in request.url.path:
-                return httpx.Response(200, json={"key": "n", "value": "Be terse."})
+        if method == "GET" and path.endswith("/notes"):
+            if self.notes_for and f"/agents/{self.notes_for}/" in path:
+                key = f"agents/{self.notes_for}/notes"
+                return httpx.Response(200, json=memory_read(key, parts[2], value="Be terse."))
             return httpx.Response(404, json={"detail": "not found"})
+        if method == "GET" and parts[3:4] == ["memory"]:
+            # An agent's manifest: there, as the agent's start wrote it.
+            key = "/".join(parts[4:])
+            return httpx.Response(200, json=memory_read(key, parts[2], value=f"handle: {key}"))
+        if path.endswith("/sessions/herdr-wakes"):
+            return httpx.Response(200, json={"wakes": []})
+        if path.endswith("/sessions/herdr-presence"):
+            return httpx.Response(204)
+        if method == "POST" and path == "/api/runners":
+            return httpx.Response(200, json=_runner_read(body or {}))
+        if method == "DELETE" and parts[:2] == ["api", "runners"]:
+            return httpx.Response(204)
+        if method == "GET" and path.endswith("/jobs/next"):
+            return httpx.Response(204)
+        if method == "PATCH" and parts[:2] == ["api", "runners"] and "jobs" in parts:
+            return httpx.Response(200, json=_job_read(parts[2], parts[4], body or {}))
+        if method == "POST" and path.endswith("/joins"):
+            join = {"code": "join-code", "room": parts[2], "handle": (body or {}).get("handle")}
+            return httpx.Response(201, json=join | {"expires_at": _AT})
+        if method == "POST" and path.endswith("/memory"):
+            items = (body or {}).get("items", [])
+            return httpx.Response(201, json=[memory_read(i["key"], parts[2]) for i in items])
+        if method == "POST" and path.endswith("/messages"):
+            return httpx.Response(201, json=_message_read(body or {}))
         return httpx.Response(200, json={})
 
     def of(self, method: str, suffix: str) -> list[Any]:
@@ -196,15 +263,7 @@ class Hub:
 @pytest.fixture
 def hub(monkeypatch: pytest.MonkeyPatch) -> Hub:
     hub = Hub()
-
-    @contextmanager
-    def client(_config: Any = None, *, headers: dict | None = None, **_kw: Any):
-        with httpx.Client(
-            base_url="http://hub", transport=httpx.MockTransport(hub.handler), headers=headers
-        ) as c:
-            yield c
-
-    monkeypatch.setattr(daemon, "hub_client", client)
+    install_stand_in_hub(monkeypatch).answer = hub.handler
     monkeypatch.setattr("mycelium.commands.swarm.START_RETRY_S", 0)
     return hub
 
@@ -405,7 +464,7 @@ def test_a_sign_in_that_cant_be_renewed_for_now_is_said_as_connecting_not_signed
         # What building a client does when the sign-in needs renewing and can't be.
         raise RenewalUnreachable("couldn't renew this computer's sign-in: timed out")
 
-    monkeypatch.setattr(daemon, "hub_client", unreachable)
+    monkeypatch.setattr(daemon, "typed_client", unreachable)
     assert r.hello() is False
     assert (r.connected, r.signed_out) == (False, False)
     assert r.poll_once() is False
@@ -1800,11 +1859,11 @@ def quiet_hub(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     """The hub's side of a sync pass: presence taken, and ``wakes`` handed out once."""
     wakes: list[dict] = []
 
-    def fetch(_config: Any, room: str, **_kw: Any) -> list[dict]:
+    def fetch(_config: Any, room: str, **_kw: Any) -> list[HerdrWakeRead]:
         taken = [w for w in wakes if w.get("room") == room]
         for w in taken:
             wakes.remove(w)
-        return taken
+        return [HerdrWakeRead.from_dict(w) for w in taken]
 
     monkeypatch.setattr("mycelium.commands.herdr.fetch_wakes", fetch)
     monkeypatch.setattr("mycelium.commands.herdr._push_presence", lambda *_a, **_kw: True)
@@ -1848,7 +1907,7 @@ def test_the_hub_is_told_what_became_of_each_wake(
     r.sync_pass()
     ((room, outcomes),) = [t for t in told if any(t[1])]
     assert room == "eng"
-    assert [o for o in outcomes if o] == [
+    assert [o.to_dict() for o in outcomes if o] == [
         {"id": "w1", "delivered": True},
         {"id": "w2", "delivered": False, "why": "no herdr pane here is bound to it"},
     ]

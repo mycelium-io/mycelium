@@ -94,7 +94,11 @@ def test_missing_commands_say_how_to_get_them_on_path(monkeypatch: pytest.Monkey
 
 
 def test_the_hub_check_names_the_address_it_tried(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(checks, "_get", lambda *_a, **_k: None)
+    from mycelium.hub_check import HubHealth
+
+    monkeypatch.setattr(
+        "mycelium.hub_check.health", lambda url, **_k: HubHealth(url=url, error="refused")
+    )
     result = checks.hub("http://127.0.0.1:8000")
     assert result.status == "error"
     assert "http://127.0.0.1:8000" in result.message
@@ -103,13 +107,17 @@ def test_the_hub_check_names_the_address_it_tried(monkeypatch: pytest.MonkeyPatc
 def test_a_hub_reached_at_its_ui_answers_under_api(monkeypatch: pytest.MonkeyPatch):
     import httpx
 
+    from tests.conftest import install_stand_in_hub
+
     tried: list[str] = []
 
-    def get(url: str, *_a, **_k):
-        tried.append(url)
-        return httpx.Response(200 if url.endswith("/api/health") else 404)
+    def answer(request: httpx.Request):
+        tried.append(str(request.url.copy_with(query=None)))
+        if request.url.path == "/api/health":
+            return {"status": "ok", "service": "mycelium-backend", "version": "0.0.0-test"}
+        return 404, {"detail": "Not Found"}
 
-    monkeypatch.setattr(checks, "_get", get)
+    install_stand_in_hub(monkeypatch).answer = answer
     assert checks.hub("https://hub.example.com/").status == "ok"
     assert tried == ["https://hub.example.com/health", "https://hub.example.com/api/health"]
 
@@ -210,15 +218,20 @@ def test_doctor_checks_what_the_app_runs_once_it_is_set_up(setting, monkeypatch)
 
 
 def _hub_answers(monkeypatch: pytest.MonkeyPatch, status: int, body: dict) -> list[dict]:
+    """The hub answering ``status`` and ``body``; what's returned fills with the
+    credential each request carried (``{}`` for none)."""
     import httpx
+
+    from tests.conftest import install_stand_in_hub
 
     asked: list[dict] = []
 
-    def get(url: str, **kw):
-        asked.append(kw.get("headers") or {})
-        return httpx.Response(status, json=body, request=httpx.Request("GET", url))
+    def answer(request: httpx.Request):
+        bearer = request.headers.get("Authorization")
+        asked.append({"Authorization": bearer} if bearer else {})
+        return status, body
 
-    monkeypatch.setattr(httpx, "get", get)
+    install_stand_in_hub(monkeypatch).answer = answer
     monkeypatch.setattr("mycelium.runner.daemon.runner_id", lambda: "julias-mbp-ab12")
     return asked
 
@@ -229,7 +242,17 @@ def test_the_runner_check_asks_as_this_machine_and_says_when_it_is_connected(
     monkeypatch.setattr(
         "mycelium.client.auth_headers", lambda *_a, **_k: {"Authorization": "Bearer me"}
     )
-    asked = _hub_answers(monkeypatch, 200, {"connected": True})
+    asked = _hub_answers(
+        monkeypatch,
+        200,
+        {
+            "id": "julias-mbp-ab12",
+            "label": "julias-mbp",
+            "connected": True,
+            "last_seen": "2026-10-28T10:00:00Z",
+            "started_at": "2026-10-28T09:00:00Z",
+        },
+    )
     found = checks.runner("https://hub.example.com")
     assert (found.status, found.message) == ("ok", "connected as julias-mbp-ab12")
     assert asked == [{"Authorization": "Bearer me"}]

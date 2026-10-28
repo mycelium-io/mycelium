@@ -29,19 +29,35 @@ import json as json_module
 import os
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import httpx
 import typer
 
 from mycelium import chat
 from mycelium.cli_options import ACT_FLAGS, ACT_HELP, acts_as, emits_json, in_room, resolve_handle
-from mycelium.client import hub_client
+from mycelium.client import answered, typed_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
+from mycelium.exceptions import MyceliumError
 from mycelium.names import name_of
 from mycelium.text_input import takes_text
+from mycelium_backend_client.errors import UnexpectedStatus
+from mycelium_backend_client.models import (
+    AssignmentsRenewed,
+    AssignmentWatchRead,
+    AwaitAskRead,
+    AwaitConfirmRead,
+    AwaitDeliveredRead,
+    AwaitTurn,
+    ConfirmBody,
+    RenewBody,
+    ReplyBody,
+    ReplyRead,
+)
+from mycelium_backend_client.types import UNSET
 
 #: Statuses a resident loop stops on: the hub rejected the caller's identity
 #: (401) or refused it this handle (403). Everything else is treated as a blip.
@@ -57,6 +73,21 @@ EXIT_REFUSED = 3
 WAIT_CHUNK_S = 45
 #: What a proxy answers when it gave up on the hub, rather than the hub refusing.
 _PROXY_STATUSES = frozenset({502, 503, 504})
+#: Errors the generated client raises while reading an answer it can't take.
+_UNREADABLE = (ValueError, KeyError, TypeError)
+
+
+class _NotTheHub(Exception):
+    """An answer that isn't JSON at all: a proxy's page, on a status the route
+    declares, so the generated client fails reading it rather than handing it
+    back as that status. Waited again, like a proxy's 502."""
+
+
+def _status(e: BaseException) -> int | None:
+    """The status a refused hub call came back with, or ``None`` for any other error."""
+    return e.status_code if isinstance(e, UnexpectedStatus) else None
+
+
 #: A connection that dropped mid-wait, which means waiting again.
 _DROPPED = (httpx.RemoteProtocolError, httpx.ReadError, httpx.ReadTimeout)
 
@@ -67,9 +98,9 @@ def _await_once(
     handle: str,
     timeout: int,
     episode: str | None = None,
-) -> dict | None:
+) -> AwaitTurn | None:
     """Wait up to ``timeout`` seconds (0 = for good) for a turn. Returns the
-    turn dict, or ``None`` on timeout.
+    turn, or ``None`` on timeout.
 
     The wait is made of requests of at most :data:`WAIT_CHUNK_S`, and one
     that drops (a proxy's idle limit) is waited again, so neither ends the
@@ -89,10 +120,10 @@ def _await_once(
         started = time.monotonic()
         try:
             data = _await_request(config, room_name, handle, wait, episode)
-        except _DROPPED:
+        except (*_DROPPED, _NotTheHub):
             data = None
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code not in _PROXY_STATUSES:
+        except UnexpectedStatus as e:
+            if e.status_code not in _PROXY_STATUSES:
                 raise
             data = None
         if data is not None:
@@ -106,40 +137,75 @@ def _await_once(
 
 def _await_request(
     config: MyceliumConfig, room_name: str, handle: str, wait: int, episode: str | None
-) -> dict | None:
+) -> AwaitTurn | None:
     """One long-poll of up to ``wait`` seconds: the turn, or ``None``."""
-    params: dict[str, str | int] = {"handle": handle, "timeout": wait, "confirm": "true"}
-    if episode:
-        params["episode"] = episode
+    from mycelium_backend_client.api.participate import (
+        await_message_api_rooms_room_name_await_get as await_api,
+    )
+
     key = _pending_key(config, room_name, handle, episode)
     owed = _pending().get(key)
-    if owed is not None:
-        params["confirmed"] = owed
-    with hub_client(config, timeout=float(wait) + 15.0, handle=handle) as client:
-        resp = client.get(f"/api/rooms/{room_name}/await", params=params)
-    resp.raise_for_status()
+    timeout = float(wait) + 15.0
+    with typed_client(
+        config, timeout=timeout, handle=handle, raise_on_unexpected_status=False
+    ) as client:
+        try:
+            resp = await_api.sync_detailed(
+                room_name,
+                client=client,
+                handle=handle,
+                timeout=wait,
+                confirm=True,
+                episode=episode or UNSET,
+                confirmed=owed if owed is not None else UNSET,
+            )
+        except json_module.JSONDecodeError as e:
+            raise _NotTheHub from e
+        except _UNREADABLE as e:
+            # The hub's own JSON, in a shape this CLI doesn't know: waiting again
+            # would be handed the same turn, unconfirmed, for as long as it runs.
+            raise MyceliumError(_mismatch(config)) from e
+    if resp.status_code >= 400:  # noqa: PLR2004
+        raise UnexpectedStatus(resp.status_code, resp.content)
     if owed is not None:
         _set_pending(key, None)
-    data = resp.json()
-    return data if "prompt" in data else None
+    return resp.parsed if isinstance(resp.parsed, AwaitTurn) else None
 
 
-def _confirm(config: MyceliumConfig, room_name: str, handle: str, turn: dict) -> None:
+def _mismatch(config: MyceliumConfig) -> str:
+    """Why ``await`` stopped on an answer it can't read, with both versions."""
+    from mycelium import __version__
+    from mycelium.hub_check import health
+
+    hub = health(config.server.api_url).version or "unknown"
+    return (
+        f"the hub's answer to await doesn't match this CLI (hub {hub}, CLI {__version__}). "
+        "Update whichever is older."
+    )
+
+
+def _confirm(config: MyceliumConfig, room_name: str, handle: str, turn: AwaitTurn) -> None:
     """Tell the hub ``turn`` arrived, so it marks it read. If that fails, the
     position is kept on this machine and sent with the next ``await``, which
     confirms it there: the turn may be shown twice, never over and over."""
-    delivered = turn.get("delivered")
-    if not isinstance(delivered, dict):
+    from mycelium_backend_client.api.participate import (
+        confirm_delivery_api_rooms_room_name_await_confirm_post as confirm_api,
+    )
+
+    delivered = turn.delivered
+    if not isinstance(delivered, AwaitDeliveredRead):
         return
+    body = ConfirmBody(handle=handle, position=delivered.position, episode=delivered.episode)
     try:
-        with hub_client(config, timeout=15, handle=handle) as client:
-            resp = client.post(
-                f"/api/rooms/{room_name}/await/confirm", json={"handle": handle, **delivered}
+        with typed_client(
+            config, timeout=15, handle=handle, raise_on_unexpected_status=False
+        ) as client:
+            answered(
+                confirm_api.sync_detailed(room_name, client=client, body=body), AwaitConfirmRead
             )
-        resp.raise_for_status()
-    except httpx.HTTPError:
-        key = _pending_key(config, room_name, handle, delivered.get("episode"))
-        _set_pending(key, int(delivered.get("position") or 0))
+    except (httpx.HTTPError, UnexpectedStatus, *_UNREADABLE):
+        key = _pending_key(config, room_name, handle, delivered.episode or None)
+        _set_pending(key, delivered.position)
 
 
 def _pending_file() -> Path:
@@ -198,30 +264,39 @@ def _renew_assignments(config: MyceliumConfig, room_name: str, handle: str) -> l
     lease still in its first half is left alone, and the writes it does make
     broadcast nothing.
     """
-    with hub_client(config, timeout=15, handle=handle) as client:
-        resp = client.post(f"/api/rooms/{room_name}/assignments/renew", json={"handle": handle})
-    resp.raise_for_status()
-    return [row.get("key", "") for row in resp.json().get("renewed", [])]
+    from mycelium_backend_client.api.assignments import (
+        renew_assignments_api_rooms_room_name_assignments_renew_post as renew_api,
+    )
+
+    with typed_client(config, timeout=15, handle=handle, raise_on_unexpected_status=False) as c:
+        resp = renew_api.sync_detailed(room_name, client=c, body=RenewBody(handle=handle))
+    return [row.key for row in answered(resp, AssignmentsRenewed).renewed]
 
 
 def _await_lease(
     config: MyceliumConfig, room_name: str, key: str, since: str | None, timeout: int
-) -> dict:
+) -> AssignmentWatchRead:
     """One long-poll on a lease's transitions."""
+    from mycelium_backend_client.api.assignments import (
+        await_assignment_api_rooms_room_name_assignments_await_get as watch_api,
+    )
+
     client_timeout = float(timeout) + 15.0 if timeout > 0 else None
-    params: dict[str, str | int] = {"key": key, "timeout": timeout}
-    if since is not None:
-        params["since"] = since
-    with hub_client(config, timeout=client_timeout) as client:
-        resp = client.get(f"/api/rooms/{room_name}/assignments/await", params=params)
-    resp.raise_for_status()
-    return resp.json()
+    with typed_client(config, timeout=client_timeout, raise_on_unexpected_status=False) as c:
+        resp = watch_api.sync_detailed(
+            room_name,
+            client=c,
+            key=key,
+            timeout=timeout,
+            since=since if since is not None else UNSET,
+        )
+    return answered(resp, AssignmentWatchRead)
 
 
-def _print_lease(state: dict) -> None:
-    holder = f"@{state['owner']}" if state.get("owner") else "nobody"
-    line = f"  ⟫  {state.get('key')}: {state.get('assignment')} by {holder}"
-    if note := state.get("assignment_note"):
+def _print_lease(state: AssignmentWatchRead) -> None:
+    holder = f"@{state.owner}" if state.owner else "nobody"
+    line = f"  ⟫  {state.key}: {state.assignment} by {holder}"
+    if note := state.assignment_note:
         line += f" — {note}"
     typer.secho(line, fg=typer.colors.CYAN)
 
@@ -249,53 +324,56 @@ def _lease_watch(
     since: str | None = None
     while True:
         state = _await_lease(config, room_name, key, since, timeout)
-        since = state.get("since")
+        since = state.since
         if json_output:
-            typer.echo(json_module.dumps(state))
+            typer.echo(json_module.dumps(state.to_dict()))
         else:
             _print_lease(state)
-        if exec_cmd and state.get("changed"):
-            _run_exec(exec_cmd, state, room_name, key)
+        if exec_cmd and state.changed:
+            # A lease change carries no ask, so only the room and its key are said.
+            _exec(exec_cmd, state.to_dict(), room_name, key, asks=1)
         if not loop:
             return
 
 
-def _with_name(turn: dict) -> dict:
-    """The turn with ``sender_name`` added when its sender named themselves.
-
-    An agent reads who is talking to it from here, so a person reads as
-    themselves ("Julia Valenti") and not only as a handle.
-    """
-    sender = str(turn.get("sender") or "")
-    name = name_of(sender) if sender else None
-    return {**turn, "sender_name": name} if name else turn
+def _sender_name(turn: AwaitTurn) -> str | None:
+    """The name the turn's sender gave themselves, so a person reads as
+    themselves ("Julia Valenti") and not only as a handle."""
+    return name_of(turn.sender) if turn.sender else None
 
 
-def _sender_label(ask: dict) -> str:
+def _as_json(turn: AwaitTurn) -> dict[str, Any]:
+    """The turn as ``--json`` prints it and ``--exec`` reads it on stdin: the
+    hub's own record, with ``sender_name`` added when the sender named themselves."""
+    record = turn.to_dict()
+    if name := _sender_name(turn):
+        record["sender_name"] = name
+    return record
+
+
+def _sender_label(sender: str | None) -> str:
     """``Julia Valenti (@julia)``, or ``@julia`` when they have no name."""
-    sender = str(ask.get("sender") or "?")
-    name = ask.get("sender_name") or (name_of(sender) if sender != "?" else None)
+    sender = sender or "?"
+    name = name_of(sender) if sender != "?" else None
     return f"{name} (@{sender})" if name else f"@{sender}"
 
 
-def _print_turn(turn: dict, handle: str) -> None:
+def _print_turn(turn: AwaitTurn, handle: str) -> None:
     """A turn as a person or an agent reads it: the hub's wake digest, the
     same text a herdr wake types, ready to hand to a model as its turn. A hub
     from before the digest gets what was said before it, then every message
     asking for the handle that this ``await`` handed over, each in a box
     (``chat.box``), oldest first, the turn last."""
-    digest = turn.get("digest")
-    if isinstance(digest, str) and digest.strip():
-        typer.echo(digest)
+    if isinstance(turn.digest, str) and turn.digest.strip():
+        typer.echo(turn.digest)
         return
-    earlier = [e for e in turn.get("earlier") or [] if isinstance(e, dict)]
-    if earlier:
+    if turn.earlier:
         typer.secho("  ⟫  earlier here:", fg=typer.colors.BRIGHT_BLACK)
-        for e in earlier:
-            sender = str(e.get("sender") or "?")
+        for e in turn.earlier:
+            sender = e.sender or "?"
             name = name_of(sender) if sender != "?" else None
             who = f"{name} (@{sender})" if name else sender
-            typer.echo(f"  {who}: {e.get('text') or ''}")
+            typer.echo(f"  {who}: {e.text}")
     asks = _asks_of(turn)
     if len(asks) > 1:
         typer.secho(
@@ -305,27 +383,29 @@ def _print_turn(turn: dict, handle: str) -> None:
     typer.echo("\n".join(f"  {line}" for line in _ask_boxes(asks, handle)))
 
 
-def _asks_of(turn: dict) -> list[dict]:
+def _asks_of(turn: AwaitTurn) -> list[AwaitAskRead | AwaitTurn]:
     """Every message an ``await`` handed over, oldest first, the turn last; a
     hub from before ``asks`` hands over the turn alone."""
-    return [a for a in turn.get("asks") or [] if isinstance(a, dict)] or [turn]
+    asks: list[AwaitAskRead | AwaitTurn] = [*(turn.asks or [])]
+    if not asks:
+        asks.append(turn)
+    return asks
 
 
-def _ask_boxes(asks: list[dict], handle: str) -> list[str]:
+def _ask_boxes(asks: list[AwaitAskRead | AwaitTurn], handle: str) -> list[str]:
     """``asks``, each as a box (``chat.box``): who, where to reply, its id."""
     lines: list[str] = []
     for ask in asks:
-        header = f"{_sender_label(ask)} → @{handle}"
-        task = ask.get("task")
-        if task:
+        header = f"{_sender_label(ask.sender or None)} → @{handle}"
+        if task := ask.task or None:
             header += f" · in task {task} (reply with --task {task})"
-        if ask.get("id"):
-            header += f" · {str(ask['id'])[:8]}"
-        lines += chat.box(header, str(ask.get("prompt") or ""))
+        if isinstance(ask, AwaitAskRead) and ask.id:
+            header += f" · {ask.id[:8]}"
+        lines += chat.box(header, ask.prompt)
     return lines
 
 
-def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
+def _run_exec(exec_cmd: str, turn: AwaitTurn, room_name: str, handle: str) -> None:
     """Hand a turn to the resident runtime: run ``exec_cmd`` with the turn on stdin.
 
     The command is the user's own reasoning runtime (an Agent-SDK loop, a script,
@@ -340,27 +420,52 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
     every ask (``MYCELIUM_ASKS`` says how many; stdin has them under ``asks``).
     """
     asks = _asks_of(turn)
-    prompt = (
-        str(turn.get("prompt") or "") if len(asks) == 1 else "\n".join(_ask_boxes(asks, handle))
+    _exec(
+        exec_cmd,
+        _as_json(turn),
+        room_name,
+        handle,
+        asks=len(asks),
+        sender=turn.sender or "",
+        sender_name=_sender_name(turn) or "",
+        prompt=turn.prompt if len(asks) == 1 else "\n".join(_ask_boxes(asks, handle)),
+        # What plain ``await`` prints: the wake digest, to hand a model as is.
+        digest=turn.digest or "",
+        # The row the turn was asked in, empty for the room: ``respond --task``.
+        task=turn.task or "",
     )
+
+
+def _exec(
+    exec_cmd: str,
+    stdin: dict[str, Any],
+    room_name: str,
+    handle: str,
+    *,
+    asks: int,
+    sender: str = "",
+    sender_name: str = "",
+    prompt: str = "",
+    digest: str = "",
+    task: str = "",
+) -> None:
+    """Run ``exec_cmd`` with ``stdin`` as JSON and the salient fields in its environment."""
     env = {
         **os.environ,
         "MYCELIUM_ROOM": room_name,
         "MYCELIUM_HANDLE": handle,
-        "MYCELIUM_SENDER": str(turn.get("sender") or ""),
-        "MYCELIUM_SENDER_NAME": str(turn.get("sender_name") or ""),
+        "MYCELIUM_SENDER": sender,
+        "MYCELIUM_SENDER_NAME": sender_name,
         "MYCELIUM_PROMPT": prompt,
-        "MYCELIUM_ASKS": str(len(asks)),
-        # What plain ``await`` prints: the wake digest, to hand a model as is.
-        "MYCELIUM_DIGEST": str(turn.get("digest") or ""),
-        # The row the turn was asked in, empty for the room: ``respond --task``.
-        "MYCELIUM_TASK": str(turn.get("task") or ""),
+        "MYCELIUM_ASKS": str(asks),
+        "MYCELIUM_DIGEST": digest,
+        "MYCELIUM_TASK": task,
     }
     subprocess.run(  # noqa: S602 - user-supplied command, turn passed via stdin (no injection)
         exec_cmd,
         shell=True,
         env=env,
-        input=json_module.dumps(turn),
+        input=json_module.dumps(stdin),
         text=True,
         check=False,
     )
@@ -479,9 +584,8 @@ def await_room(
             else:
                 typer.secho(f"  ⟫  no message for @{handle} within timeout", fg=typer.colors.YELLOW)
             raise typer.Exit(1)
-        data = _with_name(data)
         if json_output:
-            typer.echo(json_module.dumps(data))
+            typer.echo(json_module.dumps(_as_json(data)))
         else:
             _print_turn(data, handle)
     except typer.Exit:
@@ -492,9 +596,7 @@ def await_room(
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         # A refused identity gets its own code, so a harness that waits again
         # on anything else stops on this one: waiting again can't fix it.
-        refused = (
-            isinstance(e, httpx.HTTPStatusError) and e.response.status_code in _TERMINAL_STATUSES
-        )
+        refused = _status(e) in _TERMINAL_STATUSES
         code = EXIT_REFUSED if refused else 1
         print_error(e, verbose=verbose, exit_code=code)
         raise typer.Exit(code) from e
@@ -543,14 +645,18 @@ def _await_loop(
         except KeyboardInterrupt:
             typer.echo("\n  [Stopped]")
             return
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code not in _TERMINAL_STATUSES:
+        except UnexpectedStatus as e:
+            if e.status_code not in _TERMINAL_STATUSES:
                 typer.secho(f"  ⟫  await error: {e}; retrying…", fg=typer.colors.YELLOW)
                 time.sleep(2.0)
                 continue
             # A refused identity is not a blip; no amount of re-polling turns a
             # wrong or ungranted credential into an accepted one, and a resident
             # loop that kept trying would hammer the hub for as long as it ran.
+            print_error(e)
+        except MyceliumError as e:
+            # The hub and this CLI disagree on what a turn is: waiting again
+            # would be handed the same unreadable turn for as long as it ran.
             print_error(e)
         except Exception as e:  # noqa: BLE001 - a poll blip must not drop residency
             typer.secho(f"  ⟫  await error: {e}; retrying…", fg=typer.colors.YELLOW)
@@ -559,9 +665,8 @@ def _await_loop(
         if data is None:
             continue  # timeout → nothing addressed yet; re-await, lease stays warm
         try:
-            data = _with_name(data)
             if json_output:
-                typer.echo(json_module.dumps(data))
+                typer.echo(json_module.dumps(_as_json(data)))
             else:
                 _print_turn(data, handle)
             if exec_cmd:
@@ -617,15 +722,23 @@ def respond(
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        body: dict[str, str] = {"handle": handle or "", "text": text}
-        if task:
-            body["episode"] = _task_episode(room_name, task)
-        with hub_client(config, timeout=30.0, handle=handle) as client:
-            resp = client.post(f"/api/rooms/{room_name}/reply", json=body)
-        resp.raise_for_status()
-        data = resp.json()
+        from mycelium_backend_client.api.participate import (
+            post_reply_api_rooms_room_name_reply_post as reply_api,
+        )
+
+        body = ReplyBody(
+            handle=handle or "",
+            text=text,
+            episode=_task_episode(room_name, task) if task else UNSET,
+        )
+        with typed_client(
+            config, timeout=30.0, handle=handle, raise_on_unexpected_status=False
+        ) as client:
+            replied = answered(
+                reply_api.sync_detailed(room_name, client=client, body=body), ReplyRead
+            )
         if json_output:
-            typer.echo(json_module.dumps(data))
+            typer.echo(json_module.dumps(replied.to_dict()))
         else:
             where = f"{room_name}/{task}" if task else room_name
             typer.secho(f"  ⟫  @{handle} replied in {where}", fg=typer.colors.GREEN)

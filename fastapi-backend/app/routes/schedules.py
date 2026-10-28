@@ -27,6 +27,7 @@ from app.schemas import (
     ScheduleRunRead,
     ScheduleRunRequest,
     ScheduleUpdate,
+    refusals,
 )
 from app.services import actor, schedules
 from app.services.filesystem import room_exists
@@ -67,7 +68,7 @@ def _owned(request: Request, room_name: str, name: str) -> schedules.Schedule:
     return schedule
 
 
-@router.get("", response_model=ScheduleListResponse)
+@router.get("", response_model=ScheduleListResponse, responses=refusals(404))
 async def list_schedules(
     room_name: str, owner: str | None = Query(None, description="Only this agent's")
 ) -> ScheduleListResponse:
@@ -83,7 +84,9 @@ async def list_schedules(
     return ScheduleListResponse(schedules=items, total=len(items), checks=dict(schedules.CHECKS))
 
 
-@router.post("", response_model=ScheduleRead, status_code=201)
+@router.post(
+    "", response_model=ScheduleRead, status_code=201, responses=refusals(403, 404, 409, 422)
+)
 async def create_schedule(
     room_name: str, payload: ScheduleCreate, request: Request
 ) -> ScheduleRead:
@@ -109,7 +112,7 @@ async def create_schedule(
     return _read(schedule)
 
 
-@router.get("/{name}", response_model=ScheduleRead)
+@router.get("/{name}", response_model=ScheduleRead, responses=refusals(404))
 async def get_schedule(room_name: str, name: str) -> ScheduleRead:
     """One schedule, with its recent runs (newest first)."""
     _require_room(room_name)
@@ -119,7 +122,7 @@ async def get_schedule(room_name: str, name: str) -> ScheduleRead:
         raise _refuse(err) from err
 
 
-@router.patch("/{name}", response_model=ScheduleRead)
+@router.patch("/{name}", response_model=ScheduleRead, responses=refusals(403, 404, 422))
 async def update_schedule(
     room_name: str, name: str, payload: ScheduleUpdate, request: Request
 ) -> ScheduleRead:
@@ -148,7 +151,7 @@ async def update_schedule(
     return _read(schedule)
 
 
-@router.delete("/{name}", status_code=204)
+@router.delete("/{name}", status_code=204, responses=refusals(403, 404))
 async def delete_schedule(room_name: str, name: str, request: Request) -> None:
     _require_room(room_name)
     _owned(request, room_name, name)
@@ -158,7 +161,7 @@ async def delete_schedule(room_name: str, name: str, request: Request) -> None:
         raise _refuse(err) from err
 
 
-@router.post("/{name}/run", response_model=ScheduleRunRead)
+@router.post("/{name}/run", response_model=ScheduleRunRead, responses=refusals(403, 404, 422))
 async def run_schedule(
     room_name: str, name: str, request: Request, payload: ScheduleRunRequest | None = None
 ) -> ScheduleRunRead:

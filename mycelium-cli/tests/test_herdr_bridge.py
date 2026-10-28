@@ -999,11 +999,12 @@ def test_retiring_a_member_the_hub_already_forgot_still_retires_it(
         delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
     )
     from mycelium_backend_client.errors import UnexpectedStatus
+    from tests.hub_answers import refused
 
     status = 404
 
-    def delete(**_kw: object) -> None:
-        raise UnexpectedStatus(status, b'{"detail":"Memory not found"}')
+    def delete(**_kw: object):
+        return refused(status, "Memory not found")
 
     monkeypatch.setattr(delete_api, "sync_detailed", delete)
     monkeypatch.setattr(agent_cmd, "_typed_client", lambda *_a, **_kw: nullcontext())

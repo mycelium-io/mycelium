@@ -25,7 +25,7 @@ from rich.console import Console
 
 from mycelium import identity
 from mycelium.cli_options import acts_as, emits_json, in_room, room_or_exit
-from mycelium.client import hub_error_detail, typed_client
+from mycelium.client import answered, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.text_input import takes_text
@@ -103,7 +103,7 @@ def skill_set(
     from mycelium_backend_client.api.skills import (
         create_skill_api_rooms_room_name_skills_post as create_api,
     )
-    from mycelium_backend_client.models import SkillCreate
+    from mycelium_backend_client.models import SkillCreate, SkillRead
 
     body_text = body
     room_name = _get_active_room(room)
@@ -118,9 +118,10 @@ def skill_set(
         tags=tag_list,
     )
     with _hub_session() as client:
-        skill = create_api.sync(room_name=room_name, client=client, body=item)
-        version = f"v{skill.version}" if hasattr(skill, "version") else ""
-        console.print(f"[green]Skill set:[/green] {room_name}/{name} ({version})")
+        skill = answered(
+            create_api.sync_detailed(room_name=room_name, client=client, body=item), SkillRead
+        )
+        console.print(f"[green]Skill set:[/green] {room_name}/{name} (v{skill.version})")
 
 
 @doc_ref(
@@ -136,12 +137,15 @@ def skill_ls(room: str | None = None, as_json: bool = False) -> None:
     from mycelium_backend_client.api.skills import (
         list_skills_api_rooms_room_name_skills_get as list_api,
     )
+    from mycelium_backend_client.models import SkillListResponse
 
     room_name = _get_active_room(room)
     with _hub_session() as client:
-        resp = list_api.sync(room_name=room_name, client=client)
+        resp = answered(
+            list_api.sync_detailed(room_name=room_name, client=client), SkillListResponse
+        )
 
-    skills = getattr(resp, "skills", None) or []
+    skills = resp.skills
     if as_json:
         _echo_json([s.to_dict() for s in skills])
         return
@@ -181,16 +185,14 @@ def skill_get(
     room_name = _get_active_room(room)
     with _hub_session() as client:
         try:
-            skill = get_api.sync(room_name=room_name, name=name, client=client)
+            skill = answered(
+                get_api.sync_detailed(room_name=room_name, name=name, client=client), SkillRead
+            )
         except UnexpectedStatus as exc:
             if exc.status_code == 404:
                 console.print(f"[red]Not found:[/red] {name}")
                 raise typer.Exit(1) from exc
             raise
-
-    if not isinstance(skill, SkillRead):
-        console.print(f"[red]Not found:[/red] {name}")
-        raise typer.Exit(1)
 
     if as_json:
         _echo_json(skill.to_dict())
@@ -227,6 +229,8 @@ def skill_rm(
         if resp.status_code == 404:
             console.print(f"[red]Not found:[/red] {name}")
             raise typer.Exit(1)
+        if resp.status_code >= 400:  # noqa: PLR2004
+            raise UnexpectedStatus(resp.status_code, resp.content)
     console.print(f"[green]Skill removed:[/green] {room_name}/{name}")
 
 

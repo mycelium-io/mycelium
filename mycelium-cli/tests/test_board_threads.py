@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock, Mock
 from uuid import uuid4
 
+import httpx
 import pytest
 from typer.testing import CliRunner
 
@@ -29,6 +30,8 @@ from mycelium import cli_options
 from mycelium.board.model import ItemSource, LiveItem
 from mycelium.cli import app as cli_app
 from mycelium.commands import board as board_cmd
+from tests.conftest import install_stand_in_hub, memory_read
+from tests.hub_answers import ok
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -88,57 +91,62 @@ def _hub(
     monkeypatch.setattr(board_cmd.MyceliumConfig, "load", classmethod(lambda _cls: fake_config))
     monkeypatch.setattr(board_cmd, "_resolve_room", lambda *_a, **_k: ROOM)
 
-    class _Resp:
-        def __init__(self, payload, status: int = 200):
-            self._payload = payload
-            self.status_code = status
-            self.text = ""
-
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return self._payload
-
-    routes = {
-        f"/api/rooms/{ROOM}/episodes": {"episodes": []},
-        f"/api/rooms/{ROOM}/memory?limit=50": memories,
-        f"/api/rooms/{ROOM}/status": None,
-        f"/api/rooms/{ROOM}/agents": [],
-        f"/api/rooms/{ROOM}/sessions/members": {"members": []},
-        f"/api/rooms/{ROOM}/messages?limit=300": {"messages": []},
-        **{
-            f"/api/rooms/{ROOM}/memory?prefix={namespace}/&limit=1000": [
-                m for m in every if m["key"].startswith(f"{namespace}/")
-            ]
-            for namespace in board_cmd.LIVE_NAMESPACES
-        },
+    base = f"/api/rooms/{ROOM}"
+    reads = {
+        f"{base}/episodes": {"episodes": []},
+        f"{base}/status": (404, {"detail": "no status"}),
+        f"{base}/agents": [],
+        f"{base}/sessions/members": {"members": []},
+        f"{base}/messages": {"messages": [], "total": 0},
+        f"{base}/board": (404, {"detail": "no board"}),
     }
 
-    class _Client:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_exc):
-            return False
-
-        def get(self, path, **_kw):
-            prefix = f"/api/rooms/{ROOM}/memory/"
-            if path.startswith(prefix) and "?" not in path:
-                key = path[len(prefix) :]
-                if key not in (keyed or {}):
-                    return _Resp({"detail": "Memory not found"}, status=404)
-                return _Resp({"key": key, **(keyed or {})[key]})
-            return _Resp(routes.get(path, {}))
-
-        def post(self, path, json=None, **_kw):  # noqa: A002 — httpx's own name
+    def answer(request: httpx.Request):
+        path, params = request.url.path, request.url.params
+        if request.method == "POST":
+            body = json.loads(request.content)
             if posts is not None:
-                posts.append((path, json))
-            return _Resp(
-                {"key": "work/ship-passkey-login", "episode": THREAD, "value": "Ship passkey login"}
-            )
+                posts.append((path, body))
+            if path == f"{base}/tasks":
+                return 201, memory_read(
+                    "work/ship-passkey-login", ROOM, value="Ship passkey login", episode=THREAD
+                )
+            return _assignment(body.get("key", ""), body.get("handle"))
+        if path == f"{base}/memory":
+            prefix = params.get("prefix")
+            if prefix is None:
+                return [_full(m) for m in memories]
+            return [_full(m) for m in every if m["key"].startswith(prefix)]
+        if path.startswith(f"{base}/memory/"):
+            key = path[len(f"{base}/memory/") :]
+            if key not in (keyed or {}):
+                return 404, {"detail": "Memory not found"}
+            return memory_read(key, ROOM, **(keyed or {})[key])
+        return reads.get(path, {})
 
-    monkeypatch.setattr(board_cmd, "hub_client", lambda *_a, **_k: _Client())
+    install_stand_in_hub(monkeypatch).answer = answer
+
+
+def _full(memory: dict) -> dict:
+    """One of this file's memories, filled out to the hub's whole answer."""
+    return memory_read(memory["key"], ROOM, **{k: v for k, v in memory.items() if k != "key"})
+
+
+def _assignment(key: str, handle: str | None) -> dict:
+    """What the hub answers a claim, release or resolve with."""
+    return {
+        "key": key,
+        "assignment": "held",
+        "waiting_on": [],
+        "owner": handle,
+        "assignee": None,
+        "claimed_at": None,
+        "ttl_minutes": None,
+        "freshness": None,
+        "version": 2,
+        "assignment_note": None,
+        "assignment_note_by": None,
+    }
 
 
 def _chat(monkeypatch: pytest.MonkeyPatch) -> dict:
@@ -506,10 +514,20 @@ class TestUnitScopedParticipation:
         captured: dict = {}
 
         def fake_await(_cfg, room_name, handle, timeout, episode=None):
+            from mycelium_backend_client.models import AwaitTurn
+
             captured.update(
                 {"room": room_name, "handle": handle, "timeout": timeout, "episode": episode}
             )
-            return {"room": room_name, "handle": handle, "prompt": "@me?", "sender": "sec"}
+            return AwaitTurn(
+                room=room_name,
+                handle=handle,
+                prompt="@me?",
+                sender="sec",
+                episode=None,
+                topic=None,
+                message_id=None,
+            )
 
         monkeypatch.setattr(participate_cmd, "_await_once", fake_await)
         result = runner.invoke(cli_app, ["await", "--handle", "me", "--task", SHORT, "--json"])
@@ -525,21 +543,16 @@ class TestUnitScopedParticipation:
         _hub(monkeypatch, memories=[_unit()])
         monkeypatch.setattr(participate_cmd, "_resolve_room", lambda *_a, **_k: ROOM)
         bodies: list = []
+        # The board reads still go to `_hub`'s answers; the reply is answered here.
+        board_reads = httpx.HTTPTransport().handle_request
 
-        class _Client:
-            def __enter__(self):
-                return self
+        def answer(request: httpx.Request):
+            if request.url.path == f"/api/rooms/{ROOM}/reply":
+                bodies.append(json.loads(request.content))
+                return {"room": ROOM, "handle": "me", "message_id": "m1"}
+            return board_reads(request)
 
-            def __exit__(self, *_exc):
-                return False
-
-            def post(self, _path, json=None, **_kw):  # noqa: A002 — httpx's own name
-                bodies.append(json)
-                return SimpleNamespace(
-                    raise_for_status=lambda: None, json=lambda: {"message_id": "m1"}
-                )
-
-        monkeypatch.setattr(participate_cmd, "hub_client", lambda *_a, **_k: _Client())
+        install_stand_in_hub(monkeypatch).answer = answer
         result = runner.invoke(
             cli_app, ["respond", "ok, claiming it", "--handle", "me", "--task", SHORT]
         )
@@ -595,11 +608,11 @@ def test_the_thread_read_is_the_room_read_with_one_argument(
 
     def fake_sync(**kwargs):
         captured.update(kwargs)
-        return MessageListResponse(messages=_messages(THREAD), total=1)
+        return ok(MessageListResponse(messages=_messages(THREAD), total=1))
 
     monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
     monkeypatch.setattr(
-        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync",
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
         fake_sync,
     )
     monkeypatch.setattr("mycelium.commands.room._agent_owner_map", lambda _r: {})
@@ -617,8 +630,8 @@ def test_board_messages_json_after_the_command_prints_the_thread(
     _hub(monkeypatch, memories=[_unit()])
     monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
     monkeypatch.setattr(
-        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync",
-        lambda **_k: MessageListResponse(messages=_messages(THREAD), total=1),
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
+        lambda **_k: ok(MessageListResponse(messages=_messages(THREAD), total=1)),
     )
 
     result = runner.invoke(board_cmd.app, ["messages", SHORT, "--json"])
@@ -649,8 +662,8 @@ def test_a_thread_with_nothing_in_it_says_so_rather_than_no_messages(
 
     monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
     monkeypatch.setattr(
-        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync",
-        lambda **_k: MessageListResponse(messages=[], total=0),
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
+        lambda **_k: ok(MessageListResponse(messages=[], total=0)),
     )
     chat.read(
         _config(),
@@ -711,6 +724,17 @@ def test_a_ping_draws_the_thread_that_moved_and_not_what_was_said() -> None:
     assert "keychain" not in line
 
 
+def _replay(request: httpx.Request, history: list[dict]):
+    """The hub's answers to the reads ``room watch`` opens with: who joined, then
+    the room's recent messages, each filled out to a whole message record."""
+    if request.url.path.endswith("/sessions"):
+        return {"participants": [], "total": 0}
+    messages = [
+        {"id": str(uuid4()), "created_at": "2026-08-24T10:00:00+00:00", **m} for m in history
+    ]
+    return {"messages": messages, "total": len(messages)}
+
+
 class TestTheRoomShowsThePingAndNotTheProse:
     """The property the whole epic rests on, asserted where a reader would see it.
 
@@ -758,7 +782,6 @@ class TestTheRoomShowsThePingAndNotTheProse:
         only worth anything if the thing that renders actually asks it."""
         from mycelium.commands import room as room_cmd
 
-        requested: list[dict] = []
         frames = [
             _bus_frame(_prose_frame(THREAD)),
             _bus_frame(_ping_frame(), sender="system"),
@@ -784,15 +807,11 @@ class TestTheRoomShowsThePingAndNotTheProse:
             def __exit__(self, *_exc):
                 return False
 
-            def get(self, path, params=None, **_kw):
-                requested.append({"path": path, "params": params or {}})
-                body = {"sessions": []} if path.endswith("/sessions") else {"messages": []}
-                return SimpleNamespace(status_code=200, json=lambda: body)
-
             def stream(self, _method, _path):
                 return _Stream()
 
         monkeypatch.setattr(room_cmd, "hub_client", lambda *_a, **_k: _Client())
+        install_stand_in_hub(monkeypatch).answer = lambda request: _replay(request, [])
         monkeypatch.setattr(room_cmd, "_agent_owner_map", lambda _r: {})
         room_cmd._watch_room(_config(), ROOM, 0)
 
@@ -851,14 +870,11 @@ class TestTheRoomShowsThePingAndNotTheProse:
             def __exit__(self, *_exc):
                 return False
 
-            def get(self, path, params=None, **_kw):  # noqa: ARG002
-                body = {"sessions": []} if path.endswith("/sessions") else {"messages": history}
-                return SimpleNamespace(status_code=200, json=lambda: body)
-
             def stream(self, _method, _path):
                 return _Stream()
 
         monkeypatch.setattr(room_cmd, "hub_client", lambda *_a, **_k: _Client())
+        install_stand_in_hub(monkeypatch).answer = lambda request: _replay(request, history)
         monkeypatch.setattr(room_cmd, "_agent_owner_map", lambda _r: {})
         room_cmd._watch_room(_config(), ROOM, 0)
 
@@ -875,8 +891,8 @@ def test_a_json_dump_of_the_thread_is_still_json(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
     monkeypatch.setattr(
-        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync",
-        lambda **_k: MessageListResponse(messages=_messages(THREAD), total=1),
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
+        lambda **_k: ok(MessageListResponse(messages=_messages(THREAD), total=1)),
     )
     chat.read(_config(), ROOM, limit=10, episode=THREAD, json_output=True)
     assert json.loads(capsys.readouterr().out)["total"] == 1
