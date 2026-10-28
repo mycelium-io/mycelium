@@ -80,6 +80,17 @@ def _never_the_real_home(request: pytest.FixtureRequest):
 
 
 @pytest.fixture(autouse=True)
+def _fresh_sync_memory() -> None:
+    """What a sync pass remembers between passes (manifests it saw on the hub,
+    rooms the hub doesn't have) is per process; each test starts with none."""
+    from mycelium.commands import herdr
+
+    herdr._manifest_seen.clear()
+    herdr._unknown_rooms.clear()
+    herdr._pass_clients.clear()
+
+
+@pytest.fixture(autouse=True)
 def _no_remembered_hub_gate() -> None:
     """Whether a hub has sign-in on is remembered per process; each test asks anew."""
     from mycelium import client

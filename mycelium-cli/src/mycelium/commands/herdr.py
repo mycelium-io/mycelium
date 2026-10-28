@@ -27,7 +27,8 @@ import logging
 import re
 import time
 from collections.abc import Callable
-from typing import NamedTuple
+from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING, NamedTuple
 
 import typer
 from rich.console import Console
@@ -52,6 +53,9 @@ from mycelium.integrations.herdr import (
 from mycelium.protocol import AgentManifest
 from mycelium.runner.log import failing, ms, recovered, slow
 
+if TYPE_CHECKING:
+    import httpx
+
 app = typer.Typer(
     help="Bind mycelium handles to persistent herdr agent panes (optional wake layer).",
     no_args_is_help=True,
@@ -66,6 +70,57 @@ _sync = logging.getLogger("mycelium.runner.sync")
 _hub = logging.getLogger("mycelium.runner.hub")
 #: Panes the sync pass left alone and said so, so it says it once, not every pass.
 _left_alone: set[str] = set()
+#: A pass's hub calls: one that hasn't connected or answered in this long is
+#: tried again next pass rather than holding up every room's wakes.
+PASS_TIMEOUT_S = 5.0
+#: How long a member's manifest, once seen on the hub, is taken as still there.
+MANIFEST_RECHECK_S = 600.0
+#: How long a room the hub says it doesn't have is left out of the pass.
+UNKNOWN_ROOM_S = 600.0
+#: ``{(room, handle): monotonic time its manifest was last seen on the hub}``.
+_manifest_seen: dict[tuple[str, str], float] = {}
+#: ``{room: monotonic time to ask about it again}`` for rooms the hub doesn't have.
+_unknown_rooms: dict[str, float] = {}
+
+
+#: What the hub's session routes answer for a room they don't have.
+ROOM_NOT_FOUND = "Room not found"
+
+
+def _not_on_hub(room: str, resp: httpx.Response) -> bool:
+    """Whether ``resp`` is the hub saying it has no such room; if so, leave it out
+    for a while.
+
+    Only the hub's own answer counts: a proxy or the app's address can answer
+    404 for a path it isn't routing during a redeploy, and taking that for a
+    missing room would stop the room's wakes on a guess.
+    """
+    if resp.status_code != 404:
+        return False
+    try:
+        detail = resp.json().get("detail")
+    except (ValueError, AttributeError):
+        return False
+    if detail != ROOM_NOT_FOUND:
+        return False
+    if room not in _unknown_rooms:
+        _sync.warning(
+            "the hub has no room %s; leaving it out of the sync for %d minutes",
+            room,
+            UNKNOWN_ROOM_S // 60,
+        )
+    _unknown_rooms[room] = time.monotonic() + UNKNOWN_ROOM_S
+    return True
+
+
+def _left_out(room: str) -> bool:
+    until = _unknown_rooms.get(room)
+    if until is None:
+        return False
+    if until > time.monotonic():
+        return True
+    del _unknown_rooms[room]
+    return False
 
 
 def _bridge() -> HerdrBridge:
@@ -564,10 +619,19 @@ def _enroll_one(
     existing = next((m for m in bridge.registry.all() if m.room == room and m.pane == pane), None)
     if existing is not None:
         # Already bound to this pane — heal a manifest that was deleted out from
-        # under us so the member doesn't silently drop off the roster.
-        if _manifest_on_hub(config, room, existing.handle) is False:
+        # under us so the member doesn't silently drop off the roster. Looked at
+        # every few minutes, not every pass: a pass makes one call per room, not
+        # one per agent.
+        key = (room, existing.handle)
+        seen = _manifest_seen.get(key)
+        if seen is not None and time.monotonic() - seen < MANIFEST_RECHECK_S:
+            return None
+        there = _manifest_on_hub(config, room, existing.handle)
+        if there is False:
             manifest = _member_manifest(existing.handle, room, agent, owner())
             _write_manifest(config, room, manifest, created_by=writer(), timeout=HUB_TIMEOUT_S)
+        if there is not None:
+            _manifest_seen[key] = time.monotonic()
         return None
 
     tab_label = tab_labels().get(str(agent.get("tab_id") or ""), "")
@@ -906,27 +970,49 @@ def sync_source() -> str | None:
         return None
 
 
-def _push_presence(
-    config: MyceliumConfig, room: str, statuses: dict[str, dict[str, str | None]], ttl_s: float
-) -> bool:
-    """POST one room's herdr liveness to the backend. Best-effort → ``bool`` ok."""
+def _hub_call(
+    config: MyceliumConfig,
+    http: httpx.Client | None,
+    method: str,
+    path: str,
+    *,
+    json: dict | None = None,
+    params: dict | None = None,
+) -> httpx.Response:
+    """One hub call: on the pass's own client when there is one (its connection
+    kept, its credential got once), else on its own."""
     import httpx
 
     from mycelium.client import auth_headers
 
+    if http is not None:
+        return http.request(method, path, json=json, params=params)
+    url = f"{config.server.api_url}{path}"
+    headers = auth_headers(config)
+    if method == "POST":
+        return httpx.post(url, json=json, params=params, timeout=5.0, headers=headers)
+    return httpx.get(url, params=params, timeout=5.0, headers=headers)
+
+
+def _push_presence(
+    config: MyceliumConfig,
+    room: str,
+    statuses: dict[str, dict[str, str | None]],
+    ttl_s: float,
+    *,
+    http: httpx.Client | None = None,
+) -> bool:
+    """POST one room's herdr liveness to the backend. Best-effort → ``bool`` ok."""
     what = f"hub presence for {room}"
     started = time.monotonic()
     body: dict = {"statuses": statuses, "ttl_s": ttl_s}
     if (source := sync_source()) is not None:
         body["source"] = source
     try:
-        url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-presence"
-        resp = httpx.post(
-            url,
-            json=body,
-            timeout=5.0,
-            headers=auth_headers(config),
-        )
+        path = f"/api/rooms/{room}/sessions/herdr-presence"
+        resp = _hub_call(config, http, "POST", path, json=body)
+        if _not_on_hub(room, resp):
+            return False
         resp.raise_for_status()
     except Exception as e:  # noqa: BLE001 - presence is best-effort; the next pass renews it
         failing(_hub, what, f"{what} failed after {ms(started)}ms: {e}")
@@ -957,28 +1043,24 @@ def wake_prompt_for(room: str, wake: dict) -> str:
     return build_mention_prompt(room, handle)
 
 
-def fetch_wakes(config: MyceliumConfig, room: str) -> list[dict]:
+def fetch_wakes(
+    config: MyceliumConfig, room: str, *, http: httpx.Client | None = None
+) -> list[dict]:
     """Take a room's queued wakes off the backend; ``[]`` when it can't be reached.
 
     Taking them drains the queue, so whoever fetches delivers. This machine
     asks only for the wakes of the agents its own push reported
     (:func:`sync_source`), so another machine's wakes wait for that machine.
     """
-    import httpx
-
-    from mycelium.client import auth_headers
-
     what = f"hub wakes for {room}"
     started = time.monotonic()
     source = sync_source()
     try:
-        url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-wakes"
-        resp = httpx.get(
-            url,
-            params={"source": source} if source is not None else None,
-            timeout=5.0,
-            headers=auth_headers(config),
-        )
+        path = f"/api/rooms/{room}/sessions/herdr-wakes"
+        params = {"source": source} if source is not None else None
+        resp = _hub_call(config, http, "GET", path, params=params)
+        if _not_on_hub(room, resp):
+            return []
         resp.raise_for_status()
         wakes = resp.json().get("wakes", [])
     except Exception as e:  # noqa: BLE001 - the queue keeps them for the next pass
@@ -1000,7 +1082,13 @@ def outcome(wake: dict, *, delivered: bool, why: str | None = None) -> dict | No
     return said
 
 
-def report_wakes(config: MyceliumConfig, room: str, outcomes: list[dict | None]) -> None:
+def report_wakes(
+    config: MyceliumConfig,
+    room: str,
+    outcomes: list[dict | None],
+    *,
+    http: httpx.Client | None = None,
+) -> None:
     """Tell the hub what became of the wakes this pass drained, for its wake log.
 
     Best-effort: a hub that can't be reached, or is from before the log, just
@@ -1009,17 +1097,9 @@ def report_wakes(config: MyceliumConfig, room: str, outcomes: list[dict | None])
     said = [o for o in outcomes if o]
     if not said:
         return
-    import httpx
-
-    from mycelium.client import auth_headers
-
     try:
-        httpx.post(
-            f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-wakes/outcomes",
-            json={"outcomes": said},
-            timeout=5.0,
-            headers=auth_headers(config),
-        )
+        path = f"/api/rooms/{room}/sessions/herdr-wakes/outcomes"
+        _hub_call(config, http, "POST", path, json={"outcomes": said})
     except Exception as e:  # noqa: BLE001 - the log says "handed" without it
         _sync.info("couldn't report %d wake outcome(s) in %s: %s", len(said), room, e)
 
@@ -1031,6 +1111,7 @@ def _drain_wakes(
     *,
     log: Console | None = None,
     wait: bool = True,
+    http: httpx.Client | None = None,
 ) -> int:
     """Drain the backend's herdr wake queue for a room and run each wake.
 
@@ -1044,7 +1125,7 @@ def _drain_wakes(
     out = log if log is not None else console
     woke = 0
     outcomes: list[dict | None] = []
-    for w in fetch_wakes(config, room):
+    for w in fetch_wakes(config, room, http=http):
         handle = str(w.get("handle") or "")
         reason = w.get("reason") or "mention"
         mapping = bridge.registry.get(room, handle)
@@ -1072,7 +1153,7 @@ def _drain_wakes(
             _sync.info("%s skipped %dms: %s", line, ms(started), result.detail)
             out.print(f"[yellow]↯ skip[/yellow] @{handle} [dim]{result.detail}[/dim]")
             outcomes.append(outcome(w, delivered=False, why=result.detail))
-    report_wakes(config, room, outcomes)
+    report_wakes(config, room, outcomes, http=http)
     return woke
 
 
@@ -1134,6 +1215,8 @@ def sync_pass(
     enrolled = retired = 0
     failed: dict[str, tuple[str, str]] = {}
     for ws, r in targets:
+        if _left_out(r):
+            continue
         what = f"binding {ws} -> {r}"
         try:
             e, x = _reconcile_workspace(
@@ -1154,11 +1237,68 @@ def sync_pass(
         enrolled += len(e)
         retired += len(x)
     view = _collect_presence(bridge, room_filter)
-    for r, statuses in view.items():
-        _push_presence(config, r, statuses, ttl_s)
-    for r in {r for _, r in targets} | set(view):
-        _drain_wakes(config, bridge, r, log=out, wait=wait)
+    rooms = sorted(r for r in {r for _, r in targets} | set(view) if not _left_out(r))
+    _sync_rooms(config, bridge, rooms, view, ttl_s=ttl_s, log=out, wait=wait)
     return SyncResult(enrolled, retired, sum(len(v) for v in view.values()), failed)
+
+
+def _sync_rooms(
+    config: MyceliumConfig,
+    bridge: HerdrBridge,
+    rooms: list[str],
+    view: dict[str, dict[str, dict[str, str | None]]],
+    *,
+    ttl_s: float,
+    log: Console,
+    wait: bool,
+) -> None:
+    """Each room's presence up, then its wakes down, every room at once.
+
+    On the one client the passes share (:func:`_pass_client`), so the hub's
+    connections stay open from one pass to the next instead of a new one, and
+    a TLS handshake, per call. A hub slow to answer one room holds up that
+    room only, for a few seconds.
+    """
+    import httpx
+
+    if not rooms:
+        return
+    try:
+        http = _pass_client(config)
+    except httpx.HTTPError as e:
+        # The credential couldn't be got: no room can be asked this pass.
+        failing(_hub, "hub client", f"no hub calls this pass: {e}")
+        return
+    recovered(_hub, "hub client")
+
+    def one(room: str) -> None:
+        if (statuses := view.get(room)) is not None:
+            _push_presence(config, room, statuses, ttl_s, http=http)
+        if not _left_out(room):
+            _drain_wakes(config, bridge, room, log=log, wait=wait, http=http)
+
+    with ThreadPoolExecutor(max_workers=min(8, len(rooms))) as pool:
+        list(pool.map(one, rooms))
+
+
+#: ``{hub url: client}`` the sync passes share, kept open between passes.
+_pass_clients: dict[str, httpx.Client] = {}
+
+
+def _pass_client(config: MyceliumConfig) -> httpx.Client:
+    """The client the sync passes share for ``config``'s hub, its credential got
+    now: once a pass, before any room is asked, never inside a call."""
+    from mycelium.client import auth_headers, hub_client, issued_by
+
+    url = config.server.api_url
+    http = _pass_clients.get(url)
+    if http is None or http.is_closed:
+        http = _pass_clients[url] = hub_client(config, timeout=PASS_TIMEOUT_S)
+        return http
+    credentials = auth_headers(config) if issued_by(config, url) else {}
+    http.headers.pop("Authorization", None)
+    http.headers.update(credentials)
+    return http
 
 
 #: How long one pass's liveness stands on the hub; the runner's next pass renews it.
