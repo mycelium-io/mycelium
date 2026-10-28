@@ -18,11 +18,11 @@
  *   opener?.canOpen("builder") && opener.open("builder");
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { Responding } from "@/lib/activity";
 import { useRoomRoster } from "@/lib/room-data";
-import { AgentPeek, AgentScreenDrawer } from "@/components/agent-screen";
+import { AgentScreenDrawer } from "@/components/agent-screen";
+import { AgentCardHover } from "@/components/agent-card";
 
 export interface AgentOpener {
   /** The room the tags are in. */
@@ -84,18 +84,12 @@ export function AgentOpenerProvider({ roomName, children }: { roomName: string; 
   );
 }
 
-/** How long a pointer rests on a tag before its peek shows, so passing over a
- *  line of names doesn't flash a card for each. */
-const PEEK_AFTER_MS = 350;
-/** About the height of a peek: a tag nearer the top than this shows it below. */
-const PEEK_ROOM_PX = 180;
-
 /**
  * An @ tag that opens its agent: drawn as it always is, with a pointer and an
- * underline on hover and no button styling. Resting on it shows the last few
- * lines of the agent's terminal above it, when it runs on this machine. Plain
- * text when it opens nothing. `children` is what the tag shows (by default
- * `@handle`).
+ * underline on hover and no button styling. Resting on it shows the agent's
+ * card above it (`AgentCardHover`), with its screen when it runs on this
+ * machine. Plain text when it opens nothing. `children` is what the tag shows
+ * (by default `@handle`).
  */
 export function AgentTag({
   handle,
@@ -107,56 +101,24 @@ export function AgentTag({
   children?: React.ReactNode;
 }) {
   const opener = useAgentOpener();
-  const [peekAt, setPeekAt] = useState<DOMRect | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
   const label = children ?? `@${bare(handle)}`;
   if (!opener?.canOpen(handle)) return className ? <span className={className}>{label}</span> : <>{label}</>;
   const name = bare(handle);
-  const hide = () => {
-    if (timer.current) clearTimeout(timer.current);
-    setPeekAt(null);
-  };
   return (
-    <>
+    <AgentCardHover room={opener.room} handle={name} side="top">
       <button
         type="button"
         onClick={(e) => {
           // A tag sits inside rows that react to clicks of their own.
           e.stopPropagation();
-          hide();
           opener.open(handle);
         }}
-        onPointerEnter={(e) => {
-          const target = e.currentTarget;
-          timer.current = setTimeout(() => setPeekAt(target.getBoundingClientRect()), PEEK_AFTER_MS);
-        }}
-        onPointerLeave={hide}
         aria-label={`Open @${name}`}
         className={`${className ?? ""} cursor-pointer rounded-sm decoration-1 underline-offset-2 hover:underline`}
       >
         {label}
       </button>
-      {/* Above the page rather than inside the line: a message list scrolls
-          and clips, and the peek must not be cut by it. */}
-      {peekAt &&
-        createPortal(
-          <span
-            className="pointer-events-none fixed z-50"
-            // Above the tag, or below it when it's too near the top for the card.
-            style={
-              peekAt.top > PEEK_ROOM_PX
-                ? { left: peekAt.left, bottom: window.innerHeight - peekAt.top + 6 }
-                : { left: peekAt.left, top: peekAt.bottom + 6 }
-            }
-          >
-            <AgentPeek room={opener.room} handle={name} />
-          </span>,
-          document.body,
-        )}
-    </>
+    </AgentCardHover>
   );
 }
 

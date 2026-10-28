@@ -212,7 +212,7 @@ export function restartSaid(agents: Pick<MachineAgent, "resumes">[]): string {
 }
 
 /** What restarting does, said before anything starts. The machine asks once more. */
-function RestartDialog({ runner, agents, onClose }: { runner: Runner; agents: MachineAgent[]; onClose: () => void }) {
+export function RestartDialog({ runner, agents, onClose }: { runner: Runner; agents: MachineAgent[]; onClose: () => void }) {
   const revalidate = useRunnersRevalidate();
   const [picked, setPicked] = useState(() => new Set(agents.map((a) => `${a.room}/${a.handle}`)));
   const [jobId, setJobId] = useState<string | null>(null);

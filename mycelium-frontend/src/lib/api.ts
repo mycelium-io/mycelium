@@ -1829,6 +1829,13 @@ export interface PresenceMember {
   /** herdr's terminal title, the agent's current task ("Review PR comments").
    *  Shown as the roster's activity line for herdr-hosted members. */
   title?: string | null;
+  /** False when the runner that hosts the agent knows its credential is
+   *  missing, refused or expired, so it can't answer. Null when no runner
+   *  checking in has a verdict (a person, an engine, someone else's agent, an
+   *  older runner, a runner gone quiet): say nothing then. */
+  can_reply?: boolean | null;
+  /** Why it can't, as the runner says it, naming the machine. Shown as is. */
+  cant_reply_why?: string | null;
 }
 
 /** A thread whose floor a run of backend code holds: who holds it and who it
