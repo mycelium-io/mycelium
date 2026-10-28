@@ -1188,6 +1188,10 @@ export function RoomChatBox({
               className={cn(
                 "relative block w-full resize-none bg-transparent focus:outline-none placeholder:truncate placeholder:text-faint",
                 COMPOSER_TEXT,
+                // A selection is painted over the mention layer, so it draws the
+                // textarea's own text (which lands exactly on the layer's) on a
+                // translucent wash, the same with mentions or without.
+                "selection:bg-accent/30 selection:text-text",
                 typedMentions.length > 0 ? "text-transparent caret-text" : "text-text",
               )}
               disabled={sending}
