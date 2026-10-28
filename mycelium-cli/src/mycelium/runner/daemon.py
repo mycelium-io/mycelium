@@ -525,6 +525,11 @@ class Runner:
         self.failing_bindings: dict[str, tuple[str, str]] = {}
         #: ``{(room, handle): when to ask again}`` for agents the hub gave no token.
         self._no_token: dict[tuple[str, str], float] = {}
+        #: ``{(room, handle): (can_reply, why)}`` for each agent here the
+        #: runner has a verdict on, sent with every heartbeat.
+        self.can_reply: dict[tuple[str, str], tuple[bool, str | None]] = {}
+        #: ``{(room, handle): when its token was last checked with the hub}``.
+        self._checked: dict[tuple[str, str], float] = {}
 
     # ── what this machine has ────────────────────────────────────────────────
 
@@ -551,6 +556,7 @@ class Runner:
             "sync": self.sync_health(),
             "pairings": [p.wire() for p in pairing.live(base=self._pairings_base)],
             "pairing_offers": pairing.live_offers(base=self._pairings_base),
+            "credentials": self.credentials_report(),
         }
 
     def machine_report(self) -> dict[str, Any] | None:
@@ -1836,6 +1842,11 @@ class Runner:
         person's agent here, or a hub with sign-in off, is asked again an
         hour later rather than every minute. A computer that isn't signed in
         is asked every round, so signing in is all it takes.
+
+        What it learns is each agent's verdict (:attr:`can_reply`), sent with
+        every heartbeat so the room shows an agent that can't reply and why. A
+        token is checked with the hub when it's issued or renewed, and hourly,
+        so one the hub stopped accepting is found too.
         """
         if self.host.name != "herdr" or not self.herdr:
             return
@@ -1844,16 +1855,28 @@ class Runner:
             live = {str(a["pane_id"]) for a in self.bridge.list_agents() if a.get("pane_id")}
         except HerdrError:
             return
-        for m in self.bridge.registry.all():
-            key = (m.room, m.handle)
-            if m.pane not in live or self._no_token.get(key, 0.0) > now:
+        here = {(m.room, m.handle) for m in self.bridge.registry.all() if m.pane in live}
+        # An agent whose pane closed has nothing to say about replying.
+        for gone in set(self.can_reply) - here:
+            del self.can_reply[gone]
+        for room, handle in sorted(here):
+            key = (room, handle)
+            path = member_token_path(room, handle)
+            left = _token_left(path, now)
+            if left > RENEW_BEFORE_S:
+                if now - self._checked.get(key, 0.0) >= NO_TOKEN_RETRY_S:
+                    self._check_token(key, path, now)
                 continue
-            if _token_left(member_token_path(m.room, m.handle), now) > RENEW_BEFORE_S:
+            if self._no_token.get(key, 0.0) > now:
                 continue
             try:
-                got = agent_credentials.issue_member_token(self.config, m.room, m.handle)
+                got = agent_credentials.issue_member_token(self.config, room, handle)
             except MemberTokenRefused as e:
-                log.info("no token for @%s in %s: %s", m.handle, m.room, e.reason())
+                log.info("no token for @%s in %s: %s", handle, room, e.reason())
+                if left <= 0:
+                    # A renewal refused while its token still has days left
+                    # changes nothing yet: that token still works.
+                    self.can_reply[key] = (False, self._cant_reply(e))
                 if e.signed_out:
                     # This computer isn't signed in: asked again next round, so
                     # its agents have tokens a minute after `mycelium login`.
@@ -1861,9 +1884,45 @@ class Runner:
                 got = None
             if got is None:
                 self._no_token[key] = now + NO_TOKEN_RETRY_S
+                # With sign-in off there's no token to run out, and nothing to say.
+                if path.exists() and left <= 0 and key not in self.can_reply:
+                    self.can_reply[key] = (
+                        False,
+                        f"Its token ran out and couldn't be renewed ({self.label}).",
+                    )
                 continue
             self._no_token.pop(key, None)
-            log.info("gave @%s in %s a token of its own", m.handle, m.room)
+            log.info("gave @%s in %s a token of its own", handle, room)
+            self._check_token(key, got, now)
+
+    def _cant_reply(self, refused: MemberTokenRefused) -> str:
+        if refused.signed_out:
+            return f"This computer isn't signed in to the hub ({self.label})."
+        return f"The hub won't give it a token for whoever {self.label} is signed in as."
+
+    def _check_token(self, key: tuple[str, str], path: Path, now: float) -> None:
+        """Ask the hub who the token at ``path`` is, as that token: it works, or
+        the hub refused it. A hub that can't be asked leaves the verdict alone."""
+        try:
+            token = path.read_text().strip()
+            with hub_client(
+                self.config, timeout=10, headers={"Authorization": f"Bearer {token}"}
+            ) as client:
+                resp = client.get("/api/whoami")
+        except (OSError, httpx.HTTPError):
+            return
+        self._checked[key] = now
+        if resp.status_code == 401:
+            self.can_reply[key] = (False, f"The hub refused its token ({self.label}).")
+        elif resp.status_code == 200:
+            self.can_reply[key] = (True, None)
+
+    def credentials_report(self) -> list[dict[str, Any]]:
+        """Each agent's verdict, for the heartbeat."""
+        return [
+            {"room": room, "handle": handle, "can_reply": ok, "why": why}
+            for (room, handle), (ok, why) in sorted(self.can_reply.items())
+        ]
 
     def _credentials_loop(self) -> None:
         while True:

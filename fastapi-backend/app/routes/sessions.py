@@ -40,6 +40,7 @@ from app.services import (
     message_format,
     pauses,
     room_channels,
+    runners,
     schedules,
     subscriptions,
     tasks,
@@ -211,11 +212,17 @@ async def list_members(room_name: str):
     """
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
+    # Whether each agent can reply, as the runner keeping its token knows it.
+    replies = runners.registry.can_reply(room_name)
     return {
         "members": [
             {
                 "handle": h,
                 "kind": info.kind,
+                # False when the runner knows its credential is missing, expired
+                # or refused; None when no runner checking in has a verdict on it.
+                "can_reply": replies[h][0] if h in replies else None,
+                "cant_reply_why": replies[h][1] if h in replies else None,
                 # Wall-clock ISO of the lease member's last poll; None for SLIM
                 # members (a live socket is continuously present).
                 "last_seen": (
