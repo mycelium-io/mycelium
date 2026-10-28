@@ -1441,7 +1441,8 @@ def test_a_restart_from_the_hub_asks_first_then_starts_the_agent_in_its_pane(
 
     # No session on record for it, and the question says what that costs.
     assert waiting["message"].startswith(
-        "It comes back in a new session, so its conversation won't be kept."
+        "It comes back in a new session, so its conversation won't be kept. "
+        "It catches up from the room:\n"
     )
 
     approvals.answer("c0ffee01", yes=True, base=tmp_path)
@@ -1450,6 +1451,27 @@ def test_a_restart_from_the_hub_asks_first_then_starts_the_agent_in_its_pane(
     assert done["result"]["sessions"] == {"a": None}
     assert len(herdr.of("agent start")) == starts + 1
     assert "You were restarted" in herdr.of("agent prompt")[-1][3]
+
+
+def test_a_restart_names_the_agents_that_wont_keep_their_conversations(
+    make_runner, herdr: Herdr, hub: Hub, quick: None
+):
+    r = make_runner()
+    for handle in ("a", "b", "c"):
+        r.launch({**LAUNCH, "handle": handle})
+    # Only @a has worked in a session on record.
+    herdr.live["w9:p1"] = "working"
+    herdr.sessions["w9:p1"] = "sess-a"
+    r.sync_pass()
+    herdr.live.clear()
+    herdr.sessions.clear()
+
+    agents = [{"handle": h, "room": "eng"} for h in ("a", "b", "c")]
+    question = r.question({"kind": "restart", "spec": {"agents": agents}})
+    assert question["message"].startswith(
+        "@b and @c come back in new sessions and won't keep their conversations; "
+        "the rest keep theirs:\n"
+    )
 
 
 def test_a_restart_resumes_the_session_the_agent_worked_in_and_lets_the_sync_pass_run(
@@ -1470,7 +1492,7 @@ def test_a_restart_resumes_the_session_the_agent_worked_in_and_lets_the_sync_pas
 
     question = r.question({"kind": "restart", "spec": {"agents": [{"handle": "a", "room": "eng"}]}})
     assert question["message"].startswith(
-        "Each comes back in its own session, keeping its conversation."
+        "It comes back in its own session and keeps its conversation:\n"
     )
 
     locked_during_start: list[bool] = []

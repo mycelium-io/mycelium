@@ -1518,22 +1518,36 @@ class Runner:
             # Said first and plainly when a conversation won't be kept.
             lost = [a for a in agents if not this_machine.resumes(a)]
             if not lost:
-                kept = "Each comes back in its own session, keeping its conversation."
-            elif n == 1:
-                kept = "It comes back in a new session, so its conversation won't be kept."
-            elif len(lost) == n:
-                kept = "Each comes back in a new session, so their conversations won't be kept."
-            else:
-                names = ", ".join("@" + a.handle for a in lost)
                 kept = (
-                    f"{len(lost)} of {n} come back in a new session, so their conversations "
-                    f"won't be kept: {names}."
+                    "It comes back in its own session and keeps its conversation:"
+                    if n == 1
+                    else "Each comes back in its own session and keeps its conversation:"
+                )
+            elif n == 1:
+                kept = (
+                    "It comes back in a new session, so its conversation won't be kept. "
+                    "It catches up from the room:"
+                )
+            elif len(lost) == n:
+                kept = (
+                    "Each comes back in a new session, so their conversations won't be kept. "
+                    "They catch up from the room:"
+                )
+            else:
+                names = [f"@{a.handle}" for a in lost]
+                who = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+                kept = (
+                    f"{who} comes back in a new session and won't keep its conversation; "
+                    "the rest keep theirs:"
+                    if len(lost) == 1
+                    else f"{who} come back in new sessions and won't keep their conversations; "
+                    "the rest keep theirs:"
                 )
             return {
                 "kind": kind,
                 "title": f"Restart {n} agent{'s' if n != 1 else ''} on {self.label}?",
                 "message": (
-                    f"{kept} Each starts again as itself and catches up from the room:\n{lines}\n\n"
+                    f"{kept}\n{lines}\n\n"
                     f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
                 ),
                 "hub": hub,
