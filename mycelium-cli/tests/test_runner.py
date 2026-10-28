@@ -1579,7 +1579,7 @@ def quiet_hub(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     """The hub's side of a sync pass: presence taken, and ``wakes`` handed out once."""
     wakes: list[dict] = []
 
-    def fetch(_config: Any, room: str) -> list[dict]:
+    def fetch(_config: Any, room: str, **_kw: Any) -> list[dict]:
         taken = [w for w in wakes if w.get("room") == room]
         for w in taken:
             wakes.remove(w)
@@ -1614,7 +1614,7 @@ def test_the_hub_is_told_what_became_of_each_wake(
     told: list[tuple[str, list]] = []
     monkeypatch.setattr(
         "mycelium.commands.herdr.report_wakes",
-        lambda _config, room, outcomes: told.append((room, outcomes)),
+        lambda _config, room, outcomes, **_kw: told.append((room, outcomes)),
     )
     r = make_runner()
     r.launch(LAUNCH)

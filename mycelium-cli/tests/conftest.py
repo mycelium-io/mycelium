@@ -80,6 +80,17 @@ def _never_the_real_home(request: pytest.FixtureRequest):
 
 
 @pytest.fixture(autouse=True)
+def _fresh_sync_memory() -> None:
+    """What a sync pass remembers between passes (manifests it saw on the hub,
+    rooms the hub doesn't have) is per process; each test starts with none."""
+    from mycelium.commands import herdr
+
+    herdr._manifest_seen.clear()
+    herdr._unknown_rooms.clear()
+    herdr._pass_clients.clear()
+
+
+@pytest.fixture(autouse=True)
 def _never_the_real_install_dirs(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test finds the developer's own agent CLIs in their install folders.
 
