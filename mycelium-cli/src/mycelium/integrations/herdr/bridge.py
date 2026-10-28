@@ -396,8 +396,14 @@ class HerdrRegistry:
         data[mapping.key] = entry
         self._save(data)
 
-    def note_sessions(self, by_pane: dict[str, str]) -> None:
-        """Record the session herdr reports for each mapped pane, where it changed.
+    def note_sessions(self, worked: dict[str, str], seen: dict[str, str] | None = None) -> None:
+        """Record, for each mapped pane, the session its agent last worked in.
+
+        ``worked`` is the session herdr reports for each pane whose agent is
+        working; ``seen`` is every session it reports, idle ones too. A pane with no session on record takes the one
+        seen; one with a session keeps it until its agent works in another. A
+        pane that comes back from a herdr restart as a fresh session, idle and
+        empty, so never replaces the conversation a restart should resume.
 
         Called with what herdr says now, so the session outlives the pane: once
         an agent has stopped, or its pane has closed, herdr no longer reports it.
@@ -407,7 +413,10 @@ class HerdrRegistry:
         for entry in data.values():
             if not isinstance(entry, dict):
                 continue
-            session = by_pane.get(str(entry.get("pane")))
+            pane = str(entry.get("pane"))
+            session = worked.get(pane) or (
+                (seen or {}).get(pane) if not entry.get("session") else None
+            )
             if session and entry.get("session") != session:
                 entry["session"] = session
                 changed = True

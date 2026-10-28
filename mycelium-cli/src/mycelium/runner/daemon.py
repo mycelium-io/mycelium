@@ -567,22 +567,54 @@ class Runner:
             raise JobError(f"{names} can't be restarted: it's running, or nothing says how.")
         return agents
 
+    @contextlib.contextmanager
+    def _panes_let_go(self) -> Iterator[None]:
+        """Let go of the panes while a job waits on an agent coming up, so the
+        sync pass, and the wakes it delivers, don't wait on it. For a job run
+        under the lock (``_do_and_report``), on a pane already mapped."""
+        self._panes.release()
+        try:
+            yield
+        finally:
+            self._panes.acquire()
+
     def restart_agents(self, spec: dict[str, Any]) -> dict[str, Any]:
-        """Start stopped agents again, as themselves (``mycelium machine restart``)."""
+        """Start stopped agents again, as themselves (``mycelium machine restart``).
+
+        Says for each which session it came back in: its own, which keeps its
+        conversation, or a new one, and why.
+        """
         restarted: dict[str, str] = {}
+        sessions: dict[str, str | None] = {}
         failed: dict[str, str] = {}
         for agent in self._restartable(spec):
+            resume = agent.session if this_machine.resumes(agent) else None
             try:
                 restarted[agent.handle] = this_machine.restart(
-                    self.config, agent, bridge=self.bridge
+                    self.config, agent, bridge=self.bridge, while_starting=self._panes_let_go()
                 )
             except this_machine.MachineError as e:
                 failed[agent.handle] = str(e)
                 log.warning("restart @%s failed: %s", agent.handle, e)
+                continue
+            sessions[agent.handle] = resume
+            if resume:
+                log.info("restart @%s: in its own session %s", agent.handle, resume)
+            else:
+                why = (
+                    "no session on record"
+                    if not agent.session
+                    else f"{agent.kind} can't resume one"
+                )
+                log.info("restart @%s: in a new session (%s)", agent.handle, why)
         if failed and not restarted:
             raise JobError("; ".join(failed.values()))
-        self.log.print(f"[green]restarted[/green] {', '.join('@' + h for h in restarted)}")
-        return {"restarted": restarted, "failed": failed}
+        kept = sum(1 for s in sessions.values() if s)
+        self.log.print(
+            f"[green]restarted[/green] {', '.join('@' + h for h in restarted)}"
+            f" [dim]({kept} of {len(restarted)} in their own session)[/dim]"
+        )
+        return {"restarted": restarted, "sessions": sessions, "failed": failed}
 
     def _renamable(self, spec: dict[str, Any]) -> this_machine.Agent:
         """The agent a ``rename`` job names, read now, with what it takes to start it again."""
@@ -1483,12 +1515,25 @@ class Runner:
             agents = self._restartable(spec)
             lines = "\n".join(this_machine.restart_command(a) for a in agents)
             n = len(agents)
+            # Said first and plainly when a conversation won't be kept.
+            lost = [a for a in agents if not this_machine.resumes(a)]
+            if not lost:
+                kept = "Each comes back in its own session, keeping its conversation."
+            elif n == 1:
+                kept = "It comes back in a new session, so its conversation won't be kept."
+            elif len(lost) == n:
+                kept = "Each comes back in a new session, so their conversations won't be kept."
+            else:
+                names = ", ".join("@" + a.handle for a in lost)
+                kept = (
+                    f"{len(lost)} of {n} come back in a new session, so their conversations "
+                    f"won't be kept: {names}."
+                )
             return {
                 "kind": kind,
                 "title": f"Restart {n} agent{'s' if n != 1 else ''} on {self.label}?",
                 "message": (
-                    f"Each starts again as itself and catches up from the room. One in its own "
-                    f"session keeps its conversation; one in a new session doesn't:\n{lines}\n\n"
+                    f"{kept} Each starts again as itself and catches up from the room:\n{lines}\n\n"
                     f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
                 ),
                 "hub": hub,
