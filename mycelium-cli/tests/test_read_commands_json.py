@@ -253,32 +253,37 @@ def test_runner_status_says_what_the_hub_answered_rather_than_not_connected(
     assert f"answered {code}" in json.loads(as_json.stdout)["hub_error"]
 
 
-def _hub_404(monkeypatch: pytest.MonkeyPatch) -> None:
+def _hub_404(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """The hub's answer for a runner the caller doesn't own, or never heard from."""
     import mycelium.client
     import mycelium.runner.daemon
 
+    asked: list[str] = []
+
     @contextmanager
     def fake_hub_client(*_a: object, **_k: object) -> Iterator[SimpleNamespace]:
-        yield SimpleNamespace(
-            get=lambda _path: SimpleNamespace(status_code=404, json=lambda: {"detail": "x"})
-        )
+        def get(path: str) -> SimpleNamespace:
+            asked.append(path)
+            return SimpleNamespace(status_code=404, json=lambda: {"detail": "x"})
+
+        yield SimpleNamespace(get=get)
 
     monkeypatch.setattr(mycelium.client, "hub_client", fake_hub_client)
     monkeypatch.setattr(mycelium.runner.daemon, "runner_id", lambda: "abc123")
+    return asked
 
 
-def test_runner_status_in_an_agents_pane_shows_the_runners_own_word_not_hasnt_heard(
+def test_runner_status_says_what_the_runner_itself_knows_and_asks_the_hub_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The hub shows a runner only to its owner; an agent's pane isn't, but the
-    runner itself says its heartbeats get through."""
+    """From an agent's pane the hub would answer 404 (it shows a runner only to its
+    owner); the runner sends the heartbeats, so its word is the answer."""
     from datetime import UTC, datetime
 
     import mycelium.runner.daemon
     from mycelium.commands import runner as runner_cmd
 
-    _hub_404(monkeypatch)
+    asked = _hub_404(monkeypatch)
     now = datetime.now(UTC).isoformat()
     monkeypatch.setattr(runner_cmd, "running_pid", lambda: 4242)
     monkeypatch.setattr(
@@ -299,12 +304,14 @@ def test_runner_status_in_an_agents_pane_shows_the_runners_own_word_not_hasnt_he
     assert "connected to the hub, last heartbeat" in out
     assert "last sync pass" in out
     assert "took 840ms" in out
-    assert "isn't shown to @coder" in out
     assert "hasn't heard" not in out
+    assert asked == []
 
     state = _json(["runner", "status", "--json"])
     assert state["local"]["connected"] is True
-    assert state["hub_hidden"] is True
+    # Asked for, the hub's view comes too.
+    runner.invoke(app, ["runner", "status", "--hub"])
+    assert asked == ["/api/runners/abc123"]
 
 
 def test_runner_status_with_no_runner_and_a_404_still_says_the_hub_hasnt_heard(

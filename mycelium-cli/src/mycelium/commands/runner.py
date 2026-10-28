@@ -190,22 +190,25 @@ def runner(
 
 
 @doc_ref(
-    usage="mycelium runner status",
+    usage="mycelium runner status [--hub]",
     desc="Show whether this machine's runner is running and connected to the hub.",
     group="agent",
 )
 @app.command("status")
 @emits_json("as_json")
-def runner_status(as_json: bool = False) -> None:
-    """Whether this machine's runner is running, and what the hub sees of it.
+def runner_status(
+    as_json: bool = False,
+    hub: bool = typer.Option(False, "--hub", help="Also ask the hub what it sees of this runner."),
+) -> None:
+    """Whether this machine's runner is running, and whether its heartbeats get
+    through, its last sync pass and any error, as the runner itself wrote them.
 
-    What the runner knows of itself comes first: it writes it here, so it is
-    true whoever asks. The hub's view comes after, as the hub's: it shows a
-    runner only to its owner, so an agent's pane is never shown it.
+    The runner is what sends the heartbeats, so its word is the answer. The
+    hub is asked only with ``--hub``, or when no running runner has written
+    anything here.
     """
     import httpx
 
-    from mycelium import caller
     from mycelium.client import hub_client
     from mycelium.runner.daemon import read_sync, runner_id
 
@@ -225,6 +228,10 @@ def runner_status(as_json: bool = False) -> None:
         )
         for line in _local_lines(local):
             console.print(f"  {line}")
+    if local is not None and not hub:
+        if as_json:
+            typer.echo(json.dumps(state, indent=2, default=str))
+        return
     try:
         with hub_client(MyceliumConfig.load(), timeout=5) as client:
             resp = client.get(f"/api/runners/{rid}")
@@ -236,19 +243,10 @@ def runner_status(as_json: bool = False) -> None:
             console.print(f"[yellow]hub unreachable:[/yellow] {e}")
         raise typer.Exit(1) from None
     if resp.status_code == 404:
-        # The hub answers 404 for a runner the caller doesn't own, the same as
-        # for one it never heard from. When the runner says its heartbeats get
-        # through, it's the first.
-        heard = bool(local and local.get("connected"))
-        pane = caller.in_agent_pane()
-        if heard or pane:
-            whose = f"@{pane}" if pane else "the credential this terminal uses"
-            said = (
-                f"The hub's view isn't shown to {whose}: it shows a runner only to its "
-                "owner. Run this in your own terminal to see it."
-            )
-            state["hub_hidden"] = True
-        else:
+        # The hub answers 404 for a runner it never heard from, and for one
+        # the caller doesn't own (it shows a runner only to its owner).
+        said = "The hub has no runner by that id that this terminal's credential can see."
+        if local is None:
             said = "The hub hasn't heard from it."
         if as_json:
             state["hub_note"] = said
@@ -279,7 +277,7 @@ def runner_status(as_json: bool = False) -> None:
         typer.echo(json.dumps(state, indent=2, default=str))
         return
     connected = "[green]connected[/]" if seen.get("connected") else "[yellow]not connected[/]"
-    console.print(f"the hub's view: {connected} · herdr {'yes' if seen.get('herdr') else 'no'}")
+    console.print(f"hub: {connected} · herdr {'yes' if seen.get('herdr') else 'no'}")
     for a in seen.get("agents") or []:
         console.print(f"  @{a['handle']} in {a['room']} · {a['framework']} · {a['status']}")
 
