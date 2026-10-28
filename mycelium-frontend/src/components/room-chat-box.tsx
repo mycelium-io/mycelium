@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import {
   ApiError,
@@ -43,6 +43,8 @@ import {
   parseSilentMentions,
 } from "@/lib/mentions";
 import { RECENT_MENTIONS_CHANGED, readRecentMentions, recordMentions } from "@/lib/recent-mentions";
+import { composerMentions } from "@/lib/composer-mentions";
+import { MentionLayer } from "@/components/mention-layer";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, loadSent, rememberSent, saveDraft } from "@/lib/drafts";
 import { sendPending } from "@/lib/pending-messages";
@@ -130,6 +132,13 @@ interface Props {
 
 /** What the composer says once a schedule is saved; it links to the Schedules tab. */
 const SCHEDULED = "Scheduled.";
+
+/** The composer's text box metrics, shared by the textarea and the layer that
+ *  colors its mentions, which must lay the text out identically. */
+const COMPOSER_TEXT = "px-3 pb-1 pt-2.5 text-body font-[430] leading-relaxed";
+
+/** How tall the composer grows before its text scrolls. */
+const COMPOSER_MAX_ROWS = 10;
 
 /** The hint row under the composer: what each typed sigil does. The sigils
  *  are drawn as keycaps, since they're what you type. */
@@ -554,6 +563,17 @@ export function RoomChatBox({
     ],
     [agents, people, others, names],
   );
+
+  // The mentions being typed, each colored by whether it reaches a member: the
+  // same roster the `@` popover offers.
+  const memberHandles = useMemo(() => new Set(mentionRoster.map((m) => m.handle.toLowerCase())), [mentionRoster]);
+  const typedMentions = useMemo(() => composerMentions(content, memberHandles), [content, memberHandles]);
+  const mentionLayer = useRef<HTMLDivElement>(null);
+  // Kept at the textarea's scroll on every change too, not only on a scroll:
+  // the layer appears with the first mention, wherever the text is scrolled.
+  useLayoutEffect(() => {
+    if (mentionLayer.current && inputRef.current) mentionLayer.current.scrollTop = inputRef.current.scrollTop;
+  });
 
   const candidates = useMemo<Candidate[]>(() => {
     if (trigger === null) return [];
@@ -1120,33 +1140,59 @@ export function RoomChatBox({
             </div>
           )}
           <PendingAttachments items={attachments.items} onRemove={attachments.remove} />
-          <TextareaAutosize
-            ref={inputRef}
-            value={content}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onPaste={(e) => {
-              // A pasted screenshot or copied file attaches; pasted text stays text.
-              if (e.clipboardData.files.length) {
-                e.preventDefault();
-                attachFrom(e.clipboardData.files);
-              }
-            }}
-            onSelect={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
-            placeholder={placeholder}
-            minRows={1}
-            maxRows={10}
-            // Scrolls only once it's grown to its cap. Below that, WebKit (the
-            // desktop app on a Mac) can measure the box a fraction short of its text and
-            // draws a scrollbar for nothing.
-            onHeightChange={() => {
-              const el = inputRef.current;
-              if (el) setScrolls(el.scrollHeight > el.clientHeight + 1);
-            }}
-            style={{ overflowY: scrolls ? "auto" : "hidden" }}
-            className="block w-full resize-none bg-transparent px-3 pb-1 pt-2.5 text-body font-[430] text-text leading-relaxed focus:outline-none placeholder:truncate placeholder:text-faint"
-            disabled={sending}
-          />
+          {/* Mentions are colored by a layer under the textarea, which then
+              draws its own text transparent; with none, it draws as usual. */}
+          <div className="relative">
+            {typedMentions.length > 0 && (
+              <MentionLayer
+                ref={mentionLayer}
+                text={content}
+                mentions={typedMentions}
+                scrolls={scrolls}
+                className={cn(COMPOSER_TEXT, "text-text")}
+              />
+            )}
+            <TextareaAutosize
+              ref={inputRef}
+              value={content}
+              onChange={handleChange}
+              onScroll={(e) => {
+                if (mentionLayer.current) mentionLayer.current.scrollTop = e.currentTarget.scrollTop;
+              }}
+              onKeyDown={handleKeyDown}
+              onPaste={(e) => {
+                // A pasted screenshot or copied file attaches; pasted text stays text.
+                if (e.clipboardData.files.length) {
+                  e.preventDefault();
+                  attachFrom(e.clipboardData.files);
+                }
+              }}
+              onSelect={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
+              placeholder={placeholder}
+              minRows={1}
+              maxRows={COMPOSER_MAX_ROWS}
+              // Scrolls only once it's grown to its cap, judged by the height the
+              // box was given rather than by how its text measures: WebKit (the
+              // desktop app on a Mac) can measure the box a fraction short of its
+              // text, by more than a pixel when the page is zoomed out, and would
+              // draw a scrollbar for nothing.
+              onHeightChange={(height, { rowHeight }) => {
+                const el = inputRef.current;
+                if (!el) return;
+                const s = getComputedStyle(el);
+                const frame = ["paddingTop", "paddingBottom", "borderTopWidth", "borderBottomWidth"] as const;
+                const cap = rowHeight * COMPOSER_MAX_ROWS + frame.reduce((sum, k) => sum + parseFloat(s[k]), 0);
+                setScrolls(height >= cap - 1 && el.scrollHeight > el.clientHeight + 1);
+              }}
+              style={{ overflowY: scrolls ? "auto" : "hidden" }}
+              className={cn(
+                "relative block w-full resize-none bg-transparent focus:outline-none placeholder:truncate placeholder:text-faint",
+                COMPOSER_TEXT,
+                typedMentions.length > 0 ? "text-transparent caret-text" : "text-text",
+              )}
+              disabled={sending}
+            />
+          </div>
           <div className="flex items-center gap-2 px-1.5 pb-1.5">
             {/* Add what a message or a room holds, without knowing which verb
                 does it: files to the message, and in the room's own composer a
