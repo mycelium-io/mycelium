@@ -4,7 +4,7 @@
 "use client";
 
 import React from "react";
-import { MessageSquare } from "lucide-react";
+import { MessageSquareText } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -204,19 +204,43 @@ interface Props {
   onOpenThread?: (episode: string) => void;
 }
 
-/** The link beside a thread id that names a task: the task's title, opening its thread. */
-function ThreadLinkChip({ target, onOpen }: { target: ThreadTarget; onOpen: (episode: string) => void }) {
-  const label = target.title ?? "its thread";
+/** A thread id that names a task: the id exactly as written, then a small
+ *  thread icon that is the link, showing the task on hover and opening its
+ *  thread on a click. The app's mark, not words in the agent's mouth. */
+function ThreadIdLink({
+  id,
+  target,
+  onOpen,
+  code = false,
+}: {
+  id: string;
+  target: ThreadTarget;
+  onOpen: (episode: string) => void;
+  /** It was written as a code span, and stays one. */
+  code?: boolean;
+}) {
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(target.episode)}
-      title={`Open ${target.title ? `“${target.title}”` : "the thread"}`}
-      className="ml-1 inline-flex max-w-[24ch] items-baseline gap-1 rounded px-1 align-baseline text-[0.92em] text-accent transition-colors hover:bg-accent-soft hover:underline"
-    >
-      <MessageSquare aria-hidden className="size-3 shrink-0 self-center" />
-      <span className="truncate">{label}</span>
-    </button>
+    <>
+      {code ? <code>{id}</code> : id}
+      <Tooltip
+        content={
+          <span className="flex items-center gap-1.5">
+            <MessageSquareText aria-hidden className="size-3 shrink-0" />
+            {target.title ?? "Open its thread"}
+          </span>
+        }
+      >
+        <button
+          type="button"
+          onClick={() => onOpen(target.episode)}
+          aria-label={`Open ${target.title ? `“${target.title}”` : `thread ${id}`}`}
+          // Centered on the line's lowercase letters, not sitting on the baseline.
+          className="ml-0.5 inline-flex size-[1.15em] items-center justify-center rounded align-[-0.075em] text-accent/80 transition-colors hover:bg-accent-soft hover:text-accent"
+        >
+          <MessageSquareText aria-hidden className="size-[0.8em]" />
+        </button>
+      </Tooltip>
+    </>
   );
 }
 
@@ -248,15 +272,11 @@ export function MarkdownContent({
         // Odd indices are the captured tokens; even indices are plain text.
         if (i % 2 === 0) return renderProse(part, i);
         // A thread id stays as written. One that names a task in this room gets
-        // the task's link beside it; any other is plain text, undimmed.
+        // the thread icon after it; any other is plain text, undimmed.
         if (THREAD_ID.test(part)) {
           const target = linkThreads && onOpenThread ? threads?.get(part) : undefined;
-          return (
-            <React.Fragment key={i}>
-              {renderProse(part, i)}
-              {target && onOpenThread && <ThreadLinkChip target={target} onOpen={onOpenThread} />}
-            </React.Fragment>
-          );
+          if (target && onOpenThread) return <ThreadIdLink key={i} id={part} target={target} onOpen={onOpenThread} />;
+          return renderProse(part, i);
         }
         if (part.startsWith(SILENT_MENTION_SIGIL)) {
           return (
@@ -321,6 +341,13 @@ export function MarkdownContent({
         // A code span/block is prose *about* syntax, not a link — e.g. a
         // glossary row showing `![[key]]` as an example must stay inert text,
         // not become a chip that navigates to a literal memory named "key".
+        // The one exception: a code span that is exactly a thread id, the way
+        // agents quote one, links like a bare id and keeps its code look.
+        if (node.type === "code" && linkThreads && onOpenThread) {
+          const text = (node.props as { children?: React.ReactNode }).children;
+          const target = typeof text === "string" && THREAD_ID.test(text) ? threads?.get(text) : undefined;
+          if (target) return <ThreadIdLink id={text as string} target={target} onOpen={onOpenThread} code />;
+        }
         if (node.type === "code" || node.type === "pre") return node;
         const props = node.props as { children?: React.ReactNode; href?: string };
         return React.cloneElement(
@@ -332,7 +359,7 @@ export function MarkdownContent({
       }
       return node;
     },
-    [renderText],
+    [renderText, threads, onOpenThread],
   );
 
   // `[label](myc://key)` is an ordinary markdown link whose scheme no browser
