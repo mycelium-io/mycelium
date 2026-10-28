@@ -424,6 +424,45 @@ def test_an_expired_kept_token_is_not_sent(isolated_home: Path, monkeypatch):
     assert caller.credential(MyceliumConfig.load()).value is None
 
 
+def test_another_agents_pane_in_a_joined_folder_never_carries_the_membership_token(
+    isolated_home: Path, monkeypatch
+):
+    """The folder joined as @agora-coding; @builder works in it with no kept token yet."""
+    _join(isolated_home, handle="agora-coding", token="tok-agora")
+    _map("checkout", "builder", "w1:p2")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p2")
+
+    config = MyceliumConfig.load()
+    assert caller.handle(config) == caller.Answer("builder", caller.PANE)
+    assert caller.credential(config).value is None
+    assert auth_headers(config) == {}
+
+
+def test_the_joined_agents_own_pane_still_carries_its_membership_token(
+    isolated_home: Path, monkeypatch
+):
+    _join(isolated_home, handle="agora-coding", token="tok-agora")
+    _map("checkout", "agora-coding", "w1:p2")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p2")
+
+    assert caller.credential(MyceliumConfig.load()) == caller.Answer("tok-agora", caller.MEMBERSHIP)
+
+
+def test_a_pane_mapped_to_two_agents_never_falls_to_the_folders_membership(
+    isolated_home: Path, monkeypatch
+):
+    _identity(isolated_home, "operator")
+    _join(isolated_home, handle="agora-coding", token="tok-agora")
+    _map("checkout", "coder", "w1:p3")
+    _map("checkout", "designer", "w1:p3")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p3")
+    caller._WARNED.clear()
+
+    config = MyceliumConfig.load()
+    assert caller.handle(config) == caller.Answer("operator", caller.MACHINE)
+    assert caller.credential(config).value is None
+
+
 def test_a_persons_terminal_never_reads_an_agents_kept_token(isolated_home: Path, monkeypatch):
     import time
 

@@ -552,6 +552,29 @@ def test_an_agent_the_hub_wont_give_a_token_is_asked_about_hourly_not_every_roun
     assert asked == ["theirs", "theirs"]
 
 
+def test_a_computer_not_signed_in_is_asked_about_every_round(
+    make_runner, herdr: Herdr, monkeypatch: pytest.MonkeyPatch
+):
+    """Signing in is all it takes: the next round gives its agents their tokens."""
+    from mycelium import agent_credentials
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    asked: list[str] = []
+
+    def signed_out(_config: Any, _room: str, handle: str) -> Path:
+        asked.append(handle)
+        raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 401, "")
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", signed_out)
+    r = make_runner()
+    herdr.live["w9:p1"] = "idle"
+    r.bridge.registry.set(HerdrPaneMapping(room="eng", handle="mine", pane="w9:p1", kind="claude"))
+
+    r.keep_credentials(now=1000.0)
+    r.keep_credentials(now=1060.0)
+    assert asked == ["mine", "mine"]
+
+
 def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(
     make_runner, herdr: Herdr, hub: Hub, tmp_path: Path
 ):

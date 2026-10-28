@@ -1834,7 +1834,8 @@ class Runner:
         this runs, with no restart. A token is renewed a week before it
         expires. The hub gives one only to whoever owns the agent, so another
         person's agent here, or a hub with sign-in off, is asked again an
-        hour later rather than every minute.
+        hour later rather than every minute. A computer that isn't signed in
+        is asked every round, so signing in is all it takes.
         """
         if self.host.name != "herdr" or not self.herdr:
             return
@@ -1853,6 +1854,10 @@ class Runner:
                 got = agent_credentials.issue_member_token(self.config, m.room, m.handle)
             except MemberTokenRefused as e:
                 log.info("no token for @%s in %s: %s", m.handle, m.room, e.reason())
+                if e.signed_out:
+                    # This computer isn't signed in: asked again next round, so
+                    # its agents have tokens a minute after `mycelium login`.
+                    continue
                 got = None
             if got is None:
                 self._no_token[key] = now + NO_TOKEN_RETRY_S

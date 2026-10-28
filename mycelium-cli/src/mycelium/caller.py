@@ -289,7 +289,9 @@ def handle(
     agent = pane_agent()
     if agent is not None and agent.handle:
         return Answer(agent.handle, PANE)
-    member = find_membership()
+    # A pane herdr maps to more than one agent is still an agent's pane, never
+    # whoever this folder's membership names.
+    member = find_membership() if agent is None else None
     if member is not None:
         return Answer(member.handle, MEMBERSHIP)
     found = person(config, ask_hub=ask_hub)
@@ -360,11 +362,14 @@ def credential(config: MyceliumConfig, acting_as: str | None = None) -> Answer:
     if pane and (kept := pane_token()):
         return Answer(kept, PANE)
     member = find_membership()
+    # In an agent's pane the membership is lent only to the agent it names:
+    # another agent working in that folder sends no token, not that one's.
+    who = acting_as or pane
     if (
         member is not None
         and member.token
         and not member.token_expired()
-        and (acting_as is None or _same_handle(acting_as, member.handle))
+        and (who is None or _same_handle(who, member.handle))
     ):
         return Answer(member.token, MEMBERSHIP)
     session = current_token(config)
