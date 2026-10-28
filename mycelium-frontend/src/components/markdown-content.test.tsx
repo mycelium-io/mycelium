@@ -218,3 +218,62 @@ describe("<MarkdownContent /> headings", () => {
     expect(heading).toContainElement(screen.getByRole("button", { name: /work\/api/ }));
   });
 });
+
+describe("<MarkdownContent /> thread ids", () => {
+  const episode = "urn:ioc:mycelium:episode:checkout:251c83d6";
+  const threads = new Map([["251c83d6", { episode, title: "Add Apple Pay to checkout" }]]);
+  const draw = (text: string, onOpenThread = vi.fn()) => {
+    render(
+      <MarkdownContent threads={threads} onOpenThread={onOpenThread}>
+        {text}
+      </MarkdownContent>,
+    );
+    return onOpenThread;
+  };
+
+  it("follows a thread id that names a task here with an icon that opens it, keeping the id as written", async () => {
+    const open = draw("Picked up in thread 251c83d6.");
+    expect(screen.getByText("Picked up in thread 251c83d6.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open “Add Apple Pay to checkout”" }));
+    expect(open).toHaveBeenCalledWith(episode);
+  });
+
+  it("links a code span that is exactly a thread id, and keeps it code", () => {
+    draw("Picked up `251c83d6` from the board.");
+    expect(screen.getByText("251c83d6").tagName).toBe("CODE");
+    expect(screen.getByRole("button", { name: /Add Apple Pay/ })).toBeInTheDocument();
+  });
+
+  it("names the thread by its id where no single task does", () => {
+    render(
+      <MarkdownContent threads={new Map([["251c83d6", { episode, title: null }]])} onOpenThread={vi.fn()}>
+        {"thread 251c83d6"}
+      </MarkdownContent>,
+    );
+    expect(screen.getByRole("button", { name: "Open thread 251c83d6" })).toBeInTheDocument();
+  });
+
+  it("leaves a commit hash, or any id no thread here has, as plain text", () => {
+    draw("Fixed in 9f3e1a7b, on top of 251c83d7.");
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByText("Fixed in 9f3e1a7b, on top of 251c83d7.")).toBeInTheDocument();
+  });
+
+  it("doesn't link an id inside longer code, a code block, a longer hash, a path or a URN", () => {
+    draw(
+      "`board resolve 251c83d6` and\n```\n251c83d6\n```\n251c83d6ab12, refs/251c83d6, urn:ioc:mycelium:episode:checkout:251c83d6",
+    );
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("doesn't link an id inside a link's own text", () => {
+    draw("[251c83d6](https://github.com/coffee-shop/web/commit/251c83d6)");
+    expect(screen.getByRole("link", { name: "251c83d6" })).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("stays text with nothing to open it with", () => {
+    render(<MarkdownContent threads={threads}>{"thread 251c83d6"}</MarkdownContent>);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+});

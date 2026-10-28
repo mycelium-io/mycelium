@@ -5,7 +5,7 @@
 
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { MarkdownContent } from "@/components/markdown-content";
+import { MarkdownContent, type ThreadTarget } from "@/components/markdown-content";
 import type { Highlight } from "@/components/ui/highlight-text";
 import { AttachmentStrip } from "@/components/uploads/attachment-strip";
 import { UploadPreviewDialog } from "@/components/uploads/upload-preview";
@@ -51,6 +51,10 @@ interface MessageBodyProps {
   /** Fold to this height instead (px): for prose that says again what is
    *  drawn above it, such as a reply whose values are shown as bars. */
   foldTo?: number;
+  /** The room's threads by short id: a thread id the message quotes gets a
+   *  link to its task. */
+  threads?: ReadonlyMap<string, ThreadTarget>;
+  onOpenThread?: (episode: string) => void;
 }
 
 /** Whether a message would draw the same: its text, where it links, and its
@@ -63,13 +67,15 @@ function sameBody(a: MessageBodyProps, b: MessageBodyProps): boolean {
     a.onOpenMemory === b.onOpenMemory &&
     a.roomName === b.roomName &&
     a.foldTo === b.foldTo &&
+    a.threads === b.threads &&
+    a.onOpenThread === b.onOpenThread &&
     a.hit?.query === b.hit?.query &&
     a.hit?.active === b.hit?.active &&
     (a.claims ?? []).join("\n") === (b.claims ?? []).join("\n")
   );
 }
 
-function MessageBodyImpl({ content, hit, claims, onOpenMemory, roomName, foldTo }: MessageBodyProps) {
+function MessageBodyImpl({ content, hit, claims, onOpenMemory, roomName, foldTo, threads, onOpenThread }: MessageBodyProps) {
   const clampPx = foldTo ?? CLAMP_PX;
   // A fold is asked for, so even a little more than it folds; the usual clamp
   // leaves a message that is only a little long alone.
@@ -144,6 +150,8 @@ function MessageBodyImpl({ content, hit, claims, onOpenMemory, roomName, foldTo 
           className="contrast text-body leading-relaxed"
           onLinkClick={onOpenMemory || attached.length ? openLink : undefined}
           highlight={marks}
+          threads={threads}
+          onOpenThread={onOpenThread}
         >
           {prose}
         </MarkdownContent>
