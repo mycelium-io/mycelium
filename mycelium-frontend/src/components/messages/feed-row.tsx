@@ -623,8 +623,11 @@ export function FeedRow({
     // A turn folded into the row of the run it belongs to keeps its anchor
     // and draws nothing.
     if (turnMembers === null) return <div data-event-id={ev.id} />;
+    // A run of these lines is spaced as one block, the way a message is: room
+    // above its first line, none between its lines. Without it the lines hug
+    // the message above and stand off from the one below, which brings its own.
     return (
-      <div data-event-id={ev.id}>
+      <div data-event-id={ev.id} className={prev?.conductor ? undefined : "mt-3 first:mt-0"}>
         <ConductorRow line={ev.conductor} text={ev.content} onOpenMemory={onOpenMemory} members={turnMembers} />
       </div>
     );
