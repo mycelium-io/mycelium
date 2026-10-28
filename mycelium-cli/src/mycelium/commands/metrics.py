@@ -368,19 +368,16 @@ def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
     # Source 2: /api/rooms, fills in anything the snapshot missed.
     # ``setdefault`` semantics ensure snapshot wins on conflicts.
     try:
+        from mycelium.client import hub_client
         from mycelium.config import MyceliumConfig
 
-        api_url = MyceliumConfig.load().server.api_url
-        if not api_url:
+        config = MyceliumConfig.load()
+        if not config.server.api_url:
             _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
             return _ROOM_LOOKUP_CACHE
-        import httpx
 
-        resp = httpx.get(
-            f"{api_url.rstrip('/')}/api/rooms",
-            headers={"Accept": "application/json"},
-            timeout=2.0,
-        )
+        with hub_client(config, timeout=2.0) as http:
+            resp = http.get("/api/rooms", headers={"Accept": "application/json"})
         if resp.status_code != 200:
             _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
             return _ROOM_LOOKUP_CACHE
