@@ -415,6 +415,42 @@ def test_a_dead_session_degrades_to_no_header_rather_than_a_stale_one(
     assert client_mod.auth_headers() == {}
 
 
+@pytest.mark.parametrize("issuer", ["down", "502"])
+def test_a_renewal_the_issuer_cant_answer_fails_as_unreachable_not_with_no_credential(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], issuer: str
+) -> None:
+    """A laptop waking before its network, or a blip at the issuer: the session is
+    fine, so the call is retried as unreachable, never sent bare for a 401."""
+    save_token(_token(access_token="at-stale", expires_at=time.time() - 10))
+
+    def fake_post(url: str, data: dict[str, str], timeout: float) -> _Resp:  # noqa: ARG001
+        if issuer == "down":
+            raise httpx.ConnectError("timed out")
+        return _Resp({}, status_code=502)
+
+    monkeypatch.setattr(oidc.httpx, "post", fake_post)
+
+    with pytest.raises(client_mod.RenewalUnreachable, match="couldn't renew"):
+        client_mod.auth_headers()
+    # An httpx.ConnectError, so whoever handles an unreachable hub handles it.
+    assert issubclass(client_mod.RenewalUnreachable, httpx.ConnectError)
+    # Nothing tells the person to sign in again: the session isn't gone.
+    assert "session has expired" not in capsys.readouterr().err
+    assert load_token() is not None
+
+
+def test_a_renewal_the_issuer_refuses_still_says_sign_in_again(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    save_token(_token(access_token="at-stale", expires_at=time.time() - 10))
+    monkeypatch.setattr(
+        oidc.httpx, "post", lambda *_a, **_k: _Resp({"error": "invalid_grant"}, status_code=400)
+    )
+
+    assert client_mod.auth_headers() == {}
+    assert "session has expired" in capsys.readouterr().err
+
+
 def test_an_expired_token_with_no_refresh_token_sends_nothing() -> None:
     save_token(_token(expires_at=time.time() - 10, refresh_token=None))
 

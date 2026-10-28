@@ -367,6 +367,24 @@ def test_a_hub_that_refuses_this_machine_is_said_as_a_sign_in_and_clears_on_one(
     assert (r.connected, r.signed_out) == (True, False)
 
 
+def test_a_sign_in_that_cant_be_renewed_for_now_is_said_as_connecting_not_signed_out(
+    make_runner, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """The issuer unreachable as the laptop wakes: nothing to sign in again for."""
+    from mycelium.client import RenewalUnreachable
+
+    r = make_runner()
+
+    def unreachable(*_a: Any, **_k: Any) -> Any:
+        # What building a client does when the sign-in needs renewing and can't be.
+        raise RenewalUnreachable("couldn't renew this computer's sign-in: timed out")
+
+    monkeypatch.setattr(daemon, "hub_client", unreachable)
+    assert r.hello() is False
+    assert (r.connected, r.signed_out) == (False, False)
+    assert r.poll_once() is False
+
+
 def test_the_owner_is_a_handle_a_person_reads(make_runner, monkeypatch: pytest.MonkeyPatch):
     r = make_runner()
     monkeypatch.setattr("getpass.getuser", lambda: "Julia.Valenti")
