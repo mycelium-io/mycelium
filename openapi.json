@@ -13295,6 +13295,44 @@
         ],
         "title": "RunnerAgentRef"
       },
+      "RunnerCredentialRead": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Handle"
+          },
+          "can_reply": {
+            "type": "boolean",
+            "title": "Can Reply"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "handle",
+          "can_reply"
+        ],
+        "title": "RunnerCredentialRead",
+        "description": "Whether an agent running on this machine can reply on the hub, as the\nrunner that keeps its token knows it. Only agents it has a verdict on."
+      },
       "RunnerHello": {
         "properties": {
           "id": {
@@ -13396,6 +13434,14 @@
             "type": "array",
             "maxItems": 8,
             "title": "Pairing Offers"
+          },
+          "credentials": {
+            "items": {
+              "$ref": "#/components/schemas/RunnerCredentialRead"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Credentials"
           }
         },
         "type": "object",
@@ -13765,6 +13811,14 @@
             },
             "type": "array",
             "title": "Pairings"
+          },
+          "credentials": {
+            "items": {
+              "$ref": "#/components/schemas/RunnerCredentialRead"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Credentials"
           },
           "connected": {
             "type": "boolean",

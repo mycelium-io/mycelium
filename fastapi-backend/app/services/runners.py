@@ -170,6 +170,24 @@ class RunnerRegistry:
         entry = self._runners.get(runner_id)
         return entry.read(_now()) if entry is not None else None
 
+    def can_reply(self, room: str) -> dict[str, tuple[bool, str | None]]:
+        """``{handle: (can_reply, why)}`` for ``room``, from runners checking in now.
+
+        Only agents a runner has a verdict on; one whose runner stopped
+        checking in drops out, so a closed laptop leaves no stale "can't
+        reply" behind. Should two runners report one handle, a runner whose
+        token for it works wins.
+        """
+        now = _now()
+        said: dict[str, tuple[bool, str | None]] = {}
+        for entry in self._runners.values():
+            if now - entry.last_seen > STALE_AFTER:
+                continue
+            for c in entry.hello.credentials:
+                if c.room == room and not said.get(c.handle, (False, None))[0]:
+                    said[c.handle] = (c.can_reply, None if c.can_reply else c.why)
+        return said
+
     def all(self) -> list[RunnerRead]:
         now = _now()
         self._forget_stale(now)

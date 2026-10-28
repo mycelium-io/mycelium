@@ -253,6 +253,81 @@ def test_runner_status_says_what_the_hub_answered_rather_than_not_connected(
     assert f"answered {code}" in json.loads(as_json.stdout)["hub_error"]
 
 
+def _hub_404(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The hub's answer for a runner the caller doesn't own, or never heard from."""
+    import mycelium.client
+    import mycelium.runner.daemon
+
+    asked: list[str] = []
+
+    @contextmanager
+    def fake_hub_client(*_a: object, **_k: object) -> Iterator[SimpleNamespace]:
+        def get(path: str) -> SimpleNamespace:
+            asked.append(path)
+            return SimpleNamespace(status_code=404, json=lambda: {"detail": "x"})
+
+        yield SimpleNamespace(get=get)
+
+    monkeypatch.setattr(mycelium.client, "hub_client", fake_hub_client)
+    monkeypatch.setattr(mycelium.runner.daemon, "runner_id", lambda: "abc123")
+    return asked
+
+
+def test_runner_status_says_what_the_runner_itself_knows_and_asks_the_hub_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """From an agent's pane the hub would answer 404 (it shows a runner only to its
+    owner); the runner sends the heartbeats, so its word is the answer."""
+    from datetime import UTC, datetime
+
+    import mycelium.runner.daemon
+    from mycelium.commands import runner as runner_cmd
+
+    asked = _hub_404(monkeypatch)
+    now = datetime.now(UTC).isoformat()
+    monkeypatch.setattr(runner_cmd, "running_pid", lambda: 4242)
+    monkeypatch.setattr(
+        mycelium.runner.daemon,
+        "read_sync",
+        lambda: {
+            "last_pass_at": now,
+            "last_pass_ms": 840,
+            "error": None,
+            "hub": {"connected": True, "signed_out": False, "last_heartbeat_at": now},
+        },
+    )
+    monkeypatch.setenv("MYCELIUM_AGENT_PANE", "1")
+    monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "coder")
+
+    out = " ".join(runner.invoke(app, ["runner", "status"]).output.split())
+    assert "running (pid 4242)" in out
+    assert "connected to the hub, last heartbeat" in out
+    assert "last sync pass" in out
+    assert "took 840ms" in out
+    assert "hasn't heard" not in out
+    assert asked == []
+
+    state = _json(["runner", "status", "--json"])
+    assert state["local"]["connected"] is True
+    # Asked for, the hub's view comes too.
+    runner.invoke(app, ["runner", "status", "--hub"])
+    assert asked == ["/api/runners/abc123"]
+
+
+def test_runner_status_with_no_runner_and_a_404_still_says_the_hub_hasnt_heard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mycelium.commands import runner as runner_cmd
+
+    _hub_404(monkeypatch)
+    monkeypatch.setattr(runner_cmd, "running_pid", lambda: None)
+    for name in ("MYCELIUM_AGENT_PANE", "MYCELIUM_AGENT_HANDLE", "HERDR_PANE_ID"):
+        monkeypatch.delenv(name, raising=False)
+    out = runner.invoke(app, ["runner", "status"]).output
+    assert "not running" in out
+    assert "The hub hasn't heard from it." in out
+
+
 def test_ui_status_prints_json(monkeypatch: pytest.MonkeyPatch) -> None:
     from mycelium.commands import ui
 

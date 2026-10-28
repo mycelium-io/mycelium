@@ -1126,6 +1126,17 @@ class RunnerSyncRead(BaseModel):
     error: str | None = None
 
 
+class RunnerCredentialRead(BaseModel):
+    """Whether an agent running on this machine can reply on the hub, as the
+    runner that keeps its token knows it. Only agents it has a verdict on."""
+
+    room: str = Field(..., max_length=200)
+    handle: str = Field(..., max_length=120)
+    can_reply: bool
+    #: One plain line for a person when it can't, naming the machine.
+    why: str | None = Field(default=None, max_length=300)
+
+
 class RunnerHello(BaseModel):
     """What a runner says about itself when it dials in, and on every heartbeat."""
 
@@ -1150,6 +1161,9 @@ class RunnerHello(BaseModel):
     pairings: list[RunnerPairingRead] = Field(default_factory=list)
     #: The public ids of its live pairing codes, for routing a pair request.
     pairing_offers: list[str] = Field(default_factory=list, max_length=8)
+    #: Whether each agent it keeps a token for can reply. Empty from a runner
+    #: from before it sent this, or with sign-in off on the hub.
+    credentials: list[RunnerCredentialRead] = Field(default_factory=list, max_length=500)
 
 
 class RunnerRead(RunnerHello):
