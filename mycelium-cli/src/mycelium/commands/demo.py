@@ -212,9 +212,17 @@ def _check_prereqs() -> tuple[Any, list[str]]:
 
     import httpx
 
+    from mycelium.client import hub_client
+
     api = config.server.api_url.rstrip("/")
     try:
-        httpx.get(f"{api}/api/rooms", timeout=5.0).raise_for_status()
+        with hub_client(config, timeout=5.0) as http:
+            http.get("/api/rooms").raise_for_status()
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code in (401, 403):
+            problems.append(f"The hub at {api} refused this computer. Try: mycelium login")
+        else:
+            problems.append(f"The hub at {api} answered {e.response.status_code}.")
     except httpx.HTTPError:
         problems.append(f"Backend not reachable at {api}. Is the stack up? Try: mycelium status")
 
@@ -281,12 +289,15 @@ def _provision(
     console.print("[green]✓[/green] Seeded the room; agents are negotiating")
 
 
-def _room_senders(api: str, room: str) -> set[str]:
+def _room_senders(config: Any, room: str) -> set[str]:
     """The set of handles that have posted a message to ``room`` (lowercased)."""
     import httpx
 
+    from mycelium.client import hub_client
+
     try:
-        resp = httpx.get(f"{api}/api/rooms/{room}/messages", timeout=5.0)
+        with hub_client(config, timeout=5.0) as http:
+            resp = http.get(f"/api/rooms/{room}/messages")
         resp.raise_for_status()
     except httpx.HTTPError:
         return set()
@@ -314,16 +325,15 @@ def _drive_consensus(
     compiles into ``work/`` rows the room can pick up. Driving it
     here makes the payoff deterministic instead of hoping an agent remembers to.
     """
-    api = config.server.api_url.rstrip("/")
     want = {h.lower() for h in handles}
     console.print("[dim]Waiting for agents to state their positions…[/dim]")
     deadline = time.monotonic() + timeout
     seen: set[str] = set()
     while time.monotonic() < deadline:
-        seen = _room_senders(api, room)
+        seen = _room_senders(config, room)
         if want <= seen:
             time.sleep(settle)  # let final-round positions land before scoring
-            seen = _room_senders(api, room)
+            seen = _room_senders(config, room)
             break
         time.sleep(3.0)
 
