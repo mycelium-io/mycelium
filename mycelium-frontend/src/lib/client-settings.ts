@@ -82,6 +82,11 @@ export const SETTINGS_PAGES = [
   "privacy",
   "version",
   "health",
+  // DESIGN MOCKUP (local branch, not for merge): several hubs.
+  "hubs",
+  "hub-access",
+  "hub-host",
+  "hub-devices",
 ] as const;
 
 export type SettingsPage = (typeof SETTINGS_PAGES)[number];

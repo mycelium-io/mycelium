@@ -39,7 +39,7 @@ import { useSheetLayout } from "@/lib/use-viewport";
 import { RailSheet } from "@/components/rail-sheet";
 import { RoomMenu } from "@/components/room-menu";
 import { Tooltip } from "@/components/ui/tooltip";
-import { Bot, Handshake, ListTodo, Lock } from "lucide-react";
+import { Bot, Handshake, ListTodo, Lock, Users } from "lucide-react";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -385,6 +385,13 @@ function RoomWorkspace() {
         {room?.is_public === false && (
           <Tooltip content="Private: listed only for its owner and members">
             <Lock aria-label="private" className="size-3.5 flex-shrink-0 text-faint" />
+          </Tooltip>
+        )}
+        {/* DESIGN MOCKUP (local branch): a shared room says so before you post,
+            the way a room only for you shows its lock. */}
+        {room?.is_public !== false && (
+          <Tooltip content="Shared with people you've let in">
+            <Users aria-label="shared" className="size-3.5 flex-shrink-0 text-faint" />
           </Tooltip>
         )}
       </span>
