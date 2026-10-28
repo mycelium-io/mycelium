@@ -235,6 +235,18 @@ def test_the_runner_check_asks_as_this_machine_and_says_when_it_is_connected(
     assert asked == [{"Authorization": "Bearer me"}]
 
 
+def test_the_runner_check_takes_the_running_runners_word_before_the_hubs(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Run from an agent's pane, the hub would answer 404: it shows a runner only
+    to its owner. The runner says it's connected, and that's the answer."""
+    asked = _hub_answers(monkeypatch, 404, {"detail": "not found"})
+    monkeypatch.setattr("mycelium.runner.daemon.read_sync", lambda: {"hub": {"connected": True}})
+    found = checks.runner("https://hub.example.com")
+    assert (found.status, found.message) == ("ok", "connected as julias-mbp-ab12")
+    assert asked == []
+
+
 def test_a_hub_that_refuses_this_machine_says_to_sign_in_not_stopped_checking_in(
     monkeypatch: pytest.MonkeyPatch,
 ):

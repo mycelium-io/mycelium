@@ -367,6 +367,23 @@ def test_a_hub_that_refuses_this_machine_is_said_as_a_sign_in_and_clears_on_one(
     assert (r.connected, r.signed_out) == (True, False)
 
 
+def test_the_runner_writes_down_whether_the_hub_hears_it(make_runner, hub: Hub):
+    """What `runner status` and doctor read, whoever asks."""
+    r = make_runner()
+    assert r.local_report()["hub"]["connected"] is False
+    assert r.hello() is True
+    said = r.local_report()["hub"]
+    assert said["connected"] is True
+    assert said["signed_out"] is False
+    assert said["last_heartbeat_at"] is not None
+    hub.signed_out = True
+    r.hello()
+    assert (r.local_report()["hub"]["connected"], r.local_report()["hub"]["signed_out"]) == (
+        False,
+        True,
+    )
+
+
 def test_a_sign_in_that_cant_be_renewed_for_now_is_said_as_connecting_not_signed_out(
     make_runner, hub: Hub, monkeypatch: pytest.MonkeyPatch
 ):

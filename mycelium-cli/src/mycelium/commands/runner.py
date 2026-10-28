@@ -197,19 +197,34 @@ def runner(
 @app.command("status")
 @emits_json("as_json")
 def runner_status(as_json: bool = False) -> None:
-    """Whether this machine's runner is running, and what the hub sees of it."""
+    """Whether this machine's runner is running, and what the hub sees of it.
+
+    What the runner knows of itself comes first: it writes it here, so it is
+    true whoever asks. The hub's view comes after, as the hub's: it shows a
+    runner only to its owner, so an agent's pane is never shown it.
+    """
     import httpx
 
+    from mycelium import caller
     from mycelium.client import hub_client
-    from mycelium.runner.daemon import runner_id
+    from mycelium.runner.daemon import read_sync, runner_id
 
     pid = running_pid()
     rid = runner_id()
-    state: dict = {"runner": rid, "running": pid is not None, "pid": pid, "hub": None}
+    local = _local_facts(read_sync()) if pid else None
+    state: dict = {
+        "runner": rid,
+        "running": pid is not None,
+        "pid": pid,
+        "local": local,
+        "hub": None,
+    }
     if not as_json:
         console.print(
             f"runner [cyan]{rid}[/cyan]: " + (f"running (pid {pid})" if pid else "not running")
         )
+        for line in _local_lines(local):
+            console.print(f"  {line}")
     try:
         with hub_client(MyceliumConfig.load(), timeout=5) as client:
             resp = client.get(f"/api/runners/{rid}")
@@ -221,10 +236,25 @@ def runner_status(as_json: bool = False) -> None:
             console.print(f"[yellow]hub unreachable:[/yellow] {e}")
         raise typer.Exit(1) from None
     if resp.status_code == 404:
+        # The hub answers 404 for a runner the caller doesn't own, the same as
+        # for one it never heard from. When the runner says its heartbeats get
+        # through, it's the first.
+        heard = bool(local and local.get("connected"))
+        pane = caller.in_agent_pane()
+        if heard or pane:
+            whose = f"@{pane}" if pane else "the credential this terminal uses"
+            said = (
+                f"The hub's view isn't shown to {whose}: it shows a runner only to its "
+                "owner. Run this in your own terminal to see it."
+            )
+            state["hub_hidden"] = True
+        else:
+            said = "The hub hasn't heard from it."
         if as_json:
+            state["hub_note"] = said
             typer.echo(json.dumps(state, indent=2, default=str))
             return
-        console.print("[dim]The hub hasn't heard from it.[/dim]")
+        console.print(f"[dim]{escape(said)}[/dim]")
         return
     if resp.status_code != 200:
         # What the hub answered, not a reading of it: a refusal or a proxy's
@@ -249,9 +279,59 @@ def runner_status(as_json: bool = False) -> None:
         typer.echo(json.dumps(state, indent=2, default=str))
         return
     connected = "[green]connected[/]" if seen.get("connected") else "[yellow]not connected[/]"
-    console.print(f"hub: {connected} · herdr {'yes' if seen.get('herdr') else 'no'}")
+    console.print(f"the hub's view: {connected} · herdr {'yes' if seen.get('herdr') else 'no'}")
     for a in seen.get("agents") or []:
         console.print(f"  @{a['handle']} in {a['room']} · {a['framework']} · {a['status']}")
+
+
+def _local_facts(sync: dict | None) -> dict | None:
+    """What the running runner last wrote about itself (``read_sync``), or ``None``."""
+    if sync is None:
+        return None
+    hub = sync.get("hub") or {}
+    return {
+        "connected": hub.get("connected"),
+        "signed_out": hub.get("signed_out"),
+        "last_heartbeat_at": hub.get("last_heartbeat_at"),
+        "last_pass_at": sync.get("last_pass_at"),
+        "last_pass_ms": sync.get("last_pass_ms"),
+        "sync_error": sync.get("error"),
+    }
+
+
+def _ago(at: str | None) -> str | None:
+    from datetime import UTC, datetime
+
+    if not at:
+        return None
+    try:
+        seconds = (datetime.now(UTC) - datetime.fromisoformat(at)).total_seconds()
+    except ValueError:
+        return None
+    return f"{max(0, round(seconds))}s ago" if seconds < 120 else f"{round(seconds / 60)}m ago"
+
+
+def _local_lines(local: dict | None) -> list[str]:
+    """The runner's own facts, one per line, for ``runner status``."""
+    if local is None:
+        return []
+    beat = _ago(local.get("last_heartbeat_at"))
+    if local.get("connected"):
+        hub = "[green]connected[/] to the hub" + (f", last heartbeat {beat}" if beat else "")
+    elif local.get("signed_out"):
+        hub = "[yellow]not connected[/]: the hub refused this computer's sign-in"
+    else:
+        hub = "[yellow]not connected[/] to the hub" + (
+            f" (last heartbeat that got through: {beat})" if beat else ""
+        )
+    lines = [hub]
+    ran = _ago(local.get("last_pass_at"))
+    if ran:
+        took = local.get("last_pass_ms")
+        lines.append(f"last sync pass {ran}" + (f", took {took}ms" if took is not None else ""))
+    if local.get("sync_error"):
+        lines.append(f"[yellow]sync error:[/yellow] {escape(str(local['sync_error']))}")
+    return lines
 
 
 @doc_ref(
