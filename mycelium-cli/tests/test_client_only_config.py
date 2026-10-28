@@ -41,6 +41,8 @@ def env_only(isolated_home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """An empty ``HOME`` plus the hub settings in the environment."""
     monkeypatch.setenv("MYCELIUM_API_URL", HUB_URL)
     monkeypatch.setenv("MYCELIUM_ACTIVE_ROOM", "a2a-test")
+    # A hub with sign-in off: whoami names nobody, so status says nothing of a credential.
+    monkeypatch.setattr("mycelium.identity._hub_whoami", lambda _config: None)
     assert not MyceliumConfig.get_config_path().exists()
     return isolated_home
 
@@ -182,6 +184,34 @@ def test_status_runs_and_reports_the_absent_file(monkeypatch: pytest.MonkeyPatch
     assert "All systems operational" in result.output
     # The missing file is reported as context, never as a failure.
     assert "absent" in result.output
+
+
+@pytest.mark.usefixtures("_no_docker")
+def test_status_asks_a_hub_at_its_apps_address_under_api_and_says_a_refused_credential(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """At the app's address /health is the app's 404; a missing credential is said as that."""
+    import httpx
+
+    def get(path: str, **_kw: object) -> SimpleNamespace:
+        if path == "/health":
+            response = httpx.Response(404, request=httpx.Request("GET", f"{HUB_URL}/health"))
+            raise httpx.HTTPStatusError("not found", request=response.request, response=response)
+        return SimpleNamespace(
+            json=lambda: {"status": "ok", "version": "3.0.1"} if path == "/api/health" else {}
+        )
+
+    client = _fake_http(monkeypatch, instance_cmd, {})
+    client.get.side_effect = get
+    monkeypatch.setattr(
+        "mycelium.identity._hub_whoami", lambda _config: {"gated": True, "handle": None}
+    )
+    result = runner.invoke(_status_app(), ["status"])
+    out = " ".join(result.output.split())
+    assert "Running at" in out
+    assert "HTTP 404" not in out
+    assert "no credential: this terminal sends none" in out
+    assert "mycelium login" in out
 
 
 @pytest.mark.usefixtures("_no_docker")
