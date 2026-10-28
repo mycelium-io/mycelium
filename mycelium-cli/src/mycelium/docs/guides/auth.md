@@ -119,7 +119,7 @@ acting as @avery  (avery#a8f3)
 ```
 
 With auth on, the hub records your writes under the handle in your token. So
-`login` also sets your `identity.name` to that handle.
+`login` asks the hub which handle that is and sets your `identity.name` to it.
 
 ### Login settings
 

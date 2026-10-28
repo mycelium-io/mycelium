@@ -88,6 +88,8 @@ class _Hub:
     def __init__(self) -> None:
         self.created: list[str] = []
         self.reachable = True
+        # What ``/api/whoami`` answers; None is a hub that can't say (or auth off).
+        self.whoami: dict[str, Any] | None = None
 
     def get(self, **_kwargs: Any) -> None:
         from mycelium_backend_client.errors import UnexpectedStatus
@@ -107,6 +109,7 @@ def hub(monkeypatch: pytest.MonkeyPatch) -> _Hub:
     stub = _Hub()
     monkeypatch.setattr(USER_GET_SYNC, stub.get)
     monkeypatch.setattr(USER_CREATE_SYNC, stub.create)
+    monkeypatch.setattr("mycelium.identity._hub_whoami", lambda _config: stub.whoami)
     return stub
 
 
@@ -862,6 +865,34 @@ def test_login_falls_back_to_the_warning_when_the_handle_cannot_be_aligned(
     assert MyceliumConfig.load().identity.name == "bob"
     assert "this machine writes as @bob" in _flat(result.stdout)
     assert "mycelium iam" in _flat(result.stdout)
+
+
+def test_login_names_you_as_the_hub_does_not_by_the_tokens_sub(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """The hub reads its own handle claim; this machine's copy may say ``sub``."""
+    hub.whoami = {"gated": True, "handle": "avery.quinn@example.com"}
+
+    result = _login(monkeypatch, sub="4a9e092a-0000-4000-8000-000000000000")
+
+    assert result.exit_code == 0
+    assert "Signed in as @avery.quinn@example.com" in _flat(result.stdout)
+    assert MyceliumConfig.load().identity.name == "avery.quinn@example.com"
+    # No record under a handle the hub doesn't use.
+    assert hub.created == ["avery.quinn@example.com"]
+    assert "4a9e092a" not in result.stdout
+
+
+def test_login_uses_the_tokens_claim_when_the_hub_cannot_say(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    # Auth off on the hub: it names nobody, so the token's own claim stands.
+    hub.whoami = {"gated": False, "handle": None}
+
+    result = _login(monkeypatch)
+
+    assert result.exit_code == 0
+    assert MyceliumConfig.load().identity.name == "avery"
 
 
 def test_login_json_reports_the_identity_it_landed(
