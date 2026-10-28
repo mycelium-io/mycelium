@@ -415,6 +415,84 @@ def test_a_dead_session_degrades_to_no_header_rather_than_a_stale_one(
     assert client_mod.auth_headers() == {}
 
 
+@pytest.mark.parametrize("issuer", ["down", "502"])
+def test_a_renewal_the_issuer_cant_answer_fails_as_unreachable_not_with_no_credential(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], issuer: str
+) -> None:
+    """A laptop waking before its network, or a blip at the issuer: the session is
+    fine, so the call is retried as unreachable, never sent bare for a 401."""
+    save_token(_token(access_token="at-stale", expires_at=time.time() - 10))
+
+    def fake_post(url: str, data: dict[str, str], timeout: float) -> _Resp:  # noqa: ARG001
+        if issuer == "down":
+            raise httpx.ConnectError("timed out")
+        return _Resp({}, status_code=502)
+
+    monkeypatch.setattr(oidc.httpx, "post", fake_post)
+    monkeypatch.setattr(client_mod, "_needs_credential", lambda _config: True)
+
+    with pytest.raises(client_mod.RenewalUnreachable, match="couldn't renew"):
+        client_mod.auth_headers()
+    # An httpx.ConnectError, so whoever handles an unreachable hub handles it.
+    assert issubclass(client_mod.RenewalUnreachable, httpx.ConnectError)
+    # Nothing tells the person to sign in again: the session isn't gone.
+    assert "session has expired" not in capsys.readouterr().err
+    assert load_token() is not None
+
+
+def test_a_hub_with_sign_in_off_keeps_working_while_a_stale_sessions_issuer_is_away(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Auth turned off on the hub, a session from an earlier login still kept for
+    it, and an identity provider out of reach off the VPN: the call goes out
+    bare, as it always did, and the hub takes it."""
+    save_token(_token(access_token="at-stale", expires_at=time.time() - 10))
+
+    def down(*_a: Any, **_k: Any) -> _Resp:
+        raise httpx.ConnectError("no route to host")
+
+    monkeypatch.setattr(oidc.httpx, "post", down)
+    asked: list[str] = []
+
+    def health(url: str, timeout: float = 3.0) -> httpx.Response:  # noqa: ARG001
+        asked.append(url)
+        return httpx.Response(200, json={"status": "ok", "auth": {"enabled": False}})
+
+    monkeypatch.setattr("mycelium.hub_check.health", health)
+
+    assert client_mod.auth_headers() == {}
+    assert client_mod.auth_headers() == {}
+    assert len(asked) == 1, "the hub's answer is kept for the process"
+    assert "session has expired" not in capsys.readouterr().err
+
+
+def test_a_hub_that_cant_say_whether_it_needs_a_credential_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    save_token(_token(access_token="at-stale", expires_at=time.time() - 10))
+
+    def down(*_a: Any, **_k: Any) -> _Resp:
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(oidc.httpx, "post", down)
+    monkeypatch.setattr("mycelium.hub_check.health", lambda *_a, **_k: None)
+
+    with pytest.raises(client_mod.RenewalUnreachable):
+        client_mod.auth_headers()
+
+
+def test_a_renewal_the_issuer_refuses_still_says_sign_in_again(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    save_token(_token(access_token="at-stale", expires_at=time.time() - 10))
+    monkeypatch.setattr(
+        oidc.httpx, "post", lambda *_a, **_k: _Resp({"error": "invalid_grant"}, status_code=400)
+    )
+
+    assert client_mod.auth_headers() == {}
+    assert "session has expired" in capsys.readouterr().err
+
+
 def test_an_expired_token_with_no_refresh_token_sends_nothing() -> None:
     save_token(_token(expires_at=time.time() - 10, refresh_token=None))
 

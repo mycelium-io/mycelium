@@ -327,10 +327,14 @@ def issue_member_token(config: MyceliumConfig, room: str, handle: str) -> Path |
         return None
     path = member_token_path(room, name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # Written beside it and moved into place: a renewal replaces the file a
+    # running agent reads, which must never see it half written.
+    fresh = path.with_name(f".{path.name}.{os.getpid()}")
+    fd = os.open(fresh, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh:
         fh.write(token)
-    path.chmod(0o600)
+    fresh.chmod(0o600)
+    fresh.replace(path)
     return path
 
 
