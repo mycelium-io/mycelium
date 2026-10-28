@@ -61,9 +61,9 @@ from urllib.parse import urlparse
 import httpx
 from rich.console import Console
 
-from mycelium import __version__
+from mycelium import __version__, agent_credentials
 from mycelium import machine as this_machine
-from mycelium.agent_credentials import MemberTokenRefused, agent_token_env
+from mycelium.agent_credentials import MemberTokenRefused, agent_token_env, member_token_path
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
@@ -112,6 +112,12 @@ RETRY_S = 3.0
 SYNC_STALL_S = 30.0
 #: How often the watchdog looks at the sync pass and writes ``sync.json``.
 WATCH_S = 5.0
+#: How often each running agent's token is looked at (``keep_credentials``).
+CREDENTIALS_S = 60.0
+#: A token with less than this left is renewed; the hub's last 30 days.
+RENEW_BEFORE_S = 7 * 24 * 3600.0
+#: How long an agent the hub gave no token is left before it's asked again.
+NO_TOKEN_RETRY_S = 3600.0
 #: A stopped agent is still listed for this long, so the app can start it again.
 KEEP_STOPPED = timedelta(hours=24)
 #: An agent waiting for input this long says how long, so the person knows it
@@ -267,6 +273,18 @@ def signed_out_message(hub: str) -> str:
         f"This computer isn't signed in to {hub.rstrip('/')}. "
         "Run `mycelium login` in a terminal here."
     )
+
+
+def _token_left(path: Path, now: float) -> float:
+    """Seconds left on the token kept at ``path``; 0 when there's none or it says no expiry."""
+    from mycelium.tokens import decode_claims
+
+    try:
+        token = path.read_text().strip()
+    except OSError:
+        return 0.0
+    expires = decode_claims(token).get("exp") if token else None
+    return float(expires) - now if isinstance(expires, int | float) else 0.0
 
 
 def runner_id(path: Path | None = None) -> str:
@@ -505,6 +523,8 @@ class Runner:
         self.sync_error: str | None = None
         #: ``{workspace: (room, error)}`` for each binding the last pass couldn't sync.
         self.failing_bindings: dict[str, tuple[str, str]] = {}
+        #: ``{(room, handle): when to ask again}`` for agents the hub gave no token.
+        self._no_token: dict[tuple[str, str], float] = {}
 
     # ── what this machine has ────────────────────────────────────────────────
 
@@ -1805,6 +1825,50 @@ class Runner:
             _stacks(),
         )
 
+    def keep_credentials(self, *, now: float | None = None) -> None:
+        """Give every agent running in herdr here a token of its own, and keep it fresh.
+
+        An agent reads the token from the file its pane's agent names
+        (``caller.pane_token``), so one started before agents were given
+        tokens, or one herdr restored without its environment, has one after
+        this runs, with no restart. A token is renewed a week before it
+        expires. The hub gives one only to whoever owns the agent, so another
+        person's agent here, or a hub with sign-in off, is asked again an
+        hour later rather than every minute.
+        """
+        if self.host.name != "herdr" or not self.herdr:
+            return
+        now = time.time() if now is None else now
+        try:
+            live = {str(a["pane_id"]) for a in self.bridge.list_agents() if a.get("pane_id")}
+        except HerdrError:
+            return
+        for m in self.bridge.registry.all():
+            key = (m.room, m.handle)
+            if m.pane not in live or self._no_token.get(key, 0.0) > now:
+                continue
+            if _token_left(member_token_path(m.room, m.handle), now) > RENEW_BEFORE_S:
+                continue
+            try:
+                got = agent_credentials.issue_member_token(self.config, m.room, m.handle)
+            except MemberTokenRefused as e:
+                log.info("no token for @%s in %s: %s", m.handle, m.room, e.reason())
+                got = None
+            if got is None:
+                self._no_token[key] = now + NO_TOKEN_RETRY_S
+                continue
+            self._no_token.pop(key, None)
+            log.info("gave @%s in %s a token of its own", m.handle, m.room)
+
+    def _credentials_loop(self) -> None:
+        while True:
+            try:
+                self.keep_credentials()
+            except Exception:  # noqa: BLE001 - the next round tries again
+                log.exception("keeping agents' tokens failed")
+            if self._stop.wait(CREDENTIALS_S):
+                return
+
     def _watch_loop(self) -> None:
         while not self._stop.wait(WATCH_S):
             self.watch()
@@ -1851,6 +1915,7 @@ class Runner:
             ("runner-heartbeat", self._heartbeat_loop),
             ("runner-sync", self._sync_loop),
             ("runner-watchdog", self._watch_loop),
+            ("runner-credentials", self._credentials_loop),
         ):
             threading.Thread(target=loop, name=name, daemon=True).start()
         while not self._stop.is_set():

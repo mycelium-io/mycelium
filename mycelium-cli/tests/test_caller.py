@@ -366,6 +366,74 @@ def test_a_pane_mapped_to_two_agents_guesses_neither_and_says_so(
     assert "--as" in err
 
 
+# ── a pane's agent finds the token the runner keeps for it ──────────────────
+
+
+def _jwt(exp: float) -> str:
+    import base64
+
+    def seg(data: dict[str, Any]) -> str:
+        return base64.urlsafe_b64encode(json.dumps(data).encode()).decode().rstrip("=")
+
+    return f"{seg({'alg': 'ES256'})}.{seg({'sub': 'coder', 'exp': exp})}.sig"
+
+
+def _keep(room: str, handle: str, token: str) -> None:
+    from mycelium.agent_credentials import member_token_path
+
+    path = member_token_path(room, handle)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(token)
+
+
+def test_an_agent_started_before_panes_got_a_token_file_finds_its_token(
+    isolated_home: Path, monkeypatch
+):
+    """No token variable in its environment: the pane's agent says which file."""
+    import time
+
+    token = _jwt(time.time() + 3600)
+    _keep("checkout", "coder", token)
+    _map("checkout", "coder", "w1:p2")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p2")
+
+    answer = caller.credential(MyceliumConfig.load())
+    assert answer == caller.Answer(token, caller.PANE)
+    assert auth_headers(MyceliumConfig.load()) == {"Authorization": f"Bearer {token}"}
+
+
+def test_a_pane_the_runner_started_finds_its_token_by_its_environment(
+    isolated_home: Path, monkeypatch
+):
+    import time
+
+    token = _jwt(time.time() + 3600)
+    _keep("checkout", "coder", token)
+    monkeypatch.setenv("MYCELIUM_AGENT_PANE", "1")
+    monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "coder")
+    monkeypatch.setenv("MYCELIUM_ROOM_ID", "checkout")
+
+    assert caller.credential(MyceliumConfig.load()) == caller.Answer(token, caller.PANE)
+
+
+def test_an_expired_kept_token_is_not_sent(isolated_home: Path, monkeypatch):
+    _keep("checkout", "coder", _jwt(1000.0))
+    _map("checkout", "coder", "w1:p2")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p2")
+
+    assert caller.credential(MyceliumConfig.load()).value is None
+
+
+def test_a_persons_terminal_never_reads_an_agents_kept_token(isolated_home: Path, monkeypatch):
+    import time
+
+    _keep("checkout", "coder", _jwt(time.time() + 3600))
+    monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "coder")
+    monkeypatch.setenv("MYCELIUM_ROOM_ID", "checkout")
+
+    assert caller.credential(MyceliumConfig.load()).value is None
+
+
 # ── a folder config never quietly names someone else ────────────────────────
 
 
