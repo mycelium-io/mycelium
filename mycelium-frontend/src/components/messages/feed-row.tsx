@@ -32,6 +32,7 @@ import {
   type EventIcon,
 } from "@/lib/event-icons";
 import { MessageBody } from "@/components/message-body";
+import type { ThreadTarget } from "@/components/markdown-content";
 import { MessageActions } from "@/components/message-actions";
 import { RawMessageDialog } from "@/components/raw-message-dialog";
 import { SenderName } from "@/components/sender-name";
@@ -132,6 +133,9 @@ export interface FeedContext {
   agentTags: Map<string, string>;
   agentOwners: Map<string, string>;
   threads: Map<string, ThreadOwner>;
+  /** The room's threads by short id, for linking a thread id quoted in a
+   *  message to its task. Leaves out the thread the list is of. */
+  threadIds?: ReadonlyMap<string, ThreadTarget>;
   rowNames: Map<string, RowNaming>;
   flagsByMessage: Map<string, VerifierFlag[]>;
   refreshFlags: () => void;
@@ -156,6 +160,14 @@ export function useFeedContext(
   const threads = useRoomThreads(roomName);
   const rowNames = useRoomRowNames(roomName);
   const { byMessage: flagsByMessage, refresh: refreshFlags } = useRoomVerifierFlags(roomName);
+  const threadIds = useMemo(() => {
+    const ids = new Map<string, ThreadTarget>();
+    for (const [thread, owner] of threads) {
+      const id = threadShortId(thread);
+      if (id && thread !== episode) ids.set(id, { episode: thread, title: owner.title });
+    }
+    return ids;
+  }, [threads, episode]);
   return useMemo(
     () => ({
       roomName,
@@ -164,6 +176,7 @@ export function useFeedContext(
       agentTags: new Map(agents.map((a) => [a.handle, agentTag(a)])),
       agentOwners: new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
       threads,
+      threadIds,
       rowNames,
       flagsByMessage,
       refreshFlags,
@@ -171,7 +184,7 @@ export function useFeedContext(
       onOpenMemory,
       episode,
     }),
-    [roomName, agents, threads, rowNames, flagsByMessage, refreshFlags, onOpenThread, onOpenMemory, episode],
+    [roomName, agents, threads, threadIds, rowNames, flagsByMessage, refreshFlags, onOpenThread, onOpenMemory, episode],
   );
 }
 
@@ -740,6 +753,8 @@ export function MessageRow({
             claims={flags ? claimNeedles(ev.content, flags.flatMap((f) => f.quotes)) : undefined}
             onOpenMemory={ctx.onOpenMemory}
             roomName={roomName}
+            threads={ctx.threadIds}
+            onOpenThread={ctx.onOpenThread}
             foldTo={drawsValues ? REPLY_FOLD_PX : undefined}
           />
           {ev.edited && (
