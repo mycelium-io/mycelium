@@ -23,6 +23,7 @@ from app.schemas import (
     WakeSubscriptionListResponse,
     WakeSubscriptionRead,
     WakeSubscriptionsRemoved,
+    refusals,
 )
 from app.services import actor, subscriptions
 from app.services.agent_registry import norm_handle
@@ -46,7 +47,7 @@ def _refuse(err: subscriptions.SubscriptionError) -> HTTPException:
     return HTTPException(status_code=err.status, detail=err.detail)
 
 
-@router.get("", response_model=WakeSubscriptionListResponse)
+@router.get("", response_model=WakeSubscriptionListResponse, responses=refusals(404))
 async def list_subscriptions(
     room_name: str, handle: str | None = Query(None, description="Only this agent's")
 ) -> WakeSubscriptionListResponse:
@@ -62,7 +63,9 @@ async def list_subscriptions(
     return WakeSubscriptionListResponse(subscriptions=items, total=len(items))
 
 
-@router.post("", response_model=WakeSubscriptionRead, status_code=201)
+@router.post(
+    "", response_model=WakeSubscriptionRead, status_code=201, responses=refusals(403, 404, 422)
+)
 async def subscribe(
     room_name: str, payload: WakeSubscriptionCreate, request: Request
 ) -> WakeSubscriptionRead:
@@ -89,7 +92,7 @@ async def subscribe(
     return read(sub)
 
 
-@router.delete("", response_model=WakeSubscriptionsRemoved)
+@router.delete("", response_model=WakeSubscriptionsRemoved, responses=refusals(403, 404))
 async def unsubscribe(
     room_name: str,
     request: Request,

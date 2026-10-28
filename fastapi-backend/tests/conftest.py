@@ -27,6 +27,14 @@ def _set_data_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _answers_keep_their_keys(monkeypatch):
+    """No route's response model drops a key its handler returns (``answer_guard``)."""
+    from tests import answer_guard
+
+    answer_guard.install(app, monkeypatch)
+
+
+@pytest.fixture(autouse=True)
 def _reset_in_memory_store():
     """Isolate the in-memory message/presence/subscription store per test."""
     in_memory_store.clear_all()

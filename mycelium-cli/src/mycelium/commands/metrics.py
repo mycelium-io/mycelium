@@ -368,26 +368,31 @@ def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
     # Source 2: /api/rooms, fills in anything the snapshot missed.
     # ``setdefault`` semantics ensure snapshot wins on conflicts.
     try:
-        from mycelium.client import hub_client
+        from mycelium.client import typed_client
         from mycelium.config import MyceliumConfig
+        from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get
+        from mycelium_backend_client.models import RoomRead
 
         config = MyceliumConfig.load()
         if not config.server.api_url:
             _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
             return _ROOM_LOOKUP_CACHE
 
-        with hub_client(config, timeout=2.0) as http:
-            resp = http.get("/api/rooms", headers={"Accept": "application/json"})
+        http = typed_client(config, timeout=2.0, raise_on_unexpected_status=False)
+        with http.with_headers({"Accept": "application/json"}) as http:
+            resp = list_rooms_api_rooms_get.sync_detailed(client=http)
         if resp.status_code != 200:
             _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
             return _ROOM_LOOKUP_CACHE
-        rooms = resp.json()
+        rooms = resp.parsed
         if not isinstance(rooms, list):
             _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
             return _ROOM_LOOKUP_CACHE
         for r in rooms:
-            mas_id = r.get("mas_id")
-            name = r.get("name")
+            if not isinstance(r, RoomRead):
+                continue
+            mas_id = r.mas_id if isinstance(r.mas_id, str) else None
+            name = r.name
             if mas_id and name:
                 mas_to_name.setdefault(str(mas_id), str(name))
                 name_to_mas.setdefault(str(name), str(mas_id))

@@ -12,7 +12,7 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 import httpx
 import typer
@@ -23,17 +23,26 @@ from rich.table import Table
 
 from mycelium import identity
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged, room_or_exit
-from mycelium.client import hub_client, hub_error_detail, typed_client
+from mycelium.client import answered, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.filesystem import (
     get_room_dir,
     serialize_memory,
-    write_memory,
+    write_hub_memories,
 )
 from mycelium.protocol import MEMORY_CATEGORIES, MemoryLogEntry
 from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
+from mycelium_backend_client.models import (
+    ExpandedMemoryRead,
+    LinkIntegrityRead,
+    LinkRead,
+    MemoryLinksRead,
+    MemoryRead,
+    RoomReindexRead,
+    TransclusionRead,
+)
 
 app = typer.Typer(
     help="Read and write persistent memories scoped to rooms. Memories are markdown files in .mycelium/rooms/. Supports semantic vector search via a local JSONL index.",
@@ -263,15 +272,14 @@ def memory_set(
 
     # Write to hub (single store; spoke has no local copy)
     with _hub_session() as client:
-        result = create_api.sync(room_name=room_name, client=client, body=batch)
-        if result and isinstance(result, list) and len(result) > 0:
-            mem = result[0]
-            version_info = f"v{mem.version}" if hasattr(mem, "version") else ""
-            console.print(f"[green]Memory set:[/green] {room_name}/{key} ({version_info})")
-        else:
-            # The hub refused it (a validation error comes back as a value, not a raise).
-            console.print(f"[red]Error:[/red] the hub didn't save {room_name}/{key}: {result}")
+        resp = create_api.sync_detailed(room_name=room_name, client=client, body=batch)
+        # A validation refusal is said here; any other refusal is the session's to report.
+        saved: list[MemoryRead] = [] if resp.status_code == 422 else answered(resp, list)  # noqa: PLR2004
+        if not saved:
+            said = resp.parsed if resp.status_code == 422 else saved  # noqa: PLR2004
+            console.print(f"[red]Error:[/red] the hub didn't save {room_name}/{key}: {said}")
             raise typer.Exit(1)
+        console.print(f"[green]Memory set:[/green] {room_name}/{key} (v{saved[0].version})")
 
 
 @doc_ref(
@@ -295,29 +303,26 @@ def memory_get(
     from mycelium_backend_client.api.memory import (
         get_memory_api_rooms_room_name_memory_key_get as get_api,
     )
-    from mycelium_backend_client.models import MemoryRead
 
     room_name = _get_active_room(room)
 
     if expand:
         if as_json:
-            _echo_json(_fetch_links(room_name, "/expand", {"key": key}))
+            _echo_json(_expanded(room_name, key).to_dict())
             return
         _print_expanded(room_name, key)
         return
 
     with _hub_session() as client:
         try:
-            mem = get_api.sync(room_name=room_name, key=key, client=client)
+            mem = answered(
+                get_api.sync_detailed(room_name=room_name, key=key, client=client), MemoryRead
+            )
         except UnexpectedStatus as exc:
             if exc.status_code == 404:
                 console.print(f"[red]Not found:[/red] {key}")
                 raise typer.Exit(1) from exc
             raise
-
-    if not isinstance(mem, MemoryRead):
-        console.print(f"[red]Not found:[/red] {key}")
-        raise typer.Exit(1)
 
     if as_json:
         _echo_json(mem.to_dict())
@@ -357,11 +362,10 @@ def memory_get(
         console.print(f'\n[dim]discuss it: mycelium board send {mem.key} "…"[/dim]')
 
 
-def _fetch_memories(room_name: str, prefix: str | None, limit: int) -> list[dict[str, Any]]:
+def _fetch_memories(room_name: str, prefix: str | None, limit: int) -> list[MemoryRead]:
     """Fetch a room's memories from the hub, newest-first as the hub orders them.
 
-    Returns the raw JSON records (the list endpoint is untyped in the generated
-    client), or exits with a clear message when the room is unknown.
+    Exits with a clear message when the room is unknown.
     """
     from mycelium_backend_client.api.memory import (
         list_memories_api_rooms_room_name_memory_get as list_api,
@@ -369,7 +373,12 @@ def _fetch_memories(room_name: str, prefix: str | None, limit: int) -> list[dict
 
     with _hub_session() as client:
         try:
-            entries = list_api.sync(room_name=room_name, client=client, prefix=prefix, limit=limit)
+            return answered(
+                list_api.sync_detailed(
+                    room_name=room_name, client=client, prefix=prefix, limit=limit
+                ),
+                list,
+            )
         except UnexpectedStatus as exc:
             if exc.status_code == 404:
                 console.print(
@@ -378,10 +387,6 @@ def _fetch_memories(room_name: str, prefix: str | None, limit: int) -> list[dict
                 )
                 raise typer.Exit(1) from exc
             raise
-
-    if not isinstance(entries, list):
-        return []
-    return cast("list[dict[str, Any]]", [r for r in entries if isinstance(r, dict)])
 
 
 @doc_ref(
@@ -410,7 +415,7 @@ def memory_ls(
 
     entries = _fetch_memories(room_name, prefix, limit)
     if as_json:
-        _echo_json(entries)
+        _echo_json([m.to_dict() for m in entries])
         return
     if not entries:
         console.print("[dim]No memories found[/dim]")
@@ -419,13 +424,9 @@ def memory_ls(
     console.print(f"[bold]{room_name}[/bold] ({len(entries)} memories)\n")
 
     for mem in entries:
-        ts = str(mem.get("updated_at", ""))[:16].replace("T", " ")
-        version = mem.get("version", "?")
-        created_by = mem.get("created_by", "?")
-        console.print(
-            f"[cyan]{mem.get('key', '?')}[/cyan]  [dim]v{version}  {created_by}  {ts}[/dim]"
-        )
-        content = _value_text(mem.get("value"))
+        ts = mem.updated_at.isoformat()[:16].replace("T", " ")
+        console.print(f"[cyan]{mem.key}[/cyan]  [dim]v{mem.version}  {mem.created_by}  {ts}[/dim]")
+        content = _value_text(mem.value)
         display = content[:120]
         if display:
             console.print(f"  {display}{'...' if len(content) > 120 else ''}")
@@ -459,14 +460,16 @@ def memory_search(
         body = MemorySearchRequest(query=query, limit=limit)
         from mycelium_backend_client.models import MemorySearchResponse
 
-        result = search_api.sync(room_name=room_name, client=client, body=body)
+        result = answered(
+            search_api.sync_detailed(room_name=room_name, client=client, body=body),
+            MemorySearchResponse,
+        )
 
         if as_json:
-            found = result.results if isinstance(result, MemorySearchResponse) else []
-            _echo_json([r.to_dict() for r in found or []])
+            _echo_json([r.to_dict() for r in result.results])
             return
 
-        if not isinstance(result, MemorySearchResponse) or not result.results:
+        if not result.results:
             console.print("[dim]No matching memories found[/dim]")
             return
 
@@ -491,32 +494,67 @@ _LINK_ERRORS = {
 }
 
 
-def _link_label(link: dict[str, Any]) -> str:
+def _link_label(link: LinkRead) -> str:
     """The kind of edge a link is, for the right-hand column."""
-    return link.get("relation") or link.get("kind") or "link"
+    return link.relation or link.kind or "link"
 
 
-def _link_target(link: dict[str, Any]) -> str:
+def _link_target(link: LinkRead | TransclusionRead) -> str:
     """The link's target, with its section anchor when it has one."""
-    target = str(link.get("target", "?"))
-    anchor = link.get("anchor")
-    return f"{target}#{anchor}" if anchor else target
+    return f"{link.target}#{link.anchor}" if link.anchor else link.target
 
 
-def _fetch_links(room_name: str, path: str, params: dict[str, str] | None = None) -> dict[str, Any]:
-    """GET a link endpoint on the hub, reporting an unreachable hub plainly."""
-    cfg = MyceliumConfig.load()
-    try:
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.get(f"/api/rooms/{room_name}/links{path}", params=params)
-            if resp.status_code == 404:
+@contextmanager
+def _links_session(room_name: str) -> Iterator[Any]:
+    """Yield a hub client for a link read, saying plainly what went wrong.
+
+    A 404 is the room or the key; an unreachable hub, or any other refusal, is
+    said as the hub's.
+    """
+    with typed_client(MyceliumConfig.load(), timeout=30) as client:
+        try:
+            yield client
+        except UnexpectedStatus as exc:
+            if exc.status_code == 404:  # noqa: PLR2004
                 console.print(f"[red]Not found:[/red] room '{room_name}' or key on {_hub_url()}")
-                raise typer.Exit(1)
-            resp.raise_for_status()
-            return cast("dict[str, Any]", resp.json())
-    except httpx.HTTPError as exc:
-        console.print(f"[red]Error:[/red] can't reach the hub at {_hub_url()}: {exc}")
-        raise typer.Exit(1) from exc
+                raise typer.Exit(1) from exc
+            console.print(
+                f"[red]Error:[/red] can't reach the hub at {_hub_url()}: "
+                f"HTTP {exc.status_code}: {hub_error_detail(exc.content)}"
+            )
+            raise typer.Exit(1) from exc
+        except httpx.HTTPError as exc:
+            console.print(f"[red]Error:[/red] can't reach the hub at {_hub_url()}: {exc}")
+            raise typer.Exit(1) from exc
+
+
+def _expanded(room_name: str, key: str) -> ExpandedMemoryRead:
+    from mycelium_backend_client.api.links import (
+        get_expanded_api_rooms_room_name_links_expand_get as expand_api,
+    )
+
+    with _links_session(room_name) as client:
+        return answered(
+            expand_api.sync_detailed(room_name, client=client, key=key), ExpandedMemoryRead
+        )
+
+
+def _integrity(room_name: str) -> LinkIntegrityRead:
+    from mycelium_backend_client.api.links import (
+        get_integrity_api_rooms_room_name_links_integrity_get as integrity_api,
+    )
+
+    with _links_session(room_name) as client:
+        return answered(integrity_api.sync_detailed(room_name, client=client), LinkIntegrityRead)
+
+
+def _links(room_name: str, key: str) -> MemoryLinksRead:
+    from mycelium_backend_client.api.links import (
+        get_links_api_rooms_room_name_links_get as links_api,
+    )
+
+    with _links_session(room_name) as client:
+        return answered(links_api.sync_detailed(room_name, client=client, key=key), MemoryLinksRead)
 
 
 def _print_expanded(room_name: str, key: str) -> None:
@@ -525,15 +563,15 @@ def _print_expanded(room_name: str, key: str) -> None:
     A marker that couldn't be expanded is left exactly as written and called out
     below the body, so a refused embed never reads as an empty definition.
     """
-    data = _fetch_links(room_name, "/expand", {"key": key})
+    data = _expanded(room_name, key)
     console.print(f"[cyan]{key}[/cyan]  [dim]expanded[/dim]")
-    console.print(data.get("rendered", ""), markup=False, soft_wrap=True)
+    console.print(data.rendered, markup=False, soft_wrap=True)
 
-    failed = [e for e in (data.get("expansions") or []) if not e.get("expanded")]
+    failed = [e for e in data.expansions if not e.expanded]
     if failed:
         console.print()
         for exp in failed:
-            reason = _LINK_ERRORS.get(str(exp.get("error")), str(exp.get("error")))
+            reason = _LINK_ERRORS.get(str(exp.error), str(exp.error))
             console.print(
                 f"[yellow]Not expanded:[/yellow] [cyan]{_link_target(exp)}[/cyan]: {reason}"
             )
@@ -547,23 +585,23 @@ def _print_integrity(room_name: str) -> None:
     - root:   no inbound links but has outbound links — an entry point.
     - leaf:   has inbound links but no outbound links — a dead end.
     """
-    report = _fetch_links(room_name, "/integrity")
-    broken = report.get("broken") or []
-    orphans = report.get("orphans") or []
-    roots = report.get("roots") or []
-    leaves = report.get("leaves") or []
+    report = _integrity(room_name)
+    broken = report.broken
+    orphans = report.orphans
+    roots = report.roots
+    leaves = report.leaves
 
     console.print(
-        f"[bold]{room_name}[/bold]  [dim]{report.get('total_memories', 0)} memories, "
-        f"{report.get('total_links', 0)} links[/dim]\n"
+        f"[bold]{room_name}[/bold]  [dim]{report.total_memories} memories, "
+        f"{report.total_links} links[/dim]\n"
     )
 
     if broken:
         console.print(f"[yellow]Broken links ({len(broken)})[/yellow]")
         for link in broken:
-            reason = _LINK_ERRORS.get(str(link.get("error")), str(link.get("error")))
+            reason = _LINK_ERRORS.get(str(link.error), str(link.error))
             console.print(
-                f"  [dim]{link.get('source', '?')}[/dim] → [cyan]{_link_target(link)}[/cyan]"
+                f"  [dim]{link.source or '?'}[/dim] → [cyan]{_link_target(link)}[/cyan]"
                 f"  [red]{reason}[/red]"
             )
         console.print()
@@ -617,7 +655,7 @@ def memory_links(
 
     if check:
         if as_json:
-            _echo_json(_fetch_links(room_name, "/integrity"))
+            _echo_json(_integrity(room_name).to_dict())
             return
         _print_integrity(room_name)
         return
@@ -626,22 +664,22 @@ def memory_links(
         console.print("[red]Error:[/red] provide a memory key, or --check for the whole room.")
         raise typer.Exit(1)
 
-    data = _fetch_links(room_name, "", {"key": key})
+    data = _links(room_name, key)
     if as_json:
-        _echo_json(data)
+        _echo_json(data.to_dict())
         return
 
-    outbound = data.get("outbound") or []
-    backlinks = data.get("backlinks") or []
+    outbound = data.outbound
+    backlinks = data.backlinks
 
     console.print(f"[bold cyan]{key}[/bold cyan]\n")
 
     if outbound:
         console.print("[dim]→ links to[/dim]")
         for link in outbound:
-            ok = link.get("resolved")
+            ok = link.resolved
             mark = "[green]✓[/green]" if ok else "[red]✗[/red]"
-            reason = "" if ok else f"  [red]{_LINK_ERRORS.get(str(link.get('error')), '?')}[/red]"
+            reason = "" if ok else f"  [red]{_LINK_ERRORS.get(str(link.error), '?')}[/red]"
             console.print(
                 f"  {mark} [cyan]{_link_target(link)}[/cyan]"
                 f"  [dim]{_link_label(link)}[/dim]{reason}"
@@ -653,9 +691,7 @@ def memory_links(
     if backlinks:
         console.print(f"[dim]← referenced by ({len(backlinks)})[/dim]")
         for link in backlinks:
-            console.print(
-                f"  [cyan]{link.get('source', '?')}[/cyan]  [dim]{_link_label(link)}[/dim]"
-            )
+            console.print(f"  [cyan]{link.source or '?'}[/cyan]  [dim]{_link_label(link)}[/dim]")
     else:
         console.print("[dim]← referenced by nothing[/dim]")
 
@@ -687,7 +723,9 @@ def memory_rm(
 
     # Delete on the hub, which owns the store (file + index). No local copy exists.
     with _hub_session() as client:
-        delete_api.sync_detailed(room_name=room_name, key=key, client=client)
+        resp = delete_api.sync_detailed(room_name=room_name, key=key, client=client)
+        if resp.status_code >= 400:  # noqa: PLR2004
+            raise UnexpectedStatus(resp.status_code, resp.content)
         console.print(f"[green]Deleted:[/green] {key}")
 
 
@@ -709,16 +747,26 @@ def memory_reindex(
     cfg = MyceliumConfig.load()
 
     console.print(f"[dim]Re-indexing {room_name}...[/dim]")
-    with hub_client(cfg, timeout=120) as client:
-        resp = client.post(f"/api/rooms/{room_name}/reindex")
-        resp.raise_for_status()
-        data = resp.json()
+    stats = _reindex(cfg, room_name)
+    if stats is None:
+        console.print(f"[red]Error:[/red] the hub didn't reindex {room_name}")
+        raise typer.Exit(1)
+    console.print(f"[green]Re-indexed:[/green] {stats.indexed} memories")
+    if stats.errors:
+        console.print(f"[yellow]Errors:[/yellow] {stats.errors}")
 
-    indexed = data.get("indexed", 0)
-    errors = data.get("errors", 0)
-    console.print(f"[green]Re-indexed:[/green] {indexed} memories")
-    if errors:
-        console.print(f"[yellow]Errors:[/yellow] {errors}")
+
+def _reindex(cfg: MyceliumConfig, room_name: str) -> RoomReindexRead | None:
+    """Have the hub rebuild the room's search index: what it did, or ``None``
+    when it refused."""
+    from mycelium_backend_client.api.rooms import (
+        reindex_room_api_rooms_room_name_reindex_post as reindex_api,
+    )
+
+    with typed_client(cfg, timeout=120) as client:
+        resp = reindex_api.sync_detailed(room_name, client=client)
+    # A validation refusal is the ``None`` above; any other refusal raises.
+    return None if resp.status_code == 422 else answered(resp, RoomReindexRead)  # noqa: PLR2004
 
 
 @doc_ref(
@@ -745,10 +793,10 @@ def memory_subscribe(
 
     with _get_client() as client:
         body = SubscriptionCreate(key_pattern=pattern, subscriber=handle)
-        result = sub_api.sync(room_name=room_name, client=client, body=body)
-        if isinstance(result, SubscriptionRead):
-            sub_id = str(result.id)[:8] if result.id else "?"
-            console.print(f"[green]Subscribed:[/green] {pattern} (id: {sub_id}...)")
+        result = answered(
+            sub_api.sync_detailed(room_name=room_name, client=client, body=body), SubscriptionRead
+        )
+        console.print(f"[green]Subscribed:[/green] {pattern} (id: {str(result.id)[:8]}...)")
 
 
 # ── Structured memory commands ───────────────────────────────────────────────
@@ -761,7 +809,7 @@ def _list_by_category(category: str, room: str | None, limit: int, *, as_json: b
 
     entries = _fetch_memories(room_name, prefix, limit)
     if as_json:
-        _echo_json(entries)
+        _echo_json([m.to_dict() for m in entries])
         return
     if not entries:
         console.print(f"[dim]No {category} memories found[/dim]")
@@ -774,11 +822,10 @@ def _list_by_category(category: str, room: str | None, limit: int, *, as_json: b
     table.add_column("Updated", style="dim")
 
     for mem in entries:
-        short_key = str(mem.get("key", "?")).removeprefix(prefix)
-        display = _value_text(mem.get("value"))[:80]
-        ts = str(mem.get("updated_at", ""))[:16].replace("T", " ")
-        created_by = mem.get("created_by", "?")
-        table.add_row(short_key, display, created_by, ts)
+        short_key = mem.key.removeprefix(prefix)
+        display = _value_text(mem.value)[:80]
+        ts = mem.updated_at.isoformat()[:16].replace("T", " ")
+        table.add_row(short_key, display, mem.created_by, ts)
 
     console.print(table)
 
@@ -888,15 +935,23 @@ def memory_sync(
 
     console.print(f"[dim]Syncing {room_name} from {cfg.server.api_url}...[/dim]")
 
-    with hub_client(cfg, timeout=60, headers=headers) as client:
-        resp = client.get(f"/api/rooms/{room_name}/memory", params={"limit": 1000})
+    from mycelium_backend_client.api.memory import (
+        list_memories_api_rooms_room_name_memory_get as list_api,
+    )
 
-    if resp.status_code == 304:
+    with typed_client(cfg, timeout=60, raise_on_unexpected_status=False) as client:
+        resp = list_api.sync_detailed(room_name, client=client.with_headers(headers), limit=1000)
+
+    if resp.status_code == 304:  # noqa: PLR2004
         console.print("[dim]Already up to date[/dim]")
         return
 
-    resp.raise_for_status()
-    memories = resp.json()
+    try:
+        memories = answered(resp, list)
+    except UnexpectedStatus:
+        detail = hub_error_detail(resp.content) or f"HTTP {resp.status_code}"
+        console.print(f"[red]Error:[/red] {detail}")
+        raise typer.Exit(1) from None
 
     # Persist ETag for next sync
     if etag := resp.headers.get("etag"):
@@ -907,53 +962,18 @@ def memory_sync(
         console.print("[dim]No memories to sync[/dim]")
         return
 
-    from datetime import datetime
-
-    def _parse_dt(val: str | None):
-        if not val:
-            return None
-        if isinstance(val, datetime):
-            return val
-        try:
-            return datetime.fromisoformat(val.replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            return None
-
-    room_dir = get_room_dir(room_name)
-    written = 0
-    for mem in memories:
-        value = mem.get("value", "")
-        if isinstance(value, dict):
-            content = value.get("text", json.dumps(value))
-        else:
-            content = str(value)
-        # A hub on Windows before 3.0.31 sent its own separator in keys.
-        key = mem["key"].replace("\\", "/")
-        try:
-            write_memory(
-                room_dir,
-                key,
-                content,
-                created_by=mem.get("created_by"),
-                updated_by=mem.get("updated_by"),
-                version=mem.get("version", 1),
-                tags=mem.get("tags"),
-                created_at=_parse_dt(mem.get("created_at")),
-                updated_at=_parse_dt(mem.get("updated_at")),
-            )
-        except ValueError as e:
-            console.print(f"[yellow]Skipped:[/yellow] {e}")
-            continue
-        written += 1
-
+    written, skipped = write_hub_memories(get_room_dir(room_name), memories)
+    for why in skipped:
+        console.print(f"[yellow]Skipped:[/yellow] {why}")
     console.print(f"[green]Synced:[/green] {written} memories")
 
     if not no_reindex:
         try:
-            with hub_client(cfg, timeout=120) as client:
-                resp = client.post(f"/api/rooms/{room_name}/reindex")
-                resp.raise_for_status()
-                data = resp.json()
-            console.print(f"[green]Re-indexed:[/green] {data.get('indexed', 0)} memories")
+            stats = _reindex(cfg, room_name)
         except Exception as e:
             console.print(f"[yellow]Warning:[/yellow] reindex failed: {e}")
+        else:
+            if stats is None:
+                console.print("[yellow]Warning:[/yellow] reindex failed: the hub refused")
+            else:
+                console.print(f"[green]Re-indexed:[/green] {stats.indexed} memories")

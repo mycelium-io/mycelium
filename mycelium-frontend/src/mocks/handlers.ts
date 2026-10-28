@@ -136,6 +136,23 @@ function synthesizeRaw(edge: MemoryGraphEdge): string {
   return `[[${edge.target}]]`;
 }
 
+/** A graph edge as the hub's `LinkRead`: every key present, null where the
+ *  edge has none. `source` is null on an outbound link and set on a backlink
+ *  or a broken one. The fixtures write no `#anchor` or `|label`. */
+function linkRead(edge: MemoryGraphEdge, { source }: { source: string | null }): MemoryLink {
+  return {
+    target: edge.target,
+    kind: edge.kind,
+    anchor: null,
+    label: null,
+    relation: edge.relation ?? null,
+    raw: synthesizeRaw(edge),
+    source,
+    resolved: edge.resolved,
+    error: edge.error ?? null,
+  };
+}
+
 /** The backward cursor's test, as the backend applies it: strictly before, and
  *  a row with no readable stamp is kept rather than filtered out. */
 function olderThan(stamp: string | undefined, before: string | null): boolean {
@@ -1227,7 +1244,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         return json({
           broken: graph.edges
             .filter((e) => !e.resolved)
-            .map((e) => ({ source: e.source, target: e.target, kind: e.kind, resolved: false, error: e.error, raw: synthesizeRaw(e) })),
+            .map((e) => linkRead(e, { source: e.source })),
           // Sorted, like the backend's `integrity()`, so a consumer that ever
           // relies on the order sees the same thing here as in production.
           // orphan = inbound===0 AND outbound===0 (fully isolated)
@@ -1261,11 +1278,11 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (!key) return notFound("missing key (mock)");
       const outbound: MemoryLink[] = graph.edges
         .filter((e) => e.source === key)
-        .map((e) => ({ target: e.target, kind: e.kind, relation: e.relation, resolved: e.resolved, error: e.error, raw: synthesizeRaw(e) }));
+        .map((e) => linkRead(e, { source: null }));
       const backlinks: MemoryLink[] = graph.edges
         .filter((e) => e.target === key && e.resolved)
-        .map((e) => ({ target: key, source: e.source, kind: e.kind, relation: e.relation, resolved: true, raw: synthesizeRaw(e) }));
-      return json({ outbound, backlinks });
+        .map((e) => linkRead(e, { source: e.source }));
+      return json({ key, outbound, backlinks });
     }
 
     case "members": {

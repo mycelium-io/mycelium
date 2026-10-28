@@ -22,7 +22,7 @@ from rich.text import Text
 
 from mycelium.board.epics import waiting_line
 from mycelium.cli_options import acts_as, emits_json, in_room
-from mycelium.client import hub_client
+from mycelium.client import typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 
@@ -39,35 +39,39 @@ console = Console()
 @emits_json()
 def waiting(ctx: typer.Context, room: str, handle: str) -> None:
     """Show what is waiting on you in the room."""
+    from mycelium_backend_client.api.board import read_waiting_api_rooms_room_name_waiting_get
+    from mycelium_backend_client.models import WaitingRead
+
     cfg = MyceliumConfig.load()
     try:
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.get(f"/api/rooms/{room}/waiting", params={"for": handle})
+        with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+            resp = read_waiting_api_rooms_room_name_waiting_get.sync_detailed(
+                room, client=client, for_=handle
+            )
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    if resp.status_code >= 400:
-        console.print(f"[red]✗[/red] HTTP {resp.status_code}: {resp.text[:200]}")
+    read = resp.parsed
+    if not isinstance(read, WaitingRead):
+        said = resp.content.decode(errors="replace")
+        console.print(f"[red]✗[/red] HTTP {resp.status_code}: {said[:200]}")
         raise typer.Exit(1)
-    read = resp.json()
     if ctx.obj and ctx.obj.get("json"):
-        sys.stdout.write(json.dumps(read, indent=2) + "\n")
+        sys.stdout.write(json.dumps(read.to_dict(), indent=2) + "\n")
         return
-    items = read.get("items") or []
-    if not items:
-        console.print(f"Nothing is waiting on @{read.get('handle', handle)} in {room}.")
+    if not read.items:
+        console.print(f"Nothing is waiting on @{read.handle} in {room}.")
         return
-    count = len(items)
     heading = Text()
-    heading.append(f"Waiting on @{read.get('handle', handle)} in {room}", style="bold")
-    heading.append(f"  {count}", style="dim")
+    heading.append(f"Waiting on @{read.handle} in {room}", style="bold")
+    heading.append(f"  {len(read.items)}", style="dim")
     console.print(heading)
-    for item in items:
+    for item in read.items:
         console.print(waiting_line(item))
         # A question or a turn wants a reply; a task that's yours wants opening.
-        if item.get("kind") == "task" and item.get("key"):
-            how = f"Open: mycelium board messages {item['key']} --room {room}"
+        if item.kind == "task" and item.key:
+            how = f"Open: mycelium board messages {item.key} --room {room}"
         else:
-            task = f" --task {item['key']}" if item.get("key") else ""
+            task = f" --task {item.key}" if item.key else ""
             how = f'Reply: mycelium respond --room {room}{task} --body "…"'
         console.print(Text(f"    {how}", style="dim"))

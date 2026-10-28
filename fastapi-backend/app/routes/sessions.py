@@ -29,9 +29,13 @@ from app.bus import bus, room_channel
 from app.routes.subscriptions import read as read_subscription
 from app.schemas import (
     CoordinationSessionRead,
+    HerdrWakesRead,
     ParticipantCreate,
     ParticipantListResponse,
     ParticipantRead,
+    RoomPresenceRead,
+    WakeOutcomesRecorded,
+    refusals,
 )
 from app.services import (
     activity,
@@ -100,7 +104,7 @@ def _ensure_room(room_name: str) -> None:
         ensure_room_structure(get_room_dir(room_name))
 
 
-@router.post("/spawn", response_model=dict, status_code=201)
+@router.post("/spawn", response_model=dict, status_code=201, responses=refusals(404))
 async def spawn_session(room_name: str):
     """Return the room's presence session (a no-op shim spawn)."""
     if not room_exists(room_name):
@@ -113,7 +117,7 @@ async def spawn_session(room_name: str):
     }
 
 
-@router.post("", response_model=ParticipantRead, status_code=201)
+@router.post("", response_model=ParticipantRead, status_code=201, responses=refusals(400, 403))
 async def join_room(room_name: str, payload: ParticipantCreate, request: Request):
     """Join a room — record the agent's presence. Idempotent per handle."""
     # Presence is a claim on a handle, same as draining its queue: registering as
@@ -164,7 +168,7 @@ async def join_room(room_name: str, payload: ParticipantCreate, request: Request
     return ParticipantRead.model_validate(participant)
 
 
-@router.get("/coordination", response_model=list[CoordinationSessionRead])
+@router.get("/coordination", response_model=list[CoordinationSessionRead], responses=refusals(404))
 async def list_coordination_sessions(room_name: str):
     """List coordination sessions in a room (at most the one presence shim)."""
     if not room_exists(room_name):
@@ -175,7 +179,7 @@ async def list_coordination_sessions(room_name: str):
     return [CoordinationSessionRead.model_validate(coord)]
 
 
-@router.get("", response_model=ParticipantListResponse)
+@router.get("", response_model=ParticipantListResponse, responses=refusals(404))
 async def list_sessions(room_name: str):
     """List agents participating in a room."""
     coord = in_memory_store.get_session(room_name)
@@ -200,7 +204,7 @@ async def list_sessions(room_name: str):
     )
 
 
-@router.get("/members")
+@router.get("/members", response_model=RoomPresenceRead, responses=refusals(404))
 async def list_members(room_name: str):
     """Live presence: SLIM-socket members and server-held lease members.
 
@@ -281,7 +285,7 @@ def _floor_entry(room_name: str, floor: Floor) -> dict[str, object]:
     }
 
 
-@router.post("/herdr-presence", status_code=204)
+@router.post("/herdr-presence", status_code=204, responses=refusals(404))
 async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
     """Overlay herdr liveness for a room (the ``mycelium herdr sync`` bridge's push).
 
@@ -311,7 +315,14 @@ async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
 NEEDS_A_MESSAGE = frozenset({"mention", "turn", "interrupt", "subscribed"})
 
 
-@router.get("/herdr-wakes")
+# Unset excluded: a wake carries only the keys its producer set, as it did
+# before it had a model, rather than every optional key as null.
+@router.get(
+    "/herdr-wakes",
+    response_model=HerdrWakesRead,
+    response_model_exclude_unset=True,
+    responses=refusals(404),
+)
 async def drain_herdr_wakes(
     room_name: str,
     source: Annotated[
@@ -409,7 +420,7 @@ class WakeOutcomes(BaseModel):
     outcomes: list[WakeOutcome] = Field(default_factory=list, max_length=200)
 
 
-@router.post("/herdr-wakes/outcomes")
+@router.post("/herdr-wakes/outcomes", response_model=WakeOutcomesRecorded, responses=refusals(404))
 async def report_herdr_wakes(room_name: str, body: WakeOutcomes):
     """A runner says what happened to the wakes it drained: delivered, or not and why.
 
@@ -452,7 +463,12 @@ class WakeRecord(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-@router.get("/wakes", response_model=list[WakeRecord], response_model_by_alias=True)
+@router.get(
+    "/wakes",
+    response_model=list[WakeRecord],
+    response_model_by_alias=True,
+    responses=refusals(404),
+)
 async def list_wakes(room_name: str, agent: str | None = None, limit: int = 50):
     """What each wake in this room delivered, newest first (``log/wakes.jsonl``).
 
@@ -465,7 +481,7 @@ async def list_wakes(room_name: str, agent: str | None = None, limit: int = 50):
     return wake_log.read(room_name, agent=who, limit=max(1, min(limit, 1000)))
 
 
-@router.delete("/{session_id}", status_code=204)
+@router.delete("/{session_id}", status_code=204, responses=refusals(404))
 async def leave_room(room_name: str, session_id: UUID):
     """Remove a participant (agent leaves the room + the SLIM channel)."""
     coord = in_memory_store.get_session(room_name)

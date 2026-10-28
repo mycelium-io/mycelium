@@ -96,7 +96,7 @@ def _patch_stop(monkeypatch: pytest.MonkeyPatch, sync_fn: object) -> None:
     fake_cm.__exit__.return_value = None
     monkeypatch.setattr(engine_cmd, "_typed_client", lambda _c: fake_cm)
     monkeypatch.setattr(
-        "mycelium_backend_client.api.engines.stop_negotiation_api_rooms_room_name_engines_stop_post.sync",
+        "mycelium_backend_client.api.engines.stop_negotiation_api_rooms_room_name_engines_stop_post.sync_detailed",
         sync_fn,
     )
 
@@ -105,11 +105,14 @@ def test_engine_stop_stops_the_rooms_negotiation_as_you(monkeypatch: pytest.Monk
     from typer.testing import CliRunner
 
     from mycelium.commands import engine as engine_cmd
+    from mycelium_backend_client.models import NegotiationStopped
+    from tests.hub_answers import ok
 
     sent: dict[str, Any] = {}
 
-    def fake_sync(**kwargs: Any) -> None:
+    def fake_sync(**kwargs: Any):
         sent.update(kwargs)
+        return ok(NegotiationStopped(stopped=True))
 
     _patch_stop(monkeypatch, fake_sync)
     result = CliRunner().invoke(engine_cmd.app, ["stop", "--room", "portfolio"])

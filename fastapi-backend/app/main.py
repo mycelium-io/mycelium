@@ -65,7 +65,8 @@ from app.routes.uploads import router as uploads_router
 from app.routes.users import router as users_router
 from app.routes.verifier import router as verifier_router
 from app.routes.voice import router as voice_router
-from app.services.auth import auth_gate
+from app.schemas import HealthRead, WhoamiRead, refusals
+from app.services.auth import GATE_REFUSALS, auth_gate
 from app.services.filesystem import UnsafePathError
 
 from .config import settings
@@ -416,46 +417,48 @@ app.add_middleware(
 )
 
 
-# Core routes. Health endpoints stay top-level for orchestrator probes.
-app.include_router(agents_router, prefix="/api")
-app.include_router(agent_pauses_router, prefix="/api")
-app.include_router(a2a_agents_router, prefix="/api")
+# Core routes. Health endpoints stay top-level for orchestrator probes. Every
+# route a router holds is gated, so the router declares the gate's refusals;
+# joins and a2a_server each serve one public route, so they declare them per route.
+app.include_router(agents_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(agent_pauses_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(a2a_agents_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(a2a_server_router, prefix="/api")
-app.include_router(a2a_state_router, prefix="/api")
-app.include_router(engines_router, prefix="/api")
-app.include_router(rooms_router, prefix="/api")
-app.include_router(messages_router, prefix="/api")
-app.include_router(members_router, prefix="/api")
-app.include_router(assignments_router, prefix="/api")
-app.include_router(fields_router, prefix="/api")
-app.include_router(tasks_router, prefix="/api")
-app.include_router(board_router, prefix="/api")
-app.include_router(swarms_router, prefix="/api")
-app.include_router(runners_router, prefix="/api")
+app.include_router(a2a_state_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(engines_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(rooms_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(messages_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(members_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(assignments_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(fields_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(tasks_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(board_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(swarms_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(runners_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(joins_router, prefix="/api")
-app.include_router(episodes_router, prefix="/api")
-app.include_router(participate_router, prefix="/api")
-app.include_router(sessions_router, prefix="/api")
-app.include_router(stream_router, prefix="/api")
-app.include_router(memory_router, prefix="/api")
-app.include_router(links_router, prefix="/api")
-app.include_router(briefing_router, prefix="/api")
-app.include_router(users_router, prefix="/api")
-app.include_router(search_router, prefix="/api")
-app.include_router(schedules_router, prefix="/api")
-app.include_router(subscriptions_router, prefix="/api")
-app.include_router(skills_router, prefix="/api")
-app.include_router(room_settings_router, prefix="/api")
-app.include_router(uploads_router, prefix="/api")
-app.include_router(voice_router, prefix="/api")
-app.include_router(verifier_router, prefix="/api")
-app.include_router(patterns_router, prefix="/api")
-app.include_router(protocols_router, prefix="/api")
-app.include_router(status_router, prefix="/api")
-app.include_router(hub_router, prefix="/api")
+app.include_router(episodes_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(participate_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(sessions_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(stream_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(memory_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(links_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(briefing_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(users_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(search_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(schedules_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(subscriptions_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(skills_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(room_settings_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(uploads_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(voice_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(verifier_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(patterns_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(protocols_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(status_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(hub_router, prefix="/api", responses=GATE_REFUSALS)
 
 
-@app.get("/api/whoami", tags=["auth"])
+@app.get("/api/whoami", tags=["auth"], response_model=WhoamiRead, responses=GATE_REFUSALS)
 async def whoami(request: Request):
     """Who the hub resolves this caller to, from the bearer token it verified.
 
@@ -482,8 +485,8 @@ async def whoami(request: Request):
     }
 
 
-@app.get("/", tags=["health"])
-@app.get("/health", tags=["health"])
+@app.get("/", tags=["health"], response_model=HealthRead, response_model_exclude_unset=True)
+@app.get("/health", tags=["health"], response_model=HealthRead, response_model_exclude_unset=True)
 async def root(
     check_llm: bool = False,
     llm_probe: str = "provider",
@@ -575,7 +578,7 @@ async def root(
     return result
 
 
-@app.get("/api/observability", tags=["metrics"])
+@app.get("/api/observability", tags=["metrics"], responses=GATE_REFUSALS)
 async def get_metrics():
     """Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).
 
@@ -588,7 +591,7 @@ async def get_metrics():
     return snapshot()
 
 
-@app.get("/api/observability/usage", tags=["metrics"])
+@app.get("/api/observability/usage", tags=["metrics"], responses=GATE_REFUSALS)
 async def get_usage(days: int = 30):
     """What this hub is used for, as KPIs, from the usage events it records.
 
@@ -603,7 +606,12 @@ async def get_usage(days: int = 30):
     return await asyncio.to_thread(usage.kpis, max(1, min(days, 365)))
 
 
-@app.get("/api/observability/collector", tags=["metrics"])
+# The collector proxies below also pass a collector's own non-200 status
+# through as it came, which the hub can't name in advance; 502 is the hub's own.
+_COLLECTOR_REFUSALS = {**GATE_REFUSALS, **refusals(502)}
+
+
+@app.get("/api/observability/collector", tags=["metrics"], responses=_COLLECTOR_REFUSALS)
 async def get_collector_metrics():
     """Proxy to the OTLP collector's ``/collector/metrics`` endpoint.
 
@@ -616,7 +624,7 @@ async def get_collector_metrics():
     return await _proxy_collector("/collector/metrics")
 
 
-@app.get("/api/observability/traces/recent", tags=["metrics"])
+@app.get("/api/observability/traces/recent", tags=["metrics"], responses=_COLLECTOR_REFUSALS)
 async def get_recent_traces(limit: int = 100, host: str | None = None):
     """Proxy to the OTLP collector's ``/collector/traces`` endpoint.
 
@@ -631,7 +639,7 @@ async def get_recent_traces(limit: int = 100, host: str | None = None):
     return await _proxy_collector(path)
 
 
-@app.get("/api/observability/hosts", tags=["metrics"])
+@app.get("/api/observability/hosts", tags=["metrics"], responses=_COLLECTOR_REFUSALS)
 async def get_hosts():
     """Proxy to the OTLP collector's ``/collector/hosts`` endpoint.
 

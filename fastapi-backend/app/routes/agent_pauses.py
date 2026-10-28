@@ -11,7 +11,7 @@ for the status rail.
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from app.schemas import AgentsControl, AgentsControlRead, PauseRead
+from app.schemas import AgentsControl, AgentsControlRead, PauseRead, refusals
 from app.services import actor, agent_control, pauses
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import canonical_room_name, room_exists
@@ -30,7 +30,7 @@ def _owner(payload: AgentsControl, request: Request) -> str:
     return owner
 
 
-@router.post("/pause", response_model=AgentsControlRead)
+@router.post("/pause", response_model=AgentsControlRead, responses=refusals(403, 404, 422))
 async def pause_mine(payload: AgentsControl, request: Request) -> AgentsControlRead:
     """Pause every agent the caller owns."""
     owner = _owner(payload, request)
@@ -42,7 +42,7 @@ async def pause_mine(payload: AgentsControl, request: Request) -> AgentsControlR
     )
 
 
-@router.post("/resume", response_model=AgentsControlRead)
+@router.post("/resume", response_model=AgentsControlRead, responses=refusals(403, 404, 422))
 async def resume_mine(payload: AgentsControl, request: Request) -> AgentsControlRead:
     """Resume every paused agent the caller owns."""
     owner = _owner(payload, request)
@@ -55,7 +55,7 @@ async def resume_mine(payload: AgentsControl, request: Request) -> AgentsControl
     )
 
 
-@router.get("/paused", response_model=list[PauseRead])
+@router.get("/paused", response_model=list[PauseRead], responses=refusals(403))
 async def list_paused(
     request: Request, owner: str = Query(..., description="Whose agents")
 ) -> list[PauseRead]:

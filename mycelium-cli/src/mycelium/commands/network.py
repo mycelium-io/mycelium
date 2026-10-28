@@ -23,33 +23,44 @@ half of the same surface the GUI's Network pane shows.
 from __future__ import annotations
 
 import json as json_module
+from typing import TYPE_CHECKING
 
 import httpx
 import typer
 
+from mycelium.client import typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
-from mycelium.http_client import MyceliumHTTPClient
+from mycelium.exceptions import MyceliumError
+from mycelium.hub_check import health
 from mycelium.ui_status import print_title
+
+if TYPE_CHECKING:
+    from mycelium_backend_client import Client
 
 #: Bridge exchanges shown per room — a tail for context, not a log.
 _RECENT_EXCHANGES = 3
 
 
-def _fetch_a2a(client: MyceliumHTTPClient, room: str) -> dict | None:
+def _fetch_a2a(client: Client, room: str) -> dict | None:
     """A room's A2A bridge state, or None when it has none (or the read fails).
 
     Fail-soft on purpose: this is a decoration on the fabric view, so an older
     backend without the route, or a transient error, must not take the whole
-    command down with it.
+    command down with it. Handed on as the hub's record: it's printed as told
+    and passed through ``--json``.
     """
+    from mycelium_backend_client.api.a2a import a2a_state_api_rooms_room_name_a2a_state_get
+    from mycelium_backend_client.models import A2ABridgeState
+
     try:
-        state = client.get(f"/api/rooms/{room}/a2a/state").json()
-    except (httpx.HTTPError, ValueError):
+        resp = a2a_state_api_rooms_room_name_a2a_state_get.sync_detailed(room, client=client)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
         return None
-    if not isinstance(state, dict):
+    if not isinstance(resp.parsed, A2ABridgeState):
         return None
+    state = resp.parsed.to_dict()
     exposure = state.get("exposure") or {}
     touched = exposure.get("card_fetches") or exposure.get("messages")
     if not state.get("agents") and not state.get("exchanges") and not touched:
@@ -140,11 +151,15 @@ def network(
 
         config = MyceliumConfig.load()
 
-        with MyceliumHTTPClient(config=config) as client:
-            resp = client.get("/health")
-            health = resp.json()
-
-            coord = (health or {}).get("coordination") or {}
+        said = health(config.server.api_url, timeout=30)
+        if not said.answered:
+            print_error(f"Cannot reach the backend at {config.server.api_url}: {said.error}")
+            return
+        if said.read is None:
+            raise MyceliumError(f"the hub at {said.url} didn't say: {said.error}")
+        # The hub's telemetry, printed as told and passed through ``--json``.
+        coord = said.coordination.to_dict() if said.coordination else {}
+        with typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
             rooms = coord.get("rooms") or []
             if room:
                 rooms = [r for r in rooms if r.get("room") == room]

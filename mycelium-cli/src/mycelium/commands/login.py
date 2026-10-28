@@ -75,19 +75,15 @@ def _hub_issuers(config: MyceliumConfig) -> tuple[list[str], str | None]:
     issuer up and copy it back in. Returns the issuers and, when the list is
     empty, a reason to print instead of a bare "no issuer configured".
     """
-    import httpx
+    from mycelium.hub_check import health
 
-    url = f"{config.server.api_url.rstrip('/')}/health"
-    try:
-        resp = httpx.get(url, timeout=5)
-        resp.raise_for_status()
-        body = resp.json()
-    except (httpx.HTTPError, ValueError):
-        return [], f"couldn't reach {url} to ask it"
-    auth = body.get("auth") or {} if isinstance(body, dict) else {}
-    if not auth.get("enabled"):
+    said = health(config.server.api_url, timeout=5)
+    if said.read is None:
+        return [], f"couldn't reach {said.url}/health to ask it"
+    auth = said.auth
+    if auth is None or not auth.enabled:
         return [], f"{config.server.api_url} has its gate off, so it needs no login"
-    issuers = [str(i).strip().rstrip("/") for i in auth.get("issuers") or [] if str(i).strip()]
+    issuers = [i.strip().rstrip("/") for i in auth.issuers if i.strip()]
     if not issuers:
         return [], f"{config.server.api_url} is gated but advertises no issuer"
     return issuers, None
@@ -168,7 +164,7 @@ def _hub_handle(config: MyceliumConfig) -> str | None:
     # Asked earlier in this process, the answer was for the old credential.
     _WHOAMI_CACHE.pop(config.server.api_url, None)
     who = _hub_whoami(config)
-    handle = str((who or {}).get("handle") or "").strip().lstrip("@").lower()
+    handle = str((who.handle if who else None) or "").strip().lstrip("@").lower()
     return handle or None
 
 

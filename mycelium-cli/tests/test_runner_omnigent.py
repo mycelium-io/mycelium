@@ -3,7 +3,8 @@
 
 """The runner with ``runner.host = omnigent``: agents as Omnigent sessions.
 
-No hub and no Omnigent: both are ``httpx.MockTransport``s. These hold what the
+No hub and no Omnigent: the hub is a stand-in answering at httpx's transport,
+Omnigent an ``httpx.MockTransport``. These hold what the
 scan reads from Omnigent (a kind is startable when its native agent's harness is
 ready on this machine's host), that a launch asks the hub for a join code and
 puts it first in what the session is told, that a session gets its own worktree
@@ -14,7 +15,6 @@ herdr's do.
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -25,8 +25,10 @@ from rich.console import Console
 from mycelium.config import MyceliumConfig
 from mycelium.runner import daemon, frameworks
 from mycelium.runner.hosts import OmnigentHost, branch_for
+from tests.conftest import install_stand_in_hub
 
 MACHINE = "julias-mbp.local"
+_AT = "2026-08-24T10:00:00+00:00"
 
 
 class Omnigent:
@@ -114,14 +116,20 @@ class Hub:
         path = request.url.path
         self.seen.append((request.method, path, body))
         if path.endswith("/joins"):
-            return httpx.Response(
-                201, json={"code": "abcd-efgh-jkmn", "room": "eng", "handle": body["handle"]}
-            )
+            join = {"code": "abcd-efgh-jkmn", "room": "eng", "handle": body["handle"]}
+            return httpx.Response(201, json=join | {"expires_at": _AT})
         if path.endswith("/notes"):
             return httpx.Response(404, json={"detail": "not found"})
         if path.endswith("/sessions/herdr-wakes"):
             room = path.split("/")[3]
             return httpx.Response(200, json={"wakes": self.wakes.pop(room, [])})
+        if path.endswith("/sessions/herdr-presence"):
+            return httpx.Response(204)
+        if request.method == "POST" and path == "/api/runners":
+            runner = {"id": body["id"], "label": body["label"], "connected": True}
+            return httpx.Response(200, json=runner | {"last_seen": _AT, "started_at": _AT})
+        if request.method == "GET" and path.endswith("/jobs/next"):
+            return httpx.Response(204)
         return httpx.Response(200, json={})
 
     def of(self, method: str, suffix: str) -> list[Any]:
@@ -131,31 +139,8 @@ class Hub:
 @pytest.fixture
 def hub(monkeypatch: pytest.MonkeyPatch) -> Hub:
     hub = Hub()
-    transport = httpx.MockTransport(hub.handler)
-
-    @contextmanager
-    def client(_config: Any = None, **_kw: Any):
-        with httpx.Client(base_url="http://hub:8000", transport=transport) as c:
-            yield c
-
-    monkeypatch.setattr(daemon, "hub_client", client)
-    real_get, real_post = httpx.get, httpx.post
-
-    def get(url: str, **kw: Any) -> httpx.Response:
-        if url.startswith("http://hub:8000"):
-            with httpx.Client(transport=transport) as c:
-                return c.get(url, headers=kw.get("headers"))
-        return real_get(url, **kw)
-
-    def post(url: str, **kw: Any) -> httpx.Response:
-        if url.startswith("http://hub:8000"):
-            with httpx.Client(transport=transport) as c:
-                return c.post(url, json=kw.get("json"), headers=kw.get("headers"))
-        return real_post(url, **kw)
-
-    # The presence and wake calls go straight through httpx (commands/herdr.py).
-    monkeypatch.setattr(httpx, "get", get)
-    monkeypatch.setattr(httpx, "post", post)
+    # Every hub call the runner makes goes through the typed client.
+    install_stand_in_hub(monkeypatch).answer = hub.handler
     return hub
 
 

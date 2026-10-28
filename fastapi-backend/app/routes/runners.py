@@ -40,6 +40,7 @@ from app.schemas import (
     RunnerJobReport,
     RunnerPair,
     RunnerRead,
+    refusals,
 )
 from app.services import actor
 from app.services.agent_registry import norm_handle, write_agent_manifest
@@ -153,7 +154,7 @@ async def runner_goodbye(runner_id: str) -> Response:
     return Response(status_code=204)
 
 
-@router.get("/{runner_id}/jobs/next", response_model=RunnerJobRead | None)
+@router.get("/{runner_id}/jobs/next", response_model=RunnerJobRead | None, responses=refusals(404))
 async def next_job(
     runner_id: str, timeout: float = Query(25.0, ge=0.0, le=MAX_POLL_S)
 ) -> RunnerJobRead | Response:
@@ -167,7 +168,11 @@ async def next_job(
     return job
 
 
-@router.patch("/{runner_id}/jobs/{job_id}", response_model=RunnerJobRead)
+@router.patch(
+    "/{runner_id}/jobs/{job_id}",
+    response_model=RunnerJobRead,
+    responses=refusals(403, 404, 409, 422),
+)
 async def report_job(runner_id: str, job_id: str, payload: RunnerJobReport) -> RunnerJobRead:
     """The runner saying how a job went.
 
@@ -242,7 +247,7 @@ async def list_runners(request: Request) -> list[RunnerRead]:
     return [r for r in registry.all() if _yours(r, request)]
 
 
-@router.post("/pair", response_model=RunnerJobRead, status_code=201)
+@router.post("/pair", response_model=RunnerJobRead, status_code=201, responses=refusals(403, 404))
 async def pair_device(payload: RunnerPair, request: Request) -> RunnerJobRead:
     """Ask the machine that printed a pairing code to pair this device.
 
@@ -268,12 +273,12 @@ async def pair_device(payload: RunnerPair, request: Request) -> RunnerJobRead:
     return registry.enqueue(runner.id, "pair", spec, created_by=me)
 
 
-@router.get("/{runner_id}", response_model=RunnerRead)
+@router.get("/{runner_id}", response_model=RunnerRead, responses=refusals(404))
 async def get_runner(runner_id: str, request: Request) -> RunnerRead:
     return _runner_or_404(runner_id, request)
 
 
-@router.get("/{runner_id}/jobs", response_model=list[RunnerJobRead])
+@router.get("/{runner_id}/jobs", response_model=list[RunnerJobRead], responses=refusals(404))
 async def list_jobs(runner_id: str, request: Request) -> list[RunnerJobRead]:
     """A runner's recent jobs, newest first."""
     _runner_or_404(runner_id, request)
@@ -283,7 +288,7 @@ async def list_jobs(runner_id: str, request: Request) -> list[RunnerJobRead]:
     return jobs
 
 
-@router.get("/{runner_id}/jobs/{job_id}", response_model=RunnerJobRead)
+@router.get("/{runner_id}/jobs/{job_id}", response_model=RunnerJobRead, responses=refusals(404))
 async def get_job(runner_id: str, job_id: str, request: Request) -> RunnerJobRead:
     _runner_or_404(runner_id, request)
     job = registry.job(runner_id, job_id)
@@ -292,7 +297,12 @@ async def get_job(runner_id: str, job_id: str, request: Request) -> RunnerJobRea
     return job
 
 
-@router.post("/{runner_id}/scan", response_model=RunnerJobRead, status_code=201)
+@router.post(
+    "/{runner_id}/scan",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 422),
+)
 async def rescan(runner_id: str, request: Request) -> RunnerJobRead:
     """Ask a runner to look for agent CLIs again; its next heartbeat carries what it found."""
     runner = _runner_or_404(runner_id, request)
@@ -304,7 +314,12 @@ async def rescan(runner_id: str, request: Request) -> RunnerJobRead:
     return registry.enqueue(runner_id, "scan", {}, created_by=me)
 
 
-@router.post("/{runner_id}/restart", response_model=RunnerJobRead, status_code=201)
+@router.post(
+    "/{runner_id}/restart",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 422),
+)
 async def restart_agents(
     runner_id: str, payload: MachineRestart, request: Request
 ) -> RunnerJobRead:
@@ -330,7 +345,12 @@ async def restart_agents(
     return registry.enqueue(runner_id, "restart", spec, created_by=me, signature=payload.signature)
 
 
-@router.post("/{runner_id}/agents", response_model=RunnerJobRead, status_code=201)
+@router.post(
+    "/{runner_id}/agents",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 409, 422),
+)
 async def launch_agent(
     runner_id: str, payload: RunnerAgentLaunch, request: Request
 ) -> RunnerJobRead:
@@ -399,7 +419,12 @@ async def launch_agent(
     return job
 
 
-@router.post("/{runner_id}/adopt", response_model=RunnerJobRead, status_code=201)
+@router.post(
+    "/{runner_id}/adopt",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 409, 422),
+)
 async def adopt_agent(runner_id: str, payload: RunnerAgentAdopt, request: Request) -> RunnerJobRead:
     """Bring an agent already running on this runner's machine into a room.
 
@@ -466,7 +491,10 @@ async def adopt_agent(runner_id: str, payload: RunnerAgentAdopt, request: Reques
 
 
 @router.post(
-    "/{runner_id}/agents/{room_name}/{handle}/stop", response_model=RunnerJobRead, status_code=201
+    "/{runner_id}/agents/{room_name}/{handle}/stop",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 422),
 )
 async def stop_agent(
     runner_id: str, room_name: str, handle: str, request: Request

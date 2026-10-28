@@ -3,7 +3,7 @@
 
 """Unit tests for ``mycelium file`` (upload / download / ls / show / rm).
 
-Node-free and file-free on the hub side: the JSON routes' ``.sync`` functions
+Node-free and file-free on the hub side: the JSON routes' ``.sync_detailed`` functions
 are stubbed and the raw client (multipart upload, streamed download) runs over
 an ``httpx.MockTransport``.
 """
@@ -20,6 +20,7 @@ from typer.testing import CliRunner
 
 from mycelium.commands import file as file_cmd
 from mycelium_backend_client.errors import UnexpectedStatus
+from tests.hub_answers import ok
 
 runner = CliRunner()
 
@@ -141,10 +142,10 @@ def _stub_get(monkeypatch, record=None) -> None:
     def _sync(*, room_name, name, client):
         if record is None:
             raise UnexpectedStatus(404, b'{"detail": "Upload not found"}')
-        return record
+        return ok(record)
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.uploads.get_upload_api_rooms_room_name_uploads_name_get.sync",
+        "mycelium_backend_client.api.uploads.get_upload_api_rooms_room_name_uploads_name_get.sync_detailed",
         _sync,
     )
 
@@ -197,8 +198,8 @@ def test_ls_and_its_json(monkeypatch) -> None:
         {"uploads": [_record("spec.pdf"), _record("diagram.png", kind="image")], "total": 2}
     )
     monkeypatch.setattr(
-        "mycelium_backend_client.api.uploads.list_room_uploads_api_rooms_room_name_uploads_get.sync",
-        lambda *, room_name, client: resp,
+        "mycelium_backend_client.api.uploads.list_room_uploads_api_rooms_room_name_uploads_get.sync_detailed",
+        lambda *, room_name, client: ok(resp),
     )
     result = runner.invoke(file_cmd.app, ["ls", "-r", "demo"])
     assert result.exit_code == 0, result.output

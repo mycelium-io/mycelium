@@ -7,10 +7,19 @@ Minimal schemas for Mycelium's core models.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
+from http import HTTPStatus
+from typing import Annotated, Any, Literal, get_args
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from fastapi.encoders import jsonable_encoder
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    field_validator,
+    model_validator,
+)
 from pydantic.json_schema import SkipJsonSchema
 
 # Two shape rules, deliberately distinct. A *handle* is an identity and can be
@@ -21,6 +30,31 @@ from pydantic.json_schema import SkipJsonSchema
 # import this package.
 HANDLE_PATTERN = r"^[a-z0-9][a-z0-9._@-]*$"
 SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]*$"
+
+# ── Refusal ───────────────────────────────────────────────────────────────────
+
+
+class Refusal(BaseModel):
+    """The body the hub refuses a request with, from an ``HTTPException`` or request validation.
+
+    ``detail`` is a sentence for most refusals. A refusal that names more than a
+    reason sends an object, kept whole: a lease or field refusal names the row and
+    its holder, or what the row waits on (``waiting_on``). A request that fails
+    validation sends FastAPI's list of errors.
+    """
+
+    detail: str | dict[str, Any] | list[Any]
+
+
+def refusals(*codes: int) -> dict[int | str, dict[str, Any]]:
+    """A route's ``responses=`` for the statuses it refuses with, each a :class:`Refusal`.
+
+    Declaring 422 here replaces FastAPI's default ``HTTPValidationError`` for that
+    route, so a route that raises its own 422 with a sentence declares it, and its
+    validation errors still parse (``detail`` takes a list).
+    """
+    return {code: {"model": Refusal, "description": HTTPStatus(code).phrase} for code in codes}
+
 
 # ── Room ──────────────────────────────────────────────────────────────────────
 
@@ -93,6 +127,16 @@ class RoomRead(BaseModel):
     pattern_task: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class RoomReindexRead(BaseModel):
+    """What re-indexing a room's files into its search index did."""
+
+    status: Literal["complete"]
+    indexed: int = Field(..., description="Memories (re-)embedded and written to the index")
+    skipped: int = Field(..., description="Memories whose index entry was already current")
+    pruned: int = Field(..., description="Index entries dropped because their file is gone")
+    errors: int = Field(..., description="Memories that failed to index")
 
 
 # ── Message ───────────────────────────────────────────────────────────────────
@@ -572,6 +616,146 @@ class MemorySearchResponse(BaseModel):
     total: int
 
 
+# ── Memory links (``app/services/links.py``) ─────────────────────────────────
+
+
+class LinkRead(BaseModel):
+    """One edge between memories, and whether it resolves in the room right now."""
+
+    target: str = Field(..., description="The memory key the edge points at")
+    kind: str = Field(..., description="uri, wikilink, transclusion or relation")
+    anchor: str | None = Field(..., description="A heading in the target, after `#`")
+    label: str | None = Field(..., description="Display text, after `|`")
+    relation: str | None = Field(..., description="The frontmatter key of a typed edge")
+    raw: str = Field(..., description="The edge as written")
+    source: str | None = Field(..., description="The memory the edge leaves; none on outbound")
+    resolved: bool
+    error: str | None = Field(
+        ...,
+        description="Why the edge doesn't resolve: cross_room, not_found, no_anchor or not_expandable",
+    )
+
+
+class MemoryLinksRead(BaseModel):
+    """One memory's edges both ways: what it points at, and what points at it."""
+
+    key: str
+    outbound: list[LinkRead]
+    backlinks: list[LinkRead]
+
+
+class LinkGraphNode(BaseModel):
+    key: str
+    expandable: bool
+    outbound: int = Field(..., description="Edges leaving it that parse")
+    inbound: int = Field(..., description="Resolved edges arriving at it")
+
+
+class LinkGraphEdge(BaseModel):
+    source: str
+    target: str
+    kind: str
+    relation: str | None
+    resolved: bool
+    error: str | None
+
+
+class LinkGraphRead(BaseModel):
+    """A room's link graph: one node per memory, one edge per link."""
+
+    nodes: list[LinkGraphNode]
+    edges: list[LinkGraphEdge]
+
+
+class LinkIntegrityRead(BaseModel):
+    """Broken links, and the memories no link reaches or leaves, across a room."""
+
+    broken: list[LinkRead]
+    orphans: list[str] = Field(..., description="No links in or out")
+    roots: list[str] = Field(..., description="Links out, none in")
+    leaves: list[str] = Field(..., description="Links in, none out")
+    total_memories: int
+    total_links: int
+
+
+class TransclusionRead(BaseModel):
+    """What became of one ``![[…]]`` marker in an expanded body."""
+
+    target: str
+    anchor: str | None
+    raw: str
+    expanded: bool
+    error: str | None = Field(..., description="Why it was left as written")
+
+
+class ExpandedMemoryRead(BaseModel):
+    """A memory's body with its ``![[…]]`` markers expanded, one level deep."""
+
+    key: str
+    rendered: str
+    expansions: list[TransclusionRead]
+    found: bool
+
+
+# ── Assignments and fields (a board row's custody and its writable fields) ────
+# Frontmatter values come back from YAML as whatever it parsed: a timestamp may
+# be a ``datetime`` or a ``str``. These serialize such a value the way the
+# routes did before they declared a model (``jsonable_encoder``, so a datetime
+# keeps its ``+00:00``), rather than reformatting it.
+
+FrontmatterTime = Annotated[
+    str | datetime | None, PlainSerializer(jsonable_encoder, when_used="json")
+]
+FrontmatterFields = Annotated[dict[str, Any], PlainSerializer(jsonable_encoder, when_used="json")]
+
+
+class AssignmentRead(BaseModel):
+    """A board row's assignment as it stands: who holds it, for how long, and why it moved."""
+
+    key: str = Field(..., description="Memory key of the row")
+    assignment: str = Field(..., description="held, unclaimed, released, resolved or expired")
+    waiting_on: list[str] = Field(
+        ..., description="Keys of the unresolved rows this one depends on"
+    )
+    owner: str | None = Field(None, description="Who holds it, without the @")
+    assignee: str | None = Field(None, description="Who it was given to, without the @")
+    claimed_at: FrontmatterTime = None
+    ttl_minutes: int | float | str | None = Field(
+        None, description="The lease's window; none for a hold with no timer"
+    )
+    freshness: Literal["fresh", "stale", "expired"] | None = Field(
+        None, description="How much of the lease is spent; none for a hold with no timer"
+    )
+    version: int | None = None
+    assignment_note: str | None = Field(None, description="Why it last moved")
+    assignment_note_by: str | None = Field(
+        None, description="Who wrote the note; the runtime's name for a lease that expired"
+    )
+
+
+class AssignmentWatchRead(AssignmentRead):
+    """A watched lease: its assignment, and the token to wait on its next move."""
+
+    since: str = Field(..., description="Pass back as `since` to wait for the next transition")
+    changed: bool = Field(..., description="Whether it moved since the `since` passed in")
+
+
+class AssignmentsRenewed(BaseModel):
+    """The leases a resident loop's heartbeat re-dated (only those due for it)."""
+
+    room: str
+    handle: str
+    renewed: list[AssignmentRead]
+
+
+class FieldsRead(BaseModel):
+    """A row's writable fields: its frontmatter outside what the store manages."""
+
+    key: str
+    fields: FrontmatterFields
+    version: int | None = None
+
+
 # ── Skills (global, reusable invokable skills) ────────────────────────────────
 # Same grain as memory (markdown + frontmatter) but a distinct, project-level
 # store — skills are reusable across rooms. See app/services/skills.py.
@@ -754,6 +938,15 @@ class ProtocolSummary(BaseModel):
 # The human made first-class, symmetric with agents/<handle>. An agent's owner
 # points at a users/<handle>; a team groups these handles. Trust is self-asserted
 # — the handle is consistent, not cryptographic.
+
+
+class WhoamiRead(BaseModel):
+    """Who the hub resolves the caller to, from the bearer token it verified."""
+
+    gated: bool = Field(..., description="Whether this hub runs an auth gate")
+    handle: str | None = Field(None, description="The verified handle; none on an ungated hub")
+    subject: str | None = Field(None, description="The token's subject claim")
+    role: str | None = Field(None, description="The principal's role")
 
 
 class UserCreate(BaseModel):
@@ -1027,7 +1220,14 @@ class MachineProblemRead(BaseModel):
 
 
 class MachineReportRead(BaseModel):
-    """Every agent on a machine and what's wrong (``mycelium machine``'s report)."""
+    """Every agent on a machine and what's wrong (``mycelium machine``'s report).
+
+    A runner sends it (``RunnerHello``) and the hub hands it back (``RunnerRead``)
+    in the same shape, so it is one schema: split into ``-Input`` and ``-Output``
+    copies with the same title, the generated client drops ``RunnerRead``.
+    """
+
+    model_config = ConfigDict(json_schema_mode_override="validation")
 
     machine: str
     herdr: bool = False
@@ -1181,9 +1381,14 @@ class RunnerJobRead(BaseModel):
 
     id: str
     runner: str
-    kind: RunnerJobKind
+    # Strings, not the Literals: a newer hub may send a kind or status an older
+    # runner doesn't know, and the runner refuses the job in words ("update
+    # mycelium here") only if the answer still parses.
+    kind: str = Field(..., description=f"One of {', '.join(get_args(RunnerJobKind))}, or newer")
     spec: dict[str, Any] = Field(default_factory=dict)
-    status: RunnerJobStatus = "queued"
+    status: str = Field(
+        "queued", description=f"One of {', '.join(get_args(RunnerJobStatus))}, or newer"
+    )
     result: dict[str, Any] | None = None
     error: str | None = None
     created_by: str | None = None
@@ -1700,6 +1905,223 @@ class WakeSubscriptionsRemoved(BaseModel):
     removed: list[WakeSubscriptionRead]
 
 
+# --- Live presence and herdr wakes ------------------------------------------
+# ``GET sessions/members`` (the roster's liveness) and the wakes a runner drains
+# to type into its agents' herdr panes (``routes/sessions.py``).
+
+
+class PresentMemberRead(BaseModel):
+    """One handle present in a room right now, and how it is connected."""
+
+    handle: str
+    kind: str = Field(
+        ...,
+        description="slim (a live socket), lease (an await/reply poll) or herdr (a pane only)",
+    )
+    last_seen: str | None = Field(
+        None, description="When a lease member last polled (ISO); none for a SLIM member"
+    )
+    status: str | None = Field(
+        None, description="herdr's live state (idle, working, blocked, done), when it has a pane"
+    )
+    wake_pending: bool = Field(
+        False, description="A mention is queued for it, held until it goes idle"
+    )
+    title: str | None = Field(None, description="herdr's terminal title: its current task")
+    can_reply: bool | None = Field(
+        None,
+        description=(
+            "Whether it can post, as the runner that keeps its token says; none when no "
+            "runner has said (or from a hub before runners did)"
+        ),
+    )
+    cant_reply_why: str | None = Field(None, description="Why it can't, when it can't")
+
+
+class FloorEntryRead(BaseModel):
+    """A thread's floor that a run of hub code holds, named by its task."""
+
+    thread: str = Field(..., description="The thread's id: the episode URN's last part")
+    episode: str
+    key: str | None = Field(None, description="The task row whose thread it is, if a row has it")
+    title: str | None = None
+    holder: str = Field(..., description="The handle that holds the floor and may always write")
+    speakers: list[str] = Field(..., description="Who it has been given to for this step")
+
+
+class PausedEntryRead(BaseModel):
+    """An agent paused in the room: by whom and since when."""
+
+    handle: str
+    by: str
+    at: str
+
+
+class RoomPresenceRead(BaseModel):
+    """A room's live presence: who is here, held floors, subscriptions and pauses."""
+
+    members: list[PresentMemberRead]
+    floors: list[FloorEntryRead]
+    subscriptions: list[WakeSubscriptionRead] = Field(
+        ..., description="Each member's live subscriptions, for its card"
+    )
+    paused: list[PausedEntryRead]
+
+
+class HerdrWakeRead(BaseModel):
+    """One wake a runner types into an agent's herdr pane.
+
+    Open (``extra="allow"``): a wake is a dict queued by
+    ``room_channels.enqueue_herdr_wake`` from several producers (mentions,
+    assignments, schedules, subscriptions, resumes, workers) and finished by
+    the drain route, so a key added by a producer passes through rather than
+    being dropped. The keys below are every one found when this was written.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    handle: str = Field(..., description="The agent to wake")
+    id: str | None = Field(None, description="The wake's id, reported back with its outcome")
+    reason: str | None = Field(
+        None,
+        description=(
+            "mention, turn, interrupt, assigned, subscribed, schedule or resumed: "
+            "how the prompt is worded"
+        ),
+    )
+    ts: float | None = Field(None, description="Hub monotonic time it was last rung")
+    sender: str | None = Field(None, alias="from", description="Who rang last, without the @")
+    episode: str | None = Field(None, description="Where it was rung from")
+    key: str | None = Field(None, description="The row it was given, for an assigned wake")
+    title: str | None = Field(None, description="The row's title, or the schedule's name")
+    why: str | None = Field(None, description="Which subscription caught what, for subscribed")
+    prompt: str | None = Field(
+        None, description="The digest to type, built when drained; absent if building it failed"
+    )
+
+
+class HerdrWakesRead(BaseModel):
+    """The wakes released to the runner that drained them."""
+
+    wakes: list[HerdrWakeRead]
+
+
+class WakeOutcomesRecorded(BaseModel):
+    """How many reported outcomes settled a wake's line in the wake log."""
+
+    recorded: int
+
+
+# --- Participation (await / reply) ------------------------------------------
+# A turn-based agent's two calls (``routes/participate.py``).
+
+
+class AwaitEarlierRead(BaseModel):
+    """A message said where the turn was asked, before it, since the handle last took part."""
+
+    sender: str | None = None
+    text: str
+    message_id: str | None = None
+    at: str | None = None
+
+
+class AwaitAskRead(BaseModel):
+    """One unread message asking for the handle."""
+
+    sender: str | None = None
+    prompt: str
+    episode: str | None = None
+    task: str | None = Field(None, description="The row whose thread it was asked in")
+    message_id: str | None = None
+    id: str = Field(..., description="The id the room's history gives it (MessageRead.id)")
+    at: str | None = None
+
+
+class AwaitWatchedRead(AwaitAskRead):
+    """A message one of the handle's subscriptions caught, with the one that did."""
+
+    why: str | None = None
+    subscription: str | None = None
+
+
+class AwaitDeliveredRead(BaseModel):
+    """Where to confirm a turn handed over with ``confirm``."""
+
+    position: int
+    episode: str | None = None
+
+
+class AwaitNothing(BaseModel):
+    """``await`` timed out, or the caller hung up, or the room has no live channel."""
+
+    room: str
+    handle: str
+    message: None = Field(..., description="Always null: nothing came")
+
+
+class AwaitTurn(BaseModel):
+    """The handle's turn: the message it leads with, and everything else unread for it.
+
+    Open (``extra="allow"``): the turn is built in two branches (a schedule's
+    wake, and messages that ask for the handle) with keys added after, so a key
+    added there passes through rather than being dropped. A schedule's turn
+    carries ``schedule`` and no ``asks``/``watching``/``reason``/``why``;
+    ``delivered`` is present only with ``confirm``. A key absent from a turn is
+    left out of the answer, not sent as null.
+
+    ``task``, ``earlier`` and ``digest`` are optional because hubs from before
+    they were added don't send them, and the CLI falls back without them; this
+    hub always sends them.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    room: str
+    handle: str
+    prompt: str = Field(..., description="The text of the message the turn leads with")
+    sender: str | None = Field(..., description="Who sent it; `scheduler` for a schedule")
+    episode: str | None = Field(..., description="Where it was said (an episode URN)")
+    task: str | None = Field(None, description="The row whose thread it was asked in")
+    topic: str | None
+    message_id: str | None
+    earlier: list[AwaitEarlierRead] | None = Field(
+        None, description="What was said there before it, oldest first"
+    )
+    digest: str | None = Field(
+        None, description="What a herdr wake would type for this turn; null if it couldn't be built"
+    )
+    schedule: str | None = Field(None, description="The schedule that fired, for its turn")
+    asks: list[AwaitAskRead] | None = Field(
+        None, description="Every unread message asking for the handle, oldest first, the turn last"
+    )
+    watching: list[AwaitWatchedRead] | None = Field(
+        None, description="What the handle's subscriptions caught"
+    )
+    reason: str | None = Field(
+        None, description="How the turn asks (mention, turn, interrupt) or subscribed"
+    )
+    why: str | None = Field(None, description="For subscribed: the subscription and what it caught")
+    delivered: AwaitDeliveredRead | None = Field(
+        None, description="With confirm: what to POST to await/confirm"
+    )
+
+
+class AwaitConfirmRead(BaseModel):
+    """Whether a turn's read position moved."""
+
+    room: str
+    handle: str
+    confirmed: bool = Field(..., description="False when the room has no live channel")
+
+
+class ReplyRead(BaseModel):
+    """A reply posted into the room or a thread."""
+
+    room: str
+    handle: str
+    message_id: str | None = None
+
+
 # --- Verifier ---------------------------------------------------------------
 
 
@@ -1783,3 +2205,121 @@ class VerifierSettingsRead(BaseModel):
     answers_since_learned: int = 0
     estimate: VerifierEstimateRead
     learning: VerifierLearningRead
+
+
+# ── Health (``GET /health``, ``app.main.root``) ───────────────────────────────
+# A key that a block only sometimes carries has a default here, and the route
+# drops unset keys, so it stays absent rather than coming back null.
+
+
+class HealthStorage(BaseModel):
+    status: str = Field(..., description="ok or unreachable")
+    message: str
+    path: str | None = Field(
+        None, description="Where the hub sees its store; absent when unreachable"
+    )
+    id: str | None = Field(None, description="Names the store wherever it is mounted")
+    host_path: str | None = Field(
+        None, description="Where the store is on the host, when the hub runs in a container"
+    )
+
+
+class HealthAuth(BaseModel):
+    """The HTTP gate as configured (``app/services/auth.py``)."""
+
+    enabled: bool
+    issuers: list[str] = Field(..., description="The trusted token issuers")
+    localhost_bypass: bool
+    audience: str | None
+    warnings: list[str] | None = Field(
+        None, description="Ways the gate is weaker than intended; absent when there are none"
+    )
+
+
+class HealthIdentity(BaseModel):
+    status: str
+    mode: str = Field(..., description="The SLIM identity tier: psk or signerjwt")
+    message: str
+
+
+class HealthEmbedding(BaseModel):
+    status: str = Field(..., description="ok, not_cached or stub")
+    model: str
+    message: str
+
+
+class HealthLLM(BaseModel):
+    """The model the hub calls, checked as ``check_llm`` and ``llm_probe`` ask."""
+
+    status: str = Field(
+        ...,
+        description=(
+            "ok, auth_error, unreachable, not_configured, unchecked, missing_extras, "
+            "bad_model or error"
+        ),
+    )
+    model: str
+    configured: bool
+    key_hint: str | None = Field(..., description="The key, masked")
+    key_required: bool
+    message: str
+    remediation: str | None
+    checked_at: str = Field(..., description="When this was checked, ISO 8601")
+
+
+class HealthCoordinationRoom(BaseModel):
+    room: str
+    provisioned: bool
+    persister_alive: bool
+    members: list[str] = Field(..., description="SLIM members and live `await` leases")
+    deferred_invites: int
+    episode_active: bool
+    reserves: int
+    reserve_failures: int
+    reserve_skipped: int
+    receive_errors: int
+    transient_errors: int
+    knowledge_applied: int
+    knowledge_conflicts: int
+
+
+class HealthCoordination(BaseModel):
+    """The room channels this hub moderates, and its process counters."""
+
+    endpoint: str = Field(..., description="The SLIM node the hub dials")
+    slim_enabled: bool
+    channels_live: int
+    provisions_ok: int
+    provisions_failed: int
+    invite_failures: int
+    rooms: list[HealthCoordinationRoom]
+
+
+class HealthLatency(BaseModel):
+    status: str = Field(..., description="ok or degraded")
+    signals: list[str] | None = Field(
+        None, description="Each p95 over its limit, when degraded; absent when ok"
+    )
+
+
+class HealthRead(BaseModel):
+    """What ``GET /health`` reports about the hub.
+
+    Only what every hub has ever said is required: a client reads an older hub's
+    version here before anything else, so a section added since (and every one
+    may be) is optional. This hub always sends them all.
+    """
+
+    status: str = Field(..., description="ok or degraded")
+    service: str
+    version: str
+    storage: HealthStorage | None = None
+    auth: HealthAuth | None = None
+    identity: HealthIdentity | None = None
+    embedding: HealthEmbedding | None = None
+    llm: HealthLLM | None = None
+    coordination: HealthCoordination | None = None
+    latency: HealthLatency | None = None
+    issues: list[str] | None = Field(
+        None, description="What makes it degraded (storage, llm, coordination, latency)"
+    )

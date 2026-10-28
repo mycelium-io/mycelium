@@ -25,6 +25,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.schemas import refusals
 from app.services import hub_config, patterns, speech
 
 router = APIRouter(prefix="/hub", tags=["hub"])
@@ -167,7 +168,7 @@ def _editing(request: Request) -> HubEditing:
     )
 
 
-@router.patch("/settings", response_model=HubSettingsSaved)
+@router.patch("/settings", response_model=HubSettingsSaved, responses=refusals(403, 409, 422, 500))
 async def change_hub_settings(payload: HubSettingsChange, request: Request) -> HubSettingsSaved:
     """Save settings to config.toml through the CLI. They apply at the hub's next start."""
     access = hub_config.access(request)
@@ -182,7 +183,7 @@ async def change_hub_settings(payload: HubSettingsChange, request: Request) -> H
     return HubSettingsSaved(saved=saved, pending=hub_config.pending())
 
 
-@router.post("/restart", status_code=202)
+@router.post("/restart", status_code=202, responses=refusals(403, 409))
 async def restart_hub(request: Request) -> dict[str, str]:
     """Restart this hub so saved settings apply. A desktop hub only: its
     supervisor starts it again. Answers before it goes."""

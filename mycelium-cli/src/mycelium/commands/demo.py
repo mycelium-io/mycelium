@@ -212,19 +212,22 @@ def _check_prereqs() -> tuple[Any, list[str]]:
 
     import httpx
 
-    from mycelium.client import hub_client
+    from mycelium.client import typed_client
+    from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get
 
     api = config.server.api_url.rstrip("/")
     try:
-        with hub_client(config, timeout=5.0) as http:
-            http.get("/api/rooms").raise_for_status()
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code in (401, 403):
-            problems.append(f"The hub at {api} refused this computer. Try: mycelium login")
-        else:
-            problems.append(f"The hub at {api} answered {e.response.status_code}.")
+        with typed_client(config, timeout=5.0, raise_on_unexpected_status=False) as http:
+            resp = list_rooms_api_rooms_get.sync_detailed(client=http)
     except httpx.HTTPError:
         problems.append(f"Backend not reachable at {api}. Is the stack up? Try: mycelium status")
+    except (KeyError, TypeError, ValueError):
+        pass  # It answered 200; this asks whether it's there, not what it lists.
+    else:
+        if resp.status_code in (401, 403):
+            problems.append(f"The hub at {api} refused this computer. Try: mycelium login")
+        elif resp.status_code >= 400:  # noqa: PLR2004
+            problems.append(f"The hub at {api} answered {resp.status_code}.")
 
     return config, problems
 
@@ -293,19 +296,18 @@ def _room_senders(config: Any, room: str) -> set[str]:
     """The set of handles that have posted a message to ``room`` (lowercased)."""
     import httpx
 
-    from mycelium.client import hub_client
+    from mycelium.client import typed_client
+    from mycelium_backend_client.api.messages import list_messages_api_rooms_room_name_messages_get
+    from mycelium_backend_client.models import MessageListResponse
 
     try:
-        with hub_client(config, timeout=5.0) as http:
-            resp = http.get(f"/api/rooms/{room}/messages")
-        resp.raise_for_status()
+        with typed_client(config, timeout=5.0, raise_on_unexpected_status=False) as http:
+            resp = list_messages_api_rooms_room_name_messages_get.sync_detailed(room, client=http)
     except httpx.HTTPError:
         return set()
-    return {
-        str(m["sender_handle"]).lower()
-        for m in resp.json().get("messages", [])
-        if m.get("sender_handle")
-    }
+    if not isinstance(resp.parsed, MessageListResponse):
+        return set()
+    return {m.sender_handle.lower() for m in resp.parsed.messages if m.sender_handle}
 
 
 def _drive_consensus(

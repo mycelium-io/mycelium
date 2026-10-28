@@ -52,7 +52,7 @@ from rich.markup import escape
 from rich.panel import Panel
 
 from mycelium.cli_options import acts_as, in_room
-from mycelium.client import hub_client
+from mycelium.client import answered, hub_client, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.names import who
@@ -60,6 +60,9 @@ from mycelium.slim.message_format import payload_data_of, payload_type_of
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from mycelium_backend_client import Client
+    from mycelium_backend_client.types import Response
 
 console = Console()
 
@@ -182,16 +185,23 @@ class SwarmError(Exception):
     """A step of setting up a swarm that failed, with what to do about it."""
 
 
-def _check(resp: httpx.Response, what: str, *, ok: tuple[int, ...] = ()) -> httpx.Response:
-    if resp.status_code >= 400 and resp.status_code not in ok:
-        raise SwarmError(f"could not {what}: {resp.text.strip() or resp.status_code}")
+def _check[R: Response[Any]](resp: R, what: str, *, ok: tuple[int, ...] = ()) -> R:
+    """``resp``, or a :class:`SwarmError` saying the hub refused ``what``.
+
+    The client given here doesn't raise on a refusal, so each step words its own.
+    """
+    if resp.status_code >= 400 and resp.status_code not in ok:  # noqa: PLR2004
+        said = resp.content.decode(errors="replace").strip()
+        raise SwarmError(f"could not {what}: {said or resp.status_code}")
     return resp
 
 
-def require_room(client: httpx.Client, room: str) -> None:
+def require_room(client: Client, room: str) -> None:
     """Refuse a room that is not there: a swarm joins a room, it never makes one."""
-    resp = client.get(f"/api/rooms/{room}")
-    if resp.status_code == 404:
+    from mycelium_backend_client.api.rooms import get_room_api_rooms_room_name_get as room_api
+
+    resp = room_api.sync_detailed(room, client=client)
+    if resp.status_code == 404:  # noqa: PLR2004
         raise SwarmError(
             f"there's no room named {room}. A swarm runs in a room you already work in; "
             "name one with --room."
@@ -199,29 +209,49 @@ def require_room(client: httpx.Client, room: str) -> None:
     _check(resp, f"read room {room}")
 
 
-def ensure_engine(client: httpx.Client, room: str, handle: str, kind: str, me: str) -> None:
+def ensure_engine(client: Client, room: str, handle: str, kind: str, me: str) -> None:
     """Register an engine in ``room``; one already there is fine."""
+    from mycelium_backend_client.api.engines import (
+        create_engine_api_rooms_room_name_engines_post as engine_api,
+    )
+    from mycelium_backend_client.models import EngineCreate
+
     body = {"handle": handle, "kind": kind, "created_by": me}
-    resp = client.post(f"/api/rooms/{room}/engines", json=body)
-    if resp.status_code == 422 and "engine kind" in resp.text:
+    resp = engine_api.sync_detailed(room, client=client, body=EngineCreate.from_dict(body))
+    if resp.status_code == 422 and "engine kind" in resp.content.decode(errors="replace"):  # noqa: PLR2004
         raise SwarmError(
             f"this hub doesn't run {kind} engines yet. Upgrade it (mycelium upgrade), then retry."
         )
     _check(resp, f"register @{handle}", ok=(409,))
 
 
-def file_task(client: httpx.Client, room: str, title: str, me: str) -> tuple[str, str]:
+def file_task(client: Client, room: str, title: str, me: str) -> tuple[str, str]:
     """Put the task on the board; ``(row key, thread URN)``."""
+    from mycelium_backend_client.api.tasks import create_task_api_rooms_room_name_tasks_post
+    from mycelium_backend_client.models import MemoryRead, TaskCreate
+
+    body = TaskCreate.from_dict({"title": title, "handle": me})
     resp = _check(
-        client.post(f"/api/rooms/{room}/tasks", json={"title": title, "handle": me}),
+        create_task_api_rooms_room_name_tasks_post.sync_detailed(room, client=client, body=body),
         "file the task",
     )
-    task = resp.json()
-    return str(task["key"]), str(task.get("episode") or "")
+    task = answered(resp, MemoryRead)
+    return task.key, str(task.episode or "")
+
+
+def _write_memories(client: Client, room: str, items: list[dict[str, Any]], what: str) -> None:
+    """Upsert ``items`` into the room's memory, or say it couldn't ``what``."""
+    from mycelium_backend_client.api.memory import (
+        create_memories_api_rooms_room_name_memory_post as create_api,
+    )
+    from mycelium_backend_client.models import MemoryBatchCreate
+
+    body = MemoryBatchCreate.from_dict({"items": items})
+    _check(create_api.sync_detailed(room, client=client, body=body), what)
 
 
 def start_on_hub(
-    client: httpx.Client,
+    client: Client,
     task: str,
     size: int,
     room: str,
@@ -233,37 +263,45 @@ def start_on_hub(
     The kickoff is left to the caller, so the live view is listening before
     the first turn is put.
     """
+    from mycelium_backend_client.api.swarms import start_swarm_api_rooms_room_name_swarms_post
+    from mycelium_backend_client.models import SwarmCreate, SwarmRead
+
     require_room(client, room)
     body: dict[str, Any] = {"task": task, "size": size, "created_by": me, "kickoff": False}
     if repo:
         body["repo"] = repo
-    resp = client.post(f"/api/rooms/{room}/swarms", json=body)
+    resp = start_swarm_api_rooms_room_name_swarms_post.sync_detailed(
+        room, client=client, body=SwarmCreate.from_dict(body)
+    )
     if resp.status_code in (404, 405):
         raise SwarmError(
             "this hub can't start a team on its own yet. Upgrade it (mycelium upgrade), "
             "or drop --server to use your own agents."
         )
-    if resp.status_code == 422:
+    if resp.status_code == 422:  # noqa: PLR2004
         try:
-            detail = resp.json().get("detail")
+            detail = json.loads(resp.content).get("detail")
         except ValueError:
             detail = None
         if isinstance(detail, str):
             raise SwarmError(detail)
-    swarm = _check(resp, "start the team").json()
-    return str(swarm["key"]), str(swarm.get("episode") or "")
+    swarm = answered(_check(resp, "start the team"), SwarmRead)
+    return swarm.key, swarm.episode or ""
 
 
-def record_result(
-    client: httpx.Client, room: str, key: str, title: str, result: str, by: str
-) -> None:
+def record_result(client: Client, room: str, key: str, title: str, result: str, by: str) -> None:
     """Write the team's result into the task's row, under its title, as the room's memory."""
     item = {"key": key, "value": f"{title}\n\n{result.strip()}", "created_by": by}
-    _check(client.post(f"/api/rooms/{room}/memory", json={"items": [item]}), "save the result")
+    _write_memories(client, room, [item], "save the result")
 
 
-def kick_off(client: httpx.Client, room: str, episode: str, team: list[str], task: str, me: str):
+def kick_off(client: Client, room: str, episode: str, team: list[str], task: str, me: str):
     """Summon the conductor in the task's thread to run the kickoff flow over the team."""
+    from mycelium_backend_client.api.messages import (
+        send_message_api_rooms_room_name_messages_post as send_api,
+    )
+    from mycelium_backend_client.models import MessageCreate
+
     # Silent mentions bind the roles and wake nobody; the conductor asks each
     # member in its turn.
     names = " ".join(f"@~{h}" for h in team)
@@ -273,7 +311,10 @@ def kick_off(client: httpx.Client, room: str, episode: str, team: list[str], tas
         "content": f"@{CONDUCTOR} {FLOW} {names}: {task}",
         "episode": episode,
     }
-    _check(client.post(f"/api/rooms/{room}/messages", json=body), "start the kickoff")
+    _check(
+        send_api.sync_detailed(room, client=client, body=MessageCreate.from_dict(body)),
+        "start the kickoff",
+    )
 
 
 # ── local members, in herdr ──────────────────────────────────────────────────
@@ -579,7 +620,7 @@ def brief_key(handle: str) -> str:
 
 
 def brief_local(
-    client: httpx.Client, bridge: Any, room: str, local: LocalTeam, key: str, task: str, me: str
+    client: Client, bridge: Any, room: str, local: LocalTeam, key: str, task: str, me: str
 ) -> None:
     """Hand each local member its brief: its notes memory, and a prompt to read it.
 
@@ -598,7 +639,7 @@ def brief_local(
         }
         for handle in team
     ]
-    _check(client.post(f"/api/rooms/{room}/memory", json={"items": items}), "write the briefs")
+    _write_memories(client, room, items, "write the briefs")
     for handle, pane in local.panes.items():
         bridge.prompt(
             pane,
@@ -935,7 +976,9 @@ def swarm(
     sync: HerdrSync | None = None
     try:
         # A clone can take a while, so the hub gets longer to answer than usual.
-        with hub_client(config, timeout=330 if repo else 30) as client:
+        with typed_client(
+            config, timeout=330 if repo else 30, raise_on_unexpected_status=False
+        ) as client:
             if server:
                 key, episode = start_on_hub(client, task, size, room_name, me, repo)
             else:
@@ -954,7 +997,7 @@ def swarm(
                 worktree=worktree,
                 me=me,
             )
-            with hub_client(config, timeout=30) as client:
+            with typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
                 brief_local(client, bridge, room_name, local, key, task, me)
             sync = HerdrSync(config, bridge, local.workspace, room_name)
             sync.once()
@@ -986,7 +1029,7 @@ def swarm(
     streamer.start()
     connected.wait(timeout=10)
     try:
-        with hub_client(config, timeout=30) as client:
+        with typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
             kick_off(client, room_name, episode, team, task, me)
         warned = False
         while streamer.is_alive():
@@ -1012,7 +1055,9 @@ def swarm(
                     # Workers write their result into the row themselves; a
                     # local lead resolves with `board resolve`, which does not.
                     try:
-                        with hub_client(config, timeout=30) as client:
+                        with typed_client(
+                            config, timeout=30, raise_on_unexpected_status=False
+                        ) as client:
                             record_result(client, room_name, key, task, result, who)
                     except (SwarmError, httpx.HTTPError) as e:
                         console.print(f"[dim]could not save the result to {key}: {e}[/dim]")

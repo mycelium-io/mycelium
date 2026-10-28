@@ -25,7 +25,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 
 from app.config import settings
-from app.schemas import SpeechRequest, SpeechVoices, VoiceHeard, VoiceStatus
+from app.schemas import SpeechRequest, SpeechVoices, VoiceHeard, VoiceStatus, refusals
 from app.services import actor, speech, voice, voice_worker
 
 router = APIRouter(prefix="/voice", tags=["voice"])
@@ -64,7 +64,8 @@ async def voice_status() -> VoiceStatus:
     "/speech",
     response_class=Response,
     responses={
-        200: {"content": {"audio/mpeg": {"schema": {"type": "string", "format": "binary"}}}}
+        200: {"content": {"audio/mpeg": {"schema": {"type": "string", "format": "binary"}}}},
+        **refusals(404, 429, 502),
     },
 )
 async def say(payload: SpeechRequest) -> Response:
@@ -80,7 +81,7 @@ async def say(payload: SpeechRequest) -> Response:
     return Response(content=audio, media_type=media, headers={"Cache-Control": "no-store"})
 
 
-@router.get("/voices", response_model=SpeechVoices)
+@router.get("/voices", response_model=SpeechVoices, responses=refusals(404, 429))
 async def speech_voices() -> SpeechVoices:
     """The voices the hub's speech server lists, for a person to choose one."""
     try:
@@ -95,6 +96,7 @@ async def speech_voices() -> SpeechVoices:
 @router.post(
     "/sessions/{session_id}",
     response_model=VoiceHeard,
+    responses=refusals(413, 422, 503),
     openapi_extra={
         "requestBody": {
             "required": True,

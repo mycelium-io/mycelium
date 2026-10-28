@@ -15,9 +15,12 @@ side by side.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from rich.text import Text
+
+if TYPE_CHECKING:
+    from mycelium_backend_client.models import WaitingItem
 
 # Frozen in contracts/board-vocabulary.json under ``epic``.
 PART_STATES = ["done", "blocked", "waiting", "working", "open"]
@@ -117,26 +120,26 @@ def epic_parts(board: dict[str, Any] | None) -> set[str]:
     return keys
 
 
-def waiting_line(item: dict[str, Any]) -> Text:
+def waiting_line(item: WaitingItem) -> Text:
     """One thing waiting on a member, and where to answer it."""
     line = Text("  ")
-    kind = item.get("kind")
-    place = f'"{item["title"]}"' if item.get("title") else "the room"
-    if kind == "ask":
-        line.append(f"@{item.get('sender')} asked you", style="bold")
+    place = f'"{item.title}"' if item.title else "the room"
+    sender = item.sender or None
+    if item.kind == "ask":
+        line.append(f"@{sender} asked you", style="bold")
         line.append(f" in {place}")
-        if (count := item.get("count") or 1) > 1:
+        if (count := item.count or 1) > 1:
             line.append(f" ({count} messages)", style="dim")
-    elif kind == "turn":
+    elif item.kind == "turn":
         line.append("It's your turn", style="bold")
-        line.append(f" in {place}. @{item.get('sender')} is running its flow")
+        line.append(f" in {place}. @{sender} is running its flow")
     else:
         line.append("You have a task", style="bold")
         line.append(f": {place}")
     line.append(".")
-    if item.get("epic_title"):
-        line.append(f' It\'s part of "{item["epic_title"]}".', style="dim")
-    if item.get("text"):
+    if item.epic_title:
+        line.append(f' It\'s part of "{item.epic_title}".', style="dim")
+    if item.text:
         line.append("\n    ")
-        line.append(_clip(str(item["text"]), 110), style="dim italic")
+        line.append(_clip(str(item.text), 110), style="dim italic")
     return line

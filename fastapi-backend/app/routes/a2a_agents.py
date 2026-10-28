@@ -18,7 +18,7 @@ import re
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.schemas import HANDLE_PATTERN, AgentRead
+from app.schemas import HANDLE_PATTERN, AgentRead, refusals
 from app.services import actor
 from app.services.a2a_card import A2aCardError, resolve_card
 from app.services.agent_registry import norm_handle, write_agent_manifest
@@ -54,7 +54,9 @@ class A2aAgentCreate(BaseModel):
     )
 
 
-@router.post("", response_model=AgentRead, status_code=201)
+@router.post(
+    "", response_model=AgentRead, status_code=201, responses=refusals(403, 404, 409, 422, 502)
+)
 async def create_a2a_agent(room_name: str, payload: A2aAgentCreate, request: Request) -> AgentRead:
     """Resolve the remote card, register the manifest, return the room view."""
     if not room_exists(room_name):

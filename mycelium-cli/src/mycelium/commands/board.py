@@ -22,9 +22,10 @@ from __future__ import annotations
 import json
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import typer
@@ -60,11 +61,14 @@ from mycelium.board.model import (
 )
 from mycelium.board.schema import groupable_fields
 from mycelium.cli_options import ROOM_HELP, acts_as, emits_json, in_room, paged
-from mycelium.client import hub_client
+from mycelium.client import typed_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.text_input import takes_text
+
+if TYPE_CHECKING:
+    from mycelium_backend_client.types import Response
 
 app = typer.Typer(
     help="The room's coordination board: what needs you, what's in flight, what resolved.",
@@ -180,49 +184,71 @@ def _fetch_raw(room: str | None, *, rows: bool = False) -> tuple[str, dict[str, 
     name = _resolve_room(cfg, room)
     health = HubHealth()
 
-    def get(path: str, default, label: str):
+    def get(read: Callable[..., Response[Any]], default, label: str, **params: Any):
         try:
-            resp = client.get(path)
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            # The hub answered, and said no. That is a different problem from a
-            # hub that is not there, and the reader fixes it differently.
-            health.answered.append(label)
-            health.failed[label] = f"HTTP {exc.response.status_code}"
-            return default
-        except Exception as exc:
+            resp = read(name, client=client, **params)
+        except httpx.HTTPError as exc:
             health.failed[label] = type(exc).__name__
             return default
-        health.answered.append(label)
-        health.ok.append(label)
-        try:
-            return resp.json()
-        except ValueError:
-            health.ok.remove(label)
+        except (ValueError, KeyError, TypeError):
+            # The answer didn't parse as what the spec says this route returns.
+            health.answered.append(label)
             health.failed[label] = "malformed response"
             return default
+        # The hub answered, whatever it said. A refusal is a different problem
+        # from a hub that is not there, and the reader fixes it differently.
+        health.answered.append(label)
+        if resp.status_code >= 400:  # noqa: PLR2004
+            health.failed[label] = f"HTTP {resp.status_code}"
+            return default
+        health.ok.append(label)
+        # The projection, the log and ``--json`` read the hub's records as data,
+        # so each answer is handed on as its record: checked against the spec on
+        # the way in, then the wire's own shape.
+        parsed = resp.parsed
+        if isinstance(parsed, list):
+            return [item.to_dict() for item in parsed]
+        return parsed.to_dict() if hasattr(parsed, "to_dict") else parsed
 
-    with hub_client(cfg, timeout=30) as client:
-        episodes = get(f"/api/rooms/{name}/episodes", {}, "episodes")
+    from mycelium_backend_client.api.agents import list_agents_api_rooms_room_name_agents_get
+    from mycelium_backend_client.api.board import read_board_api_rooms_room_name_board_get
+    from mycelium_backend_client.api.episodes import (
+        list_episodes_api_rooms_room_name_episodes_get,
+    )
+    from mycelium_backend_client.api.memory import list_memories_api_rooms_room_name_memory_get
+    from mycelium_backend_client.api.messages import (
+        list_messages_api_rooms_room_name_messages_get,
+    )
+    from mycelium_backend_client.api.sessions import (
+        list_members_api_rooms_room_name_sessions_members_get,
+    )
+    from mycelium_backend_client.api.status import get_room_status_api_rooms_room_name_status_get
+
+    list_memories = list_memories_api_rooms_room_name_memory_get.sync_detailed
+    with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+        episodes = get(list_episodes_api_rooms_room_name_episodes_get.sync_detailed, {}, "episodes")
         if rows:
             memories = []
             for namespace in LIVE_NAMESPACES:
                 listed = get(
-                    f"/api/rooms/{name}/memory?prefix={namespace}/&limit={ROWS_PER_NAMESPACE}",
-                    [],
-                    f"{namespace}/",
-                )
+                    list_memories, [], f"{namespace}/", prefix=f"{namespace}/",
+                    limit=ROWS_PER_NAMESPACE,
+                )  # fmt: skip
                 memories += listed if isinstance(listed, list) else []
         else:
-            memories = get(f"/api/rooms/{name}/memory?limit=50", [], "memory")
+            memories = get(list_memories, [], "memory", limit=50)
         # What the tools the room points at say. A read never fetches hub-side,
         # so this costs a cache lookup, not a round trip to GitHub.
-        upstream = get(f"/api/rooms/{name}/status", None, "status")
-        agents = get(f"/api/rooms/{name}/agents", [], "agents")
-        members = get(f"/api/rooms/{name}/sessions/members", {}, "members")
-        messages = get(f"/api/rooms/{name}/messages?limit=300", {}, "messages")
+        upstream = get(get_room_status_api_rooms_room_name_status_get.sync_detailed, None, "status")
+        agents = get(list_agents_api_rooms_room_name_agents_get.sync_detailed, [], "agents")
+        members = get(
+            list_members_api_rooms_room_name_sessions_members_get.sync_detailed, {}, "members"
+        )
+        messages = get(
+            list_messages_api_rooms_room_name_messages_get.sync_detailed, {}, "messages", limit=300
+        )
         # The epics, worked out by the hub, so this draws what the app draws.
-        epics = get(f"/api/rooms/{name}/board", None, "board")
+        epics = get(read_board_api_rooms_room_name_board_get.sync_detailed, None, "board")
 
     return (
         name,
@@ -575,19 +601,26 @@ def board_show(
         item = _row(name, key)
         found = board_fields.memory_key_of(item) if item is not None else None
         key = found or key
+    from mycelium_backend_client.api.board import read_board_row_api_rooms_room_name_board_key_get
+    from mycelium_backend_client.models import BoardEpic
+
     try:
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.get(f"/api/rooms/{name}/board/{key}")
+        with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+            resp = read_board_row_api_rooms_room_name_board_key_get.sync_detailed(
+                name, key, client=client
+            )
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    if resp.status_code == 404:
+    if resp.status_code == 404:  # noqa: PLR2004
         console.print(f"[dim]No board row '{row_id}' in {name}.[/dim]")
         raise typer.Exit(1)
-    if resp.status_code >= 400:
-        console.print(f"[red]✗[/red] HTTP {resp.status_code}: {resp.text[:200]}")
+    if not isinstance(resp.parsed, BoardEpic):
+        text = resp.content.decode(errors="replace")
+        console.print(f"[red]✗[/red] HTTP {resp.status_code}: {text[:200]}")
         raise typer.Exit(1)
-    epic = resp.json()
+    # The same record the board's own read hands ``epic_lines``.
+    epic = resp.parsed.to_dict()
     if _json_wanted(ctx):
         sys.stdout.write(json.dumps(epic, indent=2) + "\n")
         return
@@ -816,16 +849,24 @@ def _memory_thread(room: str, key: str) -> tuple[bool, str | None]:
     Two answers, because the caller says something different about each: whether
     the room has this memory at all, and the thread on it if it does.
     """
+    from mycelium.client import sent_unparsed
+    from mycelium_backend_client.api.memory import get_memory_api_rooms_room_name_memory_key_get
+
     cfg = MyceliumConfig.load()
     try:
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.get(f"/api/rooms/{room}/memory/{key}")
-        if resp.status_code >= 400:
-            return False, None
-        episode = resp.json().get(EPISODE_FIELD)
-    except (httpx.HTTPError, ValueError):
+        with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+            # Only its thread is read, so a memory a hub a version apart shapes
+            # differently is still this memory, never "not there".
+            resp = sent_unparsed(get_memory_api_rooms_room_name_memory_key_get, client, room, key)
+    except httpx.HTTPError:
         return False, None
-    return True, episode or None
+    if resp.status_code >= 400:  # noqa: PLR2004
+        return False, None
+    try:
+        found = resp.json()
+    except ValueError:
+        return True, None
+    return True, (found.get(EPISODE_FIELD) if isinstance(found, dict) else None) or None
 
 
 def _thread(room: str, row_id: str) -> tuple[str, str]:
@@ -883,15 +924,37 @@ def _thread_label(room: str, thread: str) -> str:
 
 def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) -> None:
     """Write an assignment change through the hub, and say what it did."""
+    from mycelium_backend_client.api.assignments import (
+        claim_assignment_api_rooms_room_name_assignments_claim_post as claim_api,
+    )
+    from mycelium_backend_client.api.assignments import (
+        release_assignment_api_rooms_room_name_assignments_release_post as release_api,
+    )
+    from mycelium_backend_client.api.assignments import (
+        resolve_assignment_api_rooms_room_name_assignments_resolve_post as resolve_api,
+    )
+    from mycelium_backend_client.models import AssignmentRead, ClaimBody, ReleaseBody, ResolveBody
+
     payload = {k: v for k, v in body.items() if v is not None}
     try:
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.post(f"/api/rooms/{room}/assignments/{action}", json=payload)
+        with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+            if action == "claim":
+                resp = claim_api.sync_detailed(
+                    room, client=client, body=ClaimBody.from_dict(payload)
+                )
+            elif action == "release":
+                resp = release_api.sync_detailed(
+                    room, client=client, body=ReleaseBody.from_dict(payload)
+                )
+            else:
+                resp = resolve_api.sync_detailed(
+                    room, client=client, body=ResolveBody.from_dict(payload)
+                )
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    if resp.status_code == 409:
-        detail = resp.json().get("detail", {})
+    if resp.status_code == 409:  # noqa: PLR2004
+        detail = json.loads(resp.content).get("detail", {})
         waiting = detail.get(WAITING_FIELD) if isinstance(detail, dict) else None
         if waiting:
             console.print(
@@ -906,28 +969,30 @@ def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) 
             f"`mycelium board assign {payload.get('key')} @<handle> --reassign`.[/dim]"
         )
         raise typer.Exit(1)
-    if resp.status_code >= 400:
-        console.print(f"[red]✗[/red] {action} failed: {resp.text}")
+    if resp.status_code >= 400:  # noqa: PLR2004
+        console.print(f"[red]✗[/red] {action} failed: {resp.content.decode(errors='replace')}")
         raise typer.Exit(1)
-    data = resp.json()
+    held = resp.parsed
+    if not isinstance(held, AssignmentRead):
+        console.print(f"[red]✗[/red] {action} failed: {resp.content.decode(errors='replace')}")
+        raise typer.Exit(1)
     if action == "claim":
-        ttl = data.get("ttl_minutes")
         until = (
-            f"for {ttl}m, renewed by your loop, or it drains back to the pool."
-            if ttl
+            f"for {held.ttl_minutes}m, renewed by your loop, or it drains back to the pool."
+            if held.ttl_minutes
             else "until you resolve it or hand it back."
         )
         console.print(
-            f"[green]✓[/green] held [bold]{data.get('key')}[/bold] by @{data.get('owner')} "
+            f"[green]✓[/green] held [bold]{held.key}[/bold] by @{held.owner or None} "
             f"[dim]{until}[/dim]"
         )
     elif action == "release":
         console.print(
-            f"[green]✓[/green] released [bold]{data.get('key')}[/bold] "
-            f"[dim]— {data.get('assignment_note')}[/dim]"
+            f"[green]✓[/green] released [bold]{held.key}[/bold] "
+            f"[dim]— {held.assignment_note or None}[/dim]"
         )
     else:
-        console.print(f"[green]✓[/green] {action}d [bold]{data.get('key')}[/bold]")
+        console.print(f"[green]✓[/green] {action}d [bold]{held.key}[/bold]")
 
 
 def _write_fields(
@@ -965,22 +1030,27 @@ def _write_fields(
     body: dict[str, Any] = {"key": key, "handle": actor, "fields": patch}
     if reassign:
         body["reassign"] = True
+    from mycelium_backend_client.api.fields import write_fields_api_rooms_room_name_fields_post
+    from mycelium_backend_client.models import WriteBody
+
     try:
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.post(f"/api/rooms/{room}/fields", json=body)
+        with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+            resp = write_fields_api_rooms_room_name_fields_post.sync_detailed(
+                room, client=client, body=WriteBody.from_dict(body)
+            )
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    if resp.status_code == 409:
-        detail = resp.json().get("detail", {})
+    if resp.status_code == 409:  # noqa: PLR2004
+        detail = json.loads(resp.content).get("detail", {})
         held_by = detail.get("owner") if isinstance(detail, dict) else None
         console.print(
             f"[yellow]·[/yellow] {key} is held by @{held_by}. "
             "[dim]Pass --reassign to take it from them; the room is told who it moved from.[/dim]"
         )
         raise typer.Exit(1)
-    if resp.status_code >= 400:
-        console.print(f"[red]✗[/red] write failed: {resp.text}")
+    if resp.status_code >= 400:  # noqa: PLR2004
+        console.print(f"[red]✗[/red] write failed: {resp.content.decode(errors='replace')}")
         raise typer.Exit(1)
     rendered = " ".join(f"{k}={v}" for k, v in patch.items())
     console.print(f"[green]✓[/green] wrote [bold]{key}[/bold] → {rendered}")
@@ -1052,26 +1122,32 @@ def board_new(
         # points at a memory, so a row projected from anything else has nothing
         # to be the parent *of*.
         body["parent"] = _parent_key(name, parent)
+    from mycelium_backend_client.api.tasks import create_task_api_rooms_room_name_tasks_post
+    from mycelium_backend_client.models import MemoryRead, TaskCreate
+
     try:
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.post(f"/api/rooms/{name}/tasks", json=body)
+        with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+            resp = create_task_api_rooms_room_name_tasks_post.sync_detailed(
+                name, client=client, body=TaskCreate.from_dict(body)
+            )
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    if resp.status_code >= 400:
-        console.print(f"[red]✗[/red] could not create the task: {resp.text}")
+    task = resp.parsed
+    if not isinstance(task, MemoryRead):
+        text = resp.content.decode(errors="replace")
+        console.print(f"[red]✗[/red] could not create the task: {text}")
         raise typer.Exit(1)
-    task = resp.json()
     if _json_wanted(ctx):
-        typer.echo(json.dumps(task, indent=2, default=str))
+        typer.echo(json.dumps(task.to_dict(), indent=2, default=str))
         return
-    thread = str(task.get(EPISODE_FIELD) or "").rsplit(":", 1)[-1]
+    thread = str(task.episode or "").rsplit(":", 1)[-1]
     console.print(
-        f"[green]✓[/green] [bold]{task.get('key')}[/bold] — {title}"
+        f"[green]✓[/green] [bold]{task.key}[/bold] — {title}"
         + (f" [dim]· thread {thread}[/dim]" if thread else "")
     )
     console.print(
-        f'  [dim]talk about it in there: mycelium board send {thread or task.get("key")} "…"[/dim]'
+        f'  [dim]talk about it in there: mycelium board send {thread or task.key} "…"[/dim]'
     )
 
 

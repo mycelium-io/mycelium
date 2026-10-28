@@ -15,7 +15,7 @@ question.
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.schemas import RoomMembers, RoomPerson, RoomPersonAdd
+from app.schemas import RoomMembers, RoomPerson, RoomPersonAdd, refusals
 from app.services import actor, room_people
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import read_room_meta, room_exists, write_room_meta
@@ -39,14 +39,14 @@ def _refuse_unless(request: Request, room_name: str, allowed: set[str], what: st
     raise HTTPException(status_code=403, detail=f"@{principal.handle} can't {what}")
 
 
-@router.get("", response_model=RoomMembers)
+@router.get("", response_model=RoomMembers, responses=refusals(404))
 async def list_members(room_name: str) -> RoomMembers:
     """Everyone in the room, from records rather than from who has posted."""
     _require_room(room_name)
     return RoomMembers.model_validate(room_people.roster(room_name))
 
 
-@router.post("", response_model=RoomPerson, status_code=201)
+@router.post("", response_model=RoomPerson, status_code=201, responses=refusals(403, 404, 422))
 async def add_person(room_name: str, body: RoomPersonAdd, request: Request) -> RoomPerson:
     """Add a person to the room. They need a user record and can't be an agent here.
 
@@ -75,7 +75,7 @@ async def add_person(room_name: str, body: RoomPersonAdd, request: Request) -> R
     return RoomPerson.model_validate(entry)
 
 
-@router.delete("/{handle}", status_code=204)
+@router.delete("/{handle}", status_code=204, responses=refusals(403, 404))
 async def remove_person(room_name: str, handle: str, request: Request) -> None:
     """Take a person out of the room. On a gated hub, yourself or, as its owner, anyone."""
     _require_room(room_name)

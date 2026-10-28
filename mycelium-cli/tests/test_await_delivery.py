@@ -17,13 +17,26 @@ import pytest
 
 from mycelium.commands import participate
 from mycelium.config import MyceliumConfig
+from mycelium_backend_client.errors import UnexpectedStatus
+from mycelium_backend_client.models import AwaitTurn
+from tests.conftest import install_stand_in_hub
 
 _TURN = {
+    "room": "r",
+    "handle": "agent",
     "prompt": "@agent ship it?",
     "sender": "julia",
+    "episode": None,
+    "topic": None,
+    "message_id": None,
     "delivered": {"position": 7, "episode": None},
     "digest": "mycelium wake for @agent in r\n\nNext:    mycelium respond ...",
 }
+
+
+def _turn(**fields: Any) -> AwaitTurn:
+    """A fresh ``AwaitTurn`` as the hub hands it over, ``fields`` laid over."""
+    return AwaitTurn.from_dict({**_TURN, **fields})
 
 
 @pytest.fixture
@@ -52,26 +65,28 @@ def _requests(monkeypatch, answers: list[Any]) -> list[int]:
     return waits
 
 
-def _confirms(monkeypatch) -> list[dict]:
-    sent: list[dict] = []
+def _confirms(monkeypatch) -> list[dict | None]:
+    sent: list[dict | None] = []
     monkeypatch.setattr(
-        participate, "_confirm", lambda _c, _r, _h, turn: sent.append(turn.get("delivered"))
+        participate,
+        "_confirm",
+        lambda _c, _r, _h, turn: sent.append(turn.delivered.to_dict() if turn.delivered else None),
     )
     return sent
 
 
 def test_a_long_wait_is_made_of_requests_a_proxy_lets_through(monkeypatch, config) -> None:
-    waits = _requests(monkeypatch, [None, None, dict(_TURN)])
+    waits = _requests(monkeypatch, [None, None, _turn()])
     _confirms(monkeypatch)
     turn = participate._await_once(config, "r", "agent", timeout=0)
     assert turn is not None
-    assert turn["prompt"] == "@agent ship it?"
+    assert turn.prompt == "@agent ship it?"
     assert waits == [participate.WAIT_CHUNK_S] * 3
 
 
 def test_a_dropped_request_is_waited_again(monkeypatch, config) -> None:
     dropped = httpx.RemoteProtocolError("Server disconnected without sending a response.")
-    waits = _requests(monkeypatch, [dropped, dict(_TURN)])
+    waits = _requests(monkeypatch, [dropped, _turn()])
     sent = _confirms(monkeypatch)
     assert participate._await_once(config, "r", "agent", timeout=0) is not None
     assert len(waits) == 2
@@ -79,24 +94,16 @@ def test_a_dropped_request_is_waited_again(monkeypatch, config) -> None:
 
 
 def test_a_proxy_that_gave_up_on_the_hub_is_waited_again(monkeypatch, config) -> None:
-    gateway = httpx.HTTPStatusError(
-        "bad gateway",
-        request=httpx.Request("GET", "http://hub/await"),
-        response=httpx.Response(504),
-    )
-    _requests(monkeypatch, [gateway, dict(_TURN)])
+    gateway = UnexpectedStatus(504, b"<html>bad gateway</html>")
+    _requests(monkeypatch, [gateway, _turn()])
     _confirms(monkeypatch)
     assert participate._await_once(config, "r", "agent", timeout=0) is not None
 
 
 def test_a_refusal_is_not_waited_again(monkeypatch, config) -> None:
-    refused = httpx.HTTPStatusError(
-        "forbidden",
-        request=httpx.Request("GET", "http://hub/await"),
-        response=httpx.Response(403),
-    )
+    refused = UnexpectedStatus(403, b'{"detail": "forbidden"}')
     _requests(monkeypatch, [refused])
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(UnexpectedStatus):
         participate._await_once(config, "r", "agent", timeout=0)
 
 
@@ -107,24 +114,14 @@ def test_nothing_within_the_timeout_is_none(monkeypatch, config) -> None:
 
 
 def test_a_turn_from_a_hub_without_confirmation_is_not_confirmed(monkeypatch, config) -> None:
-    posted: list[str] = []
-
-    class _Client:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_a):
-            return False
-
-        def post(self, path, **_kw):
-            posted.append(path)
-            return httpx.Response(200, request=httpx.Request("POST", path))
-
-    monkeypatch.setattr(participate, "hub_client", lambda *_a, **_k: _Client())
-    participate._confirm(config, "r", "agent", {"prompt": "hi"})
-    assert posted == []
-    participate._confirm(config, "r", "agent", dict(_TURN))
-    assert posted == ["/api/rooms/r/await/confirm"]
+    hub = install_stand_in_hub(monkeypatch)
+    hub.answer = lambda _r: {"room": "r", "handle": "agent", "confirmed": True}
+    participate._confirm(config, "r", "agent", _turn(prompt="hi", delivered=None, digest=None))
+    assert [r.url.path for r in hub.requests if r.method == "POST"] == []
+    participate._confirm(config, "r", "agent", _turn())
+    assert [r.url.path for r in hub.requests if r.method == "POST"] == [
+        "/api/rooms/r/await/confirm"
+    ]
 
 
 def test_a_confirmation_that_failed_rides_on_the_next_await(monkeypatch, config, tmp_path) -> None:
@@ -132,30 +129,61 @@ def test_a_confirmation_that_failed_rides_on_the_next_await(monkeypatch, config,
     over the same turn: the position goes with the next await, even from a
     new process, and is forgotten once the hub has it."""
     monkeypatch.setattr(participate.MyceliumConfig, "get_global_config_dir", lambda: tmp_path)
-    sent: list[dict] = []
 
-    class _Client:
-        def __enter__(self):
-            return self
+    def answer(request: httpx.Request) -> object:
+        if request.method == "POST":
+            return 403, {"detail": "blocked"}
+        return {"room": "r", "handle": "agent", "message": None}
 
-        def __exit__(self, *_a):
-            return False
-
-        def post(self, path, **_kw):
-            return httpx.Response(403, request=httpx.Request("POST", path))
-
-        def get(self, path, params=None, **_kw):
-            sent.append(dict(params or {}))
-            return httpx.Response(200, json={"message": None}, request=httpx.Request("GET", path))
-
-    monkeypatch.setattr(participate, "hub_client", lambda *_a, **_k: _Client())
-    participate._confirm(config, "r", "agent", dict(_TURN))
+    hub = install_stand_in_hub(monkeypatch)
+    hub.answer = answer
+    participate._confirm(config, "r", "agent", _turn())
     participate._await_request(config, "r", "agent", 5, None)
     participate._await_request(config, "r", "agent", 5, None)
-    assert sent[0]["confirmed"] == 7
+    sent = [dict(r.url.params) for r in hub.requests if r.method == "GET"]
+    assert sent[0]["confirmed"] == "7"
     assert "confirmed" not in sent[1]
 
 
 def test_plain_await_prints_the_digest(capsys) -> None:
-    participate._print_turn(dict(_TURN), "agent")
+    participate._print_turn(_turn(), "agent")
     assert capsys.readouterr().out.strip() == _TURN["digest"]
+
+
+def _answering(monkeypatch, *answers: httpx.Response) -> list[str]:
+    """The hub answers each ``/await`` with the next of ``answers``; the paths asked."""
+    asked: list[str] = []
+    queue = list(answers)
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        if request.url.path.endswith("/health"):
+            return httpx.Response(200, json={"status": "ok", "service": "hub", "version": "9.9.9"})
+        return queue.pop(0)
+
+    install_stand_in_hub(monkeypatch).answer = answer
+    return asked
+
+
+def test_a_proxy_page_on_a_status_the_route_declares_is_waited_again(monkeypatch, config) -> None:
+    # A 503 the hub declares, but an HTML page rather than the hub's JSON: a
+    # proxy that gave up, the same as its 502.
+    page = httpx.Response(503, text="<html>Service Unavailable</html>")
+    asked = _answering(monkeypatch, page, httpx.Response(200, json=_TURN))
+    _confirms(monkeypatch)
+    turn = participate._await_once(config, "r", "agent", timeout=0)
+    assert turn is not None
+    assert turn.prompt == "@agent ship it?"
+    assert asked.count("/api/rooms/r/await") == 2
+
+
+def test_a_turn_this_cli_cant_read_stops_await_with_both_versions(monkeypatch, config) -> None:
+    # The hub's own JSON in a shape this CLI doesn't know: waiting again would be
+    # handed the same turn, unconfirmed, forever.
+    from mycelium import __version__
+    from mycelium.exceptions import MyceliumError
+
+    unreadable = {key: value for key, value in _TURN.items() if key != "prompt"}
+    _answering(monkeypatch, httpx.Response(200, json=unreadable))
+    with pytest.raises(MyceliumError, match=f"hub 9.9.9, CLI {__version__}"):
+        participate._await_once(config, "r", "agent", timeout=0)

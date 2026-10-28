@@ -10,6 +10,10 @@ tests.
 
 What stands in for what:
 
+* :class:`StandInHub` (:func:`install_stand_in_hub`, the ``stand_in_hub``
+  fixture) — the hub, answering at httpx's transport, so the typed client and
+  ``hub_client`` both reach it. No real request gets out: every test runs with
+  a guard that fails one.
 * :class:`FakeSlimClient` — ``mycelium.slim.client.SlimClient`` with a scripted
   inbox, for the member/daemon message-stream tests.
 * :class:`FakeResp` + the :func:`fake_httpx` fixture (sync + async clients) —
@@ -88,6 +92,29 @@ def _fresh_sync_memory() -> None:
     herdr._manifest_seen.clear()
     herdr._unknown_rooms.clear()
     herdr._pass_clients.clear()
+
+
+@pytest.fixture(autouse=True)
+def _never_a_real_hub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test reaches a real hub over the network.
+
+    A test that stubs the wrong layer would otherwise send its call to whatever
+    answers at the configured address, which on a developer's machine is their
+    own hub, and write to it (users, memories, messages). Every real request
+    fails here instead; a test answers with :func:`install_stand_in_hub` or a
+    ``MockTransport``, neither of which comes through this transport.
+    """
+
+    def refuse(_self: httpx.HTTPTransport, request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(f"tests never reach a real hub: {request.url}", request=request)
+
+    async def refuse_async(
+        _self: httpx.AsyncHTTPTransport, request: httpx.Request
+    ) -> httpx.Response:
+        raise httpx.ConnectError(f"tests never reach a real hub: {request.url}", request=request)
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refuse)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", refuse_async)
 
 
 @pytest.fixture(autouse=True)
@@ -323,6 +350,68 @@ def stub_typed_client(
         monkeypatch.setattr(module, "_typed_client", lambda _c: fake_cm)
     if room is not None and hasattr(module, "_resolve_room"):
         monkeypatch.setattr(module, "_resolve_room", lambda *_a, **_k: room)
+
+
+# ── a hub answering over HTTP (hub_client and the typed client alike) ────────
+
+
+class StandInHub:
+    """A hub that answers at httpx's transport, so every client reaches it.
+
+    A command's calls go through the generated typed client, ``hub_client`` or
+    bare ``httpx``; stubbing one of those misses the others. This answers every
+    request a sync ``httpx.Client`` sends. ``answer(request)`` returns a payload
+    (sent as a 200), a ``(status, payload)`` pair, or an ``httpx.Response``;
+    ``requests`` keeps what was sent. The typed client parses what comes back
+    against ``openapi.json``, so a payload has to be the shape the hub really
+    answers with (:func:`memory_read` fills in a memory).
+    """
+
+    def __init__(self) -> None:
+        self.requests: list[httpx.Request] = []
+        self.answer: Callable[[httpx.Request], Any] = lambda _r: {}
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        answered = self.answer(request)
+        if isinstance(answered, httpx.Response):
+            return answered
+        status, payload = answered if isinstance(answered, tuple) else (200, answered)
+        return httpx.Response(status, json=payload, request=request)
+
+    def sent(self, method: str, path: str) -> list[httpx.Request]:
+        """The requests sent as ``method`` to ``path``, oldest first."""
+        return [r for r in self.requests if r.method == method and r.url.path == path]
+
+
+def install_stand_in_hub(monkeypatch: pytest.MonkeyPatch) -> StandInHub:
+    """A :class:`StandInHub` answering every sync HTTP request from here on."""
+    hub = StandInHub()
+    monkeypatch.setattr(
+        httpx.HTTPTransport, "handle_request", lambda _self, request: hub.handle(request)
+    )
+    return hub
+
+
+@pytest.fixture
+def stand_in_hub(monkeypatch: pytest.MonkeyPatch) -> StandInHub:
+    """:func:`install_stand_in_hub`, as a fixture."""
+    return install_stand_in_hub(monkeypatch)
+
+
+def memory_read(key: str, room: str = "demo", **fields: Any) -> dict[str, Any]:
+    """A memory as the hub's ``MemoryRead`` answers it, with ``fields`` laid over."""
+    return {
+        "id": "00000000-0000-0000-0000-000000000000",
+        "room_name": room,
+        "key": key,
+        "value": "",
+        "created_by": "julia",
+        "version": 1,
+        "created_at": "2026-08-24T10:00:00+00:00",
+        "updated_at": "2026-08-24T10:00:00+00:00",
+        **fields,
+    }
 
 
 @pytest.fixture

@@ -39,6 +39,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from app.schemas import AwaitConfirmRead, AwaitNothing, AwaitTurn, ReplyRead, refusals
 from app.services import (
     activity,
     actor,
@@ -194,7 +195,15 @@ def _ask_of(room: str, record: Any) -> dict[str, Any]:
     }
 
 
-@router.get("/await")
+# Unset excluded: a turn carries only the keys its branch set (a schedule's
+# turn has no ``asks``, ``delivered`` comes only with ``confirm``), as it did
+# before it had a model, rather than every optional key as null.
+@router.get(
+    "/await",
+    response_model=AwaitTurn | AwaitNothing,
+    response_model_exclude_unset=True,
+    responses=refusals(403, 404),
+)
 async def await_message(
     room_name: str,
     request: Request,
@@ -464,7 +473,7 @@ class ConfirmBody(BaseModel):
     episode: str | None = Field(None, description="The turn's `delivered.episode`")
 
 
-@router.post("/await/confirm")
+@router.post("/await/confirm", response_model=AwaitConfirmRead, responses=refusals(403, 404))
 async def confirm_delivery(room_name: str, body: ConfirmBody, request: Request):
     """Mark a turn from ``await?confirm=true`` read, now that it arrived.
 
@@ -498,7 +507,7 @@ class ReplyBody(BaseModel):
     )
 
 
-@router.post("/reply")
+@router.post("/reply", response_model=ReplyRead, responses=refusals(403, 404, 409, 503))
 async def post_reply(room_name: str, body: ReplyBody, request: Request):
     """Publish ``handle``'s reply as an agent exchange message the aligner scores."""
     if not room_exists(room_name):

@@ -28,7 +28,7 @@ from rich.markup import escape
 
 from mycelium import chat
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged
-from mycelium.client import hub_client
+from mycelium.client import answered, hub_client, hub_error_detail
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -38,6 +38,7 @@ from mycelium.identity import resolve_actor
 from mycelium.names import who
 from mycelium.slim.message_format import room_episode
 from mycelium.text_input import takes_text
+from mycelium_backend_client.errors import UnexpectedStatus
 
 # The "raise-up" whitelist: message types promoted onto the primary channel
 # surface (here, `room watch`'s live stream) rather than staying inspector-only.
@@ -85,27 +86,26 @@ def room_main(ctx: typer.Context) -> None:
             raise typer.Exit(1)
 
         from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get as list_api
-        from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
-            result = list_api.sync(client=client, name=active_room, limit=1, viewer=_viewer(config))
-            rooms_data = (
-                [r.to_dict() for r in result]
-                if result and not isinstance(result, HTTPValidationError)
-                else []
+            rooms = answered(
+                list_api.sync_detailed(
+                    client=client, name=active_room, limit=1, viewer=_viewer(config)
+                ),
+                list,
             )
 
-        if not rooms_data:
+        if not rooms:
             typer.secho(f"Active room '{active_room}' not found on server.", fg=typer.colors.RED)
             raise typer.Exit(1)
 
-        room = rooms_data[0]
+        room = rooms[0]
         if json_output:
-            typer.echo(json_module.dumps(room, indent=2, default=str))
+            typer.echo(json_module.dumps(room.to_dict(), indent=2, default=str))
         else:
-            typer.secho(f"Current Room: {room['name']}", fg=typer.colors.GREEN, bold=True)
-            typer.echo(f"  ID:      {room.get('id')}")
-            typer.echo(f"  Created: {str(room.get('created_at', ''))[:10]}")
+            typer.secho(f"Current Room: {room.name}", fg=typer.colors.GREEN, bold=True)
+            typer.echo(f"  ID:      {room.id}")
+            typer.echo(f"  Created: {room.created_at.isoformat()[:10]}")
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -142,37 +142,36 @@ def list_rooms(
             params["name"] = name
 
         from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get as list_api
-        from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
-            result = list_api.sync(client=client, name=name, limit=limit, viewer=_viewer(config))
-            rooms_data = (
-                [r.to_dict() for r in result]
-                if result and not isinstance(result, HTTPValidationError)
-                else []
+            rooms = answered(
+                list_api.sync_detailed(
+                    client=client, name=name, limit=limit, viewer=_viewer(config)
+                ),
+                list,
             )
 
         if json_output:
-            typer.echo(json_module.dumps(rooms_data, indent=2, default=str))
+            typer.echo(json_module.dumps([r.to_dict() for r in rooms], indent=2, default=str))
         else:
-            if not rooms_data:
+            if not rooms:
                 typer.echo("No rooms found.")
                 typer.echo("Create a room with: mycelium room create <name>")
                 return
 
             active_room = config.get_active_room()
-            typer.secho(f"Rooms ({len(rooms_data)})", bold=True)
+            typer.secho(f"Rooms ({len(rooms)})", bold=True)
             typer.echo("")
 
-            for room in rooms_data:
-                is_active = room["name"] == active_room
-                created_at = str(room.get("created_at", ""))[:10]
-                private = ", private" if room.get("is_public") is False else ""
+            for room in rooms:
+                is_active = room.name == active_room
+                created_at = room.created_at.isoformat()[:10]
+                private = ", private" if room.is_public is False else ""
                 if is_active:
-                    typer.secho(f"  * {room['name']}", fg=typer.colors.GREEN, bold=True, nl=False)
+                    typer.secho(f"  * {room.name}", fg=typer.colors.GREEN, bold=True, nl=False)
                     typer.echo(f"  (created {created_at}{private})")
                 else:
-                    typer.echo(f"    {room['name']}  (created {created_at}{private})")
+                    typer.echo(f"    {room.name}  (created {created_at}{private})")
 
             typer.echo("")
             typer.echo("Use 'mycelium room use <name>' to set the active room")
@@ -214,27 +213,26 @@ def create(
             name = typer.prompt("Room name")
 
         from mycelium_backend_client.api.rooms import create_room_api_rooms_post as create_api
-        from mycelium_backend_client.models import RoomCreate
+        from mycelium_backend_client.models import RoomCreate, RoomRead
 
         with _typed_client(config) as client:
             # A private room is listed for its owner, so it needs one; the hub
             # says so plainly when nobody could be named.
             body = RoomCreate(name=name, is_public=public, owner=None if public else owner)
-            result = create_api.sync(client=client, body=body)
-            room_data = result.to_dict() if result and hasattr(result, "to_dict") else {}
+            created = answered(create_api.sync_detailed(client=client, body=body), RoomRead)
 
         # The hub owns the room dir + store; a spoke keeps no local copy. Any
         # local dir an agent needs (e.g. agents/ for a manifest) is created
         # lazily on write, so nothing to pre-create here.
         if json_output:
-            typer.echo(json_module.dumps(room_data, indent=2, default=str))
+            typer.echo(json_module.dumps(created.to_dict(), indent=2, default=str))
         else:
             typer.secho(
-                f"Created room: {room_data['name']}",
+                f"Created room: {created.name}",
                 fg=typer.colors.GREEN,
             )
-            typer.echo(f"  ID:      {room_data.get('id')}")
-            typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
+            typer.echo(f"  ID:      {created.id}")
+            typer.echo(f"  Created: {created.created_at.isoformat()[:10]}")
             typer.echo("")
             typer.echo(f"  Run 'mycelium room use {name}' to make it your active room")
 
@@ -262,17 +260,11 @@ def use(
         config = MyceliumConfig.load()
 
         from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get as list_api
-        from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
-            result = list_api.sync(client=client, name=room_name, limit=1)
-            rooms_data = (
-                [r.to_dict() for r in result]
-                if result and not isinstance(result, HTTPValidationError)
-                else []
-            )
+            rooms = answered(list_api.sync_detailed(client=client, name=room_name, limit=1), list)
 
-            if not rooms_data:
+            if not rooms:
                 raise MyceliumError(
                     f"Room '{room_name}' not found",
                     suggestion=f"Create it first with: mycelium room create {room_name}",
@@ -328,7 +320,9 @@ def delete(
 
         for room_name in room_names:
             with _typed_client(config) as client:
-                delete_api.sync_detailed(room_name=room_name, client=client)
+                resp = delete_api.sync_detailed(room_name=room_name, client=client)
+            if resp.status_code >= 400:  # noqa: PLR2004
+                raise UnexpectedStatus(resp.status_code, resp.content)
 
             typer.secho(f"Room '{room_name}' deleted.", fg=typer.colors.GREEN)
 
@@ -359,12 +353,10 @@ def clone_room(
         mycelium room clone mycelium-dev
         mycelium room clone mycelium-dev --from http://18.216.86.206:8000
     """
-    import json as _json
-
     from mycelium.filesystem import (
         ensure_room_structure,
         get_mycelium_dir,
-        write_memory,
+        write_hub_memories,
     )
 
     try:
@@ -381,48 +373,24 @@ def clone_room(
 
         typer.echo(f"Cloning {room_name} from {api_url}...")
 
-        with hub_client(config, base_url=api_url, timeout=60) as client:
-            resp = client.get(f"/api/rooms/{room_name}/memory", params={"limit": 1000})
-            resp.raise_for_status()
-            memories = resp.json()
+        from mycelium_backend_client.api.memory import (
+            list_memories_api_rooms_room_name_memory_get as list_api,
+        )
 
-        from datetime import datetime
-
-        def _parse_dt(val):
-            if not val or isinstance(val, datetime):
-                return val
-            try:
-                return datetime.fromisoformat(str(val).replace("Z", "+00:00"))
-            except (ValueError, AttributeError):
-                return None
+        with _typed_client(config, base_url=api_url, timeout=60) as client:
+            resp = list_api.sync_detailed(room_name, client=client, limit=1000)
+        try:
+            memories = answered(resp, list)
+        except UnexpectedStatus:
+            raise MyceliumError(
+                hub_error_detail(resp.content) or f"the hub answered {resp.status_code}"
+            ) from None
 
         ensure_room_structure(target)
 
-        written = 0
-        for mem in memories:
-            value = mem.get("value", "")
-            if isinstance(value, dict):
-                content = value.get("text", _json.dumps(value))
-            else:
-                content = str(value)
-            # A hub on Windows before 3.0.31 sent its own separator in keys.
-            key = mem["key"].replace("\\", "/")
-            try:
-                write_memory(
-                    target,
-                    key,
-                    content,
-                    created_by=mem.get("created_by"),
-                    updated_by=mem.get("updated_by"),
-                    version=mem.get("version", 1),
-                    tags=mem.get("tags"),
-                    created_at=_parse_dt(mem.get("created_at")),
-                    updated_at=_parse_dt(mem.get("updated_at")),
-                )
-            except ValueError as e:
-                typer.echo(f"Skipped: {e}", err=True)
-                continue
-            written += 1
+        written, skipped = write_hub_memories(target, memories)
+        for why in skipped:
+            typer.echo(f"Skipped: {why}", err=True)
 
         typer.secho(f"Cloned room: {room_name} ({written} memories)", fg=typer.colors.GREEN)
 
@@ -432,11 +400,16 @@ def clone_room(
         # Reindex local copy against the configured backend
         typer.echo("Re-indexing...")
         try:
-            with hub_client(config, timeout=120) as client:
-                resp = client.post(f"/api/rooms/{room_name}/reindex")
-                resp.raise_for_status()
-                data = resp.json()
-            typer.echo(f"  Indexed {data.get('indexed', 0)} memories")
+            from mycelium_backend_client.api.rooms import (
+                reindex_room_api_rooms_room_name_reindex_post as reindex_api,
+            )
+            from mycelium_backend_client.models import RoomReindexRead
+
+            with _typed_client(config, timeout=120) as client:
+                stats = answered(
+                    reindex_api.sync_detailed(room_name, client=client), RoomReindexRead
+                )
+            typer.echo(f"  Indexed {stats.indexed} memories")
         except Exception:
             typer.echo(
                 "[dim]  Reindex skipped. Run 'mycelium memory reindex' when backend is available[/dim]"
@@ -762,22 +735,25 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     # Replay recent history so events that fired before SSE connected are visible.
     # coordination_join events are NOTIFY-only (not persisted), so we synthesize
     # them from the sessions list to ensure all participants are shown.
+    from mycelium_backend_client.api.messages import (
+        list_messages_api_rooms_room_name_messages_get as messages_api,
+    )
+    from mycelium_backend_client.api.sessions import (
+        list_sessions_api_rooms_room_name_sessions_get as sessions_api,
+    )
+    from mycelium_backend_client.models import MessageListResponse, ParticipantListResponse
+
     try:
-        with hub_client(config, timeout=10) as client:
-            sess_resp = client.get(f"/api/rooms/{room_name}/sessions")
-        if sess_resp.status_code == 200:
-            sess_body = sess_resp.json()
-            participants = sess_body.get("sessions", [])
-            for p in participants:
+        with _typed_client(config, timeout=10, raise_on_unexpected_status=False) as client:
+            joined = sessions_api.sync_detailed(room_name, client=client).parsed
+        if isinstance(joined, ParticipantListResponse):
+            for p in joined.participants:
                 rendered = render(
                     {
                         "message_type": "coordination_join",
-                        "sender_handle": p.get("agent_handle", "?"),
+                        "sender_handle": p.agent_handle,
                         "content": json_module.dumps(
-                            {
-                                "handle": p.get("agent_handle"),
-                                "intent": p.get("intent"),
-                            }
+                            {"handle": p.agent_handle, "intent": p.intent or None}
                         ),
                     }
                 )
@@ -787,17 +763,17 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
         pass
 
     try:
-        with hub_client(config, timeout=10) as client:
+        with _typed_client(config, timeout=10, raise_on_unexpected_status=False) as client:
             # Unfiltered: filtering by ``?episode=<live>`` would drop messages
             # from before threading was added, hiding history silently.
             # ``render`` applies the same rule to the replay as to the live
             # stream, where an untagged row is the room's.
-            hist_resp = client.get(f"/api/rooms/{room_name}/messages", params={"limit": 50})
-        if hist_resp.status_code == 200:
-            body = hist_resp.json()
-            msgs = body.get("messages", body) if isinstance(body, dict) else body
-            for msg in reversed(msgs):
-                rendered = render(msg)
+            history = messages_api.sync_detailed(room_name, client=client, limit=50).parsed
+        if isinstance(history, MessageListResponse):
+            # ``render`` draws the live stream's frames too, so each message is
+            # handed to it as the record the stream would carry.
+            for msg in reversed(history.messages):
+                rendered = render(msg.to_dict())
                 if rendered:
                     console.print(rendered, highlight=False)
     except Exception:
@@ -974,9 +950,13 @@ def amend(
 
         with _typed_client(config) as client:
             body = MessageAmend(content=content, sender_handle=sender_handle)
-            result = amend_api.sync(
+            resp = amend_api.sync_detailed(
                 room_name=room_name, message_id=message_id, client=client, body=body
             )
+        # No such message, someone else's, or a body the hub won't take is said
+        # here; any other refusal goes to print_error.
+        said_here = resp.status_code in (403, 404, 422)
+        result = resp.parsed if said_here else answered(resp, MessageAmended)
 
         if not isinstance(result, MessageAmended):
             typer.secho(
@@ -987,8 +967,7 @@ def amend(
             raise typer.Exit(1)
 
         if json_output:
-            msg_dict = result.to_dict() if hasattr(result, "to_dict") else str(result)
-            typer.echo(json_module.dumps(msg_dict, indent=2, default=str))
+            typer.echo(json_module.dumps(result.to_dict(), indent=2, default=str))
             return
 
         where = f"the thread of “{result.task}”" if isinstance(result.task, str) else room_name
@@ -1206,15 +1185,23 @@ def wakes(
         json_output = ctx.obj.get("json", False) if ctx.obj else False
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, _one_room(room, room_opt))
-        params: dict[str, str | int] = {"limit": limit}
-        if agent:
-            params["agent"] = agent.lstrip("@")
-        with hub_client(config) as client:
-            resp = client.get(f"/api/rooms/{room_name}/sessions/wakes", params=params)
-            resp.raise_for_status()
-            records = resp.json()
+        from mycelium_backend_client.api.sessions import (
+            list_wakes_api_rooms_room_name_sessions_wakes_get as wakes_api,
+        )
+        from mycelium_backend_client.types import UNSET
+
+        with _typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
+            resp = wakes_api.sync_detailed(
+                room_name, client=client, limit=limit, agent=agent.lstrip("@") if agent else UNSET
+            )
+        try:
+            records = answered(resp, list)
+        except UnexpectedStatus:
+            raise MyceliumError(
+                hub_error_detail(resp.content) or f"the hub answered {resp.status_code}"
+            ) from None
         if json_output:
-            typer.echo(json_module.dumps(records, indent=2))
+            typer.echo(json_module.dumps([r.to_dict() for r in records], indent=2))
             return
         from rich.console import Console
 
@@ -1223,18 +1210,15 @@ def wakes(
             console.print(f"[dim]No wakes recorded in {room_name} yet.[/dim]")
             return
         for r in records:
-            said, color = WAKE_OUTCOME.get(r.get("outcome", ""), (r.get("outcome"), "dim"))
-            when = (r.get("at") or "")[:19].replace("T", " ")
-            sender = f" from @{r['from']}" if r.get("from") else ""
-            line = (
-                f"{when}  @{r.get('agent')}  {r.get('reason')}{sender}  [{color}]{said}[/{color}]"
-            )
-            if r.get("why"):
-                line += f" [dim]({escape(str(r['why']))})[/dim]"
+            said, color = WAKE_OUTCOME.get(r.outcome, (r.outcome, "dim"))
+            when = (r.at or "")[:19].replace("T", " ")
+            sender = f" from @{r.from_}" if r.from_ else ""
+            line = f"{when}  @{r.agent}  {r.reason}{sender}  [{color}]{said}[/{color}]"
+            if r.why:
+                line += f" [dim]({escape(str(r.why))})[/dim]"
             console.print(line)
-            covered = r.get("messages") or []
-            if covered:
-                console.print(f"[dim]    asked in: {', '.join(covered)}[/dim]")
+            if r.messages:
+                console.print(f"[dim]    asked in: {', '.join(r.messages)}[/dim]")
     except (typer.Exit, typer.Abort):
         raise
     except Exception as e:
@@ -1313,7 +1297,7 @@ def export(
                 fg=typer.colors.YELLOW,
                 err=True,
             )
-        with hub_client(config, timeout=120) as client:
+        with _typed_client(config, timeout=120, raise_on_unexpected_status=False) as client:
             result = room_export.export_room(
                 client,
                 room_name,
@@ -1493,7 +1477,11 @@ def delegate(
         from mycelium_backend_client.api.messages import (
             send_message_api_rooms_room_name_messages_post as send_api,
         )
-        from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
+        from mycelium_backend_client.models import (
+            MessageCreate,
+            MessageCreateMessageType,
+            MessageRead,
+        )
 
         with _typed_client(config) as client:
             body = MessageCreate(
@@ -1502,11 +1490,12 @@ def delegate(
                 content=task,
                 recipient_handle=to,
             )
-            result = send_api.sync(room_name=session_id, client=client, body=body)
-            data = result.to_dict() if result and hasattr(result, "to_dict") else {}
+            result = answered(
+                send_api.sync_detailed(room_name=session_id, client=client, body=body), MessageRead
+            )
 
         if json_output:
-            typer.echo(json_module.dumps(data, indent=2, default=str))
+            typer.echo(json_module.dumps(result.to_dict(), indent=2, default=str))
         else:
             typer.secho("Task delegated", fg=typer.colors.GREEN)
             typer.echo(f"  {sender} -> {to}: {task[:80]}")

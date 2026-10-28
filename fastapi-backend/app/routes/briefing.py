@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.schemas import refusals
 from app.services import briefing
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ class AgentContextOut(BaseModel):
     context: str | None = None  # None when the room has nothing to brief on
 
 
-@router.get("/agent-context", response_model=AgentContextOut)
+@router.get("/agent-context", response_model=AgentContextOut, responses=refusals(400))
 async def get_agent_context(room_name: str, handle: str | None = None) -> AgentContextOut:
     """Compact room briefing injected into an agent's prompt on dispatch.
 

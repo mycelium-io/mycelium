@@ -24,6 +24,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.schemas import FieldsRead, refusals
 from app.services import actor, fields
 from app.services.filesystem import room_exists
 
@@ -62,7 +63,7 @@ class WriteBody(BaseModel):
     )
 
 
-@router.post("")
+@router.post("", response_model=FieldsRead, responses=refusals(403, 404, 409, 422))
 async def write_fields(room_name: str, body: WriteBody, request: Request):
     """Put fields on a row, through the canonical memory upsert."""
     _require_room(room_name)
@@ -75,7 +76,7 @@ async def write_fields(room_name: str, body: WriteBody, request: Request):
         raise _fail(e) from e
 
 
-@router.get("/{key:path}")
+@router.get("/{key:path}", response_model=FieldsRead, responses=refusals(404))
 async def read_fields(room_name: str, key: str):
     """A row's writable fields, without changing anything."""
     _require_room(room_name)

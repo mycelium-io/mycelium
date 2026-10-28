@@ -31,6 +31,7 @@ from app.schemas import (
     MessageSearchResponse,
     MessageSearchScope,
     MessageType,
+    refusals,
 )
 from app.services import (
     actor,
@@ -83,7 +84,7 @@ def _room_episode(
     return episode or message_format.live_episode_urn(room)
 
 
-@router.post("", response_model=MessageRead, status_code=201)
+@router.post("", response_model=MessageRead, status_code=201, responses=refusals(403, 404, 409))
 async def send_message(room_name: str, payload: MessageCreate, request: Request):
     """Send a message to a room; publish it to the room's live stream."""
     channel, coord = _resolve_channel(room_name)
@@ -224,7 +225,7 @@ def _read_messages(
     return persister.room_conversation(channel)
 
 
-@router.get("", response_model=MessageListResponse)
+@router.get("", response_model=MessageListResponse, responses=refusals(404))
 async def list_messages(
     room_name: str,
     limit: int = Query(50, le=500),
@@ -291,7 +292,7 @@ async def list_messages(
     )
 
 
-@router.get("/search", response_model=MessageSearchResponse)
+@router.get("/search", response_model=MessageSearchResponse, responses=refusals(404))
 async def search_messages(
     room_name: str,
     q: str = Query(
@@ -355,7 +356,7 @@ async def search_messages(
     )
 
 
-@router.get("/wire")
+@router.get("/wire", responses=refusals(404))
 async def list_wire(
     room_name: str,
     limit: int = Query(200, le=1000),
@@ -402,7 +403,12 @@ def _find_amend_target(
     return matched[0] if len(matched) == 1 else None
 
 
-@router.post("/{message_id}/amend", response_model=MessageAmended, status_code=201)
+@router.post(
+    "/{message_id}/amend",
+    response_model=MessageAmended,
+    status_code=201,
+    responses=refusals(403, 404, 409),
+)
 async def amend_message(
     room_name: str,
     message_id: str,
@@ -520,7 +526,7 @@ async def amend_message(
     )
 
 
-@router.patch("/{message_id}", response_model=MessageRead)
+@router.patch("/{message_id}", response_model=MessageRead, responses=refusals(404, 409))
 async def update_event_status(
     room_name: str,
     message_id: UUID,

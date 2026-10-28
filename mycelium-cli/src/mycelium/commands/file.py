@@ -17,7 +17,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import httpx
@@ -26,10 +26,13 @@ from rich.console import Console
 from rich.markup import escape
 
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged
-from mycelium.client import hub_client, hub_error_detail, typed_client
+from mycelium.client import answered, hub_client, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium_backend_client.errors import UnexpectedStatus
+
+if TYPE_CHECKING:
+    from mycelium_backend_client.models import UploadRead
 
 app = typer.Typer(
     # Help is Rich markup, where `[` opens a tag, so a literal link is escaped.
@@ -172,13 +175,14 @@ def file_upload(
         raise typer.Exit(1)
 
 
-def _record(room: str, name: str) -> Any:
+def _record(room: str, name: str) -> "UploadRead":
     from mycelium_backend_client.api.uploads import (
         get_upload_api_rooms_room_name_uploads_name_get as get_api,
     )
+    from mycelium_backend_client.models import UploadRead
 
     with _hub_session() as client:
-        return get_api.sync(room_name=room, name=name, client=client)
+        return answered(get_api.sync_detailed(room_name=room, name=name, client=client), UploadRead)
 
 
 @doc_ref(
@@ -252,18 +256,19 @@ def file_ls(
     from mycelium_backend_client.api.uploads import (
         list_room_uploads_api_rooms_room_name_uploads_get as list_api,
     )
+    from mycelium_backend_client.models import UploadListResponse
 
     assert room is not None
     with _hub_session() as client:
-        resp = list_api.sync(room_name=room, client=client)
-    items = list(getattr(resp, "uploads", None) or [])[: max(limit, 0)]
+        resp = answered(list_api.sync_detailed(room_name=room, client=client), UploadListResponse)
+    items = resp.uploads[: max(limit, 0)]
     if as_json:
         _echo_json([u.to_dict() for u in items])
         return
     if not items:
         console.print("[dim]No files yet. Add one with: mycelium file upload <path>[/dim]")
         return
-    total = getattr(resp, "total", len(items))
+    total = resp.total
     console.print(f"[bold]Files[/bold] ({len(items)} of {total})\n")
     for u in items:
         when = u.created_at.strftime("%Y-%m-%d %H:%M")
@@ -323,6 +328,8 @@ def file_rm(
         raise typer.Exit(0)
     with _hub_session() as client:
         resp = delete_api.sync_detailed(room_name=room, name=name, client=client)
+        if resp.status_code != 404 and resp.status_code >= 400:  # noqa: PLR2004
+            raise UnexpectedStatus(resp.status_code, resp.content)
     if resp.status_code == 404:
         err_console.print(f"[red]Not found:[/red] {name}")
         raise typer.Exit(1)

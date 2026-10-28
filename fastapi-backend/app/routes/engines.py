@@ -18,7 +18,7 @@ import re
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.schemas import HANDLE_PATTERN, AgentRead
+from app.schemas import HANDLE_PATTERN, AgentRead, refusals
 from app.services import actor
 from app.services.agent_registry import norm_handle, write_agent_manifest
 from app.services.filesystem import get_room_dir, read_memory_file, room_exists
@@ -52,7 +52,7 @@ class EngineCreate(BaseModel):
     )
 
 
-@router.post("", response_model=AgentRead, status_code=201)
+@router.post("", response_model=AgentRead, status_code=201, responses=refusals(403, 404, 409, 422))
 async def create_engine(room_name: str, payload: EngineCreate, request: Request) -> AgentRead:
     """Register an engine manifest in the room and return its structured view."""
     if not room_exists(room_name):
@@ -124,7 +124,7 @@ class NegotiationStopped(BaseModel):
     stopped: bool
 
 
-@router.post("/stop", response_model=NegotiationStopped)
+@router.post("/stop", response_model=NegotiationStopped, responses=refusals(403, 404, 409))
 async def stop_negotiation(
     room_name: str, payload: NegotiationStop, request: Request
 ) -> NegotiationStopped:

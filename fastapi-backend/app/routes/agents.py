@@ -17,7 +17,14 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.schemas import AgentControl, AgentControlRead, AgentRead, AgentRename, AgentRenameRead
+from app.schemas import (
+    AgentControl,
+    AgentControlRead,
+    AgentRead,
+    AgentRename,
+    AgentRenameRead,
+    refusals,
+)
 from app.services import actor, agent_control, agent_rename, notes_draft
 from app.services.agent_registry import norm_handle, room_agents
 from app.services.filesystem import read_room_meta, room_exists
@@ -27,7 +34,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rooms/{room_name}/agents", tags=["agents"])
 
 
-@router.get("", response_model=list[AgentRead])
+@router.get("", response_model=list[AgentRead], responses=refusals(404))
 async def list_agents(room_name: str) -> list[AgentRead]:
     """Return every agent registered in the room as structured JSON."""
     if not room_exists(room_name):
@@ -47,7 +54,7 @@ class NotesDraftRead(BaseModel):
     notes: str
 
 
-@router.post("/draft-notes", response_model=NotesDraftRead)
+@router.post("/draft-notes", response_model=NotesDraftRead, responses=refusals(400, 404, 422, 502))
 async def draft_notes(room_name: str, payload: NotesDraftRequest) -> NotesDraftRead:
     """Expand a short brief into a member's notes. Writes nothing to the room."""
     meta = read_room_meta(room_name)
@@ -79,7 +86,9 @@ async def draft_notes(room_name: str, payload: NotesDraftRequest) -> NotesDraftR
     return NotesDraftRead(notes=notes)
 
 
-@router.post("/{handle}/rename", response_model=AgentRenameRead)
+@router.post(
+    "/{handle}/rename", response_model=AgentRenameRead, responses=refusals(400, 403, 404, 409, 422)
+)
 async def rename_agent(
     room_name: str, handle: str, payload: AgentRename, request: Request
 ) -> AgentRenameRead:
@@ -139,7 +148,7 @@ def _controlled(
     return target, by
 
 
-@router.post("/{handle}/pause", response_model=AgentControlRead)
+@router.post("/{handle}/pause", response_model=AgentControlRead, responses=refusals(403, 404, 422))
 async def pause_agent(
     room_name: str, handle: str, payload: AgentControl, request: Request
 ) -> AgentControlRead:
@@ -148,7 +157,7 @@ async def pause_agent(
     return agent_control.pause(room_name, target, by)
 
 
-@router.post("/{handle}/resume", response_model=AgentControlRead)
+@router.post("/{handle}/resume", response_model=AgentControlRead, responses=refusals(403, 404, 422))
 async def resume_agent(
     room_name: str, handle: str, payload: AgentControl, request: Request
 ) -> AgentControlRead:
@@ -157,7 +166,9 @@ async def resume_agent(
     return agent_control.resume(room_name, target, by)
 
 
-@router.post("/{handle}/stop", response_model=AgentControlRead)
+@router.post(
+    "/{handle}/stop", response_model=AgentControlRead, responses=refusals(403, 404, 409, 422)
+)
 async def stop_agent(
     room_name: str, handle: str, payload: AgentControl, request: Request
 ) -> AgentControlRead:

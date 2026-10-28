@@ -39,6 +39,7 @@ from app.schemas import (
     MemorySearchResult,
     SubscriptionCreate,
     SubscriptionRead,
+    refusals,
 )
 from app.services import (
     actor,
@@ -239,7 +240,12 @@ async def _send_memory_write_knowledge(
         managed.persister.ingest_local(envelope, content)
 
 
-@router.post("", response_model=list[MemoryRead], status_code=201)
+@router.post(
+    "",
+    response_model=list[MemoryRead],
+    status_code=201,
+    responses=refusals(400, 403, 404, 409, 422),
+)
 async def create_memories(room_name: str, payload: MemoryBatchCreate, request: Request):
     """Create or upsert one or more memories (batch: 1-100 items).
 
@@ -516,7 +522,9 @@ async def upsert_memories(
     return results
 
 
-@router.get("")
+# The model is for the docs and the generated client: the handler answers with
+# its own Response (for the ETag and the 304), which FastAPI passes through.
+@router.get("", response_model=list[MemoryRead], responses=refusals(404))
 async def list_memories(
     room_name: str,
     request: Request,
@@ -555,7 +563,7 @@ async def list_memories(
 # ── Search & Subscriptions (must be BEFORE {key:path} catch-all) ──────────
 
 
-@router.post("/search", response_model=MemorySearchResponse)
+@router.post("/search", response_model=MemorySearchResponse, responses=refusals(404))
 async def search_memories(room_name: str, payload: MemorySearchRequest):
     """Semantic vector search over memories in a room.
 
@@ -609,7 +617,9 @@ async def search_memories(room_name: str, payload: MemorySearchRequest):
     return MemorySearchResponse(results=results, total=len(results))
 
 
-@router.post("/subscribe", response_model=SubscriptionRead, status_code=201)
+@router.post(
+    "/subscribe", response_model=SubscriptionRead, status_code=201, responses=refusals(404)
+)
 async def subscribe(room_name: str, payload: SubscriptionCreate):
     """Subscribe to memory change notifications for a key pattern."""
     _require_room(room_name)
@@ -622,7 +632,7 @@ async def subscribe(room_name: str, payload: SubscriptionCreate):
     return SubscriptionRead.model_validate(sub)
 
 
-@router.delete("/subscribe/{subscription_id}", status_code=204)
+@router.delete("/subscribe/{subscription_id}", status_code=204, responses=refusals(404))
 async def unsubscribe(room_name: str, subscription_id: UUID):
     """Remove a memory subscription."""
     if not in_memory_store.remove_subscription(room_name, subscription_id):
@@ -640,7 +650,7 @@ async def list_subscriptions(room_name: str):
 # ── Key-path routes (catch-all, must be LAST) ─────────────────────────────
 
 
-@router.get("/{key:path}", response_model=MemoryRead)
+@router.get("/{key:path}", response_model=MemoryRead, responses=refusals(404))
 async def get_memory(room_name: str, key: str):
     """Get a specific memory by key (from the filesystem)."""
     _require_room(room_name)
@@ -652,7 +662,7 @@ async def get_memory(room_name: str, key: str):
     return _memory_read_from_file(room_name, key, meta, content)
 
 
-@router.delete("/{key:path}", status_code=204)
+@router.delete("/{key:path}", status_code=204, responses=refusals(400, 403, 404, 409, 422))
 async def delete_memory(room_name: str, key: str, request: Request):
     """Delete a memory by key. Removes the file and its search-index entry.
 

@@ -26,9 +26,10 @@ import json
 import logging
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, NamedTuple
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import typer
 from rich.console import Console
@@ -52,9 +53,14 @@ from mycelium.integrations.herdr import (
 )
 from mycelium.protocol import AgentManifest
 from mycelium.runner.log import failing, ms, recovered, slow
+from mycelium_backend_client.errors import UnexpectedStatus
 
 if TYPE_CHECKING:
     import httpx
+
+    from mycelium_backend_client import Client
+    from mycelium_backend_client.models import HerdrWakeRead, WakeOutcome
+    from mycelium_backend_client.types import Response
 
 app = typer.Typer(
     help="Bind mycelium handles to persistent herdr agent panes (optional wake layer).",
@@ -87,7 +93,7 @@ _unknown_rooms: dict[str, float] = {}
 ROOM_NOT_FOUND = "Room not found"
 
 
-def _not_on_hub(room: str, resp: httpx.Response) -> bool:
+def _not_on_hub(room: str, resp: Response[Any] | httpx.Response) -> bool:
     """Whether ``resp`` is the hub saying it has no such room; if so, leave it out
     for a while.
 
@@ -98,7 +104,7 @@ def _not_on_hub(room: str, resp: httpx.Response) -> bool:
     if resp.status_code != 404:
         return False
     try:
-        detail = resp.json().get("detail")
+        detail = json.loads(resp.content).get("detail")
     except (ValueError, AttributeError):
         return False
     if detail != ROOM_NOT_FOUND:
@@ -393,20 +399,20 @@ def _room_members(config: MyceliumConfig, room_name: str) -> dict[str, str] | No
     ``None`` if the backend is unreachable — so ``ls`` can distinguish "no lease"
     from "couldn't ask." Best-effort, mirrors ``agent._is_resident``.
     """
-    import httpx
-
-    from mycelium.client import auth_headers
+    from mycelium.client import typed_client
+    from mycelium_backend_client.api.sessions import (
+        list_members_api_rooms_room_name_sessions_members_get as members_api,
+    )
+    from mycelium_backend_client.models import RoomPresenceRead
 
     try:
-        url = f"{config.server.api_url}/api/rooms/{room_name}/sessions/members"
-        resp = httpx.get(url, timeout=5.0, headers=auth_headers(config))
-        resp.raise_for_status()
-        members = resp.json().get("members", [])
+        with typed_client(config, timeout=5.0, raise_on_unexpected_status=False) as client:
+            present = members_api.sync(room_name, client=client)
     except Exception:
         return None
-    return {
-        str(m.get("handle", "")).lstrip("@").lower(): str(m.get("kind") or "?") for m in members
-    }
+    if not isinstance(present, RoomPresenceRead):
+        return None
+    return {m.handle.lstrip("@").lower(): m.kind or "?" for m in present.members}
 
 
 def _reconcile_note(mycelium_kind: str | None, herdr_status: str | None) -> tuple[str, str]:
@@ -970,28 +976,17 @@ def sync_source() -> str | None:
         return None
 
 
-def _hub_call(
-    config: MyceliumConfig,
-    http: httpx.Client | None,
-    method: str,
-    path: str,
-    *,
-    json: dict | None = None,
-    params: dict | None = None,
-) -> httpx.Response:
-    """One hub call: on the pass's own client when there is one (its connection
-    kept, its credential got once), else on its own."""
-    import httpx
-
-    from mycelium.client import auth_headers
-
+@contextmanager
+def _calling(config: MyceliumConfig, http: Client | None) -> Iterator[Client]:
+    """The client for one hub call: the pass's own when there is one (its
+    connection kept, its credential got once), else one of its own."""
     if http is not None:
-        return http.request(method, path, json=json, params=params)
-    url = f"{config.server.api_url}{path}"
-    headers = auth_headers(config)
-    if method == "POST":
-        return httpx.post(url, json=json, params=params, timeout=5.0, headers=headers)
-    return httpx.get(url, params=params, timeout=5.0, headers=headers)
+        yield http
+        return
+    from mycelium.client import typed_client
+
+    with typed_client(config, timeout=5.0, raise_on_unexpected_status=False) as client:
+        yield client
 
 
 def _push_presence(
@@ -1000,20 +995,28 @@ def _push_presence(
     statuses: dict[str, dict[str, str | None]],
     ttl_s: float,
     *,
-    http: httpx.Client | None = None,
+    http: Client | None = None,
 ) -> bool:
     """POST one room's herdr liveness to the backend. Best-effort → ``bool`` ok."""
+    from mycelium_backend_client.api.sessions import (
+        push_herdr_presence_api_rooms_room_name_sessions_herdr_presence_post as presence_api,
+    )
+    from mycelium_backend_client.models import HerdrPresenceBody
+
     what = f"hub presence for {room}"
     started = time.monotonic()
     body: dict = {"statuses": statuses, "ttl_s": ttl_s}
     if (source := sync_source()) is not None:
         body["source"] = source
     try:
-        path = f"/api/rooms/{room}/sessions/herdr-presence"
-        resp = _hub_call(config, http, "POST", path, json=body)
+        with _calling(config, http) as client:
+            resp = presence_api.sync_detailed(
+                room, client=client, body=HerdrPresenceBody.from_dict(body)
+            )
         if _not_on_hub(room, resp):
             return False
-        resp.raise_for_status()
+        if resp.status_code >= 400:  # noqa: PLR2004
+            raise UnexpectedStatus(resp.status_code, resp.content)
     except Exception as e:  # noqa: BLE001 - presence is best-effort; the next pass renews it
         failing(_hub, what, f"{what} failed after {ms(started)}ms: {e}")
         return False
@@ -1022,7 +1025,7 @@ def _push_presence(
     return True
 
 
-def wake_prompt_for(room: str, wake: dict) -> str:
+def wake_prompt_for(room: str, wake: HerdrWakeRead) -> str:
     """The prompt a queued wake turns into.
 
     The hub's digest when it sent one. Otherwise worded by why it was queued:
@@ -1032,74 +1035,101 @@ def wake_prompt_for(room: str, wake: dict) -> str:
     """
     # The hub builds the digest the agent is told (why it woke, what changed,
     # the messages that asked for it); a hub from before that sends none.
-    if isinstance(wake.get("prompt"), str) and wake["prompt"].strip():
-        return wake["prompt"]
-    handle = str(wake.get("handle") or "")
-    reason = wake.get("reason")
-    if reason == "turn":
-        return build_wake_prompt(room, handle)
-    if reason == "assigned" and wake.get("key"):
-        return build_assigned_prompt(room, handle, str(wake["key"]), wake.get("title"))
-    return build_mention_prompt(room, handle)
+    if isinstance(wake.prompt, str) and wake.prompt.strip():
+        return wake.prompt
+    if wake.reason == "turn":
+        return build_wake_prompt(room, wake.handle)
+    if wake.reason == "assigned" and wake.key:
+        return build_assigned_prompt(room, wake.handle, str(wake.key), wake.title or None)
+    return build_mention_prompt(room, wake.handle)
 
 
 def fetch_wakes(
-    config: MyceliumConfig, room: str, *, http: httpx.Client | None = None
-) -> list[dict]:
+    config: MyceliumConfig, room: str, *, http: Client | None = None
+) -> list[HerdrWakeRead]:
     """Take a room's queued wakes off the backend; ``[]`` when it can't be reached.
 
     Taking them drains the queue, so whoever fetches delivers. This machine
     asks only for the wakes of the agents its own push reported
     (:func:`sync_source`), so another machine's wakes wait for that machine.
     """
+    from mycelium.client import sent_unparsed
+    from mycelium_backend_client.api.sessions import (
+        drain_herdr_wakes_api_rooms_room_name_sessions_herdr_wakes_get as wakes_api,
+    )
+    from mycelium_backend_client.models import HerdrWakeRead
+    from mycelium_backend_client.types import UNSET
+
     what = f"hub wakes for {room}"
     started = time.monotonic()
     source = sync_source()
     try:
-        path = f"/api/rooms/{room}/sessions/herdr-wakes"
-        params = {"source": source} if source is not None else None
-        resp = _hub_call(config, http, "GET", path, params=params)
+        with _calling(config, http) as client:
+            # Unparsed as a whole: draining empties the queue, so a wake this
+            # machine's model can't read must cost only that wake, not the rest.
+            resp = sent_unparsed(
+                wakes_api, client, room, source=source if source is not None else UNSET
+            )
         if _not_on_hub(room, resp):
             return []
-        resp.raise_for_status()
-        wakes = resp.json().get("wakes", [])
+        if resp.status_code >= 400:  # noqa: PLR2004
+            raise UnexpectedStatus(resp.status_code, resp.content)
+        drained = resp.json().get("wakes") or []
     except Exception as e:  # noqa: BLE001 - the queue keeps them for the next pass
         failing(_hub, what, f"{what} failed after {ms(started)}ms: {e}")
         return []
     recovered(_hub, what)
     slow(_hub, what, started)
-    return [w for w in wakes if isinstance(w, dict)]
+    wakes: list[HerdrWakeRead] = []
+    for raw in drained:
+        try:
+            wakes.append(HerdrWakeRead.from_dict(raw))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            _sync.warning(
+                "a wake in %s couldn't be read, so it wasn't delivered: %.200s", room, raw
+            )
+    return wakes
 
 
-def outcome(wake: dict, *, delivered: bool, why: str | None = None) -> dict | None:
+def outcome(wake: HerdrWakeRead, *, delivered: bool, why: str | None = None) -> WakeOutcome | None:
     """What became of ``wake``, for :func:`report_wakes`; None for one with no id
     (from a hub that keeps no wake log)."""
-    if not wake.get("id"):
+    from mycelium_backend_client.models import WakeOutcome
+    from mycelium_backend_client.types import UNSET
+
+    if not wake.id:
         return None
-    said: dict = {"id": str(wake["id"]), "delivered": delivered}
-    if why:
-        said["why"] = why[:300]
-    return said
+    return WakeOutcome(id=str(wake.id), delivered=delivered, why=why[:300] if why else UNSET)
 
 
 def report_wakes(
     config: MyceliumConfig,
     room: str,
-    outcomes: list[dict | None],
+    outcomes: list[WakeOutcome | None],
     *,
-    http: httpx.Client | None = None,
+    http: Client | None = None,
 ) -> None:
     """Tell the hub what became of the wakes this pass drained, for its wake log.
 
     Best-effort: a hub that can't be reached, or is from before the log, just
     records them as handed without a word from here.
     """
+    from mycelium_backend_client.api.sessions import (
+        report_herdr_wakes_api_rooms_room_name_sessions_herdr_wakes_outcomes_post as report_api,
+    )
+    from mycelium_backend_client.models import WakeOutcomes
+
     said = [o for o in outcomes if o]
     if not said:
         return
+    from mycelium.client import sent_unparsed
+
     try:
-        path = f"/api/rooms/{room}/sessions/herdr-wakes/outcomes"
-        _hub_call(config, http, "POST", path, json={"outcomes": said})
+        with _calling(config, http) as client:
+            # Told once the hub takes it; what it counts back isn't read.
+            resp = sent_unparsed(report_api, client, room, body=WakeOutcomes(outcomes=said))
+        if resp.status_code >= 400:  # noqa: PLR2004
+            raise UnexpectedStatus(resp.status_code, resp.content)
     except Exception as e:  # noqa: BLE001 - the log says "handed" without it
         _sync.info("couldn't report %d wake outcome(s) in %s: %s", len(said), room, e)
 
@@ -1111,7 +1141,7 @@ def _drain_wakes(
     *,
     log: Console | None = None,
     wait: bool = True,
-    http: httpx.Client | None = None,
+    http: Client | None = None,
 ) -> int:
     """Drain the backend's herdr wake queue for a room and run each wake.
 
@@ -1124,10 +1154,10 @@ def _drain_wakes(
     """
     out = log if log is not None else console
     woke = 0
-    outcomes: list[dict | None] = []
+    outcomes: list[WakeOutcome | None] = []
     for w in fetch_wakes(config, room, http=http):
-        handle = str(w.get("handle") or "")
-        reason = w.get("reason") or "mention"
+        handle = w.handle
+        reason = w.reason or "mention"
         mapping = bridge.registry.get(room, handle)
         if mapping is None:
             _sync.warning("wake @%s (%s) in %s: no pane here is bound to it", handle, reason, room)
@@ -1285,20 +1315,26 @@ def _sync_rooms(
 _pass_clients: dict[str, httpx.Client] = {}
 
 
-def _pass_client(config: MyceliumConfig) -> httpx.Client:
+def _pass_client(config: MyceliumConfig) -> Client:
     """The client the sync passes share for ``config``'s hub, its credential got
-    now: once a pass, before any room is asked, never inside a call."""
+    now: once a pass, before any room is asked, never inside a call.
+
+    The connection is kept between passes; the generated client is laid over it
+    each pass (``set_httpx_client``), so its calls ride that connection.
+    """
     from mycelium.client import auth_headers, hub_client, issued_by
+    from mycelium_backend_client import Client
 
     url = config.server.api_url
     http = _pass_clients.get(url)
     if http is None or http.is_closed:
         http = _pass_clients[url] = hub_client(config, timeout=PASS_TIMEOUT_S)
-        return http
-    credentials = auth_headers(config) if issued_by(config, url) else {}
-    http.headers.pop("Authorization", None)
-    http.headers.update(credentials)
-    return http
+    else:
+        credentials = auth_headers(config) if issued_by(config, url) else {}
+        http.headers.pop("Authorization", None)
+        http.headers.update(credentials)
+    typed = Client(base_url=url, raise_on_unexpected_status=False)
+    return typed.set_httpx_client(http)
 
 
 #: How long one pass's liveness stands on the hub; the runner's next pass renews it.

@@ -176,10 +176,15 @@ def engine_invoke(
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
 
+        from mycelium.client import answered
         from mycelium_backend_client.api.messages import (
             send_message_api_rooms_room_name_messages_post as send_api,
         )
-        from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
+        from mycelium_backend_client.models import (
+            MessageCreate,
+            MessageCreateMessageType,
+            MessageRead,
+        )
 
         with _typed_client(config) as client:
             manifest = _load_manifest_remote(client, room_name, handle)
@@ -203,7 +208,9 @@ def engine_invoke(
                 message_type=MessageCreateMessageType.BROADCAST,
                 content=f"@{manifest.handle} {message}",
             )
-            send_api.sync(room_name=room_name, client=client, body=body)
+            answered(
+                send_api.sync_detailed(room_name=room_name, client=client, body=body), MessageRead
+            )
 
         console.print(
             f"[green]Summoned[/green] [dim]({sender_handle} → [/dim]"
@@ -241,16 +248,21 @@ def engine_stop(
         room_name = _resolve_room(config, room)
         who = identity.resolve_actor(config, override=handle_flag)
 
-        from mycelium.client import hub_error_detail
+        from mycelium.client import answered, hub_error_detail
         from mycelium_backend_client.api.engines import (
             stop_negotiation_api_rooms_room_name_engines_stop_post as stop_api,
         )
         from mycelium_backend_client.errors import UnexpectedStatus
-        from mycelium_backend_client.models import NegotiationStop
+        from mycelium_backend_client.models import NegotiationStop, NegotiationStopped
 
         with _typed_client(config) as client:
             try:
-                stop_api.sync(room_name=room_name, client=client, body=NegotiationStop(by=who))
+                answered(
+                    stop_api.sync_detailed(
+                        room_name=room_name, client=client, body=NegotiationStop(by=who)
+                    ),
+                    NegotiationStopped,
+                )
             except UnexpectedStatus as exc:
                 if exc.status_code == 409:
                     console.print(f"[dim]No negotiation is running in {room_name}.[/dim]")

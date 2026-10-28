@@ -42,9 +42,12 @@ import httpx
 from rich.console import Console
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     from mycelium.config import MyceliumConfig
     from mycelium.tokens import StoredToken
     from mycelium_backend_client import Client
+    from mycelium_backend_client.types import Response
 
 _DEFAULT_TIMEOUT_S = 30.0
 
@@ -122,15 +125,10 @@ def _needs_credential(config: MyceliumConfig) -> bool | None:
 
     url = config.server.api_url
     if url not in _GATED:
-        resp = health(url)
-        try:
-            body = resp.json() if resp is not None and resp.status_code == 200 else None
-        except ValueError:
-            body = None
-        auth = body.get("auth") if isinstance(body, dict) else None
-        if not isinstance(auth, dict) or "enabled" not in auth:
+        auth = health(url).auth
+        if auth is None:
             return None
-        _GATED[url] = bool(auth["enabled"])
+        _GATED[url] = auth.enabled
     return _GATED[url]
 
 
@@ -200,21 +198,59 @@ def typed_client(
     *,
     handle: str | None = None,
     timeout: float | None = None,
+    base_url: str | None = None,
+    raise_on_unexpected_status: bool = True,
 ) -> Client:
     """The generated OpenAPI client, authenticated when there's a credential.
 
     ``timeout`` bounds each call; without one a call waits as long as the hub takes.
+    ``base_url`` points it at another hub, which gets no credential unless it
+    issued it, as with :func:`hub_client`.
+
+    With ``raise_on_unexpected_status`` off, a status ``openapi.json`` doesn't
+    list (a 404, a 409) comes back as the response rather than raising, so a
+    caller that answers each refusal its own way reads ``status_code`` and
+    ``content``; ``parsed`` is set only for a status the spec declares.
     """
     from mycelium_backend_client import Client
 
     cfg = _resolve_config(config)
+    target = base_url or cfg.server.api_url
     client = Client(
-        base_url=cfg.server.api_url,
-        raise_on_unexpected_status=True,
+        base_url=target,
+        raise_on_unexpected_status=raise_on_unexpected_status,
         timeout=httpx.Timeout(timeout) if timeout is not None else None,
     )
-    headers = auth_headers(cfg, handle=handle)
+    ours = base_url is None or issued_by(cfg, target)
+    headers = auth_headers(cfg, handle=handle) if ours else {}
     return client.with_headers(headers) if headers else client
+
+
+def sent_unparsed(route: ModuleType, client: Client, *args: Any, **kwargs: Any) -> httpx.Response:
+    """Send a generated route's own request (its method, path, params and body,
+    from ``route._get_kwargs``) and hand back the answer unparsed.
+
+    For the runner's own loops, where an answer that won't parse must never end
+    a thread or lose work the hub already handed over: a job taken off the
+    queue, wakes drained, a heartbeat. The caller reads the status, and the body
+    as JSON where it needs one, so a hub a version apart can't stop it.
+    """
+    return client.get_httpx_client().request(**route._get_kwargs(*args, **kwargs))  # noqa: SLF001
+
+
+def answered[T](resp: Response[Any], expected: type[T]) -> T:
+    """The hub's answer when it is the ``expected`` model (or ``list``).
+
+    Anything else is a refusal the route declares (a 404, a 409, a sentence
+    422), and is raised as the generated client raises a status it wasn't told
+    about, ``UnexpectedStatus`` with the status and body. So a caller handles a
+    declared refusal the way it handled one before the route declared it.
+    """
+    if isinstance(resp.parsed, expected):
+        return resp.parsed
+    from mycelium_backend_client.errors import UnexpectedStatus
+
+    raise UnexpectedStatus(resp.status_code, resp.content)
 
 
 def hub_error_detail(content: bytes) -> str:

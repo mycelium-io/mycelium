@@ -64,7 +64,7 @@ from rich.console import Console
 from mycelium import __version__, agent_credentials
 from mycelium import machine as this_machine
 from mycelium.agent_credentials import MemberTokenRefused, agent_token_env, member_token_path
-from mycelium.client import hub_client
+from mycelium.client import sent_unparsed, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations import agents
@@ -88,6 +88,33 @@ from mycelium.runner.hosts import (
 )
 from mycelium.runner.log import failing, log, ms, open_log, recovered
 from mycelium.utils.process import pid_alive
+from mycelium_backend_client import Client
+from mycelium_backend_client.api.auth import whoami_api_whoami_get as whoami_api
+from mycelium_backend_client.api.joins import (
+    create_join_api_rooms_room_name_joins_post as joins_api,
+)
+from mycelium_backend_client.api.memory import (
+    get_memory_api_rooms_room_name_memory_key_get as memory_api,
+)
+from mycelium_backend_client.api.runners import (
+    next_job_api_runners_runner_id_jobs_next_get as next_job_api,
+)
+from mycelium_backend_client.api.runners import (
+    report_job_api_runners_runner_id_jobs_job_id_patch as report_api,
+)
+from mycelium_backend_client.api.runners import (
+    runner_goodbye_api_runners_runner_id_delete as goodbye_api,
+)
+from mycelium_backend_client.api.runners import runner_hello_api_runners_post as hello_api
+from mycelium_backend_client.errors import UnexpectedStatus
+from mycelium_backend_client.models import (
+    JoinCreate,
+    JoinRead,
+    RunnerHello,
+    RunnerJobReport,
+    RunnerJobReportStatus,
+    WhoamiRead,
+)
 
 #: Jobs that start something on this machine, or type into a terminal on it
 #: (``adopt`` introduces an agent someone already has running; ``rename`` ends
@@ -663,17 +690,21 @@ class Runner:
         Raises ``JobError`` when the hub didn't (the name was taken meanwhile, or
         it can't be reached), so nothing here changes.
         """
+        report = RunnerJobReport(status=RunnerJobReportStatus.RUNNING, result=None, error=None)
         try:
-            with hub_client(self.config, timeout=15) as client:
-                resp = client.patch(
-                    f"/api/runners/{self.id}/jobs/{job_id}",
-                    json={"status": "running", "result": None, "error": None},
-                )
-            resp.raise_for_status()
-            job = resp.json()
-        except (httpx.HTTPError, ValueError) as e:
+            with self._hub(timeout=15) as client:
+                resp = sent_unparsed(report_api, client, self.id, job_id, body=report)
+            if resp.status_code >= 400:  # noqa: PLR2004
+                raise UnexpectedStatus(resp.status_code, resp.content)
+        except (httpx.HTTPError, UnexpectedStatus) as e:
             raise JobError(f"Not renamed: the hub couldn't be reached ({e}).") from e
-        if job.get("status") == "failed":
+        # Only whether the hub failed the job matters here, so only that is read:
+        # a job record shaped differently by a hub a version apart can't stop it.
+        try:
+            job = resp.json()
+        except ValueError:
+            job = {}
+        if isinstance(job, dict) and job.get("status") == "failed":
             raise JobError(str(job.get("error") or "Not renamed."))
 
     def rename_agent(self, spec: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
@@ -741,11 +772,16 @@ class Runner:
     def hello(self) -> bool:
         """Say hello (or heartbeat). ``False`` when the hub could not be reached."""
         self.refresh()
+        body = RunnerHello.from_dict(self.hello_body())
         try:
-            with hub_client(self.config, timeout=10) as client:
-                client.post("/api/runners", json=self.hello_body()).raise_for_status()
-        except httpx.HTTPError as e:
-            refused = isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 401
+            with self._hub(timeout=10) as client:
+                # Only its status says anything: an answer a hub a version apart
+                # shapes differently must never stop the heartbeat.
+                resp = sent_unparsed(hello_api, client, body=body)
+            if resp.status_code >= 400:  # noqa: PLR2004
+                raise UnexpectedStatus(resp.status_code, resp.content)
+        except (httpx.HTTPError, UnexpectedStatus) as e:
+            refused = isinstance(e, UnexpectedStatus) and e.status_code == 401  # noqa: PLR2004
             if refused and not self.signed_out:
                 log.warning("%s", signed_out_message(self.config.server.api_url))
                 self.log.print(f"[yellow]{signed_out_message(self.config.server.api_url)}[/yellow]")
@@ -765,8 +801,8 @@ class Runner:
 
     def goodbye(self) -> None:
         try:
-            with hub_client(self.config, timeout=5) as client:
-                client.delete(f"/api/runners/{self.id}")
+            with self._hub(timeout=5) as client:
+                goodbye_api.sync_detailed(self.id, client=client)
         except httpx.HTTPError:
             pass
 
@@ -781,10 +817,14 @@ class Runner:
         body: dict[str, Any] = {"status": status, "result": result, "error": error}
         if paired is not None:
             body["pairing"] = paired
+        report = RunnerJobReport.from_dict(body)
         try:
-            with hub_client(self.config, timeout=10) as client:
-                client.patch(f"/api/runners/{self.id}/jobs/{job_id}", json=body)
-        except httpx.HTTPError as e:
+            with self._hub(timeout=10) as client:
+                # Reported once the hub takes it; what it answers with isn't read.
+                resp = sent_unparsed(report_api, client, self.id, job_id, body=report)
+            if resp.status_code >= 400:  # noqa: PLR2004
+                raise UnexpectedStatus(resp.status_code, resp.content)
+        except (httpx.HTTPError, UnexpectedStatus) as e:
             log.warning("job %s: couldn't report it %s to the hub: %s", job_id, status, e)
             self.log.print(f"[yellow]could not report job {job_id}:[/yellow] {e}")
 
@@ -900,29 +940,35 @@ class Runner:
     def join_code(self, room: str, handle: str) -> str:
         """A join code for ``@handle``, asked of the hub as this machine's owner."""
         try:
-            with hub_client(self.config, timeout=15) as client:
-                resp = client.post(f"/api/rooms/{room}/joins", json={"handle": handle})
+            with self._hub(timeout=15) as client:
+                resp = joins_api.sync_detailed(room, client=client, body=JoinCreate(handle=handle))
         except httpx.HTTPError as e:
             raise JobError(f"couldn't ask the hub for a join code for @{handle}: {e}") from e
-        if resp.status_code != 201:
-            raise JobError(f"the hub wouldn't give a join code for @{handle}: {resp.text[:200]}")
-        return str(resp.json()["code"])
+        if not isinstance(resp.parsed, JoinRead):
+            said = resp.content.decode(errors="replace")[:200]
+            raise JobError(f"the hub wouldn't give a join code for @{handle}: {said}")
+        return resp.parsed.code
 
     def notes(self, room: str, handle: str) -> str | None:
         """An agent's notes as the hub has them, or ``None`` when it has none."""
         try:
-            with hub_client(self.config, timeout=10) as client:
-                resp = client.get(f"/api/rooms/{room}/memory/agents/{handle}/notes")
+            with self._hub(timeout=10) as client:
+                # Only its value is read: notes a hub a version apart shapes
+                # differently are still the agent's notes.
+                resp = sent_unparsed(memory_api, client, room, f"agents/{handle}/notes")
         except httpx.HTTPError:
             return None
-        if resp.status_code != 200 or resp.content in (b"", b"null"):
+        if resp.status_code >= 400 or resp.content in (b"", b"null"):  # noqa: PLR2004
             return None
         try:
             body = resp.json()
         except ValueError:
+            log.warning("@%s's notes in %s couldn't be read: %.200s", handle, room, resp.text)
             return None
         value = body.get("value") if isinstance(body, dict) else None
-        return str(value) if value else None
+        if not value:
+            return None
+        return value if isinstance(value, str) else json.dumps(value)
 
     def has_notes(self, room: str, handle: str) -> bool:
         return self.notes(room, handle) is not None
@@ -1368,7 +1414,7 @@ class Runner:
                 write_manifests=False,
                 carry={"MYCELIUM_API_URL": self.config.server.api_url},
             )
-            with hub_client(self.config, timeout=30) as client:
+            with self._hub(timeout=30) as client:
                 brief_local(client, self.bridge, room, local, key, task, me)
                 if spec.get("kickoff", True):
                     kick_off(client, room, episode, team, task, me)
@@ -1745,25 +1791,43 @@ class Runner:
     def poll_once(self) -> bool:
         """One long-poll; ``False`` when the hub could not be reached or forgot this runner."""
         try:
-            with hub_client(self.config, timeout=POLL_S + 15) as client:
-                resp = client.get(f"/api/runners/{self.id}/jobs/next", params={"timeout": POLL_S})
+            with self._hub(timeout=POLL_S + 15) as client:
+                # Unparsed: the hub hands a job out when it's polled, so a job
+                # this runner's model can't read must still reach ``take``, which
+                # refuses a kind it doesn't know in words, rather than be lost.
+                resp = sent_unparsed(next_job_api, client, self.id, timeout=POLL_S)
         except httpx.HTTPError:
             return False
-        if resp.status_code == 404:
+        if resp.status_code == 404:  # noqa: PLR2004
             # The hub restarted, or dropped this runner: say hello again.
             return self.hello()
-        if resp.status_code == 204 or not resp.content:
+        if resp.status_code == 204 or not resp.content:  # noqa: PLR2004
             return True
-        if resp.status_code >= 400:
+        if resp.status_code >= 400:  # noqa: PLR2004
             return False
-        self.take(resp.json())
+        try:
+            job = resp.json()
+        except ValueError:
+            log.warning(
+                "a job from the hub wasn't JSON, so it couldn't be taken: %.200s", resp.text
+            )
+            return True
+        self.take(job)
         return True
+
+    def _hub(self, *, timeout: float) -> Client:
+        """The typed client to the hub, as this machine's owner. A status the
+        route doesn't declare comes back as the response, not raised."""
+        return typed_client(self.config, timeout=timeout, raise_on_unexpected_status=False)
 
     # ── loops ────────────────────────────────────────────────────────────────
 
     def _heartbeat_loop(self) -> None:
         while not self._stop.wait(HEARTBEAT_S):
-            self.hello()
+            try:
+                self.hello()
+            except Exception as e:  # noqa: BLE001 - nothing may end the heartbeat
+                log.exception("heartbeat failed, trying again next beat: %s", e)
 
     def _sync_loop(self) -> None:
         while not self._stop.wait(SYNC_S):
@@ -1909,22 +1973,19 @@ class Runner:
         be asked leaves the verdict alone."""
         try:
             token = path.read_text().strip()
-            with hub_client(
-                self.config, timeout=10, headers={"Authorization": f"Bearer {token}"}
-            ) as client:
-                resp = client.get("/api/whoami")
-        except (OSError, httpx.HTTPError):
+            # As the agent, not this machine: its token replaces the owner's.
+            as_agent = self._hub(timeout=10).with_headers({"Authorization": f"Bearer {token}"})
+            with as_agent as client:
+                resp = whoami_api.sync_detailed(client=client)
+        except (OSError, httpx.HTTPError, ValueError, KeyError, TypeError):
             return
         self._checked[key] = now
-        if resp.status_code == 401:
+        if resp.status_code == 401:  # noqa: PLR2004
             self.can_reply[key] = (False, f"The hub refused its token ({self.label}).")
             return
-        if resp.status_code != 200:
+        if not isinstance(resp.parsed, WhoamiRead):
             return
-        try:
-            said = str(resp.json().get("handle") or "")
-        except (ValueError, AttributeError):
-            return
+        said = resp.parsed.handle or ""
         handle = key[1]
         if said and said.lstrip("@").lower() != handle.lstrip("@").lower():
             # Every write would be refused as the wrong handle.
@@ -2019,7 +2080,12 @@ class Runner:
         ):
             threading.Thread(target=loop, name=name, daemon=True).start()
         while not self._stop.is_set():
-            if not self.poll_once():
+            try:
+                polled = self.poll_once()
+            except Exception as e:  # noqa: BLE001 - one job it can't read must not end the runner
+                log.exception("a job poll failed, polling again: %s", e)
+                polled = False
+            if not polled:
                 self._stop.wait(RETRY_S)
         self.goodbye()
         log.info("runner %s stopped", self.id)

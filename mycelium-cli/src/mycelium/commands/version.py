@@ -5,7 +5,6 @@
 
 import json
 
-import httpx
 import typer
 
 from mycelium import __version__
@@ -18,15 +17,7 @@ def hub_version(api_url: str, timeout: float = 3.0) -> str | None:
     """The hub's version from its health answer, or None when it can't be read."""
     from mycelium.hub_check import health
 
-    resp = health(api_url, timeout)
-    try:
-        if resp is None:
-            return None
-        resp.raise_for_status()
-        version = resp.json().get("version")
-    except (httpx.HTTPError, ValueError, AttributeError):
-        return None
-    return version if isinstance(version, str) and version else None
+    return health(api_url, timeout=timeout).version or None
 
 
 @doc_ref(

@@ -8,13 +8,17 @@ Reads and writes markdown files in .mycelium/ directories.
 Mirrors the backend's filesystem service for local access.
 """
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from mycelium_backend_client.models import MemoryRead
 
 
 def get_mycelium_dir() -> Path:
@@ -193,6 +197,37 @@ def write_memory(
     )
     file_path.write_text(text, encoding="utf-8")
     return file_path
+
+
+def write_hub_memories(base_dir: Path, memories: "list[MemoryRead]") -> tuple[int, list[str]]:
+    """Write memories the hub listed as local files: how many were written, and
+    why each one that wasn't was skipped."""
+    written = 0
+    skipped: list[str] = []
+    for mem in memories:
+        if isinstance(mem.value, str):
+            content = mem.value
+        else:
+            value = mem.value.to_dict()
+            content = value.get("text", json.dumps(value))
+        try:
+            write_memory(
+                base_dir,
+                # A hub on Windows before 3.0.31 sent its own separator in keys.
+                mem.key.replace("\\", "/"),
+                content,
+                created_by=mem.created_by,
+                updated_by=mem.updated_by or None,
+                version=mem.version,
+                tags=mem.tags or None,
+                created_at=mem.created_at,
+                updated_at=mem.updated_at,
+            )
+        except ValueError as e:
+            skipped.append(str(e))
+            continue
+        written += 1
+    return written, skipped
 
 
 def read_memory(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | None:

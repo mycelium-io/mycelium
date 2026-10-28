@@ -29,12 +29,18 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from app.schemas import AssignmentRead, AssignmentsRenewed, AssignmentWatchRead, refusals
 from app.services import actor, assignments
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/assignments", tags=["assignments"])
+
+#: What a lease write refuses with: the token (403), a row it can't find (404),
+#: the row's holder or what it waits on (409, an object naming them), or a row
+#: it can't hold (422).
+_WRITE_REFUSALS = refusals(403, 404, 409, 422)
 
 
 def _require_room(room_name: str) -> None:
@@ -84,7 +90,7 @@ class RenewBody(BaseModel):
     handle: str = Field(..., description="The resident handle whose claims are being renewed")
 
 
-@router.post("/claim")
+@router.post("/claim", response_model=AssignmentRead, responses=_WRITE_REFUSALS)
 async def claim_assignment(room_name: str, body: ClaimBody, request: Request):
     """Take assignment of a row for a window, not for good."""
     _require_room(room_name)
@@ -97,7 +103,7 @@ async def claim_assignment(room_name: str, body: ClaimBody, request: Request):
         raise _fail(e) from e
 
 
-@router.post("/release")
+@router.post("/release", response_model=AssignmentRead, responses=_WRITE_REFUSALS)
 async def release_assignment(room_name: str, body: ReleaseBody, request: Request):
     """Hand a row back on purpose, and sign the note that says so."""
     _require_room(room_name)
@@ -108,7 +114,7 @@ async def release_assignment(room_name: str, body: ReleaseBody, request: Request
         raise _fail(e) from e
 
 
-@router.post("/resolve")
+@router.post("/resolve", response_model=AssignmentRead, responses=_WRITE_REFUSALS)
 async def resolve_assignment(room_name: str, body: ResolveBody, request: Request):
     """The work is done: the row leaves the board rather than draining out of it."""
     _require_room(room_name)
@@ -119,7 +125,7 @@ async def resolve_assignment(room_name: str, body: ResolveBody, request: Request
         raise _fail(e) from e
 
 
-@router.post("/renew")
+@router.post("/renew", response_model=AssignmentsRenewed, responses=_WRITE_REFUSALS)
 async def renew_assignments(room_name: str, body: RenewBody, request: Request):
     """A resident loop saying it is still here, on behalf of every row it holds.
 
@@ -132,7 +138,7 @@ async def renew_assignments(room_name: str, body: RenewBody, request: Request):
     return {"room": room_name, "handle": handle.lstrip("@"), "renewed": renewed}
 
 
-@router.get("/await")
+@router.get("/await", response_model=AssignmentWatchRead, responses=refusals(404, 422))
 async def await_assignment(
     room_name: str,
     key: str = Query(..., description="Memory key of the lease to watch"),
@@ -155,7 +161,7 @@ async def await_assignment(
         raise _fail(e) from e
 
 
-@router.get("/{key:path}")
+@router.get("/{key:path}", response_model=AssignmentRead, responses=refusals(404, 422))
 async def read_assignment(room_name: str, key: str):
     """One row's assignment as it stands, including a drain nobody wrote down."""
     _require_room(room_name)

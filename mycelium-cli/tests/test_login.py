@@ -16,8 +16,9 @@ Four slices, matching the four things that can quietly go wrong:
   ``whoami`` / ``iam`` report it when there is one and are untouched when there
   isn't.
 
-No issuer and no backend run here: ``httpx`` is stubbed at the module the code
-under test calls into, and the hub's user store, which ``login`` upserts
+No issuer and no backend run here: the issuer's ``httpx`` calls are stubbed at
+the module the code under test calls into, the hub's ``/health`` answers
+through a stand-in hub, and the hub's user store, which ``login`` upserts
 through, is stubbed at the generated client.
 """
 
@@ -43,8 +44,11 @@ from mycelium import client as client_mod
 from mycelium import oidc, tokens
 from mycelium.cli import app
 from mycelium.config import MyceliumConfig
+from mycelium.hub_check import HubHealth
 from mycelium.oidc import OidcError, ProviderMetadata
 from mycelium.tokens import StoredToken, clear_token, load_token, save_token, token_path
+from mycelium_backend_client.models import HealthRead, WhoamiRead
+from tests.conftest import install_stand_in_hub
 
 runner = CliRunner()
 
@@ -74,8 +78,8 @@ def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(client_mod, "_refresh_warned", False)
 
 
-USER_GET_SYNC = "mycelium_backend_client.api.users.get_user_api_users_handle_get.sync"
-USER_CREATE_SYNC = "mycelium_backend_client.api.users.create_user_api_users_post.sync"
+USER_GET_SYNC = "mycelium_backend_client.api.users.get_user_api_users_handle_get.sync_detailed"
+USER_CREATE_SYNC = "mycelium_backend_client.api.users.create_user_api_users_post.sync_detailed"
 
 
 class _Hub:
@@ -98,10 +102,14 @@ class _Hub:
             raise httpx.ConnectError("connection refused")
         raise UnexpectedStatus(404, b'{"detail":"User not found"}')
 
-    def create(self, **kwargs: Any) -> None:
+    def create(self, **kwargs: Any) -> Any:
+        from mycelium_backend_client.models import UserRead
+        from tests.hub_answers import ok
+
         if not self.reachable:
             raise httpx.ConnectError("connection refused")
         self.created.append(kwargs["body"].handle)
+        return ok(UserRead(handle=kwargs["body"].handle), 201)
 
 
 @pytest.fixture(autouse=True)
@@ -109,8 +117,26 @@ def hub(monkeypatch: pytest.MonkeyPatch) -> _Hub:
     stub = _Hub()
     monkeypatch.setattr(USER_GET_SYNC, stub.get)
     monkeypatch.setattr(USER_CREATE_SYNC, stub.create)
-    monkeypatch.setattr("mycelium.identity._hub_whoami", lambda _config: stub.whoami)
+    monkeypatch.setattr(
+        "mycelium.identity._hub_whoami",
+        lambda _config: WhoamiRead.from_dict(stub.whoami) if stub.whoami is not None else None,
+    )
     return stub
+
+
+def _health_read(*, enabled: bool = False, issuers: list[str] | None = None) -> dict[str, Any]:
+    """A hub's ``/health`` answer, with sign-in ``enabled`` against ``issuers``."""
+    return {
+        "status": "ok",
+        "service": "mycelium-backend",
+        "version": "0.0.0-test",
+        "auth": {
+            "enabled": enabled,
+            "issuers": issuers or [],
+            "localhost_bypass": False,
+            "audience": None,
+        },
+    }
 
 
 def _flat(text: str) -> str:
@@ -454,9 +480,9 @@ def test_a_hub_with_sign_in_off_keeps_working_while_a_stale_sessions_issuer_is_a
     monkeypatch.setattr(oidc.httpx, "post", down)
     asked: list[str] = []
 
-    def health(url: str, timeout: float = 3.0) -> httpx.Response:  # noqa: ARG001
+    def health(url: str, **_kw: Any) -> HubHealth:
         asked.append(url)
-        return httpx.Response(200, json={"status": "ok", "auth": {"enabled": False}})
+        return HubHealth(url=url, status_code=200, read=HealthRead.from_dict(_health_read()))
 
     monkeypatch.setattr("mycelium.hub_check.health", health)
 
@@ -475,7 +501,9 @@ def test_a_hub_that_cant_say_whether_it_needs_a_credential_is_unreachable(
         raise httpx.ConnectError("down")
 
     monkeypatch.setattr(oidc.httpx, "post", down)
-    monkeypatch.setattr("mycelium.hub_check.health", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "mycelium.hub_check.health", lambda url, **_k: HubHealth(url=url, error="down")
+    )
 
     with pytest.raises(client_mod.RenewalUnreachable):
         client_mod.auth_headers()
@@ -503,26 +531,21 @@ def test_an_expired_token_with_no_refresh_token_sends_nothing() -> None:
 
 
 def _health(monkeypatch: pytest.MonkeyPatch, payload: Any, *, boom: bool = False) -> list[str]:
-    """Stub the hub's ``/health`` — where login looks when it has no issuer.
+    """Stand in for the hub's ``/health`` — where login looks when it has no issuer.
 
-    ``_hub_issuers`` imports httpx inside the call, so the module object is what
-    has to be patched; it is the same one either way.
+    Returns the health URLs asked, without their query.
     """
     asked: list[str] = []
 
-    class _Resp:
-        def raise_for_status(self) -> None: ...
-
-        def json(self) -> Any:
-            return payload
-
-    def fake_get(url: str, timeout: float) -> _Resp:  # noqa: ARG001
-        asked.append(url)
+    def answer(request: httpx.Request) -> Any:
+        if not request.url.path.endswith("/health"):
+            return (404, {"detail": "Not Found"})
+        asked.append(str(request.url.copy_with(query=None)))
         if boom:
-            raise httpx.ConnectError("connection refused")
-        return _Resp()
+            raise httpx.ConnectError("connection refused", request=request)
+        return payload
 
-    monkeypatch.setattr(httpx, "get", fake_get)
+    install_stand_in_hub(monkeypatch).answer = answer
     return asked
 
 
@@ -677,7 +700,7 @@ def test_whoami_is_unchanged_when_logged_out() -> None:
 
 
 def _auth(*issuers: str, enabled: bool = True) -> dict[str, Any]:
-    return {"auth": {"enabled": enabled, "issuers": list(issuers)}}
+    return _health_read(enabled=enabled, issuers=list(issuers))
 
 
 def test_login_discovers_the_issuer_from_the_hub(

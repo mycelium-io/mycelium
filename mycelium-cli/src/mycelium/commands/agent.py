@@ -25,7 +25,7 @@ import json as json_module
 import logging
 import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any
 
 import typer
 import yaml
@@ -35,7 +35,7 @@ from rich.table import Table
 
 from mycelium import identity
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room, room_or_exit
-from mycelium.client import hub_client
+from mycelium.client import answered
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -44,6 +44,9 @@ from mycelium.filesystem import get_room_dir, read_memory
 from mycelium.integrations import AddOptions, Integration, get_adapter
 from mycelium.protocol import AGENT_ADAPTERS, AgentManifest
 from mycelium.text_input import takes_text
+
+if TYPE_CHECKING:
+    from mycelium_backend_client.models import AgentControlRead, MemoryRead
 
 app = typer.Typer(
     help=(
@@ -174,34 +177,23 @@ def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
     return _manifest_from_yaml(handle, content, str(path))
 
 
-def _memory_body(record: Any) -> str | None:
-    """The stored text of a memory record, whatever shape it arrived in.
+def _memory_body(record: MemoryRead) -> str | None:
+    """The stored text of a memory, wherever the backend put it.
 
     The text lands in one of three places depending on how the backend
-    serialized the memory, and the record is a typed ``MemoryRead`` from the get
-    endpoint or a raw JSON dict from the list endpoint (untyped in the generated
-    client): prefer the already-flattened ``content_text``, then a plain-string
-    ``value``, then the ``text`` inside a structured ``value``.
+    serialized the memory: prefer the already-flattened ``content_text``, then a
+    plain-string ``value``, then the ``text`` inside a structured ``value``.
     """
-
-    def field(name: str) -> Any:
-        if isinstance(record, dict):
-            return record.get(name)
-        return getattr(record, name, None)
-
-    content_text = field("content_text")
+    content_text = record.content_text
     if isinstance(content_text, str) and content_text:
         return content_text
 
-    value = field("value")
+    value = record.value
     if isinstance(value, str):
         return value or None
-    if hasattr(value, "to_dict"):
-        value = value.to_dict()
-    if isinstance(value, dict):
-        text = value.get("text")
-        if isinstance(text, str) and text:
-            return text
+    text = value.additional_properties.get("text")
+    if isinstance(text, str) and text:
+        return text
     return None
 
 
@@ -218,16 +210,14 @@ def _remote_memory_text(client: Any, room_name: str, key: str) -> str | None:
     from mycelium_backend_client.models import MemoryRead
 
     try:
-        result = get_api.sync(room_name=room_name, key=key, client=client)
+        result = answered(
+            get_api.sync_detailed(room_name=room_name, key=key, client=client), MemoryRead
+        )
     except UnexpectedStatus as exc:
-        # The spec doesn't declare this route's 404, so the generated client
-        # raises on it rather than answering ``None``. A 404 is "not there".
+        # A 404 is "not there".
         if exc.status_code == 404:
             return None
         raise
-    # Only ``MemoryRead`` carries a usable body (a 422 is ``HTTPValidationError``).
-    if not isinstance(result, MemoryRead):
-        return None
     return _memory_body(result)
 
 
@@ -267,13 +257,11 @@ def _delete_manifest(
     from mycelium_backend_client.errors import UnexpectedStatus
 
     with _typed_client(config, timeout=timeout) as client:
-        try:
-            delete_api.sync_detailed(room_name=room_name, key=manifest.memory_key, client=client)
-        except UnexpectedStatus as e:
-            # Already gone from the hub (the local mirror outlived it): the
-            # delete's goal is reached, so the mirror still goes below.
-            if e.status_code != 404:
-                raise
+        resp = delete_api.sync_detailed(room_name=room_name, key=manifest.memory_key, client=client)
+    # Already gone from the hub (the local mirror outlived it): the delete's
+    # goal is reached, so the mirror still goes below.
+    if resp.status_code >= 400 and resp.status_code != 404:  # noqa: PLR2004
+        raise UnexpectedStatus(resp.status_code, resp.content)
     local = get_room_dir(room_name) / f"{manifest.memory_key}.md"
     if local.exists():
         local.unlink()
@@ -287,15 +275,21 @@ def _is_resident(config: MyceliumConfig, room_name: str, handle: str) -> bool:
     caller falls back to the honest "not resident, queued" message rather than
     claiming liveness it can't confirm.
     """
+    from mycelium_backend_client.api.sessions import (
+        list_members_api_rooms_room_name_sessions_members_get as members_api,
+    )
+    from mycelium_backend_client.models import RoomPresenceRead
+
     try:
-        with hub_client(config, timeout=5.0) as client:
-            resp = client.get(f"/api/rooms/{room_name}/sessions/members")
-        resp.raise_for_status()
-        members = resp.json().get("members", [])
+        with _typed_client(config, timeout=5.0, raise_on_unexpected_status=False) as client:
+            resp = members_api.sync_detailed(room_name, client=client)
+        if not isinstance(resp.parsed, RoomPresenceRead):
+            return False
+        members = resp.parsed.members
     except Exception:
         return False
     norm = handle.lstrip("@").lower()
-    return any(str(m.get("handle", "")).lstrip("@").lower() == norm for m in members)
+    return any(m.handle.lstrip("@").lower() == norm for m in members)
 
 
 def _room_manifests(room_name: str, *, client: Any = None) -> list[AgentManifest]:
@@ -316,17 +310,14 @@ def _room_manifests(room_name: str, *, client: Any = None) -> list[AgentManifest
         list_memories_api_rooms_room_name_memory_get as list_api,
     )
 
-    entries = list_api.sync(room_name=room_name, client=client, prefix="agents/", limit=500)
-    if not isinstance(entries, list):
-        return []
-    # The list endpoint is untyped in the generated client: raw JSON records.
-    records = cast("list[dict[str, Any]]", [r for r in entries if isinstance(r, dict)])
+    records = answered(
+        list_api.sync_detailed(room_name=room_name, client=client, prefix="agents/", limit=500),
+        list,
+    )
 
     out: list[AgentManifest] = []
     for record in records:
-        key = record.get("key")
-        if not isinstance(key, str):
-            continue
+        key = record.key
         handle = key.removeprefix("agents/")
         if not handle or "/" in handle:
             continue
@@ -346,11 +337,9 @@ def load_owned_agents(*, owner: str) -> list[tuple[str, AgentManifest]]:
     owner = owner.strip().lstrip("@").lower()
     owned: list[tuple[str, AgentManifest]] = []
     with _typed_client(MyceliumConfig.load()) as client:
-        rooms = list_rooms_api.sync(client=client)
-        if not isinstance(rooms, list):
-            return owned
+        rooms = answered(list_rooms_api.sync_detailed(client=client), list)
         for room in rooms:
-            room_name = getattr(room, "name", None)
+            room_name = room.name
             if not room_name:
                 continue
             for m in _room_manifests(room_name, client=client):
@@ -435,13 +424,13 @@ def _write_manifest(
     )
     batch = MemoryBatchCreate(items=[item])
     with _typed_client(config, timeout=timeout) as client:
-        result = create_api.sync(room_name=room_name, client=client, body=batch)
+        result = answered(
+            create_api.sync_detailed(room_name=room_name, client=client, body=batch), list
+        )
 
     # Mirror locally: the hub operator's files stay a faithful copy of the room.
     room_dir = get_room_dir(room_name)
-    version = 1
-    if result and isinstance(result, list) and result:
-        version = getattr(result[0], "version", 1) or 1
+    version = (result[0].version or 1) if result else 1
     try:
         write_memory(
             room_dir,
@@ -730,24 +719,31 @@ def _create_a2a_agent(
         "created_by": handle_flag,
     }
 
-    with hub_client(config, timeout=30) as client:
-        resp = client.post(f"/api/rooms/{room_name}/a2a-agents", json=body)
+    from mycelium_backend_client.api.a2a import (
+        create_a2a_agent_api_rooms_room_name_a2a_agents_post as create_a2a_api,
+    )
+    from mycelium_backend_client.models import A2AAgentCreate, AgentRead
 
-    if resp.status_code != 201:
+    with _typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
+        resp = create_a2a_api.sync_detailed(
+            room_name, client=client, body=A2AAgentCreate.from_dict(body)
+        )
+
+    if resp.status_code != 201:  # noqa: PLR2004
         detail = ""
         try:
-            detail = resp.json().get("detail", "")
+            detail = json_module.loads(resp.content).get("detail", "")
         except ValueError:
-            detail = resp.text
+            detail = resp.content.decode(errors="replace")
         typer.secho(
             f"Could not register @{handle}: {detail or resp.status_code}", fg=typer.colors.RED
         )
         raise typer.Exit(1)
 
-    read = resp.json()
-    skills = ", ".join(read.get("a2a_skills") or []) or "(none advertised)"
-    console.print(f"[green]Created a2a agent[/green] @{read['handle']} in {room_name}")
-    console.print(f"  endpoint: {read.get('a2a_endpoint') or read.get('a2a_card')}")
+    read = answered(resp, AgentRead)
+    skills = ", ".join(read.a2a_skills or []) or "(none advertised)"
+    console.print(f"[green]Created a2a agent[/green] @{read.handle} in {room_name}")
+    console.print(f"  endpoint: {read.a2a_endpoint or read.a2a_card or None}")
     console.print(f"  skills:   {skills}")
 
 
@@ -935,22 +931,20 @@ def _pick_room(config: MyceliumConfig) -> str | None:
     from mycelium_backend_client.api.rooms import (
         list_rooms_api_rooms_get as list_api,
     )
-    from mycelium_backend_client.models import HTTPValidationError, RoomCreate
+    from mycelium_backend_client.models import RoomCreate, RoomRead
 
     rooms: list[str] = []
     try:
         with _typed_client(config) as client:
-            result = list_api.sync(client=client, limit=200)
-        if result and not isinstance(result, HTTPValidationError):
-            # Backend returns rooms created_at DESC (newest first); preserve
-            # that rather than re-sorting alphabetically (matches the
-            # dashboard's CREATED ordering). Dedupe, keep order.
-            seen: set[str] = set()
-            for r in result:
-                nm = str(r.to_dict().get("name") or "")
-                if nm and nm not in seen:
-                    seen.add(nm)
-                    rooms.append(nm)
+            result = answered(list_api.sync_detailed(client=client, limit=200), list)
+        # Backend returns rooms created_at DESC (newest first); preserve
+        # that rather than re-sorting alphabetically (matches the
+        # dashboard's CREATED ordering). Dedupe, keep order.
+        seen: set[str] = set()
+        for r in result:
+            if r.name and r.name not in seen:
+                seen.add(r.name)
+                rooms.append(r.name)
     except Exception as exc:  # noqa: BLE001 (backend optional/unreachable)
         console.print(f"[yellow]Could not list rooms ({exc}).[/yellow]")
 
@@ -985,7 +979,7 @@ def _pick_room(config: MyceliumConfig) -> str | None:
         return None
     try:
         with _typed_client(config) as client:
-            create_api.sync(client=client, body=RoomCreate(name=name))
+            answered(create_api.sync_detailed(client=client, body=RoomCreate(name=name)), RoomRead)
         console.print(f"[green]created room[/green] [bold]{name}[/bold]")
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Could not create room '{name}': {exc}[/red]")
@@ -1059,7 +1053,6 @@ def agent_invite(
         mycelium agent invite muse --room design
         mycelium agent invite muse --minutes 60
     """
-    from datetime import datetime
     from urllib.parse import urlparse
 
     config = MyceliumConfig.load()
@@ -1067,31 +1060,40 @@ def agent_invite(
     body: dict[str, object] = {"handle": handle.lstrip("@"), "ttl_minutes": minutes}
     if inviter:
         body["created_by"] = inviter
+    from mycelium_backend_client.api.joins import (
+        create_invite_api_rooms_room_name_invites_post as invite_api,
+    )
+    from mycelium_backend_client.models import InviteCreate, JoinRead
+
     try:
-        with hub_client(config, timeout=15) as client:
-            resp = client.post(f"/api/rooms/{room_name}/invites", json=body)
+        with _typed_client(config, timeout=15, raise_on_unexpected_status=False) as client:
+            resp = invite_api.sync_detailed(
+                room_name, client=client, body=InviteCreate.from_dict(body)
+            )
     except Exception as e:  # noqa: BLE001 - said plainly, not as a traceback
         print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
         return
-    if resp.status_code >= 400:
+    if resp.status_code >= 400:  # noqa: PLR2004
         try:
-            detail = resp.json().get("detail")
+            detail = json_module.loads(resp.content).get("detail")
         except ValueError:
-            detail = resp.text
+            detail = resp.content.decode(errors="replace")
         console.print(f"[red]✗[/red] No code for @{handle.lstrip('@')}: {detail}")
         raise typer.Exit(1)
-    invite = resp.json()
+    invite = answered(resp, JoinRead)
     hub_url = config.server.api_url.rstrip("/")
     # With its zone: the session reading it is often on a machine in another.
-    expires = datetime.fromisoformat(invite["expires_at"]).astimezone()
+    expires = invite.expires_at.astimezone()
     until = expires.strftime("%a %H:%M %Z" if minutes > 60 else "%H:%M %Z")
-    prompt = handoff_prompt(hub_url, room_name, invite["handle"], invite["code"], until)
+    prompt = handoff_prompt(hub_url, room_name, invite.handle, invite.code, until)
     if ctx.obj and ctx.obj.get("json"):
-        typer.echo(json_module.dumps({**invite, "hub": hub_url, "prompt": prompt}, indent=2))
+        typer.echo(
+            json_module.dumps({**invite.to_dict(), "hub": hub_url, "prompt": prompt}, indent=2)
+        )
         return
     console.print(
-        f"[green]✓[/green] Join code for @{invite['handle']} in {room_name}: "
-        f"[bold]{invite['code']}[/bold] [dim](works once, until {until})[/dim]"
+        f"[green]✓[/green] Join code for @{invite.handle} in {room_name}: "
+        f"[bold]{invite.code}[/bold] [dim](works once, until {until})[/dim]"
     )
     host = urlparse(hub_url).hostname or ""
     if host in ("localhost", "::1") or host.startswith("127."):
@@ -1279,7 +1281,11 @@ def agent_invoke(
         from mycelium_backend_client.api.messages import (
             send_message_api_rooms_room_name_messages_post as send_api,
         )
-        from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
+        from mycelium_backend_client.models import (
+            MessageCreate,
+            MessageCreateMessageType,
+            MessageRead,
+        )
 
         with _typed_client(config) as client:
             manifest = _load_manifest_remote(client, room_name, handle)
@@ -1298,7 +1304,9 @@ def agent_invoke(
                 message_type=MessageCreateMessageType.BROADCAST,
                 content=content,
             )
-            send_api.sync(room_name=room_name, client=client, body=body)
+            answered(
+                send_api.sync_detailed(room_name=room_name, client=client, body=body), MessageRead
+            )
 
         console.print(
             f"[green]Sent[/green] [dim]({sender_handle} → [/dim]"
@@ -1521,29 +1529,35 @@ def agent_rename(
     """
     import httpx
 
+    from mycelium_backend_client.api.agents import (
+        rename_agent_api_rooms_room_name_agents_handle_rename_post as rename_api,
+    )
+    from mycelium_backend_client.models import AgentRename, AgentRenameRead
+
     old, new = handle.lstrip("@"), new_handle.lstrip("@")
     try:
         config = MyceliumConfig.load()
-        with hub_client(config) as client:
-            resp = client.post(f"/api/rooms/{room}/agents/{old}/rename", json={"to": new, "by": by})
-        if resp.status_code >= 400:
+        body = AgentRename.from_dict({"to": new, "by": by})
+        with _typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
+            resp = rename_api.sync_detailed(str(room), old, client=client, body=body)
+        if resp.status_code >= 400:  # noqa: PLR2004
             try:
-                detail = resp.json().get("detail")
+                detail = json_module.loads(resp.content).get("detail")
             except ValueError:
-                detail = resp.text
+                detail = resp.content.decode(errors="replace")
             console.print(f"[red]Couldn't rename @{old}:[/red] {detail}")
             raise typer.Exit(1)
-        moved = resp.json()
+        moved = answered(resp, AgentRenameRead)
         if ctx.obj and ctx.obj.get("json"):
-            print(json_module.dumps(moved))
+            print(json_module.dumps(moved.to_dict()))
             return
-        if moved.get("pending"):
+        if moved.pending:
             console.print(
-                f"Waiting for approval on {moved['restart_runner']}. @{old} is renamed to "
+                f"Waiting for approval on {moved.restart_runner}. @{old} is renamed to "
                 f"@{new} and restarted once it's approved there; nothing changes until then."
             )
             return
-        rows = moved.get("rows") or []
+        rows = moved.rows or []
         console.print(f"[green]Renamed @{old} to @{new}[/green] in {room}.")
         if rows:
             console.print(
@@ -1573,7 +1587,7 @@ _NOT_RUNNING = "no machine is running it; its wakes are held"
 _PAUSE_WAIT_S = 30.0
 
 
-def _pause_outcomes(config: MyceliumConfig, done: list[dict]) -> dict[str, str]:
+def _pause_outcomes(config: MyceliumConfig, done: list[AgentControlRead]) -> dict[str, str]:
     """What each pause job did on its machine, keyed ``handle@room``.
 
     A pause holds the agent's wakes either way; this says whether its turn
@@ -1581,25 +1595,25 @@ def _pause_outcomes(config: MyceliumConfig, done: list[dict]) -> dict[str, str]:
     """
     import time
 
-    pending = {
-        f"{a['handle']}@{a['room']}": (a["runner"], a["job"])
-        for a in done
-        if a.get("runner") and a.get("job")
-    }
+    from mycelium_backend_client.api.runners import (
+        get_job_api_runners_runner_id_jobs_job_id_get as job_api,
+    )
+    from mycelium_backend_client.models import RunnerJobRead
+
+    pending = {f"{a.handle}@{a.room}": (a.runner, a.job) for a in done if a.runner and a.job}
     said: dict[str, str] = {}
     deadline = time.monotonic() + _PAUSE_WAIT_S
-    with hub_client(config) as client:
+    with _typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
         while pending and time.monotonic() < deadline:
             for key, (runner, job) in list(pending.items()):
-                resp = client.get(f"/api/runners/{runner}/jobs/{job}")
-                if resp.status_code >= 400:
+                read = job_api.sync_detailed(str(runner), str(job), client=client).parsed
+                if not isinstance(read, RunnerJobRead):
                     continue
-                read = resp.json()
-                if read.get("status") not in ("done", "failed"):
+                if read.status not in ("done", "failed"):
                     continue
-                result = read.get("result") or {}
-                if read.get("status") == "failed":
-                    said[key] = f"its machine couldn't interrupt it: {read.get('error')}"
+                result = read.result.additional_properties if read.result else {}
+                if read.status == "failed":
+                    said[key] = f"its machine couldn't interrupt it: {read.error or None}"
                 elif not result.get("interrupted"):
                     said[key] = "it was idle, so nothing was stopped; its wakes are held"
                 elif result.get("told"):
@@ -1639,38 +1653,66 @@ def _control(
     if not handle and not every:
         console.print(f"[red]Name an agent to {verb}, or pass --all for every agent you own.[/red]")
         raise typer.Exit(2)
+    from mycelium_backend_client.api.agents import (
+        pause_agent_api_rooms_room_name_agents_handle_pause_post as pause_api,
+    )
+    from mycelium_backend_client.api.agents import (
+        pause_mine_api_agents_pause_post as pause_mine_api,
+    )
+    from mycelium_backend_client.api.agents import (
+        resume_agent_api_rooms_room_name_agents_handle_resume_post as resume_api,
+    )
+    from mycelium_backend_client.api.agents import (
+        resume_mine_api_agents_resume_post as resume_mine_api,
+    )
+    from mycelium_backend_client.api.agents import (
+        stop_agent_api_rooms_room_name_agents_handle_stop_post as stop_api,
+    )
+    from mycelium_backend_client.models import (
+        AgentControl,
+        AgentControlRead,
+        AgentsControl,
+        AgentsControlRead,
+    )
+
     try:
         config = MyceliumConfig.load()
-        with hub_client(config) as client:
+        with _typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
             if every:
-                resp = client.post(f"/api/agents/{verb}", json={"by": by, "room": room})
+                mine_api = {"pause": pause_mine_api, "resume": resume_mine_api}[verb]
+                resp = mine_api.sync_detailed(
+                    client=client, body=AgentsControl.from_dict({"by": by, "room": room})
+                )
             else:
                 name = (handle or "").lstrip("@")
                 where = _resolve_room(config, room)
-                resp = client.post(f"/api/rooms/{where}/agents/{name}/{verb}", json={"by": by})
-        if resp.status_code >= 400:
+                one_api = {"pause": pause_api, "resume": resume_api, "stop": stop_api}[verb]
+                resp = one_api.sync_detailed(
+                    where, name, client=client, body=AgentControl.from_dict({"by": by})
+                )
+        if resp.status_code >= 400:  # noqa: PLR2004
             try:
-                detail = resp.json().get("detail")
+                detail = json_module.loads(resp.content).get("detail")
             except ValueError:
-                detail = resp.text
+                detail = resp.content.decode(errors="replace")
             console.print(f"[red]Couldn't {verb} {handle or 'your agents'}:[/red] {detail}")
             raise typer.Exit(1)
-        body = resp.json()
+        body = answered(resp, AgentsControlRead if every else AgentControlRead)
         if ctx.obj and ctx.obj.get("json"):
-            print(json_module.dumps(body))
+            print(json_module.dumps(body.to_dict()))
             return
-        done = body.get("agents", [body]) if every else [body]
+        done = (body.agents or []) if isinstance(body, AgentsControlRead) else [body]
         if not done:
             console.print(f"Nothing to {verb}: you own no agents{f' in {room}' if room else ''}.")
             return
         outcomes = _pause_outcomes(config, done) if verb == "pause" else {}
         for agent in done:
-            line = f"[green]{_CONTROL_DONE[verb]}[/green] @{agent['handle']} in {agent['room']}"
+            line = f"[green]{_CONTROL_DONE[verb]}[/green] @{agent.handle} in {agent.room}"
             if verb == "pause":
-                line += f" ({outcomes.get(agent['handle'] + '@' + agent['room'], _NOT_RUNNING)})"
+                line += f" ({outcomes.get(agent.handle + '@' + agent.room, _NOT_RUNNING)})"
             console.print(line)
         if verb == "pause":
-            again = "--all" if every else f"{handle} --room {done[0]['room']}"
+            again = "--all" if every else f"{handle} --room {done[0].room}"
             console.print(f"Resume with `mycelium agent resume {again}`.")
     except typer.Exit:
         raise
