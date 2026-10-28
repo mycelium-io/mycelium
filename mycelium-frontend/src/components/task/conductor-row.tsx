@@ -21,6 +21,7 @@ import {
 import { MessageBody } from "@/components/message-body";
 import { MemoryKeyLink } from "@/components/markdown-content";
 import { SatisfactionBars } from "@/components/task/satisfaction-bars";
+import { AgentCardHover } from "@/components/agent-card";
 
 interface Props {
   line: ConductorLine;
@@ -31,8 +32,15 @@ interface Props {
   members?: string[];
 }
 
+/** A member named on the line, which opens its card on hover or focus. */
 function Handle({ children }: { children: string }) {
-  return <span className="font-medium text-text">{children}</span>;
+  return (
+    <AgentCardHover handle={children}>
+      <span tabIndex={0} className="rounded font-medium text-text outline-none hover:underline focus-visible:underline">
+        {children}
+      </span>
+    </AgentCardHover>
+  );
 }
 
 /** Where a run saved what it settled to, as a link to the memory, or that it

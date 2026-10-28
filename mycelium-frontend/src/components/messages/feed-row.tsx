@@ -37,6 +37,7 @@ import { RawMessageDialog } from "@/components/raw-message-dialog";
 import { SenderName } from "@/components/sender-name";
 import { VerifierLines } from "@/components/verifier-line";
 import { ConductorRow } from "@/components/task/conductor-row";
+import { AgentCardHover } from "@/components/agent-card";
 import { ReplyValues, type ReplyContext } from "@/components/task/reply-values";
 import { conductorLineOf, type PickRecord, type RunProgress } from "@/lib/conductor-line";
 import { RunDoneLine, RunStartLine } from "@/components/messages/run-line";
@@ -694,7 +695,7 @@ export function MessageRow({
       >
         <div className="w-6 flex-shrink-0">
           {!grouped && (
-            <Tooltip content={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
+            <AgentCardHover room={roomName} handle={ev.sender}>
               <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
                 <Monogram
                   handle={ev.sender}
@@ -703,17 +704,25 @@ export function MessageRow({
                   kind={engineHandles.has(ev.sender) ? "engine" : isAgent ? "agent" : "person"}
                 />
               </span>
-            </Tooltip>
+            </AgentCardHover>
           )}
         </div>
         <div className="min-w-0 flex-1">
           {!grouped && (
             <div className="flex items-center gap-1.5 pr-12">
-              <SenderName
-                handle={ev.sender}
-                highlight={hit}
-                tag={isAgent ? (agentTags.get(ev.sender) ?? "agent") : undefined}
-              />
+              {/* The name takes focus, so its card opens from the keyboard too. */}
+              <AgentCardHover room={roomName} handle={ev.sender}>
+                <span
+                  tabIndex={0}
+                  className="flex min-w-0 items-center gap-1.5 rounded outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                >
+                  <SenderName
+                    handle={ev.sender}
+                    highlight={hit}
+                    tag={isAgent ? (agentTags.get(ev.sender) ?? "agent") : undefined}
+                  />
+                </span>
+              </AgentCardHover>
               {ev.recipient && (
                 <span className="flex-shrink-0 rounded bg-hairline px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
                   → {ev.recipient}

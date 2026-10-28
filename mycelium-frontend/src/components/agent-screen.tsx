@@ -150,48 +150,47 @@ function Screen({ text, error }: { text: string | null; error: string | null }) 
   );
 }
 
-/** How many of a screen's last lines a peek shows. */
-const PEEK_LINES = 6;
+/** How many of a screen's last lines a member's card shows. */
+const CARD_LINES = 5;
 
 /**
- * The last few lines of an agent's terminal, live, for a hover over its @ tag:
- * the same read the drawer makes, while the peek is up. Nothing at all where
- * the drawer would show a note instead (outside the app, or an agent that
- * doesn't run here), so a hover never says more than the tag does.
+ * The last few lines of an agent's terminal, live, for its card: the same
+ * local read the drawer makes, while the card is up. Nothing at all where the
+ * drawer would show a note instead (outside the app, or an agent that doesn't
+ * run on this machine), so someone else's agent never shows a screen. A click
+ * opens the drawer.
  */
-export function AgentPeek({ room, handle }: { room: string; handle: string }) {
+export function ScreenLines({ room, handle, onOpen }: { room: string; handle: string; onOpen?: () => void }) {
   const desktop = useIsDesktop();
   const screen = useAgentScreen(desktop ? { room, handle } : null);
   const lines = useMemo(() => {
     const all = screen.text ? parseAnsi(screen.text) : [];
     const used = all.filter((runs) => runs.some((r) => r.text.trim()));
-    return used.slice(-PEEK_LINES);
+    return used.slice(-CARD_LINES);
   }, [screen.text]);
   const shows = desktop && !screen.unasked && !screen.notHere && lines.length > 0;
-  const card = useRef<HTMLSpanElement | null>(null);
-  const surface = useSurface(card, shows);
+  const box = useRef<HTMLButtonElement | null>(null);
+  const surface = useSurface(box, shows);
   if (!shows) return null;
   return (
-    <span
-      ref={card}
-      className="block w-[28rem] max-w-[80vw] rounded-md border border-border bg-surface p-2 text-left text-text shadow-lg"
+    <button
+      ref={box}
+      type="button"
+      onClick={onOpen}
+      aria-label={`Open @${handle}'s terminal`}
+      data-testid="agent-card-screen"
+      className="block w-full overflow-hidden rounded-md border border-border bg-bg px-2.5 py-2 text-left font-mono text-[11px] leading-[1.45] text-text transition-colors hover:border-border2"
     >
-      <span className="block overflow-hidden font-mono text-[11px] leading-snug text-text">
-        {lines.map((runs, i) => (
-          <span key={i} className="block truncate whitespace-pre">
-            {runs.map((r, j) => (
-              <span key={j} style={cssOf(r.style, surface)}>
-                {r.text}
-              </span>
-            ))}
-          </span>
-        ))}
-      </span>
-      <span className="mt-1.5 flex items-center justify-between gap-3 text-[11px] text-faint">
-        <span>Click to open its terminal</span>
-        <span>Streamed from this machine</span>
-      </span>
-    </span>
+      {lines.map((runs, i) => (
+        <span key={i} className="block truncate whitespace-pre">
+          {runs.map((r, j) => (
+            <span key={j} style={cssOf(r.style, surface)}>
+              {r.text}
+            </span>
+          ))}
+        </span>
+      ))}
+    </button>
   );
 }
 

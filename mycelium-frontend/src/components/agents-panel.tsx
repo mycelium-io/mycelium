@@ -35,7 +35,6 @@ import {
   removeRoomPerson,
   type AgentControlVerb,
   type AgentPause,
-  type JoinedVia,
   type PresenceMember,
   type RoomFloor,
   type RoomSubscription,
@@ -49,8 +48,8 @@ import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unreg
 import { RenameAgentDialog } from "@/components/rename-agent-dialog";
 import { AgentScreenDrawer } from "@/components/agent-screen";
 import { Button } from "@/components/ui/button";
-import { Monogram, type AvatarKind } from "@/components/ui/monogram";
-import { HerdrRam } from "@/components/ui/herdr-ram";
+import { Monogram } from "@/components/ui/monogram";
+import { AgentCardHover } from "@/components/agent-card";
 import { EmptyState } from "@/components/empty-state";
 import { FadeScroll } from "@/components/ui/fade-scroll";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -74,8 +73,8 @@ interface Props {
 }
 
 /**
- * A member's right-click menu. It wraps the row's tooltip in an element that
- * draws no box (`contents`), since the tooltip already owns the row as its
+ * A member's right-click menu. It wraps the row's card in an element that
+ * draws no box (`contents`), since the card already owns the row as its
  * trigger; a right-click on the row still bubbles here.
  */
 function MemberMenu({
@@ -177,36 +176,6 @@ function MemberMenu({
   );
 }
 
-/** Minute-granular relative age; null under a minute (an actively-polling lease
- *  reads plainly as "awaiting" rather than churning a seconds counter). */
-function relativeTime(iso: string): string | null {
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (mins < 1) return null;
-  if (mins < 60) return `${mins}m ago`;
-  return `${Math.floor(mins / 60)}h ago`;
-}
-
-/** One label/value line in a member card. Rendered only when it has a value. */
-function DetailRow({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value?: React.ReactNode;
-  color?: string;
-}) {
-  if (value == null || value === "") return null;
-  return (
-    <div className="flex gap-2 text-micro leading-relaxed">
-      <span className="w-16 shrink-0 whitespace-nowrap text-faint">{label}</span>
-      <span className="min-w-0 flex-1 break-words" style={color ? { color } : undefined}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
 /** Per-herdr-state accent for the roster's activity line, so the palette isn't
  *  uniformly cold: working reads warm, blocked hot, done green, idle muted. */
 const HERDR_STATE_COLOR: Record<string, string> = {
@@ -220,78 +189,6 @@ const HERDR_STATE_COLOR: Record<string, string> = {
  *  known herdr state). */
 function isHerdr(member: PresenceMember): boolean {
   return member.kind === "herdr" || (!!member.status && member.status in HERDR_STATE_COLOR);
-}
-
-/** How a member is hosted, in words — the honest expansion of the presence kind. */
-function hostingLabel(member: PresenceMember): string {
-  if (isHerdr(member)) return "herdr pane (not joined)";
-  return member.kind === "slim" ? "SLIM socket" : "server-held await lease";
-}
-
-/** The presence half of a member card: how it's hosted, its live state and
- *  current task, any queued wake, and when it was last seen — the detail behind
- *  the compact row's halo. */
-function presenceDetail(member?: PresenceMember): React.ReactNode {
-  if (!member) return null;
-  const age = member.last_seen ? relativeTime(member.last_seen) : null;
-  const stateColor = HERDR_STATE_COLOR[member.status ?? ""];
-  return (
-    <>
-      <DetailRow label="hosting" value={hostingLabel(member)} />
-      <DetailRow label="state" value={member.status ?? undefined} color={stateColor} />
-      <DetailRow label="task" value={member.title?.trim() || undefined} />
-      <DetailRow
-        label="wake"
-        value={member.wake_pending ? "queued, held until idle" : undefined}
-        color="var(--accent)"
-      />
-      <DetailRow
-        label="last seen"
-        value={member.kind === "slim" ? "now (live socket)" : (age ?? "awaiting")}
-      />
-    </>
-  );
-}
-
-/** The hover card shown for any roster row: a monogram header plus a detail list
- *  (identity rows the caller passes + the shared presence rows). */
-function MemberTooltipCard({
-  handle,
-  color,
-  kind,
-  presence,
-  children,
-}: {
-  handle: string;
-  color?: string;
-  kind?: AvatarKind;
-  presence?: PresenceMember;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <Monogram
-          handle={handle}
-          color={color}
-          kind={kind}
-          className="size-6"
-          presence={presence?.kind}
-          status={presence?.status}
-          wakePending={presence?.wake_pending}
-          mutePresence
-        />
-        <span className="text-label font-semibold text-text">@{handle}</span>
-        {presence && isHerdr(presence) && (
-          <HerdrRam className="size-3 opacity-70" style={{ color: "var(--accent)" }} />
-        )}
-      </div>
-      <div className="flex flex-col gap-0.5">
-        {children}
-        {presenceDetail(presence)}
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -671,14 +568,6 @@ const META_COLUMN = "min-w-0 flex-1 truncate text-micro text-faint";
 type AgentSummary = ReturnType<typeof useRoomRoster>["agents"][number];
 type RosterPerson = ReturnType<typeof useRoomRoster>["people"][number];
 
-/** How someone joined, said in the person's card. */
-const JOINED_VIA: Record<JoinedVia, string> = {
-  created: "made the room",
-  added: "added",
-  message: "posted here",
-  seeded: "before rooms kept a list",
-};
-
 /** One handle in Others: present or holding a task, but neither a person nor an
  *  agent in this room. Quieter than a member row, and nothing to manage. */
 function OtherRow({
@@ -694,17 +583,9 @@ function OtherRow({
 }) {
   const why = [o.present && "here now", o.holds_task && "holds a task"].filter(Boolean).join(" · ");
   return (
-    <Tooltip
-      side="left"
-      className="w-72 max-w-72 p-3"
-      content={
-        <MemberTooltipCard handle={o.handle} color="var(--avatar-neutral)" presence={memberPresence}>
-          <DetailRow label="why listed" value={why} />
-          <DetailRow label="not" value="a person or an agent registered in this room" />
-        </MemberTooltipCard>
-      }
-    >
+    <AgentCardHover handle={o.handle} side="left">
       <div
+        tabIndex={0}
         ref={rowRef}
         className={`flex h-7 items-center gap-2 px-3 transition-colors hover:bg-hairline ${
           marked ? "bg-accent/15" : ""
@@ -716,12 +597,12 @@ function OtherRow({
         </span>
         <span className={META_COLUMN}>{why}</span>
       </div>
-    </Tooltip>
+    </AgentCardHover>
   );
 }
 
-/** One person, one line, at the agent rows' density. How they joined, what
- *  they own and their teams live in the hover tooltip. */
+/** One person, one line, at the agent rows' density. More about them is in
+ *  their card (`AgentCardHover`). */
 function PersonRow({
   person: p,
   memberPresence,
@@ -748,43 +629,32 @@ function PersonRow({
           ? "awaiting"
           : null;
   return (
-    <Tooltip
-      side="left"
-      className="w-72 max-w-72 p-3"
-      content={
-        <MemberTooltipCard handle={p.handle} color="var(--avatar-neutral)" presence={memberPresence}>
-          <DetailRow label="floor" value={floor ? floorLabel(p.handle, floor) : undefined} color="var(--accent)" />
-          <DetailRow label="joined" value={JOINED_VIA[p.via]} />
-          <DetailRow label="owns" value={p.owns ? "agents here" : undefined} />
-          <DetailRow label="teams" value={p.teams.length > 0 ? p.teams.join(", ") : undefined} />
-          {p.you && <DetailRow label="you" value="acting as this handle" color="var(--accent)" />}
-        </MemberTooltipCard>
-      }
-    >
+    <AgentCardHover handle={p.handle} side="left">
       <div
+        tabIndex={0}
         ref={rowRef}
         className={`flex h-7 items-center gap-2 px-3 transition-colors hover:bg-hairline ${
           marked ? "bg-accent/15" : ""
         }`}
       >
         <Monogram handle={p.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
-        {/* Their name when they gave one (the handle is in the tooltip), and
+        {/* Their name when they gave one (the handle is in the card), and
             whether it's you, in the name column. */}
         <span className={NAME_COLUMN}>
           <span className="truncate text-label text-text">{name ?? `@${p.handle}`}</span>
           {p.you && <span className="flex-shrink-0 text-micro font-medium text-accent">you</span>}
         </span>
         {/* The floor's label names a task, which can be long: it is what gives
-            way, never the name (the tooltip carries it whole). */}
+            way, never the name (the card carries it whole). */}
         {meta && <span className={META_COLUMN}>{meta}</span>}
       </div>
-    </Tooltip>
+    </AgentCardHover>
   );
 }
 
 /** The one terse thing to show at the end of a compact row: what an engine is,
  *  or how present a worker is. The avatar halo already carries live/awaiting, so
- *  this stays short — the full story is in the row's hover tooltip. */
+ *  this stays short — the full story is in the row's card. */
 function rowMeta(
   a: AgentSummary,
   presence?: PresenceMember,
@@ -796,7 +666,9 @@ function rowMeta(
   if (floor) return floorLabel(a.handle, floor);
   if (a.adapter === "engine") return a.kind ?? "engine";
   if (a.adapter === "a2a") return null; // the a2a badge already labels it
-  if (presence && isHerdr(presence)) return presence.status ?? "alive";
+  // An agent that can't reply needs a person, whatever else it's doing; its card says why.
+  if (presence?.can_reply === false) return "can't reply";
+  if (presence && isHerdr(presence)) return presence.status === "blocked" ? "waiting for input" : (presence.status ?? "alive");
   if (presence?.kind === "slim") return "live";
   if (presence?.kind === "lease") return "awaiting";
   if (machine) return `on ${machine}`;
@@ -808,8 +680,7 @@ function rowMeta(
  * not a stack of cards: a small avatar, the handle, and a terse status in a
  * column that starts at the same place on every row. The owner is hoisted to the group header (nearly every agent in a room
  * shares one), so a row only tags an owner when it breaks from the group's; the
- * description and full owner/team live in the hover tooltip rather than on every
- * row.
+ * description and full owner live in its card rather than on every row.
  */
 function AgentRow({
   agent: a,
@@ -845,53 +716,13 @@ function AgentRow({
   // A pause says why it isn't answering, which beats what it was doing.
   const meta = paused ? "paused" : rowMeta(a, memberPresence, floor, machine);
   const oddOwner = a.owner && a.owner !== groupOwner ? a.owner : null;
-  const adapter = a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter;
-  const cli = a.adapter === "engine" || a.adapter === "a2a" ? undefined : (a.framework ?? undefined);
   return (
-    <Tooltip
-      side="left"
-      className="w-72 max-w-72 p-3"
-      content={
-        <MemberTooltipCard handle={a.handle} kind={a.adapter === "engine" ? "engine" : "agent"} presence={memberPresence}>
-          <DetailRow
-            label="paused"
-            value={paused ? `by @${paused.by}; its wakes wait for a resume` : undefined}
-            color="var(--yellow)"
-          />
-          <DetailRow label="floor" value={floor ? floorLabel(a.handle, floor) : undefined} color="var(--accent)" />
-          <DetailRow label="owner" value={a.owner ? `@${a.owner}` : undefined} />
-          <DetailRow label="team" value={a.team ?? undefined} />
-          <DetailRow label="runs" value={cli} />
-          <DetailRow label="adapter" value={adapter} />
-          <DetailRow label="machine" value={machine ?? undefined} />
-          <DetailRow
-            label="schedules"
-            value={schedules ? `${schedules} (see Schedules, under the room)` : undefined}
-          />
-          <DetailRow
-            label="subscribed"
-            value={
-              subscriptions?.length ? (
-                <span className="flex flex-col">
-                  {subscriptions.map((s) => (
-                    <span key={s.id}>{s.describe}</span>
-                  ))}
-                </span>
-              ) : undefined
-            }
-          />
-          <DetailRow
-            label="skills"
-            value={a.adapter === "a2a" && a.a2a_skills?.length ? a.a2a_skills.join(", ") : undefined}
-          />
-          <DetailRow label="about" value={a.description} />
-        </MemberTooltipCard>
-      }
-    >
+    <AgentCardHover handle={a.handle} side="left">
       <div
         ref={rowRef}
         role={onOpen ? "button" : undefined}
-        tabIndex={onOpen ? 0 : undefined}
+        // Focusable either way: focus opens its card.
+        tabIndex={0}
         aria-label={onOpen ? `Watch @${a.handle}'s terminal` : undefined}
         onClick={onOpen}
         onKeyDown={onOpen ? (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen()) : undefined}
@@ -910,13 +741,15 @@ function AgentRow({
             />
           )}
           {/* Subscribed to something: woken when it happens, without being
-              asked. What it subscribed to is in the hover card. */}
+              asked. What it subscribed to is in the icon's tooltip. */}
           {subscriptions?.length ? (
-            <Eye
-              aria-label={`subscribed to ${subscriptions.length} thing${subscriptions.length === 1 ? "" : "s"}`}
-              className="size-3 shrink-0 text-faint"
-              strokeWidth={2}
-            />
+            <Tooltip content={subscriptions.map((s) => s.describe).join("\n")} className="whitespace-pre-line">
+              <Eye
+                aria-label={`subscribed to ${subscriptions.length} thing${subscriptions.length === 1 ? "" : "s"}`}
+                className="size-3 shrink-0 text-faint"
+                strokeWidth={2}
+              />
+            </Tooltip>
           ) : null}
           {a.adapter === "a2a" && (
             <span className="inline-flex flex-shrink-0 items-center rounded border border-accent/30 bg-accent-soft/40 px-1 text-[9px] font-medium leading-tight text-accent">
@@ -930,7 +763,7 @@ function AgentRow({
           <span className={META_COLUMN}>{[oddOwner && `@${oddOwner}`, meta].filter(Boolean).join(" · ")}</span>
         )}
       </div>
-    </Tooltip>
+    </AgentCardHover>
   );
 }
 

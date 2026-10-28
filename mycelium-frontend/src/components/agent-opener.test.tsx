@@ -5,7 +5,7 @@
 // Members does; an engine's, an A2A member's and a person's stay plain, and so
 // does every tag outside a room.
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/room-data", () => ({
@@ -23,10 +23,15 @@ vi.mock("@/components/agent-screen", () => ({
       {handle} on {runner}
     </div>
   ),
-  AgentPeek: ({ room, handle }: { room: string; handle: string }) => (
-    <span data-testid="peek">
-      {handle} in {room}
-    </span>
+}));
+vi.mock("@/components/agent-card", () => ({
+  AgentCardHover: ({ room, handle, children }: { room: string; handle: string; children: React.ReactNode }) => (
+    <>
+      <span data-testid="card-for">
+        {handle} in {room}
+      </span>
+      {children}
+    </>
   ),
 }));
 
@@ -59,35 +64,9 @@ describe("an agent's @ tag", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("shows its terminal's last lines after resting on it, and hides them on leaving", () => {
-    vi.useFakeTimers();
-    try {
-      inRoom(<AgentTag handle="builder" />);
-      const tag = screen.getByRole("button", { name: "Open @builder" });
-      fireEvent.pointerEnter(tag);
-      expect(screen.queryByTestId("peek")).toBeNull();
-      act(() => vi.advanceTimersByTime(400));
-      expect(screen.getByTestId("peek").textContent).toBe("builder in checkout");
-      fireEvent.pointerLeave(tag);
-      expect(screen.queryByTestId("peek")).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("shows no peek when the pointer only passes over it", () => {
-    vi.useFakeTimers();
-    try {
-      inRoom(<AgentTag handle="builder" />);
-      const tag = screen.getByRole("button", { name: "Open @builder" });
-      fireEvent.pointerEnter(tag);
-      act(() => vi.advanceTimersByTime(100));
-      fireEvent.pointerLeave(tag);
-      act(() => vi.advanceTimersByTime(1000));
-      expect(screen.queryByTestId("peek")).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+  it("opens the agent's card, for this room, on resting on it", () => {
+    inRoom(<AgentTag handle="builder" />);
+    expect(screen.getByTestId("card-for").textContent).toBe("builder in checkout");
   });
 
   it("doesn't pass its click on to the row around it", () => {

@@ -10,6 +10,7 @@ import { useCurrentUser } from "@/components/current-user";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Kbd } from "@/components/ui/kbd";
 import { Monogram } from "@/components/ui/monogram";
+import { AgentCardHover } from "@/components/agent-card";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { shortAge } from "@/components/activity-rail";
 import { NowProvider, useNow } from "@/lib/relative-time";
@@ -295,7 +296,11 @@ function Row({
         {lead ?? <span className="w-3 flex-shrink-0" />}
         <span className="flex w-4 flex-shrink-0 justify-center">
           {who ? (
-            <Monogram handle={avatar ?? who} className="size-4 text-[8px]" kind={agent ? "agent" : "person"} />
+            <AgentCardHover handle={avatar ?? who}>
+              <span className="flex">
+                <Monogram handle={avatar ?? who} className="size-4 text-[8px]" kind={agent ? "agent" : "person"} />
+              </span>
+            </AgentCardHover>
           ) : (
             <span aria-hidden className="size-3.5 rounded-full border border-dashed border-border2" />
           )}
@@ -314,9 +319,17 @@ function Row({
           <Dot tone={standing.tone} />
           <span className="hidden truncate @[30rem]:inline">{standing.word}</span>
         </span>
-        <span className="hidden w-20 flex-shrink-0 truncate text-muted-foreground @[30rem]:inline">
-          {who ?? "nobody yet"}
-        </span>
+        {/* Who has it opens their card. The row is a button, so focus is the
+            row's: from the keyboard, the card is a hover away in Members. */}
+        {who ? (
+          <AgentCardHover handle={avatar ?? who}>
+            <span className="hidden w-20 flex-shrink-0 truncate text-muted-foreground hover:text-text @[30rem]:inline">
+              {who}
+            </span>
+          </AgentCardHover>
+        ) : (
+          <span className="hidden w-20 flex-shrink-0 truncate text-muted-foreground @[30rem]:inline">nobody yet</span>
+        )}
         <span
           className={cn("tabular w-14 flex-shrink-0 text-right", quiet ? "text-yellow" : "text-faint")}
           title={ageTitle}

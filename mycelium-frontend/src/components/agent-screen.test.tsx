@@ -5,7 +5,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Runner } from "@/lib/api";
 import { renderWithSWR } from "@/test/swr";
-import { AgentPeek, AgentScreen, STREAMED_LOCALLY } from "./agent-screen";
+import { AgentScreen, STREAMED_LOCALLY, ScreenLines } from "./agent-screen";
 
 let runners: Runner[] = [];
 vi.mock("@/lib/runners", async (importOriginal) => ({
@@ -199,23 +199,25 @@ describe("an agent's terminal", () => {
   });
 });
 
-describe("a peek at an agent's terminal", () => {
-  it("shows its last lines when it runs here", async () => {
+describe("the screen lines on an agent's card", () => {
+  it("shows its last lines when it runs here, and opens its terminal on a click", async () => {
     inTheApp();
-    renderWithSWR(<AgentPeek room="checkout" handle="builder" />);
+    const onOpen = vi.fn();
+    renderWithSWR(<ScreenLines room="checkout" handle="builder" onOpen={onOpen} />);
     expect(await screen.findByText("● Reading src/payments.ts")).toBeInTheDocument();
-    expect(screen.getByText("Streamed from this machine")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open @builder's terminal" }));
+    expect(onOpen).toHaveBeenCalled();
   });
 
-  it("shows nothing where the drawer would only have a note", async () => {
+  it("shows nothing for an agent that isn't on this machine", async () => {
     inTheApp();
-    const { container } = renderWithSWR(<AgentPeek room="checkout" handle="api" />);
+    const { container } = renderWithSWR(<ScreenLines room="checkout" handle="api" />);
     await vi.waitFor(() => expect(calls).toContainEqual(["agent_screen", { room: "checkout", handle: "api" }]));
     expect(container).toBeEmptyDOMElement();
   });
 
   it("shows nothing outside the app, and asks it nothing", () => {
-    const { container } = renderWithSWR(<AgentPeek room="checkout" handle="builder" />);
+    const { container } = renderWithSWR(<ScreenLines room="checkout" handle="builder" />);
     expect(container).toBeEmptyDOMElement();
     expect(calls).toEqual([]);
   });
