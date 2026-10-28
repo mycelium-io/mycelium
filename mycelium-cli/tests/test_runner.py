@@ -435,6 +435,65 @@ def test_a_hub_that_refuses_this_machine_is_said_as_a_sign_in_and_clears_on_one(
     assert (r.connected, r.signed_out) == (True, False)
 
 
+def _answering_first(
+    monkeypatch: pytest.MonkeyPatch, hub: Hub, method: str, path: str, answer: httpx.Response
+) -> None:
+    """The hub answers ``method path`` with ``answer`` once, then as before."""
+    pending = [answer]
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if pending and request.method == method and request.url.path == path:
+            hub.seen.append((request.method, request.url.path, None))
+            return pending.pop()
+        return hub.handler(request)
+
+    install_stand_in_hub(monkeypatch).answer = handle
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        # A hub a version newer: a field this runner doesn't know, and an
+        # optional one it no longer sends.
+        {"id": "julias-mbp-ab12", "label": "x", "connected": True, "last_seen": _AT,
+         "started_at": _AT, "seen_from": "10.0.0.2"},
+        # A hub whose answer this runner's model can't read at all.
+        {"connected": "maybe", "unexpected": []},
+    ],
+    ids=["newer", "unreadable"],
+)  # fmt: skip
+def test_a_hello_the_hub_takes_is_connected_whatever_its_answer_says(
+    make_runner, hub: Hub, monkeypatch: pytest.MonkeyPatch, answer: dict
+):
+    r = make_runner()
+    _answering_first(monkeypatch, hub, "POST", "/api/runners", httpx.Response(200, json=answer))
+    assert r.hello() is True
+    assert r.connected is True
+
+
+@pytest.mark.parametrize(
+    "job",
+    [
+        # A field this runner doesn't know, and an optional one not sent.
+        {"id": "j9", "runner": "julias-mbp-ab12", "kind": "scan", "created_at": _AT,
+         "updated_at": _AT, "priority": "high"},
+        # A record this runner's model can't read at all (no stamps).
+        {"id": "j9", "kind": "scan", "spec": {}},
+    ],
+    ids=["newer", "unreadable"],
+)  # fmt: skip
+def test_a_job_shaped_by_another_hub_is_taken_not_lost(
+    make_runner, hub: Hub, monkeypatch: pytest.MonkeyPatch, job: dict
+):
+    """The hub hands a job out when it's polled, so one this runner's model
+    wouldn't read must still be taken: here it's run and reported done."""
+    r = make_runner()
+    path = "/api/runners/julias-mbp-ab12/jobs/next"
+    _answering_first(monkeypatch, hub, "GET", path, httpx.Response(200, json=job))
+    assert r.poll_once() is True
+    assert [b["status"] for b in hub.of("PATCH", "/jobs/j9")] == ["done"]
+
+
 def test_the_runner_writes_down_whether_the_hub_hears_it(make_runner, hub: Hub):
     """What `runner status` and doctor read, whoever asks."""
     r = make_runner()

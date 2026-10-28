@@ -64,7 +64,7 @@ from rich.console import Console
 from mycelium import __version__, agent_credentials
 from mycelium import machine as this_machine
 from mycelium.agent_credentials import MemberTokenRefused, agent_token_env, member_token_path
-from mycelium.client import answered, typed_client
+from mycelium.client import sent_unparsed, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations import agents
@@ -110,12 +110,9 @@ from mycelium_backend_client.errors import UnexpectedStatus
 from mycelium_backend_client.models import (
     JoinCreate,
     JoinRead,
-    MemoryRead,
     RunnerHello,
-    RunnerJobRead,
     RunnerJobReport,
     RunnerJobReportStatus,
-    RunnerRead,
     WhoamiRead,
 )
 
@@ -696,12 +693,19 @@ class Runner:
         report = RunnerJobReport(status=RunnerJobReportStatus.RUNNING, result=None, error=None)
         try:
             with self._hub(timeout=15) as client:
-                resp = report_api.sync_detailed(self.id, job_id, client=client, body=report)
-            job = answered(resp, RunnerJobRead)
-        except (httpx.HTTPError, UnexpectedStatus, ValueError, KeyError, TypeError) as e:
+                resp = sent_unparsed(report_api, client, self.id, job_id, body=report)
+            if resp.status_code >= 400:  # noqa: PLR2004
+                raise UnexpectedStatus(resp.status_code, resp.content)
+        except (httpx.HTTPError, UnexpectedStatus) as e:
             raise JobError(f"Not renamed: the hub couldn't be reached ({e}).") from e
-        if job.status == "failed":
-            raise JobError(str(job.error or "Not renamed."))
+        # Only whether the hub failed the job matters here, so only that is read:
+        # a job record shaped differently by a hub a version apart can't stop it.
+        try:
+            job = resp.json()
+        except ValueError:
+            job = {}
+        if isinstance(job, dict) and job.get("status") == "failed":
+            raise JobError(str(job.get("error") or "Not renamed."))
 
     def rename_agent(self, spec: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
         """Rename an agent this machine runs: the hub first, then a restart here.
@@ -768,10 +772,14 @@ class Runner:
     def hello(self) -> bool:
         """Say hello (or heartbeat). ``False`` when the hub could not be reached."""
         self.refresh()
+        body = RunnerHello.from_dict(self.hello_body())
         try:
             with self._hub(timeout=10) as client:
-                body = RunnerHello.from_dict(self.hello_body())
-                answered(hello_api.sync_detailed(client=client, body=body), RunnerRead)
+                # Only its status says anything: an answer a hub a version apart
+                # shapes differently must never stop the heartbeat.
+                resp = sent_unparsed(hello_api, client, body=body)
+            if resp.status_code >= 400:  # noqa: PLR2004
+                raise UnexpectedStatus(resp.status_code, resp.content)
         except (httpx.HTTPError, UnexpectedStatus) as e:
             refused = isinstance(e, UnexpectedStatus) and e.status_code == 401  # noqa: PLR2004
             if refused and not self.signed_out:
@@ -809,14 +817,14 @@ class Runner:
         body: dict[str, Any] = {"status": status, "result": result, "error": error}
         if paired is not None:
             body["pairing"] = paired
+        report = RunnerJobReport.from_dict(body)
         try:
             with self._hub(timeout=10) as client:
-                report = RunnerJobReport.from_dict(body)
-                answered(
-                    report_api.sync_detailed(self.id, job_id, client=client, body=report),
-                    RunnerJobRead,
-                )
-        except (httpx.HTTPError, UnexpectedStatus, ValueError, KeyError, TypeError) as e:
+                # Reported once the hub takes it; what it answers with isn't read.
+                resp = sent_unparsed(report_api, client, self.id, job_id, body=report)
+            if resp.status_code >= 400:  # noqa: PLR2004
+                raise UnexpectedStatus(resp.status_code, resp.content)
+        except (httpx.HTTPError, UnexpectedStatus) as e:
             log.warning("job %s: couldn't report it %s to the hub: %s", job_id, status, e)
             self.log.print(f"[yellow]could not report job {job_id}:[/yellow] {e}")
 
@@ -945,13 +953,22 @@ class Runner:
         """An agent's notes as the hub has them, or ``None`` when it has none."""
         try:
             with self._hub(timeout=10) as client:
-                resp = memory_api.sync_detailed(room, f"agents/{handle}/notes", client=client)
-        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                # Only its value is read: notes a hub a version apart shapes
+                # differently are still the agent's notes.
+                resp = sent_unparsed(memory_api, client, room, f"agents/{handle}/notes")
+        except httpx.HTTPError:
             return None
-        if not isinstance(resp.parsed, MemoryRead) or not resp.parsed.value:
+        if resp.status_code >= 400 or resp.content in (b"", b"null"):  # noqa: PLR2004
             return None
-        value = resp.parsed.value
-        return value if isinstance(value, str) else json.dumps(value.to_dict())
+        try:
+            body = resp.json()
+        except ValueError:
+            log.warning("@%s's notes in %s couldn't be read: %.200s", handle, room, resp.text)
+            return None
+        value = body.get("value") if isinstance(body, dict) else None
+        if not value:
+            return None
+        return value if isinstance(value, str) else json.dumps(value)
 
     def has_notes(self, room: str, handle: str) -> bool:
         return self.notes(room, handle) is not None
@@ -1775,18 +1792,27 @@ class Runner:
         """One long-poll; ``False`` when the hub could not be reached or forgot this runner."""
         try:
             with self._hub(timeout=POLL_S + 15) as client:
-                resp = next_job_api.sync_detailed(self.id, client=client, timeout=POLL_S)
-        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                # Unparsed: the hub hands a job out when it's polled, so a job
+                # this runner's model can't read must still reach ``take``, which
+                # refuses a kind it doesn't know in words, rather than be lost.
+                resp = sent_unparsed(next_job_api, client, self.id, timeout=POLL_S)
+        except httpx.HTTPError:
             return False
         if resp.status_code == 404:  # noqa: PLR2004
             # The hub restarted, or dropped this runner: say hello again.
             return self.hello()
-        if not isinstance(resp.parsed, RunnerJobRead):
-            # 204 is no job this time; any other refusal is a poll that didn't get one.
-            return resp.status_code < 400  # noqa: PLR2004
-        # A job's spec is the request the app made, read by the job kind it names
-        # (``take`` refuses a kind this runner doesn't know), so it's handed on whole.
-        self.take(resp.parsed.to_dict())
+        if resp.status_code == 204 or not resp.content:  # noqa: PLR2004
+            return True
+        if resp.status_code >= 400:  # noqa: PLR2004
+            return False
+        try:
+            job = resp.json()
+        except ValueError:
+            log.warning(
+                "a job from the hub wasn't JSON, so it couldn't be taken: %.200s", resp.text
+            )
+            return True
+        self.take(job)
         return True
 
     def _hub(self, *, timeout: float) -> Client:
@@ -1798,7 +1824,10 @@ class Runner:
 
     def _heartbeat_loop(self) -> None:
         while not self._stop.wait(HEARTBEAT_S):
-            self.hello()
+            try:
+                self.hello()
+            except Exception as e:  # noqa: BLE001 - nothing may end the heartbeat
+                log.exception("heartbeat failed, trying again next beat: %s", e)
 
     def _sync_loop(self) -> None:
         while not self._stop.wait(SYNC_S):
@@ -2051,7 +2080,12 @@ class Runner:
         ):
             threading.Thread(target=loop, name=name, daemon=True).start()
         while not self._stop.is_set():
-            if not self.poll_once():
+            try:
+                polled = self.poll_once()
+            except Exception as e:  # noqa: BLE001 - one job it can't read must not end the runner
+                log.exception("a job poll failed, polling again: %s", e)
+                polled = False
+            if not polled:
                 self._stop.wait(RETRY_S)
         self.goodbye()
         log.info("runner %s stopped", self.id)

@@ -93,7 +93,7 @@ _unknown_rooms: dict[str, float] = {}
 ROOM_NOT_FOUND = "Room not found"
 
 
-def _not_on_hub(room: str, resp: Response[Any]) -> bool:
+def _not_on_hub(room: str, resp: Response[Any] | httpx.Response) -> bool:
     """Whether ``resp`` is the hub saying it has no such room; if so, leave it out
     for a while.
 
@@ -1053,10 +1053,11 @@ def fetch_wakes(
     asks only for the wakes of the agents its own push reported
     (:func:`sync_source`), so another machine's wakes wait for that machine.
     """
+    from mycelium.client import sent_unparsed
     from mycelium_backend_client.api.sessions import (
         drain_herdr_wakes_api_rooms_room_name_sessions_herdr_wakes_get as wakes_api,
     )
-    from mycelium_backend_client.models import HerdrWakesRead
+    from mycelium_backend_client.models import HerdrWakeRead
     from mycelium_backend_client.types import UNSET
 
     what = f"hub wakes for {room}"
@@ -1064,19 +1065,30 @@ def fetch_wakes(
     source = sync_source()
     try:
         with _calling(config, http) as client:
-            resp = wakes_api.sync_detailed(
-                room, client=client, source=source if source is not None else UNSET
+            # Unparsed as a whole: draining empties the queue, so a wake this
+            # machine's model can't read must cost only that wake, not the rest.
+            resp = sent_unparsed(
+                wakes_api, client, room, source=source if source is not None else UNSET
             )
         if _not_on_hub(room, resp):
             return []
-        if not isinstance(resp.parsed, HerdrWakesRead):
+        if resp.status_code >= 400:  # noqa: PLR2004
             raise UnexpectedStatus(resp.status_code, resp.content)
+        drained = resp.json().get("wakes") or []
     except Exception as e:  # noqa: BLE001 - the queue keeps them for the next pass
         failing(_hub, what, f"{what} failed after {ms(started)}ms: {e}")
         return []
     recovered(_hub, what)
     slow(_hub, what, started)
-    return resp.parsed.wakes
+    wakes: list[HerdrWakeRead] = []
+    for raw in drained:
+        try:
+            wakes.append(HerdrWakeRead.from_dict(raw))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            _sync.warning(
+                "a wake in %s couldn't be read, so it wasn't delivered: %.200s", room, raw
+            )
+    return wakes
 
 
 def outcome(wake: HerdrWakeRead, *, delivered: bool, why: str | None = None) -> WakeOutcome | None:
@@ -1110,9 +1122,14 @@ def report_wakes(
     said = [o for o in outcomes if o]
     if not said:
         return
+    from mycelium.client import sent_unparsed
+
     try:
         with _calling(config, http) as client:
-            report_api.sync_detailed(room, client=client, body=WakeOutcomes(outcomes=said))
+            # Told once the hub takes it; what it counts back isn't read.
+            resp = sent_unparsed(report_api, client, room, body=WakeOutcomes(outcomes=said))
+        if resp.status_code >= 400:  # noqa: PLR2004
+            raise UnexpectedStatus(resp.status_code, resp.content)
     except Exception as e:  # noqa: BLE001 - the log says "handed" without it
         _sync.info("couldn't report %d wake outcome(s) in %s: %s", len(said), room, e)
 

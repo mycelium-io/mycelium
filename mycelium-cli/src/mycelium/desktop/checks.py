@@ -149,12 +149,10 @@ def ui() -> CheckResult:
 
 
 def runner(api_url: str) -> CheckResult:
-    from mycelium.client import auth_headers, typed_client
+    from mycelium.client import auth_headers, sent_unparsed, typed_client
     from mycelium.config import MyceliumConfig
     from mycelium.runner.daemon import read_sync, runner_dir, runner_id, signed_out_message
     from mycelium_backend_client.api.runners import get_runner_api_runners_runner_id_get
-    from mycelium_backend_client.models import RunnerRead
-    from mycelium_backend_client.types import Response
 
     rid = runner_id()
     # The running runner's own word first: true whoever runs the check, where
@@ -177,7 +175,7 @@ def runner(api_url: str) -> CheckResult:
             details=[f"It keeps trying; its log says why: {runner_dir() / 'runner.log'}"],
         )
     cfg = MyceliumConfig.load()
-    resp: Response[Any] | None
+    resp: httpx.Response | None
     try:
         # Asked as this machine, the way the runner itself asks: a hub with
         # sign-in on answers nobody else about it. The app's hub is this
@@ -186,9 +184,10 @@ def runner(api_url: str) -> CheckResult:
             cfg, base_url=api_url.rstrip("/"), timeout=3.0, raise_on_unexpected_status=False
         )
         with client.with_headers(auth_headers(cfg)) as client:
-            resp = get_runner_api_runners_runner_id_get.sync_detailed(rid, client=client)
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
-        # Not reached, or an answer that isn't the hub's (a proxy's page).
+            # Unparsed: only whether it's connected is read, so a runner record
+            # a hub a version apart shapes differently still answers that.
+            resp = sent_unparsed(get_runner_api_runners_runner_id_get, client, rid)
+    except httpx.HTTPError:
         resp = None
     if resp is not None and resp.status_code == 401:
         return CheckResult(
@@ -204,7 +203,17 @@ def runner(api_url: str) -> CheckResult:
             message="the hub hasn't heard from this computer",
             details=["Without it the app can't start agents here."],
         )
-    if not isinstance(resp.parsed, RunnerRead) or not resp.parsed.connected:
+    if resp.status_code >= 400:  # noqa: PLR2004
+        return CheckResult(
+            name="Runner", status="error", message=f"the hub answered {resp.status_code}"
+        )
+    try:
+        seen = resp.json()
+    except ValueError:
+        return CheckResult(
+            name="Runner", status="error", message="the hub's answer couldn't be read"
+        )
+    if not isinstance(seen, dict) or not seen.get("connected"):
         return CheckResult(name="Runner", status="error", message="stopped checking in")
     return CheckResult(name="Runner", status="ok", message=f"connected as {rid}")
 

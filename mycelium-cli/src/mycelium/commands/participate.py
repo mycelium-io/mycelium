@@ -36,7 +36,7 @@ import typer
 
 from mycelium import chat
 from mycelium.cli_options import ACT_FLAGS, ACT_HELP, acts_as, emits_json, in_room, resolve_handle
-from mycelium.client import answered, typed_client
+from mycelium.client import answered, sent_unparsed, typed_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -49,7 +49,6 @@ from mycelium_backend_client.models import (
     AssignmentsRenewed,
     AssignmentWatchRead,
     AwaitAskRead,
-    AwaitConfirmRead,
     AwaitDeliveredRead,
     AwaitTurn,
     ConfirmBody,
@@ -200,10 +199,12 @@ def _confirm(config: MyceliumConfig, room_name: str, handle: str, turn: AwaitTur
         with typed_client(
             config, timeout=15, handle=handle, raise_on_unexpected_status=False
         ) as client:
-            answered(
-                confirm_api.sync_detailed(room_name, client=client, body=body), AwaitConfirmRead
-            )
-    except (httpx.HTTPError, UnexpectedStatus, *_UNREADABLE):
+            # Confirmed once the hub takes it; what it answers with isn't read,
+            # so a hub a version apart doesn't make a landed confirm look lost.
+            resp = sent_unparsed(confirm_api, client, room_name, body=body)
+        if resp.status_code >= 400:  # noqa: PLR2004
+            raise UnexpectedStatus(resp.status_code, resp.content)
+    except (httpx.HTTPError, UnexpectedStatus):
         key = _pending_key(config, room_name, handle, delivered.episode or None)
         _set_pending(key, delivered.position)
 

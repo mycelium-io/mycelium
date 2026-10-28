@@ -60,3 +60,20 @@ def test_with_no_id_the_hub_is_asked_as_before(sent: list, monkeypatch: pytest.M
     (_u, push), (_v, drain) = sent
     assert "source" not in push["json"]
     assert drain["params"] is None
+
+
+def test_a_wake_this_machine_cant_read_costs_only_that_wake(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Draining empties the hub's queue, so a wake shaped by a hub a version
+    apart must not take the others with it."""
+    wakes = [
+        {"handle": "scout", "reason": "mention", "id": "w1", "seen_by": "newer hub"},
+        {"reason": "mention", "id": "w2"},  # no handle: this machine can't read it
+        {"handle": "lead", "reason": "turn", "id": "w3"},
+    ]
+    install_stand_in_hub(monkeypatch).answer = lambda _request: {"wakes": wakes}
+    herdr.sync_source.cache_clear()
+    monkeypatch.setattr("mycelium.runner.daemon.runner_id", lambda: "laptop-ana-1a2b")
+    got = herdr.fetch_wakes(MyceliumConfig(), "eng")
+    assert [w.handle for w in got] == ["scout", "lead"]

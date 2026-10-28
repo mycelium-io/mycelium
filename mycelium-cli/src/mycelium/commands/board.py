@@ -849,20 +849,24 @@ def _memory_thread(room: str, key: str) -> tuple[bool, str | None]:
     Two answers, because the caller says something different about each: whether
     the room has this memory at all, and the thread on it if it does.
     """
+    from mycelium.client import sent_unparsed
     from mycelium_backend_client.api.memory import get_memory_api_rooms_room_name_memory_key_get
-    from mycelium_backend_client.models import MemoryRead
 
     cfg = MyceliumConfig.load()
     try:
         with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
-            resp = get_memory_api_rooms_room_name_memory_key_get.sync_detailed(
-                room, key, client=client
-            )
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            # Only its thread is read, so a memory a hub a version apart shapes
+            # differently is still this memory, never "not there".
+            resp = sent_unparsed(get_memory_api_rooms_room_name_memory_key_get, client, room, key)
+    except httpx.HTTPError:
         return False, None
-    if not isinstance(resp.parsed, MemoryRead):
+    if resp.status_code >= 400:  # noqa: PLR2004
         return False, None
-    return True, resp.parsed.episode or None
+    try:
+        found = resp.json()
+    except ValueError:
+        return True, None
+    return True, (found.get(EPISODE_FIELD) if isinstance(found, dict) else None) or None
 
 
 def _thread(room: str, row_id: str) -> tuple[str, str]:

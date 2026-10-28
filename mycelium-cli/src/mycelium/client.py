@@ -42,6 +42,8 @@ import httpx
 from rich.console import Console
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     from mycelium.config import MyceliumConfig
     from mycelium.tokens import StoredToken
     from mycelium_backend_client import Client
@@ -222,6 +224,18 @@ def typed_client(
     ours = base_url is None or issued_by(cfg, target)
     headers = auth_headers(cfg, handle=handle) if ours else {}
     return client.with_headers(headers) if headers else client
+
+
+def sent_unparsed(route: ModuleType, client: Client, *args: Any, **kwargs: Any) -> httpx.Response:
+    """Send a generated route's own request (its method, path, params and body,
+    from ``route._get_kwargs``) and hand back the answer unparsed.
+
+    For the runner's own loops, where an answer that won't parse must never end
+    a thread or lose work the hub already handed over: a job taken off the
+    queue, wakes drained, a heartbeat. The caller reads the status, and the body
+    as JSON where it needs one, so a hub a version apart can't stop it.
+    """
+    return client.get_httpx_client().request(**route._get_kwargs(*args, **kwargs))  # noqa: SLF001
 
 
 def answered[T](resp: Response[Any], expected: type[T]) -> T:
