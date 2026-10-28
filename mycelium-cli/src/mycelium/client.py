@@ -76,9 +76,11 @@ def current_token(config: MyceliumConfig | None = None) -> StoredToken | None:
     Returns ``None`` when logged out, and also when the session is expired and
     the issuer refused to renew it; an expired token is worse than no token,
     since it turns a working call against an ungated hub into a 401. Raises
-    :class:`RenewalUnreachable` when it's expired and the issuer can't be
-    reached. Where it's kept, and that an agent's pane never gets it, is
-    ``session_store``'s business.
+    :class:`RenewalUnreachable` when it's expired, the issuer can't be
+    reached, and the hub has sign-in on (or can't say); a hub with it off
+    gets ``None``, and the call goes out with no credential as before. Where
+    it's kept, and that an agent's pane never gets it, is ``session_store``'s
+    business.
     """
     from mycelium import session_store
 
@@ -87,7 +89,14 @@ def current_token(config: MyceliumConfig | None = None) -> StoredToken | None:
     if stored is None or not stored.is_expired():
         return stored
 
-    refreshed = _refresh(stored, cfg)
+    try:
+        refreshed = _refresh(stored, cfg)
+    except RenewalUnreachable:
+        # A hub with sign-in off takes the call with no credential, as it
+        # always did: only a hub that needs one has to wait for the issuer.
+        if _needs_credential(cfg) is False:
+            return None
+        raise
     if refreshed is not None:
         session_store.renewed(cfg, refreshed, where)
         return refreshed
@@ -100,6 +109,29 @@ def current_token(config: MyceliumConfig | None = None) -> StoredToken | None:
             "[dim]Run 'mycelium login' to sign in again.[/dim]"
         )
     return None
+
+
+#: ``{hub url: whether it has sign-in on}``, as its ``/health`` said, per process.
+_GATED: dict[str, bool] = {}
+
+
+def _needs_credential(config: MyceliumConfig) -> bool | None:
+    """Whether the hub has sign-in on, by its public ``/health``; ``None`` when it
+    can't be asked. Not ``/api/whoami``: asking that needs the credential."""
+    from mycelium.hub_check import health
+
+    url = config.server.api_url
+    if url not in _GATED:
+        resp = health(url)
+        try:
+            body = resp.json() if resp is not None and resp.status_code == 200 else None
+        except ValueError:
+            body = None
+        auth = body.get("auth") if isinstance(body, dict) else None
+        if not isinstance(auth, dict) or "enabled" not in auth:
+            return None
+        _GATED[url] = bool(auth["enabled"])
+    return _GATED[url]
 
 
 def _refresh(stored: StoredToken, config: MyceliumConfig) -> StoredToken | None:

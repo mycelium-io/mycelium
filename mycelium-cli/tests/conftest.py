@@ -80,6 +80,14 @@ def _never_the_real_home(request: pytest.FixtureRequest):
 
 
 @pytest.fixture(autouse=True)
+def _no_remembered_hub_gate() -> None:
+    """Whether a hub has sign-in on is remembered per process; each test asks anew."""
+    from mycelium import client
+
+    client._GATED.clear()
+
+
+@pytest.fixture(autouse=True)
 def _never_the_real_install_dirs(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test finds the developer's own agent CLIs in their install folders.
 
