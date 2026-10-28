@@ -14,7 +14,7 @@ union of SLIM-connected members and server-held ``await`` participants.
 
 A room can also reach members that are *not* on the channel: A2A agents, bridged
 over HTTP by the hub. They're rendered in their own block per room (from
-``/rooms/{room}/a2a/state``) rather than mixed into the members column, because
+``/api/rooms/{room}/a2a/state``) rather than mixed into the members column, because
 the distinction is the point — a bridged agent is proxied by the hub and holds no
 group key, so it is not a member of the room's encrypted group. This is the CLI
 half of the same surface the GUI's Network pane shows.
@@ -45,7 +45,7 @@ def _fetch_a2a(client: MyceliumHTTPClient, room: str) -> dict | None:
     command down with it.
     """
     try:
-        state = client.get(f"/rooms/{room}/a2a/state").json()
+        state = client.get(f"/api/rooms/{room}/a2a/state").json()
     except (httpx.HTTPError, ValueError):
         return None
     if not isinstance(state, dict):
