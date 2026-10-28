@@ -289,7 +289,9 @@ def handle(
     agent = pane_agent()
     if agent is not None and agent.handle:
         return Answer(agent.handle, PANE)
-    member = find_membership()
+    # A pane herdr maps to more than one agent is still an agent's pane, never
+    # whoever this folder's membership names.
+    member = find_membership() if agent is None else None
     if member is not None:
         return Answer(member.handle, MEMBERSHIP)
     found = person(config, ask_hub=ask_hub)
@@ -357,18 +359,57 @@ def credential(config: MyceliumConfig, acting_as: str | None = None) -> Answer:
     agent_token = agent_credentials.access_token(config, acting_as)
     if agent_token:
         return Answer(agent_token, ENVIRONMENT if _env_credential() else MACHINE)
+    if pane and (kept := pane_token()):
+        return Answer(kept, PANE)
     member = find_membership()
+    # In an agent's pane the membership is lent only to the agent it names:
+    # another agent working in that folder sends no token, not that one's.
+    who = acting_as or pane
     if (
         member is not None
         and member.token
         and not member.token_expired()
-        and (acting_as is None or _same_handle(acting_as, member.handle))
+        and (who is None or _same_handle(who, member.handle))
     ):
         return Answer(member.token, MEMBERSHIP)
     session = current_token(config)
     if session is not None:
         return Answer(session.access_token, MACHINE)
     return Answer(None, DEFAULT)
+
+
+def pane_token() -> str | None:
+    """The token the runner keeps for this pane's agent, when it has one that
+    hasn't expired.
+
+    Found by the agent rather than by an environment variable, so an agent
+    started before the runner gave panes a token file, or one herdr restored
+    without its environment, still gets the token the runner keeps for it
+    (``agent_credentials.member_token_path``). The room and handle are herdr's
+    registry's for this pane, else the pane's environment.
+    """
+    from mycelium.agent_credentials import member_token_path
+    from mycelium.tokens import decode_claims
+
+    agent = pane_agent()
+    who = (agent.handle if agent else None) or os.environ.get(HANDLE_ENV, "").strip()
+    where = (agent.room if agent else None) or next(
+        (os.environ[name] for name in ROOM_ENVS if os.environ.get(name)), None
+    )
+    if not who or not where:
+        return None
+    try:
+        token = member_token_path(where, who.lstrip("@")).read_text().strip()
+    except OSError:
+        return None
+    expires = decode_claims(token).get("exp") if token else None
+    if not token or (isinstance(expires, int | float) and expires <= _now_s()):
+        return None
+    return token
+
+
+def _now_s() -> float:
+    return datetime.now(UTC).timestamp()
 
 
 class ActingAsOtherError(Exception):

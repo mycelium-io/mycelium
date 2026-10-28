@@ -505,6 +505,94 @@ def test_a_machine_signed_out_of_a_gated_hub_starts_nothing_and_says_why(
     assert herdr.of("agent start") == []
 
 
+def _token_until(exp: float) -> str:
+    import base64
+
+    claims = base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode().rstrip("=")
+    return f"e30.{claims}.sig"
+
+
+def test_running_agents_are_given_a_token_and_it_is_renewed_before_it_ends(
+    make_runner, herdr: Herdr, monkeypatch: pytest.MonkeyPatch
+):
+    """An agent started before panes got a token file has one after a round, with no restart."""
+    from mycelium import agent_credentials
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    now = 2_000_000_000.0
+    issued: list[tuple[str, str]] = []
+
+    def issue(_config: Any, room: str, handle: str) -> Path:
+        issued.append((room, handle))
+        path = agent_credentials.member_token_path(room, handle)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_token_until(now + 30 * 86400))
+        return path
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", issue)
+    r = make_runner()
+    herdr.live["w9:p1"] = "idle"
+    r.bridge.registry.set(HerdrPaneMapping(room="eng", handle="scout", pane="w9:p1", kind="claude"))
+    # Its pane closed: nothing reads a token there.
+    r.bridge.registry.set(HerdrPaneMapping(room="eng", handle="gone", pane="w9:p7", kind="claude"))
+
+    r.keep_credentials(now=now)
+    assert issued == [("eng", "scout")]
+    r.keep_credentials(now=now + 60)
+    assert issued == [("eng", "scout")], "a fresh token isn't asked for again"
+    r.keep_credentials(now=now + 24 * 86400)
+    assert issued == [("eng", "scout")] * 2, "under a week left, it's renewed"
+
+
+def test_an_agent_the_hub_wont_give_a_token_is_asked_about_hourly_not_every_round(
+    make_runner, herdr: Herdr, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium import agent_credentials
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    asked: list[str] = []
+
+    def refuse(_config: Any, _room: str, handle: str) -> Path:
+        asked.append(handle)
+        raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 403, "not yours")
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", refuse)
+    r = make_runner()
+    herdr.live["w9:p1"] = "idle"
+    r.bridge.registry.set(
+        HerdrPaneMapping(room="eng", handle="theirs", pane="w9:p1", kind="claude")
+    )
+
+    r.keep_credentials(now=1000.0)
+    r.keep_credentials(now=1060.0)
+    assert asked == ["theirs"]
+    r.keep_credentials(now=1000.0 + daemon.NO_TOKEN_RETRY_S + 1)
+    assert asked == ["theirs", "theirs"]
+
+
+def test_a_computer_not_signed_in_is_asked_about_every_round(
+    make_runner, herdr: Herdr, monkeypatch: pytest.MonkeyPatch
+):
+    """Signing in is all it takes: the next round gives its agents their tokens."""
+    from mycelium import agent_credentials
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    asked: list[str] = []
+
+    def signed_out(_config: Any, _room: str, handle: str) -> Path:
+        asked.append(handle)
+        raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 401, "")
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", signed_out)
+    r = make_runner()
+    herdr.live["w9:p1"] = "idle"
+    r.bridge.registry.set(HerdrPaneMapping(room="eng", handle="mine", pane="w9:p1", kind="claude"))
+
+    r.keep_credentials(now=1000.0)
+    r.keep_credentials(now=1060.0)
+    assert asked == ["mine", "mine"]
+
+
 def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(
     make_runner, herdr: Herdr, hub: Hub, tmp_path: Path
 ):
