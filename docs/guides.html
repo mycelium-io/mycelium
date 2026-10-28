@@ -1909,7 +1909,7 @@ role     = &quot;user&quot;</code></pre>
       <p><code>mycelium whoami</code> shows who you&#x27;re acting as and when your sign-in expires:</p>
       <pre><code>acting as @avery  (avery#a8f3)
   signed in (<span class="url">https://sso.example.com/realms/mycelium,</span> expires in 42 min)</code></pre>
-      <p>With auth on, the hub records your writes under the handle in your token. So <code>login</code> also sets your <code>identity.name</code> to that handle.</p>
+      <p>With auth on, the hub records your writes under the handle in your token. So <code>login</code> asks the hub which handle that is and sets your <code>identity.name</code> to it.</p>
       <h3 id="auth-login-settings">Login settings</h3>
       <div class="table-wrap">
         <table>

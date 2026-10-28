@@ -155,6 +155,23 @@ _UNREGISTERED = "unregistered"  # identity.name landed, the hub didn't take the 
 _FAILED = "failed"
 
 
+def _hub_handle(config: MyceliumConfig) -> str | None:
+    """Who the hub says the new token is: the handle its gate enforces.
+
+    The hub reads the handle from its own ``auth.handle_claim``, which this
+    machine's copy of the setting may not match (a UUID ``sub`` here, a
+    ``preferred_username`` there). ``None`` when the hub can't be reached,
+    runs with auth off, or refuses the token, and the local claim is used.
+    """
+    from mycelium.identity import _WHOAMI_CACHE, _hub_whoami
+
+    # Asked earlier in this process, the answer was for the old credential.
+    _WHOAMI_CACHE.pop(config.server.api_url, None)
+    who = _hub_whoami(config)
+    handle = str((who or {}).get("handle") or "").strip().lstrip("@").lower()
+    return handle or None
+
+
 def _align_identity(config: MyceliumConfig, handle: str) -> str:
     """Point this machine's identity at the token's own handle.
 
@@ -395,7 +412,7 @@ def login(
         json_output=json_output,
     )
 
-    handle = token.handle(config.auth.handle_claim) or token.handle()
+    handle = _hub_handle(config) or token.handle(config.auth.handle_claim) or token.handle()
     alignment = _align_identity(config, handle) if handle else _SKIPPED
     _report(token, config, handle=handle, alignment=alignment, json_output=json_output, kept=kept)
 
