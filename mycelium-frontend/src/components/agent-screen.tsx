@@ -16,7 +16,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Lock, SquareTerminal } from "lucide-react";
-import { parseAnsi, readable, type AnsiRun, type AnsiStyle } from "@/lib/ansi";
+import { parseAnsi, readable, type AnsiStyle } from "@/lib/ansi";
 import { placeOf } from "@/lib/agent-place";
 import { terminalLink, useAgentScreen, useIsDesktop, useThisMachine } from "@/lib/desktop";
 import { runnerName, useRunners } from "@/lib/runners";
@@ -109,55 +109,6 @@ function Note({ children }: { children: React.ReactNode }) {
 /** How close to the bottom, in pixels, still counts as following the terminal. */
 const FOLLOW_SLACK_PX = 24;
 
-/** How much larger than its usual size a terminal's text may grow to fill the view's width. */
-const MAX_FIT = 2.25;
-
-/** The widest line's length in characters: the terminal's width, near enough. */
-function columnsOf(lines: AnsiRun[][]): number {
-  let widest = 0;
-  for (const runs of lines) {
-    let n = 0;
-    for (const r of runs) n += Array.from(r.text).length;
-    widest = Math.max(widest, n);
-  }
-  return widest;
-}
-
-/**
- * A font size that spreads `cols` characters across `ref`'s width, so a
- * terminal narrower than the view fills it rather than hugging its left side.
- * Never smaller than the view's own size, and never more than `MAX_FIT` times
- * it; `null` until it's measured.
- */
-function useFitWidth(ref: React.RefObject<HTMLElement | null>, cols: number): number | null {
-  const [size, setSize] = useState<number | null>(null);
-  const base = useRef<number | null>(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el || cols === 0) return;
-    const fit = () => {
-      const style = getComputedStyle(el);
-      base.current ??= parseFloat(style.fontSize);
-      const probe = document.createElement("span");
-      probe.textContent = "0".repeat(20);
-      probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font-family:${style.fontFamily};font-size:${base.current}px`;
-      el.appendChild(probe);
-      const ch = probe.getBoundingClientRect().width / 20;
-      probe.remove();
-      const room = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      if (!ch || !base.current || room <= 0) return;
-      const scale = Math.min(MAX_FIT, Math.max(1, room / (cols * ch)));
-      setSize(Math.floor(base.current * scale * 10) / 10);
-    };
-    fit();
-    if (typeof ResizeObserver === "undefined") return;
-    const watch = new ResizeObserver(fit);
-    watch.observe(el);
-    return () => watch.disconnect();
-  }, [ref, cols]);
-  return size;
-}
-
 function Screen({ text, error }: { text: string | null; error: string | null }) {
   const lines = useMemo(() => (text ? parseAnsi(text) : []), [text]);
   // It reads the scrollback too, so it opens at the bottom, where the terminal
@@ -168,18 +119,15 @@ function Screen({ text, error }: { text: string | null; error: string | null }) 
   const [held, setHeld] = useState<typeof lines | null>(null);
   const shown = held ?? lines;
   const surface = useSurface(ref, text !== null);
-  const cols = useMemo(() => columnsOf(shown), [shown]);
-  const fontSize = useFitWidth(ref, cols);
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && !held) el.scrollTop = el.scrollHeight;
-  }, [lines, held, fontSize]);
+  }, [lines, held]);
   if (error && text === null) return <Note>{error}</Note>;
   if (text === null) return <Note>Reading its terminal…</Note>;
   return (
     <pre
       ref={ref}
-      style={fontSize ? { fontSize } : undefined}
       onScroll={(e) => {
         const el = e.currentTarget;
         const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX;
