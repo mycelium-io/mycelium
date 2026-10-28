@@ -842,6 +842,12 @@ def herdr_wake(
         raise typer.Exit(1) from None
 
 
+#: What herdr reports of an agent taking a turn. A session seen like this has a
+#: conversation in it; one only ever seen idle or blocked may be a fresh one,
+#: stopped at its first-run question.
+_WORKED_STATES = frozenset({"working"})
+
+
 def _collect_presence(
     bridge: HerdrBridge, room_filter: str | None
 ) -> dict[str, dict[str, dict[str, str | None]]]:
@@ -862,9 +868,15 @@ def _collect_presence(
         for a in agents
     }
     # Each mapped pane's session, kept while herdr can still say it, so a
-    # restart or a rename resumes the agent's conversation once it can't.
+    # restart or a rename resumes the agent's conversation once it can't. The
+    # one kept is the one its agent last worked in: a pane herdr brought back
+    # as a fresh, idle session doesn't replace it.
+    sessions = {
+        str(a["pane_id"]): (s, a.get("agent_status")) for a in agents if (s := session_of(a))
+    }
     bridge.registry.note_sessions(
-        {str(a["pane_id"]): s for a in agents if (s := session_of(a)) is not None}
+        {pane: s for pane, (s, status) in sessions.items() if status in _WORKED_STATES},
+        {pane: s for pane, (s, _status) in sessions.items()},
     )
     view: dict[str, dict[str, dict[str, str | None]]] = {}
     for m in bridge.registry.all():

@@ -1439,11 +1439,71 @@ def test_a_restart_from_the_hub_asks_first_then_starts_the_agent_in_its_pane(
     assert "as @a in eng" in waiting["message"]
     starts = len(herdr.of("agent start"))
 
+    # No session on record for it, and the question says what that costs.
+    assert waiting["message"].startswith(
+        "It comes back in a new session, so its conversation won't be kept. "
+        "It catches up from the room:\n"
+    )
+
     approvals.answer("c0ffee01", yes=True, base=tmp_path)
     done = _until(lambda: _report(hub, "c0ffee01", "done"))
     assert done["result"]["restarted"] == {"a": "w9:p1"}
+    assert done["result"]["sessions"] == {"a": None}
     assert len(herdr.of("agent start")) == starts + 1
     assert "You were restarted" in herdr.of("agent prompt")[-1][3]
+
+
+def test_a_restart_names_the_agents_that_wont_keep_their_conversations(
+    make_runner, herdr: Herdr, hub: Hub, quick: None
+):
+    r = make_runner()
+    for handle in ("a", "b", "c"):
+        r.launch({**LAUNCH, "handle": handle})
+    # Only @a has worked in a session on record.
+    herdr.live["w9:p1"] = "working"
+    herdr.sessions["w9:p1"] = "sess-a"
+    r.sync_pass()
+    herdr.live.clear()
+    herdr.sessions.clear()
+
+    agents = [{"handle": h, "room": "eng"} for h in ("a", "b", "c")]
+    question = r.question({"kind": "restart", "spec": {"agents": agents}})
+    assert question["message"].startswith(
+        "@b and @c come back in new sessions and won't keep their conversations; "
+        "the rest keep theirs:\n"
+    )
+
+
+def test_a_restart_resumes_the_session_the_agent_worked_in_and_lets_the_sync_pass_run(
+    make_runner, herdr: Herdr, hub: Hub, quick: None
+):
+    r = make_runner()
+    r.launch(LAUNCH)
+    # It worked in its session, which a sync pass records.
+    herdr.live["w9:p1"] = "working"
+    herdr.sessions["w9:p1"] = "sess-1"
+    r.sync_pass()
+    # herdr's server restarted: the pane came back running a fresh session, idle.
+    herdr.live["w9:p1"] = "idle"
+    herdr.sessions["w9:p1"] = "sess-fresh"
+    r.sync_pass()
+    herdr.live.clear()
+    herdr.sessions.clear()
+
+    question = r.question({"kind": "restart", "spec": {"agents": [{"handle": "a", "room": "eng"}]}})
+    assert question["message"].startswith(
+        "It comes back in its own session and keeps its conversation:\n"
+    )
+
+    locked_during_start: list[bool] = []
+    herdr.on_start = lambda: locked_during_start.append(r._panes.locked())  # noqa: SLF001
+    with r._panes:  # noqa: SLF001 - a job runs holding the panes
+        result = r.restart_agents({"agents": [{"handle": "a", "room": "eng"}]})
+
+    assert result["sessions"] == {"a": "sess-1"}
+    assert herdr.of("agent start")[-1][-2:] == ["--resume", "sess-1"]
+    # The sync pass, and the wakes it delivers, didn't wait on the start.
+    assert locked_during_start == [False]
 
 
 def test_the_question_shows_the_agents_instructions_and_folder(

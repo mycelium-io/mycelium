@@ -301,6 +301,30 @@ def test_the_sync_pass_records_each_mapped_panes_session(herdr: FakeHerdr):
     assert again is not None and again.session == "sess-b"
 
 
+def test_a_fresh_idle_session_never_replaces_the_one_the_agent_worked_in(herdr: FakeHerdr):
+    """herdr's server restarted and the pane came back running a new, empty
+    session. The one kept is still the conversation a restart should resume,
+    until the agent works in the new one."""
+    from mycelium.commands.herdr import _collect_presence
+
+    bridge = _setup(herdr)
+    builder = herdr.agents[0]
+    builder.update(agent_status="working", agent_session={"kind": "id", "value": "sess-worked"})
+    _collect_presence(bridge, None)
+
+    builder.update(agent_status="idle", agent_session={"kind": "id", "value": "sess-fresh"})
+    for _ in range(3):
+        _collect_presence(bridge, None)
+    kept = bridge.registry.get("checkout", "builder")
+    assert kept is not None and kept.session == "sess-worked"
+
+    # Once it takes a turn in the new session, that's the one it's in.
+    builder["agent_status"] = "working"
+    _collect_presence(bridge, None)
+    kept = bridge.registry.get("checkout", "builder")
+    assert kept is not None and kept.session == "sess-fresh"
+
+
 def test_herdr_names_are_scoped_by_room_and_fit_herdrs_rule():
     import re
 

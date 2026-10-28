@@ -27,6 +27,7 @@ import json
 import shlex
 import shutil
 import time
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -627,8 +628,14 @@ def restart(
     *,
     bridge: HerdrBridge | None = None,
     renamed_from: str | None = None,
+    while_starting: AbstractContextManager[None] | None = None,
 ) -> str:
     """Start ``agent`` again in its pane (or a new one beside it), in its folder, as itself.
+
+    ``while_starting`` is held while its agent CLI comes up, which can take a
+    while: the runner lets go of its panes then, so its sync pass and the wakes
+    it delivers don't wait on the start. The pane is mapped to the agent before
+    that, so a pass that runs meanwhile knows whose it is.
 
     Returns the pane it runs in. The pane gets the agent's handle, room and hub
     in its environment first, as a pane the runner opens would, and its
@@ -682,24 +689,25 @@ def restart(
             workspace = agent.workspace
         else:
             workspace, pane = _new_pane(bridge, agent, folder, env, config.herdr.panes_per_tab)
-        _start_unblocked(bridge, agent.handle, kind, pane, room=agent.room, resume=resume)
+        before = bridge.registry.get(agent.room, agent.handle)
+        bridge.registry.set(
+            HerdrPaneMapping(
+                room=agent.room,
+                handle=agent.handle,
+                pane=pane,
+                kind=kind,
+                managed=bool(before and before.managed),
+                cwd=folder,
+                session=resume,
+            )
+        )
+        if workspace and workspace not in bridge.registry.bindings():
+            bridge.registry.bind(workspace, agent.room)
+        with while_starting or nullcontext():
+            _start_unblocked(bridge, agent.handle, kind, pane, room=agent.room, resume=resume)
         bridge.prompt(pane, prompt, wait=False)
     except HerdrError as e:
         raise MachineError(f"herdr couldn't restart @{agent.handle}: {e}") from e
-    before = bridge.registry.get(agent.room, agent.handle)
-    bridge.registry.set(
-        HerdrPaneMapping(
-            room=agent.room,
-            handle=agent.handle,
-            pane=pane,
-            kind=kind,
-            managed=bool(before and before.managed),
-            cwd=folder,
-            session=resume,
-        )
-    )
-    if workspace and workspace not in bridge.registry.bindings():
-        bridge.registry.bind(workspace, agent.room)
     return pane
 
 
