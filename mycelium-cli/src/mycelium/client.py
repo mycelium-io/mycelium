@@ -16,9 +16,13 @@ behaves exactly as it did before tokens existed, which is what makes it safe
 against a hub whose gate is off, i.e. the shipped default.
 
 An expired access token is refreshed here, transparently, on the way into the
-first call that needs it. A refresh that fails degrades to "no header" rather
-than failing the command: against an ungated hub the call still works, and
-against a gated one the 401 says what a fabricated error never could.
+first call that needs it. A refresh the issuer refuses degrades to "no header"
+rather than failing the command: against an ungated hub the call still works,
+and against a gated one the 401 says what a fabricated error never could. A
+refresh that can't reach the issuer is different: the session may be fine once
+it's back, so the call fails as the hub being unreachable
+(:class:`RenewalUnreachable`), and whoever retries an unreachable hub retries
+it, rather than sending it with no credential for the hub to refuse.
 
 An agent attaches here too, through the same one factory: when the caller is
 acting as an agent (``await``/``respond`` naming a handle, or a resident runtime
@@ -51,6 +55,15 @@ _stderr = Console(stderr=True)
 _refresh_warned = False
 
 
+class RenewalUnreachable(httpx.ConnectError):
+    """The session needed renewing and the issuer couldn't be reached.
+
+    An ``httpx.ConnectError``, so every caller that handles an unreachable hub
+    (the runner's heartbeat and job poll, a command's "hub unreachable")
+    handles this the same way.
+    """
+
+
 def _resolve_config(config: MyceliumConfig | None) -> MyceliumConfig:
     from mycelium.config import MyceliumConfig
 
@@ -61,9 +74,13 @@ def current_token(config: MyceliumConfig | None = None) -> StoredToken | None:
     """The usable cached session, renewed first if it has expired.
 
     Returns ``None`` when logged out, and also when the session is expired and
-    can't be refreshed; an expired token is worse than no token, since it turns
-    a working call against an ungated hub into a 401. Where it's kept, and that
-    an agent's pane never gets it, is ``session_store``'s business.
+    the issuer refused to renew it; an expired token is worse than no token,
+    since it turns a working call against an ungated hub into a 401. Raises
+    :class:`RenewalUnreachable` when it's expired, the issuer can't be
+    reached, and the hub has sign-in on (or can't say); a hub with it off
+    gets ``None``, and the call goes out with no credential as before. Where
+    it's kept, and that an agent's pane never gets it, is ``session_store``'s
+    business.
     """
     from mycelium import session_store
 
@@ -72,7 +89,14 @@ def current_token(config: MyceliumConfig | None = None) -> StoredToken | None:
     if stored is None or not stored.is_expired():
         return stored
 
-    refreshed = _refresh(stored, cfg)
+    try:
+        refreshed = _refresh(stored, cfg)
+    except RenewalUnreachable:
+        # A hub with sign-in off takes the call with no credential, as it
+        # always did: only a hub that needs one has to wait for the issuer.
+        if _needs_credential(cfg) is False:
+            return None
+        raise
     if refreshed is not None:
         session_store.renewed(cfg, refreshed, where)
         return refreshed
@@ -87,32 +111,54 @@ def current_token(config: MyceliumConfig | None = None) -> StoredToken | None:
     return None
 
 
+#: ``{hub url: whether it has sign-in on}``, as its ``/health`` said, per process.
+_GATED: dict[str, bool] = {}
+
+
+def _needs_credential(config: MyceliumConfig) -> bool | None:
+    """Whether the hub has sign-in on, by its public ``/health``; ``None`` when it
+    can't be asked. Not ``/api/whoami``: asking that needs the credential."""
+    from mycelium.hub_check import health
+
+    url = config.server.api_url
+    if url not in _GATED:
+        resp = health(url)
+        try:
+            body = resp.json() if resp is not None and resp.status_code == 200 else None
+        except ValueError:
+            body = None
+        auth = body.get("auth") if isinstance(body, dict) else None
+        if not isinstance(auth, dict) or "enabled" not in auth:
+            return None
+        _GATED[url] = bool(auth["enabled"])
+    return _GATED[url]
+
+
 def _refresh(stored: StoredToken, config: MyceliumConfig) -> StoredToken | None:
-    """Renew an expired session with its refresh token. ``None`` if it can't be."""
+    """Renew an expired session with its refresh token. ``None`` if the issuer
+    refused; :class:`RenewalUnreachable` if it couldn't be asked."""
     from mycelium import oidc
 
     if not stored.refresh_token:
         return None
 
     endpoint = stored.token_endpoint
-    if not endpoint:
-        # Sessions cached before the endpoint was recorded, or minted by an
-        # issuer reached some other way: rediscover it.
-        issuer = stored.issuer or config.login.issuer
-        if not issuer:
-            return None
-        try:
-            endpoint = oidc.discover(issuer).token_endpoint
-        except oidc.OidcError:
-            return None
-
     try:
+        if not endpoint:
+            # Sessions cached before the endpoint was recorded, or minted by an
+            # issuer reached some other way: rediscover it.
+            issuer = stored.issuer or config.login.issuer
+            if not issuer:
+                return None
+            endpoint = oidc.discover(issuer).token_endpoint
         resp = oidc.refresh_grant(
             endpoint,
             stored.client_id or config.login.client_id,
             stored.refresh_token,
             client_secret=config.login.client_secret,
         )
+    except oidc.IssuerUnreachable as e:
+        raise RenewalUnreachable(f"couldn't renew this computer's sign-in: {e}") from e
     except oidc.OidcError:
         return None
 

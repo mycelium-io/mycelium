@@ -55,6 +55,17 @@ class OidcError(Exception):
     """A login flow could not complete. The message is user-facing."""
 
 
+class IssuerUnreachable(OidcError):
+    """The issuer didn't answer, or answered with a server error: nothing it
+    said about the session, which may be fine once it's back."""
+
+
+def _unreachable(exc: httpx.HTTPError) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    return True
+
+
 @dataclass(frozen=True)
 class ProviderMetadata:
     """The endpoints of an issuer, as advertised by its discovery document."""
@@ -92,7 +103,8 @@ def discover(issuer: str, *, timeout_s: float = _HTTP_TIMEOUT_S) -> ProviderMeta
         resp.raise_for_status()
         doc = resp.json()
     except httpx.HTTPError as exc:
-        raise OidcError(f"can't reach the issuer's discovery document at {url}: {exc}") from exc
+        error = IssuerUnreachable if _unreachable(exc) else OidcError
+        raise error(f"can't reach the issuer's discovery document at {url}: {exc}") from exc
     except ValueError as exc:
         raise OidcError(f"issuer returned a non-JSON discovery document at {url}") from exc
 
@@ -135,7 +147,7 @@ def _token_request(
     try:
         resp = httpx.post(token_endpoint, data=form, timeout=timeout_s)
     except httpx.HTTPError as exc:
-        raise OidcError(f"can't reach the token endpoint {token_endpoint}: {exc}") from exc
+        raise IssuerUnreachable(f"can't reach the token endpoint {token_endpoint}: {exc}") from exc
 
     try:
         body = resp.json()
@@ -144,6 +156,9 @@ def _token_request(
     if not isinstance(body, dict):
         body = {}
 
+    if resp.status_code >= 500:
+        # A proxy's 502 or an issuer falling over: no answer about the grant.
+        raise IssuerUnreachable(f"the token endpoint {token_endpoint} answered {resp.status_code}")
     if resp.status_code >= 400:
         error = str(body.get("error") or f"HTTP {resp.status_code}")
         detail = body.get("error_description")
