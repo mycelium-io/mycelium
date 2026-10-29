@@ -19,6 +19,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { EmptyNote } from "@/components/empty-state";
 import { KeyRound, Laptop, Loader2, Plus, Square, SquareTerminal } from "lucide-react";
 import { stopRunnerAgent, type Runner, type RunnerAgent, type RunnerPairing } from "@/lib/api";
 import { fingerprint, pairingWith, useDeviceKeyId } from "@/lib/device-key";
@@ -163,9 +164,7 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
       ) : (
         <Section title="Agents running here">
           {runner.agents.length === 0 ? (
-            <p className="text-label text-muted-foreground">
-              None yet. Start one from a room&apos;s Members panel, under Invite.
-            </p>
+            <EmptyNote>None yet. Start one from a room&apos;s Members panel, under Invite.</EmptyNote>
           ) : (
             <ul>
               {runner.agents.map((a) => (
@@ -178,7 +177,7 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
 
       <Section title="Agent CLIs to start new agents with" action={<RescanButton runner={runner} />}>
         {frameworks.length === 0 ? (
-          <p className="text-label text-muted-foreground">The machine has not reported a scan yet.</p>
+          <EmptyNote>The machine has not reported a scan yet.</EmptyNote>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-label">
@@ -205,7 +204,7 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
 
       <Section title="Folders agents may start in">
         {runner.roots.length === 0 ? (
-          <p className="text-label text-muted-foreground">None. Start the runner with --root &lt;folder&gt;.</p>
+          <EmptyNote>None. Start the runner with --root &lt;folder&gt;.</EmptyNote>
         ) : (
           <ul className="flex flex-wrap gap-x-4 gap-y-0.5">
             {runner.roots.map((root) => (
@@ -223,7 +222,7 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
 
       <Section title="Recent jobs">
         {jobs.length === 0 ? (
-          <p className="text-label text-muted-foreground">Nothing asked of this machine yet.</p>
+          <EmptyNote>Nothing asked of this machine yet.</EmptyNote>
         ) : (
           <ul className="space-y-1">
             {jobs.slice(0, RECENT_JOBS).map((j) => (
@@ -255,10 +254,10 @@ function Pairings({ runner, keyId }: { runner: Runner; keyId: string | null }) {
   const pairings = runner.pairings ?? [];
   if (pairings.length === 0) {
     return (
-      <p className="text-label text-muted-foreground">
+      <EmptyNote>
         None. Every request needs approval on this machine. To pair a computer, run{" "}
         <code className="font-mono text-micro text-text">{PAIR_COMMAND}</code> there, then Add machine → Pair.
-      </p>
+      </EmptyNote>
     );
   }
   return (

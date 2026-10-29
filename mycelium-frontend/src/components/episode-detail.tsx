@@ -4,6 +4,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FileQuestion } from "lucide-react";
+import { EmptyNote, EmptyState } from "@/components/empty-state";
 import { fetchEpisode, type EpisodeDetail as EpisodeDetailT, type MyceliumMessage } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -95,7 +97,7 @@ export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId
     );
   }
   if (!detail) {
-    return <div className="px-5 py-8 text-center text-label text-muted-foreground">Episode not found</div>;
+    return <EmptyState icon={FileQuestion} size="sm" title="Episode not found" />;
   }
 
   const state = detail.subkind ?? detail.outcome;
@@ -144,7 +146,7 @@ export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId
           <span className="text-micro tabular text-muted-foreground">{detail.messages.length} envelopes</span>
         </div>
         {detail.messages.length === 0 ? (
-          <div className="py-4 text-center text-label text-muted-foreground">No envelopes recorded</div>
+          <EmptyNote className="py-3">No envelopes recorded.</EmptyNote>
         ) : (
           <div>{detail.messages.map((env, i) => <EnvelopeRow key={i} env={env} />)}</div>
         )}

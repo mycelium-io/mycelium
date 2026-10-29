@@ -4,6 +4,7 @@
 "use client";
 
 import Link from "next/link";
+import { EmptyNote } from "@/components/empty-state";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Kbd, KbdChord } from "@/components/ui/kbd";
@@ -185,7 +186,7 @@ export function KeysPage() {
         </div>
       </div>
 
-      {groups.length === 0 && <p className="mt-6 text-label text-muted-foreground">No shortcut matches that.</p>}
+      {groups.length === 0 && <EmptyNote className="mt-6">No shortcut matches that.</EmptyNote>}
 
       {groups.map(([group, list]) => (
         <section key={group} className="mt-6">

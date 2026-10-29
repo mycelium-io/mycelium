@@ -5,6 +5,7 @@
 
 import { ArrowDownUp } from "lucide-react";
 import { HighlightText } from "@/components/ui/highlight-text";
+import { EmptyNote } from "@/components/empty-state";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   SORTS,
@@ -100,7 +101,7 @@ export function ChatSearchResults({ query, onQueryChange, result, failed, needle
         </Tooltip>
       </div>
       {result.hits.length === 0 ? (
-        <p className="px-4 py-2 text-micro text-muted-foreground">No matches</p>
+        <EmptyNote className="px-4 py-2">No messages match.</EmptyNote>
       ) : (
         <ul aria-label="Matching messages">
           {result.hits.map((hit) => (

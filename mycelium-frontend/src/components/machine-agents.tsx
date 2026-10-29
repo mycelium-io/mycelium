@@ -20,6 +20,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { EmptyNote } from "@/components/empty-state";
 import { Loader2 } from "lucide-react";
 import { restartMachineAgents, type MachineAgent, type MachineProblem, type Runner } from "@/lib/api";
 import { signFor } from "@/lib/device-key";
@@ -100,9 +101,7 @@ export function MachineAgents({ runner }: { runner: Runner }) {
         </div>
       )}
       {report.workspaces.length === 0 ? (
-        <p className="text-label text-muted-foreground">
-          No agents on this machine yet. Start one from a room&apos;s Members panel, under Invite.
-        </p>
+        <EmptyNote>No agents on this machine yet. Start one from a room&apos;s Members panel, under Invite.</EmptyNote>
       ) : (
         report.workspaces.map((w) => (
           <section key={w.id}>
@@ -118,7 +117,7 @@ export function MachineAgents({ runner }: { runner: Runner }) {
               )}
             </div>
             {w.agents.length === 0 ? (
-              <p className="px-1 text-micro text-muted-foreground">No agents bound here yet.</p>
+              <EmptyNote className="px-1">No agents bound here yet.</EmptyNote>
             ) : (
               <div className="overflow-x-auto rounded-md border border-border">
                 <table className="w-full text-left text-label">

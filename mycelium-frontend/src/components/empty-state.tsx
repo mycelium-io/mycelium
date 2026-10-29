@@ -16,7 +16,15 @@ interface Props {
   className?: string;
 }
 
-/** The one empty state for the whole app — consistent icon chip, title, copy.
+/** A section with nothing in it, inside a card, a list or a panel that has
+ *  other things: one quiet sentence saying what is missing and what would fill
+ *  it. An icon tile would outweigh the section here, so this is text only. The
+ *  host sets the inset, to line up with the rows that would have been there. */
+export function EmptyNote({ children, className }: { children: ReactNode; className?: string }) {
+  return <p className={cn("text-label leading-relaxed text-muted-foreground", className)}>{children}</p>;
+}
+
+/** The empty state for a whole pane or panel — consistent icon chip, title, copy.
  *  Full-pane usages (Channel, Board, Network) pass `className="h-full"`; the copy
  *  stays top-aligned so it doesn't jump vertically as you switch between panes of
  *  differing height. Rail/list usages sit in flow near the top the same way. */

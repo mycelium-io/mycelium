@@ -4,7 +4,6 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import { MessagesSquare } from "lucide-react";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { TaskConversation } from "@/components/task/task-conversation";
 import type { ConversationRows } from "@/components/messages/use-follow-latest";
@@ -20,24 +19,6 @@ interface Props {
   className?: string;
   /** Told what the discussion draws, for the page's scroll (see `TaskConversation`). */
   onRows?: (rows: ConversationRows) => void;
-}
-
-/** A task with no replies yet: where its conversation starts, and where it goes. */
-function NoReplies() {
-  return (
-    <div className="flex items-start gap-3 px-5 py-3">
-      <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-hairline text-muted-foreground">
-        <MessagesSquare className="size-4" />
-      </span>
-      <div className="min-w-0 space-y-0.5">
-        <p className="text-label text-text">No replies yet</p>
-        <p className="text-micro text-muted-foreground">
-          Start the conversation below. @-mention an agent to bring it in; replies stay in this task, out of the
-          room&apos;s channel.
-        </p>
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -65,7 +46,6 @@ export function TaskDiscussion({ roomName, episode, onOpenMemory, className, onR
           episode={episode}
           onOpenMemory={onOpenMemory}
           onReady={onReady}
-          empty={<NoReplies />}
           surface="paper"
           onRows={onRows}
         />

@@ -55,7 +55,7 @@ import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
 import { expandedPathsForKey } from "@/lib/memory-panel-nav";
 import { MemoryPreviewCard, type PreviewAnchor } from "@/components/memory-preview-card";
 import { memoryValueText } from "@/lib/memory-preview";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyNote, EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FadeScroll } from "@/components/ui/fade-scroll";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -685,6 +685,9 @@ export function MemoryPanel({
                 Clear
               </button>
             </div>
+            {searchResults.length === 0 && (
+              <EmptyNote className="px-4 py-2.5">No memories match. Try other words, or fewer of them.</EmptyNote>
+            )}
             {searchResults.map((r, i) => (
               <button
                 key={i}

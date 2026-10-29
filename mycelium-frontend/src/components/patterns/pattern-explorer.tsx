@@ -20,6 +20,7 @@
  */
 
 import Link from "next/link";
+import { EmptyNote } from "@/components/empty-state";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronsLeft, ChevronsRight, CircleHelp, ExternalLink, Play, RotateCcw } from "lucide-react";
@@ -177,7 +178,7 @@ function PatternRail({
       <div className={cn("flex-1 overflow-y-auto py-2", collapsed ? "flex flex-col items-center gap-1" : "px-2")}>
         {error && !collapsed && <p className="px-2 py-1 text-xs text-red">Couldn&apos;t read the patterns: {error.message}</p>}
         {patterns.length === 0 && !error && !collapsed && (
-          <p className="px-2 py-1 text-xs text-faint">This hub has no pattern pack. Set patterns.dir to a pack folder.</p>
+          <EmptyNote className="px-2 py-1">This hub has no pattern pack. Set patterns.dir to a pack folder.</EmptyNote>
         )}
         {patterns.map((p) => {
           const ran = latestRoomOf(rooms, p.pattern) !== null;

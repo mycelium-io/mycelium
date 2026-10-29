@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { EmptyNote } from "@/components/empty-state";
 import { redo, undo } from "@codemirror/commands";
 import { Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
@@ -338,7 +339,7 @@ export function MemoryBodyEditor({
               {text}
             </MarkdownContent>
           ) : (
-            <p className="px-4 py-3 text-label text-faint">Nothing to preview yet.</p>
+            <EmptyNote className="px-4 py-3">Nothing to preview yet.</EmptyNote>
           )
         ) : (
           <MarkdownEditor

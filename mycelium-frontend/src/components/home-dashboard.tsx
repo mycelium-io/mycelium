@@ -5,6 +5,7 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
+import { EmptyNote } from "@/components/empty-state";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -191,9 +192,7 @@ export function HomeDashboard() {
             ))}
           </section>
         ) : rooms.length === 0 ? (
-          <p className="px-2 text-label text-muted-foreground">
-            No rooms yet. Make one, and take the tour from inside it.
-          </p>
+          <EmptyNote className="px-2">No rooms yet. Make one, and take the tour from inside it.</EmptyNote>
         ) : (
           <section>
             <ListLabel>Recent</ListLabel>
