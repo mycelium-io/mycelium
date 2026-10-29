@@ -7,12 +7,14 @@ Each coordination session closes with a record written to the parent room's
 memory (see :func:`app.services.episode_state.write_episode_record`): a small
 markdown header plus the full causally-linked message chain as a ```jsonl```
 block. This module turns one of those files back into structured fields — kind/
-subkind, episode URN, participants, and the MPC/GAR/SCR consensus metrics — for
-the episodes route and for cross-entity search.
+subkind, episode URN, participants, and the metrics the commit carried — for the
+episodes route and for cross-entity search. A conductor run's metrics are its
+members' ``satisfaction``; a record the retired aligner wrote carries MPC/GAR/SCR
+and ``assignments``, which still read so a room's history renders.
 
 The structured fields are derived from the envelopes themselves (the source of
-truth), not the human-readable header; only ``tasks`` — which the consensus
-envelope doesn't carry — is read from the markdown.
+truth), not the human-readable header; only ``tasks`` — which only those older
+records list — is read from the markdown.
 """
 
 from __future__ import annotations

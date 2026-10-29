@@ -12,24 +12,25 @@ test. There is exactly one of each fake — don't re-declare them per file.
 
 | You're testing… | Import | It stands in for |
 | --- | --- | --- |
-| The aligner / mediator driving a negotiation | `FakeChannel`, `FakePersister`, `FakeManaged`, `FakeManager` | the SLIM channel + persister + `RoomChannelManager` |
-| The mediator's LLM decisions | `make_fake_llm` / `fake_llm_session_factory` | the Pi llm_session (`AlignerEngine`'s `llm_session_factory` seam) |
+| An engine posting and asking members over a room's channel | `FakeChannel`, `FakePersister`, `FakeManaged`, `FakeManager` | the SLIM channel + persister + `RoomChannelManager` |
 | `room_channels` provisioning / membership | `FakeSlimClient`, `FakeSession` | `slim_client.SlimClient` (the `slim_bindings` transport) |
 | `PiSession.__call__` without spawning `pi` | `patch_pi_run(monkeypatch, stdout=…)` | `subprocess.run` / `shutil.which` |
 
-### Example — drive the SAO mediator to agreement, node-free
+### Example — put a turn to a member and get its answer, node-free
 
 ```python
-from tests.fakes import FakeChannel, FakePersister, FakeManaged, FakeManager, fake_llm_session_factory
+from app.services import turns
+from tests.fakes import FakeChannel, FakePersister, FakeManaged
 
 persister = FakePersister()
 channel = FakeChannel(persister, reply_conf=0.9)   # every prompt draws a reply
 managed = FakeManaged("room", "mycelium", channel, persister)
-manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-engine = aligner.AlignerEngine(manager, handle="aligner", llm_session_factory=fake_llm_session_factory)
-verdict = await engine.mediate("room")   # converges without a node or an LLM
+prose = await turns.addressed_turn(managed, persister, sender="conductor", handle="growth", ...)
 ```
+
+`tests/test_turns.py` has the full call, and `tests/test_conductor.py` drives
+whole flows with a scripted channel.
 
 ### Example — provision a room channel against a fake node
 

@@ -74,7 +74,7 @@ export const INTENTS: Intent[] = [
     id: "settle",
     label: "Settle",
     when: "Agents want different things and need to agree on one.",
-    then: "Each proposes an option and rates the others, and the least happy one proposes again until everyone's bar is met, or the best so far stands.",
+    then: "Each agent suggests an option and rates the others. The least happy one suggests a fix, until everyone is satisfied or the best option so far stands.",
     roles: [],
     minGroup: 2,
     summon: ({ group }, note) => `@conductor concord ${handles(group)}${colon(note) || ": the task above"}`,

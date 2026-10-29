@@ -17,8 +17,6 @@ What stands in for what:
   (``app.services.persister``): a ``DeliveryLog`` plus ``ingest_local``.
 * :class:`FakeManaged` / :class:`FakeManager` — ``ManagedRoomChannel`` /
   ``RoomChannelManager`` (``app.services.room_channels``).
-* :func:`make_fake_llm` / :func:`fake_llm_session_factory` — the mediator's Pi LLM session
-  seam (``llm_session_factory`` on ``AlignerEngine``), a deterministic prompt-keyed stub.
 * :func:`patch_pi_run` — mock ``subprocess.run`` / ``shutil.which`` so ``PiSession``
   never spawns a real ``pi``.
 
@@ -28,7 +26,6 @@ See ``tests/README.md`` for the "test a feature without a live stack" recipe.
 from __future__ import annotations
 
 import asyncio
-import json
 import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -41,11 +38,7 @@ from app.services.persister import DeliveryLog, TranscriptRecord, record_from
 if TYPE_CHECKING:
     import pytest
 
-# The default room the simulated participant replies are stamped for. The
-# mediator threads replies by message parents/recipients, not by episode URN, so
-# a fake reply carrying this room's episode is read correctly even in a
-# negotiation over a differently-named room (this preserves the historical
-# behavior when these fakes lived in ``test_aligner``).
+# The default room the fakes and the simulated participant replies are stamped for.
 DEFAULT_ROOM = "align-room"
 EPISODE = message_format.episode_urn(DEFAULT_ROOM, "live")
 TOPIC = message_format.topic_urn(DEFAULT_ROOM)
@@ -65,9 +58,7 @@ def position_record(
 ) -> TranscriptRecord:
     """An agent-position transcript record carrying an epistemic payload.
 
-    ``prose`` is the body the mediator reads — issue discovery and offer
-    interpretation both work off what the agent said — so a test driving a real
-    LLM session supplies real sentences. It defaults to a stub.
+    ``prose`` is the message body; it defaults to a stub.
     """
     data: dict[str, Any] = {"action": action}
     if confidence is not None:
@@ -88,7 +79,7 @@ def position_record(
     )
 
 
-# ── Message channel + persister (the aligner/plan-sync/mediator layer) ─────────────
+# ── Message channel + persister (what an engine posts through) ──────────────────
 
 
 class FakeChannel:
@@ -96,8 +87,8 @@ class FakeChannel:
 
     Stands in for ``app.services.message_slim.MessageChannel``. With ``reply_conf`` set,
     every ``exchange`` prompt draws a simulated reply from each addressed actor
-    into the paired persister's log — enough to drive the SAO mediator to
-    agreement node-free (see ``test_mediator``).
+    into the paired persister's log — enough to answer a turn put through
+    :func:`app.services.turns.addressed_turn` node-free (see ``test_turns``).
     """
 
     def __init__(
@@ -163,15 +154,14 @@ class FakeManaged:
 
 
 class FakeManager:
-    """Just enough of ``RoomChannelManager`` for the aligner + plan-sync consumers.
+    """Just enough of ``RoomChannelManager`` for the engines.
 
-    Two construction styles are supported so the one fake serves both callers:
+    Two construction styles are supported:
 
-    * ``FakeManager(managed, members)`` — the aligner/mediator style, with an
-      explicit managed channel and roster.
-    * ``FakeManager(live=False)`` — the plan-sync style, which builds a default
-      managed channel wrapping a fresh :class:`FakeChannel` (or ``None`` when not
-      ``live``) and exposes it as ``.channel``.
+    * ``FakeManager(managed, members)`` — an explicit managed channel and roster.
+    * ``FakeManager(live=False)`` — builds a default managed channel wrapping a
+      fresh :class:`FakeChannel` (or ``None`` when not ``live``) and exposes it
+      as ``.channel``.
     """
 
     def __init__(
@@ -324,38 +314,6 @@ class FakeSlimClient:
 
 
 # ── the Pi session / LLM seam ───────────────────────────────────────────────────
-
-
-def make_fake_llm() -> Any:
-    """A deterministic stand-in for the mediator's Pi llm_session, keyed on the prompt.
-
-    * the term check → no mismatch (so no clarifying round);
-    * discovery → one issue ``cap`` with three options;
-    * a propose interpretation → counter to ``cap = 30``;
-    * a respond interpretation → accept;
-    * any broker framing → a short note.
-
-    This is the ``llm_session_factory`` payload that lets the SAO mediator run
-    node-free and LLM-free (see ``test_mediator``).
-    """
-
-    def _fake_llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
-        if "TERM MISMATCHES" in prompt:
-            return json.dumps({"mismatches": []})  # the shared-vocabulary default
-        if "identify the negotiable ISSUES" in prompt:
-            return json.dumps({"issues": [{"name": "cap", "options": ["25", "30", "35"]}]})
-        if "Interpret @" in prompt:
-            if '"action":"counter"' in prompt:  # proposing schema
-                return json.dumps({"action": "counter", "offer": {"cap": "30"}})
-            return json.dumps({"action": "accept"})  # responding schema
-        return "Everyone is close on the cap; let's lock 30 and move."
-
-    return _fake_llm
-
-
-def fake_llm_session_factory(_episode: str) -> Any:
-    """A ``llm_session_factory`` that yields :func:`make_fake_llm` for any episode."""
-    return make_fake_llm()
 
 
 def patch_pi_run(
