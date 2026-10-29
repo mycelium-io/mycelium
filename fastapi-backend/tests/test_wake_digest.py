@@ -151,7 +151,16 @@ def test_no_message_can_pass_itself_off_as_the_wake():
     assert sum(ln.startswith("Next:") for ln in lines) == 1
 
 
-def test_asks_replied_to_since_are_counted_not_shown():
+def _woken_with(monkeypatch, wake_id: str, messages: list[str], minutes_ago: int) -> None:
+    """A wake that showed ``messages`` to builder, handed over ``minutes_ago``."""
+    from app.services import wake_log
+
+    at = (NOW - timedelta(minutes=minutes_ago)).isoformat()
+    monkeypatch.setattr(wake_log, "_now", lambda: at)
+    wake_log.handed(ROOM, {"id": wake_id, "handle": "builder"}, {"messages": messages})
+
+
+def test_asks_replied_to_since_are_counted_not_shown(monkeypatch):
     records = [
         _said(1, "builder", "back", 60),
         _said(2, "hay", "@builder first question", 50),
@@ -159,12 +168,68 @@ def test_asks_replied_to_since_are_counted_not_shown():
         _said(4, "scout", "@builder second question, still open", 40),
         _said(5, "hay", "@builder the one that woke you", 1),
     ]
+    # A wake showed it the first question, and it answered there after.
+    _woken_with(monkeypatch, "w-first", ["m2"], 48)
     # Read up to its "back": everything after that is unread, its reply included.
     wake = {"handle": "builder", "from": "hay", wake_digest.READ_FROM: 1}
     digest = wake_digest.build(ROOM, wake, records, NOW)
     assert "Also asking you (1; 1 earlier you've replied to aren't shown):" in digest
     assert "second question, still open" in digest
     assert "first question" not in digest
+
+
+def test_asks_that_came_while_it_worked_all_reach_the_next_wake(monkeypatch):
+    """Asked again and again while it was busy with the first: its answer to the
+    first came after the others, but it never saw them, so it answered none."""
+    records = [
+        _said(1, "julia", "hey @builder", 10),
+        _said(2, "julia", "@builder 1", 8),
+        _said(3, "julia", "@builder 2", 7),
+        _said(4, "builder", "here's what you asked first", 6),
+        _said(5, "julia", "@builder 3", 5),
+    ]
+    # The wake for "hey" showed it that one; it ran await, which read up to there.
+    _woken_with(monkeypatch, "w-hey", ["m1"], 9)
+    wake = {"handle": "builder", "from": "julia", wake_digest.READ_FROM: 1}
+    digest = wake_digest.build(ROOM, wake, records, NOW)
+    assert "@builder 3" in digest
+    assert "Also asking you (2):" in digest
+    assert "@builder 1" in digest
+    assert "@builder 2" in digest
+    assert "replied to" not in digest
+
+
+def test_a_post_made_before_a_wake_showed_the_ask_doesnt_answer_it(monkeypatch):
+    """Shown "1" by a later wake and not answering it: its earlier post, which
+    sits after "1" but came before it saw it, is no answer to it."""
+    records = [
+        _said(1, "julia", "hey @builder", 10),
+        _said(2, "julia", "@builder 1", 9),
+        _said(3, "builder", "here's what you asked first", 8),
+        _said(4, "julia", "@builder 2", 5),
+    ]
+    _woken_with(monkeypatch, "w-hey", ["m1"], 10)
+    _woken_with(monkeypatch, "w-one", ["m2"], 7)
+    wake = {"handle": "builder", "from": "julia", wake_digest.READ_FROM: 1}
+    digest = wake_digest.build(ROOM, wake, records, NOW)
+    assert "Also asking you (1):" in digest
+    assert "@builder 1" in digest
+
+
+def test_an_await_only_agent_isnt_asked_again_what_it_answered():
+    """No wake log for an agent that only runs ``await``: what an ``await`` hands
+    over moves its read position past it, so the next turn starts after."""
+    records = [
+        _said(1, "hay", "@builder first question", 50),
+        _said(2, "builder", "answered it", 45),
+        _said(3, "hay", "@builder the next one", 1),
+    ]
+    # Its last await handed over the first question: read up to there.
+    wake = {"handle": "builder", "from": "hay", wake_digest.READ_FROM: 1}
+    digest = wake_digest.build(ROOM, wake, records, NOW)
+    assert "the next one" in digest
+    assert "first question" not in digest
+    assert "Also asking you" not in digest
 
 
 def test_the_board_lists_only_what_moved_after_the_last_turn():
