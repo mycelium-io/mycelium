@@ -15,10 +15,13 @@
 import type { BoardEpic, BoardPart, BoardRead, LatestLine, PartState, WaitingItem } from "@/lib/api";
 import { MOCK_NOW, type MockMemory, type RoomFixture } from "./fixtures";
 
-/** A fixture time, moved up so the fixtures' now is the real one. */
+/** A fixture time, moved up so the fixtures' now is the real one. A time after
+ *  the fixtures' now is on the real clock already (written live, or by a
+ *  scenario timed from now), and stays where it is. */
 function today(at: string | null | undefined): string | null {
   const ms = Date.parse(at ?? "");
-  return Number.isNaN(ms) ? null : new Date(ms + (Date.now() - MOCK_NOW)).toISOString();
+  if (Number.isNaN(ms)) return null;
+  return ms > MOCK_NOW ? new Date(ms).toISOString() : new Date(ms + (Date.now() - MOCK_NOW)).toISOString();
 }
 
 const BOARD_NAMESPACES = new Set(["decisions", "status", "work", "failed"]);
