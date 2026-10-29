@@ -366,7 +366,7 @@ export const SHOTS: Shot[] = [
       // Starts just inside the pane, past its accent edge and the tab's underline.
       ["home-thread", "walk-thread", { x: 670, y: 68, width: 430, height: 538 }],
       // The @ list and the message under it, short of the channel behind.
-      ["home-mention", "mention", { x: 245, y: 647, width: 458, height: 183 }],
+      ["home-mention", "mention", { x: 245, y: 579, width: 458, height: 251 }],
     ] as const
   ).map(([id, from, crop]) => {
     const base = BASE.find((s) => s.id === from);
