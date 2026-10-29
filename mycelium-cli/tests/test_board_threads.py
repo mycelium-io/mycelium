@@ -896,3 +896,147 @@ def test_a_json_dump_of_the_thread_is_still_json(monkeypatch: pytest.MonkeyPatch
     )
     chat.read(_config(), ROOM, limit=10, episode=THREAD, json_output=True)
     assert json.loads(capsys.readouterr().out)["total"] == 1
+
+
+TASK = ("work/passkey-login", "Passkey login")
+
+
+def test_the_room_read_names_the_task_a_thread_message_came_from(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from mycelium import chat
+    from mycelium_backend_client.models import MessageListResponse
+
+    monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
+        lambda **_k: ok(MessageListResponse(messages=_messages(THREAD), total=1)),
+    )
+    monkeypatch.setattr("mycelium.chat.thread_tasks", lambda _c, _r: {THREAD: TASK})
+    monkeypatch.setattr("mycelium.commands.room._agent_owner_map", lambda _r: {})
+
+    chat.read(_config(), ROOM, limit=10)
+    assert 'in "Passkey login"' in capsys.readouterr().out
+
+
+def test_a_thread_no_row_carries_is_named_by_its_id(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from mycelium import chat
+    from mycelium_backend_client.models import MessageListResponse
+
+    monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
+        lambda **_k: ok(MessageListResponse(messages=_messages(THREAD), total=1)),
+    )
+    monkeypatch.setattr("mycelium.chat.thread_tasks", lambda _c, _r: {})
+    monkeypatch.setattr("mycelium.commands.room._agent_owner_map", lambda _r: {})
+
+    chat.read(_config(), ROOM, limit=10)
+    assert f"in thread {SHORT}" in capsys.readouterr().out
+
+
+def _notice_frame(subkind: str) -> dict:
+    return {
+        "l9": {
+            "header": {"kind": "exchange", "message": {"episode": LIVE}},
+            "payload": {
+                "type": "notice",
+                "data": {
+                    "subkind": subkind,
+                    "key": TASK[0],
+                    "title": TASK[1],
+                    "by": "sec",
+                    "episode": THREAD,
+                },
+            },
+        }
+    }
+
+
+class TestWatchAllFollowsEveryThread:
+    """``room watch --all``: what the room's own view leaves to the thread."""
+
+    @staticmethod
+    def _watch(monkeypatch: pytest.MonkeyPatch, frames: list[dict], history: list[dict]) -> None:
+        from mycelium.commands import room as room_cmd
+
+        class _Stream:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            @staticmethod
+            def iter_lines():
+                for frame in frames:
+                    yield f"data: {json.dumps(frame)}"
+
+        class _Client:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def stream(self, _method, _path):
+                return _Stream()
+
+        monkeypatch.setattr(room_cmd, "hub_client", lambda *_a, **_k: _Client())
+        install_stand_in_hub(monkeypatch).answer = lambda request: _replay(request, history)
+        monkeypatch.setattr(room_cmd, "_agent_owner_map", lambda _r: {})
+        monkeypatch.setattr("mycelium.chat.thread_tasks", lambda _c, _r: {THREAD: TASK})
+        room_cmd._watch_room(_config(), ROOM, 0, everything=True)
+
+    def test_a_thread_s_message_is_printed_with_its_task(
+        self, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        frames = [
+            _bus_frame(_prose_frame(THREAD)),
+            _bus_frame(_ping_frame(), sender="system"),
+            _bus_frame(_prose_frame(LIVE, "standup in five")),
+        ]
+        self._watch(monkeypatch, frames, [])
+
+        out = capsys.readouterr().out
+        assert "Passkey login" in out
+        assert "WebCrypto fallback" in out
+        # The message draws itself, so the ping announcing it would be a repeat.
+        assert "activity in" not in out
+        assert "standup in five" in out
+
+    def test_a_board_change_is_a_line(self, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+        self._watch(monkeypatch, [_bus_frame(_notice_frame("claimed"), sender="system")], [])
+
+        out = capsys.readouterr().out
+        assert "sec" in out
+        assert "took" in out
+        assert "Passkey login" in out
+
+    def test_the_replay_labels_a_thread_s_message_too(
+        self, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        history = [
+            {
+                "message_type": "broadcast",
+                "sender_handle": "sec",
+                "content": "in the keychain",
+                "episode": THREAD,
+            },
+        ]
+        self._watch(monkeypatch, [], history)
+
+        out = capsys.readouterr().out
+        assert "in the keychain" in out
+        assert "Passkey login" in out
+
+    def test_agent_text_is_escaped_and_cut(self, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+        long = "\n".join(["[red]not markup[/]", *[f"line {i}" for i in range(20)]])
+        self._watch(monkeypatch, [_bus_frame(_prose_frame(THREAD, long))], [])
+
+        out = capsys.readouterr().out
+        assert "[red]not markup[/]" in out
+        assert "line 19" not in out
+        assert "board messages work/passkey-login" in out

@@ -149,6 +149,39 @@ def readable(message_type: str, content: str) -> str:
     return f"({message_type.removeprefix('l9_')} record)"
 
 
+def thread_tasks(config: MyceliumConfig, room_name: str) -> dict[str, tuple[str, str]]:
+    """``{thread episode: (row key, title)}`` for every row on the room's board,
+    so a message from a thread can say which task it's in. A namespace the hub
+    can't list contributes nothing rather than failing the read."""
+    from mycelium.board.model import EPISODE_FIELD, LIVE_NAMESPACES
+    from mycelium.board.projection import project_items
+    from mycelium_backend_client.api.memory import (
+        list_memories_api_rooms_room_name_memory_get as list_api,
+    )
+
+    memories: list[dict] = []
+    with _typed_client(config) as client:
+        for namespace in LIVE_NAMESPACES:
+            try:
+                listed = answered(
+                    list_api.sync_detailed(
+                        room_name=room_name, client=client, prefix=f"{namespace}/", limit=1000
+                    ),
+                    list,
+                )
+            except Exception:  # noqa: BLE001 - a label is a nicety, never a failure
+                continue
+            memories += [m.to_dict() for m in listed]
+    rows = project_items(
+        episodes=[], memories=memories, agents=[], members=[], now=datetime.now(UTC)
+    )
+    return {
+        str(row.text(EPISODE_FIELD)): (row.source.label, row.title)
+        for row in rows
+        if row.source.kind == "memory" and row.text(EPISODE_FIELD)
+    }
+
+
 #: Messages somebody said, drawn as boxes; anything else is a one-line record.
 SAID_TYPES = frozenset({"broadcast", "direct", "announce", "delegate"})
 
@@ -255,6 +288,14 @@ def read(
 
     plural = "message" if len(msgs) == 1 else "messages"
     owners = _agent_owner_map(room_name)
+    # Reading the whole room, a message from a thread says which task it's in.
+    from mycelium.slim.message_format import room_episode
+
+    live = room_episode(room_name)
+    threaded = episode is None and any(
+        isinstance(m.episode, str) and m.episode and m.episode != live for m in msgs
+    )
+    tasks = thread_tasks(config, room_name) if threaded else {}
     checks = _checks(config, room_name, since=msgs[-1].created_at)
     typer.secho(f"\n  {where}  ", fg=typer.colors.CYAN, bold=True, nl=False)
     typer.secho(f"({len(msgs)} {plural}, newest first)\n", fg=typer.colors.BRIGHT_BLACK)
@@ -277,6 +318,11 @@ def read(
             header += f" (owned by @{owner})"
         if m.recipient_handle:
             header += f" → @{m.recipient_handle}"
+        if threaded and isinstance(m.episode, str) and m.episode and m.episode != live:
+            task = tasks.get(m.episode)
+            header += (
+                f' · in "{task[1]}"' if task else f" · in thread {m.episode.rsplit(':', 1)[-1]}"
+            )
         header += f" · {stamp} · {rid}"
         if getattr(m, "edited_at", None):
             header += " · edited"

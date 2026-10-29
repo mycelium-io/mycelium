@@ -325,6 +325,8 @@ Mention only who you need, as **Working with others** says: `@handle` asks, `@~h
 
 To see who is in the room and what each member is doing now, run `mycelium room members`.
 
+To catch up on everything in the room, threads included, run `mycelium room messages`. Each message from a thread names its task.
+
 If a wake says someone sent you an urgent message with `@!`, your turn may have been stopped so you'd read it now. Act on it, then carry on with what you were doing unless it says otherwise.
 
 ### Writing things down (memory)
