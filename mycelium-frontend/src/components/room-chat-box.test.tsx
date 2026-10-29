@@ -1043,7 +1043,6 @@ describe("<RoomChatBox /> @here and @all", () => {
     expect(card).toHaveTextContent("builder");
     expect(card).toHaveTextContent("reviewer");
     expect(card).not.toHaveTextContent("pricing");
-    expect(card).toHaveTextContent("The other 4 in the room can read the task, but aren't pinged.");
   });
 
   it("doesn't offer a group for letters it doesn't start with", async () => {

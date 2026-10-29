@@ -67,7 +67,6 @@ export function GroupMentionCard({
       : inThread
         ? "Everyone taking part in this task"
         : "Outside a task, everyone in the room";
-  const others = groups.all.count - groups.here.count;
   const people = members.filter((m) => m.kind === "person");
   const agents = members.filter((m) => m.kind === "agent");
   return (
@@ -138,11 +137,6 @@ export function GroupMentionCard({
               </div>
             </div>
           ))
-      )}
-      {name === "here" && inThread && others > 0 && kind !== "interrupt" && (
-        <div className="mt-1 border-t border-border px-2.5 pt-1.5 pb-1 text-micro text-muted-foreground">
-          The other {others} in the room can read the task, but aren&apos;t pinged.
-        </div>
       )}
     </div>
   );
