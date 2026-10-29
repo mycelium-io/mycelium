@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import type { MentionGroupMember, MentionGroups } from "@/lib/api";
 import type { ComposerMentionKind } from "@/lib/composer-mentions";
-import type { MentionGroupName } from "@/lib/mentions";
+import { groupMentionSpans, type MentionGroupName } from "@/lib/mentions";
 import { Ago } from "@/lib/relative-time";
 
 /** A group listed one member per row up to this many; more are drawn as a
@@ -30,7 +30,7 @@ export function groupReach(groups: MentionGroups, name: MentionGroupName, kind: 
 
 function note(m: MentionGroupMember) {
   if (m.role === "holder" && !m.posted_at) return <>holds it · hasn&apos;t posted</>;
-  if (m.role === "assignee" && !m.posted_at) return <>it&apos;s for them · hasn&apos;t posted</>;
+  if (m.role === "assignee" && !m.posted_at) return <>assigned · hasn&apos;t posted</>;
   const state =
     m.kind === "person"
       ? "person"
@@ -166,9 +166,6 @@ export function BigSendWarning({
             {send.people > 0 && `, and notifies ${send.people} ${send.people === 1 ? "person" : "people"}`}.
             {send.interruptsAll && " Any agent in the middle of a turn is stopped."}
           </p>
-          <p className="mt-0.5 text-micro text-muted-foreground">
-            Each one starts a turn to read it. Send it silently to tag them without waking anyone.
-          </p>
         </div>
       </div>
       <div className="mt-2.5 flex items-center justify-end gap-1.5">
@@ -186,7 +183,12 @@ export function BigSendWarning({
   );
 }
 
-/** Turns every group mention in `text` silent, leaving mentions of members as they are. */
+/** Turns every group mention in `text` silent: only the ones the parser finds,
+ *  so a member called `here-team` and anything inside code stay as written. */
 export function silenceGroups(text: string): string {
-  return text.replace(/(^|[\s(<])@[!~]?(here|all)\b/gi, (_, lead: string, name: string) => `${lead}@~${name}`);
+  let out = text;
+  for (const span of groupMentionSpans(text).reverse()) {
+    out = `${out.slice(0, span.start)}@~${out.slice(span.start, span.end).replace(/^@[~!]?/, "")}${out.slice(span.end)}`;
+  }
+  return out;
 }

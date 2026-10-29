@@ -98,7 +98,8 @@ export function blankCode(text: string): string {
 /** How a group is written: `@here`, `@!here` or `@~here`. */
 export type GroupForm = "mention" | "interrupt" | "silent";
 
-const GROUP_RE = /(?:^|(?<=[\s(<]))@([~!]?)(here|all)(?![\w-])/g;
+// Any letter case, as a mention of one member is: `@All` is `@all`.
+const GROUP_RE = /(?:^|(?<=[\s(<]))@([~!]?)(here|all)(?![\w-])/gi;
 const GROUP_FORMS: Record<string, GroupForm> = { "": "mention", "!": "interrupt", "~": "silent" };
 const GROUP_STRENGTH: Record<GroupForm, number> = { silent: 0, mention: 1, interrupt: 2 };
 
@@ -112,13 +113,23 @@ function handles(text: string, re: RegExp): string[] {
  *  (interrupt, then mention, then silent). The hub decides who each reaches. */
 export function parseGroupMentions(text: string): Partial<Record<MentionGroupName, GroupForm>> {
   const found: Partial<Record<MentionGroupName, GroupForm>> = {};
-  for (const [, sigil, name] of blankCode(text).matchAll(GROUP_RE)) {
-    const form = GROUP_FORMS[sigil];
-    const group = name as MentionGroupName;
-    const had = found[group];
-    if (had === undefined || GROUP_STRENGTH[form] > GROUP_STRENGTH[had]) found[group] = form;
+  for (const { name, form } of groupMentionSpans(text)) {
+    const had = found[name];
+    if (had === undefined || GROUP_STRENGTH[form] > GROUP_STRENGTH[had]) found[name] = form;
   }
   return found;
+}
+
+/** Each group mention in `text` outside code, where it is and how it's written. */
+export function groupMentionSpans(
+  text: string,
+): { start: number; end: number; name: MentionGroupName; form: GroupForm }[] {
+  return Array.from(blankCode(text).matchAll(GROUP_RE), (m) => ({
+    start: m.index,
+    end: m.index + m[0].length,
+    name: m[2].toLowerCase() as MentionGroupName,
+    form: GROUP_FORMS[m[1]],
+  }));
 }
 
 /** Handles a text asks for with `@handle` or `@!handle`, first-seen order, de-duplicated. */
