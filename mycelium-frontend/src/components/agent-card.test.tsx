@@ -5,7 +5,8 @@
 // agents' screens it asks for (only one of yours, in a state its screen says
 // something in).
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PresenceMember } from "@/lib/api";
 
@@ -36,7 +37,7 @@ vi.mock("@/components/agent-screen", () => ({
   ScreenLines: ({ handle }: { handle: string }) => <div data-testid="screen">{handle}</div>,
 }));
 
-import { AgentCard } from "@/components/agent-card";
+import { AgentCard, AgentCardHover, CARD_DELAY_MS } from "@/components/agent-card";
 
 const card = (handle: string) => render(<AgentCard room="checkout" handle={handle} onRestart={() => {}} />);
 const herdr = (handle: string, status: string, extra: Partial<PresenceMember> = {}): [string, PresenceMember] => [
@@ -106,5 +107,67 @@ describe("a person's and an engine's card", () => {
     card("conductor");
     expect(screen.getByText("the hub")).toBeInTheDocument();
     expect(screen.queryByTestId("screen")).toBeNull();
+  });
+});
+
+describe("the card on a name", () => {
+  it("gets out of the way when the name is clicked, until the pointer leaves it", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(
+      <AgentCardHover room="checkout" handle="builder">
+        <button type="button" onClick={onClick}>
+          builder
+        </button>
+      </AgentCardHover>,
+    );
+    const name = screen.getByRole("button", { name: "builder" });
+
+    await user.hover(name);
+    expect(await screen.findByText("Writes the checkout code.", undefined, { timeout: 2000 })).toBeInTheDocument();
+
+    // The click still does what the name does, and the card goes at once.
+    await user.click(name);
+    expect(onClick).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.queryByText("Writes the checkout code.")).toBeNull());
+
+    // Resting on the name again doesn't bring it back over what the click opened.
+    await new Promise(r => setTimeout(r, CARD_DELAY_MS + 200));
+    expect(screen.queryByText("Writes the checkout code.")).toBeNull();
+
+    // Once the pointer has left, the name opens its card again.
+    await user.unhover(name);
+    await user.hover(name);
+    expect(await screen.findByText("Writes the checkout code.", undefined, { timeout: 2000 })).toBeInTheDocument();
+  });
+
+  it("does the same from the keyboard, and opens again once focus comes back", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(
+      <>
+        <AgentCardHover room="checkout" handle="builder">
+          <button type="button" onClick={onClick}>
+            builder
+          </button>
+        </AgentCardHover>
+        <button type="button">elsewhere</button>
+      </>,
+    );
+
+    await user.tab();
+    expect(screen.getByRole("button", { name: "builder" })).toHaveFocus();
+    expect(await screen.findByText("Writes the checkout code.", undefined, { timeout: 2000 })).toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+    expect(onClick).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.queryByText("Writes the checkout code.")).toBeNull());
+
+    // Tabbing away and back opens it again: there was no pointer to leave.
+    await user.tab();
+    expect(screen.getByRole("button", { name: "elsewhere" })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "builder" })).toHaveFocus();
+    expect(await screen.findByText("Writes the checkout code.", undefined, { timeout: 2000 })).toBeInTheDocument();
   });
 });
