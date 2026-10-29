@@ -61,12 +61,7 @@ export function GroupMentionCard({
   const sigil = kind === "interrupt" ? "@!" : kind === "silent" ? "@~" : "@";
   const verb = kind === "interrupt" ? "interrupts" : kind === "silent" ? "names" : "pings";
   const count = kind === "interrupt" ? stopped.length : groups[name].count;
-  const scope =
-    name === "all"
-      ? "Everyone in the room"
-      : inThread
-        ? "Everyone taking part in this task"
-        : "Outside a task, everyone in the room";
+  const scope = name === "here" && inThread ? "Everyone in this task" : "Everyone in the room";
   const people = members.filter((m) => m.kind === "person");
   const agents = members.filter((m) => m.kind === "agent");
   return (
@@ -84,13 +79,7 @@ export function GroupMentionCard({
           {verb} {count}
         </span>
       </div>
-      <div className="px-2.5 pb-1 text-micro text-muted-foreground">
-        {kind === "interrupt" && stopped.length < members.length
-          ? "Only agents in the middle of a turn are stopped. The rest are pinged as usual."
-          : kind === "silent"
-            ? `${scope}. Nobody is woken.`
-            : scope}
-      </div>
+      <div className="px-2.5 pb-1 text-micro text-muted-foreground">{scope}</div>
       {members.length === 0 ? (
         <p className="px-2.5 pb-1.5 text-micro text-muted-foreground">Nobody else yet.</p>
       ) : members.length <= LIST_UP_TO ? (
