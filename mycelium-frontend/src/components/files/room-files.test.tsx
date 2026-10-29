@@ -87,7 +87,7 @@ describe("<RoomFiles />", () => {
     expect(cards()).toEqual(["Preview shot-2.png"]);
     expect(screen.getByText("1 of 4")).toBeInTheDocument();
     await user.type(screen.getByRole("searchbox", { name: "Search file names" }), "nothing");
-    expect(screen.getByText("No files match these filters.")).toBeInTheDocument();
+    expect(screen.getByText("No files match these filters")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Clear the filters" }));
     expect(cards()).toHaveLength(4);
   });

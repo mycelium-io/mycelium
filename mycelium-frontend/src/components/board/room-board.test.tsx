@@ -182,8 +182,7 @@ describe("<RoomBoard />", () => {
     board = { epics: [], tasks: [] };
     waiting = { handle: "julia", items: [] };
     renderWithSWR(<RoomBoard roomName="checkout" />);
-    expect(
-      await screen.findByText("Nothing is going on in this room yet. Hand something off above, and an agent will pick it up."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Nothing is going on in this room yet")).toBeInTheDocument();
+    expect(screen.getByText("Hand something off above, and an agent will pick it up.")).toBeInTheDocument();
   });
 });

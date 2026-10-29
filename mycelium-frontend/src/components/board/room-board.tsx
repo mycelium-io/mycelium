@@ -5,6 +5,8 @@
 
 import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
+import { VIEW_ICONS } from "@/components/room-views-nav";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/components/current-user";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -170,9 +172,11 @@ export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
         <NowProvider>
           <div ref={listRef} onKeyDown={move} className="pb-4">
             {quietRoom && (
-              <p className="px-3 py-3 text-label text-muted-foreground sm:px-4">
-                Nothing is going on in this room yet. Hand something off above, and an agent will pick it up.
-              </p>
+              <EmptyState
+                icon={VIEW_ICONS.board}
+                title="Nothing is going on in this room yet"
+                description="Hand something off above, and an agent will pick it up."
+              />
             )}
 
             {waiting.length > 0 && (

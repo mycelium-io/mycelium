@@ -4,7 +4,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FileUp, Loader2, Search, Trash2, X } from "lucide-react";
+import { Download, Loader2, Search, SearchX, Trash2, X } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
+import { VIEW_ICONS } from "@/components/room-views-nav";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -122,14 +124,17 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
 
   if (!loading && uploads.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 bg-bg px-6 text-center">
-        <FileUp className="size-6 text-faint" strokeWidth={1.6} />
-        <p className="text-body text-text">No files in this room yet</p>
-        <p className="max-w-sm text-label text-muted-foreground">
-          Drop a file into any message box, or add one from a terminal with{" "}
-          <code className="font-mono text-micro">mycelium file upload &lt;path&gt;</code>. Each one shows here.
-        </p>
-      </div>
+      <EmptyState
+        icon={VIEW_ICONS.files}
+        className="h-full bg-bg"
+        title="No files in this room yet"
+        description={
+          <>
+            Drop a file into any message box, or add one from a terminal with{" "}
+            <code className="font-mono text-micro">mycelium file upload &lt;path&gt;</code>.
+          </>
+        }
+      />
     );
   }
 
@@ -209,12 +214,15 @@ export function RoomFiles({ roomName, onOpenThread, onOpenMessage, onOpenMemory 
 
       <ScrollArea className="min-h-0 flex-1" viewportRef={viewport}>
         {shown.length === 0 && isFiltered(filter) ? (
-          <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
-            <p className="text-label text-muted-foreground">No files match these filters.</p>
-            <Button variant="ghost" size="xs" onClick={() => setFilter(NO_FILTER)}>
-              Clear the filters
-            </Button>
-          </div>
+          <EmptyState
+            icon={SearchX}
+            title="No files match these filters"
+            action={
+              <Button variant="outline" size="xs" onClick={() => setFilter(NO_FILTER)}>
+                Clear the filters
+              </Button>
+            }
+          />
         ) : (
           <div className="flex flex-col gap-5 px-3 py-3">
             {groups.map((g) => (

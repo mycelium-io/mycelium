@@ -5,6 +5,8 @@
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
+import { VIEW_ICONS } from "@/components/room-views-nav";
 import { fetchWireHistory, logFetchError } from "@/lib/api";
 import { useRoomStream } from "@/lib/stream-hub";
 import { useRoomThreads } from "@/lib/room-data";
@@ -252,7 +254,11 @@ export function RoomStream({ roomName, onOpenThread, onOpenMemory }: Props) {
         aria-label="Everything in the room, newest last"
       >
         {lines.length === 0 ? (
-          <p className="px-4 py-6 text-label text-muted-foreground">Nothing has happened in this room yet.</p>
+          <EmptyState
+            icon={VIEW_ICONS.stream}
+            title="Nothing has happened in this room yet"
+            description="Messages, board moves, pull requests and saved memories show here as they happen."
+          />
         ) : (
           lines.map((line, i) => {
             const ev = line.event;

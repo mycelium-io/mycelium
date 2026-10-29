@@ -14,6 +14,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { UsageKpis } from "@/lib/api";
+import { EmptyNote } from "@/components/empty-state";
 import { useUsage } from "@/lib/metrics-data";
 import { fmtNum } from "@/lib/metrics-format";
 import { Dot, Figure, Figures, Label, Note, Nothing, Panel } from "@/components/metrics-parts";
@@ -235,7 +236,7 @@ function WhoDoesTheWork({ usage }: { usage: UsageKpis }) {
               </div>
             </>
           ) : (
-            <span className="text-micro text-faint">No tasks filed in this window.</span>
+            <EmptyNote>No tasks filed in this window.</EmptyNote>
           )}
           <div className="mt-3 border-t border-border pt-2">
             <Label>Median time open, by who resolved it</Label>
@@ -263,7 +264,7 @@ function WhoDoesTheWork({ usage }: { usage: UsageKpis }) {
               </div>
             ))
           ) : (
-            <span className="text-micro text-faint">No agents joined in this window.</span>
+            <EmptyNote>No agents joined in this window.</EmptyNote>
           )}
         </div>
       </Pane>

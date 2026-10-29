@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
+import { EmptyNote } from "@/components/empty-state";
 import { FindBar } from "@/components/find-bar";
 import { ChatSearchResults, Panel } from "@/components/chat-search-results";
 import { HighlightText } from "@/components/ui/highlight-text";
@@ -240,7 +241,7 @@ function MemoryResults({
   return (
     <Panel label="Search the room's memories">
       {results.length === 0 ? (
-        <p className="px-4 py-2 text-micro text-muted-foreground">No memories match</p>
+        <EmptyNote className="px-4 py-2">No memories match.</EmptyNote>
       ) : (
         <ul aria-label="Matching memories">
           {results.map(({ memory }) => (

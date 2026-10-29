@@ -10,7 +10,7 @@
  */
 
 import { useState } from "react";
-import { Clock, Loader2, MoreHorizontal, Plus } from "lucide-react";
+import { Loader2, MoreHorizontal, Plus } from "lucide-react";
 import {
   deleteSchedule,
   runSchedule,
@@ -22,7 +22,8 @@ import { useRoomSchedules } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { useRoomStream } from "@/lib/stream-hub";
 import { Ago, NowProvider, useNow } from "@/lib/relative-time";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyNote, EmptyState } from "@/components/empty-state";
+import { VIEW_ICONS } from "@/components/room-views-nav";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -100,8 +101,7 @@ export function RoomSchedules({ roomName }: { roomName: string }) {
           {schedules.length === 0 ? (
             loading ? null : (
               <EmptyState
-                icon={Clock}
-                size="sm"
+                icon={VIEW_ICONS.schedules}
                 className="h-full"
                 title="No schedules yet"
                 description="A schedule wakes an agent on a timer, when a quick check finds something for it to do."
@@ -384,7 +384,7 @@ function ScheduleDetailDialog({ schedule: s, onClose }: { schedule: Schedule | n
             </dl>
             <div className="max-h-72 overflow-auto rounded-md border border-border">
               {(s.history ?? []).length === 0 ? (
-                <p className="px-3 py-2 text-label text-faint">No runs yet.</p>
+                <EmptyNote className="px-3 py-2">No runs yet.</EmptyNote>
               ) : (
                 <table className="w-full text-label">
                   <thead className="sticky top-0">

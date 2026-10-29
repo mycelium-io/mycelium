@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bot, Cpu, Globe, UserRound } from "lucide-react";
 import { Select } from "@/components/ui/select";
+import { EmptyNote } from "@/components/empty-state";
 import { Panel } from "@/components/metrics-parts";
 import { useClientSetting } from "@/lib/client-settings";
 import { useRoomAgents, useRoomEpisodes, useRoomMemories, useRoomMessages } from "@/lib/room-data";
@@ -99,7 +100,7 @@ export function ActivityPanel({ rooms }: { rooms: string[] }) {
       {room && now ? (
         <ActivityLog events={events} tz={tz} onTz={chooseTz} now={now} />
       ) : (
-        <p className="px-4 py-3 text-label text-muted-foreground">No rooms yet, so there is nothing to show.</p>
+        <EmptyNote className="px-4 py-3">No rooms yet, so there is nothing to show.</EmptyNote>
       )}
     </Panel>
   );
@@ -243,9 +244,7 @@ export function ActivityLog({ events, tz, onTz, now }: Props) {
       </div>
 
       {summary.events.length === 0 ? (
-        <p className="py-8 text-center text-label text-muted-foreground">
-          Nothing logged in this range. Pick another day, or widen it.
-        </p>
+        <EmptyNote className="py-3">Nothing logged in this range. Pick another day, or widen it.</EmptyNote>
       ) : (
         <div className="flex flex-col gap-3">
           {summary.actors.map(lane => (

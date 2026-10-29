@@ -3,7 +3,8 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MessagesSquare } from "lucide-react";
 import { usePendingMessages, type Landed } from "@/lib/pending-messages";
 import { PendingMessageRows } from "@/components/pending-message-rows";
 import { Shimmer, SporeMark } from "@/components/responding-mark";
@@ -42,11 +43,28 @@ interface Props {
   /** The surface it sits on, so the pinned "responding" line covers what
    *  scrolls under it. */
   surface?: "bg" | "paper";
-  /** What an empty thread shows, for a host that frames it its own way. */
-  empty?: ReactNode;
   /** Told what the conversation draws whenever that changes, so the page it
    *  sits in can scroll it the way every message list scrolls. */
   onRows?: (rows: ConversationRows) => void;
+}
+
+/** A thread with no replies yet: where its conversation starts, and where it
+ *  goes. The same wherever a thread is shown, in a task's page or its tab. */
+function NoReplies() {
+  return (
+    <div className="flex items-start gap-3 px-5 py-3">
+      <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-hairline text-muted-foreground">
+        <MessagesSquare className="size-4" />
+      </span>
+      <div className="min-w-0 space-y-0.5">
+        <p className="text-label text-text">No replies yet</p>
+        <p className="text-micro text-muted-foreground">
+          Start the conversation below. @-mention an agent to bring it in; replies stay in this thread, out of the
+          room&apos;s channel.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -80,7 +98,6 @@ export function TaskConversation({
   episode,
   onOpenMemory,
   onReady,
-  empty,
   surface = "bg",
   onRows,
 }: Props) {
@@ -191,10 +208,7 @@ export function TaskConversation({
           <Skeleton className="h-3 w-3/5" />
         </div>
       ) : events.length === 0 && pending.length === 0 ? (
-        // A quiet line, not a card: an empty thread is where every task starts.
-        empty ?? <p className="px-5 py-3 text-micro text-faint">
-          No replies yet. Reply below, or @-mention an agent: it lands in this task, not in the room.
-        </p>
+        <NoReplies />
       ) : (
         <NowProvider>
           <div className="py-3">
