@@ -820,14 +820,19 @@ class RoomChannelManager:
 
         The non-destructive counterpart to :meth:`drain_herdr_wakes`: it peeks the
         hold queue for the presence surface without releasing anything, so the UI
-        can badge a tagged-but-busy agent. Stale-expired wakes (older than
-        ``hold_ttl_s``) are excluded, matching what drain would drop.
+        can badge a tagged-but-busy agent. A wake older than ``hold_ttl_s`` for
+        an agent no herdr pane reports is excluded, matching what drain would drop.
         """
         queue = self._herdr_wakes.get(room)
         if not queue:
             return set()
         now = time.monotonic()
-        return {w["handle"] for w in queue if now - float(w.get("ts", now)) <= hold_ttl_s}
+        live = self._live_herdr(room)
+        return {
+            w["handle"]
+            for w in queue
+            if w["handle"] in live or now - float(w.get("ts", now)) <= hold_ttl_s
+        }
 
     def drain_herdr_wakes(
         self, room: str, *, hold_ttl_s: float = 600.0, source: str | None = None
@@ -836,10 +841,12 @@ class RoomChannelManager:
 
         The "agent hold": a queued wake is returned to the bridge only once herdr
         shows its handle ``idle``/``done`` (ready to take a turn). A ``working``/
-        ``blocked`` handle keeps its wake queued until it frees up. A wake older
-        than ``hold_ttl_s`` is dropped so a never-idle agent doesn't hold a tag
-        forever. Presence is refreshed by the sync bridge every few seconds, so
-        the backend's view of "idle" is near-live.
+        ``blocked`` handle keeps its wake queued until it frees up, however long
+        its turn runs: a mention for an agent on a long task reaches it when the
+        task ends, not never. A wake is dropped only once it's older than
+        ``hold_ttl_s`` and no herdr pane reports its agent any more, so nothing
+        is left to deliver it to. Presence is refreshed by the sync bridge every
+        few seconds, so the backend's view of "idle" is near-live.
 
         A paused agent's wake is held whatever its state and however long, and
         never dropped: its resume (``reason="resumed"``) takes its place, and
@@ -866,15 +873,13 @@ class RoomChannelManager:
             if w["handle"] in paused:
                 held.append(w)
                 continue
-            if now - float(w.get("ts", now)) > hold_ttl_s:
-                # Stale hold: dropped, and said why in the wake log.
+            if status is None and now - float(w.get("ts", now)) > hold_ttl_s:
+                # Nothing reports the agent any more: dropped, and said why.
                 from app.services import wake_log
 
                 minutes = round(hold_ttl_s / 60)
                 why = (
-                    f"held {minutes} min while it was {status}"
-                    if status
-                    else f"held {minutes} min with no herdr pane reporting it "
+                    f"held {minutes} min with no herdr pane reporting it "
                     "(no runner syncing this room)"
                 )
                 wake_log.dropped(room, w, why)
