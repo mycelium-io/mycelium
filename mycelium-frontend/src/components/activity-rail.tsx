@@ -230,11 +230,13 @@ export function ActivityRail({
   );
 
   // One task is one line: a header over a single row is the heaviest version
-  // of the strip for the least news.
+  // of the strip for the least news. The label is as tall as the row's line,
+  // so the two read as one; the padding and the border make it 32px, the
+  // height of the tab bar and the Rooms rail's header.
   if (items.length === 1) {
     return (
-      <div className="@container flex flex-shrink-0 items-start gap-3 border-b border-border bg-surface px-3 py-0.5 sm:px-4">
-        <span className="hidden h-[26px] flex-shrink-0 items-center text-micro font-medium text-muted-foreground @[30rem]:flex">
+      <div className="@container flex min-h-8 flex-shrink-0 items-start gap-3 border-b border-border bg-surface px-3 pt-1 pb-[5px] sm:px-4">
+        <span className="hidden h-[22px] flex-shrink-0 items-center text-micro font-medium text-muted-foreground @[30rem]:flex">
           Recently updated
         </span>
         <ul className="flex min-w-0 flex-1 flex-col">{row(items[0])}</ul>
@@ -260,7 +262,9 @@ export function ActivityRail({
         onClick={() => fold(!folded)}
         aria-expanded={!folded}
         aria-label={folded ? "Show recently updated tasks" : "Fold recently updated tasks"}
-        className="group flex h-7 w-full items-center gap-3 text-left text-micro text-muted-foreground"
+        // With the strip's own bottom border, folded it stands exactly as tall
+        // as the tab bar and the Rooms rail's header beside it (h-8).
+        className="group flex h-[calc(2rem-1px)] w-full items-center gap-3 text-left text-micro text-muted-foreground"
       >
         <span className="flex flex-shrink-0 items-center gap-1 font-medium group-hover:text-text">
           {folded ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
