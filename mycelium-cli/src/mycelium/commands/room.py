@@ -22,6 +22,7 @@ Commands:
 import json as json_module
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import typer
 from rich.markup import escape
@@ -39,6 +40,9 @@ from mycelium.names import who
 from mycelium.slim.message_format import room_episode
 from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
+
+if TYPE_CHECKING:
+    from mycelium_backend_client.models import RoomMembers, RoomPresenceRead
 
 # The "raise-up" whitelist: message types promoted onto the primary channel
 # surface (here, `room watch`'s live stream) rather than staying inspector-only.
@@ -1219,6 +1223,128 @@ def wakes(
             console.print(line)
             if r.messages:
                 console.print(f"[dim]    asked in: {', '.join(r.messages)}[/dim]")
+    except (typer.Exit, typer.Abort):
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+def _unset(value: object) -> object:
+    """A generated model's field, with an unset one as ``None``."""
+    from mycelium_backend_client.types import Unset
+
+    return None if isinstance(value, Unset) else value
+
+
+def member_rows(members: "RoomMembers", presence: "RoomPresenceRead") -> list[dict]:
+    """Everyone in the room, from its members (``/rooms/{room}/members``) and its
+    live presence (``/rooms/{room}/sessions/members``), as ``room members`` says
+    them. State only: nothing of what's on anyone's screen."""
+    here = {m.handle.lstrip("@").lower(): m for m in presence.members}
+
+    def row(handle: str, kind: str, owner: object = None) -> dict:
+        live = here.get(handle.lstrip("@").lower())
+        if kind == "engine":
+            # No presence of its own: it answers whenever it's summoned.
+            status = "on call"
+        elif live is None:
+            status = "away"
+        elif kind == "person":
+            status = "here"
+        else:
+            # herdr's state as it reports it. Present with none (awaiting, or
+            # on a socket) is idle.
+            status = _unset(live.status) or "idle"
+        return {
+            "handle": handle,
+            "kind": kind,
+            "owner": _unset(owner),
+            "status": status,
+            "last_seen": _unset(live.last_seen) if live else None,
+            "wake_pending": bool(_unset(live.wake_pending)) if live else False,
+            "can_reply": _unset(live.can_reply) if live else None,
+            "cant_reply_why": _unset(live.cant_reply_why) if live else None,
+        }
+
+    return [
+        *(row(p.handle, "person") for p in members.people),
+        *(row(a.handle, "agent", a.owner) for a in members.agents),
+        *(row(e.handle, "engine", e.owner) for e in members.engines),
+        # Present, or holding a task, with no person or agent record: an agent
+        # that runs `await` but was never registered, say.
+        *(row(o.handle, "other") for o in members.others),
+    ]
+
+
+@doc_ref(
+    usage="mycelium room members [<room> | --room <room>]",
+    desc="Who is in a room and what each one is doing right now: people, agents and engines.",
+    group="room",
+)
+@app.command("members")
+@in_room("room_opt", resolve=False)
+@emits_json()
+def members(
+    ctx: typer.Context,
+    room: str | None = typer.Argument(None, help="Room to read (defaults to active room)"),
+    room_opt: str | None = None,
+) -> None:
+    """
+    Who is in a room, and what each one is doing right now.
+
+    Every member the room knows: its people, agents and engines, and anyone
+    else who is present or holds a task. An agent is working, idle, done or
+    blocked while present, and away when it isn't. A person is here or away.
+    An engine is on call: it answers whenever it's summoned. An agent the hub
+    knows can't post says so, and --json says why.
+
+    Examples:
+        mycelium room members
+        mycelium room members design-review --json
+    """
+    try:
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, _one_room(room, room_opt))
+        from mycelium_backend_client.api.members import (
+            list_members_api_rooms_room_name_members_get as members_api,
+        )
+        from mycelium_backend_client.api.sessions import (
+            list_members_api_rooms_room_name_sessions_members_get as presence_api,
+        )
+        from mycelium_backend_client.models import RoomMembers, RoomPresenceRead
+
+        with _typed_client(config) as client:
+            known = answered(members_api.sync_detailed(room_name, client=client), RoomMembers)
+            live = answered(presence_api.sync_detailed(room_name, client=client), RoomPresenceRead)
+        rows = member_rows(known, live)
+        if json_output:
+            typer.echo(json_module.dumps(rows, indent=2, default=str))
+            return
+        from rich.console import Console
+        from rich.table import Table
+
+        console = Console()
+        if not rows:
+            console.print(f"[dim]No members in {room_name} yet.[/dim]")
+            return
+        table = Table(title=f"{room_name} members", show_lines=False)
+        table.add_column("Handle", style="cyan", no_wrap=True)
+        table.add_column("Kind")
+        table.add_column("Status", no_wrap=True)
+        table.add_column("Owner", style="green")
+        for r in rows:
+            status = r["status"] if r["status"] != "away" else "[dim]away[/dim]"
+            if r["can_reply"] is False:
+                status += " · [yellow]can't reply[/yellow]"
+            table.add_row(
+                f"@{r['handle']}",
+                r["kind"],
+                status,
+                f"@{r['owner']}" if r["owner"] else "[dim]-[/dim]",
+            )
+        console.print(table)
     except (typer.Exit, typer.Abort):
         raise
     except Exception as e:
