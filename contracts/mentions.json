@@ -39,6 +39,7 @@
     "silent": "@~",
     "interrupt": "@!"
   },
+  "group_names": ["here", "all"],
   "cases": [
     { "text": "@alice @bob do the thing", "mentions": ["alice", "bob"], "silent": [], "interrupt": [] },
     { "text": "@alice please review, cc @~bob", "mentions": ["alice"], "silent": ["bob"], "interrupt": [] },

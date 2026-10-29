@@ -29,6 +29,14 @@ def test_sigils_match_contract():
     assert _CONTRACT["sigils"] == {"mention": "@", "silent": "@~", "interrupt": "@!"}
 
 
+def test_group_names_match_contract():
+    from app.services import groups
+    from app.services.persister import _GROUP_NAMES
+
+    assert list(groups.GROUPS) == _CONTRACT["group_names"]
+    assert set(_CONTRACT["group_names"]) == _GROUP_NAMES
+
+
 @pytest.mark.parametrize("case", _CONTRACT["cases"], ids=lambda c: c["text"])
 def test_case_parses_as_the_contract_says(case):
     from app.services import groups

@@ -21,6 +21,12 @@ _CONTRACT = json.loads(
 )
 
 
+def test_group_names_match_contract() -> None:
+    from mycelium.room_export import _GROUPS
+
+    assert set(_CONTRACT["group_names"]) == _GROUPS
+
+
 def _handles(found: list[dict[str, str]], modes: set[str]) -> list[str]:
     return list(dict.fromkeys(m["handle"] for m in found if m["mode"] in modes))
 
