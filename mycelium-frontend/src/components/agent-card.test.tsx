@@ -140,4 +140,34 @@ describe("the card on a name", () => {
     await user.hover(name);
     expect(await screen.findByText("Writes the checkout code.", undefined, { timeout: 2000 })).toBeInTheDocument();
   });
+
+  it("does the same from the keyboard, and opens again once focus comes back", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(
+      <>
+        <AgentCardHover room="checkout" handle="builder">
+          <button type="button" onClick={onClick}>
+            builder
+          </button>
+        </AgentCardHover>
+        <button type="button">elsewhere</button>
+      </>,
+    );
+
+    await user.tab();
+    expect(screen.getByRole("button", { name: "builder" })).toHaveFocus();
+    expect(await screen.findByText("Writes the checkout code.", undefined, { timeout: 2000 })).toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+    expect(onClick).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.queryByText("Writes the checkout code.")).toBeNull());
+
+    // Tabbing away and back opens it again: there was no pointer to leave.
+    await user.tab();
+    expect(screen.getByRole("button", { name: "elsewhere" })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "builder" })).toHaveFocus();
+    expect(await screen.findByText("Writes the checkout code.", undefined, { timeout: 2000 })).toBeInTheDocument();
+  });
 });

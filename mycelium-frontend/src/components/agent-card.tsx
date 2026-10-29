@@ -197,8 +197,9 @@ export function AgentCardHover({
   const [open, setOpen] = useState(false);
   // A click on the name opens something bigger (the member's drawer, their
   // terminal), so the card gets out of its way at once rather than after its
-  // close delay. It stays shut until the pointer leaves the name, or the card
-  // would open again over whatever the click opened.
+  // close delay. It stays shut until the pointer leaves the name or focus does
+  // (a keyboard click is Enter, with no pointer to leave), or the card would
+  // open again over whatever the click opened.
   const clicked = useRef(false);
   const at = room ?? opener?.room;
   if (!at) return children;
@@ -220,6 +221,9 @@ export function AgentCardHover({
             setOpen(false);
           }}
           onPointerLeave={() => {
+            clicked.current = false;
+          }}
+          onBlur={() => {
             clicked.current = false;
           }}
         />
