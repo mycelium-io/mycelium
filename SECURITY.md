@@ -1,30 +1,57 @@
-# Security Policy
+# Security Policies and Procedures
 
-## Supported Versions
+This document outlines security procedures and general policies for the
+Mycelium project.
 
-| Version | Supported          |
-|---------|--------------------|
-| latest  | :white_check_mark: |
+- [Disclosing a security issue](#disclosing-a-security-issue)
+- [Vulnerability management](#vulnerability-management)
+- [Suggesting changes](#suggesting-changes)
 
-## Reporting a Vulnerability
+## Disclosing a security issue
 
-If you discover a security vulnerability in Mycelium, please report it responsibly.
+The Mycelium maintainers take all security issues in the project
+seriously. Thank you for improving the security of Mycelium. We
+appreciate your dedication to responsible disclosure and will make every effort
+to acknowledge your contributions.
 
-**Do not open a public issue.**
+Mycelium leverages GitHub's private vulnerability reporting.
 
-Instead, email **juliarvalenti@gmail.com** with:
+To learn more about this feature and how to submit a vulnerability report,
+review [GitHub's documentation on private reporting](https://docs.github.com/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability).
 
-- A description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Suggested fix (if any)
+Here are some helpful details to include in your report:
 
-We will acknowledge receipt within 48 hours and aim to provide a fix or mitigation plan within 7 days for critical issues.
+- a detailed description of the issue
+- the steps required to reproduce the issue
+- versions of the project that may be affected by the issue
+- if known, any mitigations for the issue
 
-## Scope
+A maintainer will acknowledge the report within three (3) business days, and
+will send a more detailed response within an additional three (3) business days
+indicating the next steps in handling your report.
 
-This policy covers all repositories in the `mycelium-io` organization, including:
+If you've been unable to successfully draft a vulnerability report via GitHub
+or have not received a response during the allotted response window, please
+reach out via the [Cisco Open security contact email](mailto:oss-security@cisco.com).
 
-- `mycelium` (CLI, backend, client)
-- `.github` (organization configuration)
-- Any adapter or plugin repositories
+After the initial reply to your report, the maintainers will endeavor to keep
+you informed of the progress towards a fix and full announcement, and may ask
+for additional information or guidance.
+
+## Vulnerability management
+
+When the maintainers receive a disclosure report, they will assign it to a
+primary handler.
+
+This person will coordinate the fix and release process, which involves the
+following steps:
+
+- confirming the issue
+- determining affected versions of the project
+- auditing code to find any potential similar problems
+- preparing fixes for all releases under maintenance
+
+## Suggesting changes
+
+If you have suggestions on how this process could be improved please submit an
+issue or pull request.
