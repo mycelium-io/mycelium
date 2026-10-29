@@ -43,13 +43,15 @@ def _hub(backend, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: ANN001
                 {"handle": "quiet", "owner": "sam"},
             ],
             "engines": [{"handle": "conductor", "owner": None}],
-            "others": [],
+            # Running `await` without ever being registered.
+            "others": [{"handle": "drifter", "holds_task": False, "present": True}],
         }
     )
     live = RoomPresenceRead.from_dict(
         {
             "members": [
                 {"handle": "avery", "kind": "lease"},
+                {"handle": "drifter", "kind": "lease", "status": "working"},
                 {"handle": "coder", "kind": "lease", "status": "working", "wake_pending": True},
                 {
                     "handle": "scout",
@@ -83,6 +85,7 @@ def test_everyone_the_room_knows_with_what_each_is_doing():
         "scout": ("agent", "idle"),
         "quiet": ("agent", "away"),
         "conductor": ("engine", "on call"),
+        "drifter": ("other", "working"),
     }
     assert rows["coder"]["wake_pending"] is True
     assert rows["coder"]["owner"] == "avery"

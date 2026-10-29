@@ -1230,10 +1230,6 @@ def wakes(
         print_error(e, verbose=verbose)
 
 
-#: The states herdr reports for a present agent, shown as they are.
-_LIVE_STATES = frozenset({"working", "idle", "done", "blocked"})
-
-
 def _unset(value: object) -> object:
     """A generated model's field, with an unset one as ``None``."""
     from mycelium_backend_client.types import Unset
@@ -1257,9 +1253,9 @@ def member_rows(members: "RoomMembers", presence: "RoomPresenceRead") -> list[di
         elif kind == "person":
             status = "here"
         else:
-            said = _unset(live.status)
-            # Present with no herdr state (awaiting, or on a socket) is idle.
-            status = said if said in _LIVE_STATES else (said or "idle")
+            # herdr's state as it reports it. Present with none (awaiting, or
+            # on a socket) is idle.
+            status = _unset(live.status) or "idle"
         return {
             "handle": handle,
             "kind": kind,
@@ -1275,6 +1271,9 @@ def member_rows(members: "RoomMembers", presence: "RoomPresenceRead") -> list[di
         *(row(p.handle, "person") for p in members.people),
         *(row(a.handle, "agent", a.owner) for a in members.agents),
         *(row(e.handle, "engine", e.owner) for e in members.engines),
+        # Present, or holding a task, with no person or agent record: an agent
+        # that runs `await` but was never registered, say.
+        *(row(o.handle, "other") for o in members.others),
     ]
 
 
@@ -1294,11 +1293,11 @@ def members(
     """
     Who is in a room, and what each one is doing right now.
 
-    Every member the room knows: its people, agents and engines. An agent is
-    working, idle, done or blocked while present, and away when it isn't; a
-    person is here or away; an engine is on call, answering whenever it's
-    summoned. An agent the hub knows can't post (no credential, or one the hub
-    refused) says so, with why under --json.
+    Every member the room knows: its people, agents and engines, and anyone
+    else who is present or holds a task. An agent is working, idle, done or
+    blocked while present, and away when it isn't. A person is here or away.
+    An engine is on call: it answers whenever it's summoned. An agent the hub
+    knows can't post says so, and --json says why.
 
     Examples:
         mycelium room members

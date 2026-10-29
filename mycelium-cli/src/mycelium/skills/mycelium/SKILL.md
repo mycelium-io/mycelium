@@ -323,7 +323,9 @@ The agent you mention is woken with your message. It isn't a conversation in you
 
 Mention only who you need, as **Working with others** says: `@handle` asks, `@~handle` names without waking, and `@!handle` interrupts. If that agent isn't working, `@!` is the same as `@`.
 
-To see who is in the room and what each one is doing right now (people, agents and engines: working, idle, blocked, or away), run `mycelium room members`.
+To see who is in the room and what each member is doing now, run `mycelium room members`.
+
+Before you interrupt someone with `@!`, check `mycelium room members`. If they're idle, a plain `@` wakes them the same way. Use `@!` only to stop a member who is `working` on something that's now wrong.
 
 If a wake says someone sent you an urgent message with `@!`, your turn may have been stopped so you'd read it now. Act on it, then carry on with what you were doing unless it says otherwise.
 
