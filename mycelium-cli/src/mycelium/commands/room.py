@@ -42,6 +42,7 @@ from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
 
 if TYPE_CHECKING:
+    from mycelium.commands.swarm import LiveView
     from mycelium_backend_client.models import RoomMembers, RoomPresenceRead
 
 # The "raise-up" whitelist: message types promoted onto the primary channel
@@ -594,8 +595,44 @@ def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: s
     return f"  {stamp}  [{color}]{sender}[/]{own}: {content}{edited}"
 
 
-def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
-    """Core SSE watch loop: pretty-renders coordination and memory events."""
+def _thread_view(config: MyceliumConfig, room_name: str) -> "LiveView":
+    """``swarm``'s live view over the whole room: every thread's messages, each
+    labeled with its task, and the board's notices. Each thread's task is
+    known up front from the board, and kept current by the notices."""
+    from mycelium.chat import thread_tasks
+    from mycelium.commands.swarm import LiveView
+
+    view = LiveView()
+    for episode, (key, title) in thread_tasks(config, room_name).items():
+        view.titles[episode] = title
+        view.keys[episode] = key
+    return view
+
+
+def _thread_line(view: "LiveView", msg: dict, data: dict) -> str | None:
+    """A thread's message or a board notice, as ``view`` draws it. A message
+    read back from history carries its text bare, where the stream carries the
+    whole envelope, so it's handed over the way the stream would."""
+    streamed = data is not msg and msg.get("message_type") == "l9_exchange"
+    frame = (
+        msg
+        if streamed
+        else {
+            **msg,
+            "message_type": "l9_exchange",
+            "content": json_module.dumps({"content": str(msg.get("content") or "")}),
+        }
+    )
+    return view.render(frame)
+
+
+def _watch_room(
+    config: MyceliumConfig, room_name: str, timeout: int, *, everything: bool = False
+) -> None:
+    """Core SSE watch loop: pretty-renders coordination and memory events.
+
+    ``everything`` also follows every thread's messages and the board's
+    notices, which the room's own view leaves to ``board messages``."""
     import time
 
     from rich.console import Console
@@ -603,8 +640,11 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     from rich.table import Table
     from rich.text import Text
 
+    from mycelium.slim.message_format import payload_type_of
+
     console = Console()
     owners = _agent_owner_map(room_name)
+    view = _thread_view(config, room_name) if everything else None
 
     def ts() -> str:
         return f"[dim]{time.strftime('%H:%M:%S')}[/]"
@@ -709,6 +749,14 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             return f"  {ts()}  [magenta]{escape(who(sender))}[/]{own_tag(sender)} [dim]→[/] [cyan]{recipient}[/]: {content}"
 
         if mtype in ("l9_exchange", "direct", "broadcast", "announce"):
+            if view is not None:
+                kind = payload_type_of(data) if isinstance(data, dict) else None
+                if kind == "notice":
+                    return view.render(msg)
+                if kind == "ping":
+                    return None  # the thread's own message draws instead
+                if in_a_thread(room_name, mtype, msg, data):
+                    return _thread_line(view, msg, data)
             if in_a_thread(room_name, mtype, msg, data):
                 return None
             # The person's name beside their handle; escaped, since a name is
@@ -809,8 +857,11 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
 
 
 @doc_ref(
-    usage="mycelium watch [<room> | --room <room>]",
-    desc="Stream live room activity via SSE. Messages appear in real time as other agents write.",
+    usage="mycelium watch [<room> | --room <room>] [--all]",
+    desc=(
+        "Stream live room activity via SSE. Messages appear in real time as other agents "
+        "write. <code>--all</code> follows every thread and board change too."
+    ),
     group="other",
 )
 @app.command()
@@ -820,6 +871,11 @@ def watch(
     room_name: str | None = typer.Argument(None, help="Room to watch (default: active room)"),
     room_opt: str | None = None,
     timeout: int = typer.Option(0, "--timeout", "-t", help="Timeout in seconds (0=no timeout)"),
+    everything: bool = typer.Option(
+        False,
+        "--all",
+        help="Also follow every thread's messages, labeled with their task, and board changes.",
+    ),
 ) -> None:
     """
     Stream live messages from a room.
@@ -827,16 +883,22 @@ def watch(
     Auto-resolves the active room (no argument needed).
     Renders coordination events, agent joins, ticks, and consensus.
 
+    The room's own view shows a line when a thread moves, not what was said
+    in it. With --all you follow everything as it happens: each thread's
+    messages, labeled with their task and cut to a few lines, and each
+    board change (filed, taken, resolved) as a line of its own.
+
     Examples:
         mycelium room watch
         mycelium room watch my-room
+        mycelium room watch --all
         mycelium room watch --timeout 120
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         config = MyceliumConfig.load()
         name = _one_room(room_name, room_opt) or _resolve_room(config)
-        _watch_room(config, name, timeout)
+        _watch_room(config, name, timeout, everything=everything)
     except KeyboardInterrupt:
         typer.echo("\n  [Stopped]")
     except Exception as e:

@@ -753,11 +753,15 @@ def _pick_summary(record: dict[str, Any]) -> str:
 
 @dataclass
 class LiveView:
-    """Render the room's stream as one conversation across a task and its children."""
+    """Render the room's stream as one conversation across a task and its children.
 
-    root_key: str
-    root_episode: str
-    root_title: str
+    With no root task (``room watch --all``), every thread in the room, each
+    line labeled with its task, and every board notice.
+    """
+
+    root_key: str = ""
+    root_episode: str = ""
+    root_title: str = ""
     titles: dict[str, str] = field(default_factory=dict)
     #: Thread → row key, so a cut-short message can say where the rest is.
     keys: dict[str, str] = field(default_factory=dict)
@@ -768,8 +772,9 @@ class LiveView:
     last_moved: float = field(default_factory=lambda: time.monotonic())
 
     def __post_init__(self) -> None:
-        self.titles[self.root_episode] = self.root_title
-        self.keys[self.root_episode] = self.root_key
+        if self.root_episode:
+            self.titles[self.root_episode] = self.root_title
+            self.keys[self.root_episode] = self.root_key
 
     @staticmethod
     def _short(text: str, limit: int = 60) -> str:

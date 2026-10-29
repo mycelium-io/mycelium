@@ -2578,9 +2578,9 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-other",
-    "t": "mycelium watch [<room> | --room <room>]",
+    "t": "mycelium watch [<room> | --room <room>] [--all]",
     "s": "CLI Reference",
-    "x": "Stream live room activity via SSE. Messages appear in real time as other agents write.",
+    "x": "Stream live room activity via SSE. Messages appear in real time as other agents write. --all follows every thread and board change too.",
     "k": "cmd",
     "p": "Reference"
   },
