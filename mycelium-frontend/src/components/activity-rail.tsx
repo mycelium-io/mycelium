@@ -230,12 +230,13 @@ export function ActivityRail({
   );
 
   // One task is one line: a header over a single row is the heaviest version
-  // of the strip for the least news. The label, the padding and the border
-  // come to 32px, the height of the tab bar and the Rooms rail's header.
+  // of the strip for the least news. The label is as tall as the row's line,
+  // so the two read as one; the padding and the border make it 32px, the
+  // height of the tab bar and the Rooms rail's header.
   if (items.length === 1) {
     return (
-      <div className="@container flex min-h-8 flex-shrink-0 items-start gap-3 border-b border-border bg-surface px-3 py-0.5 sm:px-4">
-        <span className="hidden h-[27px] flex-shrink-0 items-center text-micro font-medium text-muted-foreground @[30rem]:flex">
+      <div className="@container flex min-h-8 flex-shrink-0 items-start gap-3 border-b border-border bg-surface px-3 pt-1 pb-[5px] sm:px-4">
+        <span className="hidden h-[22px] flex-shrink-0 items-center text-micro font-medium text-muted-foreground @[30rem]:flex">
           Recently updated
         </span>
         <ul className="flex min-w-0 flex-1 flex-col">{row(items[0])}</ul>
