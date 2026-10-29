@@ -143,6 +143,10 @@ interface Props {
   bodyFade?: "bg" | "paper" | "surface" | "elevated";
   /** Head it with a sticky toolbar naming the key, for a surface that shows it nowhere else. */
   showKey?: boolean;
+  /** With `showKey`, something around it already names the memory (a tab, a
+   *  drawer's title): the toolbar leads with its folder and facts instead of
+   *  repeating the icon and key under it. */
+  named?: boolean;
   /** More controls at the end of the header (a tab's Edit and its own page). */
   actions?: React.ReactNode;
   /** Classes for everything under the header, so a page can center its body
@@ -173,7 +177,7 @@ function MaybeExpandable({
 function KeyCrumbs({ memoryKey }: { memoryKey: string }) {
   const parts = memoryKey.split("/");
   return (
-    <h1 className="max-w-full shrink-0 truncate font-mono text-label" title={memoryKey}>
+    <h1 className="min-w-0 truncate font-mono text-label" title={memoryKey}>
       {parts.map((part, i) => (
         <span key={i} className={i === parts.length - 1 ? "text-text" : "text-muted-foreground"}>
           {i > 0 && <span className="text-faint">/</span>}
@@ -216,6 +220,7 @@ export function MemoryDetail({
   collapseBodyAt = null,
   bodyFade = "bg",
   showKey = false,
+  named = false,
   actions,
   bodyClassName,
 }: Props) {
@@ -293,6 +298,7 @@ export function MemoryDetail({
       {upload && ` · ${kindLabel(upload.kind)} · ${formatBytes(upload.size)}`}
     </span>
   );
+  const folder = memory.key.split("/").slice(0, -1).join("/");
   const tags = memory.tags?.map(tag => (
     <span key={tag} className="flex-shrink-0 rounded bg-hairline px-1.5 font-mono text-faint">
       {tag}
@@ -342,24 +348,46 @@ export function MemoryDetail({
         // The page's toolbar, the editor's header in read mode: the key as
         // breadcrumbs, what it is in a quiet line beside it, and the controls.
         <header className="sticky top-0 z-10 flex min-h-10 items-center gap-3 border-b border-border bg-paper/95 px-5 py-1.5 backdrop-blur-sm">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            {upload ? (
-              <FileImage className="size-3.5 flex-shrink-0 text-muted-foreground" />
-            ) : (
-              <FileText className="size-3.5 flex-shrink-0 text-muted-foreground" />
-            )}
-            <KeyCrumbs memoryKey={memory.key} />
-            {skill}
-            {/* Gives way before the key does. */}
-            <span className="hidden min-w-0 shrink-[100] truncate text-micro text-faint @xl:block">
-              {facts}
-              {memory.tags?.map(tag => (
-                <span key={tag} className="ml-2 rounded bg-hairline px-1.5 font-mono">
-                  {tag}
-                </span>
-              ))}
-            </span>
-          </div>
+          {named ? (
+            // The tab above shows the key's last part, so this line adds what
+            // it can't: the folder (a skill's badge says it already) and facts.
+            <div className="flex min-w-0 flex-1 items-center gap-2 text-micro text-faint">
+              {skill}
+              <span className="min-w-0 truncate">
+                {!skill && folder && (
+                  <>
+                    <span className="font-mono">{folder}</span>
+                    {" · "}
+                  </>
+                )}
+                {facts}
+                {memory.tags?.map(tag => (
+                  <span key={tag} className="ml-2 rounded bg-hairline px-1.5 font-mono">
+                    {tag}
+                  </span>
+                ))}
+              </span>
+            </div>
+          ) : (
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              {upload ? (
+                <FileImage className="size-3.5 flex-shrink-0 text-muted-foreground" />
+              ) : (
+                <FileText className="size-3.5 flex-shrink-0 text-muted-foreground" />
+              )}
+              <KeyCrumbs memoryKey={memory.key} />
+              {skill}
+              {/* Gives way before the key does. */}
+              <span className="hidden min-w-0 shrink-[100] truncate text-micro text-faint @xl:block">
+                {facts}
+                {memory.tags?.map(tag => (
+                  <span key={tag} className="ml-2 rounded bg-hairline px-1.5 font-mono">
+                    {tag}
+                  </span>
+                ))}
+              </span>
+            </div>
+          )}
           {controls}
         </header>
       ) : (

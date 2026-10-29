@@ -213,6 +213,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
             memory={task}
             roomName={roomName}
             actor={principal}
+            named
             onSaved={() => {
               revalidate();
               setIsEditing(false);
