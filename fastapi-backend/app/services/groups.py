@@ -43,8 +43,9 @@ Asked = Literal["mention", "interrupt"]
 
 # The same boundary rule as a mention of one member (``persister._SUMMON_RE``):
 # the ``@`` starts the text or follows whitespace, ``(`` or ``<``, and the name
-# ends at the first character a handle couldn't have.
-_GROUP_RE = re.compile(r"(?:^|(?<=[\s(<]))@([~!]?)(here|all)(?![\w-])")
+# ends at the first character a handle couldn't have. Any letter case, as a
+# member's handle is: ``@All`` is ``@all``.
+_GROUP_RE = re.compile(r"(?:^|(?<=[\s(<]))@([~!]?)(here|all)(?![\w-])", re.IGNORECASE)
 _FORMS: dict[str, Form] = {"": "mention", "!": "interrupt", "~": "silent"}
 #: Which form wins when one message writes a group more than one way.
 _STRENGTH: dict[Form, int] = {"silent": 0, "mention": 1, "interrupt": 2}
@@ -72,7 +73,8 @@ def parse(text: str) -> dict[str, Form]:
     from app.services.persister import blank_code
 
     found: dict[str, Form] = {}
-    for prefix, name in _GROUP_RE.findall(blank_code(text)):
+    for prefix, written in _GROUP_RE.findall(blank_code(text)):
+        name = written.lower()
         form = _FORMS[prefix]
         if name not in found or _STRENGTH[form] > _STRENGTH[found[name]]:
             found[name] = form

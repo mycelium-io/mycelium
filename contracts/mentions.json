@@ -66,6 +66,7 @@
     { "text": "@here can you two agree? cc @~all", "mentions": [], "silent": [], "interrupt": [], "groups": { "here": "mention", "all": "silent" } },
     { "text": "@!all stop, @here and @~here too", "mentions": [], "silent": [], "interrupt": [], "groups": { "all": "interrupt", "here": "mention" } },
     { "text": "@heres and @allison, not x@all", "mentions": ["heres", "allison"], "silent": [], "interrupt": [], "groups": {} },
+    { "text": "@All please look, @!HERE too, and @here-team", "mentions": ["here-team"], "silent": [], "interrupt": [], "groups": { "all": "mention", "here": "interrupt" } },
     { "text": "`@all` is code but @bob isn't", "mentions": ["bob"], "silent": [], "interrupt": [], "groups": {} }
   ]
 }
