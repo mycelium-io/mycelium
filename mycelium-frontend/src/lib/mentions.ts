@@ -95,8 +95,41 @@ export function blankCode(text: string): string {
   return out;
 }
 
+/** How a group is written: `@here`, `@!here` or `@~here`. */
+export type GroupForm = "mention" | "interrupt" | "silent";
+
+// Any letter case, as a mention of one member is: `@All` is `@all`.
+const GROUP_RE = /(?:^|(?<=[\s(<]))@([~!]?)(here|all)(?![\w-])/gi;
+const GROUP_FORMS: Record<string, GroupForm> = { "": "mention", "!": "interrupt", "~": "silent" };
+const GROUP_STRENGTH: Record<GroupForm, number> = { silent: 0, mention: 1, interrupt: 2 };
+
+// A group name is never a member called that (`isMentionGroup`).
 function handles(text: string, re: RegExp): string[] {
-  return [...new Set(Array.from(blankCode(text).matchAll(re), (m) => m[1]))];
+  const named = Array.from(blankCode(text).matchAll(re), (m) => m[1]);
+  return [...new Set(named.filter((h) => !isMentionGroup(h)))];
+}
+
+/** The groups a text names, each in the strongest form it's written in
+ *  (interrupt, then mention, then silent). The hub decides who each reaches. */
+export function parseGroupMentions(text: string): Partial<Record<MentionGroupName, GroupForm>> {
+  const found: Partial<Record<MentionGroupName, GroupForm>> = {};
+  for (const { name, form } of groupMentionSpans(text)) {
+    const had = found[name];
+    if (had === undefined || GROUP_STRENGTH[form] > GROUP_STRENGTH[had]) found[name] = form;
+  }
+  return found;
+}
+
+/** Each group mention in `text` outside code, where it is and how it's written. */
+export function groupMentionSpans(
+  text: string,
+): { start: number; end: number; name: MentionGroupName; form: GroupForm }[] {
+  return Array.from(blankCode(text).matchAll(GROUP_RE), (m) => ({
+    start: m.index,
+    end: m.index + m[0].length,
+    name: m[2].toLowerCase() as MentionGroupName,
+    form: GROUP_FORMS[m[1]],
+  }));
 }
 
 /** Handles a text asks for with `@handle` or `@!handle`, first-seen order, de-duplicated. */
@@ -112,6 +145,16 @@ export function parseSilentMentions(text: string): string[] {
 /** Handles a text interrupts with `@!handle`; each is in {@link parseMentions} too. */
 export function parseInterruptMentions(text: string): string[] {
   return handles(text, INTERRUPT_RE);
+}
+
+/** The group mentions. The hub resolves each to members, the same way for
+ *  what the composer shows and for delivery: `@here` is everyone taking part in
+ *  the thread (in the channel, everyone), and `@all` is everyone in the room. */
+export const MENTION_GROUPS = ["here", "all"] as const;
+export type MentionGroupName = (typeof MENTION_GROUPS)[number];
+
+export function isMentionGroup(handle: string): handle is MentionGroupName {
+  return (MENTION_GROUPS as readonly string[]).includes(handle.toLowerCase());
 }
 
 /** What a mention typed with a sigil other than `@` does, as the @ popover says it. */

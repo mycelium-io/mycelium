@@ -17,6 +17,8 @@ export interface ComposerMention {
   start: number;
   end: number;
   kind: ComposerMentionKind;
+  /** The word after the sigil, lowercased. */
+  handle: string;
   resolved: boolean;
 }
 
@@ -36,6 +38,7 @@ export function composerMentions(text: string, members: ReadonlySet<string>): Co
       start,
       end: start + m[0].length,
       kind: m[1] === "~" ? "silent" : m[1] === "!" ? "interrupt" : "mention",
+      handle: m[2].toLowerCase(),
       resolved: placed && members.has(m[2].toLowerCase()),
     };
   });

@@ -43,6 +43,7 @@ import {
   fetchSchedules,
   fetchSkills,
   fetchUploads,
+  fetchMentionGroups,
   fetchVerifierFlags,
   logFetchError,
   saveRoomFolders,
@@ -622,6 +623,19 @@ export function useScheduledHandles(room: string): Map<string, number> {
     }
     return out;
   }, [schedules]);
+}
+
+/** Who `@here` and `@all` reach for `sender`, in `episode`'s thread or (with
+ *  none) the channel. The same answer the hub delivers by, so the count and the
+ *  names the composer shows are who gets woken. Read only while `enabled`:
+ *  most composers never type a group. */
+export function useMentionGroups(room: string, episode: string | null, sender: string, enabled: boolean) {
+  const { data, isLoading } = useSWR(
+    enabled && room && sender ? (["room", room, "mention-groups", episode ?? "", sender] as const) : null,
+    () => fetchMentionGroups(room, episode, sender),
+    { refreshInterval: POLL.members },
+  );
+  return { groups: data ?? null, loading: isLoading };
 }
 
 /** The room's uploads, and what its hub takes. One cache entry, so every

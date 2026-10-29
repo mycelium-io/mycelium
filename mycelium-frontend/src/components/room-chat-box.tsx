@@ -18,12 +18,21 @@ import { signFor } from "@/lib/device-key";
 import { CandidateList, Signature, type Candidate, type Slot } from "@/components/composer-hints";
 import { SendPlaneIcon } from "@/components/send-plane-icon";
 import {
+  useMentionGroups,
   useRoomMemories,
   useRoomProtocols,
   useRoomRevalidate,
   useRoomRoster,
   useRoomSkills,
 } from "@/lib/room-data";
+import {
+  BigSendWarning,
+  GroupMentionCard,
+  WAKE_WARN_AT,
+  silenceGroups,
+  type BigSend,
+} from "@/components/group-mention-card";
+import type { MentionGroupMember } from "@/lib/api";
 import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
 import { useClientSetting } from "@/lib/client-settings";
@@ -36,14 +45,18 @@ import { expandPath, handleValid, normHandle, tildePath } from "@/components/lau
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   INTERRUPT_MENTION_SIGIL,
+  MENTION_GROUPS,
   MENTION_SIGIL,
   NOT_INTERRUPTIBLE,
+  SILENT_MENTION_SIGIL,
+  isMentionGroup,
   mentionMode,
+  type MentionGroupName,
   parseMentions,
   parseSilentMentions,
 } from "@/lib/mentions";
 import { RECENT_MENTIONS_CHANGED, readRecentMentions, recordMentions } from "@/lib/recent-mentions";
-import { composerMentions } from "@/lib/composer-mentions";
+import { composerMentions, type ComposerMentionKind } from "@/lib/composer-mentions";
 import { MentionLayer } from "@/components/mention-layer";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, loadSent, rememberSent, saveDraft } from "@/lib/drafts";
@@ -330,6 +343,10 @@ export function RoomChatBox({
   const [sendKey] = useClientSetting("general.send");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A send that would wake many agents, held until the writer says how. It
+  // stands only for the text it was asked about, so editing takes it back.
+  const [asked, setBigSend] = useState<(BigSend & { text: string }) | null>(null);
+  const bigSend = asked && asked.text === content ? asked : null;
   const [trigger, setTrigger] = useState<Trigger | null>(null);
   const [highlight, setHighlight] = useState(0);
   // The task a `/swarm` is being started on, while its dialog is open.
@@ -566,8 +583,25 @@ export function RoomChatBox({
 
   // The mentions being typed, each colored by whether it reaches a member: the
   // same roster the `@` popover offers.
-  const memberHandles = useMemo(() => new Set(mentionRoster.map((m) => m.handle.toLowerCase())), [mentionRoster]);
+  const memberHandles = useMemo(
+    () => new Set([...mentionRoster.map((m) => m.handle.toLowerCase()), ...MENTION_GROUPS]),
+    [mentionRoster],
+  );
   const typedMentions = useMemo(() => composerMentions(content, memberHandles), [content, memberHandles]);
+
+  // Who `@here` and `@all` reach, asked of the hub once an `@` is being typed
+  // or a group is in the text: the answer delivery uses, so what the card and
+  // the warning say is who gets woken.
+  const typedGroups = useMemo(
+    () => typedMentions.filter((m) => m.resolved && isMentionGroup(m.handle)),
+    [typedMentions],
+  );
+  const { groups } = useMentionGroups(
+    roomName,
+    episode,
+    principal.trim() || "user",
+    trigger?.kind === "agent" || typedGroups.length > 0,
+  );
   const mentionLayer = useRef<HTMLDivElement>(null);
   // Kept at the textarea's scroll on every change too, not only on a scroll:
   // the layer appears with the first mention, wherever the text is scrolled.
@@ -620,7 +654,22 @@ export function RoomChatBox({
         .filter((x): x is typeof x & { rank: number } => x.rank !== null)
         .sort((a, b) => a.rank - b.rank || last(b.r.handle) - last(a.r.handle) || a.i - b.i)
         .map((x) => x.r);
-      return pool.slice(0, 8).map((r) => ({
+      // The groups, each with how many it reaches: in a thread `@here` is the
+      // people taking part, outside one it's everyone. They come last, after
+      // every member: reaching many is never the row Enter picks by accident.
+      // Offered only for what they start with, so `@a` doesn't offer `@here`.
+      const groupRows = MENTION_GROUPS.filter((g) => g.startsWith(trigger.query.trim().toLowerCase())).map((g) => {
+        const count = groups?.[g].count;
+        const where = g === "here" && episode ? "in this task" : "in the room";
+        return {
+          id: `group:${g}`,
+          insert: `${trigger.sigil ?? MENTION_SIGIL}${g}`,
+          primary: `@${g}`,
+          secondary: "group",
+          tertiary: count === undefined ? where : `${count} ${where}`,
+        };
+      });
+      const memberRows = pool.slice(0, 8).map((r) => ({
         id: r.handle,
         insert: `${trigger.sigil ?? MENTION_SIGIL}${r.handle}`,
         primary: r.name ?? `@${r.handle}`,
@@ -629,6 +678,7 @@ export function RoomChatBox({
         // An engine works only when mentioned, so there's nothing to stop.
         tertiary: trigger.sigil === INTERRUPT_MENTION_SIGIL && r.engine ? NOT_INTERRUPTIBLE : r.tertiary,
       }));
+      return [...memberRows, ...groupRows];
     }
     if (trigger.kind === "emoji") {
       if (!emojiTable) return [];
@@ -674,7 +724,7 @@ export function RoomChatBox({
         tertiary: s.description || undefined,
       })),
     ];
-  }, [choicesFor, emojiTable, mentionRoster, memories, parsed, protocols, recent, recentEmoji, skills, summon, trigger]);
+  }, [choicesFor, emojiTable, episode, groups, mentionRoster, memories, parsed, protocols, recent, recentEmoji, skills, summon, trigger]);
 
   const accept = useCallback(
     (candidate: Candidate) => {
@@ -769,8 +819,9 @@ export function RoomChatBox({
     [machines, machinesLoading, roomName],
   );
 
-  const submit = useCallback(async () => {
-    const body = content.trim();
+  const submit = useCallback(async (override?: string) => {
+    setBigSend(null);
+    const body = (override ?? content).trim();
     const files = attachments.links;
     // A message waits for its files, so it never links one still on its way.
     if ((!body && !files.length) || sending || attachments.busy) return;
@@ -956,7 +1007,41 @@ export function RoomChatBox({
   // hover surface once there is something to send.
   const armed = (content.trim().length > 0 || attachments.links.length > 0) && !sending && !attachments.busy;
 
+  // Sends, unless the groups mentioned would wake many agents: then it asks
+  // first. Each agent woken starts a turn, so the count that asks is agents;
+  // people are only notified. A silent group wakes nobody and doesn't count.
+  const send = () => {
+    if (groups) {
+      const woken = new Map<string, MentionGroupMember>();
+      let interruptsAll = false;
+      for (const m of typedGroups) {
+        if (m.kind === "silent") continue;
+        const name = m.handle as MentionGroupName;
+        if (m.kind === "interrupt" && name === "all") interruptsAll = true;
+        for (const member of groups[name].members) woken.set(member.handle, member);
+      }
+      const agents = [...woken.values()].filter((m) => m.kind === "agent").length;
+      if (agents >= WAKE_WARN_AT || (interruptsAll && agents > 0)) {
+        setBigSend({ agents, people: woken.size - agents, interruptsAll, text: content });
+        return;
+      }
+    }
+    void submit();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (bigSend) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        void submit();
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setBigSend(null);
+        return;
+      }
+    }
     if (trigger !== null && candidates.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -1021,13 +1106,28 @@ export function RoomChatBox({
     const command = e.metaKey || e.ctrlKey;
     if (e.key === "Enter" && !e.shiftKey && (sendKey === "mod-enter" ? command : !command)) {
       e.preventDefault();
-      submit();
+      send();
     }
   };
 
   const showCandidates = trigger !== null && candidates.length > 0;
   // `@!` and `@~` say what they'll do, over the list and to a screen reader.
   const mode = trigger?.kind === "agent" ? mentionMode(trigger.sigil) : null;
+  // Who a group reaches: the lit row's, while the `@` list is open, or the
+  // one the cursor is on, in what's already written.
+  const lit = showCandidates ? candidates[highlight] : undefined;
+  const litGroup = lit?.id.startsWith("group:")
+    ? {
+        name: lit.id.slice("group:".length) as MentionGroupName,
+        kind: (trigger?.kind === "agent" && trigger.sigil === INTERRUPT_MENTION_SIGIL
+          ? "interrupt"
+          : trigger?.kind === "agent" && trigger.sigil === SILENT_MENTION_SIGIL
+            ? "silent"
+            : "mention") as ComposerMentionKind,
+      }
+    : null;
+  const caretGroup = showCandidates || bigSend ? undefined : typedGroups.find((m) => cursor >= m.start && cursor <= m.end);
+  const shownGroup = litGroup ?? (caretGroup ? { name: caretGroup.handle as MentionGroupName, kind: caretGroup.kind } : null);
   const status = error ? (
     <StatusLine tone="error" onDismiss={() => setError(null)}>
       {error}
@@ -1089,16 +1189,41 @@ export function RoomChatBox({
         {/* Over the box, nearest it last: what the word being typed can be,
             the command's signature with that argument lit, then what the
             last command said. None of it moves the box. */}
-        {(showCandidates || parsed || summon || status) && (
-        <div className="absolute bottom-full left-0 z-20 mb-2 flex w-full max-w-md flex-col gap-1.5">
+        {(showCandidates || parsed || summon || status || shownGroup || bigSend) && (
+        <div
+          className={cn(
+            "absolute bottom-full left-0 z-20 mb-2 flex w-full flex-col gap-1.5",
+            litGroup ? "max-w-2xl" : "max-w-md",
+          )}
+        >
+        {shownGroup && !litGroup && groups && (
+          <GroupMentionCard groups={groups} name={shownGroup.name} kind={shownGroup.kind} inThread={Boolean(episode)} />
+        )}
         {showCandidates && (
-          <CandidateList
-            candidates={candidates}
-            highlight={highlight}
-            onPick={accept}
-            onHover={setHighlight}
-            dense={trigger?.kind === "emoji"}
-            mode={mode}
+          // A lit group says who it reaches: beside the list where the box is
+          // wide enough, over it in a narrow pane like a thread's.
+          <div className="flex flex-col gap-2 @xl:flex-row-reverse @xl:items-end @xl:justify-end">
+            {litGroup && groups && (
+              <GroupMentionCard groups={groups} name={litGroup.name} kind={litGroup.kind} inThread={Boolean(episode)} />
+            )}
+            <div className="min-w-0 @xl:max-w-md @xl:flex-1">
+              <CandidateList
+                candidates={candidates}
+                highlight={highlight}
+                onPick={accept}
+                onHover={setHighlight}
+                dense={trigger?.kind === "emoji"}
+                mode={mode}
+              />
+            </div>
+          </div>
+        )}
+        {bigSend && (
+          <BigSendWarning
+            send={bigSend}
+            onCancel={() => setBigSend(null)}
+            onSilent={() => void submit(silenceGroups(content))}
+            onSend={() => void submit()}
           />
         )}
         {parsed && <CommandSignature parsed={parsed} completes={showCandidates} />}
@@ -1292,7 +1417,7 @@ export function RoomChatBox({
             {mic.available && <MicToggle state={mic.state} speaking={mic.speaking} onToggle={mic.toggle} />}
             <button
               type="button"
-              onClick={submit}
+              onClick={send}
               disabled={!armed}
               aria-label="Send message"
               className={`group grid size-8 place-items-center rounded-md transition-colors ${

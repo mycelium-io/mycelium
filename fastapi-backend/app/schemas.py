@@ -1532,6 +1532,41 @@ class RoomMembers(BaseModel):
     others: list[RoomOther]
 
 
+class MentionGroupMember(BaseModel):
+    """One member ``@here`` or ``@all`` reaches."""
+
+    handle: str
+    kind: Literal["agent", "person"]
+    status: str | None = Field(
+        None, description="Its live state when it runs in a herdr pane: working, idle, blocked"
+    )
+    posted_at: str | None = Field(None, description="When it last posted in the thread")
+    role: Literal["posted", "assignee", "holder"] | None = Field(
+        None,
+        description=(
+            "Why @here reaches it: it posted in the thread, or is the task's assignee or "
+            "holder. Null for @all"
+        ),
+    )
+
+
+class MentionGroup(BaseModel):
+    """Who one group reaches, and how many."""
+
+    count: int
+    members: list[MentionGroupMember]
+
+
+class MentionGroups(BaseModel):
+    """Who ``@here`` and ``@all`` reach for one sender writing in one place.
+
+    Never the sender, and never an engine. Outside a thread ``here`` is ``all``.
+    """
+
+    here: MentionGroup
+    all: MentionGroup
+
+
 class RoomPersonAdd(BaseModel):
     """Add a person (someone with a user record) to a room."""
 

@@ -11,8 +11,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   INTERRUPT_MENTION_SIGIL,
+  MENTION_GROUPS,
   MENTION_SIGIL,
   SILENT_MENTION_SIGIL,
+  parseGroupMentions,
   parseInterruptMentions,
   parseMentions,
   parseSilentMentions,
@@ -22,7 +24,14 @@ const CONTRACT_PATH = path.resolve(__dirname, "../../../contracts/mentions.json"
 
 const contract = JSON.parse(readFileSync(CONTRACT_PATH, "utf-8")) as {
   sigils: { mention: string; silent: string; interrupt: string };
-  cases: { text: string; mentions: string[]; silent: string[]; interrupt: string[] }[];
+  group_names: string[];
+  cases: {
+    text: string;
+    mentions: string[];
+    silent: string[];
+    interrupt: string[];
+    groups?: Record<string, string>;
+  }[];
 };
 
 describe("mentions contract", () => {
@@ -34,9 +43,14 @@ describe("mentions contract", () => {
     }).toEqual(contract.sigils);
   });
 
-  it.each(contract.cases)("parses $text", ({ text, mentions, silent, interrupt }) => {
+  it("uses the contract's group names", () => {
+    expect([...MENTION_GROUPS]).toEqual(contract.group_names);
+  });
+
+  it.each(contract.cases)("parses $text", ({ text, mentions, silent, interrupt, groups }) => {
     expect(parseMentions(text)).toEqual(mentions);
     expect(parseSilentMentions(text)).toEqual(silent);
     expect(parseInterruptMentions(text)).toEqual(interrupt);
+    expect(parseGroupMentions(text)).toEqual(groups ?? {});
   });
 });

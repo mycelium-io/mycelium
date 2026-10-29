@@ -2971,6 +2971,115 @@
         }
       }
     },
+    "/api/rooms/{room_name}/mentions/groups": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Mention Groups",
+        "description": "Who ``@here`` and ``@all`` reach for ``sender`` writing in ``episode``.",
+        "operationId": "mention_groups_api_rooms__room_name__mentions_groups_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "episode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The thread being written in; without one, the room's channel",
+              "title": "Episode"
+            },
+            "description": "The thread being written in; without one, the room's channel"
+          },
+          {
+            "name": "sender",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Who is writing, left out of every group",
+              "title": "Sender"
+            },
+            "description": "Who is writing, left out of every group"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MentionGroups"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/assignments/claim": {
       "post": {
         "tags": [
@@ -17867,6 +17976,109 @@
           "similarity"
         ],
         "title": "MemorySearchResult"
+      },
+      "MentionGroup": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/MentionGroupMember"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "members"
+        ],
+        "title": "MentionGroup",
+        "description": "Who one group reaches, and how many."
+      },
+      "MentionGroupMember": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "person"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "Its live state when it runs in a herdr pane: working, idle, blocked"
+          },
+          "posted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted At",
+            "description": "When it last posted in the thread"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "posted",
+                  "assignee",
+                  "holder"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role",
+            "description": "Why @here reaches it: it posted in the thread, or is the task's assignee or holder. Null for @all"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "kind"
+        ],
+        "title": "MentionGroupMember",
+        "description": "One member ``@here`` or ``@all`` reaches."
+      },
+      "MentionGroups": {
+        "properties": {
+          "here": {
+            "$ref": "#/components/schemas/MentionGroup"
+          },
+          "all": {
+            "$ref": "#/components/schemas/MentionGroup"
+          }
+        },
+        "type": "object",
+        "required": [
+          "here",
+          "all"
+        ],
+        "title": "MentionGroups",
+        "description": "Who ``@here`` and ``@all`` reach for one sender writing in one place.\n\nNever the sender, and never an engine. Outside a thread ``here`` is ``all``."
       },
       "MessageAmend": {
         "properties": {

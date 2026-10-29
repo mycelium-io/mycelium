@@ -45,6 +45,7 @@ from app.routes.joins import router as joins_router
 from app.routes.links import router as links_router
 from app.routes.members import router as members_router
 from app.routes.memory import router as memory_router
+from app.routes.mention_groups import router as mention_groups_router
 from app.routes.messages import router as messages_router
 from app.routes.participate import router as participate_router
 from app.routes.patterns import router as patterns_router
@@ -429,6 +430,7 @@ app.include_router(engines_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(rooms_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(messages_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(members_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(mention_groups_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(assignments_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(fields_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(tasks_router, prefix="/api", responses=GATE_REFUSALS)
