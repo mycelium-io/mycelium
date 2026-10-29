@@ -251,6 +251,13 @@ def _report(
         )
     if kept == session_store.KEYCHAIN:
         console.print("[dim]Kept in the system keychain.[/dim]")
+    elif kept == session_store.REFUSED:
+        console.print(
+            f"[yellow]Kept in {session_store.where_described(kept)}[/yellow] [dim](mode 0600): "
+            "the system keychain wouldn't keep it. Either its prompt was declined, or the "
+            "entry is too large for it. Run mycelium login again and allow it to use the "
+            "keychain.[/dim]"
+        )
     else:
         console.print(
             f"[yellow]Kept in {session_store.where_described(kept)}[/yellow] [dim](mode 0600): "

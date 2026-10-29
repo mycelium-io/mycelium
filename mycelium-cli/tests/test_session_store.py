@@ -95,8 +95,81 @@ def test_without_a_keychain_it_goes_in_a_private_file(config) -> None:
 
 def test_an_entry_the_keychain_wont_hold_goes_in_the_file(config) -> None:
     keyring.set_keyring(TooSmallKeychain())
-    assert session_store.save(config, _TOKEN) == session_store.FILE
+    # There is a keychain; it refused. Said as that, not as having none.
+    assert session_store.save(config, _TOKEN) == session_store.REFUSED
     assert load_token() == _TOKEN
+
+
+class CountingKeychain(MemoryKeychain):
+    """A keychain that counts each time it's read or written, as macOS would
+    ask each time for an entry another program made."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.reads = 0
+        self.writes = 0
+
+    def get_password(self, service: str, username: str) -> str | None:
+        self.reads += 1
+        return super().get_password(service, username)
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.writes += 1
+        super().set_password(service, username, password)
+
+
+class RefusingKeychain(CountingKeychain):
+    """A keychain whose every write is declined, as a cancelled prompt is."""
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.writes += 1
+        msg = "User canceled the operation."
+        raise OSError(msg)
+
+
+def test_a_process_reads_the_keychain_once_not_on_every_call(config) -> None:
+    kc = CountingKeychain()
+    keyring.set_keyring(kc)
+    session_store.save(config, _TOKEN)
+    session_store._SESSIONS.clear()  # a new process
+    for _ in range(25):
+        assert client.current_token(config) == _TOKEN
+    assert kc.reads == 1
+
+
+def test_a_renewal_another_process_made_is_used_rather_than_renewing_again(
+    config, monkeypatch
+) -> None:
+    kc = CountingKeychain()
+    keyring.set_keyring(kc)
+    session_store.save(config, replace(_TOKEN, expires_at=time.time() - 10))
+    assert session_store.load(config)[0] is not None  # this process holds the stale one
+    # Another process renews it meanwhile.
+    fresh = replace(_TOKEN, access_token="at-renewed-elsewhere")
+    kc.set_password(session_store.SERVICE, _HUB, json.dumps(fresh.to_dict()))
+    monkeypatch.setattr(
+        client, "_refresh", lambda *_a: pytest.fail("renewed again what was already renewed")
+    )
+    assert client.current_token(config) == fresh
+
+
+def test_a_refused_move_into_the_keychain_isnt_asked_again(config) -> None:
+    """A file from before the keychain, and a keychain that declines the move:
+    later commands and runner polls don't ask again; a login does."""
+    kc = RefusingKeychain()
+    keyring.set_keyring(kc)
+    save_token(_TOKEN)
+    assert session_store.load(config) == (_TOKEN, session_store.REFUSED)
+    assert kc.writes == 1
+    for _ in range(3):
+        session_store._SESSIONS.clear()  # each a new process
+        assert session_store.load(config) == (_TOKEN, session_store.REFUSED)
+    assert kc.writes == 1
+    # Signing in again tries the keychain afresh.
+    keyring.set_keyring(MemoryKeychain())
+    assert session_store.save(config, _TOKEN) == session_store.KEYCHAIN
+    session_store._SESSIONS.clear()
+    assert session_store.load(config)[1] == session_store.KEYCHAIN
 
 
 def test_a_file_from_before_moves_into_the_keychain_and_is_deleted(config, keychain) -> None:
