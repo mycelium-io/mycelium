@@ -654,8 +654,9 @@ export function RoomChatBox({
         .filter((x): x is typeof x & { rank: number } => x.rank !== null)
         .sort((a, b) => a.rank - b.rank || last(b.r.handle) - last(a.r.handle) || a.i - b.i)
         .map((x) => x.r);
-      // The groups come first, each with how many it reaches: in a thread
-      // `@here` is the people taking part, outside one it's everyone.
+      // The groups, each with how many it reaches: in a thread `@here` is the
+      // people taking part, outside one it's everyone. They come after whoever
+      // you mentioned lately, who stay on top, and before everyone else.
       // Offered only for what they start with, so `@a` doesn't offer `@here`.
       const groupRows = MENTION_GROUPS.filter((g) => g.startsWith(trigger.query.trim().toLowerCase())).map((g) => {
         const count = groups?.[g].count;
@@ -668,18 +669,19 @@ export function RoomChatBox({
           tertiary: count === undefined ? where : `${count} ${where}`,
         };
       });
-      return [
-        ...groupRows,
-        ...pool.slice(0, 8).map((r) => ({
-          id: r.handle,
-          insert: `${trigger.sigil ?? MENTION_SIGIL}${r.handle}`,
-          primary: r.name ?? `@${r.handle}`,
-          named: Boolean(r.name),
-          secondary: r.name ? `@${r.handle} · ${r.secondary}` : r.secondary,
-          // An engine works only when mentioned, so there's nothing to stop.
-          tertiary: trigger.sigil === INTERRUPT_MENTION_SIGIL && r.engine ? NOT_INTERRUPTIBLE : r.tertiary,
-        })),
-      ];
+      const shown = pool.slice(0, 8);
+      const memberRows = shown.map((r) => ({
+        id: r.handle,
+        insert: `${trigger.sigil ?? MENTION_SIGIL}${r.handle}`,
+        primary: r.name ?? `@${r.handle}`,
+        named: Boolean(r.name),
+        secondary: r.name ? `@${r.handle} · ${r.secondary}` : r.secondary,
+        // An engine works only when mentioned, so there's nothing to stop.
+        tertiary: trigger.sigil === INTERRUPT_MENTION_SIGIL && r.engine ? NOT_INTERRUPTIBLE : r.tertiary,
+      }));
+      const recentLead = shown.findIndex((r) => last(r.handle) === 0);
+      const cut = recentLead === -1 ? shown.length : recentLead;
+      return [...memberRows.slice(0, cut), ...groupRows, ...memberRows.slice(cut)];
     }
     if (trigger.kind === "emoji") {
       if (!emojiTable) return [];

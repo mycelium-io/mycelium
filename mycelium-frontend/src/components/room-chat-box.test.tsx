@@ -536,9 +536,10 @@ describe("<RoomChatBox /> composer triggers", () => {
     await userEvent.type(box, "@");
 
     await screen.findByRole("button", { name: /@sam/ });
-    // The members, after the groups (`@here`, `@all`) that always lead.
-    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? "") && !/^@(here|all)/.test(b.textContent ?? ""));
+    // Above the groups too: `@here` and `@all` come after who you mentioned lately.
+    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? ""));
     expect(options[0]?.textContent).toMatch(/@sam/);
+    expect(options[1]?.textContent).toMatch(/^@here/);
   });
 
   it("puts a handle you just mentioned at the top of the next @ list", async () => {
@@ -549,7 +550,7 @@ describe("<RoomChatBox /> composer triggers", () => {
     await userEvent.type(box, "@");
 
     await screen.findByRole("button", { name: /@conductor/ });
-    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? "") && !/^@(here|all)/.test(b.textContent ?? ""));
+    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? ""));
     expect(options[0]?.textContent).toMatch(/@conductor/);
   });
 
