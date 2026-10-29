@@ -179,11 +179,22 @@ def test_herdr_wake_held_until_idle(
     assert [w["handle"] for w in released] == ["reviewer"]
 
 
-def test_herdr_wake_hold_expires(
+def test_a_wake_for_an_agent_on_a_long_turn_waits_for_it_however_long(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    # A never-idle agent doesn't hold a tag forever.
+    # Working past the hold time: still held, and delivered when the turn ends.
     manager.set_herdr_presence("room-a", {"reviewer": "working"})
+    manager.enqueue_herdr_wake("room-a", "reviewer")
+    assert manager.drain_herdr_wakes("room-a", hold_ttl_s=-1.0) == []  # held, not dropped
+    manager.set_herdr_presence("room-a", {"reviewer": "idle"})
+    released = manager.drain_herdr_wakes("room-a", hold_ttl_s=-1.0)
+    assert [w["handle"] for w in released] == ["reviewer"]
+
+
+def test_herdr_wake_hold_expires_once_nothing_reports_the_agent(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # No herdr pane reports it any more: there's nothing to deliver to.
     manager.enqueue_herdr_wake("room-a", "reviewer")
     assert manager.drain_herdr_wakes("room-a", hold_ttl_s=-1.0) == []  # expired, dropped
     manager.set_herdr_presence("room-a", {"reviewer": "idle"})
@@ -225,7 +236,10 @@ def test_pending_herdr_wakes_peeks_without_draining(
     assert manager.pending_herdr_wakes("room-a") == {"reviewer"}
     # Peeking twice is stable (non-destructive), unlike drain.
     assert manager.pending_herdr_wakes("room-a") == {"reviewer"}
-    # A stale-expired wake is excluded, matching what drain would drop.
+    # Past the hold time it's still pending while a pane reports the agent...
+    assert manager.pending_herdr_wakes("room-a", hold_ttl_s=-1.0) == {"reviewer"}
+    # ...and excluded once none does, matching what drain would drop.
+    manager.set_herdr_presence("room-a", {})
     assert manager.pending_herdr_wakes("room-a", hold_ttl_s=-1.0) == set()
 
 

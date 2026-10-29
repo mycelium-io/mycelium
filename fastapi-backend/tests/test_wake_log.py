@@ -136,12 +136,19 @@ def test_a_held_wake_is_recorded_when_it_is_finally_delivered(manager):
 
 
 def test_a_wake_held_too_long_is_dropped_saying_why(manager):
-    manager.set_herdr_presence(ROOM, {"builder": "working"})
+    # No herdr pane reports the agent: nothing is left to deliver it to.
     manager.enqueue_herdr_wake(ROOM, "builder", sender="hay")
     assert manager.drain_herdr_wakes(ROOM, hold_ttl_s=-1.0) == []
     (record,) = wake_log.read(ROOM)
     assert record["outcome"] == "dropped"
-    assert "while it was working" in record["why"]
+    assert "no herdr pane reporting it" in record["why"]
+
+
+def test_a_wake_for_a_working_agent_is_never_dropped_for_waiting(manager):
+    manager.set_herdr_presence(ROOM, {"builder": "working"})
+    manager.enqueue_herdr_wake(ROOM, "builder", sender="hay")
+    assert manager.drain_herdr_wakes(ROOM, hold_ttl_s=-1.0) == []
+    assert wake_log.read(ROOM) == []
 
 
 def test_a_runner_that_couldnt_deliver_says_why():
