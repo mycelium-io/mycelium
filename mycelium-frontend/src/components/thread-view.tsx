@@ -123,6 +123,50 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, showClose]);
 
+  // Edit the task in place, and open it as a tab of its own, only where the
+  // pane is a task (a negotiation thread is no memory to edit or open).
+  const taskActions = task && (
+    <>
+      {/* A plain toggle with a revalidate on save: the pane is narrow and
+          transient, so it keeps less chrome than the full page does. */}
+      <Tooltip content={isEditing ? "View task" : "Edit task"}>
+        <button
+          type="button"
+          onClick={() => setIsEditing(v => !v)}
+          aria-label={isEditing ? "View task" : "Edit task"}
+          className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+        >
+          {isEditing ? <Eye className="size-3.5" strokeWidth={1.9} /> : <Pencil className="size-3.5" strokeWidth={1.9} />}
+        </button>
+      </Tooltip>
+      {/* Room to work: open the task as a tab of the room, where the rest of
+          its memories open. */}
+      <Tooltip content="Open as a tab">
+        {onOpenMemory ? (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenMemory(task.key);
+              onClose();
+            }}
+            aria-label="Open task as a tab"
+            className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+          >
+            <Maximize2 className="size-3.5" strokeWidth={1.9} />
+          </button>
+        ) : (
+          <Link
+            href={memoryHref(roomName, task.key)}
+            aria-label="Open task full screen"
+            className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+          >
+            <Maximize2 className="size-3.5" strokeWidth={1.9} />
+          </Link>
+        )}
+      </Tooltip>
+    </>
+  );
+
   return (
     <section
       aria-label={`Thread ${shortId}`}
@@ -133,58 +177,19 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
       // long metadata value pushes the whole section past its right edge.
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg"
     >
-      <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
-        <MessageSquare className="size-3.5 shrink-0 text-accent" strokeWidth={1.9} />
-        {/* The title gets the width; the thread's id is its tooltip, for the
-            rare reader who needs it. */}
-        <span className="min-w-0 truncate text-label text-text" title={target.title ? `${target.title} · ${shortId}` : undefined}>
-          {target.title || `Thread ${shortId}`}
-        </span>
-        <span className="ml-auto flex items-center gap-2">
-          {/* Edit the task in place, only where the pane is a task. A plain
-              toggle with a revalidate on save: the pane is narrow and transient,
-              so it keeps less chrome than the full page does. */}
-          {task && (
-            <Tooltip content={isEditing ? "View task" : "Edit task"}>
-              <button
-                type="button"
-                onClick={() => setIsEditing(v => !v)}
-                aria-label={isEditing ? "View task" : "Edit task"}
-                className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-              >
-                {isEditing ? <Eye className="size-3.5" strokeWidth={1.9} /> : <Pencil className="size-3.5" strokeWidth={1.9} />}
-              </button>
-            </Tooltip>
-          )}
-          {/* Room to work: leave the split and open the task as a tab of the
-              room, where the rest of its memories open. Only where the pane is
-              a task (a negotiation thread is no memory to open). */}
-          {task && (
-            <Tooltip content="Open as a tab">
-              {onOpenMemory ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onOpenMemory(task.key);
-                    onClose();
-                  }}
-                  aria-label="Open task as a tab"
-                  className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-                >
-                  <Maximize2 className="size-3.5" strokeWidth={1.9} />
-                </button>
-              ) : (
-                <Link
-                  href={memoryHref(roomName, task.key)}
-                  aria-label="Open task full screen"
-                  className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-                >
-                  <Maximize2 className="size-3.5" strokeWidth={1.9} />
-                </Link>
-              )}
-            </Tooltip>
-          )}
-          {showClose && (
+      {/* A pane on its own names itself. In a tab, the tab already does, and a
+          second icon and title under it read as the same element twice: the
+          task's actions join its version line instead. */}
+      {showClose && (
+        <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
+          <MessageSquare className="size-3.5 shrink-0 text-accent" strokeWidth={1.9} />
+          {/* The title gets the width; the thread's id is its tooltip, for the
+              rare reader who needs it. */}
+          <span className="min-w-0 truncate text-label text-text" title={target.title ? `${target.title} · ${shortId}` : undefined}>
+            {target.title || `Thread ${shortId}`}
+          </span>
+          <span className="ml-auto flex items-center gap-2">
+            {taskActions}
             <Tooltip content="Close (Esc)">
               <button
                 type="button"
@@ -195,9 +200,9 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
                 <X className="size-3.5" strokeWidth={1.9} />
               </button>
             </Tooltip>
-          )}
-        </span>
-      </header>
+          </span>
+        </header>
+      )}
 
       {task && isEditing ? (
         // The editor owns its own scroll; it replaces the body and stands in
@@ -254,6 +259,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
                   variant="rail"
                   onNavigate={onOpenMemory}
                   collapseBodyAt={BODY_CLAMP_PX}
+                  actions={showClose ? undefined : taskActions}
                 />
               </div>
             )}
