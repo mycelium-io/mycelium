@@ -102,19 +102,30 @@ describe("the chat's status rows", () => {
 });
 
 describe("a message's hover bar", () => {
+  /** Today at `h`:`m`, local time, as the hub would stamp it. */
+  const today = (h: number, m: number) => {
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  };
+
   it("says when, on the first message under a name as on the ones after it", () => {
-    const first = event({ id: "m1", messageId: "m1", sender: "builder", content: "on it", time: "09:41:00" });
-    const next = event({ id: "m2", messageId: "m2", sender: "builder", content: "done", time: "09:43:00" });
+    const first = event({ id: "m1", messageId: "m1", sender: "builder", content: "on it", at: today(9, 41) });
+    const next = event({ id: "m2", messageId: "m2", sender: "builder", content: "done", at: today(9, 43) });
+    // From another day, so the time alone would read as today's.
+    const old = event({ id: "m3", messageId: "m3", sender: "scout", content: "from before", at: "2025-03-04T15:20:00Z" });
     renderWithSWR(
       <KeymapProvider>
         <FeedRow ev={first} ctx={ctx} />
         <FeedRow ev={next} prev={first} ctx={ctx} />
+        <FeedRow ev={old} prev={next} ctx={ctx} />
       </KeymapProvider>,
     );
     for (const [text, time] of [
       ["on it", "09:41"],
       ["done", "09:43"],
-    ]) {
+      ["from before", /2025/],
+    ] as const) {
       const row = screen.getByText(text).closest(".group") as HTMLElement;
       fireEvent.mouseEnter(row);
       expect(within(screen.getByRole("toolbar", { name: "Message actions" })).getByText(time)).toBeInTheDocument();

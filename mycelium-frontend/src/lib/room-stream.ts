@@ -324,6 +324,27 @@ export function dayLabel(iso: string, now: Date = new Date()): string {
   });
 }
 
+/**
+ * When a message was sent, short enough for its hover bar: the clock time
+ * today ("09:41"), "Yesterday 09:41", or the date and time on another day
+ * ("Oct 26 09:41"), with the year when it isn't this year's. A time alone
+ * would read as today's on a message from last week.
+ */
+export function shortStamp(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const clock = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+  const day = dayLabel(iso, now);
+  if (day === "Today") return clock;
+  if (day === "Yesterday") return `Yesterday ${clock}`;
+  const date = d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
+  return `${date} ${clock}`;
+}
+
 /** The first non-blank line of a message, without markdown emphasis. */
 export function firstLine(text: string): string {
   const line = text.split("\n").find((l) => l.trim() && !/^[-*]\s*$/.test(l.trim())) ?? "";

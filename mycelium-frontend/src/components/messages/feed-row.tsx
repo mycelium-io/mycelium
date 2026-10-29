@@ -21,6 +21,7 @@ import { agentTag } from "@/lib/agent-label";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import { insertIntoComposer, messagePath, quoteText, replyText } from "@/lib/message-actions";
 import { Ago } from "@/lib/relative-time";
+import { shortStamp } from "@/lib/room-stream";
 import {
   AGREED_ICON,
   DONE_ICON,
@@ -772,9 +773,9 @@ export function MessageRow({
           sender={ev.sender}
           wire={ev.wire}
           onOpenThread={ctx.onOpenThread}
-          // Every message shows its clock time on hover, in the bar, the first
-          // under a name too, so the bar always says when.
-          time={ev.time.slice(0, 5)}
+          // Every message says when on hover, in the bar, the first under a
+          // name too, with its day when that isn't today.
+          time={shortStamp(ev.at) || ev.time.slice(0, 5)}
         />
       </div>
     </MessageMenu>
