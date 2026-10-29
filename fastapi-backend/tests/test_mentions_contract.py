@@ -31,9 +31,12 @@ def test_sigils_match_contract():
 
 @pytest.mark.parametrize("case", _CONTRACT["cases"], ids=lambda c: c["text"])
 def test_case_parses_as_the_contract_says(case):
+    from app.services import groups
+
     assert parse_interrupt_mentions(case["text"]) == case["interrupt"]
     assert parse_mentions(case["text"]) == case["mentions"]
     assert parse_silent_mentions(case["text"]) == case["silent"]
+    assert groups.parse(case["text"]) == case.get("groups", {})
 
 
 @pytest.mark.parametrize("case", _CONTRACT["cases"], ids=lambda c: c["text"])

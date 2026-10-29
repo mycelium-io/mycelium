@@ -19,6 +19,12 @@
     "of the text) is none of them. A backtick with no matching close is a",
     "literal backtick, not code.",
     "",
+    "@here and @all name a group, never a member called here or all, so no",
+    "handle list holds them. `groups` (an empty object when a case leaves it",
+    "out) gives each group a text names, in the strongest form it's written in:",
+    "mention, interrupt or silent (interrupt beats mention beats silent). Who a",
+    "group reaches is the hub's (fastapi-backend/app/services/groups.py).",
+    "",
     "The backend (fastapi-backend/app/services/persister.py: parse_mentions,",
     "parse_silent_mentions, parse_interrupt_mentions), the frontend",
     "(mycelium-frontend/src/lib/mentions.ts) and the CLI's room export",
@@ -27,7 +33,7 @@
     "mycelium-frontend/src/lib/mentions.contract.test.ts and",
     "mycelium-cli/tests/test_mentions_contract.py."
   ],
-  "version": 3,
+  "version": 4,
   "sigils": {
     "mention": "@",
     "silent": "@~",
@@ -55,6 +61,10 @@
     { "text": "@alice\n```sh\nmycelium respond @bob", "mentions": ["alice"], "silent": [], "interrupt": [] },
     { "text": "a stray ` then @alice", "mentions": ["alice"], "silent": [], "interrupt": [] },
     { "text": "`one\n\n@alice` two", "mentions": ["alice"], "silent": [], "interrupt": [] },
-    { "text": "`code`@alice and ``x` @bob", "mentions": ["bob"], "silent": [], "interrupt": [] }
+    { "text": "`code`@alice and ``x` @bob", "mentions": ["bob"], "silent": [], "interrupt": [] },
+    { "text": "@here can you two agree? cc @~all", "mentions": [], "silent": [], "interrupt": [], "groups": { "here": "mention", "all": "silent" } },
+    { "text": "@!all stop, @here and @~here too", "mentions": [], "silent": [], "interrupt": [], "groups": { "all": "interrupt", "here": "mention" } },
+    { "text": "@heres and @allison, not x@all", "mentions": ["heres", "allison"], "silent": [], "interrupt": [], "groups": {} },
+    { "text": "`@all` is code but @bob isn't", "mentions": ["bob"], "silent": [], "interrupt": [], "groups": {} }
   ]
 }

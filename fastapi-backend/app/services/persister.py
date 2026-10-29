@@ -192,6 +192,20 @@ def is_converged(envelope: MyceliumMessage) -> bool:
     return header.kind.value == "commit" and header.subkind == "converged"
 
 
+#: ``@here`` and ``@all`` name a group, never a member called that
+#: (``app.services.groups``), so no handle parse returns them.
+_GROUP_NAMES = frozenset({"here", "all"})
+
+
+def _handles(pattern: re.Pattern[str], text: str) -> list[str]:
+    """The handles ``pattern`` finds outside code, first-seen order, groups left out."""
+    seen: dict[str, None] = {}
+    for match in pattern.findall(blank_code(text)):
+        if match.lower() not in _GROUP_NAMES:
+            seen.setdefault(match, None)
+    return list(seen)
+
+
 def parse_mentions(text: str) -> list[str]:
     """Handles ``@``-mentioned in one plain-text string.
 
@@ -201,10 +215,7 @@ def parse_mentions(text: str) -> list[str]:
     whitespace / ``(`` / ``<``), so an email address never wakes an agent, and
     a handle inside code (:func:`blank_code`) is quoted, not mentioned.
     """
-    seen: dict[str, None] = {}
-    for match in _SUMMON_RE.findall(blank_code(text)):
-        seen.setdefault(match, None)
-    return list(seen)
+    return _handles(_SUMMON_RE, text)
 
 
 def parse_silent_mentions(text: str) -> list[str]:
@@ -215,10 +226,7 @@ def parse_silent_mentions(text: str) -> list[str]:
     rings no doorbell and summons no engine. Same boundary rule and order as
     :func:`parse_mentions`.
     """
-    seen: dict[str, None] = {}
-    for match in _SILENT_RE.findall(blank_code(text)):
-        seen.setdefault(match, None)
-    return list(seen)
+    return _handles(_SILENT_RE, text)
 
 
 def parse_named(text: str) -> list[str]:
@@ -226,10 +234,7 @@ def parse_named(text: str) -> list[str]:
     it was written: ``@handle``, ``@~handle`` or ``@!handle``. For reading who a
     command names (a conductor binding its roles), not who it asks: only the
     loud forms ask (:func:`parse_mentions`)."""
-    seen: dict[str, None] = {}
-    for match in _NAMED_RE.findall(blank_code(text)):
-        seen.setdefault(match, None)
-    return list(seen)
+    return _handles(_NAMED_RE, text)
 
 
 def parse_interrupt_mentions(text: str) -> list[str]:
@@ -239,10 +244,7 @@ def parse_interrupt_mentions(text: str) -> list[str]:
     stop the agent mid-turn so it reads the message now rather than when its
     turn ends. Same boundary rule and order as :func:`parse_mentions`.
     """
-    seen: dict[str, None] = {}
-    for match in _INTERRUPT_RE.findall(blank_code(text)):
-        seen.setdefault(match, None)
-    return list(seen)
+    return _handles(_INTERRUPT_RE, text)
 
 
 # ── Transcript record + delivery cursors (pure) ──────────────────────────────

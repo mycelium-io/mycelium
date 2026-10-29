@@ -55,6 +55,8 @@ MEMORY_PAGE = 1000
 # after whitespace, ``(`` or ``<``, and never inside code.
 _MENTION = re.compile(r"(?:^|(?<=[\s(<]))@([!~]?)([A-Za-z0-9][\w-]*)")
 _MENTION_MODES = {"!": "urgent", "~": "silent"}
+#: ``@here`` and ``@all`` mention a group (``contracts/mentions.json``).
+_GROUPS = frozenset({"here", "all"})
 _FENCE_OPEN = re.compile(r"^[ \t]*(`{3,}|~{3,})(.*)$")
 _BLANK_LINE = re.compile(r"\n[ \t]*\n")
 #: What code is replaced with before matching: no word character, no
@@ -300,11 +302,13 @@ def blank_code(text: str) -> str:
 def mentions(text: str) -> list[dict[str, str]]:
     """Every ``@handle`` in prose, with how it was said: plain, silent ``@~`` or urgent ``@!``.
 
-    A handle inside code is quoted, not mentioned, so it isn't listed.
+    A handle inside code is quoted, not mentioned, so it isn't listed. Nor is
+    ``@here`` or ``@all``: those name a group, never a member called that.
     """
     return [
         {"handle": handle, "mode": _MENTION_MODES.get(mode, "plain")}
         for mode, handle in _MENTION.findall(blank_code(text))
+        if handle.lower() not in _GROUPS
     ]
 
 

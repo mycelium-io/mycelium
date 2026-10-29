@@ -39,7 +39,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.config import settings
-from app.services import custody, message_format, slim_identity
+from app.services import custody, groups, message_format, slim_identity
 from app.services.agent_registry import norm_handle
 from app.services.floor import Floor
 from app.services.message_models import Kind
@@ -679,6 +679,7 @@ class RoomChannelManager:
         from app.services.asks import asked
         from app.services.principals import classify_sender
 
+        extra, _by_group = groups.on_message(room, text=text, episode=episode, sender=sender)
         envelope = message_format.build_envelope(
             kind=Kind.exchange,
             episode=episode or message_format.live_episode_urn(room),
@@ -689,7 +690,7 @@ class RoomChannelManager:
             payload_type="message",
         )
         noted: list[str] = []
-        for handle, why in asked(serialize_content(envelope, extra={"content": text})).items():
+        for handle, why in asked(serialize_content(envelope, extra=extra)).items():
             if classify_sender(room, handle) != "agent":
                 continue
             wake_log.dropped(
@@ -1418,6 +1419,9 @@ class RoomChannelManager:
             return None
 
         mentioned = parse_mentions(text)
+        # ``@here`` and ``@all`` reach who they reach now, kept on the message so
+        # every later read of who it asked gives the same answer.
+        extra, by_group = groups.on_message(room, text=text, episode=episode, sender=sender)
         # Every mention is a message recipient (the semantic "to"); everyone else on
         # the channel is an observer. Absent mentions stay recipients so the
         # intent is recorded, but only present ones actually receive the broadcast.
@@ -1428,14 +1432,14 @@ class RoomChannelManager:
             parents=parents,
             sender=sender,
             sender_role="human",
-            recipients=mentioned,
+            recipients=mentioned + [h for h in by_group if h not in mentioned],
             topic=message_format.topic_urn(room),
             payload_type="message",
         )
-        content = serialize_content(envelope, extra={"content": text})
+        content = serialize_content(envelope, extra=extra)
         message_id = envelope.header.message.id if envelope.header.message else None
         try:
-            await managed.channel.send(envelope, extra={"content": text})
+            await managed.channel.send(envelope, extra=extra)
         except Exception as exc:  # best-effort broadcast
             logger.warning("failed to publish human message on room %s: %s", room, exc)
         if managed.persister is not None:

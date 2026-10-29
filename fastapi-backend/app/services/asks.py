@@ -20,7 +20,8 @@ engines alike (``contracts/asks.json`` holds its cases):
 - Nobody asks themselves.
 - A mention asks (``mention``, or ``interrupt`` for ``@!``), by the hub's one
   mention rule (``persister.parse_mentions``: not silent, not in code, any
-  letter case).
+  letter case). So does a group mention (``@here``, ``@all``) of the members
+  it reached when it was sent, kept on the message (``app.services.groups``).
 - Anything but a ``reply`` asks its recipients (``turn``): how the aligner
   and the conductor put a question to one member.
 - A ``reply`` asks only whoever it mentions. Its recipient is whoever the
@@ -38,6 +39,7 @@ from typing import Any, Literal
 
 from app.services import message_format
 from app.services.agent_registry import norm_handle
+from app.services.groups import asked_by_groups
 from app.services.persister import parse_interrupt_mentions, parse_mentions
 
 Reason = Literal["mention", "turn", "interrupt"]
@@ -84,6 +86,8 @@ def asks(content: dict[str, Any], handle: str) -> Reason | None:
     if me in {_norm(m) for m in parse_mentions(text)}:
         interrupting = {_norm(m) for m in parse_interrupt_mentions(text)}
         return "interrupt" if me in interrupting else "mention"
+    if form := {_norm(h): f for h, f in asked_by_groups(content).items()}.get(me):
+        return form
     if payload != "reply" and me in ids[1:]:
         return "turn"
     return None
@@ -96,6 +100,7 @@ def asked(content: dict[str, Any]) -> dict[str, Reason]:
     actors = (header.get("participants") or {}).get("actors") or []
     text = content.get("content")
     candidates = parse_mentions(text) if isinstance(text, str) else []
+    candidates += list(asked_by_groups(content))
     candidates += [a.get("id") for a in actors[1:] if isinstance(a, dict)]
     found: dict[str, Reason] = {}
     for candidate in candidates:

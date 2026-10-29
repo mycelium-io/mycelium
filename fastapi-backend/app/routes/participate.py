@@ -43,6 +43,7 @@ from app.schemas import AwaitConfirmRead, AwaitNothing, AwaitTurn, ReplyRead, re
 from app.services import (
     activity,
     actor,
+    groups,
     markers,
     message_format,
     principals,
@@ -568,7 +569,9 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
         payload_data=payload_data or {"action": "reply"},
         parents=parents,
     )
-    content = serialize_content(envelope, extra={"content": clean})
+    # ``@here`` and ``@all`` reach who they reach now, kept on the reply.
+    extra, _by_group = groups.on_message(room_name, text=clean, episode=episode, sender=handle)
+    content = serialize_content(envelope, extra=extra)
     # Record into the transcript (the aligner polls it for positions). SLIM does
     # not echo a broadcast back to its own sender, so a local record is required —
     # then also broadcast so any client-connected members / the UI see it.
@@ -583,11 +586,11 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     # broadcast (attribution degrades to app-level for that one message; liveness is
     # preserved). Under the PSK default ``send_as_custodian`` is a no-op and this is
     # the prior moderator send.
-    wire = serialize_envelope(envelope, extra={"content": clean})
+    wire = serialize_envelope(envelope, extra=extra)
     sent_as_actor = await room_channels.manager.send_as_custodian(room_name, handle, wire)
     if not sent_as_actor:
         try:
-            await managed.channel.send(envelope, extra={"content": clean})
+            await managed.channel.send(envelope, extra=extra)
         except Exception:
             pass
     await room_channels.manager.raise_ping(

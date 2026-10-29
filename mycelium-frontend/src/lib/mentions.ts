@@ -95,8 +95,31 @@ export function blankCode(text: string): string {
   return out;
 }
 
+/** `@here` and `@all` name a group of members, never a member called that. */
+export const GROUP_NAMES = ["here", "all"] as const;
+export type GroupName = (typeof GROUP_NAMES)[number];
+export type GroupForm = "mention" | "interrupt" | "silent";
+
+const GROUP_RE = /(?:^|(?<=[\s(<]))@([~!]?)(here|all)(?![\w-])/g;
+const GROUP_FORMS: Record<string, GroupForm> = { "": "mention", "!": "interrupt", "~": "silent" };
+const GROUP_STRENGTH: Record<GroupForm, number> = { silent: 0, mention: 1, interrupt: 2 };
+
 function handles(text: string, re: RegExp): string[] {
-  return [...new Set(Array.from(blankCode(text).matchAll(re), (m) => m[1]))];
+  const named = Array.from(blankCode(text).matchAll(re), (m) => m[1]);
+  return [...new Set(named.filter((h) => !(GROUP_NAMES as readonly string[]).includes(h.toLowerCase())))];
+}
+
+/** The groups a text names, each in the strongest form it's written in
+ *  (interrupt, then mention, then silent). The hub decides who each reaches. */
+export function parseGroupMentions(text: string): Partial<Record<GroupName, GroupForm>> {
+  const found: Partial<Record<GroupName, GroupForm>> = {};
+  for (const [, sigil, name] of blankCode(text).matchAll(GROUP_RE)) {
+    const form = GROUP_FORMS[sigil];
+    const group = name as GroupName;
+    const had = found[group];
+    if (had === undefined || GROUP_STRENGTH[form] > GROUP_STRENGTH[had]) found[group] = form;
+  }
+  return found;
 }
 
 /** Handles a text asks for with `@handle` or `@!handle`, first-seen order, de-duplicated. */
