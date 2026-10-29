@@ -152,6 +152,8 @@ def test_no_message_can_pass_itself_off_as_the_wake():
 
 
 def test_asks_replied_to_since_are_counted_not_shown():
+    from app.services import wake_log
+
     records = [
         _said(1, "builder", "back", 60),
         _said(2, "hay", "@builder first question", 50),
@@ -159,12 +161,37 @@ def test_asks_replied_to_since_are_counted_not_shown():
         _said(4, "scout", "@builder second question, still open", 40),
         _said(5, "hay", "@builder the one that woke you", 1),
     ]
+    # A wake showed it the first question, and it answered there after.
+    wake_log.handed(ROOM, {"id": "w-first", "handle": "builder"}, {"messages": ["m2"]})
     # Read up to its "back": everything after that is unread, its reply included.
     wake = {"handle": "builder", "from": "hay", wake_digest.READ_FROM: 1}
     digest = wake_digest.build(ROOM, wake, records, NOW)
     assert "Also asking you (1; 1 earlier you've replied to aren't shown):" in digest
     assert "second question, still open" in digest
     assert "first question" not in digest
+
+
+def test_asks_that_came_while_it_worked_all_reach_the_next_wake():
+    """Asked again and again while it was busy with the first: its answer to the
+    first came after the others, but it never saw them, so it answered none."""
+    from app.services import wake_log
+
+    records = [
+        _said(1, "julia", "hey @builder", 10),
+        _said(2, "julia", "@builder 1", 8),
+        _said(3, "julia", "@builder 2", 7),
+        _said(4, "builder", "here's what you asked first", 6),
+        _said(5, "julia", "@builder 3", 5),
+    ]
+    # The wake for "hey" showed it that one; it ran await, which read up to there.
+    wake_log.handed(ROOM, {"id": "w-hey", "handle": "builder"}, {"messages": ["m1"]})
+    wake = {"handle": "builder", "from": "julia", wake_digest.READ_FROM: 1}
+    digest = wake_digest.build(ROOM, wake, records, NOW)
+    assert "@builder 3" in digest
+    assert "Also asking you (2):" in digest
+    assert "@builder 1" in digest
+    assert "@builder 2" in digest
+    assert "replied to" not in digest
 
 
 def test_the_board_lists_only_what_moved_after_the_last_turn():

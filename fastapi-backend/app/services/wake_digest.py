@@ -497,15 +497,34 @@ def _ask_box(room: str, record: Any, now: datetime, limit: int) -> list[str]:
     return box(header, head, footer)
 
 
+def _shown(room: str, me: str) -> set[str]:
+    """The asks an earlier wake put in front of ``me``: the messages each wake
+    handed to its runner covered (``wake_log``). A wake that was dropped, or
+    never reached the agent, showed it nothing."""
+    from app.services import wake_log
+
+    return {
+        str(mid)
+        for w in wake_log.read(room, agent=me, limit=200)
+        if w.get("outcome") in ("handed", "delivered")
+        for mid in w.get("messages") or []
+    }
+
+
 def _replied(room: str, window: list[Any], asked: list[Any], me: str) -> set[int]:
-    """The asks the agent has replied to since: it posted where each was asked,
-    after it. The hub can see that much; whether the reply answered is the
-    agent's to say."""
+    """The asks the agent has replied to since: an earlier wake showed it the
+    ask, and it posted where it was asked after it. The hub can see that much;
+    whether the reply answered is the agent's to say.
+
+    An ask that arrived while the agent was busy with an earlier one was never
+    shown to it, so a reply it posted after it isn't an answer to it: several
+    mentions in a row all reach the next wake."""
     at = {id(r): i for i, r in enumerate(window)}
+    shown = _shown(room, me)
     replied: set[int] = set()
     for record in asked:
         i = at.get(id(record))
-        if i is None:
+        if i is None or record.message_id not in shown:
             continue
         here = _thread_of(room, record)
         if any(
