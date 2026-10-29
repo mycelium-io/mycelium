@@ -141,7 +141,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
       </Tooltip>
       {/* Room to work: open the task as a tab of the room, where the rest of
           its memories open. */}
-      <Tooltip content="Open as a tab">
+      <Tooltip content="Open the task">
         {onOpenMemory ? (
           <button
             type="button"
@@ -149,7 +149,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
               onOpenMemory(task.key);
               onClose();
             }}
-            aria-label="Open task as a tab"
+            aria-label="Open the task"
             className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
           >
             <Maximize2 className="size-3.5" strokeWidth={1.9} />
