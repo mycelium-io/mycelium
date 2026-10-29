@@ -2009,6 +2009,14 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
+    "t": "mycelium room members [<room> | --room <room>]",
+    "s": "CLI Reference",
+    "x": "Who is in a room and what each one is doing right now: people, agents and engines.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-room",
     "t": "mycelium room export [<room> | --room <room>] [--out <dir>] [--since <stamp|age>] [--redact]",
     "s": "CLI Reference",
     "x": "Write a room's whole history to local files: every message, channel and task threads alike, as JSON lines, plus the board. Run it again with the same --out to add only what is new. --redact replaces emails, tokens and non-GitHub URLs.",
