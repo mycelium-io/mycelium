@@ -355,7 +355,7 @@ def pi() -> CheckResult:
     return CheckResult(
         name="Pi",
         status="warning",
-        message="not found; engines like the aligner can't think without it",
+        message="not found; engines like personas and workers can't think without it",
         details=["Reinstall Mycelium, or: npm install -g @earendil-works/pi-coding-agent"],
     )
 

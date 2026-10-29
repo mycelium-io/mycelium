@@ -213,7 +213,7 @@ describe("<EventStream /> live message rendering", () => {
       es.open();
       es.emit({
         message_type: "l9_commit",
-        sender_handle: "aligner",
+        sender_handle: "conductor",
         created_at: CREATED,
         content: JSON.stringify({
           content: "consensus reached",
@@ -252,7 +252,7 @@ describe("<EventStream /> live message rendering", () => {
           content: "plan updated → work/plan-the-tasks",
           l9: {
             header: { kind: "knowledge", subkind: "distillation" },
-            payload: { type: "distillation", data: { key: "work/plan-the-tasks", updated_by: "aligner" } },
+            payload: { type: "distillation", data: { key: "work/plan-the-tasks", updated_by: "conductor" } },
           },
         }),
       });
@@ -262,7 +262,7 @@ describe("<EventStream /> live message rendering", () => {
     // under the row's own name, once, and never the conversation.
     expect(await screen.findByText("Recently updated")).toBeInTheDocument();
     expect(screen.getAllByText("work/plan-the-tasks")).toHaveLength(1);
-    expect(screen.getByText("@aligner")).toBeInTheDocument();
+    expect(screen.getByText("@conductor")).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
@@ -299,7 +299,7 @@ describe("<EventStream /> live message rendering", () => {
       es.open();
       es.emit({
         message_type: "l9_commit",
-        sender_handle: "aligner",
+        sender_handle: "conductor",
         created_at: CREATED,
         content: JSON.stringify({
           content: "consensus reached",

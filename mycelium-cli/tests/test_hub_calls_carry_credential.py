@@ -35,22 +35,10 @@ class _Hub:
         if request.url.path == "/api/rooms":
             room = {"id": 1, "name": "lobby", "mas_id": "m1", "is_public": True, "created_at": _AT}
             return httpx.Response(200, json=[room], request=request)
-        messages = [_message("Growth"), _message("risk")]
-        return httpx.Response(200, json={"messages": messages, "total": 2}, request=request)
+        return httpx.Response(404, json={"detail": "Not Found"}, request=request)
 
 
 _AT = "2026-08-24T10:00:00+00:00"
-
-
-def _message(sender: str) -> dict:
-    """A message as the hub's ``MessageRead`` answers it."""
-    return {
-        "id": "00000000-0000-0000-0000-000000000000",
-        "sender_handle": sender,
-        "message_type": "message",
-        "content": "hi",
-        "created_at": _AT,
-    }
 
 
 @pytest.fixture
@@ -83,11 +71,6 @@ def test_demo_prereqs_say_a_refusal_is_a_sign_in_not_a_dead_hub(
     monkeypatch.setattr(client, "auth_headers", lambda *_a, **_k: {})
     _, problems = demo._check_prereqs()
     assert problems == [f"The hub at {_HUB} refused this computer. Try: mycelium login"]
-
-
-def test_demo_reads_who_posted_on_a_gated_hub(hub: _Hub, config: MyceliumConfig) -> None:
-    assert demo._room_senders(config, "demo-room") == {"growth", "risk"}
-    assert hub.sent[0].url.path == "/api/rooms/demo-room/messages"
 
 
 def test_metrics_names_rooms_on_a_gated_hub(

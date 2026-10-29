@@ -1297,109 +1297,6 @@
         }
       }
     },
-    "/api/rooms/{room_name}/engines/stop": {
-      "post": {
-        "tags": [
-          "engines"
-        ],
-        "summary": "Stop Negotiation",
-        "description": "Stop the aligner's negotiation running in the room.\n\nIt ends before its next turn (a turn being waited on is cut short),\ncommits ``rejected`` with reason ``stopped``, and posts one line saying who\nstopped it. 409 when nothing is running there.",
-        "operationId": "stop_negotiation_api_rooms__room_name__engines_stop_post",
-        "parameters": [
-          {
-            "name": "room_name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Name"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NegotiationStop"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NegotiationStopped"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Refusal"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Service Unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Refusal"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Refusal"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Refusal"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Refusal"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/rooms": {
       "post": {
         "tags": [
@@ -6158,7 +6055,7 @@
           "participate"
         ],
         "summary": "Post Reply",
-        "description": "Publish ``handle``'s reply as an agent exchange message the aligner scores.",
+        "description": "Publish ``handle``'s reply as an agent exchange message.",
         "operationId": "post_reply_api_rooms__room_name__reply_post",
         "parameters": [
           {
@@ -6650,7 +6547,7 @@
           "sessions"
         ],
         "summary": "Push Herdr Presence",
-        "description": "Overlay herdr liveness for a room (the ``mycelium herdr sync`` bridge's push).\n\nThe backend runs containerized and can't see the host's herdr socket, so the\nhost-side bridge polls ``herdr agent list`` and pushes the current per-handle\nstate here. This is a presence/UI surface only \u2014 it never enters the mediator\nroster. Entries lapse on their TTL, so a stopped bridge / closed pane clears\nitself without an explicit delete.",
+        "description": "Overlay herdr liveness for a room (the ``mycelium herdr sync`` bridge's push).\n\nThe backend runs containerized and can't see the host's herdr socket, so the\nhost-side bridge polls ``herdr agent list`` and pushes the current per-handle\nstate here. This is a presence/UI surface only \u2014 it never enters an engine's\nroster. Entries lapse on their TTL, so a stopped bridge / closed pane clears\nitself without an explicit delete.",
         "operationId": "push_herdr_presence_api_rooms__room_name__sessions_herdr_presence_post",
         "parameters": [
           {
@@ -14787,8 +14684,7 @@
           "kind": {
             "type": "string",
             "title": "Kind",
-            "description": "Which cognition engine to run.",
-            "default": "aligner"
+            "description": "Which cognition engine to run."
           },
           "description": {
             "type": "string",
@@ -14840,7 +14736,8 @@
         },
         "type": "object",
         "required": [
-          "handle"
+          "handle",
+          "kind"
         ],
         "title": "EngineCreate",
         "description": "Request body to invite an engine into a room."
@@ -15262,6 +15159,31 @@
               }
             ],
             "title": "Participants"
+          },
+          "satisfaction": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Satisfaction"
+          },
+          "min_satisfaction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Satisfaction"
           }
         },
         "type": "object",
@@ -18688,39 +18610,6 @@
         "type": "object",
         "title": "MessageSearchScope",
         "description": "The interpretation a message search ran under, echoed so a client draws\nits chips from the same parse the server used."
-      },
-      "NegotiationStop": {
-        "properties": {
-          "by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "By",
-            "description": "Who is stopping it; defaults to the caller."
-          }
-        },
-        "type": "object",
-        "title": "NegotiationStop",
-        "description": "Request body to stop the negotiation running in a room."
-      },
-      "NegotiationStopped": {
-        "properties": {
-          "stopped": {
-            "type": "boolean",
-            "title": "Stopped"
-          }
-        },
-        "type": "object",
-        "required": [
-          "stopped"
-        ],
-        "title": "NegotiationStopped",
-        "description": "What stopping did."
       },
       "NotesDraftRead": {
         "properties": {

@@ -10,7 +10,7 @@ from its CLI:
   in the room or in a task's thread. This is the one that also reaches an agent
   kept going with `mycelium await --loop`. A filed task alone doesn't wake that
   kind of agent.
-- **A turn.** When the conductor or the aligner puts a step to one member, that
+- **A turn.** When the conductor puts a step to one member, that
   member is woken for it.
 
 One thing does **not** wake anybody, and that's finishing a task. Resolving a

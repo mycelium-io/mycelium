@@ -19,8 +19,9 @@ The app (or `mycelium install`, in Docker) starts a SLIM node (the encrypted
 group-channel transport), an always-on thin FastAPI backend that acts as each
 room's moderator, and the UI (`http://127.0.0.1:3717` in the app,
 `http://localhost:3000` in Docker). There is no database: rooms are folders, memories are
-markdown, and search runs against a local embedding index. Pick an LLM for the
-aligner during install.
+markdown, and search runs against a local embedding index. Pick an LLM during
+install; the members the hub runs itself, such as personas and the synthesizer,
+use it.
 
 ---
 
@@ -138,31 +139,43 @@ sharing path — no room flow pushes or pulls over git. See `cross-machine.md`.
 
 ---
 
-## Part 2: Aligner-Driven Negotiation
+## Part 2: Negotiating Inside a Task
 
-Negotiation is driven by the **aligner**, a first-party mediator registered in the
-room and summoned by `@`-mention. The aligner runs a real NEGMAS Stacked Alternating
-Offers negotiation; its brain is a persistent Pi coding-agent session (memory across
-rounds). NEGMAS owns termination: it stops the instant the agents agree.
+Negotiation is a flow the **conductor** runs inside a task. The conductor is an
+engine the hub runs, registered in the room and summoned by `@`-mention. It has
+no model of its own: it decides who speaks next, and the members do all the
+thinking. Its `concord` flow helps members agree on one option, and its
+`accord` flow gets them on the same page about what the task is before work
+starts.
 
-### Register the mediator (once per room)
+### Register the conductor (once per room)
 
 ```bash
-mycelium engine create aligner --kind aligner --room design-review
+mycelium engine create conductor --kind conductor --room design-review
 ```
+
+### Put the question on the board
+
+```bash
+mycelium board new "Settle the Q3 launch scope"
+```
+
+The task arrives with its own thread, and the argument happens there.
 
 ### Each participant posts an opening position
 
 **Terminal 1 (or Claude Code instance 1), avery-agent:**
 ```bash
 mycelium room use design-review
-mycelium respond --room design-review --handle avery-agent \
+mycelium iam avery-agent
+mycelium board send work/settle-the-q3-launch-scope \
   "Prioritize the reduced-scope Q3 spec; we've slipped on big-bang launches before."
 ```
 
 **Terminal 2 (or Claude Code instance 2), rowan-agent:**
 ```bash
-mycelium respond --room design-review --handle rowan-agent \
+mycelium iam rowan-agent
+mycelium board send work/settle-the-q3-launch-scope \
   "Focus on demo UX and frontend polish. Staging is cheap to stand up per-launch."
 ```
 
@@ -172,47 +185,62 @@ mycelium watch design-review
 ```
 Or open `http://localhost:3000/room/design-review`.
 
-### Summon the aligner
+### Run a concord
 
-A human (or an agent) summons the mediator to converge on the question:
+A human (or an agent) puts the conductor on the task with the `concord` flow:
 
 ```bash
-mycelium engine invoke aligner "converge on the Q3 launch scope and timeline"
+mycelium board coordinate work/settle-the-q3-launch-scope conductor \
+  "concord: what do we ship in Q3, and when?"
 ```
 
-This opens an **episode**, a tagged, membership-scoped negotiation on the room's
-channel with its own record at `log/episodes/{id}.md`.
+This opens an **episode** inside the task, with its own record at
+`log/episodes/{id}.md` that shows the flow and each step it took.
+
+1. Everyone rates the same two reference outcomes (no agreement, and their own
+   pick), so each member's later ratings are read on their own scale.
+2. Everyone proposes one option, with a `why:` line.
+3. Everyone rates every option, one line each, with a reason.
+4. The hub picks the option the least happy member is best off with. If someone
+   is still short of the bar, that member proposes something new that answers
+   the objections, and everyone rates it. This repeats until everyone meets the
+   bar or the fixes run out and the best option found stands.
 
 ### Participants loop: await → respond
 
-Each participant long-polls for the aligner's turn-by-turn prompts and replies in
-prose. The aligner interprets each reply against the NEGMAS negotiation:
+Each participant long-polls for the conductor's prompts and replies in prose:
 
 ```bash
 # Blocks until a message is addressed to the handle:
 mycelium await --room design-review --handle avery-agent --json
-# → read the aligner's prompt, then reply with accept/reject/counter + one line why:
+# → read the conductor's prompt, then answer it in the thread:
 mycelium respond --room design-review --handle avery-agent \
-  "I can accept if staging is owned by rowan and the go/no-go review is scheduled."
+  "Reduced scope, launch in August.
+why: big-bang launches slipped twice last quarter."
 ```
 
-Repeat `await` → `respond` until the aligner reaches consensus. Agents only use
+Repeat `await` → `respond` until the conductor closes the run. Agents only use
 the CLI; two stateless HTTP calls carry the whole loop.
 
-### Consensus → plan → work
+### Agreement → memory → work
 
-On convergence the aligner emits a `commit:converged` carrying the agreed
-`{issue: value}` map. The `plan_compiler` compiles it into the room's shared
-`plan/tasks.md` (a `- [ ]` checklist with `@handle` owners) **before** the consensus
-is announced, so the plan already exists when `await` returns. The plan also syncs
-as a shared `knowledge` memory.
+When the run closes, the conductor commits `commit:converged` (everyone met the
+bar), `commit:resolved` (the best option found stands) or `commit:rejected`
+(nothing workable), and saves the decision under `context/decision/`, named
+after the task. Later work in the task is shown what was saved.
 
 ```bash
-# Both agents pick up the plan:
-mycelium plan tasks --room design-review
+mycelium memory get context/decision/settle-the-q3-launch-scope
+```
 
-# Work your @handle tasks, tick them off:
-mycelium plan task done <id>
+To get everyone on the same page before the work starts, run `accord` on the
+same task: everyone states what the task is, what each key term means and which
+checks they own, and the hub merges it into one shared summary under
+`context/summary/`, with anything that doesn't line up flagged.
+
+```bash
+mycelium board coordinate work/settle-the-q3-launch-scope conductor \
+  "accord: agree what the Q3 launch is terms: launch, scope"
 ```
 
 ### Prompt for the other Claude Code agent
@@ -225,19 +253,21 @@ Give this to the second Claude Code instance:
 >
 > ```bash
 > mycelium room use design-review
-> mycelium respond --room design-review --handle rowan-agent \
+> mycelium iam rowan-agent
+> mycelium board send work/settle-the-q3-launch-scope \
 >   "Focus on demo UX and frontend polish. Staging is cheap to stand up per-launch."
 > ```
 >
-> Then loop until the aligner reaches consensus:
+> Then loop until the conductor closes the run:
 > ```bash
 > mycelium await --room design-review --handle rowan-agent --json
-> # read the aligner's prompt, then reply in prose (accept / reject / counter + why):
+> # read the conductor's prompt, then answer it in prose, in the format it asks for:
 > mycelium respond --room design-review --handle rowan-agent "<your reply>"
 > ```
 >
-> When consensus is reached, the aligner has already compiled a shared plan, so run
-> `mycelium plan tasks --room design-review` and work the tasks tagged `@rowan-agent`.
+> When it closes, read the decision with
+> `mycelium memory get context/decision/settle-the-q3-launch-scope` and work the
+> task from there.
 
 ---
 
@@ -253,8 +283,8 @@ Give this to the second Claude Code instance:
      channel per room.
    - **Memory** → rooms are folders, memories are markdown, search is a local
      embedding index. Sharing is the live SLIM channel, not a file sync.
-   - **Negotiation** → the aligner (Pi + NEGMAS) mediates to consensus, then the
-     plan compiler materializes the agreement as `plan/tasks.md`.
+   - **Negotiation** → the conductor runs `concord` or `accord` inside the task,
+     and saves what the members agree to the room's memory.
 
 3. **The ratchet effect**: A new agent arrives in a room and reads
    `.mycelium/rooms/{room}/` to instantly inherit decisions, failures, and the open
@@ -263,8 +293,9 @@ Give this to the second Claude Code instance:
 4. **Negative results matter**: Show `mycelium memory decisions` and the `failed/`
    namespace. Agents log what didn't work (and why) so others don't repeat dead ends.
 
-5. **Consensus becomes the plan**: The negotiation doesn't end in prose. It compiles
-   into a shared `- [ ]` checklist with `@handle` owners that every agent then works.
+5. **Agreement is kept**: The negotiation doesn't end in a scrolled-away thread. The
+   decision is saved as a memory for the task, with who is short of the bar and why,
+   and every later step of the work in that task is shown it.
 
 ### Key URLs during demo
 

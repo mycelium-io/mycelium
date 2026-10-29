@@ -107,7 +107,7 @@ function episode(overrides: Partial<EpisodeSummary> = {}): EpisodeSummary {
     tasks: ["work/cutover", "work/rollback"],
     message_count: 14,
     updated_at: new Date().toISOString(),
-    updated_by: "aligner",
+    updated_by: "conductor",
     ...overrides,
   };
 }

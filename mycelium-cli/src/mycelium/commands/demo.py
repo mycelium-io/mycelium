@@ -6,8 +6,9 @@
 A guided onboarding command. It is pure glue over the real
 system, with no mirrored data: it discovers scenarios and agent personas from
 the public ``agent-personas`` dataset at run time, creates a room, runs
-``mycelium agent create`` for each persona on your chosen adapter, seeds the
-room with a task, and then lets the agents actually negotiate to consensus.
+``mycelium agent create`` for each persona on your chosen adapter, files a
+task, and has the conductor run its ``concord`` flow in that task's thread so
+the agents actually negotiate to an agreement.
 There is no canned transcript and nothing replayed; what you watch is a live
 run.
 
@@ -25,7 +26,6 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -46,10 +46,13 @@ _TREE_URL = f"https://api.github.com/repos/{_REPO}/git/trees/{_REF}?recursive=1"
 # Sensible default; any scenario discovered in the dataset is selectable.
 DEFAULT_SCENARIO = "ex07_investment_portfolio"
 
-# The reserved handle that summons the SIEP aligner (backend ALIGNER_HANDLE
-# default). Summoning it scores the room's positions into a converged/rejected
-# verdict and, on converge, compiles plan/tasks.md + syncs a knowledge memory.
-ALIGNER_HANDLE = "aligner"
+# The conductor engine the demo adds to the room, and the flow it runs. A
+# conductor run needs a task (it walks that task's thread and holds its floor),
+# so the demo files one and summons the conductor there. ``concord`` asks every
+# member it names to rate, propose and re-rate until the options meet
+# everyone's bar, then saves the decision as a memory for the task.
+CONDUCTOR_HANDLE = "conductor"
+FLOW = "concord"
 
 # Adapters that can host a demo agent. Mirrors AGENT_ADAPTERS (underscore form).
 _KNOWN_ADAPTERS = ("claude_code", "cursor")
@@ -164,9 +167,8 @@ def _resolve_scenario(scenario_id: str) -> dict[str, Any]:
         "topic": topic,
         "room": "demo-" + topic.replace(" ", "-"),
         "task": (
-            f"You are negotiating the {topic} decision. Each of you holds the position "
-            f"described in your persona. Use Mycelium to propose offers, counter, and "
-            f"reach consensus."
+            f"Agree on the {topic} decision. Each of you holds the position "
+            f"described in your persona."
         ),
         "agents": agents,
     }
@@ -241,10 +243,11 @@ def _provision(
     scenario: dict[str, Any],
     adapter: str,
     room: str,
-) -> None:
-    """Create the room + persona agents and seed the task. Raises typer.Exit on failure."""
-    handles = [a["handle"] for a in scenario["agents"]]
+) -> str:
+    """Create the room, the persona agents and the conductor, and file the task.
 
+    Returns the task's memory key. Raises typer.Exit on failure.
+    """
     # 1. Fetch personas first, failing before we create anything if unreachable.
     console.print("[dim]Fetching personas from agent-personas…[/dim]")
     personas: dict[str, str] = {}
@@ -281,91 +284,66 @@ def _provision(
             raise typer.Exit(1)
         console.print(f"[green]✓[/green] Created [bold]@{handle}[/bold] ({adapter})")
 
-    # 4. Seed: one message mentioning every agent + the task. A resident agent
-    #    (running `mycelium await --loop`) picks it up and runs the protocol.
-    mentions = " ".join(f"@{h}" for h in handles)
-    seed = f"{mentions} {scenario['task']}"
-    r = _run(["agent", "invoke", handles[0], seed, "--room", room, "-H", "demo"])
+    # 4. The conductor: the engine that runs the negotiation.
+    r = _run(["engine", "create", CONDUCTOR_HANDLE, "--kind", "conductor", "--room", room])
     if r.returncode != 0:
-        console.print(f"[red]seeding failed:[/red]\n{r.stderr or r.stdout}")
+        console.print(f"[red]engine create failed:[/red]\n{r.stderr or r.stdout}")
         raise typer.Exit(1)
-    console.print("[green]✓[/green] Seeded the room; agents are negotiating")
+    console.print(f"[green]✓[/green] Added [bold]@{CONDUCTOR_HANDLE}[/bold]")
 
-
-def _room_senders(config: Any, room: str) -> set[str]:
-    """The set of handles that have posted a message to ``room`` (lowercased)."""
-    import httpx
-
-    from mycelium.client import typed_client
-    from mycelium_backend_client.api.messages import list_messages_api_rooms_room_name_messages_get
-    from mycelium_backend_client.models import MessageListResponse
-
-    try:
-        with typed_client(config, timeout=5.0, raise_on_unexpected_status=False) as http:
-            resp = list_messages_api_rooms_room_name_messages_get.sync_detailed(room, client=http)
-    except httpx.HTTPError:
-        return set()
-    if not isinstance(resp.parsed, MessageListResponse):
-        return set()
-    return {m.sender_handle.lower() for m in resp.parsed.messages if m.sender_handle}
-
-
-def _drive_consensus(
-    config: Any,
-    room: str,
-    handles: list[str],
-    *,
-    timeout: float = 180.0,
-    settle: float = 15.0,
-) -> None:
-    """Wait for the agents to state positions, then summon the aligner.
-
-    Resident agents post their turns asynchronously (each reasons in its own
-    session), so poll the room until every agent has spoken (then let a short
-    settle window catch their final positions) and post ``@aligner``. That summon is what the backend
-    scores into a ``commit:converged``/``rejected`` verdict and, on convergence,
-    compiles into ``work/`` rows the room can pick up. Driving it
-    here makes the payoff deterministic instead of hoping an agent remembers to.
-    """
-    want = {h.lower() for h in handles}
-    console.print("[dim]Waiting for agents to state their positions…[/dim]")
-    deadline = time.monotonic() + timeout
-    seen: set[str] = set()
-    while time.monotonic() < deadline:
-        seen = _room_senders(config, room)
-        if want <= seen:
-            time.sleep(settle)  # let final-round positions land before scoring
-            seen = _room_senders(config, room)
-            break
-        time.sleep(3.0)
-
-    posted = sorted(want & seen)
-    if posted:
-        console.print(f"[green]✓[/green] Positions in from {', '.join('@' + h for h in posted)}")
-    else:
-        console.print(
-            "[yellow]⚠ No agent positions yet[/yellow]; summoning the aligner anyway; "
-            "it will report no convergence."
-        )
-
-    console.print(f"[dim]Summoning [cyan]@{ALIGNER_HANDLE}[/cyan] to assess convergence…[/dim]")
+    # 5. The task the negotiation happens in: a conductor run needs one.
     r = _run(
         [
-            "room",
-            "send",
-            f"@{ALIGNER_HANDLE} assess whether the team has converged and compile the work.",
+            "board",
+            "new",
+            scenario["title"],
+            scenario["task"],
             "--room",
             room,
-            "--handle",
+            "--as",
             "demo",
-        ]  # fmt: skip
+            "--json",
+        ]
     )
+    key = _task_key(r.stdout) if r.returncode == 0 else None
+    if key is None:
+        console.print(f"[red]board new failed:[/red]\n{r.stderr or r.stdout}")
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] Filed [cyan]{key}[/cyan]")
+    return key
+
+
+def _task_key(stdout: str) -> str | None:
+    """The memory key in ``board new --json``'s answer, or ``None``."""
+    import json
+
+    try:
+        task = json.loads(stdout)
+    except ValueError:
+        return None
+    key = task.get("key") if isinstance(task, dict) else None
+    return key if isinstance(key, str) and key else None
+
+
+def _drive_consensus(room: str, task: str, handles: list[str], topic: str) -> None:
+    """Summon the conductor's ``concord`` flow in the task's thread.
+
+    The summon names every agent with ``@~``, which binds them to the run
+    without waking them; the flow's first step then asks each of them in
+    turn, so the payoff doesn't depend on an agent remembering to start it.
+    When the agents agree, the hub saves the decision as a ``context/``
+    memory for the task.
+    """
+    cast = " ".join(f"@~{h}" for h in handles)
+    ask = f"{FLOW} {cast}: agree on the {topic} decision"
+    console.print(f"[dim]Summoning [cyan]@{CONDUCTOR_HANDLE}[/cyan] to run {FLOW}…[/dim]")
+    r = _run(["board", "coordinate", task, CONDUCTOR_HANDLE, ask, "--room", room, "--as", "demo"])
     if r.returncode != 0:
-        console.print(f"[yellow]⚠ could not summon the aligner:[/yellow]\n{r.stderr or r.stdout}")
+        console.print(f"[yellow]⚠ could not summon the conductor:[/yellow]\n{r.stderr or r.stdout}")
         return
     console.print(
-        f"[green]✓[/green] Summoned [bold]@{ALIGNER_HANDLE}[/bold]; on convergence the backend "
-        "compiles the agreement into [cyan]work/[/cyan] rows."
+        f"[green]✓[/green] Summoned [bold]@{CONDUCTOR_HANDLE}[/bold]; it asks each agent in "
+        f"{task}'s thread, and saves what they agree as a memory for the task."
     )
 
 
@@ -405,7 +383,11 @@ def _print_outro(scenario: dict[str, Any], adapter: str, room: str) -> None:
                 if resident
                 else []
             ),
-            f'mycelium agent invoke {handles[0]} "@... <task>" -r {room}',
+            f"mycelium engine create {CONDUCTOR_HANDLE} --kind conductor --room {room}",
+            f'mycelium board new "{scenario["title"]}" "<task>" --room {room}',
+            f'mycelium board coordinate <id> {CONDUCTOR_HANDLE} "{FLOW} '
+            + " ".join(f"@~{h}" for h in handles)
+            + f': <question>" --room {room}',
             f"mycelium watch {room}",
         ]
     )
@@ -509,11 +491,11 @@ def demo(
         if not proceed:
             raise typer.Exit(0)
 
-    _provision(chosen, adapter, room_name)
+    task = _provision(chosen, adapter, room_name)
 
-    # Summon the aligner to assess convergence and compile the plan.
+    # Have the conductor run the negotiation in the task's thread.
     handles = [a["handle"] for a in chosen["agents"]]
-    _drive_consensus(_config, room_name, handles)
+    _drive_consensus(room_name, task, handles, chosen["topic"])
 
     _print_outro(chosen, adapter, room_name)
 

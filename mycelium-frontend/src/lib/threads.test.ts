@@ -87,14 +87,14 @@ describe("reading a notice", () => {
     // notice can open the same thread the row's own chip does. `for` (who a
     // filing is for) reads back as `assignee`.
     const notice = noticeOf(
-      noticeFrame({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action", for: "@growth" }),
+      noticeFrame({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "conductor", kind: "action", for: "@growth" }),
     );
     expect(notice).toEqual({
       subkind: "filed",
       key: "work/flip",
       title: "flip reads",
       episode: THREAD,
-      by: "aligner",
+      by: "conductor",
       kind: "action",
       assignee: "@growth",
       from: null,

@@ -155,7 +155,7 @@ describe("<EventStream /> and the threads inside the room", () => {
         key: "work/flip-reads-behind-a-flag",
         value: { title: "flip reads behind a flag" },
         version: 1,
-        created_by: "aligner",
+        created_by: "conductor",
         updated_at: CREATED,
         episode: THREAD,
       },
@@ -180,7 +180,7 @@ describe("<EventStream /> and the threads inside the room", () => {
       key,
       value: { title },
       version: 1,
-      created_by: "aligner",
+      created_by: "conductor",
       updated_at: CREATED,
       episode: THREAD,
     });
@@ -210,7 +210,7 @@ describe("<EventStream /> and the threads inside the room", () => {
 
     await act(async () => {
       es.open();
-      es.emit(ping("aligner", "m-1"));
+      es.emit(ping("conductor", "m-1"));
     });
 
     expect(await screen.findByText("t3aa11bb")).toBeInTheDocument();

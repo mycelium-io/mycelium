@@ -19,14 +19,14 @@ interface StreamStep {
 }
 
 // An in-progress negotiation for `subscription-pricing` that resolves while you
-// watch. The aligner brokers a real NEGMAS Stacked Alternating Offers
-// round-robin over three issues (price, bags, billing); each natural-language
-// reply is followed by the aligner's interpreted move as a coordination_tick, so
+// watch. The conductor brokers it over three issues (price, bags, billing);
+// each natural-language reply is followed by the conductor's interpreted move
+// as a coordination_tick, so
 // the Channel narrates and Stream fills in live.
 const PRICING_EPISODE = "urn:ioc:mycelium:episode:subscription-pricing:b2d0";
 const tick = (id: string, round: number, who: string, action: string, offer: Record<string, string>): StreamStep["message"] => ({
   id,
-  sender_handle: "aligner",
+  sender_handle: "conductor",
   message_type: "coordination_tick",
   content: JSON.stringify({ payload: { round, participant_id: who, action, current_offer: offer } }),
   episode: PRICING_EPISODE,
@@ -52,9 +52,9 @@ const responding = (who: string, episode: string | null = null): StreamStep["mes
 const pricingTimeline: StreamStep[] = [
   // Round 1
   { delayMs: 1500, message: say("s1", "growth", "Start at $18 a month for two bags. People need to try it before they commit. @finance") },
-  // The aligner's turn lands in the negotiation's thread, not the channel, so
+  // The conductor's turn lands in the negotiation's thread, not the channel, so
   // the channel names where it is going; the tick that follows settles it.
-  { delayMs: 400, message: responding("aligner", PRICING_EPISODE) },
+  { delayMs: 400, message: responding("conductor", PRICING_EPISODE) },
   { delayMs: 1200, message: tick("s2", 1, "growth", "propose", { price: "18", bags: "2", billing: "monthly" }) },
   { delayMs: 600, message: responding("finance") },
   { delayMs: 1600, message: say("s3", "finance", "Two bags cost us $13.30 with shipping. $18 leaves almost nothing. $26.") },

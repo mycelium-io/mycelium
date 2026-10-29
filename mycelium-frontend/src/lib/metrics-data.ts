@@ -13,7 +13,7 @@
  *                         indexer, and Pi cognition calls.
  *   `/api/health`         the coordination fabric and the hub's posture, read
  *                         through the shared `useNetworkStatus` cache.
- *   the per-room episodes route  one record per convening of the aligner,
+ *   the per-room episodes route  one record per run of the conductor,
  *                         fanned out across the rooms the hub holds.
  *
  * Server state is SWR-keyed like every other read in the app, so the metrics

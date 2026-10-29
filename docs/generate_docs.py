@@ -44,8 +44,8 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "CON-001", "CONCEPTS · ROOMS · BOARD · MEMORY · EPISODES",
      "How Mycelium works: rooms, the board, memory, episodes, swarms, users and identity, and SLIM."),
     ("engines", "engines.html", "Engines · mycelium", "Engines",
-     "ENG-001", "ENGINES · CONDUCTOR · ALIGNER · SYNTHESIZER · PERSONA · WORKER",
-     "The engines a room runs on the hub: the conductor, the aligner, the synthesizer, personas, workers, the verifier and hello."),
+     "ENG-001", "ENGINES · CONDUCTOR · SYNTHESIZER · PERSONA · WORKER · VERIFIER",
+     "The engines a room runs on the hub: the conductor, the synthesizer, personas, workers, the verifier and hello."),
     ("guides", "guides.html", "Guides · mycelium", "Guides",
      "GDE-001", "GUIDES · SETUP · AGENTS · WORK · SECURITY · HELP",
      "Step-by-step guides: running Mycelium on a server, the desktop app, sharing a hub, starting and managing agents, the board, sign-in, and troubleshooting."),
@@ -71,7 +71,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("walkthrough/add-engines.md",    "walk-engines",       "walkthrough", "Walkthrough",  "4. Add the room's engines"),
     ("walkthrough/task.md",           "walk-task",          "walkthrough", "Walkthrough",  "5. Hand it a task"),
     ("walkthrough/thread.md",         "walk-thread",        "walkthrough", "Walkthrough",  "6. Watch it work"),
-    ("walkthrough/aligner.md",        "walk-aligner",       "walkthrough", "Walkthrough",  "7. When agents disagree"),
+    ("walkthrough/disagree.md",       "walk-disagree",      "walkthrough", "Walkthrough",  "7. When agents disagree"),
     ("walkthrough/next.md",           "walk-next",          "walkthrough", "Walkthrough",  "Where to go next"),
     # ── concepts (concepts.html): what everything else is built on ──
     ("concepts/rooms.md",             "rooms",              "concepts",    "Concepts",     "Rooms"),
@@ -84,7 +84,6 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # ── engines (engines.html), the overview, then one section per kind ──
     ("engines/engines.md",            "engines",            "engines",     "Engines",      "Overview"),
     ("engines/conductor.md",          "conductor",          "engines",     "Engines",      "Conductor"),
-    ("engines/aligner.md",            "aligner",            "engines",     "Engines",      "Aligner"),
     ("engines/synthesizer.md",        "synthesizer",        "engines",     "Engines",      "Synthesizer"),
     ("engines/persona.md",            "persona",            "engines",     "Engines",      "Persona"),
     ("engines/worker.md",             "worker",             "engines",     "Engines",      "Worker"),
@@ -866,18 +865,6 @@ DEPENDENCY_GROUPS: list[dict] = [
         "sidebar": "Cognition",
         "components": [
             {
-                "name": "negmas",
-                "version": (
-                    "multi",
-                    [
-                        ("backend", ("dep", "backend", "negmas")),
-                        ("CLI engine extra", ("extra", "cli", "engine", "negmas")),
-                    ],
-                ),
-                "role": "The Stacked Alternating Offers mechanism the aligner runs",
-                "upstream": ("yasserfarouk/negmas", "https://github.com/yasserfarouk/negmas/releases"),
-            },
-            {
                 "name": "anthropic",
                 "version": ("dep", "backend", "anthropic"),
                 "role": "LLM client for backend cognition stages",
@@ -890,7 +877,7 @@ DEPENDENCY_GROUPS: list[dict] = [
                 "name": "Pi",
                 "display": "Pi (`pi` binary)",
                 "version": ("literal", "shipped in the backend image"),
-                "role": "The aligner's brain and every one-shot cognition turn",
+                "role": "Every model call the hub makes: personas, workers, the synthesizer and the verifier",
                 "upstream": "external binary, not a Python dependency",
             },
         ],
@@ -1590,7 +1577,7 @@ def _build_search_index(
             continue
         rec["p"] = page_label
         # The rendered breadcrumb is page + crumb, so a group named after its own
-        # page would read "Engines › Engines › Aligner".
+        # page would read "Engines › Engines › Conductor".
         crumb = rec["s"]
         if crumb == page_label:
             crumb = ""
@@ -1639,7 +1626,7 @@ def _resolve_cross_page_anchors(
 ) -> list[tuple[tuple, str, list[tuple[str, list[tuple[str, str]]]]]]:
     """Point body links at the page that actually holds the anchor.
 
-    A source doc writes `[the aligner](#aligner)` without knowing which page its
+    A source doc writes `[the conductor](#conductor)` without knowing which page its
     section lands on, so once split across files that link scrolls nowhere: the
     id lives on index.html, not reference.html. The sidebar already qualifies its
     hrefs with a file name; prose does it here, where every page is assembled and

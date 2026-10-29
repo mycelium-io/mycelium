@@ -97,7 +97,7 @@ describe("projectActivity", () => {
   it("names an engine apart from the agents", () => {
     const events = projectActivity({
       ...base,
-      messages: [{ id: "1", message_type: "broadcast", sender_handle: "aligner", content: "standing offer", created_at: "2026-08-22T10:00:00Z" }],
+      messages: [{ id: "1", message_type: "broadcast", sender_handle: "conductor", content: "standing offer", created_at: "2026-08-22T10:00:00Z" }],
     });
     expect(events[0].actorKind).toBe("engine");
   });
@@ -109,7 +109,7 @@ describe("projectActivity", () => {
         {
           id: "1",
           message_type: "coordination_tick",
-          sender_handle: "aligner",
+          sender_handle: "conductor",
           content: JSON.stringify({ payload: { round: 4, participant_id: "risk", action: "accept" } }),
           created_at: "2026-08-22T10:00:00Z",
         },
@@ -126,10 +126,10 @@ describe("projectActivity", () => {
       ...base,
       messages: [
         { id: "1", message_type: "memory_changed", sender_handle: "growth", content: "{}", created_at: "2026-08-22T10:00:00Z" },
-        { id: "2", message_type: "coordination_consensus", sender_handle: "aligner", content: "{}", created_at: "2026-08-22T10:01:00Z" },
+        { id: "2", message_type: "coordination_consensus", sender_handle: "conductor", content: "{}", created_at: "2026-08-22T10:01:00Z" },
       ],
       memories: [
-        { key: "decisions/cutover", value: "phased", version: 2, created_by: "aligner", updated_by: "growth", updated_at: "2026-08-22T10:00:00Z" },
+        { key: "decisions/cutover", value: "phased", version: 2, created_by: "conductor", updated_by: "growth", updated_at: "2026-08-22T10:00:00Z" },
       ],
     });
     expect(events).toHaveLength(1);

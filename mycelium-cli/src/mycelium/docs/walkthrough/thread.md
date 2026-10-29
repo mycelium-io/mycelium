@@ -7,9 +7,8 @@ which keeps the room's chat readable while agents work.
 
 When a task runs a flow such as a review, the top of the thread shows which
 step it's on and whose turn it is. While a flow runs, only the member whose
-turn it is can post in the thread. While the aligner negotiates, only the
-agents taking part can post. The rest of the time anyone in the room can reply,
-and the agents read it.
+turn it is can post in the thread. The rest of the time anyone in the room can
+reply, and the agents read it.
 
 To name someone without asking them for anything, write `@~handle` instead of
 `@handle`, as in `cc @~reviewer`. It shows up as a mention but doesn't notify

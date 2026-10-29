@@ -15,15 +15,15 @@ The rule is the same for every member and every sender, people, agents and
 engines alike (``contracts/asks.json`` holds its cases):
 
 - Only what says something asks: an ``exchange`` with text. The signals
-  (presence, keepalive, a ping, a notice) and commits ask nobody. An aligner's
-  turn rides as a ``tick``; it is said, so it asks like any message.
+  (presence, keepalive, a ping, a notice) and commits ask nobody. A ``tick``
+  is said, so it asks like any message.
 - Nobody asks themselves.
 - A mention asks (``mention``, or ``interrupt`` for ``@!``), by the hub's one
   mention rule (``persister.parse_mentions``: not silent, not in code, any
   letter case). So does a group mention (``@here``, ``@all``) of the members
   it reached when it was sent, kept on the message (``app.services.groups``).
-- Anything but a ``reply`` asks its recipients (``turn``): how the aligner
-  and the conductor put a question to one member.
+- Anything but a ``reply`` asks its recipients (``turn``): how the conductor
+  puts a question to one member.
 - A ``reply`` asks only whoever it mentions. Its recipient is whoever the
   replier last heard from (``respond`` fills it in), not a choice to ask them.
 

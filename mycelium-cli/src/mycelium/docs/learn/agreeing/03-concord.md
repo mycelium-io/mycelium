@@ -39,6 +39,4 @@ later work on the task is told it. A missing rating is never guessed: it
 counts against the option it's missing from.
 
 Concord is for real alternatives. If the members don't yet agree on what the
-task is, their options won't be about the same thing; run accord first. And
-for two agents that each hold a position to bargain over, rather than options
-to rate, the aligner negotiates instead.
+task is, their options won't be about the same thing; run accord first.

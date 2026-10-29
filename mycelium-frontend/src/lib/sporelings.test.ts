@@ -12,7 +12,6 @@ describe("sporelings", () => {
   });
 
   it("makes every engine a lantern and no agent one", () => {
-    expect(genome("aligner", true).family).toBe("lantern");
     expect(genome("conductor", true).family).toBe("lantern");
     for (let i = 0; i < 200; i++) expect(genome(`agent-${i}`).family).not.toBe("lantern");
   });

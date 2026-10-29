@@ -1,5 +1,5 @@
 {
-  "$comment": "Pair across teams, 2: two agents disagree, the aligner brokers it, and the outcome is kept as a decision.",
+  "$comment": "Pair across teams, 2: two agents disagree, the conductor's concord flow settles it, and the outcome is kept as a decision.",
   "poster": 40,
   "do": [
     "press:Alt+b",
@@ -13,13 +13,8 @@
     "hold:900",
     "caption:The two agents disagree|Each has a real reason, and neither will move.",
     "hold:3200",
-    "caption:Add the aligner|An engine the hub runs, made for this.",
-    "fill:Reply in Keep a customer's cart when they switch devices…=/engine aligner",
-    "hold:900",
-    "press:Enter",
-    "wait-text:Added @aligner",
-    "hold:900",
-    "fill:Reply in Keep a customer's cart when they switch devices…=@aligner help @web and @api agree on where carts live",
+    "caption:Run concord|The conductor walks them to an agreement.",
+    "fill:Reply in Keep a customer's cart when they switch devices…=@conductor concord @~web @~api: where should carts live?",
     "hold:700",
     "click:role=button[name=\"Send message\"] >> nth=-1",
     "caption:It finds what each side needs",

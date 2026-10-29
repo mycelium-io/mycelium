@@ -370,45 +370,57 @@ def _backend_container_running() -> bool:
     return "mycelium-backend" in r.stdout.split()
 
 
-def _check_mediator_pi_binary() -> CheckResult:
-    """The aligner's SAO mediator runs on Pi; warn if it's unreachable on a
+def _pi_argv(binary: str) -> list[str] | None:
+    """The command that starts Pi for ``binary``, or ``None`` when it can't be found.
+
+    A path to Pi's JavaScript entry point runs on ``node`` directly, the way the
+    hub starts it (on Windows, Pi's npm launcher is a batch file that mangles
+    multi-line prompts).
+    """
+    import shutil
+
+    if binary.endswith((".js", ".mjs", ".cjs")):
+        node = shutil.which("node")
+        return [node, binary] if node and Path(binary).is_file() else None
+    return [binary] if shutil.which(binary) else None
+
+
+def _check_engine_pi_binary() -> CheckResult:
+    """Every engine's model call runs on Pi; warn if it's unreachable on a
     host-run backend.
 
-    Pi is the mediator's *LLM session*; without it on PATH, an ``@aligner`` summon
-    fails (``PiSessionError: pi not found``). The released **backend image already
-    installs Pi**, so the normal ``mycelium up`` path is fine and needs no host
-    binary. The
-    only gap is running the backend *outside Docker* (a contributor doing
+    Without Pi on PATH, a summoned engine that calls a model (a persona, a
+    worker, the synthesizer) can't think. The released **backend image already installs Pi**, so the
+    normal ``mycelium up`` path is fine and needs no host binary. The only gap is
+    running the backend *outside Docker* (a contributor doing
     ``uvicorn app.main:app`` on the host): there Pi must be on the host PATH. So:
-    if the backend container is up, this is satisfied by the image; otherwise check
-    the host.
+    if the backend container is up, this is satisfied by the image; otherwise
+    check the host.
     """
     import os
     import shutil
 
     if _backend_container_running():
         return CheckResult(
-            name="mediator Pi session",
+            name="engine Pi session",
             status="ok",
             message="backend is dockerized (Pi ships in the image)",
         )
 
-    from mycelium.engine.pi_session import pi_argv
-
     binary = os.environ.get("ALIGNER_PI_BINARY") or "pi"
-    argv = pi_argv(binary)
+    argv = _pi_argv(binary)
     if argv is not None:
         # A JavaScript entry point shows the node it runs on; a program, where it is.
         where = " ".join(argv) if len(argv) > 1 else (shutil.which(binary) or binary)
         return CheckResult(
-            name="mediator Pi session",
+            name="engine Pi session",
             status="ok",
             message=f"pi on PATH ({where})",
         )
     return CheckResult(
-        name="mediator Pi session",
+        name="engine Pi session",
         status="warning",
-        message=f"`{binary}` not on PATH; @aligner negotiations will fail on a host-run backend",
+        message=f"`{binary}` not on PATH; summoned engines will fail on a host-run backend",
         details=[
             "the released backend image already ships Pi, so `mycelium up` needs nothing here;",
             "this only bites when you run the backend outside Docker (host uvicorn).",
@@ -844,7 +856,7 @@ def doctor(
                 service_checks.append(psk_check)
         service_checks.append(_check_llm_connectivity())
         if local:
-            service_checks.append(_check_mediator_pi_binary())
+            service_checks.append(_check_engine_pi_binary())
         from mycelium.desktop.checks import pairings
 
         if (paired := pairings()) is not None:

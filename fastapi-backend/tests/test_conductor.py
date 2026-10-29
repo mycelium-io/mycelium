@@ -958,10 +958,9 @@ def _selects(channel: ScriptedChannel) -> list[dict[str, Any]]:
     return [line["select"] for line in _lines(channel) if line.get("event") == "select"]
 
 
+@pytest.mark.smoke
 @pytest.mark.asyncio
 async def test_concord_agrees_the_first_time_everyone_meets_the_bar(in_a_task):
-    from app.services.persister import is_converged
-
     (engine, _manager, channel), directive = _concord(
         {
             "success": [
@@ -1005,12 +1004,10 @@ async def test_concord_agrees_the_first_time_everyone_meets_the_bar(in_a_task):
     # The line to fill in names the option, so the reply reads on its own.
     assert "B (10% off): <0-100> - <why>" in score
     commit = channel.commit()
+    assert commit.header.kind == Kind.commit
     assert commit.header.subkind == "converged"
-    assert is_converged(commit)
     data = commit.payload.data
-    # A conductor run files no rows: nothing on the commit for the compile
-    # seam, and the decision is saved to memory instead.
-    assert "assignments" not in data
+    # A conductor run files no rows: the decision is saved to memory instead.
     assert "within" not in data
     assert data["memory"] == DECISION_KEY
     assert data["steps"] == 3

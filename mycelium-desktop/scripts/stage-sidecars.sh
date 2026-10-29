@@ -204,10 +204,9 @@ add_data() {
 
 stage_hub() {
   echo "building the hub…"
-  # NEGMAS depends on a data-science stack the aligner never loads (pyarrow
-  # alone is 200 MB with its libraries). Left out; the backend's whole suite
-  # passes with these imports blocked. plotly stays: NEGMAS imports it when an
-  # agent joins a negotiation.
+  # The hub imports none of this data-science stack (pyarrow alone is 200 MB
+  # with its libraries), so it is kept out of the bundle even when a
+  # dependency installs it.
   local unused=(pyarrow pandas scipy sklearn matplotlib gif)
   (
     cd "$repo/fastapi-backend"
@@ -216,7 +215,7 @@ stage_hub() {
       --distpath "$work/hub-dist" --workpath "$work/hub-build" --specpath "$work" \
       "${unused[@]/#/--exclude-module=}" \
       --collect-all fastembed --collect-all onnxruntime --collect-all slim_bindings \
-      --collect-all negmas --collect-all tokenizers --collect-all sherpa_onnx \
+      --collect-all tokenizers --collect-all sherpa_onnx \
       --collect-submodules app \
       --hidden-import uvicorn.logging --hidden-import uvicorn.loops.auto \
       --hidden-import uvicorn.protocols.http.auto --hidden-import uvicorn.protocols.websockets.auto \

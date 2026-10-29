@@ -4,9 +4,9 @@
 """``mycelium engine``: manage first-party Cognition Engines as room citizens.
 
 An engine is *not* an external-runtime agent (claude_code/cursor/…). It's a
-first-party mycelium Cognition Engine (our NEGMAS loop, our brain) registered
-as a real room participant so it's visible, routable, and invokable like anyone
-else. ``--kind`` selects the CE (``aligner`` today; more later).
+first-party mycelium Cognition Engine the hub runs, registered as a real room
+participant so it's visible, routable, and invokable like anyone else.
+``--kind`` selects the CE (``conductor``, ``persona``, ``worker``, …).
 
 This is thin sugar over the shared agent-manifest plumbing: an engine writes the
 same ``agents/<handle>`` manifest as any agent, with ``adapter="engine"`` and a
@@ -35,9 +35,9 @@ from mycelium.commands.agent import (
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
 from mycelium.integrations import AddOptions, get_adapter
-from mycelium.protocol import ENGINE_KINDS
+from mycelium.protocol import ENGINE_KINDS, RETIRED_ENGINE_KINDS
 
-app = typer.Typer(help="Manage first-party Cognition Engines (aligner, …) as room citizens.")
+app = typer.Typer(help="Manage first-party Cognition Engines (conductor, …) as room citizens.")
 console = Console()
 
 
@@ -46,9 +46,9 @@ console = Console()
 @acts_as("handle_flag")
 def engine_create(
     ctx: typer.Context,
-    handle: str = typer.Argument(..., help="Engine handle (lowercase slug, e.g. 'mediator-1')."),
+    handle: str = typer.Argument(..., help="Engine handle (lowercase slug, e.g. 'conductor')."),
     kind: str = typer.Option(
-        "aligner",
+        ...,
         "--kind",
         help=f"Which cognition engine to run. Known: {', '.join(sorted(ENGINE_KINDS))}.",
     ),
@@ -68,9 +68,12 @@ def engine_create(
     Who you act as (``--as``) is recorded as created_by.
 
     Example:
-        mycelium engine create mediator-1 --kind aligner --room portfolio
+        mycelium engine create conductor --kind conductor --room portfolio
     """
     try:
+        if kind in RETIRED_ENGINE_KINDS:
+            typer.secho(RETIRED_ENGINE_KINDS[kind], fg=typer.colors.RED)
+            raise typer.Exit(1)
         config = MyceliumConfig.load()
         handle_flag = identity.resolve_actor(config, override=handle_flag)
         if kind not in ENGINE_KINDS:
@@ -130,7 +133,7 @@ def engine_ls(
         if not engines:
             console.print(f"[dim]No engines registered in {room_name}.[/dim]")
             console.print(
-                f"  Create one with: mycelium engine create <handle> --kind aligner "
+                f"  Create one with: mycelium engine create conductor --kind conductor "
                 f"--room {room_name}"
             )
             return
@@ -156,21 +159,16 @@ def engine_ls(
 def engine_invoke(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Engine handle (without leading @)."),
-    message: str = typer.Argument(
-        "please mediate us to an agreement.",
-        help="Summon message (defaults to a generic mediate request).",
-    ),
+    message: str = typer.Argument(..., help="What to ask the engine."),
     room: str | None = None,
     handle_flag: str | None = None,
 ) -> None:
     """Summon a registered cognition engine by posting an ``@handle`` message.
 
-    Fills gap #4: the built-in aligner previously had no CLI surface (you had to
-    hit the REST API directly). The backend recognizes a registered ``engine``
-    and runs it as that handle.
+    The backend recognizes a registered ``engine`` and runs it as that handle.
 
     Example:
-        mycelium engine invoke mediator-1 "converge on tech allocation and the cap"
+        mycelium engine invoke synthesizer "catch us up"
     """
     try:
         config = MyceliumConfig.load()
@@ -191,7 +189,7 @@ def engine_invoke(
             if manifest is None:
                 console.print(
                     f"[red]Not found:[/red] no engine named '{handle}' in room '{room_name}'.\n"
-                    f"  Create one with: mycelium engine create {handle} --kind aligner "
+                    f"  Create one with: mycelium engine create {handle} --kind <kind> "
                     f"--room {room_name}"
                 )
                 raise typer.Exit(1)
@@ -200,6 +198,9 @@ def engine_invoke(
                     f"[red]'{handle}' is a {manifest.adapter} agent, not an engine.[/red]\n"
                     f'  Use: mycelium agent invoke {handle} "..."'
                 )
+                raise typer.Exit(1)
+            if manifest.kind in RETIRED_ENGINE_KINDS:
+                typer.secho(RETIRED_ENGINE_KINDS[manifest.kind], fg=typer.colors.RED)
                 raise typer.Exit(1)
 
             sender_handle = handle_flag or config.get_current_identity()
@@ -219,57 +220,6 @@ def engine_invoke(
         console.print(
             f"\n[dim]The backend runs the {manifest.kind} engine and replies in {room_name}.[/dim]"
         )
-    except typer.Exit:
-        raise
-    except Exception as e:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-        raise typer.Exit(1) from None
-
-
-@app.command("stop")
-@in_room()
-@acts_as("handle_flag")
-def engine_stop(
-    ctx: typer.Context,
-    room: str | None = None,
-    handle_flag: str | None = None,
-) -> None:
-    """Stop the negotiation the aligner is running in a room.
-
-    It ends before its next turn, records no agreement, and posts one line
-    saying who stopped it.
-
-    Example:
-        mycelium engine stop --room portfolio
-    """
-    try:
-        config = MyceliumConfig.load()
-        room_name = _resolve_room(config, room)
-        who = identity.resolve_actor(config, override=handle_flag)
-
-        from mycelium.client import answered, hub_error_detail
-        from mycelium_backend_client.api.engines import (
-            stop_negotiation_api_rooms_room_name_engines_stop_post as stop_api,
-        )
-        from mycelium_backend_client.errors import UnexpectedStatus
-        from mycelium_backend_client.models import NegotiationStop, NegotiationStopped
-
-        with _typed_client(config) as client:
-            try:
-                answered(
-                    stop_api.sync_detailed(
-                        room_name=room_name, client=client, body=NegotiationStop(by=who)
-                    ),
-                    NegotiationStopped,
-                )
-            except UnexpectedStatus as exc:
-                if exc.status_code == 409:
-                    console.print(f"[dim]No negotiation is running in {room_name}.[/dim]")
-                    raise typer.Exit(1) from None
-                console.print(f"[red]Couldn't stop it:[/red] {hub_error_detail(exc.content)}")
-                raise typer.Exit(1) from None
-        console.print(f"[green]Stopped[/green] the negotiation in {room_name}.")
     except typer.Exit:
         raise
     except Exception as e:

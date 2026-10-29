@@ -3,12 +3,12 @@
 
 """The conductor — the engine that runs an episode's interaction flow.
 
-A fourth engine ``kind`` beside the aligner, the synthesizer and hello, and
-the first with no model of its own. Summoned with the name of a flow
+An engine ``kind`` beside the synthesizer and hello, and the first with no
+model of its own. Summoned with the name of a flow
 (:mod:`~app.services.protocols`) and the members to run it over, it opens an
 **episode** of its own and walks the flow's steps in it: it holds the
 episode's floor for whoever the step addresses, puts the step's prompt to
-them through the same one-agent turn the aligner brokers with, reads the
+them through a one-agent turn (:mod:`~app.services.turns`), reads the
 stance their reply took, and follows the edge. Every judgment in a run — what
 to propose, whether to block it — is made by the members it addresses. The
 conductor only decides who speaks next: a model in the nodes, code on the
@@ -52,10 +52,11 @@ from app.services import agreed, episode_state, markers, message_format, protoco
 from app.services import frame as framing
 from app.services import select as choosing
 from app.services.agent_registry import norm_handle
-from app.services.aligner import _NON_PARTICIPANTS, _registered_engine_kind
+from app.services.engine_kinds import registered_engine_kind
 from app.services.episode_records import EPISODES_PREFIX
 from app.services.message_models import Kind
 from app.services.persister import record_episode
+from app.services.room_channels import BACKEND_AGENT
 from app.services.tasks import mint_episode_id
 
 if TYPE_CHECKING:
@@ -70,6 +71,10 @@ logger = logging.getLogger(__name__)
 
 #: The engine kind this class owns.
 ENGINE_KIND = "conductor"
+
+#: Handles that are never a party: the backend moderator, and the system actor
+#: the backend signs its own envelopes with.
+_NON_PARTICIPANTS = frozenset({BACKEND_AGENT, message_format.SYSTEM_ACTOR_ID})
 
 #: Summon words that ask for the catalogue rather than a run.
 LIST_DIRECTIVES = frozenset({"list", "protocols", "flows", "help"})
@@ -584,7 +589,7 @@ class ConductorEngine:
     ) -> None:
         """Open a run when a registered engine of kind ``conductor`` is
         summoned; else ignore."""
-        if _registered_engine_kind(room, handle) != ENGINE_KIND:
+        if registered_engine_kind(room, handle) != ENGINE_KIND:
             return
         if settings.ENGINE_RUNTIME == "host":
             logger.info("engine @%s summoned in %s but ENGINE_RUNTIME=host", handle, room)
@@ -776,7 +781,7 @@ class ConductorEngine:
         try:
             # The record exists from the opening, so the run can be read while
             # it is still walking.
-            episode_state.write_episode_record(ep, outcome="open", metrics=None, tasks=None)
+            episode_state.write_episode_record(ep, outcome="open", metrics=None)
             await self._say(managed, thread, me, self._opening(run), line=open_line(run))
             outcome, why = await self._walk(managed, run, ep, me)
         finally:
@@ -939,7 +944,7 @@ class ConductorEngine:
                 }
             )
             # The record moves with the run, so an open episode shows where it is.
-            episode_state.write_episode_record(ep, outcome="open", metrics=None, tasks=None)
+            episode_state.write_episode_record(ep, outcome="open", metrics=None)
             who = ", ".join(h for h, _s in stances) or (step.to or "")
             line = protocols.edge_line(step, stance, who)
             if line is not None:
@@ -993,7 +998,7 @@ class ConductorEngine:
                 "at": datetime.now(UTC).isoformat(),
             }
         )
-        episode_state.write_episode_record(ep, outcome="open", metrics=None, tasks=None)
+        episode_state.write_episode_record(ep, outcome="open", metrics=None)
         await self._say(
             managed,
             run.episode,
@@ -1096,7 +1101,7 @@ class ConductorEngine:
                 "at": datetime.now(UTC).isoformat(),
             }
         )
-        episode_state.write_episode_record(ep, outcome="open", metrics=None, tasks=None)
+        episode_state.write_episode_record(ep, outcome="open", metrics=None)
         await self._say(
             managed,
             run.episode,
@@ -1167,7 +1172,7 @@ class ConductorEngine:
                 "at": datetime.now(UTC).isoformat(),
             }
         )
-        episode_state.write_episode_record(ep, outcome="open", metrics=None, tasks=None)
+        episode_state.write_episode_record(ep, outcome="open", metrics=None)
         if came == "empty":
             said = "There is nothing to put in a shared summary: nobody gave any points."
         else:
@@ -1670,7 +1675,7 @@ class ConductorEngine:
             topic=ep.topic,
             prompt=prompt,
             # Posted as a message, not a tick: a turn is prose the room should
-            # read in the thread, the way the aligner's questions are.
+            # read in the thread.
             payload_type="message",
             payload_data=data,
             is_reply=is_reply,
@@ -1774,7 +1779,7 @@ class ConductorEngine:
             await managed.post(commit, text, list_write=True)
         except Exception:
             logger.warning("conductor failed to post the outcome for %s", run.episode)
-        episode_state.write_episode_record(ep, outcome=outcome, metrics=metrics, tasks=None)
+        episode_state.write_episode_record(ep, outcome=outcome, metrics=metrics)
         self._stepped(managed.room, run.episode, outcome)
         from app.services import analytics as usage
 

@@ -2,37 +2,10 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Lightweight SSTP (Semantic State Transfer Protocol) models for the CLI.
+Lightweight models for the CLI: agent and user manifests, and memory keys.
 
-These models mirror the wire format used by Mycelium's coordination layer so
-the CLI can validate outgoing agent replies and parse incoming coordination
-ticks without importing the full backend package.
-
-Agent reply shapes (agent → server, plain JSON in room message content):
-
-    # Reply to a "propose" tick
-    { "offer": { "budget": "medium", "timeline": "standard" } }
-
-    # Reply to a "respond" tick
-    { "action": "accept" }   # or "reject" or "end"
-
-    Both reply shapes accept optional epistemic fields (from IoC SIEP):
-    ``confidence`` (float 0-1), ``reasoning`` (string), and the 3-way evidence
-    split from the spec's ``proposal_payload`` -- ``supporting_evidence`` /
-    ``against_evidence`` (lists of non-empty strings) plus ``addresses`` (the
-    prior evidence keys this turn engages, the input to the grounding check).
-    ``respond`` additionally accepts ``revision_cause`` (why the belief moved:
-    ``grounded_argument`` / ``social_compliance`` / ``new_evidence`` /
-    ``semantic_memory`` / ``repair_resolution``) and ``deferred_to`` (the handle
-    you yielded to on a compliance accept). The legacy flat ``evidence`` list
-    still parses. Every epistemic field is optional -- an agent that sends none
-    negotiates exactly as before. Omitted fields MUST be absent from the
-    serialized JSON, not null, so legacy replies stay byte-identical (so always
-    serialize with ``model_dump(exclude_none=True)``).
-
-Inbound tick shape (server → agent, coordination_tick message content):
-The content field is a JSON-serialized SSTPNegotiateMessage envelope whose
-``payload`` carries the negotiation action details (see NegotiatePayload).
+These mirror shapes the hub validates so the CLI can check them without
+importing the backend package.
 
 Memory protocol shapes (agent → memory API, structured key conventions):
 
@@ -50,7 +23,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
@@ -63,167 +36,8 @@ from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_va
 HANDLE_PATTERN = r"^[a-z0-9][a-z0-9._@-]*$"
 SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]*$"
 
-# Why an agent's stated belief moved this turn (SIEP `belief.revision_cause`).
-# ``social_compliance`` is the one that drives SCR down; the rest are genuine.
-RevisionCause = Literal[
-    "grounded_argument",
-    "social_compliance",
-    "new_evidence",
-    "semantic_memory",
-    "repair_resolution",
-]
-
 # Engines run backend-side only. ``host`` coerces to ``backend`` for legacy config.
 EngineRuntime = Literal["backend"]
-
-
-def _validate_evidence(evidence: list[str] | None) -> list[str] | None:
-    """Reject empty/whitespace-only evidence strings (shared by both replies)."""
-    if evidence is not None:
-        for item in evidence:
-            if not item.strip():
-                msg = "evidence items must be non-empty strings"
-                raise ValueError(msg)
-    return evidence
-
-
-class RespondReply(BaseModel):
-    """Agent → Server reply to a 'respond' coordination tick.
-
-    CFN mode: action is "accept" or "reject".
-    Inline NegMAS mode: "end" is also accepted (mapped to "reject" by backend).
-
-    Epistemic fields (confidence, supporting/against_evidence, addresses,
-    revision_cause, deferred_to, reasoning) are optional; ``offer`` is only
-    meaningful for ``counter_offer``. Unset fields must be absent from the wire
-    JSON: serialize with ``model_dump(exclude_none=True)``.
-    """
-
-    action: Literal["accept", "reject", "end", "counter_offer"]
-    offer: dict[str, str] | None = Field(
-        default=None,
-        description="Counter-offer issue assignments (only valid for action=counter_offer).",
-    )
-    confidence: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Self-reported confidence in this response, 0-1.",
-    )
-    evidence: list[str] | None = Field(
-        default=None,
-        description="Legacy flat evidence list; prefer supporting/against_evidence.",
-    )
-    supporting_evidence: list[str] | None = Field(
-        default=None,
-        description="Evidence keys arguing FOR this response (non-empty strings).",
-    )
-    against_evidence: list[str] | None = Field(
-        default=None,
-        description="Known counter-evidence keys arguing against this response.",
-    )
-    addresses: list[str] | None = Field(
-        default=None,
-        description="Prior evidence keys this response engages (feeds grounding).",
-    )
-    revision_cause: RevisionCause | None = Field(
-        default=None,
-        description="Why the stated belief moved this turn (SIEP belief.revision_cause).",
-    )
-    deferred_to: str | None = Field(
-        default=None,
-        min_length=1,
-        description="Handle of the agent yielded to on a compliance accept (feeds SCR).",
-    )
-    reasoning: str | None = Field(
-        default=None,
-        description="Free-text rationale for the response.",
-    )
-
-    @field_validator("evidence", "supporting_evidence", "against_evidence", "addresses")
-    @classmethod
-    def check_evidence(cls, v: list[str] | None) -> list[str] | None:
-        return _validate_evidence(v)
-
-    @model_validator(mode="after")
-    def check_offer_only_for_counter(self) -> RespondReply:
-        if self.offer is not None and self.action != "counter_offer":
-            msg = "offer is only valid with action=counter_offer"
-            raise ValueError(msg)
-        return self
-
-
-class TeamPrior(BaseModel):
-    """Optional ``team_prior`` block on an inbound tick payload.
-
-    Injected by the backend when a knowledge query returns prior agreements
-    on the room's topic (knowledge message path).
-    """
-
-    confidence: float
-    provenance_weight: float
-    episode_count: int
-    source: str | None = None
-
-
-class ConsensusMetrics(BaseModel):
-    """Optional ``metrics`` block on a ``coordination_consensus`` message.
-
-    Interim agreement-quality metrics (SIEP): mpc = mean final confidence,
-    gar = grounded-agreement ratio, scr = social-compliance ratio.
-    """
-
-    mpc: float
-    gar: float
-    scr: float
-    provenance_weight: float
-    participants: int
-
-
-class ConsensusContent(BaseModel):
-    """Minimal shape of a ``coordination_consensus`` message content.
-
-    The CLI passes most consensus keys through untyped; this model exists so
-    consumers that want validation of the epistemic fields have one.
-    """
-
-    assignments: dict[str, Any] | None = None
-    #: Memory keys of the ``work/`` rows the agreement compiled into.
-    tasks: list[str] | None = None
-    broken: bool = False
-    metrics: ConsensusMetrics | None = None
-    cfn_persisted: bool | None = None
-
-
-class NegotiatePayload(BaseModel):
-    """Payload extracted from an inbound SSTPNegotiateMessage coordination_tick.
-
-    Maps to the ``payload`` field of the SSTP envelope sent by RoomNegotiator.
-    """
-
-    kind: str = "negotiate"
-    action: Literal["propose", "respond"]
-    session_id: str
-    participant_id: str
-    round: int
-    issue_options: dict[str, list[str]] = Field(default_factory=dict)
-    current_offer: dict[str, str] | None = None
-    proposer_id: str | None = None
-    history: list[dict[str, Any]] = Field(default_factory=list)
-    n_steps: int | None = None
-    team_prior: TeamPrior | None = None
-    l9: dict[str, Any] | None = None
-
-
-class InboundTick(BaseModel):
-    """Minimal SSTP envelope shape for parsing inbound coordination_tick content.
-
-    The full backend envelope has many more fields (origin, policy_labels, etc.).
-    The CLI only needs ``kind`` and ``payload`` for display and reply validation.
-    """
-
-    kind: str = "negotiate"
-    payload: NegotiatePayload
 
 
 # ── Memory protocol ──────────────────────────────────────────────────────────
@@ -328,14 +142,26 @@ class MemoryLogEntry(BaseModel):
 #   a2a         → an external Agent2Agent endpoint, driven by a backend-held seat
 AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine", "a2a"})
 
-#: Cognition-engine kinds hosted by the first-party ``engine`` runtime family.
-#: The extensibility axis: ``aligner`` (SIEP converge), ``synthesizer`` (room
-#: memory → structured summary) and ``hello`` (one Pi turn, no side effects — the
-#: cheap proof the engine path works) today; ``bargainer`` (SAB), ``team_former``
-#: (TFP), a drift evaluator, etc. later; no new adapter per CE.
+#: Cognition-engine kinds hosted by the first-party ``engine`` runtime family,
+#: the same set the hub's ``routes/engines.py`` accepts. ``conductor`` walks a
+#: flow through a task's thread (negotiation is its ``concord`` and ``accord``
+#: flows), ``synthesizer`` distills room memory, ``hello`` is one Pi turn with no
+#: side effects (the cheap proof the engine path works); no new adapter per kind.
 ENGINE_KINDS: frozenset[str] = frozenset(
-    {"aligner", "conductor", "hello", "persona", "synthesizer", "verifier", "worker"}
+    {"conductor", "hello", "persona", "synthesizer", "verifier", "worker"}
 )
+
+#: Engine kinds the hub no longer runs, with what to run instead. A room made
+#: before a kind was retired can still hold its manifest, so a manifest naming
+#: one still loads (it can be listed and removed); creating a new one is refused
+#: with this text, the same answer the hub gives.
+RETIRED_ENGINE_KINDS: dict[str, str] = {
+    "aligner": (
+        "The aligner was retired, so nothing started. To negotiate, run "
+        '`mycelium board coordinate <row> conductor "concord …"` to help members '
+        'agree, or `"accord …"` to get them on the same page.'
+    ),
+}
 
 
 class AgentManifest(BaseModel):
@@ -352,7 +178,7 @@ class AgentManifest(BaseModel):
       ``mycelium await --loop``). Optional ``cwd`` (the session's working dir).
     - ``cursor``: a resident Cursor session. Optional ``cwd`` (Cursor's workspace
       root; also where workspace assets drop when set).
-    - ``engine``: a first-party cognition engine (e.g. ``aligner``), run by the
+    - ``engine``: a first-party cognition engine (e.g. ``conductor``), run by the
       backend. Requires ``kind``.
 
     The handle doubles as the mention target (``@release-agent``). It follows the
@@ -365,7 +191,7 @@ class AgentManifest(BaseModel):
     kind: str | None = Field(
         default=None,
         description=(
-            "engine: which cognition engine this handle runs (e.g. 'aligner'). "
+            "engine: which cognition engine this handle runs (e.g. 'conductor'). "
             "Required for the ``engine`` adapter; unused by other families. The "
             "extensibility axis for the first-party CE family."
         ),
@@ -450,11 +276,12 @@ class AgentManifest(BaseModel):
         # cwd is optional: it's the resident session's working dir / cursor's
         # workspace root (used for asset drops when set), not a launch requirement.
         # A cognition engine must name which CE it runs; unknown kinds are a typo
-        # guard (the backend routes on this).
+        # guard (the backend routes on this). A retired kind still loads, so a
+        # room's old manifest can be listed and removed.
         if self.adapter == "engine":
             if not (self.kind and self.kind.strip()):
-                raise ValueError("engine agents require a 'kind' (e.g. 'aligner')")
-            if self.kind not in ENGINE_KINDS:
+                raise ValueError("engine agents require a 'kind' (e.g. 'conductor')")
+            if self.kind not in ENGINE_KINDS and self.kind not in RETIRED_ENGINE_KINDS:
                 raise ValueError(
                     f"unknown engine kind {self.kind!r}; known: {sorted(ENGINE_KINDS)}"
                 )

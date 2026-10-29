@@ -4,17 +4,16 @@
 """The ``engine`` integration: mycelium's *first-party* cognition-engine family.
 
 Unlike ``claude_code`` / ``cursor`` (which bridge to a
-*third-party* runtime we don't own), an engine is **ours**: our NEGMAS loop, our
-LLM session. One ``engine`` family hosts a variety of Cognition Engines, selected
-by
-the manifest's ``kind`` (``aligner`` today; ``bargainer``, ``team_former``, a
-drift evaluator later): the extensibility axis, no new adapter per CE.
+*third-party* runtime we don't own), an engine is **ours**: the hub runs it and
+its Pi session. One ``engine`` family hosts a variety of Cognition Engines,
+selected by the manifest's ``kind`` (``conductor``, ``persona``, ``worker``, …;
+see ``protocol.ENGINE_KINDS``): the extensibility axis, no new adapter per CE.
 
 An engine is a first-class registered *room citizen*, a manifest at
 ``agents/<handle>`` (``adapter="engine"``, ``kind=<ce>``), listed by
 ``engine ls`` / ``agent ls``, invokable, posting as itself. Its run is owned
-by the **backend's summon seam** (which recognizes registered engines instead of
-the old reserved ``ALIGNER_HANDLE``), so ``lifecycle="backend_engine"``. There are
+by the **backend's summon seam** (which recognizes registered engines by their
+``kind``), so ``lifecycle="backend_engine"``. There are
 no host-side assets; hence the no-op install/register facets.
 """
 

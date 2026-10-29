@@ -39,7 +39,6 @@ PEER = "planner"
 PERSON = "hay"
 #: The engines, by handle, and the kind each is registered as.
 ENGINES = {
-    "aligner": "aligner",
     "conductor": "conductor",
     "sage": "persona",
     "builder": "worker",
@@ -220,7 +219,8 @@ async def say(
     """Write one message as ``sender`` would send it.
 
     ``shape`` picks the sender's path when its handle alone doesn't: ``turn``
-    (the conductor putting a step to ``to``), ``tick`` (the aligner's), ``ping``,
+    (the conductor putting a step to ``to``), ``tick`` (a turn through the
+    turn primitive's default payload), ``ping``,
     ``notice``, ``presence`` or ``commit``. An agent replies through
     ``respond`` after a turn from ``to[0]``, if any.
     """
@@ -239,8 +239,9 @@ async def say(
     elif shape == "turn":
         await post(room, sender, text, episode, payload="message", to=to)
     elif shape == "tick":
-        # The aligner's turn, through the turn primitive it really calls: a
-        # ``tick`` with a real ``@`` for the member at the front.
+        # A turn through the turn primitive the conductor really calls, with
+        # its default payload: a ``tick`` with a real ``@`` for the member at
+        # the front.
         assert room.managed.persister is not None
         await turns.addressed_turn(
             room.managed,

@@ -7,8 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Where a registered engine runs its NEGMAS drive. Paired with the CLI's
-# ``engine.runtime`` — flip both together.
+# Where a registered engine runs: on this backend, or on a host that owns it.
 EngineRuntime = Literal["backend", "host"]
 
 # What the synthesizer distills. Messages → memory is the direction that moves
@@ -139,37 +138,17 @@ class Settings(BaseSettings):
     # so the CLI mirror agrees without config coupling.
     SLIM_IDENTITY: str = "psk"
 
-    # SIEP aligner — the first cognition engine. Dormant: nothing runs until a
-    # room's registered aligner is @-summoned. This handle is the usual one, so
-    # a mention of it in a room with no aligner gets one reply saying how to
-    # add it (and starts nothing).
+    # The retired aligner's usual handle. A mention of it in a room with no
+    # member by that name is answered with what to run instead
+    # (``retired_aligner.py``), as is a summon of a manifest of kind aligner.
     ALIGNER_HANDLE: str = "aligner"
-    # MPC at/above this converges; below rejects (mirrors the old CFN
-    # validation-intervention default of 0.6).
-    ALIGNER_THRESHOLD: float = 0.6
-    # Driver round cap — a hard bound so the loop always terminates.
-    ALIGNER_MAX_ROUNDS: int = 3
-    # Per-round wait for participant replies before scoring what arrived.
-    ALIGNER_ROUND_TIMEOUT_S: float = 30.0
-    # How often the driver polls the transcript for round replies.
-    ALIGNER_POLL_INTERVAL_S: float = 0.2
-    # Mediator — hard cap on NEGMAS SAO steps (one agent turn each) so
-    # the negotiation always terminates even if agreement is never reached. Set
-    # well above the participant count so several proposer rotations can happen
-    # (spike used 20).
-    ALIGNER_MEDIATOR_MAX_STEPS: int = 20
-    # Pre-negotiation term check — one cheap LLM session call over the opening positions
-    # looking for a word two agents use in different senses, and one clarifying
-    # round when it finds any. On by default: a room that shares its vocabulary
-    # pays a single call and negotiates exactly as before. Off skips the check.
-    ALIGNER_TERM_CHECK: bool = True
-    # Mediator LLM session runtime — the cognitive engine behind the SAO
-    # mediator, an *internal* agent — always a persistent, optionally
-    # OpenShell-sandboxed `pi -p --session <id> --mode json` session that gives the
-    # internal agent real memory across SAO rounds (the anti-theater property).
-    # This is ONLY the runtime for mycelium's own cognition engines; user/participant
-    # agent runtimes (claude_code, cursor, …) are untouched and keep their own runtime.
-    # Path/name of the `pi` binary the mediator LLM session runs.
+    # The engines' LLM session runtime: every model call an engine makes is a
+    # `pi -p --mode json` run, optionally OpenShell-sandboxed. This is ONLY the
+    # runtime for mycelium's own engines; user/participant agent runtimes
+    # (claude_code, cursor, …) are untouched and keep their own runtime. The
+    # names keep the ALIGNER_ prefix of the engine that introduced them, so an
+    # existing `.env` keeps working.
+    # Path/name of the `pi` binary the engines run.
     ALIGNER_PI_BINARY: str = "pi"
     # Wrap each pi session in an OpenShell sandbox when true. Off by default:
     # `openshell` may not be installed and the sandbox path is a live-validation
@@ -212,7 +191,7 @@ class Settings(BaseSettings):
     HEALTH_AWAIT_P95_THRESHOLD_MS: float = 60000.0
     HEALTH_SEARCH_P95_THRESHOLD_MS: float = 500.0
     # Synthesizer engine (kind ``synthesizer``) — distills a room's transcript
-    # into a ``knowledge`` memory. Dormant by default like the aligner: nothing
+    # into a ``knowledge`` memory. Dormant by default like every engine: nothing
     # runs until a registered synthesizer engine is @-summoned. Reuses the shared
     # LLM_* + ALIGNER_PI_* Pi runtime settings; only its own handle default,
     # per-turn timeout and corpus source live here.
@@ -318,12 +297,10 @@ class Settings(BaseSettings):
     CONDUCTOR_POLL_INTERVAL_S: float = 0.2
     CONDUCTOR_MAX_STEPS: int = 24
 
-    # Where a registered `engine` (kind aligner) runs its NEGMAS drive — selects
-    # the engine runtime. "backend" (default):
-    # this backend owns the run via its summon seam. "host": the host daemon owns
-    # it (the engine runs where `pi` lives), so `handle_summon` must NOT also fire
-    # for a registered engine or the negotiation double-runs.
-    # Flip this in tandem with the CLI's `engine.runtime` — they're a pair.
+    # Where a registered `engine` runs. "backend" (default): this backend owns
+    # the run via its summon seam. "host": a host owns it (the engine runs where
+    # `pi` lives), so `handle_summon` must NOT also fire for a registered engine
+    # or the run happens twice.
     ENGINE_RUNTIME: EngineRuntime = "backend"
 
     @field_validator("ENGINE_RUNTIME", mode="before")

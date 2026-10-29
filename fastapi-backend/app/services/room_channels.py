@@ -20,7 +20,7 @@ green without a live fabric — the sole failure mode is "no SLIM channel," neve
 On provision the moderator starts a
 long-lived :class:`~app.services.persister.RoomPersister` that consumes the
 channel — recording the transcript, re-serving missed messages to reconnecting
-members, and watching for ``@``-summon / ``commit:converged`` triggers. This
+members, and watching for ``@``-summon triggers. This
 module owns that task's start/stop lifecycle and surfaces the reconnect signal
 (a membership add for a handle the persister has seen before) into a re-serve.
 """
@@ -51,7 +51,6 @@ from app.services.message_slim import (
 )
 from app.services.persister import (
     AskedHook,
-    ConvergedHook,
     RoomPersister,
     SummonHook,
     TranscriptRecord,
@@ -76,18 +75,13 @@ if TYPE_CHECKING:
 
 # The room-aware summon hook the manager holds: unlike the persister's
 # per-message ``SummonHook`` (which knows only the handle + envelope), this
-# carries the ``room`` so the engine wired to it (the aligner) knows which
-# channel to judge. ``_start_persister`` adapts it down to the persister's
+# carries the ``room`` so the engines wired to it know which channel the
+# summon came from. ``_start_persister`` adapts it down to the persister's
 # signature by binding the room.
 RoomSummonHook = Callable[[str, str, "MyceliumMessage", list[str], str], None]
 
-# The room-aware converged hook, same shape reasoning as ``RoomSummonHook``: the
-# persister's ``ConvergedHook`` is ``(envelope)`` only, but the consumer wired to
-# it (the plan-sync consumer) needs the room to compile that room's plan + sync its
-# memory. ``_converged_adapter`` binds the room down to the persister signature.
-RoomConvergedHook = Callable[[str, "MyceliumMessage"], None]
 # The room-aware turn hook: ``(room, handle, envelope, message_text)`` for each
-# handle a message put a turn to (:mod:`app.services.asks`), the way the aligner
+# handle a message put a turn to (:mod:`app.services.asks`), the way the conductor
 # and the conductor ask one member. The members the hub plays answer it.
 RoomTurnHook = Callable[[str, str, "MyceliumMessage", str], None]
 # The board-event hook: ``(room, data)`` for every notice raised, where ``data``
@@ -176,9 +170,9 @@ def _is_own_registered_agent(room: str, handle: str) -> bool:
 
 def _registered_kind(room: str, handle: str) -> str | None:
     """The engine kind ``handle``'s manifest in ``room`` names, or ``None``."""
-    from app.services.aligner import _registered_engine_kind
+    from app.services.engine_kinds import registered_engine_kind
 
-    return _registered_engine_kind(room, handle)
+    return registered_engine_kind(room, handle)
 
 
 def _is_engine(room: str, handle: str) -> bool:
@@ -248,7 +242,7 @@ class ManagedRoomChannel:
 
         This is the canonical one-liner that replaces the repeated
         ``serialize_content → channel.send → persister.ingest_local`` sequence
-        in the bridge, server, aligner, and synthesizer. The caller builds the
+        in the bridge, server, and engines. The caller builds the
         message (since kind/recipients/payload vary per call site); this
         method owns the three mechanical steps that follow it.
 
@@ -353,16 +347,10 @@ class RoomChannelManager:
         # membership frozen, applied once it closes (see flush_deferred_invites).
         self._deferred_invites: dict[str, set[str]] = {}
         # Trigger hooks handed to every persister, both room-aware and wired at
-        # startup (``main.py``): ``on_summon`` → the SIEP aligner's
-        # ``handle_summon``; ``on_converged`` → the plan-sync consumer's
-        # ``handle_converged``. Unset → the persister's log-only defaults.
+        # startup (``main.py``): ``on_summon`` → every engine's
+        # ``handle_summon``. Unset → the persister's log-only default.
         self.on_summon: RoomSummonHook | None = None
-        self.on_converged: RoomConvergedHook | None = None
         self.on_turn: RoomTurnHook | None = None
-        # ``(room, episode, handle)`` when one of a running negotiation's parties
-        # left the room; True when the engine running it took it (it stops and
-        # posts its own closing line). Wired to the aligner in ``main.py``.
-        self.on_party_left: Callable[[str, str, str], bool] | None = None
         # Fired after every notice, so something that acts on the board (the
         # worker engine, the herdr doorbell) hears it move without polling it.
         # A notice still wakes no ``await``; this is an in-process listener.
@@ -375,7 +363,7 @@ class RoomChannelManager:
         # ``await``/``respond`` long-poll) never holds a client SLIM connection,
         # so it isn't in ``managed.members``. The backend keeps it "present" via a
         # lease (room → handle → monotonic expiry), refreshed on every await/reply,
-        # and unions it into ``members`` so the mediator's roster includes it. This
+        # and unions it into ``members`` so an engine's roster includes it. This
         # is how a turn-based agent (a Claude session) is a first-class member
         # without holding a socket between turns.
         self._leases: dict[str, dict[str, float]] = {}
@@ -393,7 +381,7 @@ class RoomChannelManager:
         # wall-clock last_seen). ``title`` is herdr's terminal title (the agent's
         # current task). Pushed by the host-side `mycelium herdr sync` bridge (the
         # backend can't see the host's herdr socket). Purely a presence/UI surface —
-        # it never enters `members()` (the mediator roster), so a herdr-alive-but-
+        # it never enters `members()` (the engines' roster), so a herdr-alive-but-
         # not-joined agent is *visible* without being made a negotiation participant.
         # Entries lapse on their TTL if sync stops. Kept per source (the machine
         # that pushed them), so one machine's push never removes another's
@@ -433,7 +421,7 @@ class RoomChannelManager:
                     "provisioned": True,
                     "persister_alive": task is not None and not task.done(),
                     # Union of SLIM-connected members and live server-held `await`
-                    # leases — the same roster `members()` serves the mediator, so
+                    # leases — the same roster `members()` serves the engines, so
                     # a bare-CLI participant long-polling `await` is visible here.
                     "members": self.members(room),
                     "deferred_invites": len(self._deferred_invites.get(room, ())),
@@ -476,7 +464,7 @@ class RoomChannelManager:
 
         A client-connected agent shows up in ``managed.members`` (SLIM presence); a
         server-held agent (HTTP ``await`` long-poll) shows up via a live lease. The
-        mediator's roster is this union, so both kinds are first-class participants.
+        engines' roster is this union, so both kinds are first-class participants.
         """
         managed = self._channels.get(room)
         slim_members = set(managed.members) if managed is not None else set()
@@ -1067,7 +1055,6 @@ class RoomChannelManager:
             # finds the mention as its undelivered tail.
             members_provider=lambda: set(managed.members),
             on_summon=self._summon_adapter(room),
-            on_converged=self._converged_adapter(room),
             on_asked=self._asked_adapter(room),
             on_recorded=self._recorded_adapter(room),
             on_member_left=lambda handle, _room=room: self._drop_member(_room, handle),
@@ -1206,23 +1193,6 @@ class RoomChannelManager:
             hook = self.on_recorded
             if hook is not None:
                 hook(_room, record)
-
-        return adapter
-
-    def _converged_adapter(self, room: str) -> ConvergedHook | None:
-        """Bind ``room`` onto the room-aware ``on_converged`` hook.
-
-        Mirrors :meth:`_summon_adapter`: the persister calls its ``ConvergedHook``
-        with only ``(envelope)``, but the plan-sync consumer needs the room too.
-        When no hook is wired, return ``None`` so the persister keeps its log-only
-        default.
-        """
-        hook = self.on_converged
-        if hook is None:
-            return None
-
-        def adapter(envelope: MyceliumMessage, _room: str = room) -> None:
-            hook(_room, envelope)
 
         return adapter
 
@@ -1514,7 +1484,7 @@ class RoomChannelManager:
         way presence doesn't — so a resident agent's ``await`` consumes
         it silently instead of spending a turn on it.
 
-        *It does not go out on the wire.* This is the aligner's
+        *It does not go out on the wire.* This is the
         record-locally-don't-broadcast seam: ``ingest_local`` alone, so the ping
         lands in the transcript and on the SSE bus for the GUI without being
         published to the group. Nothing on the channel has to filter it out.
@@ -1820,21 +1790,13 @@ class RoomChannelManager:
         """End the running negotiation when ``agent``, one of its parties, left the room.
 
         Only the ``remove`` path calls this: presence starting or lapsing is not
-        leaving (see :class:`EpisodeLifecycle`). The engine running the
-        negotiation is told (:attr:`on_party_left`) so it stops and says so in
-        its own closing line; with no engine to tell, the abort is recorded
-        here, as one plain line, never a bare protocol record.
+        leaving (see :class:`EpisodeLifecycle`). The abort is recorded here,
+        as one plain line, never a bare protocol record.
         """
         handle = norm_handle(agent) or agent
         if not managed.lifecycle.on_member_removed(handle):
             return
         episode = managed.lifecycle.episode
-        if (
-            self.on_party_left is not None
-            and episode
-            and self.on_party_left(managed.room, episode, handle)
-        ):
-            return
         managed.lifecycle.close()
         if not episode:
             return

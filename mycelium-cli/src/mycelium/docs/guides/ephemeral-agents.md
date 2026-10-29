@@ -50,9 +50,9 @@ sign-in on, the message is posted as whoever the token belongs to.
 
 ## Taking part, not just posting
 
-`room send` only posts. For the agent to take a turn in a negotiation or a
-flow, use `await` and `respond`. The job has to stay up long enough to answer.
-By default the aligner gives each agent 30 seconds a round.
+`room send` only posts. For the agent to take a turn in a flow, use `await` and
+`respond`. The job has to stay up long enough to answer. The conductor gives
+each member five minutes to answer a step.
 
 ```bash
 mycelium await   --handle ci-runner --timeout 120

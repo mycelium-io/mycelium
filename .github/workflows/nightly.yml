@@ -137,10 +137,9 @@ jobs:
           fi
 
   cognition:
-    # The aligner's Pi brain and the plan compiler, run for real: structuring
-    # prose into issues, reading an agreement as an agreement, stopping at
-    # unanimity instead of the step cap. Costs tokens, so it needs a key; without
-    # one it reports and passes, since a fork has no secrets.
+    # The synthesizer's Pi session, run for real: distilling a room's messages
+    # into its synthesis. Costs tokens, so it needs a key; without one it
+    # reports and passes, since a fork has no secrets.
     name: Cognition (live LLM)
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -165,8 +164,8 @@ jobs:
         with:
           node-version: "22"
 
-      # The aligner's brain. The backend image ships it; a host-run backend
-      # needs it on PATH.
+      # Every engine's model calls go through it. The backend image ships it; a
+      # host-run backend needs it on PATH.
       - name: Install the Pi coding agent
         if: steps.key.outputs.run == 'true'
         run: npm install -g @earendil-works/pi-coding-agent
@@ -184,7 +183,7 @@ jobs:
         working-directory: fastapi-backend
         run: uv sync --group dev
 
-      - name: Negotiate to convergence, then compile the plan
+      - name: Distill a room into its synthesis
         if: steps.key.outputs.run == 'true'
         working-directory: fastapi-backend
         env:
@@ -195,8 +194,6 @@ jobs:
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
         run: >-
           uv run pytest -q
-          tests/test_cognition_live.py
-          tests/test_task_compiler.py
           tests/test_synthesizer_live.py
 
   report:

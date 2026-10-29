@@ -25,7 +25,7 @@ These things keep a team that wakes itself from running away:
   turn has a timeout, and each worker takes one at a time. A part can't be
   resolved before someone else has reviewed it.
 - **The hub's own agents can't summon engines.** Workers and personas can't
-  summon the aligner or the conductor. While a flow runs in a thread, the
+  summon the conductor. While a flow runs in a thread, the
   thread only takes posts from the members whose turn it is.
 
 You still need to watch for two things. One is a chain where nothing has moved

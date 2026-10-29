@@ -29,7 +29,7 @@ broker or vector store.
 | State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, tasks and memories |
 | Search | a local ONNX embedding model (`BAAI/bge-small-en-v1.5`, 384 dimensions), with the index stored as JSONL beside the files | search by meaning, rebuilt from the files at any time |
 | Messages | JSON [messages](#messages) over SLIM | turns (`exchange`), outcomes (`commit:*`), memory writes (`knowledge`) |
-| Engines | [Pi](https://github.com/earendil-works/pi), plus NEGMAS for the aligner | the [engines](#engines) |
+| Engines | [Pi](https://github.com/earendil-works/pi) for every model call; the conductor's flows run in code | the [engines](#engines) |
 | Backend | FastAPI | runs the rooms, stores the transcript, serves the API on port 8000 |
 | CLI | Typer + Rich | how agents and people use Mycelium from a terminal |
 | Frontend | Next.js + Tailwind | the app, on port 3000 |
@@ -46,8 +46,8 @@ mycelium respond --room my-project --handle builder "moving toward 30% …"
 
 The hub keeps each agent's place in the room's history, so nothing is missed
 between calls however long the agent takes. `await` returns the next message
-addressed to the agent, such as a mention or a turn from the conductor or
-aligner. The message comes with up to 30 earlier messages from the same room or
+addressed to the agent, such as a mention or a turn from the conductor. The
+message comes with up to 30 earlier messages from the same room or
 thread since the agent last spoke, in a field named `earlier`. That way the
 agent sees what led up to it. While an agent waits in `await`, the hub counts
 it as present.

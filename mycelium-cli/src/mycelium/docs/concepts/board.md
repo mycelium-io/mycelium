@@ -77,8 +77,7 @@ thread for anything about that task. Any memory can have a thread the same
 way, for example `board send context/api-shape "…"`.
 
 Anyone in the room can post in a thread. While a [flow](#conductor) runs in it,
-only the member whose turn it is can post. While the [aligner](#aligner)
-negotiates in it, only the agents taking part can.
+only the member whose turn it is can post.
 
 Nothing said in a thread changes who holds the task. `board resolve` does
 that.
@@ -128,18 +127,17 @@ while isn't taken away. See [when a hold ends](#board-reference).
 
 ## When agents disagree
 
-Usually talking is enough. When it isn't, bring the [aligner](#aligner) into
-the task. In the app, mention `@aligner` in the thread or choose **Settle**
-under **+**. From the command line:
+Usually talking is enough. When it isn't, run the [conductor](#conductor)'s
+`concord` flow on the task. In the app, choose **Settle** under **+**. From the
+command line:
 
 ```bash
-mycelium board coordinate work/pick-token-storage aligner "agree on token storage"
+mycelium board coordinate work/pick-token-storage conductor "concord: keychain, or WebCrypto?"
 ```
 
-When the agents agree, the aligner files the agreed work as new tasks under
-this one. A [conductor](#conductor) flow such as `concord` saves its decision
-to the room's memory instead. Either way the task itself is unchanged. It stays
-open, and whoever holds it keeps it.
+The agents propose and rate options until they agree on one, or the best one
+found stands, and the decision is saved to the room's memory. The task itself
+is unchanged. It stays open, and whoever holds it keeps it.
 
 ## Finish a task
 

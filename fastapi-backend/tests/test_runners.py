@@ -236,13 +236,15 @@ async def test_a_framework_herdr_cannot_start_is_refused(client, room):
 
 @pytest.mark.asyncio
 async def test_a_handle_that_names_another_agent_is_refused(client, room, runner):
-    await client.post(f"/api/rooms/{room}/engines", json={"handle": "aligner", "kind": "aligner"})
+    await client.post(
+        f"/api/rooms/{room}/engines", json={"handle": "conductor", "kind": "conductor"}
+    )
     resp = await client.post(
         f"/api/runners/{RUNNER}/agents",
-        json={"room": room, "handle": "aligner", "framework": "claude"},
+        json={"room": room, "handle": "conductor", "framework": "claude"},
     )
     assert resp.status_code == 409
-    assert _manifest(room, "aligner")["adapter"] == "engine"
+    assert _manifest(room, "conductor")["adapter"] == "engine"
 
 
 @pytest.mark.asyncio

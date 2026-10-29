@@ -65,7 +65,6 @@ export const TARGETS: Record<string, Target[]> = {
   "home-thread": [{ dir: SPLASH_DIR, name: "step-task", retina: true }],
   "home-mention": [{ dir: SPLASH_DIR, name: "step-wake", retina: true }],
   "home-memory": [{ dir: SPLASH_DIR, name: "step-memory", retina: true }],
-  "walk-aligner": [{ dir: DOCS_DIR, name: "walk-aligner", retina: true }],
   // The themes repo: each theme's picture, beside its file.
   ...Object.fromEntries(
     themeFiles().map(({ file }) => [`theme-${file}`, [{ dir: join(THEMES_REPO, "screens"), name: file }]]),

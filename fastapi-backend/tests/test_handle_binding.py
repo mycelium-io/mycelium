@@ -329,13 +329,15 @@ async def test_reply_stamps_the_token_handle_on_the_message_actor(
 
 # ── engine registration ───────────────────────────────────────────────────────
 
+_CONDUCTOR = {"handle": "conductor", "kind": "conductor"}
+
 
 @pytest.mark.asyncio
 async def test_engine_registrar_defaults_to_the_web_ui_when_anonymous(client: AsyncClient):
     await _make_room(client)
-    resp = await client.post(f"/api/rooms/{ROOM}/engines", json={"handle": "aligner"})
+    resp = await client.post(f"/api/rooms/{ROOM}/engines", json=_CONDUCTOR)
     assert resp.status_code == 201
-    assert _stored_meta(ROOM, "agents/aligner")["created_by"] == "web-ui"
+    assert _stored_meta(ROOM, "agents/conductor")["created_by"] == "web-ui"
 
 
 @pytest.mark.asyncio
@@ -343,9 +345,9 @@ async def test_engine_registrar_comes_from_the_token(client: AsyncClient, as_pri
     """An omitted ``created_by`` is filled by the token, not read as impersonation."""
     await _make_room(client)
     as_principal("alice")
-    resp = await client.post(f"/api/rooms/{ROOM}/engines", json={"handle": "aligner"})
+    resp = await client.post(f"/api/rooms/{ROOM}/engines", json=_CONDUCTOR)
     assert resp.status_code == 201
-    assert _stored_meta(ROOM, "agents/aligner")["created_by"] == "alice"
+    assert _stored_meta(ROOM, "agents/conductor")["created_by"] == "alice"
 
 
 @pytest.mark.asyncio
@@ -355,6 +357,6 @@ async def test_engine_registrar_claiming_another_handle_is_refused(
     await _make_room(client)
     as_principal("alice")
     resp = await client.post(
-        f"/api/rooms/{ROOM}/engines", json={"handle": "aligner", "created_by": "mallory"}
+        f"/api/rooms/{ROOM}/engines", json={**_CONDUCTOR, "created_by": "mallory"}
     )
     assert resp.status_code == 403

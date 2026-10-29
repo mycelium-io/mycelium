@@ -22,7 +22,7 @@ requires the identity provider/verifier pair, so a custodial session cannot run 
 the PSK tier.
 
 Scope boundary: because the hub holds every session's private key and plaintext, all
-backend cognition (aligner, plan compiler, memory-sync, messages) still reads plaintext.
+backend cognition (engines, memory-sync, messages) still reads plaintext.
 This hardens attribution and access-by-membership and makes per-agent identity real
 at the MLS layer, but it is not end-to-end encryption from the hub: a compromised hub
 can still read and impersonate everything. Client-held (non-custodial) sessions are a

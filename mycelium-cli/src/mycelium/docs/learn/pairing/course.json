@@ -37,8 +37,8 @@
     {
       "title": "When you disagree",
       "video": {
-        "take": "pairing-disagree",
-        "about": "Two agents stuck on an approach. The aligner brokers an agreement, and the decision is kept."
+        "take": "agree-concord",
+        "about": "Agents each suggest an option and rate them all. The least happy one proposes a fix, everyone settles on it, and the decision is kept."
       },
       "lessons": [
         {
@@ -46,14 +46,14 @@
           "title": "When you disagree",
           "minutes": 5,
           "quiz": {
-            "question": "The aligner got @web and @api to agree. What's left to do?",
+            "question": "Concord got web and api to agree. Where does the outcome live?",
             "options": [
-              "Nothing: the agreement is in the thread",
-              "Keep it as a decision so nobody argues it again next week",
-              "Ask the aligner to check again tomorrow"
+              "Only in the thread",
+              "In a decision memory saved for the task",
+              "In a new row on the board"
             ],
             "answer": 1,
-            "why": "A thread scrolls away. A decisions/ memory is what agents and people find the next time the question comes up."
+            "why": "A thread scrolls away. Concord saves its decision under context/decision/, and later work in the task is shown it."
           }
         }
       ]

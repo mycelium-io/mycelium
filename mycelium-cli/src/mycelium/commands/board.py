@@ -65,6 +65,7 @@ from mycelium.client import typed_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium.protocol import RETIRED_ENGINE_KINDS
 from mycelium.text_input import takes_text
 
 if TYPE_CHECKING:
@@ -1267,9 +1268,13 @@ def board_coordinate(
     row_id: str = typer.Argument(
         ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"
     ),
-    engine: str = typer.Argument(..., help="Engine handle to run it (e.g. aligner)"),
+    engine: str = typer.Argument(..., help="Engine handle to run it (e.g. conductor)"),
     ask: str = typer.Argument(
-        "please mediate us to an agreement.", help="What you're asking it to do"
+        ...,
+        help=(
+            "What you're asking it to do; for the conductor, the flow first "
+            "(e.g. 'concord @~api @~sec: the budget split')"
+        ),
     ),
     room: str | None = None,
     handle: str | None = None,
@@ -1286,12 +1291,12 @@ def board_coordinate(
     the row or takes it off its holder. A task can be coordinated more than
     once, or never.
 
-    The engine opens a **separate** negotiation episode to run in — a task's
-    thread is a container that outlives what happens inside it, so an exchange
-    with a frozen roster is not the same conversation as the row's. What comes
-    back to the row is the outcome: the work an aligner agreement compiles
-    into, or the memory where a conductor flow saved what was agreed, and the
-    thread state the board folds onto it.
+    Negotiation is the conductor's: ``concord`` helps members agree and
+    ``accord`` gets them on the same page. The run walks in the row's thread,
+    holding its floor for whoever a step addresses, and keeps a record of its
+    own nested in the task. What comes back to the row is the outcome: the
+    memory where the flow saved what was agreed, and the thread state the
+    board folds onto it.
     """
     from mycelium.client import typed_client
     from mycelium.commands.agent import _load_manifest_remote
@@ -1306,7 +1311,7 @@ def board_coordinate(
     if manifest is None:
         console.print(
             f"[red]Not found:[/red] no engine named '{target}' in room '{name}'.\n"
-            f"  Create one with: mycelium engine create {target} --kind aligner --room {name}"
+            f"  Create one with: mycelium engine create {target} --kind conductor --room {name}"
         )
         raise typer.Exit(1)
     if manifest.adapter != "engine":
@@ -1314,6 +1319,9 @@ def board_coordinate(
             f"[red]'{target}' is a {manifest.adapter} agent, not an engine.[/red]\n"
             f'  Use: mycelium board send {row_id} "@{target} …"'
         )
+        raise typer.Exit(1)
+    if manifest.kind in RETIRED_ENGINE_KINDS:
+        console.print(f"[red]{RETIRED_ENGINE_KINDS[manifest.kind]}[/red]")
         raise typer.Exit(1)
 
     chat.post(
@@ -1326,8 +1334,7 @@ def board_coordinate(
     )
     console.print(
         f"  [dim]the ask is in {where.split('/', 1)[-1]}'s thread; the "
-        f"{manifest.kind} engine opens its negotiation from there and addresses "
-        "agents one at a time[/dim]"
+        f"{manifest.kind} engine takes it from there[/dim]"
     )
 
 

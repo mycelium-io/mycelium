@@ -59,7 +59,7 @@ describe("inferSchema", () => {
 
   it("keeps one-off prose as text, so grouping can't make a column per row", () => {
     const schema = inferSchema([
-      item("a", { note: "the aligner stalled on a prose reply" }),
+      item("a", { note: "the conductor stalled on a prose reply" }),
       item("b", { note: "cache TTL sweep needs a second pass" }),
     ]);
     expect(schema.find(f => f.name === "note")?.type).toBe("text");
@@ -118,8 +118,8 @@ describe("projectItems", () => {
       value: "flip reads behind a flag",
       meta: { kind: "action", status: "open", assignee: "@growth" },
       version: 1,
-      created_by: "aligner",
-      updated_by: "aligner",
+      created_by: "conductor",
+      updated_by: "conductor",
       updated_at: "2026-08-20T10:00:00Z",
     },
     {
@@ -127,8 +127,8 @@ describe("projectItems", () => {
       value: "retire the legacy store",
       meta: { kind: "action", status: "resolved", assignee: "@risk" },
       version: 1,
-      created_by: "aligner",
-      updated_by: "aligner",
+      created_by: "conductor",
+      updated_by: "conductor",
       updated_at: "2026-08-20T10:00:00Z",
     },
   ] as unknown as Parameters<typeof projectItems>[0]["memories"];
@@ -192,7 +192,7 @@ describe("a task is one row, and it is a thread", () => {
     tasks: ["work/cutover"],
     message_count: 7,
     updated_at: NOW,
-    updated_by: "aligner",
+    updated_by: "conductor",
   } as unknown as Parameters<typeof projectItems>[0]["episodes"][number];
 
   const task = (extra: Record<string, unknown> = {}) => ({
@@ -200,8 +200,8 @@ describe("a task is one row, and it is a thread", () => {
     value: "run the cutover",
     meta: { kind: "action", status: "open", ...extra },
     version: 1,
-    created_by: "aligner",
-    updated_by: "aligner",
+    created_by: "conductor",
+    updated_by: "conductor",
     updated_at: NOW,
     episode: URN,
   }) as unknown as Parameters<typeof projectItems>[0]["memories"][number];

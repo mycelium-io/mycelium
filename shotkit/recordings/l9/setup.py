@@ -1,7 +1,7 @@
 """Set up a room for recording Concord and Accord in the real app.
 
 Deletes any earlier recording rooms (every room whose name starts with
-``acme-``), then creates ``$ROOM`` with the conductor, the aligner, four persona
+``acme-``), then creates ``$ROOM`` with the conductor, four persona
 teammates, a person to post as (Morgan), and the two tasks the recordings use.
 
     ROOM=acme-renewal-q4 uv run --project fastapi-backend python shotkit/recordings/l9/setup.py
@@ -54,8 +54,7 @@ with httpx.Client(timeout=60) as c:
             c.delete(f"{HUB}/rooms/{r['name']}")
     c.post(f"{HUB}/users", json={"handle": "morgan", "display_name": "Morgan Reyes"})
     c.post(f"{HUB}/rooms", json={"name": ROOM}).raise_for_status()
-    for handle, kind in (("conductor", "conductor"), ("aligner", "aligner")):
-        c.post(f"{HUB}/rooms/{ROOM}/engines", json={"handle": handle, "kind": kind}).raise_for_status()
+    c.post(f"{HUB}/rooms/{ROOM}/engines", json={"handle": "conductor", "kind": "conductor"}).raise_for_status()
     for handle, notes in NOTES.items():
         c.post(f"{HUB}/rooms/{ROOM}/engines", json={"handle": handle, "kind": "persona"}).raise_for_status()
         c.post(

@@ -13,7 +13,7 @@
  * Every room is a small online coffee shop at work, so a screenshot reads as
  * something a team actually does rather than as our own vocabulary:
  *   - `checkout`             — a rich, converged room: Apple Pay and the
- *     double-charge fix, a decision the aligner brokered, flows running in
+ *     double-charge fix, a decision the conductor brokered, flows running in
  *     task threads, pull requests with CI;
  *   - `subscription-pricing` — an in-progress negotiation over what the coffee
  *     subscription costs (nothing compiled yet), with a bridged A2A agent;
@@ -199,7 +199,7 @@ const a2aManifest = (description: string, card: string, skills: string[]): strin
 const checkoutEpisode = (shortId: string): string =>
   `urn:ioc:mycelium:episode:checkout:${shortId}`;
 
-// The launch-day call the aligner brokered. It is an *orphan* episode — no board
+// The launch-day call the conductor brokered. It is an *orphan* episode — no board
 // row is bound to it — because a task's thread is the task's own, not the
 // conversation that produced it. The two tasks it compiled each carry their own
 // thread below; this URN stays the negotiation's record (Episodes rail, message feed).
@@ -217,16 +217,16 @@ const OLD_FORM_THREAD = checkoutEpisode("d2b8e0");
 // The "add Apple Pay" task's thread, where the release flow runs.
 const APPLE_PAY_THREAD = checkoutEpisode("d6f8b0");
 
-// The one call the aligner brokered: which day Apple Pay goes on. Morgan wanted
+// The one call the conductor brokered: which day Apple Pay goes on. Morgan wanted
 // thursday, before the sale; builder wanted a day of test orders first and
 // countered friday morning. They settled on friday morning, before the sale
 // email. A short, ordinary decision, not a set piece.
 //
 // The *chat* is the source. Each reply is a channel broadcast (`say`), and the
-// aligner reads it and emits the structured messages it implies. So one move drives
+// conductor reads it and emits the structured messages it implies. So one move drives
 // three things — the broadcast, the coordination_tick it interprets that from,
 // and the raw message behind it — and they can't disagree. `ask`
-// is the aligner's prompt that precedes a reply (it addresses one at a time).
+// is the conductor's prompt that precedes a reply (it addresses one at a time).
 const CHECKOUT_CONSENSUS = { launch: "friday am" };
 interface CheckoutMove {
   round: number;
@@ -256,7 +256,7 @@ const checkoutMessageChain: MyceliumMessage[] = [
       protocol: "ioc",
       kind: "exchange",
       subkind: "tick",
-      participants: { actors: [{ id: "aligner", role: "mediator" }, { id: m.who, role: "agent" }] },
+      participants: { actors: [{ id: "conductor", role: "mediator" }, { id: m.who, role: "agent" }] },
       message: { id: `m${i + 1}`, parents: i ? [`m${i}`] : [], episode: CHECKOUT_EPISODE },
       context: { topic: "urn:concept:mycelium:checkout" },
     },
@@ -269,7 +269,7 @@ const checkoutMessageChain: MyceliumMessage[] = [
       subkind: "converged",
       participants: {
         actors: [
-          { id: "aligner", role: "mediator" },
+          { id: "conductor", role: "mediator" },
           { id: "operator", role: "human" },
           { id: "builder", role: "agent" },
         ],
@@ -285,8 +285,8 @@ const checkoutMessageChain: MyceliumMessage[] = [
 ];
 
 // The mediated negotiation as it appears on the wire: for each move, the
-// aligner's optional prompt and the agent's reply (both chat broadcasts, shown
-// in the channel), then the coordination_tick the aligner emits from that reply
+// conductor's optional prompt and the agent's reply (both chat broadcasts, shown
+// in the channel), then the coordination_tick the conductor emits from that reply
 // (in the wire history, filtered out of the channel). Interleaved and
 // timestamped so the transcript reads in order — the chat drives the messages.
 const checkoutNegotiation: MockMessage[] = (() => {
@@ -295,12 +295,12 @@ const checkoutNegotiation: MockMessage[] = (() => {
   const step = () => iso((at -= 0.2));
   checkoutMoves.forEach((m, i) => {
     if (m.ask) {
-      out.push({ id: `neg-ask-${i}`, sender_handle: "aligner", message_type: "broadcast", content: m.ask, created_at: step() });
+      out.push({ id: `neg-ask-${i}`, sender_handle: "conductor", message_type: "broadcast", content: m.ask, created_at: step() });
     }
     out.push({ id: `neg-say-${i}`, sender_handle: m.who, message_type: "broadcast", content: m.say, created_at: step() });
     out.push({
       id: `tick-${i + 1}`,
-      sender_handle: "aligner",
+      sender_handle: "conductor",
       message_type: "coordination_tick",
       content: JSON.stringify({ round: m.round, participant_id: m.who, action: m.action, current_offer: m.offer, episode: CHECKOUT_EPISODE }),
       created_at: step(),
@@ -314,7 +314,7 @@ const checkoutNegotiation: MockMessage[] = (() => {
 // with the flat sender_handle/message_type/created_at the channel and Stream read.
 const checkoutWireFrames: Record<string, unknown>[] = checkoutMessageChain.map((env, i) => ({
   message_type: `l9_${env.header.kind}`,
-  sender_handle: env.header.participants?.actors?.[0]?.id ?? "aligner",
+  sender_handle: env.header.participants?.actors?.[0]?.id ?? "conductor",
   created_at: iso(44 - i),
   content: env,
 }));
@@ -401,13 +401,13 @@ const checkoutEpisodeSummary: EpisodeSummary = {
   topic: "urn:concept:mycelium:checkout",
   outcome: "converged",
   subkind: "converged",
-  participants: ["operator", "builder", "aligner"],
+  participants: ["operator", "builder", "conductor"],
   metrics: { mpc: 0.86, gar: 0.79, scr: 0.91, provenance_weight: 0.74, participants: 3 },
   assignments: { launch: "friday am" },
   tasks: ["work/turn-on-apple-pay", "work/remove-old-card-form"],
   message_count: 3,
   updated_at: iso(42),
-  updated_by: "aligner",
+  updated_by: "conductor",
 };
 
 // A run the conductor is walking right now inside the "turn on Apple Pay"
@@ -690,7 +690,7 @@ const checkoutConcordEpisode: EpisodeSummary = {
   outcome: "converged",
   subkind: "converged",
   participants: [...REFUND_CAST, "conductor"],
-  // The summary carries the aligner's quality numbers only; a run's
+  // The summary carries the episode's quality numbers only; a run's
   // satisfaction is in its record and on its close.
   metrics: null,
   assignments: { decision: refundOptions[2].text },
@@ -1008,8 +1008,8 @@ const checkoutBoardRows: MockMemory[] = [
       issue: "#502",
     },
     content_text: "Turn on Apple Pay for everyone, behind a switch. Waiting on the test orders.",
-    created_by: "aligner",
-    updated_by: "aligner",
+    created_by: "conductor",
+    updated_by: "conductor",
     version: 1,
     updated_at: iso(40),
     episode: LAUNCH_THREAD,
@@ -1019,8 +1019,8 @@ const checkoutBoardRows: MockMemory[] = [
     value: "Remove the old card form after the sale",
     meta: { "depends-on": ["work/turn-on-apple-pay"], kind: "action", status: "open", assignee: "@builder", issue: "#499" },
     content_text: "Remove the old card form once Apple Pay has run clean through the sale.",
-    created_by: "aligner",
-    updated_by: "aligner",
+    created_by: "conductor",
+    updated_by: "conductor",
     version: 1,
     updated_at: iso(40),
     episode: OLD_FORM_THREAD,
@@ -1209,8 +1209,8 @@ const checkout: RoomFixture = {
       episode: checkoutEpisode("b3d5f7"),
     },
     {
-      key: "agents/aligner",
-      value: agentManifest("Helps members agree when they disagree.", "engine"),
+      key: "agents/conductor",
+      value: agentManifest("Runs a flow in a task's thread, like helping members agree.", "engine"),
       created_by: "operator",
       version: 1,
       updated_at: iso(60 * 20),
@@ -1220,7 +1220,7 @@ const checkout: RoomFixture = {
       key: "decisions/apple-pay-launch",
       value: "Turn Apple Pay on friday morning, after a day of test orders on real phones. Keep the old card form as a fallback through the sale.",
       content_text: "Turn Apple Pay on friday morning, after a day of test orders on real phones. Keep the old card form as a fallback through the sale.",
-      created_by: "aligner",
+      created_by: "conductor",
       version: 3,
       updated_at: iso(41),
       episode: checkoutEpisode("e6a8c0"),
@@ -1315,18 +1315,18 @@ const checkout: RoomFixture = {
     { id: "q2", sender_handle: "operator", message_type: "broadcast", content: "no. the simulator doesn't use real cards. if it breaks on a real phone during the sale we lose orders. test first.", created_at: iso(51) },
     { id: "q3", sender_handle: "reviewer", message_type: "broadcast", content: "fair. i'll test on staging and keep it switched off until then.", created_at: iso(50) },
     // ── the launch-day call ──
-    { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@builder @reviewer we need a day to switch apple pay on. @aligner run it.", created_at: iso(48) },
+    { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@conductor concord @~operator @~builder: we need a day to switch apple pay on.", created_at: iso(48) },
     { id: "a2", sender_handle: "operator", message_type: "coordination_join", content: JSON.stringify({ handle: "operator", intent: "on before the sale email", episode: CHECKOUT_EPISODE }), created_at: iso(47), episode: CHECKOUT_EPISODE },
     { id: "a3", sender_handle: "builder", message_type: "coordination_join", content: JSON.stringify({ handle: "builder", intent: "a full day of test orders first", episode: CHECKOUT_EPISODE }), created_at: iso(47), episode: CHECKOUT_EPISODE },
-    // The aligner brokers a couple of short rounds. Each reply is a chat
-    // broadcast; the aligner reads it and emits a coordination_tick
+    // The conductor brokers a couple of short rounds. Each reply is a chat
+    // broadcast; the conductor reads it and emits a coordination_tick
     // from it. The chat is the source (see checkoutMoves).
     ...checkoutNegotiation,
-    { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { launch: "friday am" }, episode: CHECKOUT_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: CHECKOUT_EPISODE },
+    { id: "a6", sender_handle: "conductor", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { launch: "friday am" }, episode: CHECKOUT_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: CHECKOUT_EPISODE },
     // The room files the work the call breaks into. The two task-created notices
     // land right after this line (see the `l9` feed below), so the chat reads
     // "here is the work" → the tasks, in sequence.
-    { id: "file1", sender_handle: "aligner", message_type: "broadcast", content: "settled: test orders thursday, apple pay on friday morning. filing the work:", created_at: iso(40) },
+    { id: "file1", sender_handle: "conductor", message_type: "broadcast", content: "settled: test orders thursday, apple pay on friday morning. filing the work:", created_at: iso(40) },
     { id: "a7", sender_handle: "builder", message_type: "broadcast", content: "stripe has been live a full day. 312 orders, no failed payments.", created_at: iso(30) },
     // ── follow-on work ──
     { id: "h8", sender_handle: "builder", message_type: "broadcast", content: "the double-charge fix is up for review, #504.", created_at: iso(14) },
@@ -1573,10 +1573,10 @@ const checkout: RoomFixture = {
     checkoutNotice("blocked", "failed/test-on-real-iphone", "Test Apple Pay on a real iPhone", checkoutEpisode("b4d6f8"), "operator", 128),
     checkoutNotice("filed", "work/payment-alerts", "Alert us when payments start failing", checkoutEpisode("e7a9c1"), "operator", 94.8, "action"),
     checkoutNotice("filed", "failed/duplicate-order-emails", "Order emails go out twice when Stripe retries", checkoutEpisode("f8b0d2"), "builder", 57.8, "concern"),
-    // The two the launch-day call compiled, filed by the aligner right after its
+    // The two the launch-day call compiled, filed by the conductor right after its
     // "filing the work" line (iso(40)).
-    checkoutNotice("filed", "work/turn-on-apple-pay", "Turn on Apple Pay for everyone", LAUNCH_THREAD, "aligner", 39.9, "action", "@builder"),
-    checkoutNotice("filed", "work/remove-old-card-form", "Remove the old card form after the sale", OLD_FORM_THREAD, "aligner", 39.8, "action", "@builder"),
+    checkoutNotice("filed", "work/turn-on-apple-pay", "Turn on Apple Pay for everyone", LAUNCH_THREAD, "conductor", 39.9, "action", "@builder"),
+    checkoutNotice("filed", "work/remove-old-card-form", "Remove the old card form after the sale", OLD_FORM_THREAD, "conductor", 39.8, "action", "@builder"),
     checkoutNotice("filed", "work/review-double-charge-fix", "Review the double-charge fix (PR #504)", checkoutEpisode("c5e7a9"), "builder", 13.8, "review"),
     checkoutNotice("filed", "decisions/double-charge-refunds", "Double charges: refund automatically, or send to support first?", checkoutEpisode("a1c3e5"), "reviewer", 5.8, "decision"),
     // builder takes the Apple Pay switch row before staging it, then the thread moves.
@@ -1673,7 +1673,7 @@ const pricing: RoomFixture = {
   memories: [
     { key: "agents/finance", value: agentManifest("Keeps an eye on the margin on every bag we ship."), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("c0e2a4") },
     { key: "agents/growth", value: agentManifest("Wants more subscribers; favors a low price to start."), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("d1f3b5") },
-    { key: "agents/aligner", value: agentManifest("Helps members agree when they disagree.", "engine"), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("e2a4c6") },
+    { key: "agents/conductor", value: agentManifest("Runs a flow in a task's thread, like helping members agree.", "engine"), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("e2a4c6") },
     { key: "agents/market-prices", value: a2aManifest("What other coffee subscriptions charge.", "https://market-prices.example", ["prices", "compare"]), created_by: "operator", version: 1, updated_at: iso(30), episode: pricingEpisode("a4c6e8") },
     { key: "context/goal", value: "Pick a price for the monthly coffee subscription.", content_text: "Pick a price for the monthly coffee subscription.", created_by: "operator", version: 1, updated_at: iso(175), episode: pricingEpisode("b5d7f9") },
     {
@@ -1691,7 +1691,7 @@ const pricing: RoomFixture = {
     },
   ],
   messages: [
-    { id: "p1", sender_handle: "operator", message_type: "broadcast", content: "@finance @growth what should the monthly subscription cost? @aligner help them agree.", created_at: iso(12) },
+    { id: "p1", sender_handle: "operator", message_type: "broadcast", content: "@conductor concord @~finance @~growth: what should the monthly subscription cost?", created_at: iso(12) },
     { id: "p2", sender_handle: "finance", message_type: "coordination_join", content: JSON.stringify({ handle: "finance", intent: "margin at or above 40%", episode: PRICING_EPISODE }), created_at: iso(11), episode: PRICING_EPISODE },
     { id: "p3", sender_handle: "growth", message_type: "coordination_join", content: JSON.stringify({ handle: "growth", intent: "500 subscribers by summer", episode: PRICING_EPISODE }), created_at: iso(11), episode: PRICING_EPISODE },
     { id: "p4", sender_handle: "finance", message_type: "broadcast", content: "$24 a month for two bags keeps us at 40%.", created_at: iso(9) },
@@ -1708,13 +1708,13 @@ const pricing: RoomFixture = {
       topic: "urn:concept:mycelium:subscription-pricing",
       outcome: "open",
       subkind: null,
-      participants: ["finance", "growth", "aligner"],
+      participants: ["finance", "growth", "conductor"],
       metrics: null,
       assignments: null,
       tasks: [],
       message_count: 4,
       updated_at: iso(9),
-      updated_by: "aligner",
+      updated_by: "conductor",
     },
   ],
   episodeDetails: {},
@@ -1938,7 +1938,7 @@ const storefrontMemories: MockMemory[] = [
 ];
 
 // The room at true scale: a dozen people each fielding a few one-ticket agents,
-// plus the aligner and a bridged agent. The Members rail has to stay legible at
+// plus the conductor and a bridged agent. The Members rail has to stay legible at
 // three dozen agents and a dozen owners, and the Memory tree has to survive as
 // many `agents/*` manifests plus the work they file. That pressure is the design
 // target, so the fixture carries it.
@@ -2000,7 +2000,7 @@ const storefrontExtraAgents: StorefrontAgent[] = [
   { handle: "task-459", description: "Write descriptions for the three new single origins.", minsAgo: 4 },
   { handle: "task-461", description: "Put the sale banner on the home page.", minsAgo: 3 },
   { handle: "task-462", description: "Check every page still works on an old iPhone.", minsAgo: 2 },
-  { handle: "aligner", description: "Helps members agree when they disagree.", adapter: "engine", minsAgo: 500 },
+  { handle: "conductor", description: "Runs a flow in a task's thread, like helping members agree.", adapter: "engine", minsAgo: 500 },
 ];
 
 const storefrontExtraAgentMemories: MockMemory[] = storefrontExtraAgents.map((a, i) => ({
@@ -2408,7 +2408,7 @@ const storefront: RoomFixture = {
     { handle: "task-454", kind: "lease", last_seen: iso(2) },
     { handle: "task-458", kind: "lease", last_seen: iso(4) },
     { handle: "task-459", kind: "lease", last_seen: iso(1) },
-    { handle: "aligner", kind: "lease", last_seen: iso(5) },
+    { handle: "conductor", kind: "lease", last_seen: iso(5) },
   ],
 };
 

@@ -21,17 +21,13 @@ This module is that consumer, and it does four things as each message flows past
 3. **Trigger-watcher.** Recognizes ``@``-summon tokens in a message and calls a
    summon hook (defaulting to a log when no engine is wired).
 
-4. **plan-compile hook.** On a ``commit:converged`` envelope it fires the
-   ``on_converged`` seam the task-sync consumer runs ``task_compiler`` off of;
-   the persister itself does **not** compile — it just fires the seam.
-
-5. **Memory-sync receiver.** On a ``knowledge`` envelope — from a real SLIM
+4. **Memory-sync receiver.** On a ``knowledge`` envelope — from a real SLIM
    arrival or the sender's own :meth:`RoomPersister.ingest_local` loopback
    alike — it applies the carried write to this backend's local store via
    :func:`app.services.memory_sync.apply_knowledge`, closing the loop the
-   emit side (``_broadcast_memory_write`` / :mod:`app.services.task_sync`)
-   opens. Unlike the summon/converged hooks this isn't a pluggable engine
-   seam: the applier is stateless and version-idempotent, so it always runs.
+   emit side (``_broadcast_memory_write``) opens. Unlike the summon hook this
+   isn't a pluggable engine seam: the applier is stateless and
+   version-idempotent, so it always runs.
 
 The pure pieces (:class:`DeliveryLog`, the transcript read/write, the trigger
 detection) carry no SLIM dependency and are unit-tested without a node;
@@ -184,12 +180,6 @@ def envelope_recipients(envelope: MyceliumMessage) -> list[str]:
 def envelope_message_id(envelope: MyceliumMessage) -> str | None:
     message = envelope.header.message
     return message.id if message is not None else None
-
-
-def is_converged(envelope: MyceliumMessage) -> bool:
-    """True for a ``commit:converged`` envelope (the plan-compile trigger)."""
-    header = envelope.header
-    return header.kind.value == "commit" and header.subkind == "converged"
 
 
 #: ``@here`` and ``@all`` name a group, never a member called that
@@ -545,8 +535,8 @@ def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
 
 # message record kinds promoted into the room chat view on a cold read, mirroring the
 # frontend's ``L9_RAISE_UP_TYPES`` (contracts/channel-surface.json): ``knowledge`` (a
-# memory push, e.g. a distilled extraction or the synced plan) and ``commit`` (an
-# aligner consensus). Chat itself (an ``exchange`` with a ``message``/``reply``
+# memory push, e.g. a distilled extraction) and ``commit`` (a negotiation's
+# outcome). Chat itself (an ``exchange`` with a ``message``/``reply``
 # payload) is projected as a plain broadcast above; these ride as their
 # ``l9_<kind>`` frame instead — the exact shape the live SSE bus pushes
 # (:func:`l9_bus_frame`), so the frontend decodes a refresh identically to the
@@ -933,7 +923,6 @@ SummonHook = Callable[[str, "MyceliumMessage", list[str], str], None]
 # ``turn`` or ``interrupt``; :mod:`app.services.asks` is the rule): what rings
 # the herdr doorbell, and how a persona or a worker hears a turn put to it.
 AskedHook = Callable[[str, str, "MyceliumMessage", str], None]
-ConvergedHook = Callable[["MyceliumMessage"], None]
 # Called with the handle of a member that dropped off the channel, so the
 # moderator can update its membership — presence, not a fatal error.
 MemberLeftHook = Callable[[str], None]
@@ -1001,15 +990,6 @@ def _default_summon_hook(
     logger.info("summon hook (skeleton): @%s summoned", handle)
 
 
-def _default_converged_hook(envelope: MyceliumMessage) -> None:
-    # Log-only default for a persister with no plan-sync consumer wired (task
-    # tests / a bare backend).
-    logger.info(
-        "converged hook (unwired): commit:converged on episode %s; no plan-sync consumer",
-        envelope.header.message.episode if envelope.header.message else "?",
-    )
-
-
 class RoomPersister:
     """Consumes one room's channel: persists, re-serves, and watches triggers.
 
@@ -1027,7 +1007,6 @@ class RoomPersister:
         *,
         members_provider: Callable[[], Iterable[str]],
         on_summon: SummonHook | None = None,
-        on_converged: ConvergedHook | None = None,
         on_member_left: MemberLeftHook | None = None,
         on_asked: AskedHook | None = None,
         on_recorded: RecordedHook | None = None,
@@ -1039,7 +1018,6 @@ class RoomPersister:
         self.on_summon = on_summon or _default_summon_hook
         self.on_asked = on_asked
         self.on_recorded = on_recorded
-        self.on_converged = on_converged or _default_converged_hook
         self.on_member_left = on_member_left
         self._feed_bus = feed_bus
         # Resume from disk so re-serve survives a backend restart: the transcript
@@ -1327,11 +1305,11 @@ class RoomPersister:
                 self.on_recorded(record)
             except Exception:
                 logger.exception("recorded hook failed for %s", record.message_id)
-        # Triggers: who the message asks (``asks.py``, one rule for everyone)
-        # and commit:converged. A handle it mentions is summoned: an engine
-        # self-selects by its manifest, so for anyone else that's a no-op. The
-        # full list goes to every summon so an engine summoned alongside other
-        # handles (``@aligner @a @b``) can scope the run to those co-mentions.
+        # Triggers: who the message asks (``asks.py``, one rule for everyone).
+        # A handle it mentions is summoned: an engine self-selects by its
+        # manifest, so for anyone else that's a no-op. The full list goes to
+        # every summon so an engine summoned alongside other handles
+        # (``@conductor @a @b``) can bind those co-mentions to its roles.
         from app.services.asks import asked
 
         message_text = content.get("content", "") if isinstance(content, dict) else ""
@@ -1348,11 +1326,6 @@ class RoomPersister:
                     self.on_asked(handle, why, envelope, message_text)
                 except Exception:
                     logger.exception("asked hook failed for @%s", handle)
-        if is_converged(envelope):
-            try:
-                self.on_converged(envelope)
-            except Exception:
-                logger.exception("converged hook failed")
         if memory_sync.is_knowledge(envelope):
             self._schedule_knowledge_apply(envelope)
 
@@ -1365,7 +1338,7 @@ class RoomPersister:
         a write this store already holds is a silent no-op, not a double-write.
         Scheduled as a tracked background task since ``_ingest`` is sync but the
         applier does file IO + reindexing; never re-broadcasts, so this cannot
-        loop with the emit side (``_broadcast_memory_write`` / ``task_sync``).
+        loop with the emit side (``_broadcast_memory_write``).
         """
         write = memory_sync.knowledge_write_from_envelope(envelope)
         if write is None:

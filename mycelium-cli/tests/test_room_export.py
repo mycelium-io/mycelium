@@ -198,7 +198,7 @@ def test_a_record_is_flat_and_says_who_where_and_what(tmp_path) -> None:
                     "episode": f"urn:ioc:mycelium:episode:{ROOM}:abc123",
                 },
             ),
-            _frame(3, "aligner", text="round one", role="coordinator"),
+            _frame(3, "conductor", text="round one", role="coordinator"),
         ],
         rows=[ROW],
     )

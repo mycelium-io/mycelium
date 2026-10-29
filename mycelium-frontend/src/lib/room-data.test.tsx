@@ -77,12 +77,12 @@ describe("useRoomRoster", () => {
   beforeEach(() => {
     window.localStorage.clear();
     vi.mocked(fetchRoomAgents).mockReset().mockResolvedValue([
-      agent("aligner", { adapter: "engine", kind: "aligner" }),
+      agent("conductor", { adapter: "engine", kind: "conductor" }),
       agent("bob-code", { owner: "Bob", team: "platform" }),
     ]);
     vi.mocked(fetchRoomMembers).mockReset().mockResolvedValue({
       members: [
-        { handle: "aligner", kind: "slim", last_seen: null },
+        { handle: "conductor", kind: "slim", last_seen: null },
         { handle: "watcher", kind: "lease", last_seen: "2026-08-20T00:00:00Z" },
       ],
       floors: [],
@@ -113,7 +113,7 @@ describe("useRoomRoster", () => {
       </>,
     );
 
-    await waitFor(() => expect(screen.getAllByText("agent:aligner")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText("agent:conductor")).toHaveLength(2));
     expect(fetchRoomAgents).toHaveBeenCalledTimes(1);
     expect(fetchRoomMembers).toHaveBeenCalledTimes(1);
     expect(fetchRoomPeople).toHaveBeenCalledTimes(1);
@@ -136,7 +136,7 @@ describe("useRoomRoster", () => {
     expect(screen.queryByText(/^person:watcher/)).not.toBeInTheDocument();
     // An agent is listed as an agent, never twice.
     expect(screen.queryByText(/^person:bob-code/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/^person:aligner/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^person:conductor/)).not.toBeInTheDocument();
     // Messages aren't read to find people at all.
     expect(fetchMessages).not.toHaveBeenCalled();
   });

@@ -70,7 +70,7 @@ async def write_agent_manifest(
 
     Uses a lazy import of :func:`app.routes.memory.upsert_memories` to avoid
     a services → routes circular dependency, following the same pattern as
-    :mod:`app.services.task_sync` and :mod:`app.services.synthesizer`.
+    :mod:`app.services.tasks` and :mod:`app.services.synthesizer`.
     """
     from fastapi import HTTPException
 

@@ -12,7 +12,7 @@ file for giving to a model. Edit the markdown here, not the generated HTML.
 | `walkthrough/` | Your first room, step by step |
 | `learn/` | The courses on `learn.html`: a folder per course, a `course.json` (title, modules, lessons, quick checks, and a section's `video`) and a markdown file per lesson. A section's video is a take recorded by `mycelium-promo/learn/` into `docs/learn/video/` |
 | `concepts/` | How it works, rooms, the board, memory, episodes, swarms, identity, SLIM |
-| `engines/` | The engines a room runs: conductor, aligner, synthesizer, persona, worker, hello |
+| `engines/` | The engines a room runs: conductor, synthesizer, persona, worker, verifier, hello |
 | `guides/` | Step-by-step guides, from the quick start to sign-in and troubleshooting |
 | `reference/` | Architecture, board and flow reference, messages and metrics |
 

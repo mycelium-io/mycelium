@@ -474,7 +474,7 @@ def _in(room: str, record: Any) -> str:
 def _ask_box(room: str, record: Any, now: datetime, limit: int) -> list[str]:
     """One message asking for the agent, as a box: who, when, where and its id,
     then its text in full, or up to ``limit`` with the command that reads the rest."""
-    # What asked (``asks.py``) always has text, an aligner's tick included.
+    # What asked (``asks.py``) always has text, a tick included.
     text = str(record.content.get("content") or "").strip()
     rid = short_id(record)
     place = _in(room, record)

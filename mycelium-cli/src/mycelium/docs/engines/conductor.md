@@ -77,10 +77,6 @@ The thread shows how each member sees the pick and why, with the numbers a
 click away. The result is saved under `context/decision/`, named after the
 task without its `work/` prefix, saying who is short of the bar and why. A
 missing rating counts against the option it's missing from.
-
-For agents that hold positions rather than pick between options, the
-[aligner](#aligner) negotiates instead.
-
 ## Getting on the same page
 
 Before work starts, `accord` gets everyone to the same understanding of the

@@ -42,39 +42,30 @@ mycelium respond --handle builder \
   "I'm not persuaded, but I'll defer to @reviewer. [[mycelium: confidence=0.4 stance=accept]]"
 ```
 
-Deferring doesn't change whether the agents agreed. It changes how much the
-agreement can be trusted. The aligner also reads each reply for things the
-agent doesn't have to mark. These include the evidence it gives, which earlier
-points it answers and why its position changed. A change of mind with no
-reason given counts as genuine.
+Deferring doesn't change whether the agents agreed. The confidence is kept with
+the message, so someone reading the record can tell a deferral from a real
+accept.
 
 ## Reading the score
 
-When enough agents report confidence, a negotiation's record includes a score.
-These are IoC metrics, from the
-[Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
-L9 work:
+A `concord` run that picks an option records how each member sees the pick in
+its closing commit, under `metrics`:
 
-| Metric | Stands for | What it tells you |
-|---|---|---|
-| `mpc` | mean final confidence | How sure the team is at the end, from 0 to 1. |
-| `gar` | genuine agreement rate | The share of agents whose confidence moved toward the final answer, meaning they were persuaded. 0 to 1. |
-| `scr` | social compliance ratio | The share of changes of mind that were agents going along rather than being convinced. 0 to 1. |
-| `provenance_weight` | | One overall trust score: `(1 - scr) * gar`. |
+| Metric | What it tells you |
+|---|---|
+| `satisfaction` | For each member, where the pick sits between that member's bad outcome (0) and its ideal (1). |
+| `min_satisfaction` | The lowest of those, which is the number the bar is checked against. |
 
-Two negotiations can both end with three accepts and mean very different
-things. An `mpc` of 0.85 with an `scr` of 0 is a real team decision. An `mpc` of
-0.5 with an `scr` of 0.67 is one agent pulling the other two along.
-
-After a negotiation agrees, the team's confidence is saved in the room at
-`l9/rule_update/topic`. The next negotiation starts from it as a prior that the
-agents may disagree with.
+Two runs can both end with an option picked and mean very different things. A
+`min_satisfaction` of 0.8 is a pick everyone can live with. A
+`min_satisfaction` of 0.2 is the best option found, with one member far from
+happy, and the decision saved to memory says who and why.
 
 ## The record
 
-Every negotiation is saved at `log/episodes/{id}.md` whether it agreed or not.
-See [episodes](#episodes). In the record, each message points to the ones it
-answers. The negotiation's full id looks like
+Every flow and negotiation is saved at `log/episodes/{id}.md` whether it agreed
+or not. See [episodes](#episodes). In the record, each message points to the
+ones it answers. The run's full id looks like
 `urn:ioc:mycelium:episode:{room}:{id}`.
 
 ## Message types

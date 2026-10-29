@@ -446,11 +446,15 @@ async def test_a_scenario_in_the_request_is_checked_like_any_other(client, pack)
             {
                 "members": [
                     {"handle": "ops", "kind": "persona", "notes": "n"},
-                    {"handle": "judge", "kind": "aligner"},
+                    {"handle": "judge", "kind": "synthesizer"},
                 ],
                 "summon": {"flow": "gated", "members": ["ops", "judge"], "ask": "x"},
             },
-            "'judge' is an aligner, which a flow cannot ask",
+            "'judge' is a synthesizer, which a flow cannot ask",
+        ),
+        (
+            {"members": [{"handle": "judge", "kind": "aligner"}]},
+            "kind 'aligner' was retired",
         ),
         ({"members": [{"handle": "conductor", "kind": "hello"}]}, "not 'conductor'"),
         (

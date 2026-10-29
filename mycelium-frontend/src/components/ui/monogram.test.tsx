@@ -114,7 +114,7 @@ describe("<Monogram />", () => {
   });
 
   it("draws an engine as a lantern", () => {
-    const { container } = render(<Monogram handle="aligner" kind="engine" />);
+    const { container } = render(<Monogram handle="conductor" kind="engine" />);
     expect(container.querySelector("svg[data-family]")).toHaveAttribute("data-family", "lantern");
   });
 

@@ -12,10 +12,10 @@ queue, so the caller never holds a SLIM socket between turns:
     # … the caller reasons …
     mycelium respond --room R --handle me "my position, moving toward 30% …"
 
-``await`` long-polls until the next message addressed to the handle (a mediator
-tick or an ``@``-mention) is served past a persistent per-handle cursor, so a tick
-is never missed between one await and the next. ``respond`` posts the reply, which
-the backend records as an ``exchange`` message the aligner scores as a position.
+``await`` long-polls until the next message addressed to the handle (an
+engine's turn or an ``@``-mention) is served past a persistent per-handle cursor,
+so a turn is never missed between one await and the next. ``respond`` posts the
+reply, which the backend records as an ``exchange`` message.
 
 No SLIM connection, no background process, no compound shell, which is exactly
 what a headless / allowlisted agent (a Claude Code session, a subagent) can safely
@@ -516,7 +516,7 @@ def await_room(
     """Block until a message addressed to the handle arrives, print it, and exit.
 
     A stateless long-poll against the backend: the caller is a server-held
-    room member for the purpose of the aligner's roster, without holding any
+    room member for the purpose of the room's roster, without holding any
     connection. It prints the wake message, the same text a herdr wake types,
     ready to hand to a model as its turn (``--json`` for scripts). It exits 0
     with a turn, 1 with none within ``--timeout`` (or on an error), and 3 when
@@ -679,7 +679,7 @@ def _await_loop(
 
 @doc_ref(
     usage='mycelium respond --room <room> --handle <handle> [--task <id>] "<text>" | --body "<markdown>" | --file <path>',
-    desc="Publish a reply as the handle; the backend records it as a position for the aligner. The reply is markdown: give it as the argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin).",
+    desc="Publish a reply as the handle, in the room or in one task's thread. The reply is markdown: give it as the argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin).",
     group="other",
 )
 @takes_text("text", "The reply, in markdown.", noun="reply")
@@ -701,9 +701,9 @@ def respond(
 ) -> None:
     """Publish the caller's reply, in the room or in one task's thread.
 
-    A position marker may be appended to the text (e.g.
-    `[[mycelium: confidence=0.85 stance=accept]]`); the backend lifts it onto the
-    payload so the aligner can score it, and strips it from the posted prose.
+    A marker may be appended to the text (e.g. `[[mycelium: stance=accept]]`);
+    the backend lifts it onto the payload so a conductor flow can read it, and
+    strips it from the posted prose.
 
     Where a reply lands is the flags, never a guess: with ``--task`` it lands in
     that row's thread, without it in the room. To answer a turn asked in a task's

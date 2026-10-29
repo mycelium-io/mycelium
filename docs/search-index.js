@@ -28,7 +28,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#how-it-works-rooms-and-their-members",
     "t": "Rooms and their members",
     "s": "How It Works",
-    "x": "A room is where a team works. One room per team or project is a good size. Each room has a chat, a board, memory and these members: Member Where it runs What it is People The app or a browser You and your teammates. Your agents Your own machine Coding agents such as Claude Code, Codex or OpenCode, running in your folders with your tools. Engines The hub Helpers that come with Mycelium, such as the aligner, the conduc",
+    "x": "A room is where a team works. One room per team or project is a good size. Each room has a chat, a board, memory and these members: Member Where it runs What it is People The app or a browser You and your teammates. Your agents Your own machine Coding agents such as Claude Code, Codex or OpenCode, running in your folders with your tools. Engines The hub Helpers that come with Mycelium, such as the conductor, personas",
     "p": "Get Started"
   },
   {
@@ -42,7 +42,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#how-it-works-how-an-agent-hears-about-work",
     "t": "How an agent hears about work",
     "s": "How It Works",
-    "x": "The hub keeps every message meant for an agent until the agent asks for it. Nothing is missed while an agent is busy or stopped. An agent asks with mycelium await, which returns the next message for it, such as a mention or a turn from the conductor or aligner. What makes the agent ask depends on how it runs: In a herdr terminal on your machine. This is how the app and mycelium swarm start agents. When an agent is me",
+    "x": "The hub keeps every message meant for an agent until the agent asks for it. Nothing is missed while an agent is busy or stopped. An agent asks with mycelium await, which returns the next message for it, such as a mention or a turn from the conductor. What makes the agent ask depends on how it runs: In a herdr terminal on your machine. This is how the app and mycelium swarm start agents. When an agent is mentioned, gi",
     "p": "Get Started"
   },
   {
@@ -70,7 +70,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#how-it-works-words-used-in-these-docs",
     "t": "Words used in these docs",
     "s": "How It Works",
-    "x": "Word Means hub The server that holds the rooms. room A shared space with a chat, a board and memory. member Anyone in a room: a person, an agent or an engine. handle A member's name in a room, such as @builder. mention @handle in a message, which asks that member for something. @~handle names them without asking. agent A coding agent you run, such as Claude Code. engine A helper that runs on the hub: aligner, conduct",
+    "x": "Word Means hub The server that holds the rooms. room A shared space with a chat, a board and memory. member Anyone in a room: a person, an agent or an engine. handle A member's name in a room, such as @builder. mention @handle in a message, which asks that member for something. @~handle names them without asking. agent A coding agent you run, such as Claude Code. engine A helper that runs on the hub: conductor, synth",
     "p": "Get Started"
   },
   {
@@ -100,7 +100,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "walkthrough.html#walk-engines",
     "t": "4. Add the room's engines",
-    "x": "Engines are helpers that run on the hub. Two of them are behind choices the app offers on a task. The conductor runs Review, a flow where one agent does the work and another checks it. The aligner runs Settle, a negotiation that helps agents who disagree settle on one answer. A new room has neither, so add them now. Open Members, press Add and choose Engine. Pick conductor and press Add to room. Do the same for align",
+    "x": "Engines are helpers that run on the hub. The conductor is behind the choices the app offers on a task: Review, a flow where one agent does the work and another checks it, and Settle, a flow that helps agents who disagree agree on one answer. A new room doesn't have it, so add it now. Open Members, press Add and choose Engine. Pick conductor and press Add to room. Keep the handle the dialog fills in, conductor, becaus",
     "p": "Walkthrough"
   },
   {
@@ -112,13 +112,13 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "walkthrough.html#walk-thread",
     "t": "6. Watch it work",
-    "x": "Click a task to open its thread. Everything about that task happens there, which keeps the room's chat readable while agents work. When a task runs a flow such as a review, the top of the thread shows which step it's on and whose turn it is. While a flow runs, only the member whose turn it is can post in the thread. While the aligner negotiates, only the agents taking part can post. The rest of the time anyone in the",
+    "x": "Click a task to open its thread. Everything about that task happens there, which keeps the room's chat readable while agents work. When a task runs a flow such as a review, the top of the thread shows which step it's on and whose turn it is. While a flow runs, only the member whose turn it is can post in the thread. The rest of the time anyone in the room can reply, and the agents read it. To name someone without ask",
     "p": "Walkthrough"
   },
   {
-    "u": "walkthrough.html#walk-aligner",
+    "u": "walkthrough.html#walk-disagree",
     "t": "7. When agents disagree",
-    "x": "Sometimes two agents want different things and talking isn't settling it. For example, the reviewer wants a new table for gift messages and the builder wants a column on orders. Bring in the aligner by mentioning @aligner in the task's thread or by choosing Settle under +. It asks each side what they need and proposes terms. It stops as soon as they agree. When they agree, the aligner files the agreed work as new tas",
+    "x": "Sometimes two agents want different things and talking isn't settling it. For example, the reviewer wants a new table for gift messages and the builder wants a column on orders. Choose Settle under + in the task's thread, and the conductor runs its concord flow on the task. Each agent rates two reference outcomes, proposes one option and says why, then rates every option with a reason. The agent least happy with the ",
     "p": "Walkthrough"
   },
   {
@@ -220,7 +220,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#board-when-agents-disagree",
     "t": "When agents disagree",
     "s": "Board",
-    "x": "Usually talking is enough. When it isn't, bring the aligner into the task. In the app, mention @aligner in the thread or choose Settle under +. From the command line: mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" When the agents agree, the aligner files the agreed work as new tasks under this one. A conductor flow such as concord saves its decision to the room's memory instead. Ei",
+    "x": "Usually talking is enough. When it isn't, run the conductor's concord flow on the task. In the app, choose Settle under +. From the command line: mycelium board coordinate work/pick-token-storage conductor \"concord: keychain, or WebCrypto?\" The agents propose and rate options until they agree on one, or the best one found stands, and the decision is saved to the room's memory. The task itself is unchanged. It stays o",
     "p": "Concepts"
   },
   {
@@ -288,28 +288,28 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "concepts.html#episodes",
     "t": "Episodes",
-    "x": "An episode is one run of an engine inside a task's thread. It's either a conductor flow or an aligner negotiation. It runs in the task's thread rather than in a thread of its own, so its turns sit in the task's conversation where everyone in the room can read them. When it ends, the task stays open. Room Task Episode Lasts Until you delete it Until it's resolved One run Holds Memory, tasks, the chat Its thread and st",
+    "x": "An episode is one run of a conductor flow inside a task's thread. It runs in the task's thread rather than in a thread of its own, so its turns sit in the task's conversation where everyone in the room can read them. When it ends, the task stays open. Room Task Episode Lasts Until you delete it Until it's resolved One run Holds Memory, tasks, the chat Its thread and status Its turns and result How many One per team o",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#episodes-starting-one",
     "t": "Starting one",
     "s": "Episodes",
-    "x": "In a task's thread in the app, choose Review or Settle under +, or mention the engine. Review is a conductor flow and Settle is an aligner negotiation. From the command line: mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" mycelium board coordinate work/pick-token-storage conductor \"review @~builder @~reviewer: the storage change\" The engine has to be in the room first. Add it with ",
+    "x": "In a task's thread in the app, choose Review or Settle under +, or mention the engine. Review runs the conductor's review flow and Settle runs its concord flow. From the command line: mycelium board coordinate work/pick-token-storage conductor \"concord: keychain, or WebCrypto?\" mycelium board coordinate work/pick-token-storage conductor \"review @~builder @~reviewer: the storage change\" The engine has to be in the roo",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#episodes-what-an-episode-doesnt-change",
     "t": "What an episode doesn't change",
     "s": "Episodes",
-    "x": "It doesn't resolve the task. board resolve does. It doesn't change who holds the task. A failed negotiation doesn't take the task from whoever has it. It doesn't edit the task. What it agrees is saved separately. An aligner agreement becomes new tasks under this one. A concord or accord result goes to the room's memory under context/. While an episode runs, fewer members can post in the thread. During a flow, only th",
+    "x": "It doesn't resolve the task. board resolve does. It doesn't change who holds the task. A concord that ends without agreement doesn't take the task from whoever has it. It doesn't edit the task. What it agrees is saved separately. A concord or accord result goes to the room's memory under context/. While an episode runs, only the member whose turn it is can post in the thread.",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#episodes-the-record",
     "t": "The record",
     "s": "Episodes",
-    "x": "Every flow and negotiation is saved in the room's memory at log/episodes/{id}.md whether it succeeded or not. The record says who took part, what was said and how it ended. It's a memory like any other, so you can search it later when someone asks why the team decided something. When agents said how confident they were, a negotiation's record can also carry quality scores. See Messages.",
+    "x": "Every flow and negotiation is saved in the room's memory at log/episodes/{id}.md whether it succeeded or not. The record says who took part, what was said and how it ended. It's a memory like any other, so you can search it later when someone asks why the team decided something. A concord record also says how satisfied each member is with the pick. See Messages.",
     "p": "Concepts"
   },
   {
@@ -410,14 +410,14 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "engines.html#engines",
     "t": "Overview",
-    "x": "Engines are helpers that come with Mycelium and run on the hub, so there's nothing to install or keep running. You add one to a room. It does nothing until someone mentions it or gives it a task. The verifier is the one exception: it reads every message agents post in the room. Most engines help the room work rather than do the work themselves. The conductor keeps turns in order, the aligner helps agents that disagre",
+    "x": "Engines are helpers that come with Mycelium and run on the hub, so there's nothing to install or keep running. You add one to a room. It does nothing until someone mentions it or gives it a task. The verifier is the one exception: it reads every message agents post in the room. Most engines help the room work rather than do the work themselves. The conductor keeps turns in order and helps agents that disagree, and th",
     "p": "Engines"
   },
   {
     "u": "engines.html#engines-kinds",
     "t": "Kinds",
     "s": "Overview",
-    "x": "Kind What it does conductor Runs a flow inside a task. A flow is a set sequence of turns, such as a proposal followed by a review. aligner Runs a negotiation that helps agents who disagree settle on one answer. synthesizer Summarizes the room's conversation into a memory. persona Plays a character you describe, for demos and dry runs. worker A coding agent on the hub. It takes tasks, does them and reviews other membe",
+    "x": "Kind What it does conductor Runs a flow inside a task. A flow is a set sequence of turns, such as a proposal followed by a review. synthesizer Summarizes the room's conversation into a memory. persona Plays a character you describe, for demos and dry runs. worker A coding agent on the hub. It takes tasks, does them and reviews other members' work. verifier Spots common failures of agents working together, like an app",
     "p": "Engines"
   },
   {
@@ -476,33 +476,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Engines"
   },
   {
-    "u": "engines.html#aligner",
-    "t": "Aligner",
-    "x": "The aligner helps agents who disagree settle on one answer. It works out what they're actually disagreeing about. Then it goes back and forth with each of them until they all accept the same offer or it's clear they won't. It usually runs on a task, since that's usually where the disagreement is. Add it to the room once. A room that hasn't added one has no aligner: mentioning @aligner there starts nothing, and says o",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#aligner-how-a-negotiation-goes",
-    "t": "How a negotiation goes",
-    "s": "Aligner",
-    "x": "Positions. Before the aligner starts, each agent says where it stands in the thread. The aligner takes each agent's latest message as its opening position. Being specific helps. An agent should say what matters to it, what it would give up and what it won't accept. If every agent has already said the same thing, the aligner records the agreement at once and asks nobody anything. Who takes part. The agents you name in",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#aligner-stopping-a-negotiation",
-    "t": "Stopping a negotiation",
-    "s": "Aligner",
-    "x": "Anyone can stop a negotiation that's running: press Stop beside negotiating at the bottom of the room, or run: mycelium engine stop -r sprint-plan It ends before its next turn, records no agreement, and posts a line saying who stopped it. Agents don't need to know any protocol to take part. They just answer in prose. They can end a reply with a marker that says how confident they are. The negotiation runs on NEGMAS, ",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#aligner-settings",
-    "t": "Settings",
-    "s": "Aligner",
-    "x": "Set these in the hub's config.toml. Then run mycelium config apply and restart the hub: Setting Default What it does aligner.term_check true Check for words used in different senses before negotiating. aligner.round_timeout_s 30 Seconds an agent has to answer a round. aligner.max_steps 20 The most rounds a negotiation can run. Most finish well before this. aligner.pi_timeout_s 120 Seconds one model call can take. ali",
-    "p": "Engines"
-  },
-  {
     "u": "engines.html#synthesizer",
     "t": "Synthesizer",
     "x": "The synthesizer reads what's been said in the room, task threads included, and writes a summary into the room's memory. Decisions often get made in conversation and then scroll away. The synthesizer writes them down where they can be found later. mycelium engine create synthesizer --kind synthesizer --room sprint-plan # Summarize what's been said since the last time mycelium engine invoke synthesizer \"catch us up\" -r",
@@ -546,7 +519,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#persona-things-to-know",
     "t": "Things to know",
     "s": "Persona",
-    "x": "A persona can't mention anyone. It can't start other engines or set off another persona, so two personas won't get stuck replying to each other. It waits its turn. In a flow, it only answers when it's asked. The aligner won't include it unless you name it. The aligner invites the agents that are listening in mycelium await, and a persona never is. Name it in the same message, as in @aligner @api @sec. Its conversatio",
+    "x": "A persona can't mention anyone. It can't start other engines or set off another persona, so two personas won't get stuck replying to each other. It waits its turn. In a flow, it only answers when it's asked. Its conversation history isn't room memory. The hub keeps it in a temporary folder, so rebuilding a Docker hub's container starts each persona's conversation afresh. Its character in agents/<handle>/notes is room",
     "p": "Engines"
   },
   {
@@ -830,7 +803,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#models-what-uses-it",
     "t": "What uses it",
     "s": "Setup › Models",
-    "x": "One model, set on the hub, is used by every engine that thinks: the aligner, which helps agents agree when they disagree; personas, which play a character you describe; workers, which take tasks off the board and do them; the synthesizer, which writes summaries of a room; hello, which just replies; the step that turns an aligner agreement into tasks on the board. The conductor uses no model, because it follows a flow",
+    "x": "One model, set on the hub, is used by every engine that thinks: personas, which play a character you describe; workers, which take tasks off the board and do them; the synthesizer, which writes summaries of a room; the verifier, which checks what agents claim; hello, which just replies. The conductor uses no model, because it follows a flow in code. There's no way yet to give different engines different models. Agent",
     "p": "Guides"
   },
   {
@@ -970,7 +943,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#herdr-why-it-matters",
     "t": "Why it matters",
     "s": "Agents › Persistent Agents (herdr)",
-    "x": "An agent that runs mycelium await --loop is told about each new message without help. The hub remembers where it left off, so it never misses one. But a coding agent sitting idle at its prompt isn't waiting for messages, so nothing reaches it. herdr and the runner cover that case. When the agent is mentioned, given a turn by the conductor or aligner or assigned a task, the runner types a wake-up into its pane that sa",
+    "x": "An agent that runs mycelium await --loop is told about each new message without help. The hub remembers where it left off, so it never misses one. But a coding agent sitting idle at its prompt isn't waiting for messages, so nothing reaches it. herdr and the runner cover that case. When the agent is mentioned, given a turn by the conductor or assigned a task, the runner types a wake-up into its pane that says why. The",
     "p": "Guides"
   },
   {
@@ -1026,7 +999,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#ephemeral-agents-taking-part-not-just-posting",
     "t": "Taking part, not just posting",
     "s": "Agents › Ephemeral Agents",
-    "x": "room send only posts. For the agent to take a turn in a negotiation or a flow, use await and respond. The job has to stay up long enough to answer. By default the aligner gives each agent 30 seconds a round. mycelium await --handle ci-runner --timeout 120 mycelium respond --handle ci-runner \"I can hold the deploy until the bench lands.\" respond needs a registered handle. Register it once from any machine that can rea",
+    "x": "room send only posts. For the agent to take a turn in a flow, use await and respond. The job has to stay up long enough to answer. The conductor gives each member five minutes to answer a step. mycelium await --handle ci-runner --timeout 120 mycelium respond --handle ci-runner \"I can hold the deploy until the bench lands.\" respond needs a registered handle. Register it once from any machine that can reach the hub: my",
     "p": "Guides"
   },
   {
@@ -1663,7 +1636,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-no-model-configured",
     "t": "No model configured",
     "s": "Help › Troubleshooting",
-    "x": "You see: mycelium doctor says the model check is not configured or auth failed. Or engines like the aligner don't answer. In the desktop app, set it in Settings → Model. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"sk-ant-...\" mycelium config apply mycelium up mycelium doctor makes a real model call. Besides a missing key, it catches a wrong model",
+    "x": "You see: mycelium doctor says the model check is not configured or auth failed. Or engines like a persona don't answer. In the desktop app, set it in Settings → Model. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"sk-ant-...\" mycelium config apply mycelium up mycelium doctor makes a real model call. Besides a missing key, it catches a wrong model n",
     "p": "Guides"
   },
   {
@@ -2604,7 +2577,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#cli-other",
     "t": "mycelium respond --room <room> --handle <handle> [--task <id>] \"<text>\" | --body \"<markdown>\" | --file <path>",
     "s": "CLI Reference",
-    "x": "Publish a reply as the handle; the backend records it as a position for the aligner. The reply is markdown: give it as the argument, --body, or --file (- reads stdin).",
+    "x": "Publish a reply as the handle, in the room or in one task's thread. The reply is markdown: give it as the argument, --body, or --file (- reads stdin).",
     "k": "cmd",
     "p": "Reference"
   },
@@ -2640,7 +2613,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#dependencies-cognition",
     "t": "Cognition",
     "s": "Dependencies",
-    "x": "Component Pinned version Role Upstream negmas >=0.15.7 backend / >=0.11 CLI engine extra The Stacked Alternating Offers mechanism the aligner runs yasserfarouk/negmas anthropic >=0.40.0 LLM client for backend cognition stages anthropic-sdk-python Pi (pi binary) shipped in the backend image The aligner's brain and every one-shot cognition turn external binary, not a Python dependency",
+    "x": "Component Pinned version Role Upstream anthropic >=0.40.0 LLM client for backend cognition stages anthropic-sdk-python Pi (pi binary) shipped in the backend image Every model call the hub makes: personas, workers, the synthesizer and the verifier external binary, not a Python dependency",
     "p": "Reference"
   },
   {
@@ -2660,7 +2633,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#board-reference-commands",
     "t": "Commands",
     "s": "Board",
-    "x": "mycelium board # what needs a person mycelium board new \"Ship passkey login\" # add a task mycelium board new \"Pick storage\" --parent work/ship-passkey-login --assign @sec mycelium board send work/auth-spike \"@sec keychain?\" # post in a task's thread mycelium board messages work/auth-spike # read a task's thread mycelium board coordinate work/auth-spike aligner \"agree on token storage\" mycelium board claim work/auth-s",
+    "x": "mycelium board # what needs a person mycelium board new \"Ship passkey login\" # add a task mycelium board new \"Pick storage\" --parent work/ship-passkey-login --assign @sec mycelium board send work/auth-spike \"@sec keychain?\" # post in a task's thread mycelium board messages work/auth-spike # read a task's thread mycelium board coordinate work/auth-spike conductor \"concord: agree on token storage\" mycelium board claim ",
     "p": "Reference"
   },
   {
@@ -2742,14 +2715,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#messages-reading-the-score",
     "t": "Reading the score",
     "s": "Messages",
-    "x": "When enough agents report confidence, a negotiation's record includes a score. These are IoC metrics, from the Internet of Cognition L9 work: Metric Stands for What it tells you mpc mean final confidence How sure the team is at the end, from 0 to 1. gar genuine agreement rate The share of agents whose confidence moved toward the final answer, meaning they were persuaded. 0 to 1. scr social compliance ratio The share ",
+    "x": "A concord run that picks an option records how each member sees the pick in its closing commit, under metrics: Metric What it tells you satisfaction For each member, where the pick sits between that member's bad outcome (0) and its ideal (1). min_satisfaction The lowest of those, which is the number the bar is checked against. Two runs can both end with an option picked and mean very different things. A min_satisfact",
     "p": "Reference"
   },
   {
     "u": "reference.html#messages-the-record",
     "t": "The record",
     "s": "Messages",
-    "x": "Every negotiation is saved at log/episodes/{id}.md whether it agreed or not. See episodes. In the record, each message points to the ones it answers. The negotiation's full id looks like urn:ioc:mycelium:episode:{room}:{id}.",
+    "x": "Every flow and negotiation is saved at log/episodes/{id}.md whether it agreed or not. See episodes. In the record, each message points to the ones it answers. The run's full id looks like urn:ioc:mycelium:episode:{room}:{id}.",
     "p": "Reference"
   },
   {

@@ -12,7 +12,7 @@ vi.mock("@/lib/room-data", () => ({
   useRoomRoster: () => ({
     agents: [
       { handle: "builder", adapter: "claude_code", runner: "studio-mini" },
-      { handle: "aligner", adapter: "engine" },
+      { handle: "conductor", adapter: "engine" },
       { handle: "partner", adapter: "a2a" },
     ],
   }),
@@ -52,11 +52,11 @@ describe("an agent's @ tag", () => {
   it("stays plain for an engine, an A2A member and a person", () => {
     inRoom(
       <>
-        <AgentTag handle="aligner" /> <AgentTag handle="partner" /> <AgentTag handle="julia" />
+        <AgentTag handle="conductor" /> <AgentTag handle="partner" /> <AgentTag handle="julia" />
       </>,
     );
     expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByText(/@aligner/)).toBeTruthy();
+    expect(screen.getByText(/@conductor/)).toBeTruthy();
   });
 
   it("stays plain outside a room", () => {
@@ -93,14 +93,14 @@ describe("who is responding", () => {
       unmount();
       return got;
     };
-    expect(text(at("aligner"))).toBe("@aligner");
+    expect(text(at("conductor"))).toBe("@conductor");
     expect(text(at("growth", "finance"))).toBe("@growth and @finance");
     expect(text(at("a", "b", "c"))).toBe("@a, @b and 1 other");
     expect(text(at("a", "b", "c", "d"))).toBe("@a, @b and 2 others");
   });
 
   it("opens an agent from its name on the line", () => {
-    line(at("builder", "aligner"));
+    line(at("builder", "conductor"));
     expect(screen.getAllByRole("button")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Open @builder" }));
     expect(screen.getByTestId("drawer").textContent).toBe("builder on studio-mini");

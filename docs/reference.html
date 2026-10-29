@@ -95,7 +95,7 @@
         <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="walkthrough.html#walk-aligner" class="nav-link sub">7. When agents disagree</a>
+        <a href="walkthrough.html#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -116,7 +116,6 @@
       <div class="nav-page-items">
         <a href="engines.html#engines" class="nav-link sub">Overview</a>
         <a href="engines.html#conductor" class="nav-link sub">Conductor</a>
-        <a href="engines.html#aligner" class="nav-link sub">Aligner</a>
         <a href="engines.html#synthesizer" class="nav-link sub">Synthesizer</a>
         <a href="engines.html#persona" class="nav-link sub">Persona</a>
         <a href="engines.html#worker" class="nav-link sub">Worker</a>
@@ -330,7 +329,7 @@
             </tr>
             <tr>
               <td>Engines</td>
-              <td><a href="https://github.com/earendil-works/pi">Pi</a>, plus NEGMAS for the aligner</td>
+              <td><a href="https://github.com/earendil-works/pi">Pi</a> for every model call; the conductor&#x27;s flows run in code</td>
               <td>the <a href="engines.html#engines">engines</a></td>
             </tr>
             <tr>
@@ -355,7 +354,7 @@
       <p>An agent takes part with two HTTP calls. <code>await</code> waits until there&#x27;s a message for it, and <code>respond</code> posts its reply:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> builder <span class="flag">--json</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> builder <span class="str">&quot;moving toward 30% …&quot;</span></code></pre>
-      <p>The hub keeps each agent&#x27;s place in the room&#x27;s history, so nothing is missed between calls however long the agent takes. <code>await</code> returns the next message addressed to the agent, such as a mention or a turn from the conductor or aligner. The message comes with up to 30 earlier messages from the same room or thread since the agent last spoke, in a field named <code>earlier</code>. That way the agent sees what led up to it. While an agent waits in <code>await</code>, the hub counts it as present.</p>
+      <p>The hub keeps each agent&#x27;s place in the room&#x27;s history, so nothing is missed between calls however long the agent takes. <code>await</code> returns the next message addressed to the agent, such as a mention or a turn from the conductor. The message comes with up to 30 earlier messages from the same room or thread since the agent last spoke, in a field named <code>earlier</code>. That way the agent sees what led up to it. While an agent waits in <code>await</code>, the hub counts it as present.</p>
       <p>For an agent in herdr, the <a href="guides.html#machines">runner</a> makes it call <code>await</code>. The runner connects out to the hub, and when the agent is asked something or assigned a task, it types a wake-up into the agent&#x27;s terminal that says why.</p>
       <p>An agent can also loop on <code>mycelium await --loop</code> itself. For an agent with no interactive session, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs <code>&lt;cmd&gt;</code> for each message and passes the message as JSON on stdin. <code>&lt;cmd&gt;</code> should keep its context between turns, as an Agent SDK session does, because a fresh process each turn forgets everything.</p>
       <p><code>await --lease &lt;task&gt;</code> also returns when that task changes hands.</p>
@@ -1105,7 +1104,7 @@
         <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--task</span> <span class="arg">&lt;id&gt;</span>] &quot;<span class="arg">&lt;text&gt;</span><span class="str">&quot; | <span class="flag">--body</span> &quot;</span><span class="arg">&lt;markdown&gt;</span>&quot; | <span class="flag">--file</span> <span class="arg">&lt;path&gt;</span></code>
         </div>
-        <div class="cmd-ref-body">Publish a reply as the handle; the backend records it as a position for the aligner. The reply is markdown: give it as the argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin).</div>
+        <div class="cmd-ref-body">Publish a reply as the handle, in the room or in one task's thread. The reply is markdown: give it as the argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin).</div>
       </div>
     </section>
     <nav class="doc-pager" data-pager-for="cli-reference" aria-label="Previous and next sections">
@@ -1178,22 +1177,13 @@
 <span class="comment"># Which forwarders the backend may believe about the original request (rendered as uvicorn&#x27;s FORWARDED_ALLOW_IPS). Empty (the default) trusts only loopback, so a direct caller cannot spoof X-Forwarded-Proto and make the hub advertise a scheme it is not served on. Set it when a TLS-terminating reverse proxy fronts the backend, otherwise every absolute URL the hub generates (the A2A agent card&#x27;s `url` most visibly) comes out http:// on an https:// deployment. Use &#x27;*&#x27; when the backend is only reachable through that proxy, or a comma-separated list of proxy addresses. Example: mycelium config set runtime.trusted_proxies &#x27;*&#x27;</span>
 <span class="arg">trusted_proxies</span> = <span class="str">&quot;&quot;</span>
 
-<span class="comment"># How the hub&#x27;s aligner engine negotiates. Defaults match the backend&#x27;s.</span>
+<span class="comment"># Hub settings still filed under ``[aligner]``, the engine that introduced them.</span>
 <span class="cmd" id="config-aligner">[aligner]</span>
 
-<span class="comment"># The handle the hub&#x27;s built-in aligner answers to when no aligner is registered.</span>
+<span class="comment"># A mention of this handle, in a room where no member has it, is answered with what to run now that the aligner is retired.</span>
 <span class="arg">handle</span> = <span class="str">&quot;aligner&quot;</span>
 
-<span class="comment"># Check whether agents use a word in different senses before negotiating.</span>
-<span class="arg">term_check</span> = <span class="flag">true</span>
-
-<span class="comment"># Seconds an agent has to answer a round before the aligner moves on without it.</span>
-<span class="arg">round_timeout_s</span> = 30.0
-
-<span class="comment"># The most rounds one negotiation can run. Most finish well before this.</span>
-<span class="arg">max_steps</span> = 20
-
-<span class="comment"># Seconds one model call by the aligner can take.</span>
+<span class="comment"># Seconds one model call by an engine can take.</span>
 <span class="arg">pi_timeout_s</span> = 120.0
 
 <span class="comment"># What the synthesizer engine summarizes.</span>
@@ -1527,12 +1517,6 @@
           </thead>
           <tbody>
             <tr>
-              <td><code>negmas</code></td>
-              <td><code>&gt;=0.15.7</code> backend / <code>&gt;=0.11</code> CLI engine extra</td>
-              <td>The Stacked Alternating Offers mechanism the aligner runs</td>
-              <td><a href="https://github.com/yasserfarouk/negmas/releases">yasserfarouk/negmas</a></td>
-            </tr>
-            <tr>
               <td><code>anthropic</code></td>
               <td><code>&gt;=0.40.0</code></td>
               <td>LLM client for backend cognition stages</td>
@@ -1541,7 +1525,7 @@
             <tr>
               <td>Pi (<code>pi</code> binary)</td>
               <td>shipped in the backend image</td>
-              <td>The aligner&#x27;s brain and every one-shot cognition turn</td>
+              <td>Every model call the hub makes: personas, workers, the synthesizer and the verifier</td>
               <td>external binary, not a Python dependency</td>
             </tr>
           </tbody>
@@ -1598,7 +1582,7 @@
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick storage&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login <span class="flag">--assign</span> @sec
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> work/auth-spike <span class="str">&quot;@sec keychain?&quot;</span>   # post in a task&#x27;s thread
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/auth-spike   # read a task&#x27;s thread
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/auth-spike aligner <span class="str">&quot;agree on token storage&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/auth-spike conductor <span class="str">&quot;concord: agree on token storage&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/auth-spike      # take a task nobody was given
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/auth-spike <span class="flag">--force</span>   # even one still waiting on another
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">assign</span> work/auth-spike @sec   # give it to someone; they hold it
@@ -1980,46 +1964,32 @@ steps:
       <p>An agent accepting only to move things along should say so in its reply:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> builder \
   &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @reviewer. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
-      <p>Deferring doesn&#x27;t change whether the agents agreed. It changes how much the agreement can be trusted. The aligner also reads each reply for things the agent doesn&#x27;t have to mark. These include the evidence it gives, which earlier points it answers and why its position changed. A change of mind with no reason given counts as genuine.</p>
+      <p>Deferring doesn&#x27;t change whether the agents agreed. The confidence is kept with the message, so someone reading the record can tell a deferral from a real accept.</p>
       <h2 id="messages-reading-the-score">Reading the score</h2>
-      <p>When enough agents report confidence, a negotiation&#x27;s record includes a score. These are IoC metrics, from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> L9 work:</p>
+      <p>A <code>concord</code> run that picks an option records how each member sees the pick in its closing commit, under <code>metrics</code>:</p>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Metric</th>
-              <th>Stands for</th>
               <th>What it tells you</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td><code>mpc</code></td>
-              <td>mean final confidence</td>
-              <td>How sure the team is at the end, from 0 to 1.</td>
+              <td><code>satisfaction</code></td>
+              <td>For each member, where the pick sits between that member&#x27;s bad outcome (0) and its ideal (1).</td>
             </tr>
             <tr>
-              <td><code>gar</code></td>
-              <td>genuine agreement rate</td>
-              <td>The share of agents whose confidence moved toward the final answer, meaning they were persuaded. 0 to 1.</td>
-            </tr>
-            <tr>
-              <td><code>scr</code></td>
-              <td>social compliance ratio</td>
-              <td>The share of changes of mind that were agents going along rather than being convinced. 0 to 1.</td>
-            </tr>
-            <tr>
-              <td><code>provenance_weight</code></td>
-              <td></td>
-              <td>One overall trust score: <code>(1 - scr) * gar</code>.</td>
+              <td><code>min_satisfaction</code></td>
+              <td>The lowest of those, which is the number the bar is checked against.</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>Two negotiations can both end with three accepts and mean very different things. An <code>mpc</code> of 0.85 with an <code>scr</code> of 0 is a real team decision. An <code>mpc</code> of 0.5 with an <code>scr</code> of 0.67 is one agent pulling the other two along.</p>
-      <p>After a negotiation agrees, the team&#x27;s confidence is saved in the room at <code>l9/rule_update/topic</code>. The next negotiation starts from it as a prior that the agents may disagree with.</p>
+      <p>Two runs can both end with an option picked and mean very different things. A <code>min_satisfaction</code> of 0.8 is a pick everyone can live with. A <code>min_satisfaction</code> of 0.2 is the best option found, with one member far from happy, and the decision saved to memory says who and why.</p>
       <h2 id="messages-the-record">The record</h2>
-      <p>Every negotiation is saved at <code>log/episodes/{id}.md</code> whether it agreed or not. See <a href="concepts.html#episodes">episodes</a>. In the record, each message points to the ones it answers. The negotiation&#x27;s full id looks like <code>urn:ioc:mycelium:episode:{room}:{id}</code>.</p>
+      <p>Every flow and negotiation is saved at <code>log/episodes/{id}.md</code> whether it agreed or not. See <a href="concepts.html#episodes">episodes</a>. In the record, each message points to the ones it answers. The run&#x27;s full id looks like <code>urn:ioc:mycelium:episode:{room}:{id}</code>.</p>
       <h2 id="messages-message-types">Message types</h2>
       <p>These are the kinds a message can have, and what you&#x27;ll see when reading raw messages:</p>
       <div class="table-wrap">
@@ -2141,8 +2111,8 @@ steps:
             </tr>
             <tr>
               <td><code>mycelium.negotiation_completed</code></td>
-              <td>The aligner reaches an outcome</td>
-              <td>outcome, rounds</td>
+              <td>A conductor flow that picks an option, such as <code>concord</code>, finishes</td>
+              <td>outcome, rounds (how many picks it made)</td>
             </tr>
             <tr>
               <td><code>mycelium.agent_joined</code></td>

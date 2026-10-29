@@ -466,7 +466,7 @@ async function negotiate(d: Director, thread: string, a: string, b: string): Pro
   const tick = (round: number, who: string, action: string, offer: Record<string, string>) =>
     publish(d.room, {
       id: `tick-${round}-${who}-${action}`,
-      sender_handle: "aligner",
+      sender_handle: "conductor",
       message_type: "coordination_tick",
       episode: thread,
       content: JSON.stringify({ payload: { round, participant_id: who, action, current_offer: offer } }),
@@ -477,13 +477,13 @@ async function negotiate(d: Director, thread: string, a: string, b: string): Pro
     topic: `urn:concept:mycelium:${d.room}`,
     outcome: "open",
     subkind: null,
-    participants: [a, b, "aligner"],
+    participants: [a, b, "conductor"],
     metrics: null,
     assignments: null,
     tasks: [],
     message_count: 0,
     updated_at: new Date().toISOString(),
-    updated_by: "aligner",
+    updated_by: "conductor",
     within: thread,
   };
   d.fx.episodes.push(summary);
@@ -491,9 +491,9 @@ async function negotiate(d: Director, thread: string, a: string, b: string): Pro
     d.join(who, "where carts live", thread);
     await sleep(300);
   }
-  await d.think("aligner", thread, 2600);
+  await d.think("conductor", thread, 2600);
   d.say(
-    "aligner",
+    "conductor",
     "You agree on the goal: a cart that follows the customer for 30 days. @web is worried about a write on every " +
       "tap, @api about losing carts on a restart. So the issue is where a cart is kept, and how often it's written.",
     thread,
@@ -501,20 +501,20 @@ async function negotiate(d: Director, thread: string, a: string, b: string): Pro
   tick(1, a, "propose", { store: "redis" });
   await sleep(800);
   tick(1, b, "counter", { store: "postgres" });
-  await d.think("aligner", thread, 2600);
+  await d.think("conductor", thread, 2600);
   const deal = { store: "postgres", writes: "batched, at most one every 5 seconds per cart" };
   d.say(
-    "aligner",
+    "conductor",
     "Proposal: carts live in Postgres, so they survive a restart for 30 days. The server batches a cart's changes " +
       "and writes at most once every 5 seconds, so a burst of taps is one write. @web?",
     thread,
   );
-  tick(2, "aligner", "propose", deal);
+  tick(2, "conductor", "propose", deal);
   await d.think(a, thread, 2000);
   d.say(a, "Works for me. Batching was the whole worry.", thread);
   tick(2, a, "accept", deal);
-  await d.think("aligner", thread, 800);
-  d.say("aligner", "@api?", thread);
+  await d.think("conductor", thread, 800);
+  d.say("conductor", "@api?", thread);
   await d.think(b, thread, 2000);
   d.say(b, "Yes. Durable, and the write load is fine at one every 5 seconds.", thread);
   tick(2, b, "accept", deal);
@@ -535,7 +535,7 @@ async function negotiate(d: Director, thread: string, a: string, b: string): Pro
     content: JSON.stringify({ plan: "where carts live", assignments, episode: thread, metrics: { gar: 0.9 } }),
   });
   d.say(
-    "aligner",
+    "conductor",
     "✓ Agreed: carts live in Postgres for 30 days, and a cart is written at most once every 5 seconds.",
     thread,
   );
@@ -1573,7 +1573,7 @@ export function learnOnMessage(fx: RoomFixture, room: string, m: MockMessage): v
       if (thread === CART_THREAD && /@api\b/.test(text) && once("learn:ask-api")) void pairingTalk(d);
       break;
     case "pairing-disagree":
-      if (thread === CART_THREAD && /@aligner\b/.test(text) && once("learn:aligner")) void negotiate(d, thread, "web", "api");
+      if (thread === CART_THREAD && /@conductor\s+concord\b/.test(text) && once("learn:carts")) void negotiate(d, thread, "web", "api");
       break;
     case "swarm-steer":
       if (thread === d.ep(PARTS[1].short) && once("learn:steer")) void swarmFinish(d);

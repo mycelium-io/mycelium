@@ -266,14 +266,6 @@ const BASE: Shot[] = [
     ],
     caption: "Asking an agent: @ lists the room's members, and the hints name @~ and @!.",
   },
-  {
-    id: "walk-aligner",
-    route: "/room/checkout?focus=message:neg-say-1",
-    theme: "dark",
-    viewport: "desktop",
-    actions: ["sleep:1200"],
-    caption: "The aligner asking each side in turn until they agree.",
-  },
 
   // ── The verifier (docs/verifier.html and its engine page), in both themes ──
   // Scrolled to rather than opened with ?focus=, which selects the message and

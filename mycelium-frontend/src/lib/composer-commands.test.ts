@@ -97,7 +97,7 @@ describe("parseCommand", () => {
   });
 
   it("is past the last argument when more is typed than it takes", () => {
-    expect(parseCommand("/engine aligner judge extra")?.active).toBeNull();
+    expect(parseCommand("/engine conductor judge extra")?.active).toBeNull();
   });
 
   it("gives a rest argument the whole remainder, whatever is in it", () => {
@@ -142,7 +142,7 @@ describe("parseSummon", () => {
   const at = (text: string, cursor = text.length) => parseSummon(text, cursor, ["conductor"], flows);
 
   it("is only a summon when a conductor is mentioned first", () => {
-    expect(at("@aligner gated")).toBeNull();
+    expect(at("@synthesizer gated")).toBeNull();
     expect(at("hey @conductor gated")).toBeNull();
     expect(at("@conductor")?.active).toBeNull();
     expect(at("@Conductor ")?.engine).toBe("conductor");

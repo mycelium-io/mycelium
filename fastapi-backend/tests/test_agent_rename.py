@@ -336,10 +336,10 @@ async def test_a_taken_handle_is_refused_and_the_old_one_is_free(client, room):
 @pytest.mark.asyncio
 async def test_an_engine_is_not_renamed(client, room):
     resp = await client.post(
-        f"/api/rooms/{ROOM}/engines", json={"handle": "aligner", "kind": "aligner"}
+        f"/api/rooms/{ROOM}/engines", json={"handle": "conductor", "kind": "conductor"}
     )
     assert resp.status_code in (200, 201), resp.text
-    resp = await _rename(client, "mediator", old="aligner")
+    resp = await _rename(client, "mediator", old="conductor")
     assert resp.status_code == 422
     assert "engine" in resp.json()["detail"]
 

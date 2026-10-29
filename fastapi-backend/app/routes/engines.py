@@ -3,12 +3,12 @@
 
 """POST /rooms/{room_name}/engines — register a first-party cognition engine.
 
-Engines (``aligner``, ``synthesizer``, ``hello``) are backend-owned: registration is purely
+Engines (``conductor``, ``synthesizer``, ``hello``, …) are backend-owned: registration is purely
 a manifest write with *no* machine-local side effects, so — unlike
 ``claude_code``/``cursor`` agents, which need a resident session and workspace
 assets on the user's box — the web UI can invite one natively. The manifest lands
 at ``agents/<handle>`` with ``adapter: engine``, exactly like the CLI's
-``mycelium engine create``, so the summon seam (``_registered_engine_kind``) and
+``mycelium engine create``, so the summon seam (``registered_engine_kind``) and
 the ``GET .../agents`` listing pick it up like any other room citizen.
 """
 
@@ -22,6 +22,7 @@ from app.schemas import HANDLE_PATTERN, AgentRead, refusals
 from app.services import actor
 from app.services.agent_registry import norm_handle, write_agent_manifest
 from app.services.filesystem import get_room_dir, read_memory_file, room_exists
+from app.services.retired_aligner import RETIRED_KIND, RETIRED_TEXT
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +30,7 @@ router = APIRouter(prefix="/rooms/{room_name}/engines", tags=["engines"])
 
 # The engine kinds the backend knows how to run. Mirrors the CLI's
 # ``mycelium.protocol.ENGINE_KINDS``; the summon seam self-selects by ``kind``.
-ENGINE_KINDS = frozenset(
-    {"aligner", "conductor", "hello", "persona", "synthesizer", "verifier", "worker"}
-)
+ENGINE_KINDS = frozenset({"conductor", "hello", "persona", "synthesizer", "verifier", "worker"})
 
 _HANDLE_RE = re.compile(HANDLE_PATTERN)
 
@@ -40,7 +39,7 @@ class EngineCreate(BaseModel):
     """Request body to invite an engine into a room."""
 
     handle: str = Field(..., min_length=1, max_length=64)
-    kind: str = Field("aligner", description="Which cognition engine to run.")
+    kind: str = Field(..., description="Which cognition engine to run.")
     description: str = ""
     allow_from: list[str] = Field(
         default_factory=list, description="Sender handles allowed to summon (empty = anyone)."
@@ -64,6 +63,8 @@ async def create_engine(room_name: str, payload: EngineCreate, request: Request)
     registrar = actor.bind_optional_actor(request, payload.created_by, field="created_by")
 
     kind = payload.kind.strip().lower()
+    if kind == RETIRED_KIND:
+        raise HTTPException(status_code=422, detail=RETIRED_TEXT)
     if kind not in ENGINE_KINDS:
         raise HTTPException(
             status_code=422,
@@ -110,35 +111,3 @@ async def create_engine(room_name: str, payload: EngineCreate, request: Request)
         team=body["team"],
         allow_from=body["allow_from"],
     )
-
-
-class NegotiationStop(BaseModel):
-    """Request body to stop the negotiation running in a room."""
-
-    by: str | None = Field(None, description="Who is stopping it; defaults to the caller.")
-
-
-class NegotiationStopped(BaseModel):
-    """What stopping did."""
-
-    stopped: bool
-
-
-@router.post("/stop", response_model=NegotiationStopped, responses=refusals(403, 404, 409))
-async def stop_negotiation(
-    room_name: str, payload: NegotiationStop, request: Request
-) -> NegotiationStopped:
-    """Stop the aligner's negotiation running in the room.
-
-    It ends before its next turn (a turn being waited on is cut short),
-    commits ``rejected`` with reason ``stopped``, and posts one line saying who
-    stopped it. 409 when nothing is running there.
-    """
-    if not room_exists(room_name):
-        raise HTTPException(status_code=404, detail="Room not found")
-    by = actor.bind_optional_actor(request, norm_handle(payload.by), field="by")
-    aligner = getattr(request.app.state, "aligner", None)
-    if aligner is None or not aligner.stop(room_name, by=by, reason="stopped"):
-        raise HTTPException(status_code=409, detail=f"No negotiation is running in {room_name}.")
-    logger.info("room %s: negotiation stopped by %s", room_name, by or "someone")
-    return NegotiationStopped(stopped=True)

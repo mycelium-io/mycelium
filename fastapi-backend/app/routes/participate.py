@@ -15,8 +15,8 @@ delivery queue. The agent participates with two plain, stateless HTTP calls:
   transcript, a tick is *never missed* in the gap between one await and the next —
   which is exactly what the client-held one-shot ``await`` could not guarantee.
 * ``POST /rooms/{room}/reply`` — publish the agent's reply as an ``exchange`` message
-  (role ``agent``) recorded into the transcript, which the aligner's poll scores
-  as a position.
+  (role ``agent``) recorded into the transcript, where the conductor reads its
+  stance.
 
 Both take an optional **thread** — the episode URN of a task, or of a
 negotiation inside one. A thread is a tag over the room's own channel, so this is
@@ -84,7 +84,7 @@ def _norm(handle: str) -> str:
 
 # An agent may end a reply with a position marker like
 # ``[[mycelium: confidence=0.85 stance=accept]]``; those fields are lifted onto the
-# message payload so the aligner can score convergence, and stripped from the prose.
+# message payload, where the conductor reads the stance, and stripped from the prose.
 _parse_marker = markers.parse_marker
 
 
@@ -510,7 +510,7 @@ class ReplyBody(BaseModel):
 
 @router.post("/reply", response_model=ReplyRead, responses=refusals(403, 404, 409, 503))
 async def post_reply(room_name: str, body: ReplyBody, request: Request):
-    """Publish ``handle``'s reply as an agent exchange message the aligner scores."""
+    """Publish ``handle``'s reply as an agent exchange message."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     # A verified token names the replier; unauthenticated, the body's handle does.
@@ -572,7 +572,7 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     # ``@here`` and ``@all`` reach who they reach now, kept on the reply.
     extra, _by_group = groups.on_message(room_name, text=clean, episode=episode, sender=handle)
     content = serialize_content(envelope, extra=extra)
-    # Record into the transcript (the aligner polls it for positions). SLIM does
+    # Record into the transcript (the conductor reads stances from it). SLIM does
     # not echo a broadcast back to its own sender, so a local record is required —
     # then also broadcast so any client-connected members / the UI see it.
     # ``list_write=True`` so the reply is visible in the room view immediately, the

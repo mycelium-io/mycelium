@@ -14,7 +14,7 @@ session behind any of them.
 
 It answers on two seams. A text ``@``-mention is a summon, like any engine's.
 An **addressed turn**, a ``message`` naming it as recipient without mentioning
-it (``asks.py``), which is how the aligner and the conductor put a question to
+it (``asks.py``), which is how the conductor puts a question to
 one member, reaches it through the manager's turn hook (``on_turn``),
 so a persona can fill a protocol role or a negotiation seat. Either way it
 answers where it was asked, in the thread the turn rode.
@@ -40,7 +40,8 @@ from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.services import activity, markers, message_format, turns
-from app.services.aligner import _norm, _registered_engine_kind
+from app.services.engine_kinds import norm as _norm
+from app.services.engine_kinds import registered_engine_kind
 from app.services.message_models import Kind
 from app.services.synthesizer import _strip_fences
 
@@ -187,10 +188,7 @@ class PersonaEngine:
         floor it just took, and leave the persona busy when its real turn came.
         """
         for other in co_summons or ():
-            if (
-                _norm(other) != _norm(handle)
-                and _registered_engine_kind(room, other) == "conductor"
-            ):
+            if _norm(other) != _norm(handle) and registered_engine_kind(room, other) == "conductor":
                 return
         self._fire(room, handle, envelope, message_text)
 
@@ -201,7 +199,7 @@ class PersonaEngine:
         self._fire(room, handle, envelope, message_text)
 
     def _fire(self, room: str, handle: str, envelope: MyceliumMessage, message_text: str) -> None:
-        if _registered_engine_kind(room, handle) != ENGINE_KIND:
+        if registered_engine_kind(room, handle) != ENGINE_KIND:
             return
         if settings.ENGINE_RUNTIME == "host":
             logger.info("engine @%s summoned in %s but ENGINE_RUNTIME=host", handle, room)

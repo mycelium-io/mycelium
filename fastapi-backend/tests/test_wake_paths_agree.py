@@ -64,9 +64,9 @@ def _case(draw: st.DrawFn) -> tuple[str, dict[str, Any]]:
     text = st.lists(fragment, min_size=1, max_size=4).map(" ".join)
     kind = draw(st.sampled_from(["said", "turn", "posted"]))
     if kind == "turn":
-        # The aligner or the conductor putting a step to one or more members.
+        # The conductor putting a step to one or more members.
         message = {
-            "sender": draw(st.sampled_from(["aligner", "conductor"])),
+            "sender": "conductor",
             "text": draw(st.one_of(_words, text)),
             "where": draw(_where),
             "payload": draw(st.sampled_from(["message", "tick"])),

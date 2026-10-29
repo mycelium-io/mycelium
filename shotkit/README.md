@@ -262,7 +262,7 @@ a pointer in it:
 
 ```bash
 shot video /settings --do click:Profile --do wait:.avatar --auto-zoom
-shot video / --mock --do 'fill:#search=aligner' --do press:Enter --format mp4
+shot video / --mock --do 'fill:#search=conductor' --do press:Enter --format mp4
 shot video https://example.com --do 'zoom:.pricing@2' --do zoomout --fps 24
 ```
 
