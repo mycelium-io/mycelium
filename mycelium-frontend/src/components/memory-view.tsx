@@ -170,6 +170,7 @@ export function MemoryView({
               onDirtyChange={setDirty}
               onNavigate={open}
               headerExtra={actions}
+              named={!page}
               onSaved={() => {
                 // The room's memories revalidate, which brings the new version
                 // (and its expanded body) back through the effect above.
@@ -192,6 +193,7 @@ export function MemoryView({
                 collapseBodyAt={hasDiscussion ? BODY_CLAMP_PX[layout] : null}
                 bodyFade="paper"
                 showKey
+                named={!page}
                 actions={actions}
                 bodyClassName={centered}
               />
