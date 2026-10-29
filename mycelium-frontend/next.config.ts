@@ -24,7 +24,8 @@ const nextConfig: NextConfig & { agentRules?: boolean } = {
   // `next dev` sniffs the environment for an AI coding agent (CLAUDECODE,
   // CURSOR_TRACE_ID, …) and, on a match, writes a managed AGENTS.md + CLAUDE.md
   // into the project root unprompted. Opt out to keep the dev server from
-  // mutating the working tree.
+  // mutating the working tree. From 16.4, opting out also removes that block
+  // from an AGENTS.md that has it, so neither file is committed (.gitignore).
   agentRules: false,
   // Standalone output → minimal Docker image (no full node_modules in runtime layer)
   output: "standalone",
