@@ -10,6 +10,7 @@ import {
   foldEvents,
   lanesOf,
   matches,
+  shortStamp,
   streamEventOf,
   type StreamEvent,
 } from "@/lib/room-stream";
@@ -164,6 +165,22 @@ describe("dayLabel", () => {
   it("puts two times on the same day under one date", () => {
     expect(dayOf(at(2026, 7, 27))).toBe(dayOf(new Date(2026, 7, 27, 23, 59).toISOString()));
     expect(dayOf(at(2026, 7, 27))).not.toBe(dayOf(at(2026, 7, 28)));
+  });
+});
+
+describe("shortStamp", () => {
+  const now = new Date(2026, 9, 12, 12, 0);
+  const at = (y: number, m: number, d: number) => new Date(y, m, d, 9, 30).toISOString();
+
+  it("is the clock time today, and says the day on any other", () => {
+    expect(shortStamp(at(2026, 9, 12), now)).toBe("09:30");
+    expect(shortStamp(at(2026, 9, 11), now)).toBe("Yesterday 09:30");
+    const earlier = shortStamp(at(2026, 7, 27), now);
+    expect(earlier).toMatch(/27/);
+    expect(earlier).toMatch(/09:30$/);
+    expect(earlier).not.toMatch(/2026/);
+    expect(shortStamp(at(2025, 7, 27), now)).toMatch(/2025/);
+    expect(shortStamp("not a time", now)).toBe("");
   });
 });
 
