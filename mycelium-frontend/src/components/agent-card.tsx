@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useState, type ReactElement, type ReactNode } from "react";
+import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import { PreviewCard } from "@base-ui/react/preview-card";
 import { AtSign, MessageSquare, MoreHorizontal, RotateCw, SquareTerminal } from "lucide-react";
 import { useAgentOpener } from "@/components/agent-opener";
@@ -194,12 +194,35 @@ export function AgentCardHover({
 }) {
   const opener = useAgentOpener();
   const [restart, setRestart] = useState<{ runner: Runner; agents: MachineAgent[] } | null>(null);
+  const [open, setOpen] = useState(false);
+  // A click on the name opens something bigger (the member's drawer, their
+  // terminal), so the card gets out of its way at once rather than after its
+  // close delay. It stays shut until the pointer leaves the name, or the card
+  // would open again over whatever the click opened.
+  const clicked = useRef(false);
   const at = room ?? opener?.room;
   if (!at) return children;
   return (
     <>
-      <PreviewCard.Root>
-        <PreviewCard.Trigger delay={CARD_DELAY_MS} closeDelay={150} render={children} />
+      <PreviewCard.Root
+        open={open}
+        onOpenChange={next => {
+          if (next && clicked.current) return;
+          setOpen(next);
+        }}
+      >
+        <PreviewCard.Trigger
+          delay={CARD_DELAY_MS}
+          closeDelay={150}
+          render={children}
+          onClick={() => {
+            clicked.current = true;
+            setOpen(false);
+          }}
+          onPointerLeave={() => {
+            clicked.current = false;
+          }}
+        />
         <PreviewCard.Portal>
           <PreviewCard.Positioner side={side} align="start" sideOffset={8} collisionPadding={8} className="z-50">
             <PreviewCard.Popup className="w-80 rounded-lg border border-border bg-surface p-3 text-left shadow-xl outline-none">
