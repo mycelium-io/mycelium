@@ -1103,6 +1103,47 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return json(MOCK_PROTOCOLS);
     }
 
+    case "mentions": {
+      // GET /mentions/groups — who `@here` and `@all` reach. Agents are the
+      // room's non-engine `agents/` memories, people whoever else has posted;
+      // `@here` in a thread is whoever posted in it. The sender is left out.
+      if (sub[1] !== "groups" || method !== "GET") return null;
+      const url = new URL(req.url);
+      const episode = url.searchParams.get("episode");
+      const sender = (url.searchParams.get("sender") ?? "").toLowerCase();
+      // An engine that only posts (the conductor's lines) has no manifest here.
+      const engines = new Set<string>(["aligner", "conductor", "verifier", "synthesizer"]);
+      const agents = new Set<string>();
+      for (const m of fx.memories) {
+        if (!m.key.startsWith("agents/") || m.key.slice(7).includes("/")) continue;
+        (/adapter:\s*engine/.test(manifestText(m)) ? engines : agents).add(m.key.slice(7));
+      }
+      const status = (h: string) => {
+        const s = fx.presence?.find((p) => p.handle === h)?.status;
+        return s === "working" || s === "blocked" ? s : agents.has(h) ? "idle" : null;
+      };
+      const lastPost = new Map<string, string>();
+      const everyone = new Set<string>(agents);
+      for (const msg of fx.messages) {
+        const h = msg.sender_handle;
+        if (engines.has(h) || !h) continue;
+        everyone.add(h);
+        if (episode && msg.episode === episode && (lastPost.get(h) ?? "") < msg.created_at) lastPost.set(h, msg.created_at);
+      }
+      const read = (h: string, inThread: boolean) => ({
+        handle: h,
+        kind: agents.has(h) ? "agent" : "person",
+        status: status(h),
+        posted_at: inThread ? (lastPost.get(h) ?? null) : null,
+        role: inThread ? "posted" : null,
+      });
+      const all = [...everyone].filter((h) => h.toLowerCase() !== sender).map((h) => read(h, false));
+      const here = episode
+        ? [...lastPost.keys()].filter((h) => h.toLowerCase() !== sender).map((h) => read(h, true))
+        : all;
+      return json({ here: { count: here.length, members: here }, all: { count: all.length, members: all } });
+    }
+
     case "uploads":
       return handleUploads(req, roomName, fx, sub);
 

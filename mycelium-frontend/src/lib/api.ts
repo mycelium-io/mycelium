@@ -927,6 +927,43 @@ export interface UploadList {
   max_bytes: number;
 }
 
+/** One member a group mention reaches, as the hub resolves it for delivery. */
+export interface MentionGroupMember {
+  handle: string;
+  kind: "agent" | "person";
+  status: "working" | "idle" | "blocked" | null;
+  /** When they last posted in the thread, for `@here` in one. */
+  posted_at: string | null;
+  /** Why `@here` reaches them in a thread: they posted, or the task is for them or held by them. */
+  role: "posted" | "assignee" | "holder" | null;
+}
+
+export interface MentionGroup {
+  count: number;
+  members: MentionGroupMember[];
+}
+
+/** Who `@here` and `@all` reach for this sender, in this thread or the channel. */
+export interface MentionGroups {
+  here: MentionGroup;
+  all: MentionGroup;
+}
+
+const NO_GROUP: MentionGroup = { count: 0, members: [] };
+
+export async function fetchMentionGroups(
+  roomName: string,
+  episode: string | null,
+  sender: string,
+): Promise<MentionGroups> {
+  const q = new URLSearchParams({ sender });
+  if (episode) q.set("episode", episode);
+  return apiFetch<MentionGroups>(`${roomApiPath(roomName)}/mentions/groups?${q}`, {
+    cache: "no-store",
+    fallback: { here: NO_GROUP, all: NO_GROUP },
+  });
+}
+
 export async function fetchUploads(roomName: string): Promise<UploadList> {
   return apiFetch<UploadList>(`${roomApiPath(roomName)}/uploads`, {
     cache: "no-store",

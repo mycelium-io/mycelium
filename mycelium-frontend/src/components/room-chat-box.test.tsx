@@ -95,6 +95,26 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   ]),
   fetchUploads: async () => ({ uploads: [], total: 0, accepted: ["png", "pdf", "md"], max_bytes: 1024 }),
   uploadFile: (room: string, file: File) => uploadFile(room, file),
+  fetchMentionGroups: (room: string, episode: string | null) => fetchMentionGroups(room, episode),
+}));
+
+// A busy room: sam and five agents. In the task's thread, two agents are
+// talking, so `@here` there is just those two. In the channel it's everyone.
+const member = (handle: string, kind: "agent" | "person", status: "working" | "idle" | null = null, role: "posted" | null = null) => ({
+  handle,
+  kind,
+  status,
+  posted_at: role ? "2026-10-29T10:00:00Z" : null,
+  role,
+});
+const EVERYONE = [
+  member("sam", "person"),
+  ...["builder", "reviewer", "pricing", "support", "refunds"].map((h) => member(h, "agent", "idle")),
+];
+const TALKING = [member("builder", "agent", "working", "posted"), member("reviewer", "agent", "idle", "posted")];
+const fetchMentionGroups = vi.fn(async (_room: string, episode: string | null) => ({
+  here: episode ? { count: 2, members: TALKING } : { count: 6, members: EVERYONE },
+  all: { count: 6, members: EVERYONE },
 }));
 
 const uploadFile = vi.fn(async (_room: string, file: File) => ({
@@ -516,7 +536,8 @@ describe("<RoomChatBox /> composer triggers", () => {
     await userEvent.type(box, "@");
 
     await screen.findByRole("button", { name: /@sam/ });
-    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? ""));
+    // The members, after the groups (`@here`, `@all`) that always lead.
+    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? "") && !/^@(here|all)/.test(b.textContent ?? ""));
     expect(options[0]?.textContent).toMatch(/@sam/);
   });
 
@@ -528,7 +549,7 @@ describe("<RoomChatBox /> composer triggers", () => {
     await userEvent.type(box, "@");
 
     await screen.findByRole("button", { name: /@conductor/ });
-    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? ""));
+    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? "") && !/^@(here|all)/.test(b.textContent ?? ""));
     expect(options[0]?.textContent).toMatch(/@conductor/);
   });
 
@@ -999,6 +1020,94 @@ describe("<RoomChatBox /> targeting", () => {
   it("still says it is a thread when nothing named it", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" episode="urn:ioc:mycelium:episode:demo:t9" />);
     expect(await screen.findByPlaceholderText(/Reply in this thread/)).toBeInTheDocument();
+  });
+});
+
+describe("<RoomChatBox /> @here and @all", () => {
+  beforeEach(() => {
+    sendRoomMessage.mockClear();
+  });
+
+  it("offers the groups first in a task, with who @here reaches: the two talking, not the room", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" episode="urn:e:t1" threadLabel="flip reads" />);
+    const box = await screen.findByPlaceholderText(/Reply in flip reads/);
+    await userEvent.type(box, "@");
+
+    const here = await screen.findByRole("button", { name: /@here.*2 in this task/ });
+    expect(screen.getByRole("button", { name: /@all.*6 in the room/ })).toBeInTheDocument();
+    const options = screen.getAllByRole("button").filter((b) => /^@/.test(b.textContent ?? ""));
+    expect(options[0]).toBe(here);
+
+    const card = await screen.findByRole("dialog", { name: "Who @here reaches" });
+    expect(card).toHaveTextContent("pings 2");
+    expect(card).toHaveTextContent("builder");
+    expect(card).toHaveTextContent("reviewer");
+    expect(card).not.toHaveTextContent("pricing");
+    expect(card).toHaveTextContent("The other 4 in the room can read the task, but aren't pinged.");
+  });
+
+  it("doesn't offer a group for letters it doesn't start with", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.type(box, "@s");
+    await screen.findByRole("button", { name: /@sam/ });
+    expect(screen.queryByRole("button", { name: /@here|@all/ })).toBeNull();
+  });
+
+  it("counts only the agents an interrupt would stop", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" episode="urn:e:t1" threadLabel="flip reads" />);
+    const box = await screen.findByPlaceholderText(/Reply in flip reads/);
+    await userEvent.type(box, "@!");
+    const card = await screen.findByRole("dialog", { name: "Who @!here reaches" });
+    expect(card).toHaveTextContent("interrupts 1");
+  });
+
+  it("asks before waking many agents, and sends as written on Enter", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.type(box, "@all please upgrade today");
+    await waitFor(() => expect(fetchMentionGroups).toHaveBeenCalled());
+    await userEvent.type(box, "{Enter}");
+
+    const warning = await screen.findByRole("alertdialog", { name: "Wake many agents?" });
+    expect(warning).toHaveTextContent("This wakes 5 agents, and notifies 1 person.");
+    expect(sendRoomMessage).not.toHaveBeenCalled();
+
+    await userEvent.type(box, "{Enter}");
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ content: "@all please upgrade today" });
+  });
+
+  it("sends silently from the warning, so nobody is woken", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.type(box, "@all please upgrade today");
+    await waitFor(() => expect(fetchMentionGroups).toHaveBeenCalled());
+    await userEvent.type(box, "{Enter}");
+    await userEvent.click(await screen.findByRole("button", { name: "Send silently" }));
+
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ content: "@~all please upgrade today" });
+  });
+
+  it("sends a small group without asking", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" episode="urn:e:t1" threadLabel="flip reads" />);
+    const box = await screen.findByPlaceholderText(/Reply in flip reads/);
+    await userEvent.type(box, "@here can you two agree?");
+    await waitFor(() => expect(fetchMentionGroups).toHaveBeenCalled());
+    await userEvent.type(box, "{Enter}");
+
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("never asks about a silent group", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.type(box, "@~all for the record");
+    await waitFor(() => expect(fetchMentionGroups).toHaveBeenCalled());
+    await userEvent.type(box, "{Enter}");
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
   });
 });
 

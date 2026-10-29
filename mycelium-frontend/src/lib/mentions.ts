@@ -114,6 +114,16 @@ export function parseInterruptMentions(text: string): string[] {
   return handles(text, INTERRUPT_RE);
 }
 
+/** The group mentions. The hub resolves each to members, the same way for
+ *  what the composer shows and for delivery: `@here` is everyone taking part in
+ *  the thread (in the channel, everyone), and `@all` is everyone in the room. */
+export const MENTION_GROUPS = ["here", "all"] as const;
+export type MentionGroupName = (typeof MENTION_GROUPS)[number];
+
+export function isMentionGroup(handle: string): handle is MentionGroupName {
+  return (MENTION_GROUPS as readonly string[]).includes(handle.toLowerCase());
+}
+
 /** What a mention typed with a sigil other than `@` does, as the @ popover says it. */
 export interface MentionMode {
   label: string;
