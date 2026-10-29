@@ -126,6 +126,14 @@ def _no_remembered_hub_gate() -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_remembered_session() -> None:
+    """A process keeps the sign-in it read in memory; each test reads anew."""
+    from mycelium import session_store
+
+    session_store._SESSIONS.clear()
+
+
+@pytest.fixture(autouse=True)
 def _never_the_real_install_dirs(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test finds the developer's own agent CLIs in their install folders.
 

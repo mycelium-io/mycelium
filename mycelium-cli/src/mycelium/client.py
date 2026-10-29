@@ -91,6 +91,11 @@ def current_token(config: MyceliumConfig | None = None) -> StoredToken | None:
     stored, where = session_store.load(cfg)
     if stored is None or not stored.is_expired():
         return stored
+    # Another process may have renewed it already: read where it's kept again
+    # before renewing, and use that if it's fresh.
+    stored, where = session_store.load(cfg, fresh=True)
+    if stored is None or not stored.is_expired():
+        return stored
 
     try:
         refreshed = _refresh(stored, cfg)
@@ -114,22 +119,28 @@ def current_token(config: MyceliumConfig | None = None) -> StoredToken | None:
     return None
 
 
-#: ``{hub url: whether it has sign-in on}``, as its ``/health`` said, per process.
-_GATED: dict[str, bool] = {}
+#: ``{hub url: (whether it has sign-in on, monotonic time asked)}``, as its
+#: ``/health`` said, per process.
+_GATED: dict[str, tuple[bool, float]] = {}
+#: How long that answer stands: a runner outlives a hub turning sign-in on.
+GATED_TTL_S = 300.0
 
 
 def _needs_credential(config: MyceliumConfig) -> bool | None:
     """Whether the hub has sign-in on, by its public ``/health``; ``None`` when it
     can't be asked. Not ``/api/whoami``: asking that needs the credential."""
+    import time
+
     from mycelium.hub_check import health
 
     url = config.server.api_url
-    if url not in _GATED:
+    known = _GATED.get(url)
+    if known is None or time.monotonic() - known[1] > GATED_TTL_S:
         auth = health(url).auth
         if auth is None:
             return None
-        _GATED[url] = auth.enabled
-    return _GATED[url]
+        known = _GATED[url] = (auth.enabled, time.monotonic())
+    return known[0]
 
 
 def _refresh(stored: StoredToken, config: MyceliumConfig) -> StoredToken | None:

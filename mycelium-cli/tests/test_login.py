@@ -509,6 +509,39 @@ def test_a_hub_that_cant_say_whether_it_needs_a_credential_is_unreachable(
         client_mod.auth_headers()
 
 
+def test_whether_a_hub_has_sign_in_on_is_asked_again_after_a_while(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A runner outlives a hub turning sign-in on: the answer it was given expires."""
+    asked: list[str] = []
+
+    def health(url: str, **_kw: Any) -> HubHealth:
+        asked.append(url)
+        read = HealthRead.from_dict(_health_read(enabled=len(asked) > 1))
+        return HubHealth(url=url, status_code=200, read=read)
+
+    monkeypatch.setattr("mycelium.hub_check.health", health)
+    config = MyceliumConfig()
+    assert client_mod._needs_credential(config) is False
+    assert client_mod._needs_credential(config) is False
+    assert len(asked) == 1
+    url, (_on, at) = next(iter(client_mod._GATED.items()))
+    client_mod._GATED[url] = (False, at - client_mod.GATED_TTL_S - 1)
+    assert client_mod._needs_credential(config) is True
+    assert len(asked) == 2
+
+
+def test_login_says_the_keychain_refused_rather_than_that_there_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mycelium import session_store
+
+    monkeypatch.setattr(session_store, "save", lambda *_a: session_store.REFUSED)
+    out = " ".join(_login(monkeypatch).stdout.split())
+    assert "the system keychain wouldn't keep it" in out
+    assert "no system keychain" not in out
+
+
 def test_a_renewal_the_issuer_refuses_still_says_sign_in_again(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1177,6 +1210,10 @@ def test_a_refresh_carries_the_deadline_of_whichever_token_survives(
     assert renewed.refresh_expires_at is not None
     assert renewed.refresh_expires_at > original
 
+    # A new process, reading a session that needs renewing.
+    from mycelium import session_store
+
+    session_store._SESSIONS.clear()
     save_token(
         _token(access_token="at-stale", expires_at=time.time() - 10, refresh_expires_at=original)
     )
