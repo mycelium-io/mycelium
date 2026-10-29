@@ -931,7 +931,7 @@ export interface UploadList {
 export interface MentionGroupMember {
   handle: string;
   kind: "agent" | "person";
-  status: "working" | "idle" | "blocked" | null;
+  status: "working" | "idle" | "blocked" | "done" | null;
   /** When they last posted in the thread, for `@here` in one. */
   posted_at: string | null;
   /** Why `@here` reaches them in a thread: they posted, or the task is for them or held by them. */

@@ -31,7 +31,12 @@ export function groupReach(groups: MentionGroups, name: MentionGroupName, kind: 
 function note(m: MentionGroupMember) {
   if (m.role === "holder" && !m.posted_at) return <>holds it · hasn&apos;t posted</>;
   if (m.role === "assignee" && !m.posted_at) return <>it&apos;s for them · hasn&apos;t posted</>;
-  const state = m.kind === "person" ? "person" : m.status === "working" ? "working" : m.status === "blocked" ? "blocked" : "waiting";
+  const state =
+    m.kind === "person"
+      ? "person"
+      : m.status === "working" || m.status === "blocked" || m.status === "done"
+        ? m.status
+        : "waiting";
   return m.posted_at ? (
     <>
       {state} · posted <Ago at={m.posted_at} />
