@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { renderWithSWR } from "@/test/swr";
+import { KeymapProvider } from "@/components/keymap-provider";
+
+vi.mock("@/components/current-user", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/current-user")>()),
+  useCurrentUser: () => ({ principal: "julia" }),
+}));
 import type { Event } from "@/lib/room-events";
 import { NOTICE_TYPE, PING_TYPE } from "@/lib/threads";
 import { FeedRow, type FeedContext } from "./feed-row";
@@ -91,5 +98,27 @@ describe("the chat's status rows", () => {
     expect(room.textContent).toContain("joined");
     // A join into a thread still has its task column.
     expect(thread.querySelector(".w-1\\/3")).not.toBeNull();
+  });
+});
+
+describe("a message's hover bar", () => {
+  it("says when, on the first message under a name as on the ones after it", () => {
+    const first = event({ id: "m1", messageId: "m1", sender: "builder", content: "on it", time: "09:41:00" });
+    const next = event({ id: "m2", messageId: "m2", sender: "builder", content: "done", time: "09:43:00" });
+    renderWithSWR(
+      <KeymapProvider>
+        <FeedRow ev={first} ctx={ctx} />
+        <FeedRow ev={next} prev={first} ctx={ctx} />
+      </KeymapProvider>,
+    );
+    for (const [text, time] of [
+      ["on it", "09:41"],
+      ["done", "09:43"],
+    ]) {
+      const row = screen.getByText(text).closest(".group") as HTMLElement;
+      fireEvent.mouseEnter(row);
+      expect(within(screen.getByRole("toolbar", { name: "Message actions" })).getByText(time)).toBeInTheDocument();
+      fireEvent.mouseLeave(row);
+    }
   });
 });

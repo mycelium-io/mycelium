@@ -40,7 +40,7 @@ interface Props {
   wire?: Record<string, unknown>;
   /** Opens the task a message was just made into, on its thread. */
   onOpenThread?: (episode: string) => void;
-  /** A clock time to show at the bar's start, for a line with no header of its own. */
+  /** The message's clock time, shown at the bar's start. */
   time?: string;
 }
 

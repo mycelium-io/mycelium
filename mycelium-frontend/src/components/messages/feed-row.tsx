@@ -772,9 +772,9 @@ export function MessageRow({
           sender={ev.sender}
           wire={ev.wire}
           onOpenThread={ctx.onOpenThread}
-          // A follow-up line shows its clock time on hover, in the bar; the
-          // group's header already says how long ago.
-          time={grouped ? ev.time.slice(0, 5) : undefined}
+          // Every message shows its clock time on hover, in the bar, the first
+          // under a name too, so the bar always says when.
+          time={ev.time.slice(0, 5)}
         />
       </div>
     </MessageMenu>
