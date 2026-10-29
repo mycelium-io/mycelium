@@ -260,7 +260,9 @@ export function ActivityRail({
         onClick={() => fold(!folded)}
         aria-expanded={!folded}
         aria-label={folded ? "Show recently updated tasks" : "Fold recently updated tasks"}
-        className="group flex h-7 w-full items-center gap-3 text-left text-micro text-muted-foreground"
+        // With the strip's own bottom border, folded it stands exactly as tall
+        // as the tab bar and the Rooms rail's header beside it (h-8).
+        className="group flex h-[calc(2rem-1px)] w-full items-center gap-3 text-left text-micro text-muted-foreground"
       >
         <span className="flex flex-shrink-0 items-center gap-1 font-medium group-hover:text-text">
           {folded ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
