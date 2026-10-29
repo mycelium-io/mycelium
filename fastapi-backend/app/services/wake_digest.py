@@ -497,38 +497,48 @@ def _ask_box(room: str, record: Any, now: datetime, limit: int) -> list[str]:
     return box(header, head, footer)
 
 
-def _shown(room: str, me: str) -> set[str]:
-    """The asks an earlier wake put in front of ``me``: the messages each wake
-    handed to its runner covered (``wake_log``). A wake that was dropped, or
-    never reached the agent, showed it nothing."""
+def _shown(room: str, me: str) -> dict[str, datetime]:
+    """``{message id: when a wake first put it in front of me}``: the messages
+    each wake handed to its runner covered (``wake_log``). A wake that was
+    dropped, or never reached the agent, showed it nothing.
+
+    Asks an ``await`` handed over need nothing here: it moves the agent's read
+    position past them, so no later digest considers them again."""
     from app.services import wake_log
 
-    return {
-        str(mid)
-        for w in wake_log.read(room, agent=me, limit=200)
-        if w.get("outcome") in ("handed", "delivered")
-        for mid in w.get("messages") or []
-    }
+    shown: dict[str, datetime] = {}
+    for w in wake_log.read(room, agent=me, limit=200):
+        when = parse_recorded_at(str(w.get("at") or ""))
+        if w.get("outcome") not in ("handed", "delivered") or when is None:
+            continue
+        for mid in w.get("messages") or []:
+            if str(mid) not in shown or when < shown[str(mid)]:
+                shown[str(mid)] = when
+    return shown
 
 
 def _replied(room: str, window: list[Any], asked: list[Any], me: str) -> set[int]:
-    """The asks the agent has replied to since: an earlier wake showed it the
-    ask, and it posted where it was asked after it. The hub can see that much;
+    """The asks the agent has replied to since: a wake showed it the ask, and
+    after that it posted where the ask was made. The hub can see that much;
     whether the reply answered is the agent's to say.
 
     An ask that arrived while the agent was busy with an earlier one was never
-    shown to it, so a reply it posted after it isn't an answer to it: several
-    mentions in a row all reach the next wake."""
+    shown to it, and a post it made before being shown one isn't an answer to
+    it: several mentions in a row all reach the next wake."""
     at = {id(r): i for i, r in enumerate(window)}
     shown = _shown(room, me)
     replied: set[int] = set()
     for record in asked:
         i = at.get(id(record))
-        if i is None or record.message_id not in shown:
+        seen = shown.get(record.message_id)
+        if i is None or seen is None:
             continue
         here = _thread_of(room, record)
         if any(
-            _norm(later.sender) == me and _thread_of(room, later) == here
+            _norm(later.sender) == me
+            and _thread_of(room, later) == here
+            and (posted := parse_recorded_at(later.recorded_at)) is not None
+            and posted > seen
             for later in window[i + 1 :]
         ):
             replied.add(id(record))
