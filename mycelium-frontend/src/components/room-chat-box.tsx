@@ -655,8 +655,8 @@ export function RoomChatBox({
         .sort((a, b) => a.rank - b.rank || last(b.r.handle) - last(a.r.handle) || a.i - b.i)
         .map((x) => x.r);
       // The groups, each with how many it reaches: in a thread `@here` is the
-      // people taking part, outside one it's everyone. They come after whoever
-      // you mentioned lately, who stay on top, and before everyone else.
+      // people taking part, outside one it's everyone. They come last, after
+      // every member: reaching many is never the row Enter picks by accident.
       // Offered only for what they start with, so `@a` doesn't offer `@here`.
       const groupRows = MENTION_GROUPS.filter((g) => g.startsWith(trigger.query.trim().toLowerCase())).map((g) => {
         const count = groups?.[g].count;
@@ -669,8 +669,7 @@ export function RoomChatBox({
           tertiary: count === undefined ? where : `${count} ${where}`,
         };
       });
-      const shown = pool.slice(0, 8);
-      const memberRows = shown.map((r) => ({
+      const memberRows = pool.slice(0, 8).map((r) => ({
         id: r.handle,
         insert: `${trigger.sigil ?? MENTION_SIGIL}${r.handle}`,
         primary: r.name ?? `@${r.handle}`,
@@ -679,9 +678,7 @@ export function RoomChatBox({
         // An engine works only when mentioned, so there's nothing to stop.
         tertiary: trigger.sigil === INTERRUPT_MENTION_SIGIL && r.engine ? NOT_INTERRUPTIBLE : r.tertiary,
       }));
-      const recentLead = shown.findIndex((r) => last(r.handle) === 0);
-      const cut = recentLead === -1 ? shown.length : recentLead;
-      return [...memberRows.slice(0, cut), ...groupRows, ...memberRows.slice(cut)];
+      return [...memberRows, ...groupRows];
     }
     if (trigger.kind === "emoji") {
       if (!emojiTable) return [];

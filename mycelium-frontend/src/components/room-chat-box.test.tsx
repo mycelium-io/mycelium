@@ -536,10 +536,8 @@ describe("<RoomChatBox /> composer triggers", () => {
     await userEvent.type(box, "@");
 
     await screen.findByRole("button", { name: /@sam/ });
-    // Above the groups too: `@here` and `@all` come after who you mentioned lately.
     const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? ""));
     expect(options[0]?.textContent).toMatch(/@sam/);
-    expect(options[1]?.textContent).toMatch(/^@here/);
   });
 
   it("puts a handle you just mentioned at the top of the next @ list", async () => {
@@ -1029,16 +1027,19 @@ describe("<RoomChatBox /> @here and @all", () => {
     sendRoomMessage.mockClear();
   });
 
-  it("offers the groups first in a task, with who @here reaches: the two talking, not the room", async () => {
+  it("offers the groups last in a task, with who @here reaches: the two talking, not the room", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" episode="urn:e:t1" threadLabel="flip reads" />);
     const box = await screen.findByPlaceholderText(/Reply in flip reads/);
     await userEvent.type(box, "@");
 
     const here = await screen.findByRole("button", { name: /@here.*2 in this task/ });
-    expect(screen.getByRole("button", { name: /@all.*6 in the room/ })).toBeInTheDocument();
-    const options = screen.getAllByRole("button").filter((b) => /^@/.test(b.textContent ?? ""));
-    expect(options[0]).toBe(here);
+    const all = screen.getByRole("button", { name: /@all.*6 in the room/ });
+    // After every member, so reaching many is never what Enter picks first.
+    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? ""));
+    expect(options.slice(-2)).toEqual([here, all]);
+    expect(screen.queryByRole("dialog", { name: /Who @/ })).toBeNull();
 
+    await userEvent.hover(here);
     const card = await screen.findByRole("dialog", { name: "Who @here reaches" });
     expect(card).toHaveTextContent("pings 2");
     expect(card).toHaveTextContent("builder");
@@ -1058,6 +1059,7 @@ describe("<RoomChatBox /> @here and @all", () => {
     renderWithSWR(<RoomChatBox roomName="demo" episode="urn:e:t1" threadLabel="flip reads" />);
     const box = await screen.findByPlaceholderText(/Reply in flip reads/);
     await userEvent.type(box, "@!");
+    await userEvent.hover(await screen.findByRole("button", { name: /@here.*2 in this task/ }));
     const card = await screen.findByRole("dialog", { name: "Who @!here reaches" });
     expect(card).toHaveTextContent("interrupts 1");
   });
