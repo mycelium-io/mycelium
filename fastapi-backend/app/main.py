@@ -180,25 +180,25 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Embedding warmup failed (non-fatal): %s", exc)
 
-    # Wire the SIEP aligner into every room's summon seam before any
-    # channel is provisioned, so all persisters pick it up. Dormant until an
-    # @-summon of its reserved handle arrives — zero idle cost.
-    # Several handlers share the one summon seam: the engine kinds (aligner,
-    # synthesizer, hello, conductor, persona) plus the A2A responder. Each self-selects by the summoned
-    # handle's manifest (kind for engines, adapter=a2a for the responder), so a
-    # fan-out dispatcher is enough — no central table. Only one ever acts per
-    # summon since a handle maps to a single runtime.
+    # Wire the engines into every room's summon seam before any channel is
+    # provisioned, so all persisters pick them up. Each is dormant until an
+    # @-summon of a handle registered with its kind arrives — zero idle cost.
+    # Several handlers share the one summon seam: the engine kinds (synthesizer,
+    # hello, conductor, persona, worker), the retired aligner's reply, and the
+    # A2A responder. Each self-selects by the summoned handle's manifest (kind
+    # for engines, adapter=a2a for the responder), so a fan-out dispatcher is
+    # enough — no central table. Only one ever acts per summon since a handle
+    # maps to a single runtime.
     from app.services.a2a_bridge import A2aResponder
-    from app.services.aligner import AlignerEngine
     from app.services.conductor import ConductorEngine
     from app.services.persona_engine import PersonaEngine
     from app.services.probe_engine import ProbeEngine
+    from app.services.retired_aligner import RetiredAligner
     from app.services.room_channels import manager as room_channel_manager
     from app.services.synthesizer import SynthesizerEngine
-    from app.services.task_sync import TaskSyncEngine
     from app.services.worker_engine import WorkerEngine
 
-    app.state.aligner = AlignerEngine(room_channel_manager)
+    app.state.retired_aligner = RetiredAligner(room_channel_manager)
     app.state.synthesizer = SynthesizerEngine(room_channel_manager)
     app.state.hello = ProbeEngine(room_channel_manager)
     app.state.conductor = ConductorEngine(room_channel_manager)
@@ -218,7 +218,7 @@ async def lifespan(app: FastAPI):
     # like the engines gate on their kind, so only one handler ever acts.
     app.state.a2a_responder = A2aResponder(room_channel_manager)
     _engine_handlers = (
-        app.state.aligner.handle_summon,
+        app.state.retired_aligner.handle_summon,
         app.state.synthesizer.handle_summon,
         app.state.hello.handle_summon,
         app.state.conductor.handle_summon,
@@ -241,11 +241,9 @@ async def lifespan(app: FastAPI):
                 logger.exception("engine summon handler failed for @%s in %s", handle, room)
 
     room_channel_manager.on_summon = _dispatch_summon
-    # A party leaving the room stops the aligner's run, which says so itself.
-    room_channel_manager.on_party_left = app.state.aligner.party_left
 
-    # A turn put to one member (its message recipient), the way the aligner and
-    # the conductor ask one member. The members the hub plays (persona, worker)
+    # A turn put to one member (its message recipient), the way the conductor
+    # asks one member. The members the hub plays (persona, worker)
     # answer it; the manager rings a herdr member's doorbell itself. Each
     # self-selects by the handle, like the summon handlers.
     def _dispatch_turn(room: str, handle: str, envelope: Any, message_text: str) -> None:
@@ -284,9 +282,8 @@ async def lifespan(app: FastAPI):
 
     room_channel_manager.on_recorded = _dispatch_recorded
     logger.info(
-        "engines wired (aligner @%s, synthesizer @%s, hello @%s, conductor @%s, "
+        "engines wired (synthesizer @%s, hello @%s, conductor @%s, "
         "persona @%s, workers by kind; llm=pi via %s)",
-        app.state.aligner.handle,
         app.state.synthesizer.handle,
         app.state.hello.handle,
         app.state.conductor.handle,
@@ -294,18 +291,11 @@ async def lifespan(app: FastAPI):
         settings.ALIGNER_PI_BINARY,
     )
 
-    # Wire the converged→plan→memory-sync consumer onto the same seam:
-    # a ``commit:converged`` the aligner emits fires task_compiler → work/ rows
-    # and a ``knowledge`` push that syncs the compiled plan to every store.
-    app.state.task_sync = TaskSyncEngine(room_channel_manager)
-    room_channel_manager.on_converged = app.state.task_sync.handle_converged
-    logger.info("task-sync consumer wired (commit:converged → task_compiler → work/ rows)")
-
     # Re-provision every room's SLIM channel on startup. Provision is
     # idempotent and best-effort; without this, a backend restart left every
     # existing room channel-less (a zombie) with no recovery path until it was
-    # deleted + recreated. Runs after the aligner/plan-sync hooks are wired so
-    # each restarted persister picks them up.
+    # deleted + recreated. Runs after the engine hooks are wired so each
+    # restarted persister picks them up.
     reprovisioned = 0
     restored_custody = 0
     for _room in list_room_names():

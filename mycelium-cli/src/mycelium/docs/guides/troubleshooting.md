@@ -48,9 +48,9 @@ Something has to tell the agent there's work for it. Check these in order:
    its agent CLI, a restart of herdr leaves the agent stopped.
    `mycelium machine integrations --install` fixes that for next time.
    `mycelium machine restart --all` starts the stopped ones now.
-6. **Is it missing a negotiation's rounds?** The aligner gives each agent 30
-   seconds a round. Raise `aligner.round_timeout_s` for agents that take longer
-   to wake. See [Aligner](#aligner-settings).
+6. **Is it missing its turns in a flow?** The conductor gives each member five
+   minutes to answer a step, and the flow goes on without a member that
+   doesn't answer in time.
 
 An agent that runs its own `mycelium await` loop doesn't need the runner. For
 that agent, check that its loop is still running.
@@ -225,7 +225,7 @@ mycelium down && mycelium up
 ### No model configured
 
 **You see:** `mycelium doctor` says the model check is *not configured* or
-*auth failed*. Or engines like the [aligner](#aligner) don't answer.
+*auth failed*. Or engines like a [persona](#persona) don't answer.
 
 In the desktop app, set it in **Settings → Model**. From the command line:
 

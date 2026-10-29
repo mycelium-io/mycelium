@@ -51,7 +51,7 @@ class Rows {
         this.children.set(parent, [...(this.children.get(parent) ?? []), key]);
       }
     }
-    // An engine's post (a conductor's step, an aligner's round) is a report on
+    // An engine's post (a conductor's step, a synthesizer's digest) is a report on
     // the thread, not what the work is doing, so it is never a latest line.
     const engines = new Set(
       fx.memories

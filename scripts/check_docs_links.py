@@ -13,7 +13,7 @@ fragment (the target document must declare that `id` or `name`). External
 `http(s)` links are skipped — checking them needs the network, and a
 rate-limited GitHub is no reason to redden a docs PR.
 
-Docs *sources* resolve as what they become. A bare `#aligner` in
+Docs *sources* resolve as what they become. A bare `#conductor` in
 `concepts/rooms.md` is a link into the generated site, not within that file, so
 source links resolve against the built `docs/` tree. The built pages are then
 checked one at a time, which is what catches a cross-page `#anchor` the

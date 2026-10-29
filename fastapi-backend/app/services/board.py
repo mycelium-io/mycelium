@@ -84,7 +84,7 @@ def _first_line(text: str, about: str | None = None) -> str:
 
 def latest_lines(room: str) -> dict[str, dict[str, Any]]:
     """The newest thing a person or an agent said in each thread, keyed by its
-    episode URN. An engine's post (a conductor's step, an aligner's round) and
+    episode URN. An engine's post (a conductor's step) and
     the hub's own are reports on the thread, not what the work is doing."""
     from app.services import message_format
     from app.services.persister import prose_messages

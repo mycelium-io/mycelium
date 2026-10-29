@@ -8,9 +8,23 @@ register one directly. These tests assert the manifest lands where the summon
 seam and the agents listing read it, and that validation fails closed.
 """
 
+import json
+from pathlib import Path
+
 import pytest
 
-from app.services.aligner import _registered_engine_kind
+from app.routes.engines import ENGINE_KINDS
+from app.services.engine_kinds import registered_engine_kind
+from app.services.retired_aligner import RETIRED_KIND, RETIRED_TEXT
+
+CONTRACT = json.loads(
+    (Path(__file__).resolve().parents[2] / "contracts" / "engine-kinds.json").read_text()
+)
+
+
+def test_the_kinds_and_the_retired_line_match_the_contract():
+    assert sorted(ENGINE_KINDS) == CONTRACT["kinds"]
+    assert CONTRACT["retired"] == {RETIRED_KIND: RETIRED_TEXT}
 
 
 async def _make_room(client, name: str = "portfolio") -> None:
@@ -24,20 +38,20 @@ async def test_invite_engine_registers_recognized_manifest(client):
 
     resp = await client.post(
         "/api/rooms/portfolio/engines",
-        json={"handle": "aligner", "kind": "aligner", "description": "mediate us"},
+        json={"handle": "conductor", "kind": "conductor", "description": "walk us through it"},
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["handle"] == "aligner"
+    assert body["handle"] == "conductor"
     assert body["adapter"] == "engine"
-    assert body["kind"] == "aligner"
+    assert body["kind"] == "conductor"
 
     # It appears in the structured agents listing…
     agents = (await client.get("/api/rooms/portfolio/agents")).json()
-    assert any(a["handle"] == "aligner" and a["adapter"] == "engine" for a in agents)
+    assert any(a["handle"] == "conductor" and a["adapter"] == "engine" for a in agents)
 
-    # …and the aligner summon seam recognizes it identically to a CLI-created one.
-    assert _registered_engine_kind("portfolio", "aligner") == "aligner"
+    # …and the summon seam recognizes it identically to a CLI-created one.
+    assert registered_engine_kind("portfolio", "conductor") == "conductor"
 
 
 @pytest.mark.asyncio
@@ -49,7 +63,7 @@ async def test_invite_normalizes_handle_and_synthesizer_kind(client):
     )
     assert resp.status_code == 201
     assert resp.json()["handle"] == "distiller"
-    assert _registered_engine_kind("portfolio", "distiller") == "synthesizer"
+    assert registered_engine_kind("portfolio", "distiller") == "synthesizer"
 
 
 @pytest.mark.asyncio
@@ -61,13 +75,13 @@ async def test_invite_hello_kind(client):
     )
     assert resp.status_code == 201
     assert resp.json()["kind"] == "hello"
-    assert _registered_engine_kind("portfolio", "hello") == "hello"
+    assert registered_engine_kind("portfolio", "hello") == "hello"
 
 
 @pytest.mark.asyncio
 async def test_duplicate_handle_conflicts(client):
     await _make_room(client)
-    body = {"handle": "aligner", "kind": "aligner"}
+    body = {"handle": "conductor", "kind": "conductor"}
     assert (await client.post("/api/rooms/portfolio/engines", json=body)).status_code == 201
     assert (await client.post("/api/rooms/portfolio/engines", json=body)).status_code == 409
 
@@ -82,10 +96,21 @@ async def test_unknown_kind_rejected(client):
 
 
 @pytest.mark.asyncio
+async def test_the_retired_aligner_kind_says_what_to_run_instead(client):
+    await _make_room(client)
+    resp = await client.post(
+        "/api/rooms/portfolio/engines", json={"handle": "aligner", "kind": "aligner"}
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == RETIRED_TEXT
+    assert registered_engine_kind("portfolio", "aligner") is None
+
+
+@pytest.mark.asyncio
 async def test_invalid_handle_rejected(client):
     await _make_room(client)
     resp = await client.post(
-        "/api/rooms/portfolio/engines", json={"handle": "Bad Handle!", "kind": "aligner"}
+        "/api/rooms/portfolio/engines", json={"handle": "Bad Handle!", "kind": "conductor"}
     )
     assert resp.status_code == 422
 
@@ -93,31 +118,6 @@ async def test_invalid_handle_rejected(client):
 @pytest.mark.asyncio
 async def test_missing_room_404(client):
     resp = await client.post(
-        "/api/rooms/nope/engines", json={"handle": "aligner", "kind": "aligner"}
+        "/api/rooms/nope/engines", json={"handle": "conductor", "kind": "conductor"}
     )
     assert resp.status_code == 404
-
-
-# ── stopping a negotiation ─────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_stop_ends_the_running_negotiation_as_who_asked(client, monkeypatch):
-    from app.main import app
-    from app.services.aligner import AlignerEngine
-    from app.services.room_channels import manager
-
-    await _make_room(client)
-    engine = AlignerEngine(manager)
-    monkeypatch.setattr(app.state, "aligner", engine, raising=False)
-
-    # Nothing running: says so.
-    resp = await client.post("/api/rooms/portfolio/engines/stop", json={"by": "julia"})
-    assert resp.status_code == 409
-    assert "No negotiation is running" in resp.json()["detail"]
-
-    engine._active.add("portfolio")  # a run in flight, as a summon marks it
-    resp = await client.post("/api/rooms/portfolio/engines/stop", json={"by": "@Julia"})
-    assert resp.status_code == 200
-    assert resp.json() == {"stopped": True}
-    assert engine._stops["portfolio"] == ("stopped", "julia")

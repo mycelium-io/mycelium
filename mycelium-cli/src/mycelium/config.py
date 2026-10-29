@@ -536,27 +536,24 @@ class A2aConfig(BaseModel):
 
 
 class AlignerConfig(BaseModel):
-    """How the hub's aligner engine negotiates. Defaults match the backend's."""
+    """Hub settings still filed under ``[aligner]``, the engine that introduced them.
+
+    The aligner itself was retired (negotiation is the conductor's ``concord``
+    and ``accord`` flows). The section keeps its name so an existing
+    ``config.toml`` keeps working, and keys it no longer has (``term_check``,
+    ``round_timeout_s``, ``max_steps``) are ignored when it loads.
+    """
 
     handle: str = Field(
         default="aligner",
-        description="The handle the hub's built-in aligner answers to when no aligner is registered.",
-    )
-    term_check: bool = Field(
-        default=True,
-        description="Check whether agents use a word in different senses before negotiating.",
-    )
-    round_timeout_s: float = Field(
-        default=30.0,
-        description="Seconds an agent has to answer a round before the aligner moves on without it.",
-    )
-    max_steps: int = Field(
-        default=20,
-        description="The most rounds one negotiation can run. Most finish well before this.",
+        description=(
+            "A mention of this handle, in a room where no member has it, is answered "
+            "with what to run now that the aligner is retired."
+        ),
     )
     pi_timeout_s: float = Field(
         default=120.0,
-        description="Seconds one model call by the aligner can take.",
+        description="Seconds one model call by an engine can take.",
     )
 
 
@@ -741,7 +738,7 @@ class TelemetryConfig(BaseModel):
 
     ``enabled`` activates the OpenTelemetry SDK in the backend: traces and
     metrics are exported over OTLP on every coordinated path (HTTP RED,
-    aligner rounds, SLIM channel timing, await long-poll). Off by default;
+    engine runs, SLIM channel timing, await long-poll). Off by default;
     never required for coordination or storage to work.
 
     ``send_product_analytics`` shares the hub's usage events. The hub records

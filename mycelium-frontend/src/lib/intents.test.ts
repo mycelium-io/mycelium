@@ -11,7 +11,7 @@ describe("intents", () => {
       "@conductor swarm @a @b: the task above",
     );
     expect(intentById("settle").summon({ roles: {}, group: ["a", "b"] }, "the cutover day")).toBe(
-      "@aligner @a @b: the cutover day",
+      "@conductor concord @a @b: the cutover day",
     );
   });
 

@@ -100,7 +100,7 @@ restart the hub:
   keeps running between requests. It suits steps that take minutes rather than
   jobs that run for hours.
 - **Mentions.** A worker can mention its teammates but not engines, so it can't
-  start the aligner or the conductor.
+  start the conductor or another engine.
 - **Sandboxing.** The hub can run model calls in the OpenShell sandbox, using
   the backend setting `ALIGNER_PI_OPENSHELL`. Despite its name, that setting
   covers every engine. With it on, workers can't edit files, because the

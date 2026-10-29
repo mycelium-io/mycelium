@@ -11,7 +11,7 @@ node**. This is the LAN path; the open-internet path is documented at the bottom
 
 - **Hub (owner / moderator).** Runs the shared SLIM node (`mycelium hub host`) **and**
   the always-on backend that provisions and **moderates** each room channel (creates
-  the group, invites members, persists the transcript, runs the aligner + plan sync).
+  the group, invites members, persists the transcript, runs the engines).
   One moderator per room; see the traps below.
 - **Spoke (member).** Points at the hub's node with `mycelium connect
   http://<hub-ip>:46357`, then registers an agent that participates as a resident
@@ -41,36 +41,36 @@ agent joins the same room channel):
 # Hub
 mycelium room create planning
 mycelium room use planning
-mycelium engine create aligner --kind aligner --room planning   # register the mediator once
+mycelium engine create conductor --kind conductor --room planning   # register the conductor once
 mycelium agent create hub-agent --room planning
 
 # Spoke
-mycelium agent create spoke-agent --room planning               # resident runtime joins the channel
+mycelium agent create spoke-agent --room planning                   # resident runtime joins the channel
 ```
 
-Run the negotiation. Each participant posts an opening position, a human summons the
-aligner, and participants loop await → respond until it converges:
+Run the negotiation. A task holds the question, a human puts the conductor on it with
+the `concord` flow, and participants loop await → respond until the run closes:
 
 ```bash
-# Each participant posts an opening position
-mycelium respond --room planning --handle hub-agent   "I want blue-green deploys."
-mycelium respond --room planning --handle spoke-agent "I prefer canary releases."
+# File the question as a task
+mycelium board new "Pick the deploy strategy"
 
-# A human summons the aligner to converge
-mycelium engine invoke aligner "converge on the deploy strategy"
+# A human runs concord on it
+mycelium board coordinate work/pick-the-deploy-strategy conductor \
+  "concord: blue-green or canary?"
 
-# Participants loop until agreement
+# Participants loop until the run closes
 mycelium await   --room planning --handle spoke-agent --json     # read the prompt
-mycelium respond --room planning --handle spoke-agent "canary works if we cap rollout at 10%"
+mycelium respond --room planning --handle spoke-agent "Canary, capped at 10% rollout.
+why: we can stop a bad release before most users see it."
 ```
 
-On agreement the aligner emits `commit:converged`, records the episode, and compiles
-`plan/tasks.md` **before** the consensus is announced (so the plan exists when `await`
-returns). The plan syncs as a `knowledge` memory to every machine. Each agent reads it
-and works its half:
+When the run closes the conductor commits `commit:converged`, `commit:resolved` or
+`commit:rejected`, records the episode, and saves the decision under
+`context/decision/` in the room's memory on the hub, where every machine reads it:
 
 ```bash
-mycelium plan tasks --room planning        # the shared @handle checklist
+mycelium memory get context/decision/pick-the-deploy-strategy
 ```
 
 ## Traps
@@ -118,7 +118,7 @@ Open a room at `/room/{name}` and watch three surfaces during the flow above:
   `plan/tasks.md`). An `@`-mention of a registered agent that isn't on the channel
   brings it in, and its arrival shows up here as a JOIN.
 - **Network**: the message inspector. A live wire of the messages crossing the channel
-  (`exchange` ticks/replies, `commit:converged`/`rejected` with **MPC/GAR/SCR**,
+  (`exchange` ticks/replies, `commit:converged`/`rejected` with each member's satisfaction,
   `knowledge` pushes), each tagged with kind/subkind + episode, over an **episodes** list
   whose cards expand to the full causal chain.
 - **PLAN**: the compiled `plan/tasks.md` checklist, refreshed when a consensus compiles.

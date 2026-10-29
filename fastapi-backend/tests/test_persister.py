@@ -260,66 +260,40 @@ def test_who_is_named_in_order_however_named():
     assert persister.parse_named(text) == ["conductor", "coder", "Planner"]
 
 
-# ── plan-compile hook ────────────────────────────────────────────────────────
-
-
-def test_is_converged_true_only_for_commit_converged():
-    converged = message_format.build_envelope(
-        kind=Kind.commit,
-        subkind="converged",
-        episode="urn:ioc:mycelium:episode:r:s",
-        payload_type="consensus",
-        payload_data={},
-    )
-    rejected = message_format.build_envelope(
-        kind=Kind.commit,
-        subkind="rejected",
-        episode="urn:ioc:mycelium:episode:r:s",
-        payload_type="consensus",
-        payload_data={},
-    )
-    assert persister.is_converged(converged) is True
-    assert persister.is_converged(rejected) is False
-    assert persister.is_converged(_exchange("m1")) is False
-
-
 # ── ingest wiring: triggers fire off recorded messages ───────────────────────
 
 
-def _persister_for(room: str, *, summoned: list, converged: list) -> persister.RoomPersister:
-    """A persister with no live channel, hooks capturing into the given lists."""
+def _persister_for(room: str, *, summoned: list) -> persister.RoomPersister:
+    """A persister with no live channel, its summon hook capturing into ``summoned``."""
     return persister.RoomPersister(
         room,
         channel=None,  # ty: ignore[invalid-argument-type]  # not exercised: we call _ingest directly
         members_provider=lambda: set(),
         on_summon=lambda handle, env, co, msg="": summoned.append(handle),
-        on_converged=lambda env: converged.append(env),
         feed_bus=False,
     )
 
 
 def test_ingest_fires_summon_hook_but_not_on_plain_message():
     summoned: list[str] = []
-    converged: list = []
-    p = _persister_for("ingest-room", summoned=summoned, converged=converged)
+    p = _persister_for("ingest-room", summoned=summoned)
 
     from app.services.message_slim import serialize_content
 
-    env = _exchange("m1", text="ping @aligner")
-    p._ingest(env, serialize_content(env, extra={"content": "ping @aligner"}))
-    assert summoned == ["aligner"]
-    assert converged == []
+    env = _exchange("m1", text="ping @conductor")
+    p._ingest(env, serialize_content(env, extra={"content": "ping @conductor"}))
+    assert summoned == ["conductor"]
 
     plain = _exchange("m2", text="no mention here")
     p._ingest(plain, serialize_content(plain, extra={"content": "no mention here"}))
-    assert summoned == ["aligner"]  # unchanged
+    assert summoned == ["conductor"]  # unchanged
 
 
 def test_ingest_skips_keepalive_from_the_transcript():
     """A connector's idle keepalive ping exists only to reset SLIM liveness — it
     must never be recorded to the durable transcript (else the log fills with a
     ping every ~20s per member). A real reply still records."""
-    p = _persister_for("keepalive-room", summoned=[], converged=[])
+    p = _persister_for("keepalive-room", summoned=[])
 
     ping_env, ping_content = _msg_content("k-1", sender="growth", text="", payload_type="keepalive")
     p._ingest(ping_env, ping_content)
@@ -330,33 +304,10 @@ def test_ingest_skips_keepalive_from_the_transcript():
     assert len(p.log.records) == 1  # a real message still records
 
 
-def test_ingest_fires_converged_hook_for_commit_converged_only():
-    summoned: list[str] = []
-    converged: list = []
-    p = _persister_for("ingest-room-2", summoned=summoned, converged=converged)
-
-    from app.services.message_slim import serialize_content
-
-    conv = message_format.build_envelope(
-        kind=Kind.commit,
-        subkind="converged",
-        episode="urn:ioc:mycelium:episode:r:s",
-        message_id="c1",
-        payload_type="consensus",
-        payload_data={},
-    )
-    p._ingest(conv, serialize_content(conv))
-    assert len(converged) == 1
-
-    other = _exchange("m3", text="just talking")
-    p._ingest(other, serialize_content(other))
-    assert len(converged) == 1  # unchanged
-
-
 @pytest.mark.asyncio
 async def test_reserve_without_context_is_a_noop():
     """No cached reply context (agent never spoke) → nothing to route to."""
-    p = _persister_for("reserve-room", summoned=[], converged=[])
+    p = _persister_for("reserve-room", summoned=[])
     p.log.track("agent-a", caught_up=True)
     from app.services.message_slim import serialize_content
 
@@ -450,7 +401,7 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
     from app.services import in_memory_store
 
     room = "h2-invariant-room"
-    p = _persister_for(room, summoned=[], converged=[])
+    p = _persister_for(room, summoned=[])
 
     # 1) The human's message: written by the POST route (its own producer, stamped
     #    with the envelope id), and ingested by the persister with list_write=False
@@ -493,7 +444,7 @@ def test_list_store_message_carries_its_episode():
     from app.services import in_memory_store
 
     room = "episode-tag-room"
-    p = _persister_for(room, summoned=[], converged=[])
+    p = _persister_for(room, summoned=[])
 
     env, content = _msg_content("a-1", sender="growth", text="my position", payload_type="reply")
     p._ingest(env, content)
@@ -550,7 +501,7 @@ def test_conversational_projection_is_stable_and_dedups_against_the_list_store()
     from app.services import in_memory_store
 
     room = "conv-dedup-room"
-    p = _persister_for(room, summoned=[], converged=[])
+    p = _persister_for(room, summoned=[])
     env, content = _msg_content("a-1", sender="growth", text="hello", payload_type="reply")
     p._ingest(env, content)  # writes both the transcript and the list store
 
@@ -593,7 +544,7 @@ def test_raise_up_message_frames_project_into_the_conversational_view():
         topic="urn:concept:mycelium:raise-up-room",
         message_id="c-1",
         payload_type="data",
-        payload_data={"assignments": {"alice": "build"}},
+        payload_data={"memory": "context/decision/x"},
     )
     commit_content = serialize_content(commit_env, extra={"content": "CONSENSUS"})
     persister.append_transcript(room, persister.record_from(commit_env, commit_content))
@@ -677,7 +628,7 @@ def test_list_store_skips_presence_and_non_conversational():
     from app.services import in_memory_store
 
     room = "h2-presence-room"
-    p = _persister_for(room, summoned=[], converged=[])
+    p = _persister_for(room, summoned=[])
 
     pres_env, pres_content = _msg_content(
         "p-1", sender="smoke-agent", text="joined the room", payload_type="presence"
@@ -732,7 +683,7 @@ async def test_ingest_applies_inbound_knowledge_write_to_local_store():
     into this backend's local store — the receive half of cross-store memory
     convergence (#549)."""
     room = "knowledge-room-1"
-    p = _persister_for(room, summoned=[], converged=[])
+    p = _persister_for(room, summoned=[])
 
     env, content = _knowledge_envelope(room=room, version=1)
     p._ingest(env, content)
@@ -751,7 +702,7 @@ async def test_ingest_applies_extraction_subkind_the_same_way():
     """`extraction` (a raw ``memory set``) applies identically to `distillation`
     — the applier is subkind-agnostic."""
     room = "knowledge-room-2"
-    p = _persister_for(room, summoned=[], converged=[])
+    p = _persister_for(room, summoned=[])
 
     env, content = _knowledge_envelope(
         room=room,
@@ -776,7 +727,7 @@ async def test_ingest_knowledge_loopback_is_idempotent_not_a_double_write():
     ``_ingest`` too. Applying it again must be a silent no-op (same version) —
     never a re-broadcast or a double-write — so two hosts can't ping-pong."""
     room = "knowledge-room-3"
-    p = _persister_for(room, summoned=[], converged=[])
+    p = _persister_for(room, summoned=[])
 
     env, content = _knowledge_envelope(room=room, version=1)
     p._ingest(env, content)
@@ -800,7 +751,7 @@ async def test_ingest_knowledge_stale_base_is_a_conflict_not_a_merge():
     """An incoming write behind the local version is rejected (last-write-wins);
     the newer local content survives untouched."""
     room = "knowledge-room-4"
-    p = _persister_for(room, summoned=[], converged=[])
+    p = _persister_for(room, summoned=[])
 
     newer, newer_content = _knowledge_envelope(room=room, content="v2 content\n", version=2)
     p._ingest(newer, newer_content)

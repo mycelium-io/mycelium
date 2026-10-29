@@ -464,25 +464,6 @@ async def test_removing_a_party_from_the_room_ends_the_negotiation(
 
 
 @pytest.mark.asyncio
-async def test_removing_a_party_tells_the_engine_running_the_negotiation(
-    manager: room_channels.RoomChannelManager,
-) -> None:
-    told: list[tuple[str, str, str]] = []
-    manager.on_party_left = (
-        lambda room, episode, handle: told.append((room, episode, handle)) or True
-    )
-    managed = await manager.provision("room-a")
-    assert managed is not None
-    await manager.invite("room-a", "agent-a")
-    episode = "urn:ioc:mycelium:episode:room-a:e1"
-    manager.open_episode("room-a", episode, parties=["agent-a", "agent-b"])
-
-    await manager.remove("room-a", "agent-a")
-
-    assert told == [("room-a", episode, "agent-a")]
-
-
-@pytest.mark.asyncio
 async def test_a_frozen_participant_refreshing_its_lease_is_not_a_join(
     manager: room_channels.RoomChannelManager,
 ) -> None:

@@ -4,8 +4,8 @@
 """The "is responding…" signal: a participant is generating, right now.
 
 The channel renders discrete events — a reply lands, a tick, a consensus — and
-between them the room is silent even when someone is mid-turn: the aligner
-running a Pi round, a resident agent that just took an ``await`` wake and has
+between them the room is silent even when someone is mid-turn: a persona
+running a Pi turn, a resident agent that just took an ``await`` wake and has
 not yet posted its ``respond``. This is the presence-style signal that fills
 that gap, and it is deliberately **not a message**.
 
@@ -17,8 +17,8 @@ thread it is in, and a TTL — a reader drops a ``responding`` it has heard noth
 about for that long, so a turn that dies mid-generation cannot leave a stuck
 indicator behind. The seams that raise it are the ones that already know the
 window: ``await`` returning a turn and ``reply`` posting one
-(:mod:`app.routes.participate`), and the aligner's own LLM calls
-(:meth:`app.services.aligner.Aligner._open_llm_session`).
+(:mod:`app.routes.participate`), and the persona and worker engines' own
+turns (:mod:`app.services.persona_engine`, :mod:`app.services.worker_engine`).
 """
 
 from __future__ import annotations

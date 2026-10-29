@@ -5,7 +5,7 @@
  * Who is responding right now.
  *
  * The backend raises an `agent_activity` frame on the room stream when a
- * participant starts generating (the aligner handing a round to Pi, a resident
+ * participant starts generating (the conductor handing a step to Pi, a resident
  * agent taking an `await` wake) and again when it finishes. It is a
  * presence-style signal, not a message: it never lands in the transcript, so a
  * reload shows none of it, and the channel must never render it as a line.

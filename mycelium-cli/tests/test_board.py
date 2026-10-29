@@ -126,14 +126,14 @@ class TestProjection:
             "key": "work/flip-reads-behind-a-flag",
             "value": "flip reads behind a flag",
             "updated_at": "2026-08-20T10:00:00Z",
-            "updated_by": "aligner",
+            "updated_by": "conductor",
             "meta": {"kind": "action", "status": "open", "assignee": "@growth"},
         },
         {
             "key": "work/retire-the-legacy-store",
             "value": "retire the legacy store",
             "updated_at": "2026-08-20T10:00:00Z",
-            "updated_by": "aligner",
+            "updated_by": "conductor",
             "meta": {"kind": "action", "status": "resolved", "assignee": "@risk"},
         },
     ]
@@ -175,7 +175,7 @@ class TestProjection:
             {
                 "key": "decisions/cutover",
                 "value": "Phased cutover.",
-                "created_by": "aligner",
+                "created_by": "conductor",
                 "updated_at": "2026-08-22T09:00:00Z",
             },
             {
@@ -251,7 +251,7 @@ def task(**extra) -> dict:
         "key": "work/cutover",
         "value": "run the cutover",
         "updated_at": "2026-08-22T10:00:00Z",
-        "updated_by": "aligner",
+        "updated_by": "conductor",
         "episode": URN,
         "meta": {"kind": "action", "status": "open", **extra},
     }
@@ -330,7 +330,7 @@ class TestSchema:
 
     def test_keeps_one_off_prose_as_text(self):
         schema = infer_schema(
-            [item("a", note="the aligner stalled"), item("b", note="cache needs a pass")]
+            [item("a", note="the cutover stalled"), item("b", note="cache needs a pass")]
         )
         assert next(f for f in schema if f.name == "note").type == "text"
 
@@ -432,14 +432,14 @@ class TestActivity:
                 {
                     "id": "3",
                     "message_type": "broadcast",
-                    "sender_handle": "aligner",
+                    "sender_handle": "conductor",
                     "content": "standing offer",
                     "created_at": "2026-08-22T10:06:00Z",
                 },
             ]
         )
         assert [(e.actor, e.actor_kind) for e in events] == [
-            ("aligner", "engine"),
+            ("conductor", "engine"),
             ("julia", "human"),
             ("growth", "agent"),
         ]
@@ -450,7 +450,7 @@ class TestActivity:
                 {
                     "id": "1",
                     "message_type": "coordination_tick",
-                    "sender_handle": "aligner",
+                    "sender_handle": "conductor",
                     "content": json.dumps(
                         {"payload": {"round": 4, "participant_id": "risk", "action": "accept"}}
                     ),
@@ -475,7 +475,7 @@ class TestActivity:
                 {
                     "id": "2",
                     "message_type": "coordination_consensus",
-                    "sender_handle": "aligner",
+                    "sender_handle": "conductor",
                     "content": "{}",
                     "created_at": "2026-08-22T10:01:00Z",
                 },
@@ -485,7 +485,7 @@ class TestActivity:
                     "key": "decisions/cutover",
                     "value": "phased",
                     "version": 2,
-                    "created_by": "aligner",
+                    "created_by": "conductor",
                     "updated_by": "growth",
                     "updated_at": "2026-08-22T10:00:00Z",
                 },

@@ -12,7 +12,7 @@ Commands:
 - delete: Delete a room
 - watch: Stream a room's messages live
 - send: Broadcast a chat message into a room (an @handle mention summons a
-  registered engine, e.g. @aligner)
+  registered engine, e.g. @synthesizer)
 - messages: Show a room's recent messages
 - export: Write a room's whole history to local JSON lines
 - delegate: Delegate a task to an agent in a room
@@ -283,8 +283,8 @@ def use(
         else:
             typer.secho(f"Room set: {room_name}", fg=typer.colors.GREEN)
             typer.echo(
-                "Next: post a position with 'mycelium respond -H <handle> \"<position>\"', "
-                "then summon the mediator with 'mycelium engine invoke aligner'"
+                "Next: see what needs doing with 'mycelium board', "
+                "and take a task with 'mycelium board claim <id>'"
             )
 
     except Exception as e:
@@ -452,35 +452,11 @@ def _resolve_room(config: MyceliumConfig, channel: str | None = None) -> str:
     return resolve_room(config, channel)
 
 
-# Known stub options for NegMAS SAO issues (mirrors options_generation.py)
-_ISSUE_OPTIONS: dict[str, list[str]] = {
-    "budget": ["minimal", "low", "medium", "high", "uncapped"],
-    "timeline": ["express", "short", "standard", "extended", "long"],
-    "scope": ["core", "standard", "extended", "full"],
-    "quality": ["basic", "standard", "premium"],
-}
-
-
 def _fmt_metric(value: object) -> str:
     """Format a metric value: 2 decimals for numbers, str() otherwise."""
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return f"{value:.2f}"
     return str(value)
-
-
-def _team_prior_line(data: dict, indent: str) -> str | None:
-    """Render the optional ``team_prior`` tick field as a human-readable line.
-
-    Example: ``team prior: 0.72 (weight 0.85, 3 episodes)``
-    """
-    prior = data.get("team_prior")
-    if not isinstance(prior, dict):
-        return None
-    return (
-        f"{indent}team prior: {_fmt_metric(prior.get('confidence'))} "
-        f"(weight {_fmt_metric(prior.get('provenance_weight'))}, "
-        f"{prior.get('episode_count')} episodes)"
-    )
 
 
 def _consensus_quality_line(data: dict, indent: str) -> str | None:
@@ -682,38 +658,6 @@ def _watch_room(
             if "payload" in data and isinstance(data["payload"], dict):
                 data = data["payload"]
             round_num = data.get("round", "?")
-            kind = data.get("kind")
-            if kind == "negotiate":
-                action = data.get("action", "propose")
-                participant = data.get("participant_id", "?")
-                if action == "propose":
-                    issue_options = data.get("issue_options") or _ISSUE_OPTIONS
-                    header = f"\n  {ts()}  [bold magenta]aligner[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/]: propose your offer:"
-                    if round_num == 1:
-                        header = f"\n  {ts()}  [bold magenta]aligner[/] analyzed agent intents and generated negotiation issues and options.\n{header}"
-                    lines = [header]
-                    prior_line = _team_prior_line(data, "              ")
-                    if prior_line:
-                        lines.append(f"[dim]{prior_line}[/]")
-                    for k, v in issue_options.items():
-                        lines.append(f"              [bold white]{k}[/]")
-                        opts = v if isinstance(v, list) else [str(v)]
-                        for i, opt in enumerate(opts, 1):
-                            lines.append(f"                [dim]{i}.[/] {opt}")
-                    return "\n".join(lines)
-                if action == "respond":
-                    offer = data.get("current_offer") or {}
-                    proposer = data.get("proposer_id", "?")
-                    lines = [
-                        f"\n  {ts()}  [bold magenta]aligner[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/]: respond to offer from {proposer}:"
-                    ]
-                    prior_line = _team_prior_line(data, "              ")
-                    if prior_line:
-                        lines.append(f"[dim]{prior_line}[/]")
-                    for k, v in offer.items():
-                        lines.append(f"              [dim]{k}:[/] {v}")
-                    return "\n".join(lines)
-                return f"\n  {ts()}  [bold magenta]aligner[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/]: {action}"
             return f"\n  {ts()}  [bold cyan]tick {round_num}[/]"
 
         if mtype == "coordination_consensus":

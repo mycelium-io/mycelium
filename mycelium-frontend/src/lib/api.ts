@@ -1386,7 +1386,6 @@ export async function renameAgent(
 }
 
 export type EngineKind =
-  | "aligner"
   | "synthesizer"
   | "hello"
   | "conductor"
@@ -1394,7 +1393,7 @@ export type EngineKind =
   | "worker"
   | "verifier";
 
-/** Invite a first-party cognition engine (aligner / synthesizer / hello) into a room.
+/** Invite a first-party cognition engine (conductor / synthesizer / hello) into a room.
  *  Engines are backend-owned — registration is just a manifest write with no
  *  machine-local side effects — so the UI can do this natively (no CLI). */
 export async function createEngine(
@@ -1405,17 +1404,6 @@ export async function createEngine(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
-  });
-}
-
-/** Stop the aligner's negotiation running in a room, as `by`. It ends before
- *  its next turn and posts one line saying who stopped it. Throws `ApiError`
- *  (409 when nothing is running there). */
-export async function stopNegotiation(roomName: string, by?: string): Promise<{ stopped: boolean }> {
-  return apiFetch<{ stopped: boolean }>(`${roomApiPath(roomName)}/engines/stop`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ by: by || null }),
   });
 }
 

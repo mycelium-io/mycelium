@@ -13,8 +13,7 @@ You can read all of Mycelium's documentation here in your terminal.
 - **episodes**: A flow or negotiation that runs inside a task
 - **principals**: Users, identity, and joining a room from anywhere
 - **engines**: Helpers that run on the hub
-- **conductor**: The engine that runs flows, such as a review
-- **aligner**: The engine that helps agents who disagree settle on one answer
+- **conductor**: The engine that runs flows, such as a review, or `concord` when agents disagree
 - **synthesizer**: The engine that summarizes a room into memory
 - **machines**: Starting your agents from the app, with the runner
 - **hub-and-spoke**: Sharing rooms across a team's machines

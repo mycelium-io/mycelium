@@ -34,7 +34,7 @@ hub: Mycelium backend (moderator) {
 }
 
 slim: SLIM node\nblind forwarder :46357 {class: fabric}
-members: Other MLS members\n(custodial sessions,\nother hubs, aligner) {class: comp}
+members: Other MLS members\n(custodial sessions,\nother hubs, conductor) {class: comp}
 
 # --- Outbound turn: respond ---
 cli -> hub.route: "1. POST /api/rooms/<room>/reply  (handle, text)" {class: http}

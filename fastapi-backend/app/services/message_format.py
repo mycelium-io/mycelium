@@ -38,7 +38,7 @@ SUBPROTOCOL_MYCELIUM = "mycelium"
 
 # The handle mycelium's *backend itself* speaks as inside envelopes — genuine
 # system messages (plan-updated events, joins, knowledge distillation, aborts),
-# not a coordination engine. A registered engine (e.g. the aligner) signs its own
+# not a coordination engine. A registered engine (e.g. the conductor) signs its own
 # envelopes with its engine handle; only messages with no engine author fall back
 # to this. Matches the sender_handle used for coordination system messages.
 SYSTEM_ACTOR_ID = "system"
@@ -47,9 +47,9 @@ SYSTEM_ACTOR_ROLE = "coordinator"
 # ``exchange`` move subkinds: the closed vocabulary a coordination reply carries
 # so a negotiation move is explicit on the wire (countable, replayable) instead
 # of inferred from prose. ``counter`` is any offer (the opening one included);
-# ``accept``/``reject`` respond to the standing offer. The mediator emits exactly
-# these (``mediator.interpret``). A reply with no subkind stays valid, so replies
-# predating this vocabulary round-trip unchanged.
+# ``accept``/``reject`` respond to the standing offer. No hub engine emits these
+# today. A reply with no subkind stays valid, so replies predating this
+# vocabulary round-trip unchanged.
 EXCHANGE_MOVE_SUBKINDS = frozenset({"counter", "accept", "reject"})
 
 # An ``exchange:amend`` revises an earlier message: its ``message.parents``

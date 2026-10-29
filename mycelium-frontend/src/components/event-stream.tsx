@@ -105,10 +105,10 @@ function RespondingRow({ children, offset = 0 }: { children: React.ReactNode; of
   );
 }
 
-/** "@aligner is responding…" pinned over the composer, gone the moment the
+/** "@conductor is responding…" pinned over the composer, gone the moment the
  *  reply lands. A turn going into a task's thread does not land here — the channel
  *  never shows a thread's prose — so that line says where instead, and opens
- *  it, the way the ping for the reply will: "@aligner is responding in <task>". */
+ *  it, the way the ping for the reply will: "@conductor is responding in <task>". */
 function RespondingLine({
   entries,
   room,

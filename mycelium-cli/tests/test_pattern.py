@@ -209,7 +209,7 @@ def test_a_scenario_with_no_flow_says_the_room_is_ready(hub: Hub) -> None:
 
 
 def test_the_hubs_reason_for_refusing_is_shown(hub: Hub) -> None:
-    hub.status, hub.detail = 422, "role 'critic' is bound to 'judge', a aligner"
+    hub.status, hub.detail = 422, "role 'critic' is bound to 'judge', a synthesizer"
     result = run("use", "adversarial-review-agents")
     assert result.exit_code == 1
     assert "could not load adversarial-review-agents" in said(result)

@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for ``mycelium doctor`` checks beyond the mediator-Pi one.
+"""Unit tests for ``mycelium doctor`` checks beyond the engine-Pi one.
 
 Node-free: the checks are stubbed at their filesystem / subprocess seams, so the
 local-backend classifier and the config-files check run without a live stack.
-The mediator-Pi check has its own file (``test_doctor_mediator_pi``).
+The engine-Pi check has its own file (``test_doctor_engine_pi``).
 """
 
 from __future__ import annotations

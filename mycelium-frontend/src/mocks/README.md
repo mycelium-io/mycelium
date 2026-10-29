@@ -56,8 +56,7 @@ timestamps, no @builder yet) and adds a director (`demo.ts`) that plays the
 agents' side when a person does theirs: an agent added from **Your machine**
 joins and says hello; a task filed for it is claimed in its thread;
 `@conductor review @builder @reviewer` in that thread runs the review flow,
-which ends with @reviewer filing a decision the two disagree on; and `@aligner`
-in the decision's thread brokers an agreement that compiles into new rows.
+which ends with @reviewer filing a decision the two disagree on.
 Each act plays once per server. `mycelium-promo/` records the product demo
 through it.
 
@@ -70,7 +69,7 @@ MYCELIUM_UI_MOCK=1 MYCELIUM_UI_MOCK_SCENARIO=learn:pair-idea next dev
 adds an `orders` room in the state one Learn take starts from (`learn.ts`
 lists them), Sam's machine with a runner that asks before it starts anything,
 and a director for that take: a pair working a task in its thread, an agent
-launched into a worktree, two teammates' agents and the aligner, pull requests
+launched into a worktree, two teammates' agents and the conductor, pull requests
 moving on the board, a swarm checking in and splitting its task.
 `mycelium-promo/learn/` records the Learn videos through it.
 

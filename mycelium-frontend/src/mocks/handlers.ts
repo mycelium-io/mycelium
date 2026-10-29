@@ -950,6 +950,16 @@ export async function handleMock(req: Request): Promise<Response | null> {
       const kind = String(body.kind ?? "");
       if (!/^[a-z0-9][a-z0-9_-]*$/.test(handle)) return json({ detail: "Handle must be a lowercase slug." }, 422);
       if (!kind) return json({ detail: "An engine needs a kind." }, 422);
+      if (kind === "aligner") {
+        return json(
+          {
+            detail:
+              "The aligner was retired, so nothing started. To negotiate, run `mycelium board coordinate <row> conductor \"concord …\"` " +
+              "to help members agree, or `\"accord …\"` to get them on the same page.",
+          },
+          422,
+        );
+      }
       const key = `agents/${handle}`;
       if (fx.memories.some((m) => m.key === key)) return json({ detail: `@${handle} is already in ${roomName}` }, 409);
       const by = String(body.created_by ?? "user");
@@ -1112,7 +1122,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
       const episode = url.searchParams.get("episode");
       const sender = (url.searchParams.get("sender") ?? "").toLowerCase();
       // An engine that only posts (the conductor's lines) has no manifest here.
-      const engines = new Set<string>(["aligner", "conductor", "verifier", "synthesizer"]);
+      const engines = new Set<string>(["conductor", "verifier", "synthesizer"]);
       const agents = new Set<string>();
       for (const m of fx.memories) {
         if (!m.key.startsWith("agents/") || m.key.slice(7).includes("/")) continue;

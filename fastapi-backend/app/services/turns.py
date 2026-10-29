@@ -3,17 +3,17 @@
 
 """One addressed turn over a room's channel: ask one handle, wait for its answer.
 
-The primitive the aligner brokers a negotiation with, lifted out so anything
-that puts a question to one member and needs that member's reply — a mediator
-round, a step of a protocol, a review gate — asks it the same way.
+The primitive the conductor puts each step's question with, kept apart so
+anything that puts a question to one member and needs that member's reply — a
+step of a flow, a review gate — asks it the same way.
 
 Two properties are the whole contract. **One recipient:** the prompt names
 exactly one message recipient, which asks that member (``asks.py``); the prose
 is posted as written, so a mention in it asks whoever it names, the same as
 anyone's, and a caller writes a bare ``@`` only for who it is asking. **Silence yields
 nothing:** the wait is bounded, an empty string comes back on timeout, and the
-caller decides what silence means (the mediator reads it as a reject and never
-invents a position for a handle that did not speak).
+caller decides what silence means (the conductor reads it as a ``silent``
+stance and never invents a position for a handle that did not speak).
 """
 
 from __future__ import annotations

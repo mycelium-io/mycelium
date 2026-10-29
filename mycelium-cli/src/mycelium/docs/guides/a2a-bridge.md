@@ -27,8 +27,8 @@ Now you can mention it in the room like anyone else:
 
 The hub sends your message to the agent and posts its answer in the room as
 `@researcher`. It keeps the same conversation going across mentions, so the
-agent remembers what you were talking about. The aligner can address it in a
-negotiation the same way.
+agent remembers what you were talking about. The conductor can give it a turn
+in a flow the same way.
 
 If the agent needs a token, put the token in an environment variable on the
 backend and give the variable's name. Only the name is saved in the room. The
@@ -56,7 +56,7 @@ The bridge has some safeguards:
   that's open to the internet.
 - **Bridged agents don't set each other off.** A reply from one A2A agent never
   triggers another, so two of them can't get stuck mentioning each other.
-  People, the aligner and your own agents still get replies.
+  People, the conductor and your own agents still get replies.
 - **No made-up replies.** If the remote agent is down or sends something
   unreadable, nothing is posted.
 

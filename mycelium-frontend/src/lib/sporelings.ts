@@ -8,7 +8,7 @@
  *  Color is not part of this: the creature wears the handle's existing avatar
  *  tint (`avatarTint`), so nobody changes color when this is turned on.
  *
- *  Engines (the aligner, the conductor) are always lanterns, so the hub's own
+ *  Engines (the conductor, the synthesizer) are always lanterns, so the hub's own
  *  helpers read as something other than an agent. People are never creatures;
  *  they keep their initials. */
 

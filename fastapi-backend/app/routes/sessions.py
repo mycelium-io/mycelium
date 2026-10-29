@@ -291,7 +291,7 @@ async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
 
     The backend runs containerized and can't see the host's herdr socket, so the
     host-side bridge polls ``herdr agent list`` and pushes the current per-handle
-    state here. This is a presence/UI surface only — it never enters the mediator
+    state here. This is a presence/UI surface only — it never enters an engine's
     roster. Entries lapse on their TTL, so a stopped bridge / closed pane clears
     itself without an explicit delete.
     """

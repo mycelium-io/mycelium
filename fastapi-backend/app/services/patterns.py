@@ -25,7 +25,14 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from app.config import settings
 from app.services.protocols import BUILTIN_PROTOCOLS, Protocol, builtin, parse_protocol
@@ -40,7 +47,7 @@ HUMAN = "human"
 SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 #: What a member can be. ``human`` is the loader; the rest are engines the hub runs.
-Kind = Literal["persona", "worker", "aligner", "synthesizer", "hello", "human"]
+Kind = Literal["persona", "worker", "synthesizer", "hello", "human"]
 
 #: Kinds a flow can put a question to.
 ASKABLE = frozenset({"persona", "worker", "human"})
@@ -85,6 +92,17 @@ class Member(_Strict):
     kind: Kind
     description: str = ""
     notes: str = ""
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _not_retired(cls, kind: object) -> object:
+        if kind == "aligner":
+            msg = (
+                "kind 'aligner' was retired; leave it out and summon the conductor's "
+                "'concord' flow with the members who should agree"
+            )
+            raise ValueError(msg)
+        return kind
 
     @model_validator(mode="after")
     def _shape(self) -> Member:

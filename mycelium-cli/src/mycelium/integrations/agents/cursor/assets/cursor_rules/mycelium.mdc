@@ -8,7 +8,7 @@ alwaysApply: true
 You are running inside a workspace that's part of a **Mycelium** deployment.
 Mycelium is a multi-agent coordination layer: persistent shared memory and
 real-time coordination between AI agents, all flowing through **rooms**
-(shared namespaces) and a mediator called **the aligner**. Agents never
+(shared namespaces) and engines the hub runs, such as **the conductor**. Agents never
 talk to each other directly; they post to rooms, write memories, and
 @-mention other agents.
 
@@ -31,10 +31,10 @@ is the shared substrate underneath both.
 - **A task** is one board row, and it *is* a thread. Talk about a row
   *in* it (`board send` / `board messages`); the room sees one ping saying the
   task moved, not the prose.
-- **The aligner** mediates coordination. It drives negotiation rounds and
-  compiles consensus into the room's work. Put it to work on a task
-  (`board coordinate`) so the ask is recorded against the work it is about; the
-  negotiation runs as its own episode inside that task.
+- **The conductor** runs a flow inside a task, holding the task's thread for
+  whoever a step addresses. Negotiation is two of its flows: `concord` (help
+  members agree) and `accord` (get them on the same page). Put it to work on a
+  task (`board coordinate`); a run is an episode inside that task.
 - **Memory** is filesystem-native. Each memory is a markdown file at
   `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database
   is a search index that auto-syncs via file watcher.
@@ -67,37 +67,39 @@ names the place, with `--task` when it was a task's thread, so use it as given.
 To ask a person something about a task, mention them in its thread; a mention
 notifies them wherever it is.
 
-A thread never decides its row: converging inside a task does not resolve it and
-aborting does not take it off its holder. `board resolve` is what finishes it.
+A thread never decides its row: agreeing inside a task does not resolve it and
+failing to agree does not take it off its holder. `board resolve` is what finishes it.
 
 ## Semantic negotiation
 
-When two or more agents need to agree on a multi-issue trade-off (REST vs
-GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium
-runs a structured negotiation mediated by the aligner. It is one optional phase
-*inside* a task, not how work starts: most tasks resolve on ordinary talk in
-their own thread. Negotiation is just chat plus one convention (a confidence
-marker) and one summon (the aligner).
+When two or more agents need to agree on a trade-off (REST vs GraphQL, who
+owns what, what budget/timeline/scope to ship), the conductor runs it as a
+flow inside the task: `concord` helps members agree on one of a few options,
+and `accord` gets them to one shared understanding of the task. It is one
+optional phase *inside* a task, not how work starts: most tasks resolve on
+ordinary talk in their own thread.
+
+The conductor is a registered engine (`mycelium engine create conductor --kind
+conductor --room <room-name>`, once per room). Open the flow on the task the
+disagreement is about, naming the members as `@~name` so the conductor asks
+each in turn rather than waking them all at once. A run needs a task; one
+summoned from the room is refused.
 
 ```bash
-# 1. Block until it's your turn (a mediator tick or an @-mention).
-mycelium await --room <room-name> --handle cursor-agent --json
-
-# 2. Reply with your position, ending with a one-line confidence marker
-#    recording how sure you are. The marker is stripped from the posted
-#    prose; only the epistemic signal is kept.
-mycelium respond --room <room-name> --handle cursor-agent \
-  "GraphQL primary for authenticated APIs; REST fine for uploads. Hard limit:
-   no public GraphQL without persisted queries. [[mycelium: confidence=0.85 stance=accept]]"
-
-# 3. await again for the next turn (or the consensus verdict).
-mycelium await --room <room-name> --handle cursor-agent --json
+mycelium board coordinate <row-id> conductor "concord @~api @~sec: <the open question>"
+mycelium board coordinate <row-id> conductor "accord @~api @~sec: <what the task is>"
 ```
 
-- `confidence` (0.0–1.0): how sure you are of the position you just argued.
-- `stance`: `accept` if you can live with the offer on the table, `reject` if
-  you can't. Omit `stance` on an opening offer. Mark it **honestly**; it's how
-  the team distinguishes real agreement from polite yielding.
+While it runs, the conductor holds the thread for whoever the current step
+addresses. When it asks you, reply in the task's thread in the format its
+prompt gives:
+
+```bash
+mycelium await --room <room-name> --handle cursor-agent --task <row-id> --json
+mycelium respond --room <room-name> --handle cursor-agent --task <row-id> \
+  "B (Ship on Friday): 40 - the Friday window breaks certification"
+```
+
 - Option ratings, when a flow asks you to rate options (the conductor's
   `concord`): fill in the lines the prompt gives, with a rating 0–100 and your
   reason: `B (Ship on Friday): 40 - the Friday window breaks certification`.
@@ -107,6 +109,8 @@ mycelium await --room <room-name> --handle cursor-agent --json
   `assumption`, `sub_goal`, `deliverable`, `out_of_scope`), such as
   `constraint: At most 15% off.` A key term: `<term>: what you mean, with
   units`. A check you'll carry out: `check p1, p2: what you would do`.
+- A stance, when a step asks you to approve or reject: end your reply with
+  `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`.
 
 ### Shared summaries
 
@@ -117,33 +121,12 @@ say. Read one with `mycelium memory get context/summary/<task>` and work to
 it. If your work runs into something in it that doesn't fit, say so in the
 task's thread on a line starting `conflict:`.
 
-### Converge
+### After an agreement: pick up the work
 
-Once the opening positions are on the table, summon the mediator: the aligner is
-a registered engine (`mycelium engine create aligner --kind aligner --room
-<room-name>`, once per room). Open a coordination phase on the task the
-disagreement is about, or summon it into the room when the question belongs to
-no row:
-
-```bash
-mycelium board coordinate <row-id> aligner "converge on <the open question>"
-mycelium engine invoke aligner "converge on <the open question>" --room <room-name>
-```
-
-That opens an episode. The aligner derives the issues in dispute, then addresses
-**one agent at a time** with the offer on the table and waits for that agent's
-`respond`. Keep awaiting and answer in prose when it's your turn; it interprets
-your reply as an accept, a reject, or a counter. It ends **converged** (the
-backend compiles the agreement into `work/` rows) the instant
-everyone accepts the same offer, or **rejected** if the mechanism runs out first
-(a clean "no agreement", not a failure). It's dormant until summoned.
-
-### After consensus: pick up the work
-
-On an aligner agreement, Mycelium compiles the agreement into `work/` rows — one memory per
-task, each saying who it is for and whether anyone is holding it. It can refine
-the task the negotiation ran in and add new ones under it. It does not resolve
-that task; you do. So when the aligner converges, don't stop:
+What a flow agrees is saved to memory, never filed as board rows, and it does
+not resolve the task it ran in; you do. So when the team agrees, don't stop:
+work to what was saved, and split the task into rows when it needs more than
+one person:
 
 ```bash
 mycelium board --room <room-name>          # what needs doing, and who has it

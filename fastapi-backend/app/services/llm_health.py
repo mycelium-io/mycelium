@@ -339,7 +339,7 @@ def invalidate_cache() -> None:
 # real inference.
 #
 # probe_completion() runs a real one-shot ``pi`` turn — the same runtime the
-# aligner's LLM session and the plan compiler use — catching a missing/broken ``pi``
+# engines' LLM sessions use — catching a missing/broken ``pi``
 # binary, bad model strings, and auth errors at the true endpoint.
 
 

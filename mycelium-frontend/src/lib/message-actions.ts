@@ -41,8 +41,8 @@ export function silenceMentions(text: string): string {
 }
 
 /** A quote notifies nobody: it names the sender silently (`@~`), and every
- *  mention in the quoted text is made silent too, so quoting "@aligner run
- *  it" doesn't summon the aligner again. The reply button is the one that
+ *  mention in the quoted text is made silent too, so quoting "@conductor run
+ *  it" doesn't summon the conductor again. The reply button is the one that
  *  notifies. Blank lines stay inside the quote. */
 export function quoteText(content: string, sender: string): string {
   const lines = silenceMentions(content.trim()).split("\n");

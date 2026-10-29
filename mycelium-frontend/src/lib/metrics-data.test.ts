@@ -19,7 +19,7 @@ function ep(overrides: Partial<FleetEpisode> = {}): FleetEpisode {
     tasks: ["work/one"],
     message_count: 3,
     updated_at: "2026-01-01T00:00:00Z",
-    updated_by: "aligner",
+    updated_by: "conductor",
     ...overrides,
   };
 }

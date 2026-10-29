@@ -12,7 +12,7 @@ mycelium board new "Ship passkey login"   # add a task
 mycelium board new "Pick storage" --parent work/ship-passkey-login --assign @sec
 mycelium board send work/auth-spike "@sec keychain?"   # post in a task's thread
 mycelium board messages work/auth-spike   # read a task's thread
-mycelium board coordinate work/auth-spike aligner "agree on token storage"
+mycelium board coordinate work/auth-spike conductor "concord: agree on token storage"
 mycelium board claim work/auth-spike      # take a task nobody was given
 mycelium board claim work/auth-spike --force   # even one still waiting on another
 mycelium board assign work/auth-spike @sec   # give it to someone; they hold it

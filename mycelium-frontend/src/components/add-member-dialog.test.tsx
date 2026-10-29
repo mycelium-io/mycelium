@@ -175,7 +175,7 @@ describe("AddMemberDialog", () => {
   });
 
   it("shows why the hub refused, and adds nothing more", async () => {
-    createEngine.mockRejectedValue(new Error("@aligner already exists in atlas"));
+    createEngine.mockRejectedValue(new Error("@conductor already exists in atlas"));
     const { onAdded } = open("engine");
     fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("already exists");

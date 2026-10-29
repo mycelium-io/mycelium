@@ -33,7 +33,7 @@ from app.services.filesystem import (
 logger = logging.getLogger(__name__)
 
 
-#: Manifest adapter marking a first-party cognition engine (aligner, synthesizer).
+#: Manifest adapter marking a first-party cognition engine (conductor, synthesizer).
 #: Engines speak only through their own runtime, never an external participation call.
 ENGINE_ADAPTER = "engine"
 

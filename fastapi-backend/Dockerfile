@@ -13,8 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc python3-dev curl git openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js + the Pi coding agent — the aligner's SAO mediator runs on a persistent
-# `pi` session (its brain), so `pi` must be on PATH in the backend runtime.
+# Node.js + the Pi coding agent: every model call the hub makes (personas,
+# workers, the synthesizer, the verifier) shells out to `pi`, so `pi` must be on
+# PATH in the backend runtime.
 # OpenShell sandboxing (ALIGNER_PI_OPENSHELL) is optional and layered on top.
 # Node 24, at 24.22.1 or newer: earlier releases decompress Brotli unsafely
 # (CVE-2026-111497), and Pi fetches over HTTPS.

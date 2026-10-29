@@ -12,7 +12,7 @@ const writeFields = vi.fn().mockResolvedValue({});
 const createMemories = vi.fn().mockResolvedValue(undefined);
 const createSchedule = vi.fn().mockResolvedValue(undefined);
 const launchRunnerAgent = vi.fn().mockResolvedValue({ id: "job1" });
-const createEngine = vi.fn().mockResolvedValue({ handle: "aligner" });
+const createEngine = vi.fn().mockResolvedValue({ handle: "synthesizer" });
 
 const framework = (id: string, name: string) => ({
   id,
@@ -60,7 +60,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   createSchedule: (...args: unknown[]) => createSchedule(...args),
   fetchSchedules: async () => ({ schedules: [], checks: { always: "Every time" } }),
   fetchRoomAgents: vi.fn().mockResolvedValue([
-    { handle: "aligner", adapter: "engine", kind: "aligner", description: "mediator", cwd: null, owner: null, team: null, allow_from: [] },
+    { handle: "synthesizer", adapter: "engine", kind: "synthesizer", description: "distiller", cwd: null, owner: null, team: null, allow_from: [] },
     { handle: "conductor", adapter: "engine", kind: "conductor", description: "", cwd: null, owner: null, team: null, allow_from: [] },
   ]),
   fetchProtocols: async () => [
@@ -70,7 +70,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchRoomMembers: vi.fn().mockResolvedValue({
     members: [
       { handle: "watcher", kind: "lease", last_seen: null },
-      { handle: "aligner", kind: "slim", last_seen: null },
+      { handle: "synthesizer", kind: "slim", last_seen: null },
     ],
     floors: [],
   }),
@@ -83,7 +83,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchMessages: vi.fn().mockResolvedValue({
     messages: [
       { message_type: "broadcast", sender_handle: "sam" },
-      { message_type: "broadcast", sender_handle: "aligner" },
+      { message_type: "broadcast", sender_handle: "synthesizer" },
     ],
   }),
   fetchMemories: vi.fn().mockResolvedValue([
@@ -415,78 +415,78 @@ describe("<RoomChatBox /> composer triggers", () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
-    await userEvent.type(box, "@ali");
+    await userEvent.type(box, "@syn");
 
-    const option = await screen.findByRole("button", { name: /@aligner/ });
+    const option = await screen.findByRole("button", { name: /@synthesizer/ });
     await userEvent.click(option);
 
-    expect((box as HTMLTextAreaElement).value).toContain("@aligner ");
+    expect((box as HTMLTextAreaElement).value).toContain("@synthesizer ");
   });
 
   it("autocompletes a silent @~mention as one", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
-    await userEvent.type(box, "cc @~ali");
+    await userEvent.type(box, "cc @~syn");
 
-    const option = await screen.findByRole("button", { name: /@aligner/ });
+    const option = await screen.findByRole("button", { name: /@synthesizer/ });
     await userEvent.click(option);
 
-    expect((box as HTMLTextAreaElement).value).toBe("cc @~aligner ");
+    expect((box as HTMLTextAreaElement).value).toBe("cc @~synthesizer ");
   });
 
   it("autocompletes an interrupting @!mention as one", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
-    await userEvent.type(box, "@!ali");
+    await userEvent.type(box, "@!syn");
 
-    const option = await screen.findByRole("button", { name: /@aligner/ });
+    const option = await screen.findByRole("button", { name: /@synthesizer/ });
     await userEvent.click(option);
 
-    expect((box as HTMLTextAreaElement).value).toBe("@!aligner ");
+    expect((box as HTMLTextAreaElement).value).toBe("@!synthesizer ");
   });
 
   it("turns a finished mention into an interrupt without doubling the handle", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = (await textarea()) as HTMLTextAreaElement;
     await userEvent.click(box);
-    await userEvent.type(box, "@ali");
-    await userEvent.click(await screen.findByRole("button", { name: /@aligner/ }));
+    await userEvent.type(box, "@syn");
+    await userEvent.click(await screen.findByRole("button", { name: /@synthesizer/ }));
     await userEvent.type(box, "hi");
-    expect(box.value).toBe("@aligner hi");
+    expect(box.value).toBe("@synthesizer hi");
 
     // Back to just after the @, add ! and pick with Enter.
     await userEvent.type(box, "!", { initialSelectionStart: 1, initialSelectionEnd: 1 });
-    await screen.findByRole("button", { name: /@aligner/ });
+    await screen.findByRole("button", { name: /@synthesizer/ });
     await userEvent.keyboard("{Enter}");
 
-    expect(box.value).toBe("@!aligner hi");
+    expect(box.value).toBe("@!synthesizer hi");
     // The cursor is put back on the next frame, past the space already there.
-    await waitFor(() => expect(box.selectionStart).toBe("@!aligner ".length));
+    await waitFor(() => expect(box.selectionStart).toBe("@!synthesizer ".length));
   });
 
   it("filters by the whole handle and replaces it when the cursor is inside one", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = (await textarea()) as HTMLTextAreaElement;
     await userEvent.click(box);
-    await userEvent.type(box, "ask @aligner now");
-    // Delete the "g" in the handle, then put it back: the cursor is mid-handle.
-    await userEvent.type(box, "{backspace}g", { initialSelectionStart: 9, initialSelectionEnd: 9 });
-    await userEvent.click(await screen.findByRole("button", { name: /@aligner/ }));
+    await userEvent.type(box, "ask @synthesizer now");
+    // Delete the "t" in the handle, then put it back: the cursor is mid-handle.
+    await userEvent.type(box, "{backspace}t",{ initialSelectionStart: 9, initialSelectionEnd: 9 });
+    await userEvent.click(await screen.findByRole("button", { name: /@synthesizer/ }));
 
-    expect(box.value).toBe("ask @aligner now");
+    expect(box.value).toBe("ask @synthesizer now");
   });
 
   it("leaves a full stop after a handle alone when the cursor is inside it", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = (await textarea()) as HTMLTextAreaElement;
     await userEvent.click(box);
-    await userEvent.type(box, "ask @aligner. Thanks");
-    await userEvent.type(box, "{backspace}g", { initialSelectionStart: 9, initialSelectionEnd: 9 });
-    await userEvent.click(await screen.findByRole("button", { name: /@aligner/ }));
+    await userEvent.type(box, "ask @synthesizer. Thanks");
+    await userEvent.type(box, "{backspace}t",{ initialSelectionStart: 9, initialSelectionEnd: 9 });
+    await userEvent.click(await screen.findByRole("button", { name: /@synthesizer/ }));
 
-    expect(box.value).toBe("ask @aligner. Thanks");
+    expect(box.value).toBe("ask @synthesizer. Thanks");
   });
 
   it("says in the popover, and aloud, when a mention is silent or interrupts", async () => {
@@ -496,20 +496,20 @@ describe("<RoomChatBox /> composer triggers", () => {
     await userEvent.click(box);
 
     // A plain @ says nothing new.
-    await userEvent.type(box, "@ali");
-    await screen.findByRole("button", { name: /@aligner/ });
+    await userEvent.type(box, "@syn");
+    await screen.findByRole("button", { name: /@synthesizer/ });
     expect(screen.queryByTestId("mention-mode")).toBeNull();
     expect(announced()).toBe("");
 
     await userEvent.clear(box);
-    await userEvent.type(box, "@~ali");
-    await screen.findByRole("button", { name: /@aligner/ });
+    await userEvent.type(box, "@~syn");
+    await screen.findByRole("button", { name: /@synthesizer/ });
     expect(screen.getByTestId("mention-mode")).toHaveTextContent("Silentnames them without notifying");
     expect(announced()).toBe("Silent mention: names them without notifying");
 
     await userEvent.clear(box);
-    await userEvent.type(box, "@!ali");
-    const option = await screen.findByRole("button", { name: /@aligner/ });
+    await userEvent.type(box, "@!syn");
+    const option = await screen.findByRole("button", { name: /@synthesizer/ });
     expect(screen.getByTestId("mention-mode")).toHaveTextContent("Interruptstops a working agent");
     expect(announced()).toBe("Interrupt mention: stops a working agent");
     // An engine only acts when mentioned, so an interrupt reaches it as a mention.
@@ -903,18 +903,18 @@ describe("<RoomChatBox /> command arguments", () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
-    await userEvent.type(box, "/engine al");
-    expect(await screen.findByRole("button", { name: /aligner.*Mediates/ })).toBeInTheDocument();
+    await userEvent.type(box, "/engine syn");
+    expect(await screen.findByRole("button", { name: /synthesizer.*Distills/ })).toBeInTheDocument();
     await userEvent.keyboard("{Tab}{Enter}");
 
     await waitFor(() => expect(createEngine).toHaveBeenCalled());
     expect(createEngine).toHaveBeenCalledWith("demo", {
-      handle: "aligner",
-      kind: "aligner",
+      handle: "synthesizer",
+      kind: "synthesizer",
       description: "",
       created_by: "julia",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("Added @aligner");
+    expect(await screen.findByRole("status")).toHaveTextContent("Added @synthesizer");
   });
 
   it("does not offer members for a handle being made up", async () => {
@@ -923,7 +923,7 @@ describe("<RoomChatBox /> command arguments", () => {
     await userEvent.click(box);
     await userEvent.type(box, "/agent @al");
     await screen.findByLabelText("/agent usage");
-    expect(screen.queryByRole("button", { name: /@aligner/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /@synthesizer/ })).toBeNull();
   });
 });
 

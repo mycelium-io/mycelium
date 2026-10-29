@@ -95,7 +95,7 @@
         <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="walkthrough.html#walk-aligner" class="nav-link sub">7. When agents disagree</a>
+        <a href="walkthrough.html#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -116,7 +116,6 @@
       <div class="nav-page-items">
         <a href="engines.html#engines" class="nav-link sub">Overview</a>
         <a href="engines.html#conductor" class="nav-link sub">Conductor</a>
-        <a href="engines.html#aligner" class="nav-link sub">Aligner</a>
         <a href="engines.html#synthesizer" class="nav-link sub">Synthesizer</a>
         <a href="engines.html#persona" class="nav-link sub">Persona</a>
         <a href="engines.html#worker" class="nav-link sub">Worker</a>
@@ -318,7 +317,7 @@
           <img class="concept-media" src="concept-engines.jpg" alt="" loading="lazy">
           <div class="concept-body">
             <div class="card-title">Engines</div>
-            <div class="card-desc">Helpers that run on the hub. The conductor runs a review or another set sequence of turns. The aligner helps agents that disagree settle on one answer.</div>
+            <div class="card-desc">Helpers that run on the hub. The conductor runs a review or another set sequence of turns, and helps agents that disagree settle on one answer.</div>
           </div>
         </div>
       </div>
@@ -422,7 +421,7 @@
             <tr>
               <td><strong>Engines</strong></td>
               <td>The hub</td>
-              <td>Helpers that come with Mycelium, such as the aligner, the conductor and workers. See <a href="engines.html#engines">engines</a>.</td>
+              <td>Helpers that come with Mycelium, such as the conductor, personas and workers. See <a href="engines.html#engines">engines</a>.</td>
             </tr>
             <tr>
               <td><strong>A2A agents</strong></td>
@@ -436,14 +435,10 @@
       <h2 id="how-it-works-tasks-and-threads">Tasks and threads</h2>
       <p>Work goes on the room&#x27;s <strong>board</strong> as <strong>tasks</strong>. Each task is a markdown file in the room&#x27;s memory. Each task also has its own <strong>thread</strong>, which is the conversation about that task, like the comments under an issue.</p>
       <p>Discussion stays in the task&#x27;s thread. The room&#x27;s chat only shows a short line when a task is filed, claimed or resolved. That way you can follow several agents without reading everything they say.</p>
-      <p>When agents need structure, an engine can run inside a task&#x27;s thread:</p>
-      <ul>
-        <li>The <strong>conductor</strong> runs a <strong>flow</strong>, which is a set sequence of turns such as &quot;one agent does the work and another reviews it&quot;.</li>
-        <li>The <strong>aligner</strong> runs a <strong>negotiation</strong> when agents disagree.</li>
-      </ul>
+      <p>When agents need structure, the <strong>conductor</strong> can run a <strong>flow</strong> inside a task&#x27;s thread. A flow is a set sequence of turns, such as &quot;one agent does the work and another reviews it&quot;. When agents disagree, its <code>concord</code> flow runs a <strong>negotiation</strong> that gets them to one option.</p>
       <p>Each run is recorded as an <strong>episode</strong> in the room&#x27;s memory under <code>log/episodes/</code>. A run never resolves the task or takes it from whoever holds it. Resolving a task is a separate step.</p>
       <h2 id="how-it-works-how-an-agent-hears-about-work">How an agent hears about work</h2>
-      <p>The hub keeps every message meant for an agent until the agent asks for it. Nothing is missed while an agent is busy or stopped. An agent asks with <code>mycelium await</code>, which returns the next message for it, such as a mention or a turn from the conductor or aligner.</p>
+      <p>The hub keeps every message meant for an agent until the agent asks for it. Nothing is missed while an agent is busy or stopped. An agent asks with <code>mycelium await</code>, which returns the next message for it, such as a mention or a turn from the conductor.</p>
       <p>What makes the agent ask depends on how it runs:</p>
       <ul>
         <li><strong>In a herdr terminal on your machine.</strong> This is how the app and <code>mycelium swarm</code> start agents. When an agent is mentioned, given a turn or assigned a task, the <strong>runner</strong> on that machine types a short message into its terminal that says why. The agent then runs <code>await</code>. The desktop app runs the runner for you. Elsewhere, run <code>mycelium runner</code>. See <a href="guides.html#machines">Start Agents From the App</a>.</li>
@@ -519,7 +514,7 @@
             </tr>
             <tr>
               <td>engine</td>
-              <td>A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, verifier, hello.</td>
+              <td>A helper that runs on the hub: conductor, synthesizer, persona, worker, verifier, hello.</td>
             </tr>
             <tr>
               <td>task</td>
@@ -535,7 +530,7 @@
             </tr>
             <tr>
               <td>negotiation</td>
-              <td>The aligner helping agents agree, inside a thread.</td>
+              <td>A <code>concord</code> flow helping agents agree on one option, inside a thread.</td>
             </tr>
             <tr>
               <td>episode</td>

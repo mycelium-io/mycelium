@@ -260,18 +260,20 @@ def test_agent_and_engine_ls_take_json_after_the_command(monkeypatch: pytest.Mon
         monkeypatch,
         MEMORY_LIST_SYNC,
         [
-            _record("agents/aligner", _manifest_yaml("aligner", adapter="engine", kind="aligner")),
+            _record(
+                "agents/conductor", _manifest_yaml("conductor", adapter="engine", kind="conductor")
+            ),
             _record("agents/echo", _manifest_yaml("echo")),
         ],
     )
 
     agents = runner.invoke(agent_cmd.app, ["ls", "--room", "demo", "--json"])
     assert agents.exit_code == 0, agents.output
-    assert {a["handle"] for a in json.loads(agents.stdout)} == {"aligner", "echo"}
+    assert {a["handle"] for a in json.loads(agents.stdout)} == {"conductor", "echo"}
 
     engines = runner.invoke(engine_cmd.app, ["ls", "--room", "demo", "--json"])
     assert engines.exit_code == 0, engines.output
-    assert [e["handle"] for e in json.loads(engines.stdout)] == ["aligner"]
+    assert [e["handle"] for e in json.loads(engines.stdout)] == ["conductor"]
 
 
 def test_agent_show_reports_a_missing_agent_the_hub_doesnt_have(
@@ -304,6 +306,10 @@ def test_engine_ls_lists_engines_the_hub_serves(monkeypatch: pytest.MonkeyPatch)
         monkeypatch,
         MEMORY_LIST_SYNC,
         [
+            _record(
+                "agents/conductor", _manifest_yaml("conductor", adapter="engine", kind="conductor")
+            ),
+            # A room made before the aligner was retired still lists it.
             _record("agents/aligner", _manifest_yaml("aligner", adapter="engine", kind="aligner")),
             _record("agents/echo", _manifest_yaml("echo")),
         ],
@@ -311,6 +317,7 @@ def test_engine_ls_lists_engines_the_hub_serves(monkeypatch: pytest.MonkeyPatch)
 
     result = runner.invoke(engine_cmd.app, ["ls", "--room", "demo"])
     assert result.exit_code == 0, result.output
+    assert "@conductor" in result.output
     assert "@aligner" in result.output
     assert "@echo" not in result.output
 

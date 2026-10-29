@@ -25,7 +25,7 @@ Each room has a chat, a board, memory and these members:
 |---|---|---|
 | **People** | The app or a browser | You and your teammates. |
 | **Your agents** | Your own machine | Coding agents such as Claude Code, Codex or OpenCode, running in your folders with your tools. |
-| **Engines** | The hub | Helpers that come with Mycelium, such as the aligner, the conductor and workers. See [engines](#engines). |
+| **Engines** | The hub | Helpers that come with Mycelium, such as the conductor, personas and workers. See [engines](#engines). |
 | **A2A agents** | Somewhere else | Remote agents the hub calls over the A2A protocol. See [A2A bridge](#a2a-bridge). |
 
 Every member has a **handle** that the room uses to mention it, such as
@@ -41,11 +41,10 @@ Discussion stays in the task's thread. The room's chat only shows a short line
 when a task is filed, claimed or resolved. That way you can follow several
 agents without reading everything they say.
 
-When agents need structure, an engine can run inside a task's thread:
-
-- The **conductor** runs a **flow**, which is a set sequence of turns such as
-  "one agent does the work and another reviews it".
-- The **aligner** runs a **negotiation** when agents disagree.
+When agents need structure, the **conductor** can run a **flow** inside a
+task's thread. A flow is a set sequence of turns, such as "one agent does the
+work and another reviews it". When agents disagree, its `concord` flow runs a
+**negotiation** that gets them to one option.
 
 Each run is recorded as an **episode** in the room's memory under
 `log/episodes/`. A run never resolves the task or takes it from whoever holds
@@ -56,7 +55,7 @@ it. Resolving a task is a separate step.
 The hub keeps every message meant for an agent until the agent asks for it.
 Nothing is missed while an agent is busy or stopped. An agent asks with
 `mycelium await`, which returns the next message for it, such as a mention or a
-turn from the conductor or aligner.
+turn from the conductor.
 
 What makes the agent ask depends on how it runs:
 
@@ -116,11 +115,11 @@ See [Authentication](#auth).
 | handle | A member's name in a room, such as `@builder`. |
 | mention | `@handle` in a message, which asks that member for something. `@~handle` names them without asking. |
 | agent | A coding agent you run, such as Claude Code. |
-| engine | A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, verifier, hello. |
+| engine | A helper that runs on the hub: conductor, synthesizer, persona, worker, verifier, hello. |
 | task | A row on the board, stored as a memory under `work/`. |
 | thread | A task's own conversation. |
 | flow | A set sequence of turns the conductor runs in a thread. A room's own flows are saved under `protocols/`. |
-| negotiation | The aligner helping agents agree, inside a thread. |
+| negotiation | A `concord` flow helping agents agree on one option, inside a thread. |
 | episode | The record of one flow or negotiation, under `log/episodes/`. |
 | role | A part in a flow, such as `author` or `reviewer`. |
 | resolved | A task that's finished. |

@@ -200,7 +200,7 @@ function isHerdr(member: PresenceMember): boolean {
  * visible. Humans and agents share the monogram avatar, told apart by tint
  * (muted for people, accent for agents).
  *
- * Engines (aligner / synthesizer / hello) are backend-owned, so their separate
+ * Engines (conductor / synthesizer / hello) are backend-owned, so their separate
  * invitation action is a pure manifest write. A coding agent needs something on
  * the user's machine to start it: with a runner connected (`mycelium runner`)
  * the app queues that start through the hub; without one, the setup is copied
@@ -301,7 +301,7 @@ export function AgentsPanel({
   }, [refresh]);
 
   // Agents by where they are in their life, not who owns them (a room's swarm is
-  // nearly all one owner): **Engines** are the backend capabilities (aligner,
+  // nearly all one owner): **Engines** are the backend capabilities (conductor,
   // synthesizer), kept apart because they persist; every other agent — coding
   // agents and bridged A2A ones alike — is **Active** when it holds a live socket
   // or an await lease and **Idle** otherwise. Idle folds by default so the handful

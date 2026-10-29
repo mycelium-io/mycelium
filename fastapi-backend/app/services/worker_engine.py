@@ -60,7 +60,8 @@ from typing import TYPE_CHECKING, Any
 from app.config import settings
 from app.services import activity, markers, message_format, room_settings
 from app.services.agreed import for_prompt as agreed_for_prompt
-from app.services.aligner import _norm, _registered_engine_kind
+from app.services.engine_kinds import norm as _norm
+from app.services.engine_kinds import registered_engine_kind
 from app.services.message_models import Kind
 from app.services.synthesizer import _strip_fences
 
@@ -268,7 +269,7 @@ def reviewer_for(room: str, handle: str) -> str | None:
     lead), and so there is always someone to hand the work to. ``None`` when
     ``handle`` is the only worker.
     """
-    workers = [h for h in team_of(room) if _registered_engine_kind(room, h) == ENGINE_KIND]
+    workers = [h for h in team_of(room) if registered_engine_kind(room, h) == ENGINE_KIND]
     if _norm(handle) not in {_norm(w) for w in workers} or len(workers) < 2:
         return None
     at = next(i for i, w in enumerate(workers) if _norm(w) == _norm(handle))
@@ -479,10 +480,7 @@ class WorkerEngine:
         are its roles, and it addresses each in turn.
         """
         for other in co_summons or ():
-            if (
-                _norm(other) != _norm(handle)
-                and _registered_engine_kind(room, other) == "conductor"
-            ):
+            if _norm(other) != _norm(handle) and registered_engine_kind(room, other) == "conductor":
                 return
         self._answer(room, handle, envelope, message_text)
 
@@ -520,7 +518,7 @@ class WorkerEngine:
 
     @staticmethod
     def _is_worker(room: str, handle: str) -> bool:
-        return _registered_engine_kind(room, handle) == ENGINE_KIND
+        return registered_engine_kind(room, handle) == ENGINE_KIND
 
     def _answer(self, room: str, handle: str, envelope: MyceliumMessage, message_text: str) -> None:
         if not self._is_worker(room, handle):

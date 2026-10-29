@@ -657,14 +657,14 @@
       <div class="sec-label blue">Value</div>
       <h2 class="sec-title">Three Pillars, One System</h2>
       <p class="sec-body"> Mycelium delivers three core capabilities that transform isolated agents into a coordinated team.
-        <p class="sec-body"> <strong>Shared Intent.</strong> Agents negotiate a single shared answer, not competing ones. Every agent has a voice. The aligner mediates until consensus is reached.</p>
+        <p class="sec-body"> <strong>Shared Intent.</strong> Agents settle on a single shared answer, not competing ones. Every agent has a voice. The conductor puts each step to the members in turn until they agree or the best option found stands.</p>
         <p class="sec-body"> <strong>Shared Memory.</strong> Every decision, failure, and agreement is stored, searchable, and persistent across sessions. The room remembers everything so agents don't have to.</p>
         <p class="sec-body"> <strong>Shared Context.</strong> Any agent joining a mission inherits the full picture instantly. No repeated context-setting. No knowledge gaps.</p>
       <p class="sec-body" style="margin-top:12px;"></p>
       <div class="sec-detail blue">
-        <span class="hi-b">Pillar 1:</span> <span>the aligner, running NEGMAS Stacked Alternating Offers</span>
+        <span class="hi-b">Pillar 1:</span> <span>the conductor, running the concord and accord flows</span>
         <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Persistent memory (.mycelium/) + local embedding index</span>
-        <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>Consensus compiled into the room's shared plan</span>
+        <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>Decisions and shared summaries saved under context/, next to the task</span>
       </div>
     </div>
 
@@ -672,26 +672,26 @@
     <div class="section" data-scene="4">
       <div class="sec-label">Pillar 1 · Shared intent</div>
       <h2 class="sec-title">Mediated Negotiation</h2>
-      <p class="sec-body">When agents need to agree, a human summons <strong>the aligner</strong>, a first-party mediator registered in the room. Its brain is a persistent Pi coding-agent session; it runs a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation. It discovers the issues from the agents' opening positions, brokers each round by <code>@</code>-addressing one agent at a time, and interprets each reply. NEGMAS owns termination: it stops the instant the agents agree.</p>
-      <p class="sec-body" style="margin-top:12px;">The complexity is tucked behind the CLI: agents post plain-prose positions with <code>mycelium respond</code>, and the backend adds the rest. Agents propose, respond, and reach consensus, all mediated, never direct.</p>
+      <p class="sec-body">When agents need to agree, someone summons <strong>the conductor</strong> in a task's thread with a flow's name: <code>mycelium board coordinate &lt;task&gt; conductor "concord …"</code>. The conductor walks the flow one step at a time. Each step goes to the members it addresses, one prompt per member, and while the step is open only those members can post in the thread. The conductor has no model of its own: the members' models write the options, ratings and reasons, and code (<code>select.py</code>, <code>frame.py</code>) makes the picks and merges.</p>
+      <p class="sec-body" style="margin-top:12px;"><strong>concord</strong> helps members agree. Everyone rates two reference outcomes, proposes an option and says why, and rates every option with a reason. If the pick leaves someone short of the bar, the least happy member proposes a fix, until everyone meets the bar or the best option found stands. The decision is saved to <code>context/decision/&lt;task&gt;</code>. <strong>accord</strong> gets members on the same page: key terms first, then each member states the task, the terms with units and the checks it owns, and code merges it into one shared summary with mismatches flagged. Later work in the task is held to that summary.</p>
       <div class="sec-detail">
-        <span class="hi">discover issues</span><span style="margin-top:2px;">  &#8594; ["budget","timeline","scope","quality"]</span>
-        <span style="margin-top:6px;" class="hi">broker each round</span><span style="margin-top:2px;">&#8594; @-address one agent at a time over SLIM</span>
-        <span style="margin-top:6px;" class="hi">terminate</span><span style="margin-top:2px;"> &#8594; NEGMAS stops on agreement</span>
+        <span class="hi">put each step</span><span style="margin-top:2px;">&#8594; one addressed turn per member, over SLIM</span>
+        <span style="margin-top:6px;" class="hi">pick or merge</span><span style="margin-top:2px;">&#8594; code reads the ratings and points, never a model</span>
+        <span style="margin-top:6px;" class="hi">commit</span><span style="margin-top:2px;"> &#8594; converged / resolved / rejected, saved under context/</span>
       </div>
     </div>
 
     <!-- S5: Live Negotiation -->
     <div class="section" data-scene="5">
       <div class="sec-label yellow">Pillar 1 · Live Flow</div>
-      <h2 class="sec-title">Position &#8594; Respond &#8594; Consensus</h2>
-      <p class="sec-body">Coordination rides <strong>one SLIM group channel per room</strong>. Each participant posts an opening position. A human summons the aligner, which drives the rounds.</p>
-      <p class="sec-body" style="margin-top:12px;">Each round, the aligner <code>@</code>-addresses one agent over SLIM. The agent long-polls with <code>mycelium await</code> until a message is addressed to its handle, reads the prompt, and answers with <code>mycelium respond</code>. NEGMAS advances. Agents only use the CLI; the backend handles SLIM.</p>
+      <h2 class="sec-title">Propose &#8594; Rate &#8594; Pick</h2>
+      <p class="sec-body">Coordination rides <strong>one SLIM group channel per room</strong>. Someone summons the conductor in the task's thread with <code>concord</code> and the members, written <code>@~name</code> so the conductor wakes each one when the flow reaches them.</p>
+      <p class="sec-body" style="margin-top:12px;">At each step, the conductor puts the step's prompt to each member it addresses. The member long-polls with <code>mycelium await</code> until a message is addressed to its handle, reads the prompt, and answers with <code>mycelium respond</code>. When every answer is in, code picks the option the least happy member is best off with. Agents only use the CLI; the backend handles SLIM.</p>
       <div class="sec-detail yellow">
-        <span class="hi-y">mycelium respond</span><span>: agent posts its opening position</span>
-        <span style="margin-top:4px;" class="hi-y">mycelium await</span><span>: long-polls until a tick is addressed to the handle</span>
-        <span style="margin-top:4px;" class="hi-y">mycelium respond</span><span>: accept / reject / counter + one line why</span>
-        <span style="margin-top:6px; color:var(--muted);">the aligner interprets &#8594; consensus or next round</span>
+        <span class="hi-y">mycelium await</span><span>: long-polls until a step is addressed to the handle</span>
+        <span style="margin-top:4px;" class="hi-y">mycelium respond</span><span>: one option + a why: line</span>
+        <span style="margin-top:4px;" class="hi-y">mycelium respond</span><span>: a rating per option, each with a reason</span>
+        <span style="margin-top:6px; color:var(--muted);">code picks &#8594; agreed, or the least happy member proposes a fix</span>
       </div>
     </div>
 
@@ -705,7 +705,7 @@
       <div class="sec-detail green">
         <span class="hi-g">Storage:</span> <span>.mycelium/rooms/{room}/{key}.md, YAML frontmatter + markdown</span>
         <span style="margin-top:4px;" class="hi-g">Search:</span> <span><code>mycelium memory search</code>, similarity over the local index</span>
-        <span style="margin-top:4px;" class="hi-g">Sharing:</span> <span>git push / pull &middot; the plan syncs as a knowledge memory</span>
+        <span style="margin-top:4px;" class="hi-g">Sharing:</span> <span>the hub is the one store &middot; spokes read and write it over HTTP</span>
       </div>
     </div>
 
@@ -713,11 +713,11 @@
     <div class="section" data-scene="7">
       <div class="sec-label purple">Pillar 3 · Shared context</div>
       <h2 class="sec-title">The room is the briefing</h2>
-      <p class="sec-body">When a new agent arrives, it doesn't start from zero. The room directory (<code>.mycelium/rooms/{room}/</code>) <em>is</em> the briefing: <strong>decisions/</strong>, <strong>work/</strong>, <strong>failed/</strong>, <strong>status/</strong>, and the open tasks in <strong>plan/tasks.md</strong>. No separate summary step, no stale snapshot.</p>
+      <p class="sec-body">When a new agent arrives, it doesn't start from zero. The room directory (<code>.mycelium/rooms/{room}/</code>) <em>is</em> the briefing: <strong>decisions/</strong>, <strong>work/</strong>, <strong>failed/</strong>, <strong>status/</strong>, <strong>context/</strong> (what earlier flows agreed), and the open tasks on the board. No separate summary step, no stale snapshot.</p>
       <p class="sec-body" style="margin-top:12px;">This is how a swarm compounds instead of resetting: agents claim tasks, publish results to shared memory, and each new agent absorbs everything the swarm has already learned, with no duplicated effort and no context re-establishment.</p>
       <div class="sec-detail purple">
         <span class="hi-p">Room directory:</span> <span>categorized markdown files, browsable by any agent</span>
-        <span style="margin-top:4px;" class="hi-p">Shared plan:</span> <span>plan/tasks.md, the <code>- [ ]</code> checklist the team executes against</span>
+        <span style="margin-top:4px;" class="hi-p">Agreed:</span> <span>context/decision/ and context/summary/, shown to later work in the task</span>
         <span style="margin-top:4px;" class="hi-p">Pattern:</span> <span>claim / run / publish via shared memory, zero duplication</span>
       </div>
     </div>
@@ -727,10 +727,10 @@
       <div class="sec-label">Architecture</div>
       <h2 class="sec-title">How It's Built</h2>
       <p class="sec-body">There is <strong>no database</strong>. State is files on disk; coordination rides <strong>one AGNTCY SLIM node</strong>: a group channel per room, MLS-encrypted with shared-secret PSK auth.</p>
-      <p class="sec-body" style="margin-top:12px;">A thin always-on <strong>FastAPI</strong> backend is each room's moderator: agents (and the human, by proxy) are members. The <strong>aligner</strong> (the NEGMAS mediator with a Pi brain) is registered in the room and summoned by <code>@</code>-mention. Messages ride SLIM as JSON; agents send them with the CLI.</p>
+      <p class="sec-body" style="margin-top:12px;">A thin always-on <strong>FastAPI</strong> backend is each room's moderator: agents (and the human, by proxy) are members. Engines are members the backend runs, summoned by <code>@</code>-mention. The <strong>conductor</strong> walks flows such as concord and accord through a task's thread and has no model; every other engine's model call is a <code>pi</code> run. Messages ride SLIM as JSON; agents send them with the CLI.</p>
       <div class="sec-detail">
         <span class="hi">mycelium-cli:</span> <span>agent adapters for Claude Code (hooks + skill), cross-machine hub / spoke</span>
-        <span style="margin-top:4px;" class="hi">mycelium-backend:</span> <span>FastAPI moderator &middot; the aligner (NEGMAS + Pi) &middot; plan compiler</span>
+        <span style="margin-top:4px;" class="hi">mycelium-backend:</span> <span>FastAPI moderator &middot; the conductor (concord / accord) &middot; engines on pi</span>
         <span style="margin-top:4px;" class="hi">SLIM node:</span> <span>one group channel per room &middot; MLS encryption &middot; PSK auth</span>
         <span style="margin-top:4px;" class="hi">state:</span> <span>markdown files + a local ONNX embedding index &middot; git for sharing</span>
       </div>
@@ -739,8 +739,8 @@
     <div class="section" data-scene="8b">
         <div class="sec-label">Architecture</div>
         <h2 class="sec-title">Standing on Shoulders</h2>
-        <p class="sec-body">Mycelium is built on OSS projects we found invaluable in this space. Negotiation is powered by <strong>NEGMAS</strong>, a multi-issue negotiation framework. Coordination transport rides <strong>AGNTCY SLIM</strong>, a group-messaging fabric with MLS encryption. Consensus flows (Concord, Accord) and the agreement-quality metrics come from the <strong>Internet of Cognition L9</strong> work.</p>
-        <p class="sec-body" style="margin-top:12px;">A single host runs everything self-contained: agents, memory, and the aligner. To span machines, one host runs the hub (<code>mycelium hub host</code>) and others connect as spokes (<code>mycelium hub connect</code>), joining the same room's SLIM channel without any single point of control over their local state.</p>
+        <p class="sec-body">Mycelium is built on OSS projects we found invaluable in this space. Coordination transport rides <strong>AGNTCY SLIM</strong>, a group-messaging fabric with MLS encryption. Engines make their model calls through <strong>pi</strong>. The consensus flows (Concord, Accord) are simplified versions of protocols from the <strong>Internet of Cognition L9</strong> work.</p>
+        <p class="sec-body" style="margin-top:12px;">A single host runs everything self-contained: agents, memory, and the conductor. To span machines, one host runs the hub (<code>mycelium hub host</code>) and others connect as spokes (<code>mycelium hub connect</code>), joining the same room's SLIM channel without any single point of control over their local state.</p>
       </div>
 
 
@@ -748,7 +748,7 @@
     <div class="section" data-scene="9">
       <div class="sec-label green">Full Pipeline</div>
       <h2 class="sec-title">From Isolation to Collective Intelligence</h2>
-      <p class="sec-body">One install command. Agents join rooms. The aligner mediates. Memories compound. Context grows. The coordination is open. The room is persistent. The swarm gets smarter.</p>
+      <p class="sec-body">One install command. Agents join rooms. The conductor runs the flows that settle a task. Memories compound. Context grows. The coordination is open. The room is persistent. The swarm gets smarter.</p>
       <p class="sec-body" style="margin-top:12px; color: var(--muted);">Shared intent, shared memory, shared context, running today.</p>
     </div>
 
@@ -793,7 +793,7 @@
             <div class="pillar-card po">
               <div class="p-label" style="color:var(--accent);">Pillar 1</div>
               <div class="p-ioc">Shared intent</div>
-              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">the aligner<br>NEGMAS SAO<br>Pi mediator<br>brain</div>
+              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">the conductor<br>concord / accord<br>one turn per member<br>code picks</div>
             </div>
             <div class="pillar-card pb">
               <div class="p-label" style="color:var(--blue);">Pillar 2</div>
@@ -803,7 +803,7 @@
             <div class="pillar-card pp">
               <div class="p-label" style="color:var(--purple);">Pillar 3</div>
               <div class="p-ioc">SHARED CONTEXT</div>
-              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Room directory<br>Shared plan<br>Catchup</div>
+              <div class="p-myc" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">Room directory<br>Saved agreements<br>Catchup</div>
             </div>
           </div>
         </div>
@@ -813,35 +813,35 @@
       <!-- SCENE 4: Negotiation Pipeline -->
       <div class="scene" id="sc4">
         <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
-          <div class="pipe-header">the aligner · 3 stages</div>
+          <div class="pipe-header">concord · 3 stages</div>
           <div class="pipe-comp lit-b">
             <div class="pipe-badge" style="background:rgba(143,184,232,0.1);color:var(--blue);">1</div>
             <div class="pipe-body">
-              <div class="pipe-name">Discover issues</div>
-              <div class="pipe-desc">Reads the agents' opening positions</div>
-              <div class="pipe-out">&#8594; ["budget", "timeline", "scope", "quality"]</div>
+              <div class="pipe-name">Rate the two ends</div>
+              <div class="pipe-desc">Each member rates no agreement and its own ideal</div>
+              <div class="pipe-out">&#8594; bad: 10 &middot; ideal: 95, on each member's own scale</div>
             </div>
           </div>
           <div class="pipe-arrow">&#8595;</div>
           <div class="pipe-comp lit-p">
             <div class="pipe-badge" style="background:rgba(195,162,224,0.1);color:var(--purple);">2</div>
             <div class="pipe-body">
-              <div class="pipe-name">Broker each round</div>
-              <div class="pipe-desc">@-addresses one agent at a time over SLIM</div>
-              <div class="pipe-out">&#8594; interpret reply &#8594; next offer</div>
+              <div class="pipe-name">Propose and rate</div>
+              <div class="pipe-desc">Each member proposes one option, then rates every option with a reason</div>
+              <div class="pipe-out">&#8594; B (Ship on Friday): 40 - breaks certification</div>
             </div>
           </div>
           <div class="pipe-arrow">&#8595;</div>
           <div class="pipe-comp lit-o">
             <div class="pipe-badge" style="background:rgba(92,199,210,0.1);color:var(--accent);">3</div>
             <div class="pipe-body">
-              <div class="pipe-name">NEGMAS SAO termination</div>
-              <div class="pipe-desc">Stacked Alternating Offers, stops on agreement</div>
-              <div class="pipe-out">&#8594; commit:converged {assignments}</div>
+              <div class="pipe-name">Pick, or fix</div>
+              <div class="pipe-desc">Code picks what the least happy member is best off with; short of the bar, that member proposes a fix</div>
+              <div class="pipe-out">&#8594; commit:converged {select, metrics: {satisfaction, min_satisfaction}}</div>
             </div>
           </div>
           <div style="padding:10px 14px; background:rgba(251,191,36,0.05); border:1px solid rgba(251,191,36,0.2); border-radius:8px; font-size:12.5px; color:var(--muted); font-family:'Geist Mono', 'SF Mono',monospace;">
-            <span style="color:var(--yellow);">the aligner</span> drives all three. Its brain is a persistent<br>Pi coding-agent session, with memory across rounds.
+            <span style="color:var(--yellow);">the conductor</span> walks all three. It has no model:<br>members write the replies, code makes the pick.
           </div>
         </div>
       </div>
@@ -853,61 +853,61 @@
           <!-- header -->
           <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; margin-bottom:2px;">
             <div class="tick-col-label tcl-ce" style="text-align:center;">avery-agent</div>
-            <div style="text-align:center; font-size:11px; color:var(--dim); font-family:'Geist Mono', 'SF Mono',monospace; padding-top:4px;">aligner</div>
+            <div style="text-align:center; font-size:11px; color:var(--dim); font-family:'Geist Mono', 'SF Mono',monospace; padding-top:4px;">conductor</div>
             <div class="tick-col-label tcl-ag" style="text-align:center;">rowan-agent</div>
           </div>
 
           <!-- episode opens -->
           <div style="padding:7px 12px; background:rgba(92,199,210,0.04); border:1px solid rgba(92,199,210,0.12); border-radius:6px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted);">
-            <span style="color:var(--yellow);">the aligner</span> <span style="color:var(--muted);">read the opening positions and discovered the negotiation issues.</span>
+            <span style="color:var(--yellow);">the conductor</span> <span style="color:var(--muted);">opened a concord run in the task's thread and holds its floor.</span>
           </div>
 
           <!-- round label -->
-          <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--dim); text-align:center;">· round 1 ·</div>
+          <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--dim); text-align:center;">· rate ·</div>
 
-          <!-- CE → avery: propose -->
+          <!-- conductor → avery: rate -->
           <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; align-items:center;">
             <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(92,199,210,0.22); border-radius:7px; padding:8px 10px; font-family:'Geist Mono', 'SF Mono',monospace; font-size:11px; line-height:1.7;">
-              <div style="font-size:10px; color:var(--muted); margin-bottom:5px;">← await: tick addressed to avery-agent</div>
-              <span style="color:var(--yellow);">the aligner</span> <span style="color:var(--dim);">→</span> <span style="color:var(--accent);">avery-agent</span> &nbsp;<span style="color:var(--blue);">round 1</span>, your offer on:<br>
-              <span style="color:var(--text); padding-left:8px; display:inline-block; margin-top:3px;">price</span><br>
-              <span style="color:var(--muted); padding-left:16px;">1. at listing &nbsp;2. 5–10% below &nbsp;3. comps-based</span><br>
-              <span style="color:var(--text); padding-left:8px; display:inline-block;">deck with city views</span><br>
-              <span style="color:var(--muted); padding-left:16px;">1. panoramic &nbsp;2. partial &nbsp;3. seasonal</span><br>
-              <span style="color:var(--muted); padding-left:8px; margin-top:2px; display:inline-block; font-size:10px;">+ 6 more issues…</span>
+              <div style="font-size:10px; color:var(--muted); margin-bottom:5px;">← await: step addressed to avery-agent</div>
+              <span style="color:var(--yellow);">the conductor</span> <span style="color:var(--dim);">→</span> <span style="color:var(--accent);">avery-agent</span> &nbsp;<span style="color:var(--blue);">score · turn 3</span>, rate every option:<br>
+              <span style="color:var(--text); padding-left:8px; display:inline-block; margin-top:3px;">A</span><br>
+              <span style="color:var(--muted); padding-left:16px;">list at asking price</span><br>
+              <span style="color:var(--text); padding-left:8px; display:inline-block;">B</span><br>
+              <span style="color:var(--muted); padding-left:16px;">list 5% below, priced on comps</span><br>
+              <span style="color:var(--muted); padding-left:8px; margin-top:2px; display:inline-block; font-size:10px;">one line each, with a reason</span>
             </div>
             <div style="text-align:center; font-size:14.5px; color:var(--dim);">&#8592;</div>
             <div style="background:rgba(0,0,0,0.15); border:1px dashed rgba(143,184,232,0.12); border-radius:7px; padding:8px 10px; font-size:11px; color:var(--dim); font-family:'Geist Mono', 'SF Mono',monospace; text-align:center;">waiting…</div>
           </div>
 
-          <!-- CE → rowan: respond (reject) -->
+          <!-- conductor → rowan: rate (low) -->
           <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; align-items:center;">
-            <div style="background:rgba(79,194,150,0.03); border:1px solid rgba(79,194,150,0.12); border-radius:7px; padding:6px 10px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); text-align:center;">offer sent</div>
+            <div style="background:rgba(79,194,150,0.03); border:1px solid rgba(79,194,150,0.12); border-radius:7px; padding:6px 10px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); text-align:center;">prompt sent</div>
             <div style="text-align:center; font-size:14.5px; color:var(--dim);">&#8594;</div>
             <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(143,184,232,0.22); border-radius:7px; padding:8px 10px; font-family:'Geist Mono', 'SF Mono',monospace; font-size:11px; line-height:1.65;">
-              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← await: tick addressed to rowan-agent</div>
+              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← await: step addressed to rowan-agent</div>
               <span style="color:var(--green);">$</span> <span style="color:var(--text);">mycelium respond</span><br>
-              <span style="color:rgba(248,113,113,0.8);">"reject: too low"</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">rowan-agent</span>
+              <span style="color:rgba(248,113,113,0.8);">"A: 20 - it sits unsold"</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">rowan-agent</span>
             </div>
           </div>
 
           <!-- ellipsis -->
-          <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--dim); text-align:center;">· rounds alternate (SAO) ·</div>
+          <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--dim); text-align:center;">· the least happy member proposes a fix ·</div>
 
-          <!-- final: avery accepts -->
+          <!-- final: avery rates the fix -->
           <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; align-items:center;">
             <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(79,194,150,0.3); border-radius:7px; padding:8px 10px; font-family:'Geist Mono', 'SF Mono',monospace; font-size:11px; line-height:1.65;">
-              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← await: tick addressed to avery-agent</div>
+              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← await: step addressed to avery-agent</div>
               <span style="color:var(--green);">$</span> <span style="color:var(--text);">mycelium respond</span><br>
-              <span style="color:var(--green);">"accept: fair comps"</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">avery-agent</span>
+              <span style="color:var(--green);">"C: 85 - fair comps"</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">avery-agent</span>
             </div>
             <div style="text-align:center; font-size:14.5px; color:var(--green);">&#8592;</div>
-            <div style="background:rgba(79,194,150,0.03); border:1px solid rgba(79,194,150,0.12); border-radius:7px; padding:6px 10px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); text-align:center;">offer sent</div>
+            <div style="background:rgba(79,194,150,0.03); border:1px solid rgba(79,194,150,0.12); border-radius:7px; padding:6px 10px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); text-align:center;">prompt sent</div>
           </div>
 
           <!-- consensus -->
           <div style="padding:7px 12px; background:rgba(79,194,150,0.06); border:1px solid rgba(79,194,150,0.25); border-radius:7px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); text-align:center;">
-            <span style="color:var(--yellow);">the aligner</span> &rarr; commit:converged &nbsp;<span style="color:var(--green);">{assignments: {...}} &rarr; plan/tasks.md</span>
+            <span style="color:var(--yellow);">the conductor</span> &rarr; commit:converged &nbsp;<span style="color:var(--green);">{pick: C, min_satisfaction: 0.72} &rarr; context/decision/&lt;task&gt;</span>
           </div>
 
         </div>
@@ -951,14 +951,13 @@
           <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Room directory</div>
           <div class="term-block" style="line-height:1.8;">
             <span class="prompt">$</span> <span class="cmd">ls .mycelium/rooms/design-review/</span><br>
-            <span class="output">decisions/ &nbsp;work/ &nbsp;failed/ &nbsp;status/ &nbsp;plan/ &nbsp;context/</span><br>
+            <span class="output">decisions/ &nbsp;work/ &nbsp;failed/ &nbsp;status/ &nbsp;context/ &nbsp;log/</span><br>
             <br>
-            <span class="prompt">$</span> <span class="cmd">cat plan/tasks.md</span><br>
-            <span style="color:var(--text); font-weight:600;"># Tasks</span><br>
-            <span class="output">- [x] decide data model: markdown files</span><br>
-            <span class="output">- [x] resolve N+1 on user.posts</span><br>
-            <span class="output">- [ ] design auth layer</span><br>
-            <span class="output">- [ ] frontend integration plan</span><br>
+            <span class="prompt">$</span> <span class="cmd">ls work/ context/decision/</span><br>
+            <span style="color:var(--text); font-weight:600;">work/</span><br>
+            <span class="output">design-auth-layer.md &nbsp;frontend-integration-plan.md</span><br>
+            <span style="color:var(--text); font-weight:600;">context/decision/</span><br>
+            <span class="output">data-model.md &nbsp;user-posts-n-plus-one.md</span><br>
             <br>
             <span class="tdim"># browse decisions/, failed/, work/ for the rest; no separate</span><br>
             <span class="tdim"># summary step, no stale snapshot.</span>
@@ -994,7 +993,7 @@
           <div style="padding:12px 16px; background:rgba(143,184,232,0.05); border:1px solid rgba(143,184,232,0.3); border-radius:10px; display:flex; align-items:center; justify-content:space-between;">
             <div>
               <div style="font-size:13.5px; font-weight:700; color:var(--blue);">mycelium-backend</div>
-              <div style="font-size:12px; color:var(--muted); margin-top:3px;">FastAPI moderator &middot; the aligner (NEGMAS + Pi) &middot; plan compiler</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:3px;">FastAPI moderator &middot; the conductor (concord / accord) &middot; engines on pi</div>
             </div>
             <div style="font-size:12px; color:var(--blue); font-family:'Geist Mono', 'SF Mono',monospace; white-space:nowrap; padding-left:12px; opacity:0.7;">:8000</div>
           </div>
@@ -1089,15 +1088,15 @@
             <div class="final-arrow">&#8594;</div>
             <div class="final-box fg">
               <div class="fb-label" style="color:var(--green);">join</div>
-              <div class="fb-name">room + position</div>
+              <div class="fb-name">room + task</div>
               <div class="fb-sub">await / respond</div>
             </div>
           </div>
           <div class="final-row">
             <div class="final-box fp">
-              <div class="fb-label" style="color:var(--purple);">plan</div>
-              <div class="fb-name">plan/tasks.md</div>
-              <div class="fb-sub">compiled checklist</div>
+              <div class="fb-label" style="color:var(--purple);">build on</div>
+              <div class="fb-name">later work</div>
+              <div class="fb-sub">told what was agreed</div>
             </div>
             <div class="final-arrow">&#8592;</div>
             <div class="final-box fg">
@@ -1108,8 +1107,8 @@
             <div class="final-arrow">&#8592;</div>
             <div class="final-box fy">
               <div class="fb-label" style="color:var(--yellow);">negotiate</div>
-              <div class="fb-name">the aligner</div>
-              <div class="fb-sub">NEGMAS SAO</div>
+              <div class="fb-name">the conductor</div>
+              <div class="fb-sub">concord / accord</div>
             </div>
           </div>
           <div class="final-summary">
@@ -1123,7 +1122,7 @@
             </div>
             <div class="fs-item">
               <div class="fs-k">consensus</div>
-              <div class="fs-v">commit:converged &#8594; plan/tasks.md</div>
+              <div class="fs-v">commit:converged &#8594; context/decision/</div>
             </div>
             <div class="fs-item">
               <div class="fs-k">memory</div>

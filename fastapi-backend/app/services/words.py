@@ -10,7 +10,7 @@ def a_or_an(word: str) -> str:
     """``word`` with "a" or "an" in front, picked by its first letter.
 
     The words this is used for are kinds the hub names itself (``action``,
-    ``decision``, ``aligner``, ``persona``), so a vowel letter is a vowel sound
+    ``decision``, ``engine``, ``persona``), so a vowel letter is a vowel sound
     and no list of exceptions is needed.
     """
     vowel = bool(word) and word[0].lower() in "aeiou"

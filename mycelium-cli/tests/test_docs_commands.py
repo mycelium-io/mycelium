@@ -60,7 +60,7 @@ def test_unknown_topic_exits_nonzero() -> None:
 
 
 def test_search_json_after_the_command() -> None:
-    result = runner.invoke(docs_cmd.app, ["search", "aligner", "--json"])
+    result = runner.invoke(docs_cmd.app, ["search", "conductor", "--json"])
     assert result.exit_code == 0, result.output
     found = json.loads(result.output)
     assert found

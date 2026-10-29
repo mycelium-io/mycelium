@@ -8,8 +8,8 @@
  *
  * Every number on this page is read from something the running stack produces:
  * the backend's in-process counters (`/api/observability`), the coordination
- * fabric and posture blocks of `/health`, and the episode records the aligner
- * writes per convening. Nothing is derived from a service the stack no longer
+ * fabric and posture blocks of `/health`, and the episode records the conductor
+ * writes per run. Nothing is derived from a service the stack no longer
  * ships, and nothing is shown as `0` that is merely unmeasured — an untouched
  * counter reads `-`, and a panel with no data says what would put data in it.
  *
@@ -338,9 +338,9 @@ function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number
     >
       {rollup.total === 0 ? (
         <Nothing>
-          No episode recorded yet. Each convening of the aligner —{" "}
-          <span className="font-mono text-text">mycelium engine invoke aligner …</span> — is one
-          episode, and lands here with how it ended.
+          No episode recorded yet. Each run of the conductor —{" "}
+          <span className="font-mono text-text">mycelium board coordinate &lt;row&gt; conductor &quot;concord …&quot;</span> — is
+          one episode, and lands here with how it ended.
         </Nothing>
       ) : (
         <>
@@ -515,8 +515,8 @@ function CognitionPanel({
     <Panel title="Cognition">
       {calls == null ? (
         <Nothing>
-          No Pi turn has run yet. The aligner&apos;s brain, the task compiler and the health probe all
-          land here.
+          No Pi turn has run yet. The conductor&apos;s steps, the personas and the health probe all land
+          here.
         </Nothing>
       ) : (
         <>

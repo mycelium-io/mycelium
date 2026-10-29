@@ -113,7 +113,7 @@ export const COMPOSER_COMMANDS: ComposerCommand[] = [
   },
   {
     name: "engine",
-    about: "add an engine the hub runs, like the aligner",
+    about: "add an engine the hub runs, like the conductor",
     args: [
       { name: "kind", choices: "engine", about: "What it does" },
       { name: "handle", optional: true, names: true, about: "What the room calls it. Its kind if left out" },

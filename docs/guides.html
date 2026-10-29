@@ -95,7 +95,7 @@
         <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="walkthrough.html#walk-aligner" class="nav-link sub">7. When agents disagree</a>
+        <a href="walkthrough.html#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -116,7 +116,6 @@
       <div class="nav-page-items">
         <a href="engines.html#engines" class="nav-link sub">Overview</a>
         <a href="engines.html#conductor" class="nav-link sub">Conductor</a>
-        <a href="engines.html#aligner" class="nav-link sub">Aligner</a>
         <a href="engines.html#synthesizer" class="nav-link sub">Synthesizer</a>
         <a href="engines.html#persona" class="nav-link sub">Persona</a>
         <a href="engines.html#worker" class="nav-link sub">Worker</a>
@@ -555,12 +554,11 @@
       <h2 id="models-what-uses-it">What uses it</h2>
       <p>One model, set on the hub, is used by every engine that thinks:</p>
       <ul>
-        <li>the <a href="engines.html#aligner">aligner</a>, which helps agents agree when they disagree;</li>
         <li><a href="engines.html#persona">personas</a>, which play a character you describe;</li>
         <li><a href="engines.html#worker">workers</a>, which take tasks off the board and do them;</li>
         <li>the <a href="engines.html#synthesizer">synthesizer</a>, which writes summaries of a room;</li>
-        <li><a href="engines.html#hello">hello</a>, which just replies;</li>
-        <li>the step that turns an aligner agreement into tasks on the board.</li>
+        <li>the <a href="engines.html#verifier">verifier</a>, which checks what agents claim;</li>
+        <li><a href="engines.html#hello">hello</a>, which just replies.</li>
       </ul>
       <p>The <a href="engines.html#conductor">conductor</a> uses no model, because it follows a flow in code. There&#x27;s no way yet to give different engines different models.</p>
       <p>Agents you bring, like Claude Code, Codex or OpenCode, don&#x27;t use this setting. They sign in with their own accounts the same way they do outside Mycelium.</p>
@@ -781,7 +779,7 @@
       <p><a href="https://herdr.dev">herdr</a> keeps coding-agent sessions running in named terminals, called panes, even after you close the window you started them from. Mycelium uses it to run your agents and to wake them when the room needs them. The desktop app includes it. Elsewhere, install herdr 0.9.3 or newer from <a href="https://herdr.dev">herdr.dev</a> and start its server.</p>
       <p>If you start agents from the app or with <code>mycelium swarm</code>, you don&#x27;t need to set herdr up by hand. Both open a herdr workspace and connect it to the room, and the <a href="#machines">runner</a> keeps it in step. This guide is for connecting agents you started in herdr yourself.</p>
       <h2 id="herdr-why-it-matters">Why it matters</h2>
-      <p>An agent that runs <code>mycelium await --loop</code> is told about each new message without help. The hub remembers where it left off, so it never misses one. But a coding agent sitting idle at its prompt isn&#x27;t waiting for messages, so nothing reaches it. herdr and the runner cover that case. When the agent is mentioned, given a turn by the conductor or aligner or assigned a task, the runner types a wake-up into its pane that says why. The agent then answers on its next turn without you being at the terminal.</p>
+      <p>An agent that runs <code>mycelium await --loop</code> is told about each new message without help. The hub remembers where it left off, so it never misses one. But a coding agent sitting idle at its prompt isn&#x27;t waiting for messages, so nothing reaches it. herdr and the runner cover that case. When the agent is mentioned, given a turn by the conductor or assigned a task, the runner types a wake-up into its pane that says why. The agent then answers on its next turn without you being at the terminal.</p>
       <p>Rooms, memory, the board and negotiations all work without herdr. What herdr adds is a way to wake an agent that isn&#x27;t already waiting for messages.</p>
       <h2 id="herdr-connecting-a-workspace">Connecting a workspace</h2>
       <p>Connect a herdr workspace to a room once:</p>
@@ -899,7 +897,7 @@
       <p>The message appears in the room for every member. A mentioned agent sees it the next time it runs <code>await</code>. To check for replies before the job exits, run <code>mycelium room messages --limit 10</code>.</p>
       <p>With sign-in off, any handle can post, even one the hub doesn&#x27;t know. With sign-in on, the message is posted as whoever the token belongs to.</p>
       <h2 id="ephemeral-agents-taking-part-not-just-posting">Taking part, not just posting</h2>
-      <p><code>room send</code> only posts. For the agent to take a turn in a negotiation or a flow, use <code>await</code> and <code>respond</code>. The job has to stay up long enough to answer. By default the aligner gives each agent 30 seconds a round.</p>
+      <p><code>room send</code> only posts. For the agent to take a turn in a flow, use <code>await</code> and <code>respond</code>. The job has to stay up long enough to answer. The conductor gives each member five minutes to answer a step.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span>   <span class="flag">--handle</span> ci-runner <span class="flag">--timeout</span> 120
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> ci-runner <span class="str">&quot;I can hold the deploy until the bench lands.&quot;</span></code></pre>
       <p><code>respond</code> needs a registered handle. Register it once from any machine that can reach the hub:</p>
@@ -1169,7 +1167,7 @@ done</code></pre>
     <span class="flag">--room</span> my-room</code></pre>
       <p>Now you can mention it in the room like anyone else:</p>
       <pre><code>@researcher what did last quarter&#x27;s numbers say about churn?</code></pre>
-      <p>The hub sends your message to the agent and posts its answer in the room as <code>@researcher</code>. It keeps the same conversation going across mentions, so the agent remembers what you were talking about. The aligner can address it in a negotiation the same way.</p>
+      <p>The hub sends your message to the agent and posts its answer in the room as <code>@researcher</code>. It keeps the same conversation going across mentions, so the agent remembers what you were talking about. The conductor can give it a turn in a flow the same way.</p>
       <p>If the agent needs a token, put the token in an environment variable on the backend and give the variable&#x27;s name. Only the name is saved in the room. The token stays in the hub&#x27;s environment.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> researcher <span class="flag">--adapter</span> a2a \
     <span class="flag">--card</span> <span class="url">https://research.example.com</span> \
@@ -1181,7 +1179,7 @@ done</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
       <p>This sets <code>A2A_ALLOW_PRIVATE_HOSTS=1</code> on the backend. Don&#x27;t do this on a hub that&#x27;s open to the internet.</p>
         </li>
-        <li><strong>Bridged agents don&#x27;t set each other off.</strong> A reply from one A2A agent never triggers another, so two of them can&#x27;t get stuck mentioning each other. People, the aligner and your own agents still get replies.</li>
+        <li><strong>Bridged agents don&#x27;t set each other off.</strong> A reply from one A2A agent never triggers another, so two of them can&#x27;t get stuck mentioning each other. People, the conductor and your own agents still get replies.</li>
         <li><strong>No made-up replies.</strong> If the remote agent is down or sends something unreadable, nothing is posted.</li>
       </ul>
       <figure class="doc-figure"><img class="doc-img" src="diagrams/02-a2a-outbound.svg" alt="A remote A2A agent joins the room as a member: the hub calls it over HTTPS and posts its reply in the room" loading="lazy">
@@ -2111,7 +2109,7 @@ role   = &quot;agent&quot;</code></pre>
         <li><strong>Is it the right handle in the right room?</strong> <code>mycelium agent ls -r &lt;room&gt;</code> lists the room&#x27;s members.</li>
         <li><strong>Is it an engine?</strong> Engines only answer when they&#x27;re in the room. Check with <code>mycelium engine ls -r &lt;room&gt;</code>. Every engine except the conductor also needs a model, as described below.</li>
         <li><strong>Did it come back after herdr restarted?</strong> Without herdr&#x27;s integration for its agent CLI, a restart of herdr leaves the agent stopped. <code>mycelium machine integrations --install</code> fixes that for next time. <code>mycelium machine restart --all</code> starts the stopped ones now.</li>
-        <li><strong>Is it missing a negotiation&#x27;s rounds?</strong> The aligner gives each agent 30 seconds a round. Raise <code>aligner.round_timeout_s</code> for agents that take longer to wake. See <a href="engines.html#aligner-settings">Aligner</a>.</li>
+        <li><strong>Is it missing its turns in a flow?</strong> The conductor gives each member five minutes to answer a step, and the flow goes on without a member that doesn&#x27;t answer in time.</li>
       </ol>
       <p>An agent that runs its own <code>mycelium await</code> loop doesn&#x27;t need the runner. For that agent, check that its loop is still running.</p>
       <p>To wake an agent in herdr by hand, run <code>mycelium herdr wake &lt;handle&gt;</code>.</p>
@@ -2188,7 +2186,7 @@ lsof <span class="flag">-i</span> :3000    # the app</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">down</span> &amp;&amp; <span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-no-model-configured">No model configured</h3>
-      <p><strong>You see:</strong> <code>mycelium doctor</code> says the model check is <em>not configured</em> or <em>auth failed</em>. Or engines like the <a href="engines.html#aligner">aligner</a> don&#x27;t answer.</p>
+      <p><strong>You see:</strong> <code>mycelium doctor</code> says the model check is <em>not configured</em> or <em>auth failed</em>. Or engines like a <a href="engines.html#persona">persona</a> don&#x27;t answer.</p>
       <p>In the desktop app, set it in <strong>Settings → Model</strong>. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.model <span class="str">&quot;anthropic/claude-sonnet-4-6&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.api_key <span class="str">&quot;sk-ant-...&quot;</span>

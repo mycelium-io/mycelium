@@ -6,8 +6,8 @@
 ``[[mycelium: confidence=0.85 stance=accept]]`` is the one convention a
 participant speaks: how sure it is, and whether it can live with what is on
 the table. A flow that asks for ratings reads them from the same marker, one
-capital letter per option: ``[[mycelium: A=82 B=41]]``. The reply route lifts the fields onto the message payload (so the
-aligner scores them) and strips the marker from the prose; the conductor
+capital letter per option: ``[[mycelium: A=82 B=41]]``. The reply route lifts the fields onto the message payload and
+strips the marker from the prose; the conductor
 reads a stance back off either place, since a human writing into a thread
 through the message route leaves the marker in the text.
 

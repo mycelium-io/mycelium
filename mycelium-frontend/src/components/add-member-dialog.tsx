@@ -78,11 +78,10 @@ const KINDS: { kind: MemberKind; icon: LucideIcon; label: string; hint: string; 
 
 /** The engines the hub runs, and what each does, in a sentence. */
 export const ENGINE_KINDS: { kind: EngineKind; blurb: string }[] = [
-  { kind: "aligner", blurb: "Mediates a negotiation until the members agree." },
+  { kind: "conductor", blurb: "Runs a protocol inside a task, giving the floor one step at a time." },
   { kind: "synthesizer", blurb: "Distills the room's conversation into memory." },
   { kind: "persona", blurb: "Plays a member in character, from its notes, and remembers." },
   { kind: "worker", blurb: "Takes work off the board in its own checkout, asks for review, resolves it." },
-  { kind: "conductor", blurb: "Runs a protocol inside a task, giving the floor one step at a time." },
   {
     kind: "verifier",
     blurb: "Checks what agents say about approvals and merges against this room's records, and notes what it can't find.",
@@ -207,8 +206,8 @@ function ErrorLine({ error }: { error: string | null }) {
 function EngineMember({ roomName, onAdded }: { roomName: string; onAdded: (handle: string) => void }) {
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
-  const [engine, setEngine] = useState<EngineKind>("aligner");
-  const [handle, setHandle] = useState("aligner");
+  const [engine, setEngine] = useState<EngineKind>("conductor");
+  const [handle, setHandle] = useState("conductor");
   const [touched, setTouched] = useState(false);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);

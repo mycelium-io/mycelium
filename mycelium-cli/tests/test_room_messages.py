@@ -455,7 +455,7 @@ def test_protocol_records_print_as_their_line_not_json(monkeypatch: pytest.Monke
     msgs = [
         MessageRead(
             id=uuid4(),
-            sender_handle="aligner",
+            sender_handle="conductor",
             message_type="l9_commit",
             content=json.dumps(commit),
             created_at=stamp,

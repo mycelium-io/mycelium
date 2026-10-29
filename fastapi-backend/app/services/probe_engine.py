@@ -7,13 +7,13 @@ Registered and summoned under the engine kind ``hello``, which is the name
 users type; the module and the class are named for the job so nobody reads
 this as example code and deletes a production probe.
 
-A third engine ``kind`` alongside the aligner and the synthesizer, and the only
+An engine ``kind`` alongside the conductor and the synthesizer, and the only
 one that owns nothing. On an ``@``-summon it runs one Pi turn on whatever was
 said and posts the answer back into the room: no episode, no memory write, no
 plan, no state carried between summons. The only trace it leaves is the message
 it posts.
 
-That is the point. The aligner and the synthesizer both do real work with real
+That is the point. The conductor and the synthesizer both do real work with real
 side effects, so neither is something to fire into a shared room just to check
 the wiring — and so the engine path stays unproven until something important
 needs it. A summon of a ``hello`` engine walks every rung: the manifest-kind
@@ -41,10 +41,11 @@ from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 
-# Reuse the aligner's manifest-kind gate and handle-fold, and the synthesizer's
+# Reuse the engines' shared manifest-kind gate and handle-fold, and the synthesizer's
 # fence-stripping, rather than growing a third copy of each.
 from app.services import message_format
-from app.services.aligner import _norm, _registered_engine_kind
+from app.services.engine_kinds import norm as _norm
+from app.services.engine_kinds import registered_engine_kind
 from app.services.message_slim import serialize_content
 from app.services.synthesizer import _strip_fences
 
@@ -148,7 +149,7 @@ class ProbeEngine:
         spawning a Pi turn. There is no reserved-handle fallback: hello is only
         ever a registered engine.
         """
-        if _registered_engine_kind(room, handle) != ENGINE_KIND:
+        if registered_engine_kind(room, handle) != ENGINE_KIND:
             return
         # When ENGINE_RUNTIME=host the host daemon owns a registered engine's run.
         if settings.ENGINE_RUNTIME == "host":

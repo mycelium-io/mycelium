@@ -47,7 +47,7 @@ describe("classify", () => {
   it("rings a converged l9_commit only when its text mentions you", () => {
     const raw = {
       room_name: "sprint",
-      sender_handle: "aligner",
+      sender_handle: "conductor",
       message_type: "l9_commit",
       created_at: CREATED,
       content: JSON.stringify({
@@ -55,7 +55,7 @@ describe("classify", () => {
         l9: {
           header: {
             subkind: "converged",
-            participants: { actors: [{ id: "aligner" }, { id: "urn:agent:bob" }] },
+            participants: { actors: [{ id: "conductor" }, { id: "urn:agent:bob" }] },
           },
         },
       }),

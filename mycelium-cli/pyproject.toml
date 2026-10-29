@@ -47,15 +47,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# The `engine` extra pulls the cognition-engine runtime's heavy dep onto the
-# host so a first-party engine (the SAO mediator) can run where the daemon runs
-# — NEGMAS for the SAO mechanism. The mediator's brain is Pi, an external binary
-# (not a Python dep). Opt-in (`pip install mycelium[engine]`) so the base CLI
-# stays light; only hosts that run engines pay the cost. See
-# docs/START_HERE_ENGINES.md (Stage B).
-engine = [
-    "negmas>=0.11",
-]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=1.4.0",
@@ -118,13 +109,6 @@ exclude = [
 
 [tool.ty.environment]
 python-version = "3.12"
-
-[[tool.ty.overrides]]
-# negmas is an optional extra (engine group) — not installed in the standard
-# dev venv. The engine/ subtree is only type-checked by contributors who have
-# run `uv sync --group engine`.
-include = ["src/mycelium/engine/mediator.py"]
-rules = { unresolved-import = "ignore" }
 
 [tool.ruff]
 line-length = 100

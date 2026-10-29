@@ -106,10 +106,10 @@ by the time it's due is recorded as `skipped` rather than handed over
 (`routes/sessions.py`).
 
 **Engines are members the hub runs.** Each is a kind under `app/services/`:
-the **aligner** brokers a negotiation between named members (NEGMAS);
 the **conductor** walks a flow (a `Protocol`) through a task's thread, holding
-the thread's floor for whoever a step addresses; a **persona** is a member a
-model plays in character; a **worker** is a coding agent in its own git
+the thread's floor for whoever a step addresses, and negotiation is two of its
+flows, `concord` (help members agree) and `accord` (get them on the same
+page); a **persona** is a member a model plays in character; a **worker** is a coding agent in its own git
 worktree; the **verifier** flags claims it can't find in the room's records;
 the **synthesizer** distills messages into `context/synthesis`. An engine is
 summoned by `@`-mention, and every model call shells out to `pi`
@@ -179,10 +179,8 @@ module; read it before changing what a rule protects.
   them, frozen under `epic` in `contracts/board-vocabulary.json`. The app's
   board is for people and has no row actions; agents move work from the CLI.
 - **`assignee` is who a task is for, the `assignment` field is who holds it.**
-  Never write `owner`. Rows compiled from an agreement go through
-  `task_compiler.py` and `task_sync.py`, and only a commit that carries
-  `assignments` (the aligner's) is compiled into rows; a conductor's agreement
-  is saved to memory instead.
+  Never write `owner`. An agreement is saved to memory, never compiled into
+  board rows.
 - **The CLI skill is a protocol**: take a task, work it in its thread, resolve
   it. Don't turn it into an augmentation layer.
 - **A room's people are recorded, never guessed from who posted**
@@ -191,16 +189,11 @@ module; read it before changing what a rule protects.
 
 **Negotiation**
 
-- **The aligner negotiates inside the task it was summoned in, with the members
-  named** (or the task's own members). A summon in the room that names nobody
-  starts nothing.
-- **NEGMAS owns termination.** The aligner stops when the parties agree and
-  never loops to its step cap. A failed negotiation commits `rejected`.
-- **Never fabricate an offer.** An unreadable reply keeps the agent's own last
-  position; a number snaps to a real grid point or is refused
-  (`offer_snap.py`).
 - **The conductor's picks and merges are code** (`select.py`, `frame.py`). A
   model writes in the nodes, never on the edges.
+- **A summon of `@aligner` is answered, never dropped.** A room that added the
+  old aligner engine still holds its manifest, and a summon of it gets one
+  reply saying what to run instead (`retired_aligner.py`).
 
 **Store and memory**
 

@@ -95,7 +95,7 @@
         <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="walkthrough.html#walk-aligner" class="nav-link sub">7. When agents disagree</a>
+        <a href="walkthrough.html#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -116,7 +116,6 @@
       <div class="nav-page-items">
         <a href="engines.html#engines" class="nav-link sub">Overview</a>
         <a href="engines.html#conductor" class="nav-link sub">Conductor</a>
-        <a href="engines.html#aligner" class="nav-link sub">Aligner</a>
         <a href="engines.html#synthesizer" class="nav-link sub">Synthesizer</a>
         <a href="engines.html#persona" class="nav-link sub">Persona</a>
         <a href="engines.html#worker" class="nav-link sub">Worker</a>
@@ -407,7 +406,7 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/ship-passkey-login</code></pre>
       <p>The room&#x27;s chat never shows a thread&#x27;s messages. It shows one line when a task moves, for example when it&#x27;s filed or resolved. Clicking the line opens the thread, and the line wakes nobody.</p>
       <p>Use the room&#x27;s chat for things that don&#x27;t belong to any task. Use a task&#x27;s thread for anything about that task. Any memory can have a thread the same way, for example <code>board send context/api-shape &quot;…&quot;</code>.</p>
-      <p>Anyone in the room can post in a thread. While a <a href="engines.html#conductor">flow</a> runs in it, only the member whose turn it is can post. While the <a href="engines.html#aligner">aligner</a> negotiates in it, only the agents taking part can.</p>
+      <p>Anyone in the room can post in a thread. While a <a href="engines.html#conductor">flow</a> runs in it, only the member whose turn it is can post.</p>
       <p>Nothing said in a thread changes who holds the task. <code>board resolve</code> does that.</p>
       <h2 id="board-split-a-task">Split a task</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick token storage&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login <span class="flag">--assign</span> @sec
@@ -429,9 +428,9 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
       <p>A task someone holds stays theirs. <code>claim</code> refuses it. To move it to someone else, <code>board assign</code> needs <code>--reassign</code>, and the room is told who it moved from and to.</p>
       <p>A hold has no timer. It lasts until the holder gives the task up or finishes it, or until the hub sees the holder is gone. A task nobody has touched for a while isn&#x27;t taken away. See <a href="reference.html#board-reference">when a hold ends</a>.</p>
       <h2 id="board-when-agents-disagree">When agents disagree</h2>
-      <p>Usually talking is enough. When it isn&#x27;t, bring the <a href="engines.html#aligner">aligner</a> into the task. In the app, mention <code>@aligner</code> in the thread or choose <strong>Settle</strong> under <strong>+</strong>. From the command line:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on token storage&quot;</span></code></pre>
-      <p>When the agents agree, the aligner files the agreed work as new tasks under this one. A <a href="engines.html#conductor">conductor</a> flow such as <code>concord</code> saves its decision to the room&#x27;s memory instead. Either way the task itself is unchanged. It stays open, and whoever holds it keeps it.</p>
+      <p>Usually talking is enough. When it isn&#x27;t, run the <a href="engines.html#conductor">conductor</a>&#x27;s <code>concord</code> flow on the task. In the app, choose <strong>Settle</strong> under <strong>+</strong>. From the command line:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;concord: keychain, or WebCrypto?&quot;</span></code></pre>
+      <p>The agents propose and rate options until they agree on one, or the best one found stands, and the decision is saved to the room&#x27;s memory. The task itself is unchanged. It stays open, and whoever holds it keeps it.</p>
       <h2 id="board-finish-a-task">Finish a task</h2>
       <p>The agent working a task resolves it, or marks it blocked, from the command line. In the app, say so in the task&#x27;s thread and the agent does it.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> work/pick-token-storage
@@ -593,7 +592,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
 
     <section class="doc-section" id="episodes">
       <h1>Episodes</h1>
-      <p>An episode is one run of an engine inside a task&#x27;s thread. It&#x27;s either a <a href="engines.html#conductor">conductor</a> flow or an <a href="engines.html#aligner">aligner</a> negotiation. It runs in the task&#x27;s thread rather than in a thread of its own, so its turns sit in the task&#x27;s conversation where everyone in the room can read them. When it ends, the task stays open.</p>
+      <p>An episode is one run of a <a href="engines.html#conductor">conductor</a> flow inside a task&#x27;s thread. It runs in the task&#x27;s thread rather than in a thread of its own, so its turns sit in the task&#x27;s conversation where everyone in the room can read them. When it ends, the task stays open.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -627,26 +626,26 @@ We chose Postgres because of myc://context/stack.</code></pre>
               <td>Ends when</td>
               <td>You delete it</td>
               <td>Someone resolves it</td>
-              <td>A flow reaches its last step. A negotiation ends in agreement or without one.</td>
+              <td>The flow reaches its last step.</td>
             </tr>
           </tbody>
         </table>
       </div>
       <h2 id="episodes-starting-one">Starting one</h2>
-      <p>In a task&#x27;s thread in the app, choose <strong>Review</strong> or <strong>Settle</strong> under <strong>+</strong>, or mention the engine. Review is a conductor flow and Settle is an aligner negotiation. From the command line:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on token storage&quot;</span>
+      <p>In a task&#x27;s thread in the app, choose <strong>Review</strong> or <strong>Settle</strong> under <strong>+</strong>, or mention the engine. Review runs the conductor&#x27;s <code>review</code> flow and Settle runs its <code>concord</code> flow. From the command line:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;concord: keychain, or WebCrypto?&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;review @~builder @~reviewer: the storage change&quot;</span></code></pre>
       <p>The engine has to be in the room first. Add it with <code>mycelium engine create</code>.</p>
       <h2 id="episodes-what-an-episode-doesnt-change">What an episode doesn&#x27;t change</h2>
       <ul>
         <li><strong>It doesn&#x27;t resolve the task.</strong> <code>board resolve</code> does.</li>
-        <li><strong>It doesn&#x27;t change who holds the task.</strong> A failed negotiation doesn&#x27;t take the task from whoever has it.</li>
-        <li><strong>It doesn&#x27;t edit the task.</strong> What it agrees is saved separately. An aligner agreement becomes new tasks under this one. A <code>concord</code> or <code>accord</code> result goes to the room&#x27;s memory under <code>context/</code>.</li>
+        <li><strong>It doesn&#x27;t change who holds the task.</strong> A <code>concord</code> that ends without agreement doesn&#x27;t take the task from whoever has it.</li>
+        <li><strong>It doesn&#x27;t edit the task.</strong> What it agrees is saved separately. A <code>concord</code> or <code>accord</code> result goes to the room&#x27;s memory under <code>context/</code>.</li>
       </ul>
-      <p>While an episode runs, fewer members can post in the thread. During a flow, only the member whose turn it is can post. During a negotiation, only the agents taking part can.</p>
+      <p>While an episode runs, only the member whose turn it is can post in the thread.</p>
       <h2 id="episodes-the-record">The record</h2>
       <p>Every flow and negotiation is saved in the room&#x27;s memory at <code>log/episodes/{id}.md</code> whether it succeeded or not. The record says who took part, what was said and how it ended. It&#x27;s a memory like any other, so you can search it later when someone asks why the team decided something.</p>
-      <p>When agents said how confident they were, a negotiation&#x27;s record can also carry quality scores. See <a href="reference.html#messages-reading-the-score">Messages</a>.</p>
+      <p>A <code>concord</code> record also says how satisfied each member is with the pick. See <a href="reference.html#messages-reading-the-score">Messages</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/episodes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="episodes" aria-label="Previous and next sections">

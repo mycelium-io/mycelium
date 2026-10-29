@@ -202,7 +202,7 @@ describe("<ThreadView />", () => {
     // reads, and echoing them here would be a conversation full of blanks.
     fetchMessages.mockResolvedValue({
       messages: [
-        { id: "c1", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { window: "48h" } }), created_at: "2026-08-04T10:02:00+00:00" },
+        { id: "c1", sender_handle: "conductor", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { window: "48h" } }), created_at: "2026-08-04T10:02:00+00:00" },
         { id: "m1", sender_handle: "risk", message_type: "broadcast", content: "hold the flip until lag is under a second", created_at: "2026-08-04T10:00:00+00:00" },
       ],
     });
@@ -210,7 +210,7 @@ describe("<ThreadView />", () => {
       <ThreadView roomName="atlas" target={{ episode: THREAD }} onClose={vi.fn()} />,
     );
     expect(await screen.findByText(/hold the flip/)).toBeInTheDocument();
-    expect(screen.queryByText("aligner")).not.toBeInTheDocument();
+    expect(screen.queryByText("conductor")).not.toBeInTheDocument();
   });
 
   it("says a quiet thread is quiet rather than looking broken", async () => {

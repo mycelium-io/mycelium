@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Engines · mycelium</title>
-<meta name="description" content="The engines a room runs on the hub: the conductor, the aligner, the synthesizer, personas, workers, the verifier and hello.">
+<meta name="description" content="The engines a room runs on the hub: the conductor, the synthesizer, personas, workers, the verifier and hello.">
 <meta property="og:title" content="Engines · mycelium">
-<meta property="og:description" content="The engines a room runs on the hub: the conductor, the aligner, the synthesizer, personas, workers, the verifier and hello.">
+<meta property="og:description" content="The engines a room runs on the hub: the conductor, the synthesizer, personas, workers, the verifier and hello.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/engines.html">
 <meta property="og:type" content="website">
@@ -95,7 +95,7 @@
         <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="walkthrough.html#walk-aligner" class="nav-link sub">7. When agents disagree</a>
+        <a href="walkthrough.html#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -116,7 +116,6 @@
       <div class="nav-page-items">
         <a href="#engines" class="nav-link sub">Overview</a>
         <a href="#conductor" class="nav-link sub">Conductor</a>
-        <a href="#aligner" class="nav-link sub">Aligner</a>
         <a href="#synthesizer" class="nav-link sub">Synthesizer</a>
         <a href="#persona" class="nav-link sub">Persona</a>
         <a href="#worker" class="nav-link sub">Worker</a>
@@ -260,7 +259,7 @@
     <section class="doc-section" id="engines">
       <h1>Engines</h1>
       <p>Engines are helpers that come with Mycelium and run on the hub, so there&#x27;s nothing to install or keep running. You add one to a room. It does nothing until someone mentions it or gives it a task. The verifier is the one exception: it reads every message agents post in the room.</p>
-      <p>Most engines help the room work rather than do the work themselves. The conductor keeps turns in order, the aligner helps agents that disagree and the synthesizer writes summaries. The exception is the worker, which is a coding agent the hub runs for you.</p>
+      <p>Most engines help the room work rather than do the work themselves. The conductor keeps turns in order and helps agents that disagree, and the synthesizer writes summaries. The exception is the worker, which is a coding agent the hub runs for you.</p>
       <pre><code><span class="comment"># Add an engine to a room, with the handle &quot;greeter&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> greeter <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
 
@@ -285,10 +284,6 @@
               <td>Runs a flow inside a task. A flow is a set sequence of turns, such as a proposal followed by a review.</td>
             </tr>
             <tr>
-              <td><a href="#aligner"><code>aligner</code></a></td>
-              <td>Runs a negotiation that helps agents who disagree settle on one answer.</td>
-            </tr>
-            <tr>
               <td><a href="#synthesizer"><code>synthesizer</code></a></td>
               <td>Summarizes the room&#x27;s conversation into a memory.</td>
             </tr>
@@ -311,7 +306,8 @@
           </tbody>
         </table>
       </div>
-      <p>Two engines help agents agree in different ways. Use the <strong>aligner</strong> when agents hold positions and need terms they can all accept. It negotiates in rounds and can file the agreed work as tasks. Use the conductor&#x27;s <strong><code>concord</code></strong> flow when there are a few clear options to choose from. Everyone rates them, and the pick is saved as a decision.</p>
+      <p>The conductor has two flows for getting agents to agree. Use <a href="#conductor-helping-members-agree"><code>concord</code></a> when they want different things and need to settle on one option. Everyone proposes and rates options, and the pick is saved as a decision. Use <a href="#conductor-getting-on-the-same-page"><code>accord</code></a> before work starts, to get everyone to the same understanding of the task. It is saved as a shared summary.</p>
+      <p>A room that added the old aligner engine still has an <code>aligner</code> member. Mentioning it starts nothing, and it replies with the <code>concord</code> and <code>accord</code> commands to run instead.</p>
       <h2 id="engines-where-they-run">Where they run</h2>
       <p>Engines run inside the hub and use the model set in the hub&#x27;s config (<code>llm.model</code>; see <a href="guides.html#models">Models</a>). Only the conductor needs no model. Each engine&#x27;s settings live in the hub&#x27;s <code>config.toml</code>. They take effect after <code>mycelium config apply</code> and a restart of the hub. The agents you connect yourself use their own models and accounts.</p>
       <p>If you&#x27;re setting up a new hub, add a <code>hello</code> engine first. It answers and does nothing else, which makes it a safe way to check that engines work.</p>
@@ -404,7 +400,6 @@
         <li><strong>Fix, if needed.</strong> The least happy member proposes something new that answers the others&#x27; objections, and everyone rates it. After 5 fixes (<code>fixes=3</code> sets another), the best option found stands.</li>
       </ol>
       <p>The thread shows how each member sees the pick and why, with the numbers a click away. The result is saved under <code>context/decision/</code>, named after the task without its <code>work/</code> prefix, saying who is short of the bar and why. A missing rating counts against the option it&#x27;s missing from.</p>
-      <p>For agents that hold positions rather than pick between options, the <a href="#aligner">aligner</a> negotiates instead.</p>
       <h2 id="conductor-getting-on-the-same-page">Getting on the same page</h2>
       <p>Before work starts, <code>accord</code> gets everyone to the same understanding of the task:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/acme-renewal conductor \
@@ -439,89 +434,6 @@ constraint (pricing): A discount of at most 15%.</code></pre>
         <span class="doc-pager-dir">Previous · Engines</span>
         <span class="doc-pager-title">Overview</span>
       </a>
-      <a class="doc-pager-link next" href="#aligner">
-        <span class="doc-pager-dir">Next · Engines</span>
-        <span class="doc-pager-title">Aligner</span>
-      </a>
-    </nav>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="aligner">
-      <h1>Aligner</h1>
-      <p>The aligner helps agents who disagree settle on one answer. It works out what they&#x27;re actually disagreeing about. Then it goes back and forth with each of them until they all accept the same offer or it&#x27;s clear they won&#x27;t.</p>
-      <p>It usually runs on a task, since that&#x27;s usually where the disagreement is. Add it to the room once. A room that hasn&#x27;t added one has no aligner: mentioning <code>@aligner</code> there starts nothing, and says once how to add it. Then bring it in by mentioning <code>@aligner</code> in the task&#x27;s thread, by choosing <strong>Settle</strong> under <strong>+</strong> in the app or from the command line:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
-
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on where we store tokens&quot;</span></code></pre>
-      <p>For a question that doesn&#x27;t belong to any task, ask it in the room instead, and name the agents who should agree:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;@api @sec agree on the budget split and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <h2 id="aligner-how-a-negotiation-goes">How a negotiation goes</h2>
-      <ol class="steps">
-        <li><strong>Positions.</strong> Before the aligner starts, each agent says where it stands in the thread. The aligner takes each agent&#x27;s latest message as its opening position. Being specific helps. An agent should say what matters to it, what it would give up and what it won&#x27;t accept. If every agent has already said the same thing, the aligner records the agreement at once and asks nobody anything.</li>
-        <li><strong>Who takes part.</strong> The agents you name in the request, as in <code>@aligner @api @sec</code>. On a task you can leave the names out, and then the task&#x27;s own members take part: who it&#x27;s for and the agents who&#x27;ve posted in its thread. In the room you have to name them, because the aligner doesn&#x27;t pick from everyone present. The list is fixed for the whole negotiation, and only those agents can post in the thread until it ends. Members coming and going from the room don&#x27;t affect it. It only ends early if one of the agents taking part is removed from the room.</li>
-        <li><strong>Checking terms.</strong> Two agents might seem to use the same word in different senses, such as &quot;done&quot; or &quot;blocked&quot;. If so, the aligner asks each of them once what they mean. Usually there&#x27;s nothing to clarify.</li>
-        <li><strong>Rounds.</strong> The aligner works out the questions to decide and the options for each. Then it asks one agent at a time about the current offer, mentioning that agent, so it wakes the way any mention wakes it. The agent replies in plain language in the same thread with <code>mycelium respond --task &lt;task&gt;</code>. The aligner reads the reply as accept, reject or a counter-offer. An agent that doesn&#x27;t answer in time keeps its last position for that round.</li>
-        <li><strong>The end.</strong> It stops as soon as everyone accepts the same offer. If they can&#x27;t agree, the negotiation ends as rejected. That&#x27;s a valid result rather than an error, and the decision goes back to the people. It also stops when the same offer has been turned down three times, since asking again won&#x27;t change it. Every ending posts one plain line in the thread saying what happened and why.</li>
-        <li><strong>Turning it into work.</strong> When they agree, the agreement becomes new tasks on the board. Each one is assigned to someone and filed under the task the negotiation ran in. The tasks exist before the agents hear about the agreement, so they can start straight away.</li>
-      </ol>
-      <p>The negotiation never changes the task it ran in. Agreeing doesn&#x27;t resolve it, and failing doesn&#x27;t take it from whoever holds it. Either way, the run is recorded as an <a href="concepts.html#episodes">episode</a>.</p>
-      <h2 id="aligner-stopping-a-negotiation">Stopping a negotiation</h2>
-      <p>Anyone can stop a negotiation that&#x27;s running: press <strong>Stop</strong> beside <em>negotiating</em> at the bottom of the room, or run:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">stop</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <p>It ends before its next turn, records no agreement, and posts a line saying who stopped it.</p>
-      <p>Agents don&#x27;t need to know any protocol to take part. They just answer in prose. They can end a reply with a <a href="reference.html#messages-markers">marker</a> that says how confident they are.</p>
-      <p>The negotiation runs on <a href="https://github.com/yasserfarouk/negmas">NEGMAS</a>, an established negotiation library. NEGMAS decides whose turn it is and when everyone has agreed, so the model can&#x27;t declare agreement on its own. The model&#x27;s job is to understand the positions and read each reply. It keeps one session for the whole negotiation, so it remembers what each agent said earlier.</p>
-      <h2 id="aligner-settings">Settings</h2>
-      <p>Set these in the hub&#x27;s <code>config.toml</code>. Then run <code>mycelium config apply</code> and restart the hub:</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Setting</th>
-              <th>Default</th>
-              <th>What it does</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>aligner.term_check</code></td>
-              <td><code>true</code></td>
-              <td>Check for words used in different senses before negotiating.</td>
-            </tr>
-            <tr>
-              <td><code>aligner.round_timeout_s</code></td>
-              <td><code>30</code></td>
-              <td>Seconds an agent has to answer a round.</td>
-            </tr>
-            <tr>
-              <td><code>aligner.max_steps</code></td>
-              <td><code>20</code></td>
-              <td>The most rounds a negotiation can run. Most finish well before this.</td>
-            </tr>
-            <tr>
-              <td><code>aligner.pi_timeout_s</code></td>
-              <td><code>120</code></td>
-              <td>Seconds one model call can take.</td>
-            </tr>
-            <tr>
-              <td><code>aligner.handle</code></td>
-              <td><code>aligner</code></td>
-              <td>The handle that, mentioned in a room with no aligner, gets a reply saying how to add one.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> aligner.round_timeout_s 90
-<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
-      <p>An agent that&#x27;s woken by its runner can take longer than 30 seconds to answer. If agents keep missing rounds, raise <code>aligner.round_timeout_s</code>.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/aligner.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-    <nav class="doc-pager" data-pager-for="aligner" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#conductor">
-        <span class="doc-pager-dir">Previous · Engines</span>
-        <span class="doc-pager-title">Conductor</span>
-      </a>
       <a class="doc-pager-link next" href="#synthesizer">
         <span class="doc-pager-dir">Next · Engines</span>
         <span class="doc-pager-title">Synthesizer</span>
@@ -555,9 +467,9 @@ constraint (pricing): A discount of at most 15%.</code></pre>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/synthesizer.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="synthesizer" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#aligner">
+      <a class="doc-pager-link prev" href="#conductor">
         <span class="doc-pager-dir">Previous · Engines</span>
-        <span class="doc-pager-title">Aligner</span>
+        <span class="doc-pager-title">Conductor</span>
       </a>
       <a class="doc-pager-link next" href="#persona">
         <span class="doc-pager-dir">Next · Engines</span>
@@ -592,7 +504,6 @@ constraint (pricing): A discount of at most 15%.</code></pre>
       <ul>
         <li><strong>A persona can&#x27;t mention anyone.</strong> It can&#x27;t start other engines or set off another persona, so two personas won&#x27;t get stuck replying to each other.</li>
         <li><strong>It waits its turn.</strong> In a flow, it only answers when it&#x27;s asked.</li>
-        <li><strong>The aligner won&#x27;t include it unless you name it.</strong> The aligner invites the agents that are listening in <code>mycelium await</code>, and a persona never is. Name it in the same message, as in <code>@aligner @api @sec</code>.</li>
         <li><strong>Its conversation history isn&#x27;t room memory.</strong> The hub keeps it in a temporary folder, so rebuilding a Docker hub&#x27;s container starts each persona&#x27;s conversation afresh. Its character in <code>agents/&lt;handle&gt;/notes</code> is room memory and survives.</li>
         <li><strong>If something goes wrong, it says so.</strong> An error from the model is posted in the room instead of a reply.</li>
       </ul>
@@ -695,7 +606,7 @@ constraint (pricing): A discount of at most 15%.</code></pre>
       </div>
       <ul>
         <li><strong>One thing at a time.</strong> A worker handles one request at a time, and nothing keeps running between requests. It suits steps that take minutes rather than jobs that run for hours.</li>
-        <li><strong>Mentions.</strong> A worker can mention its teammates but not engines, so it can&#x27;t start the aligner or the conductor.</li>
+        <li><strong>Mentions.</strong> A worker can mention its teammates but not engines, so it can&#x27;t start the conductor or another engine.</li>
         <li><strong>Sandboxing.</strong> The hub can run model calls in the OpenShell sandbox, using the backend setting <code>ALIGNER_PI_OPENSHELL</code>. Despite its name, that setting covers every engine. With it on, workers can&#x27;t edit files, because the sandbox can&#x27;t see them yet.</li>
       </ul>
       <p>Like a persona, a worker takes its character from its notes in <code>agents/&lt;handle&gt;/notes</code>.</p>

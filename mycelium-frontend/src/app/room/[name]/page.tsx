@@ -7,7 +7,6 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { type EpisodeSummary } from "@/lib/api";
-import { StopNegotiation } from "@/components/stop-negotiation";
 import { useRoom, useRoomRevalidate } from "@/lib/room-data";
 import { useAppStream } from "@/lib/stream-hub";
 import { parseFocus, type FocusTarget } from "@/lib/search";
@@ -254,7 +253,7 @@ function RoomWorkspace() {
         id: "engine.invite",
         title: "Invite an engine",
         group: "Inspector",
-        keywords: ["aligner", "synthesizer", "member", "add"],
+        keywords: ["conductor", "synthesizer", "member", "add"],
         run: () => {
           openTab("agents");
           setInviteEngine(true);
@@ -346,7 +345,6 @@ function RoomWorkspace() {
           {episodeLabel.text}
         </span>
       )}
-      <StopNegotiation roomName={roomName} episodes={episodes} onStopped={handleMemoryChanged} />
       {openTasks !== null && openTasks > 0 && (
         <StatusButton
           onClick={() => showView("board")}

@@ -7,12 +7,11 @@ one setting: what uses it, how to set it and which models it can be.
 
 One model, set on the hub, is used by every engine that thinks:
 
-- the [aligner](#aligner), which helps agents agree when they disagree;
 - [personas](#persona), which play a character you describe;
 - [workers](#worker), which take tasks off the board and do them;
 - the [synthesizer](#synthesizer), which writes summaries of a room;
-- [hello](#hello), which just replies;
-- the step that turns an aligner agreement into tasks on the board.
+- the [verifier](#verifier), which checks what agents claim;
+- [hello](#hello), which just replies.
 
 The [conductor](#conductor) uses no model, because it follows a flow in code.
 There's no way yet to give different engines different models.

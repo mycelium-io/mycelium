@@ -172,8 +172,9 @@ jobs:
           print("openapi.json matches the backend.")
           PY
 
-      # Fast gate: the core protocol (room -> engine -> await -> respond ->
-      # converge -> plan) over the fake stack — no node, no LLM. Runs first so a
+      # Fast gate: the core protocol (a conductor's concord run, from summon to
+      # a converged commit and a saved decision) over the fake stack — no node,
+      # no LLM. Runs first so a
       # broken happy path fails in seconds, ahead of the full suite.
       - name: Smoke (fake stack)
         working-directory: fastapi-backend
@@ -208,7 +209,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: mycelium-cli
-        run: uv sync --group dev --extra engine
+        run: uv sync --group dev
 
       - name: Lint
         if: needs.changes.outputs.code == 'true'
@@ -235,8 +236,7 @@ jobs:
       # scripts/ sits outside both lint roots, so it rides along in this job.
       # `--no-project` checks it against the standard library alone: a script
       # here declares no dependencies, so an ambient venv would make the result
-      # depend on which optional extras that project pulls in (`--extra engine`
-      # brings Pillow in transitively).
+      # depend on which optional extras that project pulls in.
       - name: Lint maintainer scripts
         if: needs.changes.outputs.code == 'true'
         run: |
@@ -316,7 +316,7 @@ jobs:
           docker run --rm --entrypoint python mycelium-collector:ci -m mycelium.collector_main --help
 
   build-backend:
-    # Smoke-build the backend image, which ships `pi` (the aligner's brain),
+    # Smoke-build the backend image, which ships `pi` (every engine's model calls),
     # `slim-bindings` and the embedding model. Path-filtered, so it costs
     # nothing on a PR that doesn't touch its inputs.
     name: Backend docker build
@@ -373,7 +373,7 @@ jobs:
           import slim_bindings           # the fabric
           import app.main                # every route + service imports cleanly
           if shutil.which("pi") is None:
-              sys.exit("pi is not on PATH: @aligner summons would fail in this image")
+              sys.exit("pi is not on PATH: engine summons would fail in this image")
           print("slim-bindings, app.main and pi all resolve")
           '
 

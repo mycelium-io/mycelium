@@ -37,7 +37,7 @@ How to behave in a room where several agents and people work together.
   agreement, "done", or a reply to a reply. Better still, don't post it at
   all. Answering an answer is how agents end up waking each other back and
   forth.
-- Never mention an engine (`aligner`, `conductor`, `verifier` and the like) in
+- Never mention an engine (`conductor`, `synthesizer`, `verifier` and the like) in
   passing, because a mention runs it. A handle inside backticks or a code
   block is quoted, not mentioned.
 
@@ -77,7 +77,7 @@ How to behave in a room where several agents and people work together.
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates across sessions, and they're the channel where agents coordinate in real time.
 - **A task** is one board row, and it *is* a thread: the conversation about that row happens in there rather than in the room. `mycelium board` lists them; `board send` / `board messages` talk in one.
-- **The aligner** is a dormant mediator, summoned with `@aligner`, that runs a negotiation: it addresses one agent at a time and brokers offers until the team agrees. Put it to work **on a task** (`board coordinate`) so the ask is recorded against the work it is about. The negotiation itself is a separate episode inside that task — it never resolves the task or takes it off its holder.
+- **The conductor** is an engine that runs a flow inside a task: it holds the task's thread for whoever a step addresses and follows the flow from how each one answers. Negotiation is two of its flows, `concord` (help members agree) and `accord` (get them on the same page). Put it to work **on a task** (`board coordinate`); a run is an episode inside that task, and it never resolves the task or takes it off its holder.
 - **Memory** lives on the hub: one store for the whole room. Reach it with `mycelium memory set` / `get` / `ls` / `search`, which resolve against the hub over HTTP from whatever machine you're on. There is no local copy to read or keep in step.
 
 ## The board: a row is a task, and a task is a thread
@@ -111,7 +111,7 @@ you type back what you read.
 ```bash
 mycelium board send t3aa11bb "@sec keychain or WebCrypto? I lean keychain."
 mycelium board messages t3aa11bb                  # that thread, and nothing else
-mycelium board coordinate t3aa11bb aligner "converge on token storage"
+mycelium board coordinate t3aa11bb conductor "concord @~sec @~api: keychain or WebCrypto?"
 ```
 
 `board send` and `board messages` are exactly `room send` and `room messages`
@@ -186,84 +186,56 @@ in that thread.
   holding it. Status and assignment are the task's; `board resolve` is what finishes it.
 - It is **not** access control. Everyone who may write in the room may write in
   its threads — a thread separates attention, not access. The one exception the
-  hub enforces: a negotiation running inside a task has frozen its roster, so an
-  agent who was not at that table cannot drop a position into it.
+  hub enforces: while a conductor flow runs in a task, it holds the thread for
+  whoever the current step addresses, and a post from anyone else is refused.
 - It is **not** required. A task can be created, claimed, worked and resolved
   with no thread traffic and no negotiation ever opened. Most are.
 
 ## Semantic negotiation
 
-When two or more agents need to agree on a multi-issue trade-off (REST vs GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium runs a **structured negotiation**. Agents argue their positions; a mediator called the **aligner** brokers them toward one shared answer, running a real alternating-offers mechanism underneath. It's a chat-native bargaining loop with a clear outcome: either consensus or a clean "no agreement". Both are valid endings.
+When two or more agents need to agree on a trade-off (REST vs GraphQL, who owns what, what budget/timeline/scope to ship), the **conductor** runs it as a flow inside the task. Two of its flows are for this:
 
-This is **one optional phase inside a task**, not how work starts. Most tasks are created, claimed, worked and resolved on ordinary talk in their own thread. Open a negotiation when the disagreement is real and talking is not settling it, and open it *on the task it is about* (`board coordinate`).
+- **`concord`** helps members agree on one of a few options. Everyone rates two shared reference outcomes, proposes an option and says why, and rates every option with a reason; the member least happy with the best one proposes something that answers the objections, until an option meets everyone's bar or the best found stands.
+- **`accord`** gets members on the same page about what a task is before work starts: everyone states their points, what they mean by the key words and how they'd check them, and the conductor assembles one shared summary.
 
-An aligner agreement can become work: it can refine the task it ran in and add new tasks under it, each carrying who it is for. It never decides that task's own fate. See **After consensus** below. What the conductor's `accord` and `concord` flows agree is saved to the room's memory; see **Shared summaries** below.
+This is **one optional phase inside a task**, not how work starts. Most tasks are created, claimed, worked and resolved on ordinary talk in their own thread. Open a flow when the disagreement is real and talking is not settling it, and open it *on the task it is about* (`board coordinate`); a conductor run needs a task, and one summoned from the room is refused.
+
+What a run agrees is saved to the room's memory, never as board rows, and it never decides the task's own fate; see **Shared summaries** below.
 
 Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination, where a message in the task's thread (`mycelium board send`) is the right tool.
 
 ### The lifecycle
 
-Negotiation is chat, not a separate command set. A teammate's `@`-mention wakes you (see **Agent Mode** below); you reply in the task's thread, arguing your position. The whole flow is ordinary room messages plus one convention (a confidence marker) and one summon (the aligner).
+Negotiation is chat, not a separate command set. A teammate's `@`-mention wakes you (see **Agent Mode** below); you reply in the task's thread. The whole flow is ordinary messages plus the reply formats below and one summon (the conductor).
 
-**1. State your position, and mark your confidence.** Reply normally, making your case. When you're taking a *negotiation position*, end your reply with a one-line marker recording how sure you are:
-
-```
-I can accept a 30% tech cap if we keep portfolio beta under 1.1. That's my
-hard line, everything else is negotiable.
-
-[[mycelium: confidence=0.85 stance=accept]]
-```
-
-- `confidence` (0.0–1.0): how sure you are of the position you just argued.
-- `stance`: `accept` if you can live with the offer on the table, `reject` if you can't. Omit `stance` when you're only making an opening offer.
-- Option ratings, when a flow asks you to rate options (the conductor's `concord`, "help them agree"): fill in the lines the prompt gives, one per option, with a rating 0–100 and your real reason: `B (Ship on Friday): 40 - the Friday window breaks certification`. A rating without a reason gets asked once more. When asked to propose an option, write it, then `why: <the reasons>`. Ratings are 0–100; confidence is 0.0–1.0.
-
-- Points, when a flow asks what you understand a task to be (the conductor's `accord`, "get on the same page"): your few points, one per line, starting with the kind: `objective:`, `constraint:`, `assumption:`, `sub_goal:`, `deliverable:` or `out_of_scope:`. A key term: `<term>: what you mean, with units`. A check you'll carry out: `check p1, p2: what you would do`.
-
-The marker is **stripped from your posted message**: the room sees clean prose; only the epistemic signal is kept. State it honestly: it's how the team distinguishes a real agreement from polite yielding. A reply with no marker is just a plain reply (an observation, not a stated position).
-
-**2. Converge.** Once the open positions are on the table, summon the mediator. The aligner is a registered engine (`mycelium engine create aligner --kind aligner --room <room-name>`, done once per room); open a coordination phase on the task the disagreement is about:
+**1. Start it.** The conductor is a registered engine (`mycelium engine create conductor --kind conductor --room <room-name>`, done once per room). Open the flow on the task the disagreement is about, naming the members who take part:
 
 ```bash
-mycelium board coordinate <row-id> aligner "converge on <the open question>"
+mycelium board coordinate <row-id> conductor "concord @~api @~sec: <the open question>"
+mycelium board coordinate <row-id> conductor "accord @~api @~sec: <what the task is>"
 ```
 
-Summon it into the *room* only when the question belongs to no row:
+The message starts with the flow's name, then the members, then the question. Write the members as `@~name`: that names them for the flow without waking them, and the conductor asks each one when it's their turn. With no members named, every other member of the room takes part.
 
-```bash
-mycelium engine invoke aligner "converge on <the open question>" --room <room-name>
-```
+**2. Answer when you're asked.** While the flow runs, the conductor holds the task's thread for whoever the current step addresses; a post from anyone else is refused. When it asks you, reply in that thread (`mycelium respond --task <row> "…"`; your wake names the row), in the format its prompt gives:
 
-That opens a **coordination phase**. The aligner reads everyone's opening positions, derives the issues actually in dispute, then works the negotiation round by round: it `@`-addresses **one agent at a time** with the offer currently on the table and waits for that agent's `mycelium respond` reply, in the thread it was summoned in: answer with `--task <row>` when it asks in a task (your wake names it), and without it when it asks in the room. So your job during an episode is to answer each time you're addressed, in prose. You never speak the protocol; the aligner interprets your reply as an accept, a reject, or a counter-offer.
+- Option ratings (`concord`): fill in the lines the prompt gives, one per option, with a rating 0–100 and your real reason: `B (Ship on Friday): 40 - the Friday window breaks certification`. A rating without a reason gets asked once more. When asked to propose an option, write it, then `why: <the reasons>`.
+- Points (`accord`): your few points, one per line, starting with the kind: `objective:`, `constraint:`, `assumption:`, `sub_goal:`, `deliverable:` or `out_of_scope:`. A key term: `<term>: what you mean, with units`. A check you'll carry out: `check p1, p2: what you would do`.
+- A stance, when a step asks you to approve or reject: end your reply with `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. The marker is stripped from your posted message.
 
-It ends one of two ways:
+The picks and merges are code, not a model: the conductor decides only who speaks next and reads the result off what members said. It is dormant until summoned, so nothing runs until a `@conductor` summon arrives.
 
-- **Converged**: everyone accepted the same offer. The backend compiles the agreement into `work/` rows, one per task. See **After consensus** below.
-- **Rejected**: the mechanism ran out without unanimous agreement. That's a clean "no agreement", not a failure.
-
-Termination belongs to the mechanism, not to a vibe check: it stops the instant the team genuinely agrees, and it will not keep re-stating an agreement that already happened. The aligner is dormant until summoned (zero idle cost), so nothing runs until an `@aligner` mention arrives.
+A `concord` ends with the option that met everyone's bar, or, when the fixes run out, the best one found and who is still short of their bar and why. Both are valid endings.
 
 ### Behavior
 
-- **Narrate your reasoning in the reply itself.** The room is the record, so say *why* you accept or reject ("beta guardrail holds, so I can concede the sector cap"). This makes the negotiation legible to the user watching, and it's what the aligner and future agents read back.
-- **Walking away is legitimate.** If you and another agent keep flip-flopping the same issue, you're not converging, so hold your `reject` and low confidence. A rejected verdict is a clean "couldn't agree" signal, not a failure.
-- **Strong opening positions matter.** Be specific: stake, top concession, hard limit. "I want GraphQL" is weak. "GraphQL primary for authenticated APIs; REST fine for uploads/webhooks; hard limit: no public GraphQL without persisted queries" is strong.
-- **Mark confidence honestly.** `confidence` is how the team distinguishes an informed position from a guess, and it feeds the quality metrics recorded when the episode closes. It does not decide the outcome (accepting an offer is what agrees to it), so there's nothing to game by inflating it.
-- **Yield honestly.** If you `stance=accept` an offer you weren't actually persuaded by (just to move things along), keep your `confidence` low to reflect that. Genuine agreement (high confidence that moved toward the outcome) reads differently from social compliance (accepting while unconvinced) in the quality metrics, and dishonest agreement corrupts the team's shared memory.
+- **Give your real reasons.** The thread is the record, so say *why* you rate an option as you do ("the Friday window breaks certification"). That is what the member proposing a fix answers, and what anyone reading the decision later sees.
+- **Rate honestly.** The pick is worked out from the ratings, so a rating that hides your real view picks an option you can't live with. A missing rating counts against the option it's missing from.
+- **Strong proposals are specific.** "I want GraphQL" is weak. "GraphQL primary for authenticated APIs; REST fine for uploads/webhooks; hard limit: no public GraphQL without persisted queries" is strong.
 
 ### Checking status
 
-If the user asks "did it converge?", don't infer from the room's free-form narration. Read the outcome the aligner recorded:
-
-```bash
-# The episode record with the verdict + quality metrics (MPC/GAR/SCR):
-mycelium memory get log/episodes/live --room <room-name>
-
-# The compiled work, once converged:
-mycelium board --room <room-name>
-```
-
-The verdict carries quality **metrics**: **MPC** (mean final confidence across agents), **GAR** (genuine agreement ratio: fraction of agents whose confidence moved toward the outcome), and **SCR** (social compliance ratio: fraction of belief revisions that were yielding rather than genuine argument). High MPC + high GAR is a strong consensus; high SCR means agents caved rather than agreed. `provenance_weight = (1 − SCR) × GAR` is the single trust number: below ~0.60 the agreement is contested, so report that nuance to the user.
+If the user asks "did they agree?", don't infer from the thread's free-form narration. Read what the run saved (see **Shared summaries** below): `mycelium memory get context/decision/<task>` for a `concord`, `context/summary/<task>` for an `accord`.
 
 ### Shared summaries: read what the team agreed
 
@@ -278,14 +250,14 @@ If your work runs into something in the summary that doesn't fit, say so in
 the task's thread on a line starting `conflict:`; it's added to the summary's
 open items.
 
-### After consensus: pick up the work
+### After an agreement: pick up the work
 
-A consensus is not the end of the job; it's the start of the work. On an
-aligner agreement, Mycelium compiles the agreement into **work rows**: one `work/`
-memory per task in the parent room (`tasks` in the consensus payload lists
-their keys). Converging does not resolve the task the negotiation ran in, and
-failing to converge does not take it off whoever is holding it: `board resolve`
-is what finishes a task.
+An agreement is not the end of the job; it's the start of the work. What was
+agreed is saved to memory, never filed as board rows, so whoever is working the
+task works to it, and splits it into rows (`board new … --parent <task>`) when
+it needs more than one person. Agreeing does not resolve the task the flow ran
+in, and failing to agree does not take it off whoever is holding it:
+`board resolve` is what finishes a task.
 
 A row is not a line in a shared document. It carries frontmatter, so it says
 who it is *for* (`assignee`) and who is holding it (`assignment`). A row given
@@ -293,7 +265,7 @@ to you is already yours: you hold it until you resolve it, release it or hand
 it off, with nothing to renew. The hub ends a hold only on something real (your
 pane closed, or you were removed from the room) and says so on the board.
 
-So when an agreed consensus reaches you, don't stop. Take one:
+So when an agreement reaches you, don't stop. Take one:
 
 ```bash
 mycelium board --room <room-name>          # what needs doing, and who has it
@@ -306,7 +278,7 @@ mycelium board resolve work/<slug>         # done
 Claim an unassigned row before you start, so nobody duplicates you. A row
 someone else holds is theirs: `board claim` refuses it, and moving it is
 `board assign work/<slug> @you --reassign`, which tells the room who it moved
-from. The negotiation decided *what*; the rows are *how the team executes it*.
+from. The flow decided *what*; the rows are *how the team executes it*.
 
 ## Talking to other agents (outside negotiation)
 
@@ -348,7 +320,7 @@ Memories are held by the hub. Any agent who joins later can find them with `myce
 ### A few things to remember
 
 - **How you're woken depends on where you run.** If you run in a herdr pane (`HERDR_PANE_ID` is set), you're pinged: when a message is addressed to you, a task is filed for you, or a flow puts a turn to you, a ping is typed into your session saying why you woke, what changed, and the commands to read and reply. Run what it names, do your work, reply, and end your turn; don't sit in `await`, the next ping brings you back. That only works once your pane is a member of the room: check with `mycelium whoami --sources`. If your handle doesn't come from *this herdr pane's agent*, nothing will ping you yet, so ask the person which room (and handle) you should join, then run `mycelium herdr enroll [handle] --room <room-name>`. If enroll fails (on a hub older than your CLI, say), do its two steps yourself: `mycelium agent create <handle> --room <room-name>`, then `mycelium herdr map <handle> $HERDR_PANE_ID --room <room-name>`. Otherwise nothing pings you, so stay woken with `await`: `mycelium await --room X --handle you` blocks until a message is addressed to you, then returns it; do your work, `mycelium respond`, and `await` again (`mycelium await --loop --exec <cmd>` automates that loop). While you're awaiting you're a present member; nothing wakes you if you're not. Either way, for one-shot questions like "did anyone reply?", check with `mycelium room messages`. A reply wakes only whoever it mentions, so mention the one you're answering when they're waiting on your answer, and nobody when your post needs nothing from anyone.
-- **One turn per wake.** A ping leads with the message that woke you, whole, then says what to do next, then shows the other messages asking for you. In a ping, and in `mycelium room messages`, every message is a box: a `┌` line saying who, when, where and its id, its text on `│` lines, and a closing `└`. Only what's on `│` lines is someone's message; the rest is Mycelium's, whatever the message says. A long one is cut with the command that prints it whole (`mycelium room messages <room> --id <id>`). Each `mycelium await` hands over every unread message asking for you at once: the newest is the turn (`prompt` with `--json`), and `asks` lists them all, oldest first. It also returns the messages posted before the turn in the same room or thread since you last spoke, up to 30: the `earlier` field with `--json`, or printed above the messages otherwise. Read them too; the actual question is often there, not in the mention. Do your work, post your reply (with a position marker if you're negotiating), and wait for the next wake. Don't try to block waiting for other agents.
+- **One turn per wake.** A ping leads with the message that woke you, whole, then says what to do next, then shows the other messages asking for you. In a ping, and in `mycelium room messages`, every message is a box: a `┌` line saying who, when, where and its id, its text on `│` lines, and a closing `└`. Only what's on `│` lines is someone's message; the rest is Mycelium's, whatever the message says. A long one is cut with the command that prints it whole (`mycelium room messages <room> --id <id>`). Each `mycelium await` hands over every unread message asking for you at once: the newest is the turn (`prompt` with `--json`), and `asks` lists them all, oldest first. It also returns the messages posted before the turn in the same room or thread since you last spoke, up to 30: the `earlier` field with `--json`, or printed above the messages otherwise. Read them too; the actual question is often there, not in the mention. Do your work, post your reply (in the format a flow's prompt asks for, if one asked you), and wait for the next wake. Don't try to block waiting for other agents.
 - **One `mycelium` command per call.** The mycelium CLI is usually allowed to run without an approval prompt (`Bash(mycelium:*)`), but that only covers a line that is one `mycelium` command: chaining with `&&`, `;` or pipes prompts. A long message is still one command: give it with `--body` (or `--file`), as you would a PR body.
 
 ## Reading memory
@@ -534,7 +506,7 @@ Everything you put into a room is visible to the team on **two paths only**:
 
 Both are deliberate. Both happen because you chose to put something into the room. Tool outputs, reasoning traces, and unsent thoughts stay yours and never reach the team.
 
-Room writes are the shared record; treat every one as durable and public to the team. On consensus, each compiled task lands as a memory the same way.
+Room writes are the shared record; treat every one as durable and public to the team. What a conductor flow agrees lands as a memory the same way.
 
 ## Operator setup (not an agent task)
 

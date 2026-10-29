@@ -77,7 +77,7 @@ def get_integration(
         return CursorIntegration(cwd=cwd)
     if canonical == "engine":
         # First-party cognition-engine family; ``engine_kind`` selects the CE
-        # (aligner today). The other kwargs are irrelevant here.
+        # (conductor, persona, …). The other kwargs are irrelevant here.
         return EngineIntegration(kind=engine_kind)
     if canonical == "a2a":
         # External Agent2Agent endpoint; ``card`` locates its Agent Card. The

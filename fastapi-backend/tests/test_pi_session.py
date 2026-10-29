@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for the Pi mediator llm_session (app/services/pi_session.py) + selection.
+"""Unit tests for the engines' Pi llm_session (app/services/pi_session.py).
 
 Node-free and Pi-free: no real ``pi`` process is ever spawned. We exercise the
-three things that must be right for the Pi session seam to be trustworthy without a
-live binary — the ``pi --mode json`` output parser, the command construction
-(flags + OpenShell wrap), and the aligner's LLM session construction (Pi-only, or an
-injected fake) — by monkeypatching :func:`subprocess.run` / :func:`shutil.which`.
+two things that must be right for the Pi session seam to be trustworthy without a
+live binary — the ``pi --mode json`` output parser and the command construction
+(flags + OpenShell wrap) — by monkeypatching :func:`subprocess.run` / :func:`shutil.which`.
 A live Pi turn
 is a separate, guarded integration step (see the doc's honest caveats).
 """
@@ -386,32 +385,3 @@ def test_call_ignores_temperature(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     _brain(tmp_path)("p", system="", temperature=0.9)
     assert "--temperature" not in calls[0]
     assert "0.9" not in calls[0]
-
-
-# ── LLM session selection in the aligner ──────────────────────────────────────────
-
-
-def test_make_brain_default_builds_pi_brain(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The mediator LLM session is Pi-only: the default factory builds a PiSession."""
-    from app.config import settings
-    from app.services import aligner
-
-    monkeypatch.setattr(settings, "LLM_MODEL", "anthropic/claude-sonnet-4-6")
-    monkeypatch.setattr(settings, "ALIGNER_PI_BINARY", "pi")
-    engine = aligner.AlignerEngine(object())  # type: ignore[arg-type]
-    llm_session = engine._open_llm_session("urn:mycelium:episode:room:align")
-    assert isinstance(llm_session, PiSession)
-    # The episode URN is slugged into a filesystem-safe per-negotiation session.
-    assert llm_session._session_path.name == "urn-mycelium-episode-room-align.jsonl"
-    assert llm_session._model == "anthropic/claude-sonnet-4-6"
-
-
-def test_make_brain_uses_injected_factory() -> None:
-    """A ``llm_session_factory`` overrides the default (how tests run node-free)."""
-    from app.services import aligner
-
-    def sentinel(*_a: object, **_k: object) -> str:
-        return "x"
-
-    engine = aligner.AlignerEngine(object(), llm_session_factory=lambda _ep: sentinel)  # type: ignore[arg-type]
-    assert engine._open_llm_session("urn:x:align") is sentinel

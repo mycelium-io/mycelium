@@ -77,7 +77,7 @@ async def create_a2a_agent(room_name: str, payload: A2aAgentCreate, request: Req
         raise HTTPException(status_code=409, detail=f"@{handle} already exists in {room_name}")
 
     # Resolve the card now so an unreachable or malformed endpoint is a clean 502
-    # at registration, not a surprise when the aligner first addresses the seat.
+    # at registration, not a surprise when the conductor first addresses the seat.
     try:
         card = await resolve_card(payload.card)
     except A2aCardError as exc:

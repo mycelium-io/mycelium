@@ -3,29 +3,28 @@
 
 """A Pi-backed LLM session for mycelium's *internal* agents.
 
-The seam: the SAO mediator's LLM session is a **persistent, optionally
-OpenShell-sandboxed Pi session** — the mediator has no stateless per-call
-fallback; Pi is its runtime. This touches neither the NEGMAS loop, the SLIM/HTTP
-drive, nor any *user* agent's runtime — Pi is the runtime for our own cognition
-agents only; participant agents keep whatever framework they already run.
+The seam: every engine's LLM session is a **persistent, optionally
+OpenShell-sandboxed Pi session** — the engines have no stateless per-call
+fallback; Pi is their runtime. This touches neither the SLIM/HTTP drive nor any
+*user* agent's runtime — Pi is the runtime for our own cognition engines only;
+participant agents keep whatever framework they already run.
 
-The mediator injects its LLM session as a callable
-``llm(prompt, *, system="", temperature=…) -> str`` (see ``mediator.py``:
-``discover_issues(…, llm=…)`` and ``MediatedNegotiation(…, llm=…)``).
-:class:`PiSession` is a drop-in for that seam whose ``__call__`` drives one
-long-lived ``pi -p --session <path> --mode json`` subprocess. Because one
+:class:`PiSession` is a callable
+``llm(prompt, *, system="", temperature=…) -> str`` whose ``__call__`` drives
+one ``pi -p --session <path> --mode json`` subprocess. Because one
 :class:`PiSession` instance reuses a single ``--session`` file across every call,
-the LLM session accumulates **real durable memory across SAO rounds** — the natural
-home for the running state ``MediatedNegotiation`` threads by hand today.
+the session accumulates **real durable memory across turns**. A persona or a
+worker keeps one session file per handle, so it remembers its earlier turns;
+the one-shot engines (the synthesizer, hello, the verifier) pass a throwaway
+file per call.
 
-**Synchronous on purpose.** The mediator's LLM session turns run inside NEGMAS's
-``mech.run()`` worker thread, so this is blocking too. We shell out with a
-blocking :func:`subprocess.run` bounded by a wall-clock timeout so one hung turn
-can never stall the negotiation.
+**Synchronous on purpose.** We shell out with a blocking :func:`subprocess.run`
+bounded by a wall-clock timeout so one hung turn can never stall its caller.
+The engines run it off the event loop (``asyncio.to_thread``).
 
-**Serial by construction.** The mediator's turn model is strictly serial (one
-``@handle`` at a time), so a single Pi session is never driven concurrently. Do
-not share one :class:`PiSession` across parallel negotiations — build one per run.
+**Serial by construction.** A single Pi session is never driven concurrently:
+a worker holds a lock per handle around its turn. Do not share one
+:class:`PiSession` across parallel callers — build one per caller.
 
 **OpenShell sandboxing** is wired as a command-prefix seam (``openshell=True``),
 default **off**: ``openshell`` is not guaranteed installed and the sandbox path
@@ -48,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 #: Pi's built-in coding tools (read/bash/edit/write) are useless to a pure
 #: interpret-and-broker session and would let it touch the filesystem — disable
-#: them so a mediator turn is cognition only. A worker is the one session that
+#: them so an engine's turn is cognition only. A worker is the one session that
 #: keeps them (``tools=True``), working in its own checkout.
 _NO_TOOLS = "--no-tools"
 
@@ -194,7 +193,7 @@ def _safe_prompt_arg(prompt: str) -> str:
     Pi treats a positional argument starting with ``@`` as an ``@file`` mention
     (it tries to *read a file* named after the prompt) and one starting with
     ``-`` as an option (see pi ``cli/args.js``). The session feeds arbitrary text
-    — agent prose, opening positions, a mediator turn that opens with
+    — agent prose, a room's transcript, a turn that opens with
     ``@handle`` — as that positional, so a leading ``@`` or ``-`` would break the
     turn. A single leading space makes pi parse it as a message; the model does
     not care about one space of leading whitespace. Only the *leading* character
@@ -373,11 +372,11 @@ def parse_pi_json_output(stdout: str) -> str:
 
 
 class PiSession:
-    """A persistent ``pi`` session presented as the mediator's LLM callable.
+    """A persistent ``pi`` session presented as an LLM callable.
 
-    One instance == one ``--session`` file == one negotiation's memory. Construct
-    it per :meth:`app.services.aligner.AlignerEngine.mediate` run and pass it as
-    ``llm=`` into ``discover_issues`` and ``MediatedNegotiation``.
+    One instance == one ``--session`` file == one memory. An engine constructs
+    it with the session file it wants to remember through: its own per-handle
+    file, or a throwaway one for a one-shot turn.
     """
 
     def __init__(
@@ -409,9 +408,8 @@ class PiSession:
         self._operation = operation
         self._room = room
         # Accumulated wall-clock time spent in Pi subprocess calls this session.
-        # The aligner reads this after mech.run() to derive mechanism overhead
-        # (round duration excluding LLM time). Thread-safe only within the
-        # serial-by-construction constraint documented in the class docstring.
+        # Nothing in the hub reads it today. Thread-safe only within the
+        # serial-by-construction constraint documented in the module docstring.
         self.total_pi_ms: float = 0.0
         # A LLM_BASE_URL is not a pi command-line flag — it becomes a models.json
         # provider entry we generate. Endpoint mode:
@@ -498,8 +496,8 @@ class PiSession:
     def __call__(self, prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
         """Run one blocking ``pi`` turn against the persistent session.
 
-        ``temperature`` is accepted for signature parity with the mediator's LLM session
-        seam but Pi exposes no temperature flag, so it is intentionally ignored
+        ``temperature`` is accepted for signature parity with an LLM callable
+        but Pi exposes no temperature flag, so it is intentionally ignored
         (best-effort determinism only).
         """
         del temperature  # no pi CLI knob; kept for LLM-callable signature parity
@@ -510,7 +508,7 @@ class PiSession:
             binary = self._binary
             if pi_argv(binary) is None:
                 raise PiSessionError(
-                    f"`{binary}` not found on PATH — the aligner's mediator runs on Pi; "
+                    f"`{binary}` not found on PATH — Mycelium's engines run on Pi; "
                     "install Pi (earendil-works/pi) or set ALIGNER_PI_BINARY to its path."
                 )
             self._ensure_provider()

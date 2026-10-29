@@ -366,16 +366,33 @@ class TestChatVerbs:
         sent = _chat(monkeypatch)
         monkeypatch.setattr(
             "mycelium.commands.agent._load_manifest_remote",
+            lambda *_a: SimpleNamespace(handle="conductor", adapter="engine", kind="conductor"),
+        )
+        monkeypatch.setattr("mycelium.client.typed_client", lambda _c: _null_cm())
+        result = runner.invoke(
+            board_cmd.app, ["coordinate", SHORT, "conductor", "concord @~api @~sec: storage"]
+        )
+        assert result.exit_code == 0, result.output
+        post = sent["post"]
+        assert post["content"] == "@conductor concord @~api @~sec: storage"
+        assert post["episode"] == THREAD
+
+    def test_coordinating_with_an_old_aligner_says_what_to_run_instead(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _hub(monkeypatch, memories=[_unit()])
+        sent = _chat(monkeypatch)
+        monkeypatch.setattr(
+            "mycelium.commands.agent._load_manifest_remote",
             lambda *_a: SimpleNamespace(handle="aligner", adapter="engine", kind="aligner"),
         )
         monkeypatch.setattr("mycelium.client.typed_client", lambda _c: _null_cm())
         result = runner.invoke(
             board_cmd.app, ["coordinate", SHORT, "aligner", "converge on storage"]
         )
-        assert result.exit_code == 0, result.output
-        post = sent["post"]
-        assert post["content"] == "@aligner converge on storage"
-        assert post["episode"] == THREAD
+        assert result.exit_code == 1
+        assert "The aligner was retired" in result.output
+        assert "post" not in sent
 
     def test_coordinating_with_a_plain_agent_is_refused_with_the_verb_that_does_work(
         self, monkeypatch: pytest.MonkeyPatch

@@ -44,7 +44,7 @@ const row = (key: string, title: string, episode: string | null) => ({
   key,
   value: { title },
   version: 3,
-  created_by: "aligner",
+  created_by: "conductor",
   updated_at: at(),
   ...(episode ? { episode } : {}),
 });
@@ -149,7 +149,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     // The count is a way in, not a dead end: a row that says "4 updates" and
     // cannot say which four leaves the reader where they started.
     await stream([
-      notice("filed", "aligner"),
+      notice("filed", "conductor"),
       knowledge(1, "claude-web", 60_000),
       ping("growth", "m-1", 120_000),
       notice("resolved", "growth", 180_000),
@@ -191,7 +191,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     // them where people are reading. Who claimed it is on its rail row, which
     // still reads created → worked → resolved in one place.
     await stream([
-      notice("filed", "aligner"),
+      notice("filed", "conductor"),
       notice("claimed", "growth", 200),
       said("taking this one", "growth", 400),
       notice("resolved", "growth", 800),
@@ -386,11 +386,11 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
   it("pins who is responding outside the scrolling messages, by the composer", async () => {
     await stream([
       said("can someone look at the flag rollout?"),
-      { type: "agent_activity", handle: "aligner", state: "responding", episode: LIVE },
+      { type: "agent_activity", handle: "conductor", state: "responding", episode: LIVE },
     ]);
 
     const line = await screen.findByTestId("responding-line");
-    expect(line).toHaveTextContent("aligner is responding…");
+    expect(line).toHaveTextContent("conductor is responding…");
     // Inside the viewport it would scroll away under whatever is sent next.
     expect(line.closest('[data-slot="scroll-area-viewport"]')).toBeNull();
   });

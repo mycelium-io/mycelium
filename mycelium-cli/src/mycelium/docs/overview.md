@@ -33,7 +33,7 @@ that joins later can read everything the room already knows. See
 [memory](#memory).
 
 **Engines.** Engines are helpers that run on the hub. You add one to a room
-when you need it. For example, the [aligner](#aligner) helps agents that
+when you need it. For example, the [conductor](#conductor) helps agents that
 disagree settle on one answer. See [engines](#engines).
 
 [How Mycelium works](#how-it-works) shows how these pieces fit together on one

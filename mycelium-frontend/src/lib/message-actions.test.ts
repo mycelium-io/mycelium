@@ -13,8 +13,8 @@ describe("quoteText", () => {
   });
 
   it("notifies nobody it quotes: every mention in it is made silent", () => {
-    const quote = quoteText("@builder @reviewer we need a day\n@aligner run it (@!coder stop)", "julia");
-    expect(quote).toBe("> @~julia: @~builder @~reviewer we need a day\n> @~aligner run it (@~coder stop)\n\n");
+    const quote = quoteText("@builder @reviewer we need a day\n@conductor run it (@!coder stop)", "julia");
+    expect(quote).toBe("> @~julia: @~builder @~reviewer we need a day\n> @~conductor run it (@~coder stop)\n\n");
     expect(parseMentions(quote)).toEqual([]);
     expect(parseInterruptMentions(quote)).toEqual([]);
   });
@@ -75,6 +75,6 @@ describe("taskBody", () => {
   });
 
   it("makes the quoted mentions silent", () => {
-    expect(taskBody("@aligner run it", "builder", null)).toBe("> @~aligner run it\n\nFrom a message by @~builder in the channel.\n");
+    expect(taskBody("@conductor run it", "builder", null)).toBe("> @~conductor run it\n\nFrom a message by @~builder in the channel.\n");
   });
 });

@@ -306,13 +306,12 @@ def generate_env_file(
         else "# LLM_BASE_URL not set, using provider default",
         "",
         "# ── Engine ───────────────────────────────────────────────────────────────",
-        # Where a registered `engine` runs its NEGMAS/Pi drive; backend-only.
-        # Always `backend`.
+        # Where a registered `engine` runs; backend-only. Always `backend`.
         f"ENGINE_RUNTIME={config.engine.runtime}",
+        # Named for the retired aligner so an existing .env keeps working:
+        # the handle a retired-aligner summon is answered on, and every
+        # engine's per-call Pi timeout.
         f"ALIGNER_HANDLE={config.aligner.handle}",
-        f"ALIGNER_TERM_CHECK={str(config.aligner.term_check).lower()}",
-        f"ALIGNER_ROUND_TIMEOUT_S={config.aligner.round_timeout_s}",
-        f"ALIGNER_MEDIATOR_MAX_STEPS={config.aligner.max_steps}",
         f"ALIGNER_PI_TIMEOUT_S={config.aligner.pi_timeout_s}",
         f"SYNTHESIZER_SOURCE={config.synthesizer.source}",
         f"WORKER_TOOLS={str(config.worker.tools).lower()}",
