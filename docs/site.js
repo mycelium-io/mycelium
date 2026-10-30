@@ -327,7 +327,7 @@
 
   const INSTALL_CMDS = {
     curl: 'curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash',
-    brew: 'brew install mycelium-io/tap/mycelium',
+    brew: 'brew tap mycelium-io/tap && brew trust mycelium-io/tap && brew install mycelium',
     clawhub: 'Tell your agent: "install https://clawhub.ai/juliarvalenti/mycelium-io"',
   };
   function setInstallTab(tab, el) {

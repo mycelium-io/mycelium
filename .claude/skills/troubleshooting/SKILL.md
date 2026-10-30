@@ -24,8 +24,8 @@ Run `mycelium status --json` for machine-readable health data, or `mycelium stat
 # add `bash -s -- --client-only` for the CLI alone)
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 
-# brew
-brew install mycelium-io/tap/mycelium
+# brew (Homebrew 7 and later load a third-party tap only once it's trusted)
+brew tap mycelium-io/tap && brew trust mycelium-io/tap && brew install mycelium
 ```
 
 Or via clawhub — tell your agent:
