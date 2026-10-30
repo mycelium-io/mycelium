@@ -37,7 +37,8 @@ export const STANDING: Record<PartState, Standing> = {
 };
 
 /** What each kind of waiting item is, as a word in the state column: the
- *  accent, since these are the rows that need you. */
+ *  accent, since these are the rows that need you. An approval wears its
+ *  card's yellow, since something waits on the answer. */
 export const WAITING_STANDING: Record<WaitingItem["kind"], Standing> = {
   approve: { word: "Approve?", tone: "var(--yellow)" },
   ask: { word: "Asks you", tone: "var(--accent)" },
