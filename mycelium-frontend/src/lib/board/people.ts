@@ -50,7 +50,8 @@ export const WAITING_STANDING: Record<WaitingItem["kind"], Standing> = {
 export function waitingStanding(item: WaitingItem): Standing {
   const base = WAITING_STANDING[item.kind];
   if (item.kind !== "approve") return base;
-  if (item.ask_kind === "choose") return { ...base, word: "Pick one" };
+  // The item doesn't say whether one option or several, and "Pick" is true of both.
+  if (item.ask_kind === "choose") return { ...base, word: "Pick" };
   if (item.ask_kind === "question") return { ...base, word: "Answer?" };
   return base;
 }

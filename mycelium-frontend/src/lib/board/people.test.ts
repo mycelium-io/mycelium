@@ -131,7 +131,7 @@ describe("the people's board words", () => {
 
   it("says what an agent's ask wants of you, by its kind", () => {
     expect(waitingStanding({ kind: "approve", count: 1 }).word).toBe("Approve?");
-    expect(waitingStanding({ kind: "approve", ask_kind: "choose", count: 1 }).word).toBe("Pick one");
+    expect(waitingStanding({ kind: "approve", ask_kind: "choose", count: 1 }).word).toBe("Pick");
     expect(waitingStanding({ kind: "approve", ask_kind: "question", count: 1 }).word).toBe("Answer?");
     expect(waitingStanding({ kind: "ask", ask_kind: "question", count: 1 }).word).toBe("Asks you");
   });
