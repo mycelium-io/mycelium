@@ -205,10 +205,38 @@ class TestAsking:
             await approvals.create(ROOM, "builder", question="  ")
 
     @pytest.mark.asyncio
-    async def test_no_task_to_ask_in_is_refused(self, room):
-        with pytest.raises(approvals.Refused) as refused:
-            await approvals.create(ROOM, "lead", question="Ship it?")
-        assert "--task" in refused.value.detail
+    async def test_an_agent_with_no_task_asks_in_the_channel(self, room):
+        ask, record, task = await approvals.create(
+            ROOM, "lead", question="File step 1?", to="julia"
+        )
+        assert task is None
+        assert persister.record_episode(record) == message_format.live_episode_urn(ROOM)
+        items = waiting.waiting(ROOM, "julia", NOW)
+        assert [(i["kind"], i["key"], i["episode"]) for i in items] == [("approve", None, None)]
+        assert items[0]["text"] == "File step 1?"
+        assert items[0]["message_id"] == str(persister.read_id(record))
+        # Answered in the channel, it's folded onto the ask like one in a thread.
+        folded, _answer, _record = await approvals.answer(
+            ROOM, ask["id"], decision="approved", by="julia"
+        )
+        assert folded["answer"]["decision"] == "approved"
+        assert waiting.waiting(ROOM, "julia", NOW) == []
+
+    @pytest.mark.asyncio
+    async def test_an_agent_last_asked_in_the_channel_asks_there_over_the_task_it_holds(self, room):
+        _ask_, record, task = await _ask(
+            recent_episode=message_format.live_episode_urn(ROOM), to="julia"
+        )
+        assert task is None
+        assert persister.record_episode(record) == message_format.live_episode_urn(ROOM)
+
+    @pytest.mark.asyncio
+    async def test_a_named_task_still_wins_over_the_channel(self, room):
+        _ask_, record, task = await _ask(
+            task="work/apple-pay", recent_episode=message_format.live_episode_urn(ROOM)
+        )
+        assert task == "work/apple-pay"
+        assert persister.record_episode(record) == thread("apple-pay")
 
 
 class TestAnswering:

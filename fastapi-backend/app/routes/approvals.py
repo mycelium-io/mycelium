@@ -7,8 +7,9 @@ Asks API: an agent asks a person to decide, and the person answers.
 POST /rooms/{room}/asks              — ask (``mycelium ask --approve``)
 POST /rooms/{room}/asks/{id}/answer  — approve or decline, as the person asked
 
-The ask and the answer are messages in the task's thread
-(:mod:`app.services.approvals`); these routes are the only way to write either,
+The ask and the answer are messages in the task's thread, or the room's channel
+for an ask about no task (:mod:`app.services.approvals`); these routes are the
+only way to write either,
 so the fields the app draws are always ones the hub checked.
 """
 
@@ -39,7 +40,7 @@ def _room(room_name: str) -> None:
     "", response_model=AskPosted, status_code=201, responses=refusals(403, 404, 409, 422, 503)
 )
 async def create_ask(room_name: str, body: AskCreate, request: Request) -> AskPosted:
-    """Ask a person to decide something, in a task's thread."""
+    """Ask a person to decide something, in a task's thread or the room's channel."""
     from app.routes.participate import _last_tick
 
     _room(room_name)

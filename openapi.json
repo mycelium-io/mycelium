@@ -6158,7 +6158,7 @@
           "asks"
         ],
         "summary": "Create Ask",
-        "description": "Ask a person to decide something, in a task's thread.",
+        "description": "Ask a person to decide something, in a task's thread or the room's channel.",
         "operationId": "create_ask_api_rooms__room_name__asks_post",
         "parameters": [
           {
