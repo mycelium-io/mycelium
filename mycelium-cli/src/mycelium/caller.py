@@ -245,10 +245,15 @@ def config_overlay(files_hub: str | None = None) -> dict[str, Any]:
     return {"server": {"api_url": joined}} if joined else {}
 
 
+def desktop_settings_path() -> Path:
+    """Where the desktop app keeps its setting (``desktop.checks`` reads it too)."""
+    return Path.home() / ".mycelium" / "desktop.json"
+
+
 def desktop_hub() -> str | None:
     """The hub the desktop app joins, when it's in client mode."""
     try:
-        data = json.loads((Path.home() / ".mycelium" / "desktop.json").read_text())
+        data = json.loads(desktop_settings_path().read_text())
     except (OSError, ValueError):
         return None
     if not isinstance(data, dict) or data.get("mode") != "client":

@@ -21,10 +21,11 @@ from typing import Any
 
 import httpx
 
+from mycelium.caller import desktop_settings_path
 from mycelium.desktop.supervisor import HOST, HUB_PORT, SLIM_PORT, UI_PORT, Locator, port_open
 from mycelium.ui_status import CheckResult
 
-SETTINGS = Path.home() / ".mycelium" / "desktop.json"
+SETTINGS = desktop_settings_path()
 
 
 def settings() -> dict[str, Any] | None:
