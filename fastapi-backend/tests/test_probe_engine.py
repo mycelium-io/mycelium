@@ -130,6 +130,8 @@ async def test_pi_error_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatch)
         raise RuntimeError("pi exploded")
 
     monkeypatch.setattr(probe_engine, "_pi_complete", boom)
+    # A hub with a model set, so the failure reads as a failure, not as no model.
+    monkeypatch.setattr(probe_engine.settings, "LLM_API_KEY", "sk-ant-test")
     engine, managed = _engine()
 
     assert await engine.greet(_ROOM, engine_handle="hi") is None
@@ -187,6 +189,7 @@ async def test_pi_timeout_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatc
     managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
     engine = probe_engine.ProbeEngine(FakeManager(managed, []), timeout_s=-5.0)  # type: ignore[arg-type]
     monkeypatch.setattr(probe_engine, "_pi_complete", lambda _p, _t: "never gets here")
+    monkeypatch.setattr(probe_engine.settings, "LLM_API_KEY", "sk-ant-test")
 
     assert await engine.greet(_ROOM, engine_handle="hi") is None
     assert "timed out or errored" in _said(managed)[0]

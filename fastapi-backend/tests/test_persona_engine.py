@@ -201,6 +201,8 @@ async def test_pi_error_and_empty_answer_are_said_plainly(monkeypatch: pytest.Mo
         raise RuntimeError("pi exploded")
 
     monkeypatch.setattr(persona_engine, "_pi_complete", boom)
+    # A hub with a model set, so the failure reads as a failure, not as no model.
+    monkeypatch.setattr(persona_engine.settings, "LLM_API_KEY", "sk-ant-test")
     assert await engine.answer(_ROOM, engine_handle="sec", text="hi") is None
     assert "timed out or errored" in _posted(managed)[0][1]
 
