@@ -2076,6 +2076,9 @@ class AwaitAskRead(BaseModel):
     message_id: str | None = None
     id: str = Field(..., description="The id the room's history gives it (MessageRead.id)")
     at: str | None = None
+    answer: "AskAnswer | None" = Field(
+        None, description="When the message answers the handle's ask: the decision"
+    )
 
 
 class AwaitWatchedRead(AwaitAskRead):
@@ -2145,6 +2148,9 @@ class AwaitTurn(BaseModel):
     delivered: AwaitDeliveredRead | None = Field(
         None, description="With confirm: what to POST to await/confirm"
     )
+    answer: "AskAnswer | None" = Field(
+        None, description="When the turn answers the handle's ask: the decision"
+    )
 
 
 class AwaitConfirmRead(BaseModel):
@@ -2161,6 +2167,92 @@ class ReplyRead(BaseModel):
     room: str
     handle: str
     message_id: str | None = None
+
+
+# --- Approvals (an agent asks a person to decide) ---------------------------
+# ``app/services/approvals.py``; kinds and fields frozen in contracts/approvals.json.
+
+
+class AskDecided(BaseModel):
+    """How an ask was decided, folded onto it once answered."""
+
+    decision: Literal["approved", "declined"]
+    reason: str | None = None
+    by: str
+    at: str
+
+
+class Ask(BaseModel):
+    """What an agent asks a person, as the app draws it."""
+
+    id: str
+    kind: Literal["approve"]
+    to: str = Field(..., description="The one person who may answer")
+    question: str
+    happens: str | None = Field(None, description="What will happen if approved")
+    why: str | None = Field(None, description="Why now")
+    undo: str | None = Field(None, description="How to undo it")
+    link: str | None = Field(None, description="A PR, a memory or a URL it is about")
+    answer: AskDecided | None = Field(None, description="Set once the ask is answered")
+
+
+class AskCreate(BaseModel):
+    """``mycelium ask``: only the question is required."""
+
+    handle: str = Field(..., description="The agent asking")
+    question: str = Field(..., min_length=1)
+    kind: str = "approve"
+    to: str | None = Field(None, description="Who to ask; default the person who filed the task")
+    task: str | None = Field(
+        None,
+        description="The row to ask in; default the one the agent was last asked in, "
+        "else the one task it holds",
+    )
+    happens: str | None = None
+    why: str | None = None
+    undo: str | None = None
+    link: str | None = None
+
+
+class AskPosted(BaseModel):
+    """An ask, and the message that carries it."""
+
+    room: str
+    task: str | None = None
+    episode: str | None = None
+    message_id: str = Field(..., description="The id the room's history gives it")
+    ask: Ask
+
+
+class AskAnswerCreate(BaseModel):
+    decision: str = Field(..., description="approved or declined")
+    reason: str | None = None
+    by: str = Field(..., description="Who answers; only the person asked may")
+
+
+class AskAnswer(BaseModel):
+    """The answer an agent reads, in ``await`` and on the answer message."""
+
+    ask: str
+    decision: Literal["approved", "declined"]
+    reason: str | None = None
+    by: str
+    at: str
+
+
+class AskAnswered(BaseModel):
+    """The ask as decided, and the message that carries the answer."""
+
+    room: str
+    message_id: str
+    ask: Ask
+    answer: AskAnswer
+
+
+# ``await`` reads above name the answer before it is defined.
+AwaitAskRead.model_rebuild()
+AwaitWatchedRead.model_rebuild()
+AwaitTurn.model_rebuild()
 
 
 # --- Verifier ---------------------------------------------------------------

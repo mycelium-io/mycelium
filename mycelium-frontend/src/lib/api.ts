@@ -1168,7 +1168,7 @@ export async function fetchRoomBoard(roomName: string): Promise<BoardRead> {
 
 /** One thing waiting on a member (`GET /rooms/{room}/waiting?for=`). */
 export interface WaitingItem {
-  kind: "ask" | "turn" | "task";
+  kind: "approve" | "ask" | "turn" | "task";
   key?: string | null;
   title?: string | null;
   episode?: string | null;

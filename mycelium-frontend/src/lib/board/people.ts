@@ -15,7 +15,7 @@ import type { BoardEpic, BoardPart, BoardRead, PartState, WaitingItem } from "@/
 
 // Frozen in contracts/board-vocabulary.json under `epic`.
 export const PART_STATES: PartState[] = ["done", "blocked", "waiting", "working", "open"];
-export const WAITING_KINDS: WaitingItem["kind"][] = ["ask", "turn", "task"];
+export const WAITING_KINDS: WaitingItem["kind"][] = ["approve", "ask", "turn", "task"];
 
 /** How long a thread can go without a word before a running task reads as quiet. */
 export const QUIET_AFTER_MS = 3 * 60 * 60 * 1000;
@@ -39,6 +39,7 @@ export const STANDING: Record<PartState, Standing> = {
 /** What each kind of waiting item is, as a word in the state column: the
  *  accent, since these are the rows that need you. */
 export const WAITING_STANDING: Record<WaitingItem["kind"], Standing> = {
+  approve: { word: "Approve?", tone: "var(--accent)" },
   ask: { word: "Asks you", tone: "var(--accent)" },
   turn: { word: "Your turn", tone: "var(--accent)" },
   task: { word: "Yours", tone: "var(--accent)" },

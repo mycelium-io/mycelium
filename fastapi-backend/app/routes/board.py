@@ -64,7 +64,7 @@ class BoardRead(BaseModel):
 
 
 class WaitingItem(BaseModel):
-    kind: Literal["ask", "turn", "task"]
+    kind: Literal["approve", "ask", "turn", "task"]
     key: str | None = Field(None, description="The task it's in; none for the room itself")
     title: str | None = None
     episode: str | None = None

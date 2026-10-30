@@ -666,15 +666,20 @@ def stored_message_from_record(
     # A conductor post carries a structured line beside its prose (see
     # ``conductor.LINE_KEY``). The chat projection keeps only prose, so the line
     # rides the message's metadata, and a reload draws the run as the live
-    # stream did rather than as the prompts behind it.
+    # stream did rather than as the prompts behind it. An ask and its answer
+    # (``approvals``) ride the same way, so the app draws the card.
     data = (record.content.get("l9", {}).get("payload") or {}).get("data") or {}
-    line = data.get("conductor") if isinstance(data, dict) else None
+    lifted = (
+        {k: data[k] for k in ("conductor", "ask", "answer") if isinstance(data.get(k), dict)}
+        if isinstance(data, dict)
+        else {}
+    )
     msg = StoredMessage(
         room_name=room,
         sender_handle=record.sender or message_format.SYSTEM_ACTOR_ID,
         message_type=message_type,
         content=content,
-        event_metadata={"conductor": line} if isinstance(line, dict) else None,
+        event_metadata=lifted or None,
         episode=episode if isinstance(episode, str) else None,
         message_id=record.message_id or None,
         amends=amended_target(record.subkind, header.get("message", {}).get("parents")),

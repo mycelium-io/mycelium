@@ -43,6 +43,7 @@ from app.schemas import AwaitConfirmRead, AwaitNothing, AwaitTurn, ReplyRead, re
 from app.services import (
     activity,
     actor,
+    approvals,
     groups,
     markers,
     message_format,
@@ -178,7 +179,15 @@ def _describe(
         "message_id": record.message_id,
         # What was said here before the message that addressed the handle.
         "earlier": earlier or [],
+        **_answer_of(record),
     }
+
+
+def _answer_of(record: Any) -> dict[str, Any]:
+    """``{"answer": …}`` when the message answers an ask, so the agent reads the
+    decision as a value; nothing otherwise, so the key stays unset."""
+    answer = approvals.answer_on(record)
+    return {"answer": answer} if answer is not None else {}
 
 
 def _ask_of(room: str, record: Any) -> dict[str, Any]:
@@ -193,6 +202,7 @@ def _ask_of(room: str, record: Any) -> dict[str, Any]:
         "message_id": record.message_id,
         "id": str(read_id(record)),
         "at": record.recorded_at,
+        **_answer_of(record),
     }
 
 
