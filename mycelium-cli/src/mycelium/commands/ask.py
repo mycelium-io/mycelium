@@ -77,7 +77,7 @@ def ask(
     The person sees a card with Approve and Decline, in the thread and under
     Waiting on you. Their answer wakes you: ``await`` gives the decision as
     ``answer.decision`` (approved or declined) and ``answer.reason``. A decision
-    is final; to try again, ask again.
+    is final. To try again, ask again.
 
     Examples:
         mycelium ask --approve "Turn Apple Pay on for everyone on Friday at 9:00"
@@ -127,6 +127,6 @@ def ask(
         fg=typer.colors.GREEN,
     )
     typer.secho(
-        "     Their answer wakes you; await gives it as answer.decision and answer.reason.",
+        "     Their answer wakes you, and await gives it as answer.decision and answer.reason.",
         fg=typer.colors.BRIGHT_BLACK,
     )

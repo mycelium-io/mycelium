@@ -96,14 +96,22 @@ class Asked:
 
 
 def asked(records: list[TranscriptRecord]) -> dict[str, Asked]:
-    """Every ask in ``records`` by id, each with the first answer it got."""
+    """Every ask in ``records`` by id, each with the first answer it got.
+
+    An ask is the first record that carries its id. An answer counts only when
+    the person asked sent it, as themselves: the routes check who answers, and
+    so does this, since any member can publish a frame on the room's channel.
+    """
     found: dict[str, Asked] = {}
     for record in records:
         if (ask := ask_on(record)) is not None:
             found.setdefault(str(ask["id"]), Asked(ask=ask, record=record))
         elif (answer := answer_on(record)) is not None:
             hit = found.get(str(answer["ask"]))
-            if hit is not None and hit.answer is None:
+            if hit is None or hit.answer is not None:
+                continue
+            asked_of = _norm(hit.ask.get("to"))
+            if _norm(record.sender) == asked_of == _norm(answer.get("by")):
                 hit.answer = answer
     return found
 
@@ -117,6 +125,14 @@ def records(room: str) -> list[TranscriptRecord]:
 
 def _is_person(room: str, handle: str) -> bool:
     return principals.classify_sender(room, handle) not in {"agent", "engine"}
+
+
+def _is_person_here(room: str, handle: str) -> bool:
+    """A person the room knows: a user record, or one of the room's people."""
+    from app.services import room_people
+
+    kind = principals.classify_sender(room, handle)
+    return kind == "user" or (kind == "unknown" and handle in room_people.handles(room))
 
 
 def _who_to_ask(room: str, key: str, handle: str) -> str | None:
@@ -258,6 +274,8 @@ async def create(
         raise Refused(422, "Nobody to ask: name them with --to")
     if person == _norm(handle):
         raise Refused(422, "An ask can't be put to whoever is asking")
+    if to and not _is_person_here(room, person):
+        raise Refused(422, f"@{person} isn't a person in {room!r}; --to names who answers")
     ask: dict[str, Any] = {
         "id": uuid.uuid4().hex[:12],
         "kind": kind,
