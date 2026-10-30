@@ -361,12 +361,23 @@ class TestAnswering:
         assert waiting.waiting(ROOM, "julia", NOW) == []
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("who", ["lead", "builder", "jula"])
-    async def test_an_agent_or_a_stranger_may_not_answer(self, room, who):
+    @pytest.mark.parametrize("who", ["lead", "builder"])
+    async def test_an_agent_may_not_answer(self, room, who):
         ask, _record, _task = await _ask()
         with pytest.raises(approvals.Refused) as refused:
             await approvals.answer(ROOM, ask["id"], decision="approved", by=who)
         assert refused.value.status == 403
+        assert "agent" in refused.value.detail
+
+    @pytest.mark.asyncio
+    async def test_a_person_with_no_user_record_may_answer(self, room):
+        """On a fresh hub nobody has a user record yet; a person still answers."""
+        ask, _record, _task = await _ask()
+        _folded, answer, _rec = await approvals.answer(
+            ROOM, ask["id"], decision="approved", by="jamie"
+        )
+        assert answer["by"] == "jamie"
+        assert approvals.asked(room.persister.log.records, ROOM)[ask["id"]].answer is not None
 
     @pytest.mark.asyncio
     async def test_each_kind_says_what_was_decided_and_about_what(self, room):

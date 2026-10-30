@@ -113,11 +113,9 @@ def asked(records: list[TranscriptRecord], room: str) -> dict[str, Asked]:
     """Every ask in ``records`` by id, each with the first answer it got.
 
     An ask is the first record that carries its id. An answer counts only when
-    a person sent it, as themselves: the routes check who answers, and so does
-    this, since any member can publish a frame on the room's channel. Whether
-    they were in the room was checked when they answered (:func:`may_answer`);
-    it isn't asked again here, so someone leaving the room later doesn't reopen
-    an ask the agent already acted on.
+    someone who may answer sent it, as themselves: the route checks who
+    answers, and so does this, since any member can publish a frame on the
+    room's channel.
     """
     found: dict[str, Asked] = {}
     for record in records:
@@ -128,18 +126,22 @@ def asked(records: list[TranscriptRecord], room: str) -> dict[str, Asked]:
             if hit is None or hit.answer is not None:
                 continue
             sender = _norm(record.sender)
-            if sender == _norm(answer.get("by")) and _is_person(room, sender):
+            if sender == _norm(answer.get("by")) and may_answer(room, sender):
                 hit.answer = answer
     return found
 
 
-def may_answer(room: str, handle: str, ask: dict[str, Any]) -> bool:
-    """Whether ``handle`` may answer ``ask``: the person asked, or any other
-    person in the room. Never an agent or an engine, so no agent can approve
-    its own work, or another's."""
-    if not _is_person(room, handle):
-        return False
-    return handle == _norm(ask.get("to")) or _is_person_here(room, handle)
+def may_answer(room: str, handle: str) -> bool:
+    """Whether ``handle`` may answer an ask: anyone but an agent or an engine,
+    so no agent can approve its own work, or another's.
+
+    Not whether they're a person the room knows: on a gated hub their token
+    already says who they are, and on an open one anyone can claim any name,
+    so a check against the room's people would only turn away someone on a
+    fresh hub where nobody has a user record yet. It also means someone
+    leaving the room later doesn't reopen an ask the agent already acted on.
+    """
+    return bool(handle) and _is_person(room, handle)
 
 
 def records(room: str) -> list[TranscriptRecord]:
@@ -455,8 +457,8 @@ async def answer(
         if hit is None:
             raise Refused(404, f"No ask {ask_id!r} in {room!r}")
         who = _norm(by)
-        if not may_answer(room, who, hit.ask):
-            raise Refused(403, f"Only a person in {room!r} can answer an ask, not @{who}")
+        if not may_answer(room, who):
+            raise Refused(403, f"@{who} is an agent; only a person can answer an ask")
         if hit.answer is not None:
             raise Refused(409, f"Already answered by @{hit.answer.get('by')}")
         episode = hit.episode or message_format.live_episode_urn(room)
