@@ -4,9 +4,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check, CircleHelp, ExternalLink, X } from "lucide-react";
+import { Check, CircleHelp, ExternalLink, FileText, X } from "lucide-react";
 import { answerAsk } from "@/lib/api";
-import type { ApprovalAsk, AskAnswer } from "@/lib/approvals";
+import { linkKind, type ApprovalAsk, type AskAnswer } from "@/lib/approvals";
 import { useCurrentUser } from "@/components/current-user";
 import { nameOf, useNames } from "@/lib/people";
 import { useRoomRevalidate } from "@/lib/room-data";
@@ -22,7 +22,40 @@ import { cn } from "@/lib/utils";
  * whom it waits on. Once answered it stays as the record of who decided, when,
  * and why not.
  */
-export function ApprovalCard({ roomName, ask }: { roomName: string; ask: ApprovalAsk }) {
+/** The ask's link: a page opens in a new tab, a memory opens in the room, and
+ *  anything else is shown as written. */
+function AskLink({ link, onOpenMemory }: { link: string; onOpenMemory?: (key: string) => void }) {
+  const kind = linkKind(link);
+  const look = "mt-2 inline-flex max-w-full items-center gap-1 text-label";
+  if (kind === "web") {
+    return (
+      <a href={link} target="_blank" rel="noreferrer" className={cn(look, "text-accent hover:underline")}>
+        <ExternalLink className="size-3.5 flex-shrink-0" />
+        <span className="truncate">{link}</span>
+      </a>
+    );
+  }
+  if (kind === "memory" && onOpenMemory) {
+    return (
+      <button type="button" onClick={() => onOpenMemory(link)} className={cn(look, "font-mono text-accent hover:underline")}>
+        <FileText className="size-3.5 flex-shrink-0" />
+        <span className="truncate">{link}</span>
+      </button>
+    );
+  }
+  return <p className={cn(look, "break-all text-muted-foreground")}>{link}</p>;
+}
+
+export function ApprovalCard({
+  roomName,
+  ask,
+  onOpenMemory,
+}: {
+  roomName: string;
+  ask: ApprovalAsk;
+  /** Opens a memory the ask links to, as a link in a message does. */
+  onOpenMemory?: (key: string) => void;
+}) {
   const { principal } = useCurrentUser();
   const names = useNames();
   const revalidate = useRoomRevalidate(roomName);
@@ -37,6 +70,7 @@ export function ApprovalCard({ roomName, ask }: { roomName: string; ask: Approva
   const answer = ask.answer ?? sent;
   const me = principal.trim().replace(/^@/, "").toLowerCase();
   const mine = me !== "" && me === ask.to.replace(/^@/, "").toLowerCase();
+  const waitsOnMe = mine && !answer;
   const who = (handle: string) => nameOf(names, handle) ?? handle;
 
   const send = async (decision: AskAnswer["decision"]) => {
@@ -64,12 +98,15 @@ export function ApprovalCard({ roomName, ask }: { roomName: string; ask: Approva
   return (
     <div
       data-ask={ask.id}
-      className={cn("mt-1.5 max-w-2xl rounded-lg border bg-surface", answer ? "border-border" : "border-yellow/40")}
+      className={cn("mt-1.5 max-w-2xl rounded-lg border bg-surface", waitsOnMe ? "border-yellow/40" : "border-border")}
     >
       <div className="px-3 pt-2.5 pb-2.5">
+        {/* It needs an OK only from the person asked, and only until they give one. */}
         <div className="flex items-center gap-1.5 text-micro">
-          <CircleHelp className={cn("size-3.5", answer ? "text-faint" : "text-yellow")} />
-          <span className={answer ? "text-muted-foreground" : "font-medium text-yellow"}>Needs your OK</span>
+          <CircleHelp className={cn("size-3.5", waitsOnMe ? "text-yellow" : "text-faint")} />
+          <span className={waitsOnMe ? "font-medium text-yellow" : "text-muted-foreground"}>
+            {waitsOnMe ? "Needs your OK" : "Approval"}
+          </span>
           <span className="text-faint">·</span>
           <span className="text-muted-foreground">asks {who(ask.to)}</span>
         </div>
@@ -84,17 +121,7 @@ export function ApprovalCard({ roomName, ask }: { roomName: string; ask: Approva
             ))}
           </dl>
         )}
-        {ask.link && (
-          <a
-            href={ask.link}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-2 inline-flex max-w-full items-center gap-1 text-label text-accent hover:underline"
-          >
-            <ExternalLink className="size-3.5 flex-shrink-0" />
-            <span className="truncate">{ask.link}</span>
-          </a>
-        )}
+        {ask.link && <AskLink link={ask.link} onOpenMemory={onOpenMemory} />}
       </div>
       <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-t border-border px-3 py-1.5">
         {answer ? (

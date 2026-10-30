@@ -756,7 +756,7 @@ export function MessageRow({
           {drawsValues && <ReplyValues context={replyContext} />}
           {/* An ask's text is its question, which the card leads with. */}
           {ev.ask ? (
-            <ApprovalCard roomName={roomName} ask={ev.ask} />
+            <ApprovalCard roomName={roomName} ask={ev.ask} onOpenMemory={ctx.onOpenMemory} />
           ) : (
           <MessageBody
             content={ev.content}

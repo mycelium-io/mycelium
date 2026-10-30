@@ -6,6 +6,8 @@
 // card, and the person's answer goes back to the agent as values, never as
 // prose it has to read (contracts/approvals.json).
 
+import { keyProblem } from "@/lib/memory-location";
+
 // Frozen in contracts/approvals.json; approvals.test.ts holds this copy to it.
 export const PAYLOAD_KEYS = { ask: "ask", answer: "answer" } as const;
 export const ASK_KINDS = ["approve"] as const;
@@ -82,6 +84,15 @@ function payloadData(content: unknown): Record<string, unknown> | null {
     }
   }
   return (content as { l9?: { payload?: { data?: Record<string, unknown> } } } | null)?.l9?.payload?.data ?? null;
+}
+
+/** What an ask's `link` points at: a page on the web, one of the room's
+ *  memories (a key with a folder, like `decisions/launch`), or neither, which
+ *  is drawn as plain text. */
+export function linkKind(link: string): "web" | "memory" | "text" {
+  if (/^https?:\/\/\S+$/i.test(link)) return "web";
+  if (link.includes("/") && keyProblem(link) === null) return "memory";
+  return "text";
 }
 
 /** A person's answer, as the message that carries it back to the agent. */
