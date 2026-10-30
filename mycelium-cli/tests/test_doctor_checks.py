@@ -42,6 +42,23 @@ def test_check_config_files_ok_when_present(isolated_home, monkeypatch: pytest.M
     assert result.status == "ok"
 
 
+def test_no_engines_model_says_who_needs_one(isolated_home) -> None:
+    """Unset is a choice, not a fault: it says that only the engines that think
+    need a model, and that your own agents don't."""
+    myc = isolated_home / ".mycelium"
+    myc.mkdir(parents=True, exist_ok=True)
+    (myc / ".env").write_text("LLM_MODEL=\n")
+
+    result = doctor._check_llm_connectivity(set_up="Set it in Settings")
+    # The app and the desktop find the check by this name.
+    assert result.name == "LLM connectivity"
+    assert (result.status, result.message) == ("ok", "Engines' model not set")
+    assert result.details is not None
+    assert "personas, workers, the synthesizer, the verifier and hello" in result.details[0]
+    assert "Your own agents don't" in result.details[0]
+    assert result.details[1] == "Set it in Settings"
+
+
 def test_check_config_files_errors_when_missing(
     isolated_home, monkeypatch: pytest.MonkeyPatch
 ) -> None:

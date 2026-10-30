@@ -137,6 +137,29 @@ async def test_pi_error_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.asyncio
+async def test_a_hub_with_no_model_says_so_rather_than_errored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.engines_model import NO_MODEL_TEXT
+
+    def boom(_p: str, _t: float) -> str:
+        raise RuntimeError("pi: no API key")
+
+    monkeypatch.setattr(probe_engine, "_pi_complete", boom)
+    monkeypatch.setattr(probe_engine.settings, "LLM_API_KEY", None)
+    monkeypatch.setattr(probe_engine.settings, "LLM_BASE_URL", None)
+    engine, managed = _engine()
+
+    assert await engine.greet(_ROOM, engine_handle="hi") is None
+    assert _said(managed) == [NO_MODEL_TEXT]
+
+    # With a model set, a failed turn is still a failed turn.
+    monkeypatch.setattr(probe_engine.settings, "LLM_API_KEY", "sk-ant-test")
+    assert await engine.greet(_ROOM, engine_handle="hi") is None
+    assert "timed out or errored" in _said(managed)[1]
+
+
+@pytest.mark.asyncio
 async def test_empty_pi_response_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(probe_engine, "_pi_complete", lambda _p, _t: "   \n ")
     engine, managed = _engine()
