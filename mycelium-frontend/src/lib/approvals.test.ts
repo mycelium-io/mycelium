@@ -41,7 +41,10 @@ describe("contracts/approvals.json", () => {
   it("is what the app reads", () => {
     expect(PAYLOAD_KEYS).toEqual(CONTRACT.payload_keys);
     expect([...ASK_KINDS]).toEqual(CONTRACT.kinds);
-    expect({ required: [...ASK_FIELDS.required], optional: [...ASK_FIELDS.optional] }).toEqual(CONTRACT.ask_fields);
+    expect([...ASK_FIELDS.required]).toEqual(CONTRACT.ask_fields.required);
+    // Optional on an ask: the facts any kind may carry, and what each kind adds.
+    const byKind = Object.values(CONTRACT.ask_fields.kind_fields as Record<string, string[]>).flat();
+    expect(new Set(ASK_FIELDS.optional)).toEqual(new Set([...CONTRACT.ask_fields.facts, ...byKind]));
     expect([...DECISIONS]).toEqual(CONTRACT.decisions);
     expect({ required: [...ANSWER_FIELDS.required], optional: [...ANSWER_FIELDS.optional] }).toEqual(
       CONTRACT.answer_fields,
