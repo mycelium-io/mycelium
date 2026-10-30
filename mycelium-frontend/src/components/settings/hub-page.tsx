@@ -180,11 +180,14 @@ export function HubPage() {
 
       {hub && (
         <>
-          <Section title="Model">
+          <Section title="Engines' model">
             <HubSettingRow
               id="hub.model"
-              label="Model the hub's agents use"
-              help={help("Engines, personas and workers think with it, written as provider/model.", "llm.model")}
+              label="Model"
+              help={help(
+                "Personas, workers, the synthesizer and the verifier think with it. People's own agents don't. Written as provider/model.",
+                "llm.model",
+              )}
               configKey="llm.model"
               display={<Value mono>{hub.model.model ?? "not set"}</Value>}
               {...field}

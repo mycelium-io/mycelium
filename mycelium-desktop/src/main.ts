@@ -183,7 +183,10 @@ const PROVIDERS: Provider[] = [
   { id: "custom", name: "Other", models: [], key: "If it needs one", baseUrl: "" },
 ];
 
-/** What the model is for, in our own docs: which of Mycelium's agents use it. */
+/** What the health check says when no model is set (`doctor.py`). */
+const MODEL_UNSET = "Engines' model not set";
+
+/** What the model is for, in our own docs: which engines use it. */
 const MODELS_DOC = "https://mycelium-io.github.io/mycelium/guides.html#models";
 
 function providerOf(model: string | null): Provider {
@@ -438,8 +441,8 @@ function placePiece(c: Choices, onModeChange: () => void): { el: HTMLElement; pr
 }
 
 /**
- * The model Mycelium's own agents (the mediator, personas, the note-taker)
- * think with. The saved key is never shown, only its last four characters;
+ * The model the hub's engines (personas, workers, the synthesizer, the
+ * verifier) think with. A person's own agents never use it. The saved key is never shown, only its last four characters;
  * leaving the field empty keeps it. In the wizard the model name stays out of
  * the way behind a Change link; in Settings it's a field.
  */
@@ -550,8 +553,7 @@ async function modelPiece(variant: "wizard" | "settings"): Promise<{ el: HTMLEle
     keyField.placeholder = provider.key ?? "";
     keyHint.replaceChildren(
       provider.keyFrom ? `Get one at ${provider.keyFrom}. ` : "",
-      `It stays on this ${MACHINE}. `,
-      variant === "wizard" ? outLink(MODELS_DOC, "What uses this?") : "",
+      `It stays on this ${MACHINE}.`,
     );
     baseRow.hidden = provider.baseUrl === undefined;
     modelName.textContent = modelField.value.replace(/^[^/]+\//, "") || "none";
@@ -597,6 +599,11 @@ async function modelStatus(): Promise<HTMLElement> {
       const check = result.checks.find((c) => c.name === "LLM connectivity");
       if (!check) {
         line.replaceChildren(el("span", { class: "dot" }), "Start Mycelium to check the model.");
+        return;
+      }
+      // No model is fine, so the doctor says ok, but it isn't connected either.
+      if (check.message === MODEL_UNSET) {
+        line.replaceChildren(el("span", { class: "dot" }), "Not set. Engines can't answer until you add one.");
         return;
       }
       const ok = check.status === "ok";
@@ -715,7 +722,7 @@ function privacyPiece(c: Choices): HTMLElement {
 /** Talking into the message box. Off unless chosen, and saying what each
  *  speech model costs, since turning it on downloads one and the hub holds it
  *  in memory while anyone is talking. */
-function voicePiece(c: Choices): HTMLElement {
+function voicePiece(c: Choices, where: "wizard" | "settings" = "settings"): HTMLElement {
   const choice = (value: VoiceModel, title: string, sub: string) => {
     const b = el(
       "button",
@@ -758,18 +765,24 @@ function voicePiece(c: Choices): HTMLElement {
         c.voice = on;
         render();
       }),
-      "Talk instead of type",
+      // The wizard's title already says it.
+      where === "wizard" ? "Turn on voice" : "Talk instead of type",
     ),
-    el(
-      "p",
-      { class: "hint" },
-      "A mic in every message box: what you say is typed into it, and nothing sends until you do. ⌘⌥V turns it on and off.",
-    ),
-    el(
-      "p",
-      { class: "hint" },
-      `It runs on this ${MACHINE}, in English. Its memory is given back a few minutes after you stop talking. Your audio isn't saved or sent anywhere.`,
-    ),
+    // The wizard says what voice is beside this, so here it's only the how.
+    where === "wizard"
+      ? el("p", { class: "hint" }, "⌘⌥V turns the mic on and off in a message box.")
+      : el(
+          "p",
+          { class: "hint" },
+          "A mic in every message box: what you say is typed into it, and nothing sends until you do. ⌘⌥V turns it on and off.",
+        ),
+    where === "wizard"
+      ? null
+      : el(
+          "p",
+          { class: "hint" },
+          `It runs on this ${MACHINE}, in English. Its memory is given back a few minutes after you stop talking. Your audio isn't saved or sent anywhere.`,
+        ),
     models,
   );
 }
@@ -883,7 +896,7 @@ function hubReadOnly(at: "model" | "experiences" | "privacy", answer: Promise<Hu
       if (at === "model") {
         const m = s.model;
         content = [
-          el("p", { class: "lede" }, "The model your team's hub runs its built-in agents with."),
+          el("p", { class: "lede" }, "Your team's hub runs its engines with this model. Your own agents, like Claude Code, don't use it."),
           el(
             "dl",
             { class: "summary" },
@@ -960,6 +973,25 @@ function setsUpPiece(c: Choices): HTMLElement {
 
 // ── first run: a short wizard ───────────────────────────────────────────────
 
+/** The model step's picture: the engines think with this model, and your own
+ *  agents use their own accounts. Static markup, so it's set as HTML. */
+function engineMap(): HTMLElement {
+  const chip = (x: number, y: number, text: string) =>
+    `<rect class="chip" x="${x}" y="${y}" width="92" height="24" rx="6"/><text x="${x + 46}" y="${y + 16}">${text}</text>`;
+  const figure = el("div", { class: "engine-map", role: "img", "aria-label": "Engines think with this model. Your own agents use their own accounts." });
+  figure.innerHTML = `<svg viewBox="0 0 360 140" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect class="group" x="0.5" y="0.5" width="214" height="90" rx="10"/>
+    <text class="caption" x="12" y="19">Engines</text>
+    ${chip(12, 28, "Personas")}${chip(110, 28, "Workers")}${chip(12, 58, "Synthesizer")}${chip(110, 58, "Verifier")}
+    <path class="flow" d="M215 46 H244"/><path class="flow head" d="M240 41 L246 46 L240 51"/>
+    <rect class="model" x="248" y="31" width="111" height="30" rx="15"/><text class="model-text" x="303.5" y="51">This model</text>
+    <rect class="group own" x="0.5" y="106" width="214" height="32" rx="10"/><text x="107.5" y="127">Your own agents</text>
+    <path class="flow own" d="M215 122 H244"/><path class="flow own head" d="M240 117 L246 122 L240 127"/>
+    <rect class="group own" x="248" y="107" width="111" height="30" rx="15"/><text x="303.5" y="127">Their accounts</text>
+  </svg>`;
+  return figure;
+}
+
 type Step = "place" | "model" | "agents" | "voice" | "experiences" | "ready";
 
 async function wizard() {
@@ -990,36 +1022,58 @@ async function wizard() {
       error.hidden = false;
     };
 
+    // Each step is two panes: what the feature is on the left, its settings
+    // on the right.
     let title: string;
-    let lede: string | null = null;
+    let explain: (Node | string)[];
     let body: Node;
+    const p = (...text: (Node | string)[]) => el("p", {}, ...text);
     if (at === "place") {
       title = "Rooms where you and your agents work together";
-      lede = "First, where should your rooms live?";
+      explain = [
+        p("A room is where you and your agents share tasks, a board and what they remember."),
+        p(`Rooms live on a hub. Run one on this ${MACHINE}, or join the one your team runs.`),
+      ];
       body = place.el;
     } else if (at === "model") {
-      title = "Give Mycelium's own agents a model";
-      lede =
-        "Mycelium comes with agents of its own: one helps your agents agree, others play a role in a scenario, another keeps notes. They need a model to think with. Agents you bring, like Claude Code, sign in on their own.";
+      title = "A model for the engines";
+      explain = [
+        p("Mycelium provides engines: members of a room that the hub runs itself, like a persona that plays a character or a worker that takes tasks off the board."),
+        engineMap(),
+        p("Engines use this model to think. Your own agents, like Claude Code or Codex, don't use it."),
+        p("You can use Mycelium without engines just fine. This step is optional. ", outLink(MODELS_DOC, "Learn more")),
+      ];
       body = model.el;
     } else if (at === "agents") {
       title = `Agents on this ${MACHINE}`;
-      lede = "Mycelium can start these for you and bring them into a room.";
+      explain = [
+        p("Your agents are the coding assistants you already use, like Claude Code or Codex. Mycelium can start them and bring them into a room."),
+        p(
+          "It runs them in ",
+          el("strong", {}, "herdr"),
+          ", a terminal for agents that comes with the app. herdr gives each agent an address of its own, like an IP: the pane it runs in. With that address, Mycelium can make the agent a member of a room and wake it when someone asks it something.",
+        ),
+        p("You can watch and type into each pane from the Agents window."),
+      ];
       body = agents;
     } else if (at === "voice") {
       title = "Talk instead of type";
-      lede = "Optional, and off unless you turn it on here or later in Settings.";
-      body = voicePiece(c);
+      explain = [
+        p("A mic in every message box. What you say is typed into it, and nothing sends until you do."),
+        p(`It runs on this ${MACHINE}, in English. Your audio isn't saved or sent anywhere.`),
+      ];
+      body = voicePiece(c, "wizard");
     } else if (at === "experiences") {
       title = "Add an experience";
-      lede = "Ready-made rooms to explore. Optional, and you can add them later.";
+      explain = [p("Ready-made rooms to explore, each from a file you were given."), p("Optional. You can add them later in Settings.")];
       body = experiences.el;
     } else {
       title = "Ready to start";
+      explain = [p("Here's what you chose. You can change any of it later in Settings.")];
       const summary: [string, string][] = [
         ["Rooms", c.mode === "hub" ? `On this ${MACHINE}, reachable only from it` : `On ${c.hubUrl.trim()}`],
       ];
-      if (c.mode === "hub") summary.push(["Model", skippedModel ? `Not set yet. Add one in Settings (${SETTINGS_KEYS}).` : model.summary()]);
+      if (c.mode === "hub") summary.push(["Engines' model", skippedModel ? `Not set yet. Add one in Settings (${SETTINGS_KEYS}).` : model.summary()]);
       summary.push(["Agents work in", c.root]);
       if (c.mode === "hub") {
         const voice =
@@ -1077,15 +1131,19 @@ async function wizard() {
     app.replaceChildren(
       el(
         "section",
-        { class: "card" },
+        { class: "card wizard" },
         el("div", { class: "steps", "aria-label": `Step ${i + 1} of ${order.length}` }, ...order.map((_, n) => el("span", { class: n < i ? "done" : n === i ? "on" : "" }))),
         el(
           "div",
-          { class: "card-body" },
-          at === "place" ? el("div", { class: "brand" }, el("img", { class: "brand-mark", src: "/mark.png", alt: "" }), "Mycelium") : null,
-          el("div", {}, el("h1", { class: "title" }, title), lede ? el("p", { class: "lede" }, lede) : null),
-          body,
-          error,
+          { class: "card-body split" },
+          el(
+            "div",
+            { class: "explain" },
+            at === "place" ? el("div", { class: "brand" }, el("img", { class: "brand-mark", src: "/mark.png", alt: "" }), "Mycelium") : null,
+            el("h1", { class: "title" }, title),
+            ...explain,
+          ),
+          el("div", { class: "config" }, body, error),
         ),
         el(
           "div",
@@ -1271,7 +1329,7 @@ async function settingsWindow(open: Section = "mac") {
   // rather than leaving the sidebar.
   const sections = (): [Section, string][] => [
     ["mac", `This ${MACHINE}`],
-    ["model", "Model"],
+    ["model", "Engines' model"],
     ["agents", "Agents"],
     ["voice", "Voice"],
     ["experiences", "Experiences"],
@@ -1315,7 +1373,7 @@ async function settingsWindow(open: Section = "mac") {
       nothingToSave = true;
     } else if (at === "model") {
       const model = await modelPiece("settings");
-      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "The model Mycelium's built-in agents use. Agents like Claude Code use their own accounts."), model.el);
+      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "Personas, workers, the synthesizer and the verifier think with this model. Your own agents, like Claude Code, don't use it."), model.el);
       save = () => startWith(c, model.value());
     } else if (at === "voice" && c.mode === "client") {
       // The app gives the mic only to the hub it runs itself.

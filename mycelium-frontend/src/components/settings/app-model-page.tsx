@@ -69,18 +69,19 @@ function providerOf(model: string | null): Provider {
 const field =
   "w-72 rounded-md border border-border bg-bg px-2.5 py-1 font-mono text-micro text-text outline-none focus:border-accent";
 
-/** The model Mycelium's built-in agents think with: chosen here for a hub on
- *  this machine, shown as the team's hub has it otherwise. */
+/** The model the hub's engines think with: chosen here for a hub on this
+ *  machine, shown as the team's hub has it otherwise. Your own agents never
+ *  use it, and the page says so, since that's what people get wrong. */
 export function AppModelPage() {
   const { data: state } = useApp<AppState>("get_state");
   const client = state?.settings?.mode === "client";
   return (
     <SettingsPage
-      title="Model"
+      title="Engines' model"
       scope={
         client
-          ? "The model your team's hub runs its built-in agents with. Set on that hub."
-          : "The model Mycelium's built-in agents use. Agents like Claude Code use their own accounts."
+          ? "Your team's hub runs its engines with this model, set on that hub. Your own agents, like Claude Code, don't use it."
+          : "Personas, workers, the synthesizer and the verifier think with this model. Your own agents, like Claude Code, don't use it."
       }
     >
       {state === undefined ? null : client ? <HubModel /> : <ModelForm state={state} />}
@@ -253,20 +254,27 @@ function ModelFields({ state, saved }: { state: AppState; saved: ModelView }) {
   );
 }
 
-/** Whether the model is answering, from the health check. */
+/** What the health check says when no model is set (`doctor.py`). */
+const MODEL_UNSET = "Engines' model not set";
+
+/** Whether the model is answering, from the health check. No model is fine,
+ *  so the check says ok, but it isn't connected either. */
 function ModelStatus() {
   const { data, error } = useApp<{ checks: HealthCheck[] }>("run_doctor");
   const check = data?.checks.find((c) => c.name === "LLM connectivity");
+  const unset = check?.message === MODEL_UNSET;
   const text = error
     ? "Couldn't check the model."
     : !data
       ? "Checking the model…"
       : !check
         ? "Start Mycelium to check the model."
-        : check.status === "ok"
-          ? "Connected."
-          : `Not connected: ${check.message}. ${check.details[check.details.length - 1] ?? ""}`;
-  const tone = check?.status === "ok" ? "text-green" : check ? "text-red" : "text-muted-foreground";
+        : unset
+          ? "Not set. Engines can't answer until you add one."
+          : check.status === "ok"
+            ? "Connected."
+            : `Not connected: ${check.message}. ${check.details[check.details.length - 1] ?? ""}`;
+  const tone = !check || unset ? "text-muted-foreground" : check.status === "ok" ? "text-green" : "text-red";
   return (
     <Row label="Status">
       <span className={`text-micro ${tone}`}>{text}</span>
