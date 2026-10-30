@@ -499,8 +499,16 @@ class TestWhatSeesIt:
         assert [(i["kind"], i["key"]) for i in items] == [("approve", "work/apple-pay")]
         assert items[0]["text"] == ask["question"]
         assert items[0]["message_id"] == str(persister.read_id(record))
+        assert items[0]["ask_kind"] == "approve"
         await approvals.answer(ROOM, ask["id"], decision="approved", by="julia")
         assert waiting.waiting(ROOM, "julia", NOW) == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("kind", ["choose", "question"])
+    async def test_a_waiting_row_carries_its_ask_s_kind(self, room, kind):
+        await _ask(kind=kind, **SHAPES[kind])
+        [item] = waiting.waiting(ROOM, "julia", NOW)
+        assert (item["kind"], item["ask_kind"]) == ("approve", kind)
 
     @pytest.mark.asyncio
     async def test_the_answer_wakes_the_agent_with_the_decision_as_a_value(self, room):

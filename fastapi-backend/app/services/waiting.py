@@ -117,6 +117,8 @@ def waiting(room: str, handle: str, now: datetime) -> list[dict[str, Any]]:
                 "message_id": str(read_id(hit.record)),
                 "at": hit.record.recorded_at or None,
                 "count": 1,
+                # The row says Approve?, Pick one or Answer? by the ask's own kind.
+                "ask_kind": str(hit.ask.get("kind") or "approve"),
             }
         )
         seen.add(thread)

@@ -126,7 +126,10 @@ def waiting_line(item: WaitingItem) -> Text:
     place = f'"{item.title}"' if item.title else "the room"
     sender = item.sender or None
     if item.kind == "approve":
-        line.append(f"@{sender} asks you to approve", style="bold")
+        asked = {"choose": "asks you to pick", "question": "asks you"}.get(
+            str(item.ask_kind or ""), "asks you to approve"
+        )
+        line.append(f"@{sender} {asked}", style="bold")
         line.append(f" in {place}")
     elif item.kind == "ask":
         line.append(f"@{sender} asked you", style="bold")

@@ -24392,6 +24392,23 @@
             "title": "Count",
             "description": "Asks in the same thread, the newest shown",
             "default": 1
+          },
+          "ask_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "approve",
+                  "choose",
+                  "question"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask Kind",
+            "description": "On an approve item: the kind of the agent's ask"
           }
         },
         "type": "object",
