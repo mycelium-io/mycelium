@@ -36,7 +36,7 @@ interface RailItem {
  *  window used to hold, beside everything else. */
 const APP_PAGES: RailItem[] = [
   { page: "connection", label: "Hub and Connection" },
-  { page: "model", label: "Model" },
+  { page: "model", label: "Engines' model" },
   { page: "agents", label: "Agents" },
   { page: "voice", label: "Voice" },
   { page: "experiences", label: "Experiences" },

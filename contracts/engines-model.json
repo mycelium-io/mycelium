@@ -1,0 +1,18 @@
+{
+  "_comment": [
+    "Frozen contract for how the engines' model is explained when it isn't set.",
+    "",
+    "The hub's engines say `no_model_text` in the room when their turn fails on a",
+    "hub with no model set, and `mycelium doctor` says `engines_that_think` and",
+    "`set_one` under its unset line. The two can't import each other, so each keeps",
+    "a copy and asserts it here, and the room and doctor can't drift apart.",
+    "",
+    "Bound by: fastapi-backend/app/services/engines_model.py (the hub) and",
+    "mycelium-cli/src/mycelium/commands/doctor.py (doctor). Asserted by",
+    "fastapi-backend/tests/test_probe_engine.py and",
+    "mycelium-cli/tests/test_doctor_checks.py."
+  ],
+  "set_one": "Set one in Settings → Engines' model, or on a hub you run with Docker, with `mycelium install --force`.",
+  "no_model_text": "The hub has no model set, so I can't answer. Set one in Settings → Engines' model, or on a hub you run with Docker, with `mycelium install --force`.",
+  "engines_that_think": "Only the engines that think need it: personas, workers, the synthesizer, the verifier and hello. Your own agents don't."
+}

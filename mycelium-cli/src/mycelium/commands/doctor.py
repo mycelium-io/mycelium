@@ -10,7 +10,7 @@ Checks:
   3. Runtime config drift: backend container env matches .env on disk
   4. Docker containers running and healthy
   5. Backend API reachable
-  6. LLM connectivity (real completion probe via backend)
+  6. Engines' model (real completion probe via backend, or what it means unset)
 
 Single-device installs (the default) run the backend locally and exercise
 all checks. In the optional hub-and-spoke deployment mode, spoke nodes
@@ -157,9 +157,36 @@ def _start_hub() -> str:
     return start_hub()
 
 
+#: The check's name. The app's Settings and the desktop's first run find it by
+#: this name, so it stays as it is while what it says names the engines' model.
+LLM_CHECK = "LLM connectivity"
+#: Who uses that model, in the words of the docs' Models page.
+ENGINES_THAT_THINK = (
+    "Only the engines that think need it: personas, workers, the synthesizer, "
+    "the verifier and hello. Your own agents don't."
+)
+#: Where to set one, as the hub's engines say it in the room
+#: (``app/services/engines_model.py``): Settings, or ``install --force``, which
+#: asks for the model and recreates a Docker hub so it takes effect.
+SET_ONE = (
+    "Set one in Settings → Engines' model, or on a hub you run with Docker, "
+    "with `mycelium install --force`."
+)
+
+
+def _not_set(set_up: str) -> CheckResult:
+    """No model set: fine, and what that means."""
+    return CheckResult(
+        name=LLM_CHECK,
+        status="ok",
+        message="Engines' model not set",
+        details=[ENGINES_THAT_THINK, set_up],
+    )
+
+
 def _check_llm_connectivity(
     *,
-    set_up: str = "Run: mycelium install --force",
+    set_up: str = SET_ONE,
     replace_key: str | None = None,
 ) -> CheckResult:
     """Probe the backend's LLM with a real one-shot ``pi`` turn.
@@ -177,19 +204,14 @@ def _check_llm_connectivity(
     when the provider refuses the key, in the words of wherever this is read:
     the terminal's ``install``, or the desktop app's Settings.
     """
-    # Skip entirely if the LLM isn't configured at all; _check_llm_config
-    # already reported that and running the probe would be redundant noise.
+    # No model set is a choice, not a fault: say what it means and skip the probe.
     env_path = Path.home() / ".mycelium" / ".env"
     if env_path.exists():
         from dotenv import dotenv_values
 
         vals = dotenv_values(env_path)
         if not vals.get("LLM_MODEL"):
-            return CheckResult(
-                name="LLM connectivity",
-                status="ok",
-                message="Skipped (LLM_MODEL not set)",
-            )
+            return _not_set(set_up)
 
     from mycelium.config import MyceliumConfig
 
@@ -198,7 +220,7 @@ def _check_llm_connectivity(
         api_url = config.server.api_url
     except Exception:
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
             message="Skipped (cannot load config)",
         )
@@ -208,21 +230,21 @@ def _check_llm_connectivity(
     said = health(api_url, check_llm=True, probe="completion", timeout=30)
     if not said.answered:
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
             message="Skipped (backend unreachable)",
             details=[said.error or "", f"Start the backend: {_start_hub()}"],
         )
     if said.read is None:
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
             message=f"Backend /health: {said.error}",
         )
     llm = said.llm
     if llm is None:
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
             message="This hub doesn't report its model",
         )
@@ -243,55 +265,50 @@ def _check_llm_connectivity(
     # user-fixable without a reinstall).
     if status == "ok":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="ok",
             message=f"{model}: completion probe succeeded",
         )
     if status == "not_configured":
-        return CheckResult(
-            name="LLM connectivity",
-            status="warning",
-            message="Not configured",
-            details=[set_up],
-        )
+        return _not_set(set_up)
     if status == "missing_extras":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="error",
             message=f"{model}: missing provider SDK in backend",
             details=details,
         )
     if status == "bad_model":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="error",
             message=f"{model}: invalid model string",
             details=details,
         )
     if status == "auth_error":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
             message=f"{model}: authentication failed",
             details=[*details, replace_key] if replace_key else details,
         )
     if status == "unreachable":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
             message=f"{model}: provider unreachable",
             details=details,
         )
     if status == "unchecked":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="ok",
             message=f"{model}: probe unsupported for this provider",
             details=details,
         )
     # error | unknown
     return CheckResult(
-        name="LLM connectivity",
+        name=LLM_CHECK,
         status="error",
         message=f"{model}: {status}",
         details=details,
@@ -874,7 +891,8 @@ def doctor(
             sections = desktop_checks()
             if (settings() or {}).get("mode") != "client":
                 in_settings = _check_llm_connectivity(
-                    set_up="Choose a model and add its key in Settings (⌘,)",
+                    # The app's hub has no Docker step: Settings is the whole way.
+                    set_up="Set one in Settings → Engines' model (⌘,).",
                     replace_key="Paste a working key in Settings (⌘,)",
                 )
                 sections.append(("Models", [pi(), in_settings]))

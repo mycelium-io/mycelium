@@ -25,7 +25,7 @@ const PAGES: { page: SettingsPage; title: string; keywords: string[] }[] = [
 
 /** The desktop app's own pages, there only in the app. */
 const APP_PAGES: typeof PAGES = [
-  { page: "model", title: "Model", keywords: ["model", "api key", "provider", "anthropic", "openai", "ollama"] },
+  { page: "model", title: "Engines' model", keywords: ["model", "engines", "api key", "provider", "anthropic", "openai", "ollama"] },
   { page: "agents", title: "Agents", keywords: ["folder", "working folder", "claude code", "codex", "herdr"] },
   { page: "voice", title: "Voice", keywords: ["mic", "microphone", "talk", "dictate", "speech model"] },
   { page: "experiences", title: "Experiences", keywords: ["patterns", "examples", "scenarios"] },

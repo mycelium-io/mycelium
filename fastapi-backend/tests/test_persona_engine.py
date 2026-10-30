@@ -201,12 +201,32 @@ async def test_pi_error_and_empty_answer_are_said_plainly(monkeypatch: pytest.Mo
         raise RuntimeError("pi exploded")
 
     monkeypatch.setattr(persona_engine, "_pi_complete", boom)
+    # A hub with a model set, so the failure reads as a failure, not as no model.
+    monkeypatch.setattr(persona_engine.settings, "LLM_API_KEY", "sk-ant-test")
     assert await engine.answer(_ROOM, engine_handle="sec", text="hi") is None
     assert "timed out or errored" in _posted(managed)[0][1]
 
     monkeypatch.setattr(persona_engine, "_pi_complete", lambda *_a: "  \n")
     assert await engine.answer(_ROOM, engine_handle="sec", text="hi") is None
     assert "empty response" in _posted(managed)[1][1]
+
+
+@pytest.mark.asyncio
+async def test_a_hub_with_no_model_says_where_to_set_one(monkeypatch: pytest.MonkeyPatch):
+    from app.services.engines_model import NO_MODEL_TEXT
+
+    _register("sec", "persona")
+    engine, managed = _engine()
+
+    def boom(*_a: Any) -> str:
+        raise RuntimeError("pi: no API key")
+
+    monkeypatch.setattr(persona_engine, "_pi_complete", boom)
+    monkeypatch.setattr(persona_engine.settings, "LLM_API_KEY", None)
+    monkeypatch.setattr(persona_engine.settings, "LLM_BASE_URL", None)
+    assert await engine.answer(_ROOM, engine_handle="sec", text="hi") is None
+    assert _posted(managed)[0][1] == NO_MODEL_TEXT
+    assert "Engines' model" in NO_MODEL_TEXT
 
 
 # ── the two seams ──────────────────────────────────────────────────────────────

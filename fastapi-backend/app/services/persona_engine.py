@@ -42,6 +42,7 @@ from app.config import settings
 from app.services import activity, markers, message_format, turns
 from app.services.engine_kinds import norm as _norm
 from app.services.engine_kinds import registered_engine_kind
+from app.services.engines_model import failed_turn
 from app.services.message_models import Kind
 from app.services.synthesizer import _strip_fences
 
@@ -274,7 +275,9 @@ class PersonaEngine:
             )
         except Exception:
             logger.exception("persona @%s: Pi turn failed in room %s", me, room)
-            await self._say(managed, where, me, "Pi turn timed out or errored; ask me again.")
+            await self._say(
+                managed, where, me, failed_turn("Pi turn timed out or errored; ask me again.")
+            )
             return None
         finally:
             activity.signal(room, me, "done", episode=where)

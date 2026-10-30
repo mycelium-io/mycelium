@@ -6,7 +6,7 @@
 /**
  * The desktop app's own settings, read and changed through its commands
  * (`mycelium-desktop/src-tauri/src/lib.rs`): where this machine's rooms live
- * (here, or on a team's hub), start at login, the model Mycelium's agents use,
+ * (here, or on a team's hub), start at login, the model the engines use,
  * the folders agents may start in, voice, experiences, usage stats, the
  * version, and the health check. Shown as pages of Settings in the app only;
  * a browser has none of them.
