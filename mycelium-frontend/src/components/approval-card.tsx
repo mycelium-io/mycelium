@@ -98,7 +98,10 @@ export function ApprovalCard({
   return (
     <div
       data-ask={ask.id}
-      className={cn("mt-1.5 max-w-2xl rounded-lg border bg-surface", waitsOnMe ? "border-yellow/40" : "border-border")}
+      className={cn(
+        "@container mt-1.5 max-w-2xl rounded-lg border bg-surface",
+        waitsOnMe ? "border-yellow/40" : "border-border",
+      )}
     >
       <div className="px-3 pt-2.5 pb-2.5">
         {/* It needs an OK only from the person asked, and only until they give one. */}
@@ -112,10 +115,12 @@ export function ApprovalCard({
         </div>
         <p className="mt-1 text-body font-medium text-text">{ask.question}</p>
         {facts.length > 0 && (
-          <dl className="mt-2 grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-label">
+          // Side by side where the card is wide; in a narrow pane each label
+          // sits over its fact, so neither column gets squeezed to a few words.
+          <dl className="mt-2 flex flex-col gap-2 text-label @md:grid @md:grid-cols-[6.5rem_minmax(0,1fr)] @md:gap-x-3 @md:gap-y-1">
             {facts.map(([label, value]) => (
-              <div key={label} className="contents">
-                <dt className="text-muted-foreground">{label}</dt>
+              <div key={label} className="flex flex-col @md:contents">
+                <dt className="text-micro text-muted-foreground @md:text-label">{label}</dt>
                 <dd className="text-text">{value}</dd>
               </div>
             ))}

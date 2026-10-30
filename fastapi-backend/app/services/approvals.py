@@ -3,7 +3,8 @@
 
 """An agent asks a person to decide something, and gets the answer as a value.
 
-An ask is a message in a task's thread, addressed to the person, whose payload
+An ask is a message in a task's thread (or the room's channel, when it's about
+no task), addressed to the person, whose payload
 carries ``ask`` (``{id, kind, to, question, happens?, why?, undo?, link?}``).
 The answer is a message from that person back to the agent, addressed to it so
 it wakes, whose payload carries ``answer`` (``{ask, decision, reason?, by,
@@ -249,10 +250,12 @@ async def create(
     recent_episode: str | None = None,
     facts: dict[str, str | None] | None = None,
 ) -> tuple[dict[str, Any], TranscriptRecord, str | None]:
-    """Ask, in a task's thread. Returns the ask, its message and the task.
+    """Ask, where the agent is working. Returns the ask, its message and the task.
 
     The task is the one named, else the one whose thread the agent was last
-    asked in, else the one task it holds. ``to`` is the one named, else
+    asked in, else the one task it holds. An agent last asked in the room's
+    channel, or holding no one task, asks in the channel: a yes or no about
+    no task belongs in the chat it came up in. ``to`` is the one named, else
     :func:`_who_to_ask`.
     """
     question = question.strip()
@@ -260,16 +263,22 @@ async def create(
         raise Refused(422, f"Unknown kind of ask {kind!r}; known: {', '.join(KINDS)}")
     if not question:
         raise Refused(422, "An ask needs a question")
-    key = task or _task_of_episode(room, recent_episode) or _held_task(room, handle)
-    if not key:
-        raise Refused(422, "No task to ask in: name it with --task")
-    episode = tasks.episode_of(room, key)
-    if not episode:
-        raise Refused(404 if task else 422, f"No task {key!r} with a thread in {room!r}")
-    refusal = tasks.thread_write_refusal(room, handle, episode)
-    if refusal is not None:
-        raise Refused(refusal.status, refusal.detail)
-    person = _norm(to) if to else _who_to_ask(room, key, handle)
+    in_channel = bool(recent_episode) and message_format.is_live_episode(room, recent_episode or "")
+    key = (
+        task
+        or _task_of_episode(room, recent_episode)
+        or (None if in_channel else _held_task(room, handle))
+    )
+    if key:
+        episode = tasks.episode_of(room, key)
+        if not episode:
+            raise Refused(404 if task else 422, f"No task {key!r} with a thread in {room!r}")
+        refusal = tasks.thread_write_refusal(room, handle, episode)
+        if refusal is not None:
+            raise Refused(refusal.status, refusal.detail)
+    else:
+        episode = message_format.live_episode_urn(room)
+    person = _norm(to) if to else _who_to_ask(room, key or "", handle)
     if not person:
         raise Refused(422, "Nobody to ask: name them with --to")
     if person == _norm(handle):

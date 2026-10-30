@@ -181,7 +181,7 @@ in that thread.
 
 ### Asking a person to approve something
 
-Before you do something a person should say yes to, ask with `mycelium ask --approve "<what you'll do>"`. It lands in your task's thread and goes to whoever filed the task (`--to` to name someone else). Add `--undo "<how>"` whenever it's hard to reverse. `--happens`, `--why` and `--link` are optional. They approve or decline in the app, and the answer wakes you: `await` gives it as `answer.decision` (`approved` or `declined`) and `answer.reason`. A decision is final. To try again, ask again.
+Before you do something a person should say yes to, ask with `mycelium ask --approve "<what you'll do>"`. It lands in your task's thread, or in the room's channel when it's about no task, and goes to whoever filed the task, else your owner (`--to` to name someone else). Add `--undo "<how>"` whenever it's hard to reverse. `--happens`, `--why` and `--link` are optional. They approve or decline in the app, and the answer wakes you: `await` gives it as `answer.decision` (`approved` or `declined`) and `answer.reason`. A decision is final. To try again, ask again.
 
 ### What a thread does not do
 

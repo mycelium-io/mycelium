@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-``mycelium ask --approve``: ask a person to approve something, in a task's thread.
+``mycelium ask --approve``: ask a person to approve something, where you're working.
 
 The ask is a kind the hub knows, with known fields, and the app draws it as a
 card with Approve and Decline (``POST /rooms/{room}/asks``). The answer comes
@@ -60,21 +60,22 @@ def ask(
     ),
     link: str | None = typer.Option(None, "--link", help="A PR, a memory or a URL it's about."),
     to: str | None = typer.Option(
-        None, "--to", help="Who to ask. Default: the person who filed the task."
+        None, "--to", help="Who to ask. Default: the person who filed the task, else your owner."
     ),
     task: str | None = typer.Option(
         None,
         "--task",
         "-u",
-        help="The task to ask in (e.g. t3, work/auth). Default: the thread you were last "
-        "asked in, else the one task you hold.",
+        help="The task to ask in (e.g. t3, work/auth). Default: where you were last asked, "
+        "a task's thread or the room's channel, else the one task you hold, else the channel.",
     ),
     room: str | None = None,
     handle: str | None = None,
 ) -> None:
-    """Ask a person to approve something, in a task's thread.
+    """Ask a person to approve something, in the task's thread, or in the room's
+    channel when it's about no task.
 
-    The person sees a card with Approve and Decline, in the thread and under
+    The person sees a card with Approve and Decline where you asked, and under
     Waiting on you. Their answer wakes you: ``await`` gives the decision as
     ``answer.decision`` (approved or declined) and ``answer.reason``. A decision
     is final. To try again, ask again.
