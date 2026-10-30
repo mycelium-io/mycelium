@@ -136,6 +136,20 @@ async def test_pi_error_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatch)
     assert "timed out or errored" in _said(managed)[0]
 
 
+def test_the_no_model_reply_is_the_contract_s() -> None:
+    """Doctor says the same thing (``contracts/engines-model.json``)."""
+    import json
+    from pathlib import Path
+
+    from app.services import engines_model
+
+    contract = json.loads(
+        (Path(__file__).resolve().parents[2] / "contracts" / "engines-model.json").read_text()
+    )
+    assert contract["set_one"] == engines_model.SET_ONE
+    assert contract["no_model_text"] == engines_model.NO_MODEL_TEXT
+
+
 @pytest.mark.asyncio
 async def test_a_hub_with_no_model_says_so_rather_than_errored(
     monkeypatch: pytest.MonkeyPatch,

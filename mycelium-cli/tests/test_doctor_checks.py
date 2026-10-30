@@ -59,6 +59,19 @@ def test_no_engines_model_says_who_needs_one(isolated_home) -> None:
     assert result.details[1] == "Set it in Settings"
 
 
+def test_doctor_says_what_the_engines_say_in_the_room() -> None:
+    """The hub's engines say the same thing (``contracts/engines-model.json``)."""
+    import json
+    from pathlib import Path
+
+    contract = json.loads(
+        (Path(__file__).resolve().parents[2] / "contracts" / "engines-model.json").read_text()
+    )
+    assert contract["set_one"] == doctor.SET_ONE
+    assert contract["engines_that_think"] == doctor.ENGINES_THAT_THINK
+    assert contract["set_one"] in contract["no_model_text"]
+
+
 def test_check_config_files_errors_when_missing(
     isolated_home, monkeypatch: pytest.MonkeyPatch
 ) -> None:
