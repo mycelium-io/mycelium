@@ -334,8 +334,7 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
  * every button here is the quiet variant. */
 .copy-page-btn,
 .copy-agents-btn,
-.resources-btn,
-.install-tab {
+.resources-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -353,12 +352,10 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
 .copy-page-btn svg,
-.copy-agents-btn svg,
-.install-tab svg { width: 13px; height: 13px; stroke: currentColor; flex-shrink: 0; }
+.copy-agents-btn svg { width: 13px; height: 13px; stroke: currentColor; flex-shrink: 0; }
 .copy-page-btn:hover,
 .copy-agents-btn:hover,
-.resources-btn:hover,
-.install-tab:hover { color: var(--text); background: var(--surface); border-color: var(--border2); }
+.resources-btn:hover { color: var(--text); background: var(--surface); border-color: var(--border2); }
 .copy-page-btn.copied,
 .copy-agents-btn.copied { color: var(--green); border-color: var(--green); }
 .copy-agents-btn.failed { color: var(--red); border-color: var(--red); }
@@ -716,35 +713,6 @@ pre code {
   text-transform: uppercase;
   color: var(--accent2);
   margin-bottom: 8px;
-}
-
-.install-block { position: relative; }
-.install-copy-btn {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
-  background: var(--paper);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--muted-foreground);
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-}
-.install-copy-btn:hover { border-color: var(--border2); color: var(--text); }
-.install-copy-btn.copied { border-color: var(--green); color: var(--green); }
-.install-copy-btn svg { width: 13px; height: 13px; stroke: currentColor; }
-.install-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
-.install-tab { height: 26px; font-size: var(--text-micro); }
-.install-tab.active {
-  color: var(--text);
-  background: var(--elevated);
-  border-color: var(--border2);
 }
 
 /* ── SYNTAX ──
