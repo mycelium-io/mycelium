@@ -849,6 +849,69 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return null;
     }
 
+    case "asks": {
+      // POST /asks — an agent's ask for one person's OK, a message in the
+      // task's thread carrying `ask`. POST /asks/{id}/answer — the person's
+      // answer: folded onto the ask, and sent to the agent as its own message.
+      if (method !== "POST") return null;
+      const body = await readJson(req);
+      const now = new Date().toISOString();
+      if (sub.length === 1) {
+        const question = String(body.question ?? "").trim();
+        if (!question) return json({ detail: "An ask needs a question." }, 422);
+        if ((body.kind ?? "approve") !== "approve") return json({ detail: `No ask kind '${String(body.kind)}'.` }, 422);
+        const handle = String(body.handle ?? "").replace(/^@/, "");
+        const row = typeof body.task === "string" ? fx.memories.find((m) => m.key === body.task) : undefined;
+        const episode = row?.episode ?? (typeof body.episode === "string" ? body.episode : null);
+        if (!episode) return json({ detail: "No task to ask in." }, 422);
+        const to = String(body.to ?? row?.created_by ?? "operator").replace(/^@/, "");
+        const id = stableUuid(`${roomName}/ask/${now}`).replace(/-/g, "").slice(0, 8);
+        const text = (k: string) => (typeof body[k] === "string" && body[k] ? (body[k] as string) : undefined);
+        const msg: MockMessage = {
+          id: `ask-${id}`,
+          sender_handle: handle,
+          recipient_handle: to,
+          message_type: "broadcast",
+          content: question,
+          episode,
+          created_at: now,
+          metadata: {
+            ask: { id, kind: "approve", to, question, happens: text("happens"), why: text("why"), undo: text("undo"), link: text("link") },
+          },
+        };
+        fx.messages.push(msg);
+        publish(roomName, { ...msg, room_name: roomName });
+        return json(msg, 201);
+      }
+      if (sub.length === 3 && sub[2] === "answer") {
+        const askId = decodeURIComponent(sub[1]);
+        const asked = fx.messages.find((m) => (m.metadata as { ask?: { id?: string } } | null | undefined)?.ask?.id === askId);
+        if (!asked) return json({ detail: `No ask ${askId}.` }, 404);
+        const ask = (asked.metadata as { ask: Record<string, unknown> }).ask;
+        const by = String(body.by ?? "").replace(/^@/, "");
+        if (by !== ask.to) return json({ detail: `Only @${String(ask.to)} can answer this.` }, 403);
+        if (ask.answer) return json({ detail: "This ask has been answered." }, 409);
+        const decision = body.decision === "declined" ? "declined" : "approved";
+        const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : null;
+        const answer = { decision, reason, by, at: now };
+        ask.answer = answer;
+        const reply: MockMessage = {
+          id: `answer-${askId}`,
+          sender_handle: by,
+          recipient_handle: asked.sender_handle,
+          message_type: "broadcast",
+          content: decision === "approved" ? "Approved." : reason ? `Declined: ${reason}` : "Declined.",
+          episode: asked.episode ?? null,
+          created_at: now,
+          metadata: { answer: { ask: askId, ...answer } },
+        };
+        fx.messages.push(reply);
+        publish(roomName, { ...reply, room_name: roomName });
+        return json(reply, 201);
+      }
+      return null;
+    }
+
     case "tasks": {
       // POST /tasks — a row and its thread, minted together (services/tasks.py).
       if (sub.length !== 1 || method !== "POST") return null;

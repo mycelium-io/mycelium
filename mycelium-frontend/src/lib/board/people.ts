@@ -39,7 +39,7 @@ export const STANDING: Record<PartState, Standing> = {
 /** What each kind of waiting item is, as a word in the state column: the
  *  accent, since these are the rows that need you. */
 export const WAITING_STANDING: Record<WaitingItem["kind"], Standing> = {
-  approve: { word: "Approve?", tone: "var(--accent)" },
+  approve: { word: "Approve?", tone: "var(--yellow)" },
   ask: { word: "Asks you", tone: "var(--accent)" },
   turn: { word: "Your turn", tone: "var(--accent)" },
   task: { word: "Yours", tone: "var(--accent)" },

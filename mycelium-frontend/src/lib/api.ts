@@ -1168,6 +1168,7 @@ export async function fetchRoomBoard(roomName: string): Promise<BoardRead> {
 
 /** One thing waiting on a member (`GET /rooms/{room}/waiting?for=`). */
 export interface WaitingItem {
+  /** `approve` is an agent's ask for your OK, `ask` a message that asks you. */
   kind: "approve" | "ask" | "turn" | "task";
   key?: string | null;
   title?: string | null;
@@ -1326,6 +1327,20 @@ export async function sendRoomMessage(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message_type: "broadcast", ...data }),
+  });
+}
+
+/** Answer an agent's ask. The hub takes it only from the person asked, once,
+ *  and sends it back to the agent as values it can act on. */
+export async function answerAsk(
+  roomName: string,
+  askId: string,
+  answer: { decision: "approved" | "declined"; reason?: string | null; by: string },
+): Promise<RoomMessage> {
+  return apiFetch<RoomMessage>(`${roomApiPath(roomName)}/asks/${encodeURIComponent(askId)}/answer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(answer),
   });
 }
 
