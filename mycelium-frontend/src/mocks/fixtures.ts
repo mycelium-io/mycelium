@@ -1341,6 +1341,28 @@ const checkout: RoomFixture = {
     { id: "t2", sender_handle: "reviewer", message_type: "broadcast", content: "don't switch it on until i've placed test orders on a real phone. i'll post the results here.", created_at: iso(21), episode: LAUNCH_THREAD },
     { id: "t3", sender_handle: "builder", message_type: "broadcast", content: "sounds good, waiting on you.", created_at: iso(20), episode: LAUNCH_THREAD },
     { id: "t4", sender_handle: "builder", message_type: "broadcast", content: "reviewer approved #502, so i'm putting it on staging for the test orders.", created_at: iso(19), episode: LAUNCH_THREAD },
+    // Builder asks Morgan's OK to flip it: an approval the thread draws as a
+    // card, and the board lists under Waiting on you until it's answered.
+    {
+      id: "t5",
+      sender_handle: "builder",
+      recipient_handle: "operator",
+      message_type: "broadcast",
+      content: "Turn Apple Pay on for everyone on Friday at 9:00",
+      created_at: iso(4),
+      episode: LAUNCH_THREAD,
+      metadata: {
+        ask: {
+          id: "7e21c0a4",
+          kind: "approve",
+          to: "operator",
+          question: "Turn Apple Pay on for everyone on Friday at 9:00",
+          happens: "The checkout.apple_pay switch turns on for every customer.",
+          why: "Test orders passed on a real iPhone and a Pixel, and #502 is merged.",
+          undo: "Turn the switch off. It takes effect within a minute.",
+        },
+      },
+    },
     // The parts' own threads, so each running part has a latest line.
     { id: "p1", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is up, with the button behind the switch.", created_at: iso(26), episode: APPLE_PAY_THREAD },
     { id: "p2", sender_handle: "reviewer", message_type: "broadcast", content: "approved #502. ci is green, so it can go to staging.", created_at: iso(18), episode: APPLE_PAY_THREAD },

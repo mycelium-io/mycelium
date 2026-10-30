@@ -31,6 +31,8 @@ function event(over: Partial<Event>): Event {
     thread: null,
     pingSenders: [],
     conductor: null,
+    ask: null,
+    answers: null,
     raw: {},
     ...over,
   };
@@ -131,5 +133,38 @@ describe("a message's hover bar", () => {
       expect(within(screen.getByRole("toolbar", { name: "Message actions" })).getByText(time)).toBeInTheDocument();
       fireEvent.mouseLeave(row);
     }
+  });
+});
+
+describe("an agent's ask", () => {
+  it("draws as its card, and the answer to it folds into the card", () => {
+    const asked = event({
+      id: "a1",
+      messageId: "a1",
+      sender: "builder",
+      content: "Flip it Friday?",
+      ask: {
+        id: "7e21c0a4",
+        kind: "approve",
+        to: "operator",
+        question: "Flip it Friday?",
+        happens: null,
+        why: null,
+        undo: null,
+        link: null,
+        answer: { decision: "approved", reason: null, by: "operator", at: AT },
+      },
+    });
+    const answer = event({ id: "a2", messageId: "a2", sender: "operator", content: "Approved.", answers: "7e21c0a4" });
+    const { container } = renderWithSWR(
+      <KeymapProvider>
+        <FeedRow ev={asked} ctx={ctx} />
+        <FeedRow ev={answer} prev={asked} ctx={ctx} />
+      </KeymapProvider>,
+    );
+    expect(container.querySelector('[data-ask="7e21c0a4"]')).toHaveTextContent("Flip it Friday?");
+    expect(screen.getAllByText("Flip it Friday?")).toHaveLength(1);
+    expect(screen.getByText(/Approved by operator/)).toBeInTheDocument();
+    expect(screen.queryByText("Approved.")).toBeNull();
   });
 });

@@ -199,6 +199,26 @@ export function mockWaiting(fx: RoomFixture, handle: string): WaitingItem[] {
   const answered = new Set<string | null>();
   const pending = new Map<string | null, typeof fx.messages>();
   const mention = new RegExp(`(^|[\\s(<])@!?${me}\\b`, "i");
+  // An agent's ask for this member's OK comes first, until it's answered or
+  // its task is settled; its thread isn't listed again as a plain ask.
+  for (const m of [...fx.messages].sort((a, b) => b.created_at.localeCompare(a.created_at))) {
+    const ask = (m.metadata as { ask?: { to?: string; question?: string; answer?: unknown } } | null | undefined)?.ask;
+    if (!ask || bare(ask.to ?? "") !== me || ask.answer) continue;
+    const thread = m.episode ?? null;
+    const key = thread ? byEpisode.get(thread) : undefined;
+    if (key && rows.settled(key)) continue;
+    items.push({
+      kind: "approve",
+      ...about(key, thread),
+      sender: m.sender_handle,
+      text: ask.question ?? m.content,
+      message_id: m.id,
+      at: today(m.created_at),
+      count: 1,
+    });
+    seen.add(thread);
+    answered.add(thread);
+  }
   for (const m of [...fx.messages].sort((a, b) => b.created_at.localeCompare(a.created_at))) {
     const thread = m.episode ?? null;
     if (bare(m.sender_handle) === me) {
