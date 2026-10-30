@@ -6158,7 +6158,7 @@
           "asks"
         ],
         "summary": "Create Ask",
-        "description": "Ask a person to decide something, in a task's thread or the room's channel.",
+        "description": "Ask a person something, in a task's thread or the room's channel.",
         "operationId": "create_ask_api_rooms__room_name__asks_post",
         "parameters": [
           {
@@ -6261,7 +6261,7 @@
           "asks"
         ],
         "summary": "Answer Ask",
-        "description": "Approve or decline an ask. Only the person asked may, and only once.",
+        "description": "Answer an ask: any person in the room may, never an agent, and only once.",
         "operationId": "answer_ask_api_rooms__room_name__asks__ask_id__answer_post",
         "parameters": [
           {
@@ -13552,13 +13552,17 @@
           },
           "kind": {
             "type": "string",
-            "const": "approve",
+            "enum": [
+              "approve",
+              "choose",
+              "question"
+            ],
             "title": "Kind"
           },
           "to": {
             "type": "string",
             "title": "To",
-            "description": "The one person who may answer"
+            "description": "The person it waits on; any person in the room may answer"
           },
           "question": {
             "type": "string",
@@ -13612,6 +13616,64 @@
             "title": "Link",
             "description": "A PR, a memory or a URL it is about"
           },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AskOption"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options",
+            "description": "On a choose"
+          },
+          "multiple": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multiple",
+            "description": "On a choose: several may be picked"
+          },
+          "recommend": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "string",
+                "const": "approve"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommend",
+            "description": "What the agent would do: option ids on a choose, 'approve' on an approve"
+          },
+          "suggest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggest",
+            "description": "On a question: the agent's draft answer"
+          },
           "answer": {
             "anyOf": [
               {
@@ -13636,17 +13698,116 @@
       },
       "AskAnswer": {
         "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "approve",
+                  "choose",
+                  "question"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind",
+            "description": "Absent on an answer from before kinds"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "for": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "For",
+            "description": "The person the ask was put to"
+          },
+          "by": {
+            "type": "string",
+            "title": "By",
+            "description": "Who answered: the person asked, or another person"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "approved",
+                  "declined"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision",
+            "description": "On an approve"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices",
+            "description": "On a choose: the option ids picked"
+          },
+          "chosen": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chosen",
+            "description": "On a choose: those options' labels"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "The answer to a question, or a note on any kind"
+          },
           "ask": {
             "type": "string",
             "title": "Ask"
-          },
-          "decision": {
-            "type": "string",
-            "enum": [
-              "approved",
-              "declined"
-            ],
-            "title": "Decision"
           },
           "reason": {
             "anyOf": [
@@ -13657,33 +13818,64 @@
                 "type": "null"
               }
             ],
-            "title": "Reason"
-          },
-          "by": {
-            "type": "string",
-            "title": "By"
-          },
-          "at": {
-            "type": "string",
-            "title": "At"
+            "title": "Reason",
+            "description": "The note, on an answer from before text"
           }
         },
         "type": "object",
         "required": [
-          "ask",
-          "decision",
           "by",
-          "at"
+          "at",
+          "ask"
         ],
         "title": "AskAnswer",
         "description": "The answer an agent reads, in ``await`` and on the answer message."
       },
       "AskAnswerCreate": {
         "properties": {
-          "decision": {
+          "by": {
             "type": "string",
+            "title": "By",
+            "description": "Who answers: any person in the room, never an agent"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Decision",
-            "description": "approved or declined"
+            "description": "An approve's: approved or declined"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices",
+            "description": "A choose's: the option ids picked"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "A question's answer, or a note on any kind"
           },
           "reason": {
             "anyOf": [
@@ -13694,17 +13886,12 @@
                 "type": "null"
               }
             ],
-            "title": "Reason"
-          },
-          "by": {
-            "type": "string",
-            "title": "By",
-            "description": "Who answers; only the person asked may"
+            "title": "Reason",
+            "description": "Another name for text, from before it"
           }
         },
         "type": "object",
         "required": [
-          "decision",
           "by"
         ],
         "title": "AskAnswerCreate"
@@ -13820,6 +14007,56 @@
               }
             ],
             "title": "Link"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AskOptionCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options",
+            "description": "A choose's options, in order"
+          },
+          "multiple": {
+            "type": "boolean",
+            "title": "Multiple",
+            "default": false
+          },
+          "recommend": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommend",
+            "description": "Option ids on a choose, or 'approve' on an approve"
+          },
+          "suggest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggest",
+            "description": "A question's draft answer"
           }
         },
         "type": "object",
@@ -13832,15 +14069,24 @@
       },
       "AskDecided": {
         "properties": {
-          "decision": {
-            "type": "string",
-            "enum": [
-              "approved",
-              "declined"
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "approve",
+                  "choose",
+                  "question"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Decision"
+            "title": "Kind",
+            "description": "Absent on an answer from before kinds"
           },
-          "reason": {
+          "question": {
             "anyOf": [
               {
                 "type": "string"
@@ -13849,25 +14095,150 @@
                 "type": "null"
               }
             ],
-            "title": "Reason"
+            "title": "Question"
+          },
+          "for": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "For",
+            "description": "The person the ask was put to"
           },
           "by": {
             "type": "string",
-            "title": "By"
+            "title": "By",
+            "description": "Who answered: the person asked, or another person"
           },
           "at": {
             "type": "string",
             "title": "At"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "approved",
+                  "declined"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision",
+            "description": "On an approve"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices",
+            "description": "On a choose: the option ids picked"
+          },
+          "chosen": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chosen",
+            "description": "On a choose: those options' labels"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "The answer to a question, or a note on any kind"
           }
         },
         "type": "object",
         "required": [
-          "decision",
           "by",
           "at"
         ],
         "title": "AskDecided",
-        "description": "How an ask was decided, folded onto it once answered."
+        "description": "How an ask was answered, folded onto it once it is."
+      },
+      "AskOption": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Its number, from 1, in the order given"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "AskOption"
+      },
+      "AskOptionCreate": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "AskOptionCreate"
       },
       "AskPosted": {
         "properties": {
@@ -24021,6 +24392,23 @@
             "title": "Count",
             "description": "Asks in the same thread, the newest shown",
             "default": 1
+          },
+          "ask_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "approve",
+                  "choose",
+                  "question"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask Kind",
+            "description": "On an approve item: the kind of the agent's ask"
           }
         },
         "type": "object",

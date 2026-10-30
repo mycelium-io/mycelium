@@ -251,7 +251,8 @@
       "text",
       "message_id",
       "at",
-      "count"
+      "count",
+      "ask_kind"
     ]
   },
   "schema": {

@@ -1,20 +1,28 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""An agent asks a person to decide something, and gets the answer as a value.
+"""An agent asks a person something, and gets the answer as a value.
 
 An ask is a message in a task's thread (or the room's channel, when it's about
-no task), addressed to the person, whose payload
-carries ``ask`` (``{id, kind, to, question, happens?, why?, undo?, link?}``).
-The answer is a message from that person back to the agent, addressed to it so
-it wakes, whose payload carries ``answer`` (``{ask, decision, reason?, by,
-at}``). Both are messages the room records like any other, so the transcript is
-the record; whether an ask was answered is worked out from it on read and never
-stored. ``contracts/approvals.json`` freezes the kinds and fields, since the CLI
-and the app each keep a copy.
+no task), addressed to one person, whose payload carries ``ask``. It is one of
+three kinds: ``approve`` (a yes or no on something the agent will do),
+``choose`` (pick one of its ``options``, or several when ``multiple``) and
+``question`` (an open question). The agent can say what it would do:
+``recommend`` (``"approve"``, or the option ids it would pick) and, on a
+question, ``suggest`` (a draft answer).
 
-Agents never send UI: they fill in a kind the hub knows (``approve`` for now)
-and the app draws it. A decision is final; a new ask is how to try again.
+Any person in the room may answer, never an agent; the one asked is who it
+waits on. The answer is a message from whoever answered back to the agent,
+addressed to it so it wakes, whose payload carries ``answer``: the decision,
+the choices or the text, plus the question it answers and who it was ``for``,
+so an agent that lost the ask's id still knows what was decided. Its text
+names the question too. Both are messages the room records like any other, so
+the transcript is the record; whether an ask was answered is worked out from
+it on read and never stored. ``contracts/approvals.json`` freezes the kinds
+and fields, since the CLI and the app each keep a copy.
+
+Agents never send UI: they fill in a kind the hub knows and the app draws it.
+An answer is final; a new ask is how to try again.
 """
 
 from __future__ import annotations
@@ -36,10 +44,12 @@ if TYPE_CHECKING:
 
 ASK_KEY = "ask"
 ANSWER_KEY = "answer"
-KINDS = ("approve",)
+KINDS = ("approve", "choose", "question")
 DECISIONS = ("approved", "declined")
-#: The optional facts an ask may carry, in the order the card shows them.
+#: The optional facts an ask of any kind may carry, in the order the card shows them.
 FACTS = ("happens", "why", "undo", "link")
+#: ``recommend`` on an approve: the agent would go ahead.
+RECOMMEND_APPROVE = "approve"
 #: The item kind "Waiting on you" lists an open ask under.
 WAITING_KIND = "approve"
 
@@ -89,19 +99,23 @@ class Asked:
         return record_episode(self.record)
 
     def folded(self) -> dict[str, Any]:
-        """The ask with its decision on it, as the card reads it."""
+        """The ask with its answer on it, as the card reads it."""
         if self.answer is None:
             return dict(self.ask)
-        decided = {k: self.answer.get(k) for k in ("decision", "reason", "by", "at")}
+        decided = {k: v for k, v in self.answer.items() if k not in {ASK_KEY, "reason"}}
+        # An answer from before free text carried its note as ``reason``.
+        if self.answer.get("reason") and not decided.get("text"):
+            decided["text"] = self.answer["reason"]
         return {**self.ask, ANSWER_KEY: decided}
 
 
-def asked(records: list[TranscriptRecord]) -> dict[str, Asked]:
+def asked(records: list[TranscriptRecord], room: str) -> dict[str, Asked]:
     """Every ask in ``records`` by id, each with the first answer it got.
 
     An ask is the first record that carries its id. An answer counts only when
-    the person asked sent it, as themselves: the routes check who answers, and
-    so does this, since any member can publish a frame on the room's channel.
+    someone who may answer sent it, as themselves: the route checks who
+    answers, and so does this, since any member can publish a frame on the
+    room's channel.
     """
     found: dict[str, Asked] = {}
     for record in records:
@@ -111,10 +125,23 @@ def asked(records: list[TranscriptRecord]) -> dict[str, Asked]:
             hit = found.get(str(answer["ask"]))
             if hit is None or hit.answer is not None:
                 continue
-            asked_of = _norm(hit.ask.get("to"))
-            if _norm(record.sender) == asked_of == _norm(answer.get("by")):
+            sender = _norm(record.sender)
+            if sender == _norm(answer.get("by")) and may_answer(room, sender):
                 hit.answer = answer
     return found
+
+
+def may_answer(room: str, handle: str) -> bool:
+    """Whether ``handle`` may answer an ask: anyone but an agent or an engine,
+    so no agent can approve its own work, or another's.
+
+    Not whether they're a person the room knows: on a gated hub their token
+    already says who they are, and on an open one anyone can claim any name,
+    so a check against the room's people would only turn away someone on a
+    fresh hub where nobody has a user record yet. It also means someone
+    leaving the room later doesn't reopen an ask the agent already acted on.
+    """
+    return bool(handle) and _is_person(room, handle)
 
 
 def records(room: str) -> list[TranscriptRecord]:
@@ -249,6 +276,10 @@ async def create(
     task: str | None = None,
     recent_episode: str | None = None,
     facts: dict[str, str | None] | None = None,
+    options: list[dict[str, Any]] | None = None,
+    multiple: bool = False,
+    recommend: list[str] | str | None = None,
+    suggest: str | None = None,
 ) -> tuple[dict[str, Any], TranscriptRecord, str | None]:
     """Ask, where the agent is working. Returns the ask, its message and the task.
 
@@ -263,6 +294,7 @@ async def create(
         raise Refused(422, f"Unknown kind of ask {kind!r}; known: {', '.join(KINDS)}")
     if not question:
         raise Refused(422, "An ask needs a question")
+    shape = _shape(kind, options, multiple=multiple, recommend=recommend, suggest=suggest)
     in_channel = bool(recent_episode) and message_format.is_live_episode(room, recent_episode or "")
     key = (
         task
@@ -295,6 +327,7 @@ async def create(
         value = str((facts or {}).get(fact) or "").strip()
         if value:
             ask[fact] = value
+    ask |= shape
     record = await _post(
         room,
         sender=handle,
@@ -307,48 +340,148 @@ async def create(
     return ask, record, key
 
 
+def _shape(
+    kind: str,
+    options: list[dict[str, Any]] | None,
+    *,
+    multiple: bool,
+    recommend: list[str] | str | None,
+    suggest: str | None,
+) -> dict[str, Any]:
+    """What the kind adds to an ask, checked: options for a choose, what the
+    agent recommends, and a draft answer for a question."""
+    shape: dict[str, Any] = {}
+    if kind == "choose":
+        labelled = [
+            {
+                "label": str(o.get("label") or "").strip(),
+                "detail": str(o.get("detail") or "").strip(),
+            }
+            for o in options or []
+        ]
+        if len(labelled) < 2 or any(not o["label"] for o in labelled):
+            raise Refused(422, "A choose needs two or more options, each with a label")
+        shape["options"] = [
+            {"id": str(n), "label": o["label"], **({"detail": o["detail"]} if o["detail"] else {})}
+            for n, o in enumerate(labelled, 1)
+        ]
+        if multiple:
+            shape["multiple"] = True
+        if recommend:
+            picks = [recommend] if isinstance(recommend, str) else list(recommend)
+            known = {o["id"] for o in shape["options"]}
+            if any(p not in known for p in picks):
+                raise Refused(422, f"recommend names options by number: {', '.join(sorted(known))}")
+            if len(picks) > 1 and not multiple:
+                raise Refused(422, "Recommend one option, or ask with multiple")
+            shape["recommend"] = list(dict.fromkeys(picks))
+    elif options or multiple:
+        raise Refused(422, "Only a choose has options")
+    if kind == "approve" and recommend:
+        if recommend not in (RECOMMEND_APPROVE, [RECOMMEND_APPROVE]):
+            raise Refused(422, f"On an approve, recommend is {RECOMMEND_APPROVE!r}")
+        shape["recommend"] = RECOMMEND_APPROVE
+    if kind == "question" and recommend:
+        raise Refused(422, "A question has no recommend; give a draft answer with suggest")
+    draft = (suggest or "").strip()
+    if draft:
+        if kind != "question":
+            raise Refused(422, "Only a question takes suggest")
+        shape["suggest"] = draft
+    return shape
+
+
+def _answered(
+    ask: dict[str, Any], decision: str | None, choices: list[str] | None, text: str | None
+) -> dict[str, Any]:
+    """The answer's values, checked against what its kind takes."""
+    kind = str(ask.get("kind") or "approve")
+    got: dict[str, Any] = {}
+    if kind == "approve":
+        if decision not in DECISIONS:
+            raise Refused(422, f"An approve is answered with a decision: {', '.join(DECISIONS)}")
+        got["decision"] = decision
+    elif decision:
+        raise Refused(422, "Only an approve takes a decision")
+    if kind == "choose":
+        options = {str(o.get("id")): str(o.get("label")) for o in ask.get("options") or []}
+        picks = list(dict.fromkeys(str(c) for c in choices or []))
+        if not picks or any(p not in options for p in picks):
+            raise Refused(422, f"A choose is answered with its options' ids: {', '.join(options)}")
+        if len(picks) > 1 and not ask.get("multiple"):
+            raise Refused(422, "This ask takes one choice")
+        got["choices"] = picks
+        got["chosen"] = [options[p] for p in picks]
+    elif choices:
+        raise Refused(422, "Only a choose takes choices")
+    if kind == "question" and not text:
+        raise Refused(422, "A question is answered with text")
+    if text:
+        got["text"] = text
+    return got
+
+
+def says(answer: dict[str, Any]) -> str:
+    """The answer as the chat reads it, naming the question it answers."""
+    question = str(answer.get("question") or "").strip()
+    note = str(answer.get("text") or "").strip()
+    quoted = f'"{question}"'
+    if answer.get("kind") == "choose":
+        chosen = ", ".join(f'"{label}"' for label in answer.get("chosen") or [])
+        head = f"Chose {chosen} for {quoted}"
+    elif answer.get("kind") == "question":
+        return f"Answered {quoted}: {note}"
+    else:
+        head = f"{'Approved' if answer.get('decision') == 'approved' else 'Declined'} {quoted}"
+    return f"{head}\n\nNote: {note}" if note else head
+
+
 async def answer(
-    room: str, ask_id: str, *, decision: str, by: str, reason: str | None = None
+    room: str,
+    ask_id: str,
+    *,
+    by: str,
+    decision: str | None = None,
+    choices: list[str] | None = None,
+    text: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], TranscriptRecord]:
     """Answer an ask as ``by``. Returns the folded ask, the answer and its message.
 
-    Only the person asked may answer, and only once: the check and the post run
-    under one lock per room, so two answers at once can't both land.
+    Any person in the room may answer, never an agent, and only once: the
+    check and the post run under one lock per room, so two answers at once
+    can't both land.
     """
-    if decision not in DECISIONS:
-        raise Refused(422, f"Unknown decision {decision!r}; known: {', '.join(DECISIONS)}")
     lock = _answering.setdefault(room, asyncio.Lock())
     async with lock:
-        hit = asked(records(room)).get(ask_id)
+        hit = asked(records(room), room).get(ask_id)
         if hit is None:
             raise Refused(404, f"No ask {ask_id!r} in {room!r}")
-        if _norm(by) != _norm(hit.ask.get("to")):
-            raise Refused(403, f"This ask is for @{hit.ask.get('to')}, not @{_norm(by)}")
+        who = _norm(by)
+        if not may_answer(room, who):
+            raise Refused(403, f"@{who} is an agent; only a person can answer an ask")
         if hit.answer is not None:
-            raise Refused(409, f"Already {hit.answer.get('decision')} by @{hit.answer.get('by')}")
+            raise Refused(409, f"Already answered by @{hit.answer.get('by')}")
         episode = hit.episode or message_format.live_episode_urn(room)
-        refusal = tasks.thread_write_refusal(room, _norm(by), episode)
+        refusal = tasks.thread_write_refusal(room, who, episode)
         if refusal is not None:
             raise Refused(refusal.status, refusal.detail)
-        reason = (reason or "").strip() or None
+        note = (text or "").strip() or None
         decided: dict[str, Any] = {
             "ask": ask_id,
-            "decision": decision,
-            "by": _norm(by),
+            "kind": str(hit.ask.get("kind") or "approve"),
+            "question": str(hit.ask.get("question") or ""),
+            "for": _norm(hit.ask.get("to")),
+            "by": who,
             "at": datetime.now(UTC).isoformat(),
+            **_answered(hit.ask, decision, choices, note),
         }
-        if reason:
-            decided["reason"] = reason
-        text = "Approved." if decision == "approved" else "Declined."
-        if reason:
-            text = f"{text} {reason}" if decision == "approved" else f"Declined: {reason}"
         record = await _post(
             room,
-            sender=_norm(by),
+            sender=who,
             role="human",
             to=_norm(hit.record.sender),
             episode=episode,
-            text=text,
+            text=says(decided),
             data={ANSWER_KEY: decided},
             parents=[hit.record.message_id] if hit.record.message_id else None,
         )
@@ -356,12 +489,12 @@ async def answer(
         return hit.folded(), decided, record
 
 
-def open_for(handle: str, records: list[TranscriptRecord]) -> list[Asked]:
+def open_for(handle: str, records: list[TranscriptRecord], room: str) -> list[Asked]:
     """The unanswered asks put to ``handle``, newest first."""
     me = _norm(handle)
     return [
         hit
-        for hit in reversed(asked(records).values())
+        for hit in reversed(asked(records, room).values())
         if hit.answer is None and _norm(hit.ask.get("to")) == me
     ]
 

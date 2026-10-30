@@ -2,10 +2,10 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Asks API: an agent asks a person to decide, and the person answers.
+Asks API: an agent asks a person something, and a person answers.
 
-POST /rooms/{room}/asks              — ask (``mycelium ask --approve``)
-POST /rooms/{room}/asks/{id}/answer  — approve or decline, as the person asked
+POST /rooms/{room}/asks              — ask (``mycelium ask --approve|--choose|--question``)
+POST /rooms/{room}/asks/{id}/answer  — answer it, as any person in the room
 
 The ask and the answer are messages in the task's thread, or the room's channel
 for an ask about no task (:mod:`app.services.approvals`); these routes are the
@@ -40,7 +40,7 @@ def _room(room_name: str) -> None:
     "", response_model=AskPosted, status_code=201, responses=refusals(403, 404, 409, 422, 503)
 )
 async def create_ask(room_name: str, body: AskCreate, request: Request) -> AskPosted:
-    """Ask a person to decide something, in a task's thread or the room's channel."""
+    """Ask a person something, in a task's thread or the room's channel."""
     from app.routes.participate import _last_tick
 
     _room(room_name)
@@ -60,6 +60,10 @@ async def create_ask(room_name: str, body: AskCreate, request: Request) -> AskPo
             task=body.task,
             recent_episode=recent if isinstance(recent, str) else None,
             facts={fact: getattr(body, fact) for fact in approvals.FACTS},
+            options=[o.model_dump() for o in body.options or []],
+            multiple=body.multiple,
+            recommend=body.recommend,
+            suggest=body.suggest,
         )
     except approvals.Refused as refused:
         raise HTTPException(status_code=refused.status, detail=refused.detail) from None
@@ -80,12 +84,17 @@ async def create_ask(room_name: str, body: AskCreate, request: Request) -> AskPo
 async def answer_ask(
     room_name: str, ask_id: str, body: AskAnswerCreate, request: Request
 ) -> AskAnswered:
-    """Approve or decline an ask. Only the person asked may, and only once."""
+    """Answer an ask: any person in the room may, never an agent, and only once."""
     _room(room_name)
     by = actor.bind_delegated_actor(request, room_name, body.by, field="by")
     try:
         ask, answer, record = await approvals.answer(
-            room_name, ask_id, decision=body.decision, by=by, reason=body.reason
+            room_name,
+            ask_id,
+            by=by,
+            decision=body.decision,
+            choices=body.choices,
+            text=body.text if body.text is not None else body.reason,
         )
     except approvals.Refused as refused:
         raise HTTPException(status_code=refused.status, detail=refused.detail) from None

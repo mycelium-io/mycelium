@@ -46,6 +46,16 @@ export const WAITING_STANDING: Record<WaitingItem["kind"], Standing> = {
   task: { word: "Yours", tone: "var(--accent)" },
 };
 
+/** A waiting item's word: an agent's ask says what it wants of you. */
+export function waitingStanding(item: WaitingItem): Standing {
+  const base = WAITING_STANDING[item.kind];
+  if (item.kind !== "approve") return base;
+  // The item doesn't say whether one option or several, and "Pick" is true of both.
+  if (item.ask_kind === "choose") return { ...base, word: "Pick" };
+  if (item.ask_kind === "question") return { ...base, word: "Answer?" };
+  return base;
+}
+
 const bare = (handle: string | null | undefined) => (handle ?? "").replace(/^@/, "");
 
 /** Who a part is with: a handle, "you", or null for nobody yet. */
@@ -152,6 +162,9 @@ export function progressOf(epic: BoardEpic): string {
 
 /** A waiting item's title, the same as every other row's: the task it's in. */
 export function waitingTitle(item: WaitingItem): string {
+  // An agent's ask in the room's channel is about no task: its question is
+  // what the row is about.
+  if (!item.title && item.kind === "approve" && item.text) return item.text;
   return item.title ?? "A message in the room";
 }
 
@@ -165,6 +178,7 @@ export function waitingLine(item: WaitingItem, you = ""): string {
     return you && text !== item.text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
   }
   if (item.kind === "turn") return `${item.sender ?? "A flow"} is waiting on you`;
+  if (item.kind === "approve" && !item.title) return "In the room";
   return item.text ?? "";
 }
 

@@ -298,7 +298,7 @@ def _with_decisions(room: str, messages: list[MessageRead]) -> list[MessageRead]
     message. Worked out from the transcript on read, never stored."""
     if not any(m.metadata and "ask" in m.metadata for m in messages):
         return messages
-    found = approvals.asked(approvals.records(room))
+    found = approvals.asked(approvals.records(room), room)
     out = []
     for m in messages:
         ask = (m.metadata or {}).get("ask")
