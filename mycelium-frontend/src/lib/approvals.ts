@@ -1,55 +1,112 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-// An ask: an agent asking one person for something the hub knows how to draw.
-// v1 has one kind, `approve`. The agent fills in the fields, the app draws the
-// card, and the person's answer goes back to the agent as values, never as
-// prose it has to read (contracts/approvals.json).
+// An ask: an agent asking a person for something the hub knows how to draw.
+// Three kinds: `approve` (a yes or no on what the agent will do), `choose`
+// (pick one option, or several) and `question` (an open question). Every kind
+// takes a note with its answer. The agent fills in the fields, the app draws
+// the card, and the answer goes back to the agent as values, never as prose it
+// has to read (contracts/approvals.json).
 
 import { keyProblem } from "@/lib/memory-location";
 
 // Frozen in contracts/approvals.json; approvals.test.ts holds this copy to it.
 export const PAYLOAD_KEYS = { ask: "ask", answer: "answer" } as const;
-export const ASK_KINDS = ["approve"] as const;
+export const ASK_KINDS = ["approve", "choose", "question"] as const;
 export const ASK_FIELDS = {
   required: ["id", "kind", "to", "question"],
-  optional: ["happens", "why", "undo", "link"],
+  optional: ["why", "happens", "undo", "link", "options", "multiple", "recommend", "suggest"],
 } as const;
 export const DECISIONS = ["approved", "declined"] as const;
-export const ANSWER_FIELDS = { required: ["ask", "decision", "by", "at"], optional: ["reason"] } as const;
+export const ANSWER_FIELDS = {
+  required: ["ask", "kind", "question", "for", "by", "at"],
+  optional: ["decision", "choices", "chosen", "text"],
+} as const;
 export const WAITING_KIND = "approve";
+
+export type AskKind = (typeof ASK_KINDS)[number];
+export type Decision = (typeof DECISIONS)[number];
+
+export interface AskOption {
+  id: string;
+  label: string;
+  detail: string | null;
+}
 
 /** How an ask was answered, once it has been. */
 export interface AskAnswer {
-  decision: (typeof DECISIONS)[number];
-  reason: string | null;
+  kind: AskKind;
+  question: string;
+  /** Whom the ask was put to. */
+  for: string | null;
+  /** Who answered: the person asked, or anyone else in the room. */
   by: string;
   at: string;
+  decision: Decision | null;
+  choices: string[];
+  /** The labels of `choices`, as they read on the card. */
+  chosen: string[];
+  /** The note sent with any kind, and the whole answer to a question. */
+  text: string | null;
 }
 
 export interface ApprovalAsk {
   id: string;
-  kind: (typeof ASK_KINDS)[number];
-  /** The one person who can answer it. */
+  kind: AskKind;
+  /** The person it's put to. Anyone else in the room may answer it too. */
   to: string;
   question: string;
   happens: string | null;
   why: string | null;
   undo: string | null;
   link: string | null;
+  /** A choose's options, numbered by the hub. */
+  options: AskOption[];
+  /** A choose that takes several options. */
+  multiple: boolean;
+  /** The options the agent recommends, on a choose. */
+  recommend: string[];
+  /** On an approve: the agent recommends saying yes. */
+  recommendsApprove: boolean;
+  /** On a question: the agent's draft answer. */
+  suggest: string | null;
   /** Folded onto the ask by the hub once it's answered. */
   answer: AskAnswer | null;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
+const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 
-function asAnswer(v: unknown): AskAnswer | null {
+function asAnswer(v: unknown, ask?: { kind: AskKind; question: string; to: string }): AskAnswer | null {
   if (!v || typeof v !== "object") return null;
   const a = v as Record<string, unknown>;
-  const decision = DECISIONS.find((d) => d === a.decision);
   const by = str(a.by);
-  if (!decision || !by) return null;
-  return { decision, reason: str(a.reason), by, at: str(a.at) ?? "" };
+  if (!by) return null;
+  const decision = DECISIONS.find((d) => d === a.decision) ?? null;
+  const choices = strs(a.choices);
+  // A v1 answer carried no kind; a decision says it was an approve.
+  const kind = ASK_KINDS.find((k) => k === a.kind) ?? ask?.kind ?? (decision ? "approve" : choices.length ? "choose" : "question");
+  return {
+    kind,
+    question: str(a.question) ?? ask?.question ?? "",
+    for: str(a.for) ?? ask?.to ?? null,
+    by,
+    at: str(a.at) ?? "",
+    decision,
+    choices,
+    chosen: strs(a.chosen),
+    // `reason` is what a v1 answer called its note.
+    text: str(a.text) ?? str(a.reason),
+  };
+}
+
+function asOptions(v: unknown): AskOption[] {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((o) => {
+    const id = str((o as { id?: unknown })?.id);
+    const label = str((o as { label?: unknown })?.label);
+    return id && label ? [{ id, label, detail: str((o as { detail?: unknown }).detail) }] : [];
+  });
 }
 
 function asAsk(v: unknown): ApprovalAsk | null {
@@ -59,8 +116,10 @@ function asAsk(v: unknown): ApprovalAsk | null {
   const to = str(a.to);
   const question = str(a.question);
   const kind = ASK_KINDS.find((k) => k === a.kind);
-  // A kind this app doesn't know is drawn as the plain message it also is.
-  if (!kind || !id || !to || !question) return null;
+  const options = asOptions(a.options);
+  // A kind this app doesn't know, or a choose with nothing to pick, is drawn
+  // as the plain message it also is.
+  if (!kind || !id || !to || !question || (kind === "choose" && options.length < 2)) return null;
   return {
     id,
     kind,
@@ -70,7 +129,12 @@ function asAsk(v: unknown): ApprovalAsk | null {
     why: str(a.why),
     undo: str(a.undo),
     link: str(a.link),
-    answer: asAnswer(a.answer),
+    options,
+    multiple: kind === "choose" && a.multiple === true,
+    recommend: kind === "choose" ? strs(a.recommend) : [],
+    recommendsApprove: kind === "approve" && a.recommend === "approve",
+    suggest: kind === "question" ? str(a.suggest) : null,
+    answer: asAnswer(a.answer, { kind, question, to }),
   };
 }
 
@@ -93,6 +157,14 @@ export function linkKind(link: string): "web" | "memory" | "text" {
   if (/^https?:\/\/\S+$/i.test(link)) return "web";
   if (link.includes("/") && keyProblem(link) === null) return "memory";
   return "text";
+}
+
+/** What an answer decided, in a few words: "Approved", "Declined", "Chose
+ *  Implement to the spec now", or "Answered". */
+export function verdictOf(answer: AskAnswer): string {
+  if (answer.kind === "approve") return answer.decision === "declined" ? "Declined" : "Approved";
+  if (answer.kind === "choose") return `Chose ${answer.chosen.length ? answer.chosen.join(", ") : answer.choices.join(", ")}`;
+  return "Answered";
 }
 
 /** A person's answer, as the message that carries it back to the agent. */
@@ -119,7 +191,8 @@ export function foldAnswers<T extends { ask: ApprovalAsk | null; answers: AskRep
   return events.map((ev) => {
     const reply = ev.ask && !ev.ask.answer ? replies.get(ev.ask.id) : undefined;
     if (!reply || !ev.ask) return ev;
-    const answer = { decision: reply.decision, reason: reply.reason, by: reply.by, at: reply.at };
+    const { ask: _id, ...answer } = reply;
+    void _id;
     return { ...ev, ask: { ...ev.ask, answer } };
   });
 }

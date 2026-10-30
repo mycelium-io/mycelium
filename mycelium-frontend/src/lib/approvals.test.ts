@@ -15,7 +15,7 @@ import {
   answerOf,
   askOf,
   foldAnswers,
-  type ApprovalAsk,
+  verdictOf,
   type AskReply,
 } from "@/lib/approvals";
 import { WAITING_KINDS } from "@/lib/board/people";
@@ -25,6 +25,17 @@ const CONTRACT = JSON.parse(
 );
 
 const ASK = { id: "7e21c0a4", kind: "approve", to: "operator", question: "Flip it Friday?" };
+const CHOOSE = {
+  id: "3f9c1a2b",
+  kind: "choose",
+  to: "operator",
+  question: "Which first?",
+  options: [
+    { id: "1", label: "Implement to the spec" },
+    { id: "2", label: "Copy their code", detail: "Needs their OK." },
+  ],
+  recommend: ["1"],
+};
 
 describe("contracts/approvals.json", () => {
   it("is what the app reads", () => {
@@ -38,19 +49,12 @@ describe("contracts/approvals.json", () => {
     expect(WAITING_KIND).toBe(CONTRACT.waiting_kind);
     expect(WAITING_KINDS).toContain(CONTRACT.waiting_kind);
   });
-
-  it("draws an ask with every field the contract names", () => {
-    const fields = [...CONTRACT.ask_fields.required, ...CONTRACT.ask_fields.optional] as string[];
-    const full = Object.fromEntries(fields.map((f) => [f, f === "kind" ? "approve" : `the ${f}`]));
-    const ask = askOf({ metadata: { ask: full } });
-    for (const f of fields) expect(ask?.[f as keyof ApprovalAsk]).toBe(full[f]);
-  });
 });
 
 describe("askOf", () => {
-  it("reads an ask from a history read's metadata", () => {
-    const ask = askOf({ content: "Flip it Friday?", metadata: { ask: { ...ASK, undo: "Turn it off." } } });
-    expect(ask).toMatchObject({ id: "7e21c0a4", to: "operator", question: "Flip it Friday?", undo: "Turn it off.", happens: null });
+  it("reads an approve from a history read's metadata", () => {
+    const ask = askOf({ content: "Flip it Friday?", metadata: { ask: { ...ASK, undo: "Turn it off.", recommend: "approve" } } });
+    expect(ask).toMatchObject({ id: "7e21c0a4", kind: "approve", undo: "Turn it off.", happens: null, recommendsApprove: true });
     expect(ask?.answer).toBeNull();
   });
 
@@ -59,33 +63,80 @@ describe("askOf", () => {
     expect(askOf({ content, metadata: null })?.id).toBe("7e21c0a4");
   });
 
-  it("reads the answer the hub folded onto it", () => {
-    const answer = { decision: "declined", reason: "Not yet", by: "operator", at: "2026-10-30T10:42:00Z" };
-    expect(askOf({ metadata: { ask: { ...ASK, answer } } })?.answer).toEqual(answer);
+  it("reads a choose's options and the agent's picks", () => {
+    const ask = askOf({ metadata: { ask: { ...CHOOSE, multiple: true } } });
+    expect(ask?.options).toEqual([
+      { id: "1", label: "Implement to the spec", detail: null },
+      { id: "2", label: "Copy their code", detail: "Needs their OK." },
+    ]);
+    expect(ask?.multiple).toBe(true);
+    expect(ask?.recommend).toEqual(["1"]);
   });
 
-  it("leaves a kind it doesn't know, or a broken ask, as a plain message", () => {
-    expect(askOf({ metadata: { ask: { ...ASK, kind: "choose" } } })).toBeNull();
+  it("reads a question's draft answer", () => {
+    expect(askOf({ metadata: { ask: { ...ASK, kind: "question", suggest: "The tray icon." } } })?.suggest).toBe("The tray icon.");
+  });
+
+  it("reads the answer the hub folded onto it, naming its question", () => {
+    const answer = { kind: "choose", question: "Which first?", for: "operator", by: "jamie", at: "t", choices: ["1"], chosen: ["Implement to the spec"], text: "later" };
+    expect(askOf({ metadata: { ask: { ...CHOOSE, answer } } })?.answer).toEqual({ ...answer, decision: null });
+  });
+
+  it("reads a v1 answer, whose note was its reason", () => {
+    const answer = { decision: "declined", reason: "Not yet", by: "operator", at: "t" };
+    expect(askOf({ metadata: { ask: { ...ASK, answer } } })?.answer).toMatchObject({
+      kind: "approve",
+      question: "Flip it Friday?",
+      for: "operator",
+      decision: "declined",
+      text: "Not yet",
+    });
+  });
+
+  it("leaves a kind it doesn't know, a choose with nothing to pick, or a broken ask, as a plain message", () => {
+    expect(askOf({ metadata: { ask: { ...ASK, kind: "rank" } } })).toBeNull();
+    expect(askOf({ metadata: { ask: { ...CHOOSE, options: [{ id: "1", label: "Only one" }] } } })).toBeNull();
     expect(askOf({ metadata: { ask: { ...ASK, question: "" } } })).toBeNull();
     expect(askOf({ metadata: null })).toBeNull();
   });
 });
 
+describe("verdictOf", () => {
+  const base = { question: "q", for: "operator", by: "operator", at: "", choices: [], chosen: [], text: null };
+  it("says what was decided", () => {
+    expect(verdictOf({ ...base, kind: "approve", decision: "approved" })).toBe("Approved");
+    expect(verdictOf({ ...base, kind: "approve", decision: "declined" })).toBe("Declined");
+    expect(verdictOf({ ...base, kind: "choose", decision: null, choices: ["1", "3"], chosen: ["A", "C"] })).toBe("Chose A, C");
+    expect(verdictOf({ ...base, kind: "question", decision: null, text: "x" })).toBe("Answered");
+  });
+});
+
 describe("answerOf", () => {
   it("reads the answer a message carries, and which ask it answers", () => {
-    const answer = { ask: "7e21c0a4", decision: "approved", by: "operator", at: "2026-10-30T10:42:00Z" };
-    expect(answerOf({ metadata: { answer } })).toEqual({ ...answer, reason: null });
+    const answer = { ask: "7e21c0a4", kind: "approve", question: "Flip it Friday?", for: "operator", decision: "approved", by: "jamie", at: "t" };
+    expect(answerOf({ metadata: { answer } })).toEqual({ ...answer, choices: [], chosen: [], text: null });
     expect(answerOf({ metadata: { conductor: {} } })).toBeNull();
   });
 });
 
 describe("foldAnswers", () => {
   const asked = { ask: askOf({ metadata: { ask: ASK } }), answers: null as AskReply | null };
-  const reply: AskReply = { ask: "7e21c0a4", decision: "declined", reason: "Not yet", by: "operator", at: "now" };
+  const reply: AskReply = {
+    ask: "7e21c0a4",
+    kind: "approve",
+    question: "Flip it Friday?",
+    for: "operator",
+    by: "operator",
+    at: "now",
+    decision: "declined",
+    choices: [],
+    chosen: [],
+    text: "Not yet",
+  };
 
   it("puts a live answer on the card of the ask it answers", () => {
     const [card] = foldAnswers([asked, { ask: null, answers: reply }]);
-    expect(card.ask?.answer).toEqual({ decision: "declined", reason: "Not yet", by: "operator", at: "now" });
+    expect(card.ask?.answer).toMatchObject({ decision: "declined", text: "Not yet", by: "operator" });
   });
 
   it("leaves an ask with no answer in the feed as it is", () => {

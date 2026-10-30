@@ -1363,6 +1363,73 @@ const checkout: RoomFixture = {
         },
       },
     },
+    // Asks in the room's channel, one of each kind: reviewer's pick, builder's
+    // open question with a draft answer, and an approve Jamie answered for
+    // Morgan, which reads as a folded line.
+    {
+      id: "k1",
+      sender_handle: "reviewer",
+      recipient_handle: "operator",
+      message_type: "broadcast",
+      content: "Which should go first for the double charges?",
+      created_at: iso(3),
+      metadata: {
+        ask: {
+          id: "3f9c1a2b",
+          kind: "choose",
+          to: "operator",
+          question: "Which should go first for the double charges?",
+          options: [
+            { id: "1", label: "Refund them automatically", detail: "Customers get their money back in minutes." },
+            { id: "2", label: "Send each one to support", detail: "A person checks every case first." },
+          ],
+          recommend: ["1"],
+        },
+      },
+    },
+    {
+      id: "k2",
+      sender_handle: "builder",
+      recipient_handle: "operator",
+      message_type: "broadcast",
+      content: "Where is checkout slowest for you right now?",
+      created_at: iso(2),
+      metadata: {
+        ask: {
+          id: "9d4e6f10",
+          kind: "question",
+          to: "operator",
+          question: "Where is checkout slowest for you right now?",
+          suggest: "The card form takes a few seconds to appear.",
+        },
+      },
+    },
+    {
+      id: "k3",
+      sender_handle: "reviewer",
+      recipient_handle: "operator",
+      message_type: "broadcast",
+      content: "Merge #504 before the sale?",
+      created_at: iso(5),
+      metadata: {
+        ask: {
+          id: "5b2c8e71",
+          kind: "approve",
+          to: "operator",
+          question: "Merge #504 before the sale?",
+          why: "The double-charge fix is reviewed and CI is green.",
+          answer: {
+            kind: "approve",
+            question: "Merge #504 before the sale?",
+            for: "operator",
+            by: "jamie",
+            at: iso(4),
+            decision: "approved",
+            text: "merge it, I'll watch the refunds",
+          },
+        },
+      },
+    },
     // The parts' own threads, so each running part has a latest line.
     { id: "p1", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is up, with the button behind the switch.", created_at: iso(26), episode: APPLE_PAY_THREAD },
     { id: "p2", sender_handle: "reviewer", message_type: "broadcast", content: "approved #502. ci is green, so it can go to staging.", created_at: iso(18), episode: APPLE_PAY_THREAD },

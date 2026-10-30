@@ -1168,8 +1168,10 @@ export async function fetchRoomBoard(roomName: string): Promise<BoardRead> {
 
 /** One thing waiting on a member (`GET /rooms/{room}/waiting?for=`). */
 export interface WaitingItem {
-  /** `approve` is an agent's ask for your OK, `ask` a message that asks you. */
+  /** `approve` is an agent's ask (of any kind), `ask` a message that asks you. */
   kind: "approve" | "ask" | "turn" | "task";
+  /** On an agent's ask: which kind it is (approve, choose or question). */
+  ask_kind?: "approve" | "choose" | "question" | null;
   key?: string | null;
   title?: string | null;
   episode?: string | null;
@@ -1344,7 +1346,15 @@ export interface AskAnswered {
 export async function answerAsk(
   roomName: string,
   askId: string,
-  answer: { decision: "approved" | "declined"; reason?: string | null; by: string },
+  answer: {
+    by: string;
+    /** An approve's yes or no. */
+    decision?: "approved" | "declined";
+    /** A choose's option ids. */
+    choices?: string[];
+    /** The note on any kind, and the whole answer to a question. */
+    text?: string;
+  },
 ): Promise<AskAnswered> {
   return apiFetch<AskAnswered>(`${roomApiPath(roomName)}/asks/${encodeURIComponent(askId)}/answer`, {
     method: "POST",
