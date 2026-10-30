@@ -21,7 +21,12 @@ from several places, and they are tried in the same order for all four:
    whose host passes it no environment knows who it is.
 5. **machine**: this machine's own setup: ``config.toml``, ``mycelium login``,
    ``mycelium iam``, and the hub's ``whoami`` for that login.
-6. **default**.
+6. **desktop app**, for the hub only: the hub the desktop app joins in client
+   mode (``~/.mycelium/desktop.json``), when ``config.toml`` names none of its
+   own. It's read, never copied into ``config.toml``, so it follows the app:
+   switch the app back to running its own hub, or remove it, and the CLI goes
+   back to this machine's setting.
+7. **default**.
 
 ``identity.resolve_actor``, ``commands.room._resolve_room``,
 ``client.auth_headers`` and ``MyceliumConfig.load`` keep their signatures and
@@ -55,14 +60,18 @@ PANE_ENV = "HERDR_PANE_ID"
 #: What the runner sets in each pane it starts an agent in.
 AGENT_PANE_ENV = "MYCELIUM_AGENT_PANE"
 
-FLAG, ENVIRONMENT, PANE, MEMBERSHIP, MACHINE, DEFAULT = (
+FLAG, ENVIRONMENT, PANE, MEMBERSHIP, MACHINE, DESKTOP, DEFAULT = (
     "flag",
     "environment",
     "pane",
     "membership",
     "machine",
+    "desktop app",
     "default",
 )
+
+#: The hub ``config.server.api_url`` names when nothing sets it.
+DEFAULT_HUB = "http://localhost:8000"
 
 
 # ── membership: what `mycelium join` saved ───────────────────────────────────
@@ -220,18 +229,45 @@ class Answer:
     source: str
 
 
-def config_overlay() -> dict[str, Any]:
-    """What a membership says about the hub and the room, as config.
+def config_overlay(files_hub: str | None = None) -> dict[str, Any]:
+    """What a membership, or else the desktop app, says about the hub and the
+    room, as config. ``files_hub`` is the hub ``config.toml`` names, if any.
 
     ``MyceliumConfig.load`` merges this between the config files and the
     environment, so every reader of ``config.server.api_url`` and
-    ``config.rooms.active`` sees the membership's answer, and an environment
-    variable still wins over it.
+    ``config.rooms.active`` sees the answer, an environment variable still wins
+    over it, and ``save`` writes back what the files said rather than this.
     """
     member = find_membership()
-    if member is None:
-        return {}
-    return {"server": {"api_url": member.hub}, "rooms": {"active": member.room}}
+    if member is not None:
+        return {"server": {"api_url": member.hub}, "rooms": {"active": member.room}}
+    joined = _desktop_hub_over(files_hub)
+    return {"server": {"api_url": joined}} if joined else {}
+
+
+def desktop_hub() -> str | None:
+    """The hub the desktop app joins, when it's in client mode."""
+    try:
+        data = json.loads((Path.home() / ".mycelium" / "desktop.json").read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("mode") != "client":
+        return None
+    return str(data.get("hubUrl") or "").strip().rstrip("/") or None
+
+
+def _desktop_hub_over(files_hub: str | None) -> str | None:
+    """The app's client-mode hub, unless ``config.toml`` names a hub of its own.
+
+    A ``config.toml`` naming the default hub names none: a whole-config save
+    (``mycelium login``, ``iam``) writes every field, defaults included, and in
+    client mode nothing answers on this computer's port anyway.
+    """
+    joined = desktop_hub()
+    if joined is None:
+        return None
+    own = (files_hub or "").strip().rstrip("/")
+    return joined if own in ("", DEFAULT_HUB) else None
 
 
 def hub(config: MyceliumConfig) -> Answer:
@@ -241,6 +277,9 @@ def hub(config: MyceliumConfig) -> Answer:
     member = find_membership()
     if member is not None:
         return Answer(member.hub, MEMBERSHIP)
+    replaced = config._membership_overrides.get(("server", "api_url"))
+    if replaced is not None and replaced[1] == config.server.api_url:
+        return Answer(config.server.api_url, DESKTOP)
     return Answer(config.server.api_url, MACHINE)
 
 

@@ -72,6 +72,96 @@ def test_without_a_membership_the_machine_answers(isolated_home: Path):
     assert caller.config_overlay() == {}
 
 
+# ── the desktop app in client mode names the hub ────────────────────────────
+
+APP_HUB = "https://hub.example.com"
+
+
+def _app(home: Path, mode: str = "client", hub_url: str | None = APP_HUB + "/") -> None:
+    folder = home / ".mycelium"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "desktop.json").write_text(json.dumps({"mode": mode, "hubUrl": hub_url}))
+
+
+def _config_toml(home: Path, api_url: str) -> None:
+    (home / ".mycelium" / "config.toml").write_text(f'[server]\napi_url = "{api_url}"\n')
+
+
+def test_a_fresh_home_in_client_mode_uses_the_app_s_hub(isolated_home: Path):
+    """Only the app's setting, as a first run in client mode leaves it."""
+    _app(isolated_home)
+    config = MyceliumConfig.load()
+    assert config.server.api_url == APP_HUB
+    assert caller.hub(config) == caller.Answer(APP_HUB, caller.DESKTOP)
+    assert ("hub", APP_HUB, caller.DESKTOP) in caller.explain(config)
+
+
+def test_whoami_sources_says_the_hub_came_from_the_app(isolated_home: Path):
+    _app(isolated_home)
+    result = runner.invoke(app, ["whoami", "--sources"])
+    assert result.exit_code == 0, result.output
+    assert APP_HUB in result.output
+    assert "desktop app" in result.output
+
+
+def test_a_hub_this_machine_set_wins_over_the_app(isolated_home: Path):
+    _app(isolated_home)
+    _config_toml(isolated_home, "https://other.example.com")
+    config = MyceliumConfig.load()
+    assert caller.hub(config) == caller.Answer("https://other.example.com", caller.MACHINE)
+
+
+def test_a_saved_default_hub_is_no_hub_of_its_own(isolated_home: Path):
+    """A whole-config save writes the default too; it doesn't hide the app's hub."""
+    _app(isolated_home)
+    _config_toml(isolated_home, caller.DEFAULT_HUB)
+    assert MyceliumConfig.load().server.api_url == APP_HUB
+
+
+def test_the_environment_wins_over_the_app(isolated_home: Path, monkeypatch):
+    _app(isolated_home)
+    monkeypatch.setenv("MYCELIUM_API_URL", "http://env.test:9000")
+    config = MyceliumConfig.load()
+    assert caller.hub(config) == caller.Answer("http://env.test:9000", caller.ENVIRONMENT)
+
+
+@pytest.mark.parametrize(("mode", "hub_url"), [("hub", None), ("client", None), ("client", "")])
+def test_an_app_running_its_own_hub_or_naming_none_changes_nothing(
+    isolated_home: Path, mode: str, hub_url: str | None
+):
+    _app(isolated_home, mode=mode, hub_url=hub_url)
+    config = MyceliumConfig.load()
+    assert config.server.api_url == caller.DEFAULT_HUB
+    assert caller.hub(config).source == caller.MACHINE
+
+
+def test_login_asks_the_app_s_hub_what_it_trusts(isolated_home: Path, monkeypatch):
+    from mycelium.commands import login
+
+    _app(isolated_home)
+    asked: list[str] = []
+
+    def answer(request: httpx.Request):
+        asked.append(str(request.url))
+        return 503, {"detail": "starting"}
+
+    install_stand_in_hub(monkeypatch).answer = answer
+    login._hub_issuers(MyceliumConfig.load())
+    assert asked
+    assert asked[0].startswith(APP_HUB + "/health")
+
+
+def test_saving_the_config_never_copies_the_app_s_hub(isolated_home: Path):
+    """Read, never written: leave client mode and the CLI follows the app."""
+    _app(isolated_home)
+    config = MyceliumConfig.load()
+    config.save()
+    saved = (isolated_home / ".mycelium" / "config.toml").read_text()
+    assert APP_HUB not in saved
+    _app(isolated_home, mode="hub", hub_url=None)
+    assert MyceliumConfig.load().server.api_url == caller.DEFAULT_HUB
+
+
 # ── a membership answers for its folder and everything below it ─────────────
 
 
