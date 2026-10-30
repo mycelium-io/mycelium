@@ -20,13 +20,13 @@ Run `mycelium status --json` for machine-readable health data, or `mycelium stat
 **Fix**: Reinstall via one of these methods:
 
 ```bash
-# curl (on an Apple silicon Mac this installs the desktop app and links its CLI;
-# add `bash -s -- --client-only` for the CLI alone)
+# On an Apple silicon Mac this installs the desktop app and links its CLI;
+# add `bash -s -- --client-only` for the CLI alone
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
-
-# brew
-brew install mycelium-io/tap/mycelium
 ```
+
+A `mycelium` installed earlier with Homebrew is a CLI-only install from before
+the app existed; remove it (`brew uninstall mycelium`) and use the command above.
 
 Or via clawhub — tell your agent:
 > "install https://clawhub.ai/juliarvalenti/mycelium-io"
