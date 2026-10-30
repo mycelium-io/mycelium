@@ -160,7 +160,7 @@ export function linkKind(link: string): "web" | "memory" | "text" {
 }
 
 /** What an answer decided, in a few words: "Approved", "Declined", "Chose
- *  Implement to the spec now", or "Answered". */
+ *  Stripe", or "Answered". */
 export function verdictOf(answer: AskAnswer): string {
   if (answer.kind === "approve") return answer.decision === "declined" ? "Declined" : "Approved";
   if (answer.kind === "choose") return `Chose ${answer.chosen.length ? answer.chosen.join(", ") : answer.choices.join(", ")}`;

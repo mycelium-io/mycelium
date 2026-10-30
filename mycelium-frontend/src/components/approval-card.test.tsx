@@ -55,10 +55,10 @@ const approve = (over: Partial<ApprovalAsk> = {}): ApprovalAsk => ({
 const choose = (over: Partial<ApprovalAsk> = {}): ApprovalAsk => ({
   ...base,
   kind: "choose",
-  question: "Which first?",
+  question: "Which payment provider first?",
   options: [
-    { id: "1", label: "Implement to the spec", detail: null },
-    { id: "2", label: "Copy their code", detail: "Needs their OK first." },
+    { id: "1", label: "Stripe", detail: null },
+    { id: "2", label: "Adyen", detail: "Needs a new contract." },
     { id: "3", label: "Wait a week", detail: null },
   ],
   recommend: ["1"],
@@ -67,7 +67,7 @@ const choose = (over: Partial<ApprovalAsk> = {}): ApprovalAsk => ({
 const question = (over: Partial<ApprovalAsk> = {}): ApprovalAsk => ({
   ...base,
   kind: "question",
-  question: "Where is it most broken?",
+  question: "What's slowest at checkout?",
   ...over,
 });
 const answered = (over: Partial<AskAnswer>): AskAnswer => ({
@@ -99,12 +99,12 @@ describe("an approve", () => {
 
   it("approves with the note typed beside it", async () => {
     renderWithSWR(<AskCard roomName="checkout" ask={approve()} />);
-    await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "File it for builder");
+    await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "Ship it after the iPhone test");
     await userEvent.click(screen.getByRole("button", { name: /Approve/ }));
     expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", {
       by: "operator",
       decision: "approved",
-      text: "File it for builder",
+      text: "Ship it after the iPhone test",
     });
     expect(await screen.findByText("Approved")).toBeInTheDocument();
   });
@@ -125,9 +125,9 @@ describe("a choose", () => {
   it("starts on the agent's pick, and sends the one picked", async () => {
     renderWithSWR(<AskCard roomName="checkout" ask={choose()} />);
     expect(screen.getByText("Pick one")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /Implement to the spec/ })).toBeChecked();
-    await userEvent.click(screen.getByRole("radio", { name: /Copy their code/ }));
-    expect(screen.getByRole("radio", { name: /Implement to the spec/ })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /Stripe/ })).toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: /Adyen/ }));
+    expect(screen.getByRole("radio", { name: /Stripe/ })).not.toBeChecked();
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", { by: "operator", choices: ["2"] });
   });
@@ -135,7 +135,7 @@ describe("a choose", () => {
   it("takes several when it says so, and counts them on the button", async () => {
     renderWithSWR(<AskCard roomName="checkout" ask={choose({ multiple: true, recommend: ["1", "3"] })} />);
     expect(screen.getByText("Pick any")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("checkbox", { name: /Copy their code/ }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /Adyen/ }));
     await userEvent.click(screen.getByRole("button", { name: "Send 3" }));
     expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", { by: "operator", choices: ["1", "2", "3"] });
   });
@@ -143,14 +143,14 @@ describe("a choose", () => {
 
 describe("a question", () => {
   it("starts from the agent's draft, and sends the text", async () => {
-    renderWithSWR(<AskCard roomName="checkout" ask={question({ suggest: "The tray icon." })} />);
+    renderWithSWR(<AskCard roomName="checkout" ask={question({ suggest: "The address form." })} />);
     const box = screen.getByRole("textbox", { name: "Your answer" });
-    expect(box).toHaveValue("The tray icon.");
-    await userEvent.type(box, " It shows the old logo.");
+    expect(box).toHaveValue("The address form.");
+    await userEvent.type(box, " It reloads on every typo.");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", {
       by: "operator",
-      text: "The tray icon. It shows the old logo.",
+      text: "The address form. It reloads on every typo.",
     });
   });
 
@@ -174,19 +174,19 @@ describe("anyone else in the room", () => {
 describe("an answered ask", () => {
   it("folds to a line: what was decided, the note, who and for whom", async () => {
     principal = "operator";
-    const ask = choose({ answer: answered({ kind: "choose", decision: null, choices: ["1"], chosen: ["Implement to the spec"], by: "jamie", text: "copy later" }) });
+    const ask = choose({ answer: answered({ kind: "choose", decision: null, choices: ["1"], chosen: ["Stripe"], by: "jamie", text: "revisit in spring" }) });
     renderWithSWR(<AskCard roomName="checkout" ask={ask} />);
     const line = screen.getByRole("button", { expanded: false });
-    expect(line).toHaveTextContent("Chose Implement to the spec");
-    expect(line).toHaveTextContent("Which first?");
-    expect(line).toHaveTextContent("copy later");
+    expect(line).toHaveTextContent("Chose Stripe");
+    expect(line).toHaveTextContent("Which payment provider first?");
+    expect(line).toHaveTextContent("revisit in spring");
     expect(line).toHaveTextContent("Jamie Park for you");
     expect(screen.queryByRole("radio")).toBeNull();
 
     await userEvent.click(line);
-    expect(screen.getByRole("radio", { name: /Implement to the spec/ })).toBeChecked();
-    expect(screen.getByRole("radio", { name: /Implement to the spec/ })).toBeDisabled();
-    expect(screen.getByText("“copy later”")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Stripe/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Stripe/ })).toBeDisabled();
+    expect(screen.getByText("“revisit in spring”")).toBeInTheDocument();
   });
 
   it("reads a declined approve as declined", () => {

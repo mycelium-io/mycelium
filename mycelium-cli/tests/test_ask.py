@@ -106,11 +106,11 @@ def test_a_choose_sends_its_options_in_order_and_its_picks(sent: list[dict]) -> 
         [
             "ask",
             "--choose",
-            "Which first?",
+            "Which payment provider first?",
             "--option",
-            "Implement to the spec",
+            "Stripe",
             "--option",
-            "Copy their code",
+            "Adyen",
             "--option",
             "Wait",
             "--multiple",
@@ -121,8 +121,8 @@ def test_a_choose_sends_its_options_in_order_and_its_picks(sent: list[dict]) -> 
     assert result.exit_code == 0, result.output
     assert sent[0]["kind"] == "choose"
     assert [o["label"] for o in sent[0]["options"]] == [
-        "Implement to the spec",
-        "Copy their code",
+        "Stripe",
+        "Adyen",
         "Wait",
     ]
     assert (sent[0]["multiple"], sent[0]["recommend"]) == (True, ["1", "3"])
@@ -131,10 +131,11 @@ def test_a_choose_sends_its_options_in_order_and_its_picks(sent: list[dict]) -> 
 
 def test_a_question_sends_its_draft_answer(sent: list[dict]) -> None:
     result = runner.invoke(
-        cli_app, ["ask", "--question", "Where is it broken?", "--suggest", "The mechanics"]
+        cli_app,
+        ["ask", "--question", "What's slowest at checkout?", "--suggest", "The address form"],
     )
     assert result.exit_code == 0, result.output
-    assert (sent[0]["kind"], sent[0]["suggest"]) == ("question", "The mechanics")
+    assert (sent[0]["kind"], sent[0]["suggest"]) == ("question", "The address form")
     assert "multiple" not in sent[0]
 
 
@@ -159,7 +160,7 @@ def test_a_refusal_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _answer(**fields) -> AwaitAskRead:
     return AwaitAskRead(
-        prompt='Chose "Implement to the spec now" for "Which first?"\n\nNote: copy later',
+        prompt='Chose "Stripe" for "Which payment provider first?"\n\nNote: revisit in spring',
         id="0" * 32,
         sender="jamie",
         answer=AskAnswer(ask="a1b2c3", by="jamie", at="2026-10-30T12:00:00+00:00", **fields),
@@ -168,10 +169,15 @@ def _answer(**fields) -> AwaitAskRead:
 
 def test_await_says_whose_answer_it_is_when_someone_else_gave_it() -> None:
     read = _answer(
-        kind=AskAnswerKindType0.CHOOSE, question="Which first?", for_="morgan", choices=["1"]
+        kind=AskAnswerKindType0.CHOOSE,
+        question="Which payment provider first?",
+        for_="morgan",
+        choices=["1"],
     )
     assert _answer_parts(read) == (" · answer to your ask, which you put to @morgan", "")
-    mine = _answer(kind=AskAnswerKindType0.CHOOSE, question="Which first?", for_="jamie")
+    mine = _answer(
+        kind=AskAnswerKindType0.CHOOSE, question="Which payment provider first?", for_="jamie"
+    )
     assert _answer_parts(mine) == (" · answer to your ask", "")
     assert _answer_parts(AwaitAskRead(prompt="hi", id="0" * 32)) == ("", "")
 

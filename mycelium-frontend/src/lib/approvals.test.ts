@@ -29,10 +29,10 @@ const CHOOSE = {
   id: "3f9c1a2b",
   kind: "choose",
   to: "operator",
-  question: "Which first?",
+  question: "Which payment provider first?",
   options: [
-    { id: "1", label: "Implement to the spec" },
-    { id: "2", label: "Copy their code", detail: "Needs their OK." },
+    { id: "1", label: "Stripe" },
+    { id: "2", label: "Adyen", detail: "Needs a new contract." },
   ],
   recommend: ["1"],
 };
@@ -69,19 +69,19 @@ describe("askOf", () => {
   it("reads a choose's options and the agent's picks", () => {
     const ask = askOf({ metadata: { ask: { ...CHOOSE, multiple: true } } });
     expect(ask?.options).toEqual([
-      { id: "1", label: "Implement to the spec", detail: null },
-      { id: "2", label: "Copy their code", detail: "Needs their OK." },
+      { id: "1", label: "Stripe", detail: null },
+      { id: "2", label: "Adyen", detail: "Needs a new contract." },
     ]);
     expect(ask?.multiple).toBe(true);
     expect(ask?.recommend).toEqual(["1"]);
   });
 
   it("reads a question's draft answer", () => {
-    expect(askOf({ metadata: { ask: { ...ASK, kind: "question", suggest: "The tray icon." } } })?.suggest).toBe("The tray icon.");
+    expect(askOf({ metadata: { ask: { ...ASK, kind: "question", suggest: "The address form." } } })?.suggest).toBe("The address form.");
   });
 
   it("reads the answer the hub folded onto it, naming its question", () => {
-    const answer = { kind: "choose", question: "Which first?", for: "operator", by: "jamie", at: "t", choices: ["1"], chosen: ["Implement to the spec"], text: "later" };
+    const answer = { kind: "choose", question: "Which payment provider first?", for: "operator", by: "jamie", at: "t", choices: ["1"], chosen: ["Stripe"], text: "later" };
     expect(askOf({ metadata: { ask: { ...CHOOSE, answer } } })?.answer).toEqual({ ...answer, decision: null });
   });
 

@@ -119,7 +119,7 @@ async def _ask(**kwargs):
     )
 
 
-OPTIONS = [{"label": "Implement to the spec now"}, {"label": "Copy their code now"}]
+OPTIONS = [{"label": "Stripe"}, {"label": "Adyen"}]
 SHAPES = {
     "approve": {},
     "choose": {"options": OPTIONS},
@@ -128,7 +128,7 @@ SHAPES = {
 ANSWERS: dict[str, dict[str, Any]] = {
     "approve": {"decision": "approved"},
     "choose": {"choices": ["1"]},
-    "question": {"text": "the mechanics"},
+    "question": {"text": "the address form"},
 }
 
 
@@ -258,14 +258,14 @@ class TestAsking:
     async def test_a_choose_numbers_its_options_and_keeps_what_the_agent_recommends(self, room):
         ask, _record, _task = await _ask(
             kind="choose",
-            options=[*OPTIONS, {"label": "Wait", "detail": "until their repo is public"}],
+            options=[*OPTIONS, {"label": "Wait", "detail": "until after the holidays"}],
             multiple=True,
             recommend=["1", "3", "1"],
         )
         assert ask["options"] == [
-            {"id": "1", "label": "Implement to the spec now"},
-            {"id": "2", "label": "Copy their code now"},
-            {"id": "3", "label": "Wait", "detail": "until their repo is public"},
+            {"id": "1", "label": "Stripe"},
+            {"id": "2", "label": "Adyen"},
+            {"id": "3", "label": "Wait", "detail": "until after the holidays"},
         ]
         assert (ask["multiple"], ask["recommend"]) == (True, ["1", "3"])
 
@@ -273,8 +273,8 @@ class TestAsking:
     async def test_an_approve_can_recommend_and_a_question_can_suggest(self, room):
         ask, _record, _task = await _ask(recommend="approve")
         assert ask["recommend"] == "approve"
-        ask, _record, _task = await _ask(kind="question", suggest=" the mechanics ")
-        assert ask["suggest"] == "the mechanics"
+        ask, _record, _task = await _ask(kind="question", suggest=" the address form ")
+        assert ask["suggest"] == "the address form"
         assert "recommend" not in ask
 
     @pytest.mark.asyncio
@@ -383,19 +383,19 @@ class TestAnswering:
     async def test_each_kind_says_what_was_decided_and_about_what(self, room):
         choose, _r, _t = await _ask(kind="choose", options=OPTIONS, multiple=True)
         _f, _a, record = await approvals.answer(
-            ROOM, choose["id"], by="julia", choices=["2", "1"], text="copy later"
+            ROOM, choose["id"], by="julia", choices=["2", "1"], text="revisit in spring"
         )
         assert record.content["content"] == (
-            'Chose "Copy their code now", "Implement to the spec now" for '
-            '"Turn Apple Pay on for everyone on Friday at 9:00?"\n\nNote: copy later'
+            'Chose "Adyen", "Stripe" for '
+            '"Turn Apple Pay on for everyone on Friday at 9:00?"\n\nNote: revisit in spring'
         )
         question, _r, _t = await _ask(kind="question")
         _f, answer, record = await approvals.answer(
-            ROOM, question["id"], by="julia", text="the mechanics"
+            ROOM, question["id"], by="julia", text="the address form"
         )
         assert record.content["content"].startswith('Answered "Turn Apple Pay')
-        assert record.content["content"].endswith(": the mechanics")
-        assert answer["text"] == "the mechanics"
+        assert record.content["content"].endswith(": the address form")
+        assert answer["text"] == "the address form"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -511,7 +511,7 @@ class TestOverHttp:
             json={"choices": ["2"], "reason": "for now", "by": "morgan"},
         )
         assert picked.status_code == 200, picked.text
-        assert picked.json()["answer"]["chosen"] == ["Copy their code now"]
+        assert picked.json()["answer"]["chosen"] == ["Adyen"]
         assert picked.json()["answer"]["text"] == "for now"
         unknown = await client.post(f"/api/rooms/{ROOM}/asks", json={"handle": "builder"})
         assert unknown.status_code == 422

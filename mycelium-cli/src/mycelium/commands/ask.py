@@ -128,8 +128,8 @@ def ask(
     Examples:
         mycelium ask --approve "Turn Apple Pay on for everyone on Friday at 9:00" --recommend
         mycelium ask --approve "Merge the checkout PR" --link https://github.com/o/r/pull/7 --undo "Revert the merge"
-        mycelium ask --choose "Which first?" --option "Implement to the spec" --option "Copy their code" --recommend-option 1
-        mycelium ask --question "Where is it most broken for you?" --suggest "The mechanics"
+        mycelium ask --choose "Which payment provider first?" --option "Stripe" --option "Adyen" --recommend-option 1
+        mycelium ask --question "What's slowest at checkout?" --suggest "The address form"
     """
     kinds = [k for k, on in zip(KINDS, (approve, choose, open_question), strict=True) if on]
     if len(kinds) != 1:
