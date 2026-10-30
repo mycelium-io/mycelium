@@ -40,6 +40,25 @@ describe("<MarkdownContent /> memory links", () => {
     expect(onLinkClick).toHaveBeenCalledWith("decisions/db");
   });
 
+  it("wraps a long key with the sentence, and still opens from the keyboard", async () => {
+    const onLinkClick = vi.fn();
+    const key = "work/say-plainly-what-the-engines-model-is-for-and-th";
+    render(<MarkdownContent onLinkClick={onLinkClick}>{`Filed as [[${key}]]. It covers the first run.`}</MarkdownContent>);
+
+    const chip = screen.getByRole("button", { name: key });
+    // Inline text, not a box: a box can't break across lines, so a long key
+    // dropped to a line of its own and pushed the rest of the sentence down.
+    expect(chip.tagName).toBe("SPAN");
+    expect(chip.className).toMatch(/(^|\s)inline(\s|$)/);
+    expect(chip.className).not.toMatch(/inline-(flex|block)/);
+
+    chip.focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard(" ");
+    expect(onLinkClick).toHaveBeenCalledTimes(2);
+    expect(onLinkClick).toHaveBeenCalledWith(key);
+  });
+
   it("resolves a myc:// URI to the same key as its shorthand", async () => {
     const onLinkClick = vi.fn();
     render(

@@ -136,8 +136,11 @@ interface LinkProps {
 
 function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
   const text = link.label ?? (link.anchor ? `${link.target}#${link.anchor}` : link.target);
+  // Inline, like the words around it: a long key wraps where the line ends
+  // rather than dropping to a line of its own as a box. The rounding and
+  // padding follow it onto the next line.
   const base =
-    "inline-flex items-baseline gap-1 rounded px-1 font-mono text-[0.92em] transition-colors";
+    "inline rounded px-1 font-mono text-[0.92em] transition-colors [overflow-wrap:anywhere] [box-decoration-break:clone]";
 
   if (broken) {
     return (
@@ -146,7 +149,7 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
           aria-description={`${link.target} — no such memory`}
           className={`${base} text-muted-foreground line-through decoration-red/60`}
         >
-          {link.transclusion && <span aria-hidden className="not-italic">⧉</span>}
+          {link.transclusion && <span aria-hidden className="mr-1 not-italic">⧉</span>}
           {text}
         </span>
       </Tooltip>
@@ -155,7 +158,7 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
 
   const body = (
     <>
-      {link.transclusion && <span aria-hidden className="not-italic">⧉</span>}
+      {link.transclusion && <span aria-hidden className="mr-1 not-italic">⧉</span>}
       {text}
     </>
   );
@@ -164,18 +167,29 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
     return <span className={`${base} text-accent`}>{body}</span>;
   }
   const action = link.transclusion ? `Embeds ${link.target}` : `Open ${link.target}`;
+  const open = () => onClick(link.target);
   return (
     <Tooltip content={action}>
+      {/* A span, not a button: a browser lays a button out as a box whatever
+          its display, so it couldn't wrap with the text. It still takes focus
+          and opens on Enter or Space, as a button would. */}
       {/* aria-description is ARIA 1.3 — jsx-a11y doesn't recognize it yet */}
       {/* eslint-disable-next-line jsx-a11y/role-supports-aria-props */}
-      <button
-        type="button"
-        onClick={() => onClick(link.target)}
+      <span
+        role="button"
+        tabIndex={0}
+        onClick={open}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            open();
+          }
+        }}
         aria-description={action}
-        className={`${base} text-accent hover:bg-accent-soft hover:underline`}
+        className={`${base} cursor-pointer text-accent outline-none hover:bg-accent-soft hover:underline focus-visible:ring-1 focus-visible:ring-accent`}
       >
         {body}
-      </button>
+      </span>
     </Tooltip>
   );
 }
