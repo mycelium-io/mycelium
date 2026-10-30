@@ -183,8 +183,9 @@ const PROVIDERS: Provider[] = [
   { id: "custom", name: "Other", models: [], key: "If it needs one", baseUrl: "" },
 ];
 
-/** What the health check says when no model is set (`doctor.py`). */
-const MODEL_UNSET = "Engines' model not set";
+/** What the health check says when no model is set (`doctor.py`), and what a
+ *  hub from before v3.0.73 says. */
+const MODEL_UNSET = ["Engines' model not set", "Skipped (LLM_MODEL not set)"];
 
 /** What the model is for, in our own docs: which engines use it. */
 const MODELS_DOC = "https://mycelium-io.github.io/mycelium/guides.html#models";
@@ -602,7 +603,7 @@ async function modelStatus(): Promise<HTMLElement> {
         return;
       }
       // No model is fine, so the doctor says ok, but it isn't connected either.
-      if (check.message === MODEL_UNSET) {
+      if (MODEL_UNSET.includes(check.message)) {
         line.replaceChildren(el("span", { class: "dot" }), "Not set. Engines can't answer until you add one.");
         return;
       }
@@ -977,17 +978,17 @@ function setsUpPiece(c: Choices): HTMLElement {
  *  agents use their own accounts. Static markup, so it's set as HTML. */
 function engineMap(): HTMLElement {
   const chip = (x: number, y: number, text: string) =>
-    `<rect class="chip" x="${x}" y="${y}" width="92" height="24" rx="6"/><text x="${x + 46}" y="${y + 16}">${text}</text>`;
+    `<rect class="chip" x="${x}" y="${y}" width="74" height="24" rx="6"/><text x="${x + 37}" y="${y + 16}">${text}</text>`;
   const figure = el("div", { class: "engine-map", role: "img", "aria-label": "Engines think with this model. Your own agents use their own accounts." });
   figure.innerHTML = `<svg viewBox="0 0 360 140" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <rect class="group" x="0.5" y="0.5" width="214" height="90" rx="10"/>
-    <text class="caption" x="12" y="19">Engines</text>
-    ${chip(12, 28, "Personas")}${chip(110, 28, "Workers")}${chip(12, 58, "Synthesizer")}${chip(110, 58, "Verifier")}
-    <path class="flow" d="M215 46 H244"/><path class="flow head" d="M240 41 L246 46 L240 51"/>
-    <rect class="model" x="248" y="31" width="111" height="30" rx="15"/><text class="model-text" x="303.5" y="51">This model</text>
-    <rect class="group own" x="0.5" y="106" width="214" height="32" rx="10"/><text x="107.5" y="127">Your own agents</text>
-    <path class="flow own" d="M215 122 H244"/><path class="flow own head" d="M240 117 L246 122 L240 127"/>
-    <rect class="group own" x="248" y="107" width="111" height="30" rx="15"/><text x="303.5" y="127">Their accounts</text>
+    <rect class="group" x="0.5" y="0.5" width="250" height="90" rx="10"/>
+    <text class="caption" x="10" y="19">Engines</text>
+    ${chip(10, 28, "Personas")}${chip(88, 28, "Workers")}${chip(166, 28, "Synthesizer")}${chip(10, 58, "Verifier")}${chip(88, 58, "Hello")}
+    <path class="flow" d="M251 46 H268"/><path class="flow head" d="M264 41 L270 46 L264 51"/>
+    <rect class="model" x="272" y="31" width="87" height="30" rx="15"/><text class="model-text" x="315.5" y="51">This model</text>
+    <rect class="group own" x="0.5" y="106" width="250" height="32" rx="10"/><text x="125.5" y="127">Your own agents</text>
+    <path class="flow own" d="M251 122 H268"/><path class="flow own head" d="M264 117 L270 122 L264 127"/>
+    <rect class="group own" x="272" y="107" width="87" height="30" rx="15"/><text x="315.5" y="127">Own accounts</text>
   </svg>`;
   return figure;
 }
@@ -1373,7 +1374,7 @@ async function settingsWindow(open: Section = "mac") {
       nothingToSave = true;
     } else if (at === "model") {
       const model = await modelPiece("settings");
-      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "Personas, workers, the synthesizer and the verifier think with this model. Your own agents, like Claude Code, don't use it."), model.el);
+      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "Personas, workers, the synthesizer, the verifier and hello think with this model. Your own agents, like Claude Code, don't use it."), model.el);
       save = () => startWith(c, model.value());
     } else if (at === "voice" && c.mode === "client") {
       // The app gives the mic only to the hub it runs itself.

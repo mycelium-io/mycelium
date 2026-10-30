@@ -81,7 +81,7 @@ export function AppModelPage() {
       scope={
         client
           ? "Your team's hub runs its engines with this model, set on that hub. Your own agents, like Claude Code, don't use it."
-          : "Personas, workers, the synthesizer and the verifier think with this model. Your own agents, like Claude Code, don't use it."
+          : "Personas, workers, the synthesizer, the verifier and hello think with this model. Your own agents, like Claude Code, don't use it."
       }
     >
       {state === undefined ? null : client ? <HubModel /> : <ModelForm state={state} />}
@@ -254,15 +254,16 @@ function ModelFields({ state, saved }: { state: AppState; saved: ModelView }) {
   );
 }
 
-/** What the health check says when no model is set (`doctor.py`). */
-const MODEL_UNSET = "Engines' model not set";
+/** What the health check says when no model is set (`doctor.py`), and what a
+ *  hub from before v3.0.73 says, for the app pointed at an older hub. */
+const MODEL_UNSET = ["Engines' model not set", "Skipped (LLM_MODEL not set)"];
 
 /** Whether the model is answering, from the health check. No model is fine,
  *  so the check says ok, but it isn't connected either. */
 function ModelStatus() {
   const { data, error } = useApp<{ checks: HealthCheck[] }>("run_doctor");
   const check = data?.checks.find((c) => c.name === "LLM connectivity");
-  const unset = check?.message === MODEL_UNSET;
+  const unset = !!check && MODEL_UNSET.includes(check.message);
   const text = error
     ? "Couldn't check the model."
     : !data

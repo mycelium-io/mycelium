@@ -185,7 +185,7 @@ export function HubPage() {
               id="hub.model"
               label="Model"
               help={help(
-                "Personas, workers, the synthesizer and the verifier think with it. People's own agents don't. Written as provider/model.",
+                "Personas, workers, the synthesizer, the verifier and hello think with it. People's own agents don't. Written as provider/model.",
                 "llm.model",
               )}
               configKey="llm.model"
