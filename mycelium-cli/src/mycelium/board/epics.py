@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 # Frozen in contracts/board-vocabulary.json under ``epic``.
 PART_STATES = ["done", "blocked", "waiting", "working", "open"]
-WAITING_KINDS = ["ask", "turn", "task"]
+WAITING_KINDS = ["approve", "ask", "turn", "task"]
 
 STATE_MARK = {
     "done": ("✓", "green"),
@@ -125,7 +125,10 @@ def waiting_line(item: WaitingItem) -> Text:
     line = Text("  ")
     place = f'"{item.title}"' if item.title else "the room"
     sender = item.sender or None
-    if item.kind == "ask":
+    if item.kind == "approve":
+        line.append(f"@{sender} asks you to approve", style="bold")
+        line.append(f" in {place}")
+    elif item.kind == "ask":
         line.append(f"@{sender} asked you", style="bold")
         line.append(f" in {place}")
         if (count := item.count or 1) > 1:

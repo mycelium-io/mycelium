@@ -68,8 +68,11 @@ def waiting(ctx: typer.Context, room: str, handle: str) -> None:
     console.print(heading)
     for item in read.items:
         console.print(waiting_line(item))
-        # A question or a turn wants a reply; a task that's yours wants opening.
-        if item.kind == "task" and item.key:
+        # A question or a turn wants a reply; a task that's yours wants opening;
+        # an approval is answered on its card.
+        if item.kind == "approve":
+            how = "Approve or decline it on its card in the app."
+        elif item.kind == "task" and item.key:
             how = f"Open: mycelium board messages {item.key} --room {room}"
         else:
             task = f" --task {item.key}" if item.key else ""

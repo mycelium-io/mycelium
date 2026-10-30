@@ -34,6 +34,7 @@ from app.routes.a2a_server import router as a2a_server_router
 from app.routes.a2a_state import router as a2a_state_router
 from app.routes.agent_pauses import router as agent_pauses_router
 from app.routes.agents import router as agents_router
+from app.routes.approvals import router as approvals_router
 from app.routes.assignments import router as assignments_router
 from app.routes.board import router as board_router
 from app.routes.briefing import router as briefing_router
@@ -430,6 +431,7 @@ app.include_router(runners_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(joins_router, prefix="/api")
 app.include_router(episodes_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(participate_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(approvals_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(sessions_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(stream_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(memory_router, prefix="/api", responses=GATE_REFUSALS)

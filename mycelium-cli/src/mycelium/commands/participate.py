@@ -46,6 +46,7 @@ from mycelium.names import name_of
 from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
 from mycelium_backend_client.models import (
+    AskAnswer,
     AssignmentsRenewed,
     AssignmentWatchRead,
     AwaitAskRead,
@@ -402,8 +403,18 @@ def _ask_boxes(asks: list[AwaitAskRead | AwaitTurn], handle: str) -> list[str]:
             header += f" · in task {task} (reply with --task {task})"
         if isinstance(ask, AwaitAskRead) and ask.id:
             header += f" · {ask.id[:8]}"
-        lines += chat.box(header, ask.prompt)
+        lines += chat.box(header, ask.prompt + _decision_line(ask))
     return lines
+
+
+def _decision_line(ask: AwaitAskRead | AwaitTurn) -> str:
+    """For an answer to the handle's ``mycelium ask``: the decision, as fields."""
+    answer = ask.answer if isinstance(ask.answer, AskAnswer) else None
+    if answer is None:
+        return ""
+    line = f"\n\nAnswer to your ask {answer.ask}: {answer.decision} by @{answer.by}"
+    reason = answer.reason if isinstance(answer.reason, str) else None
+    return f'{line}, reason "{reason}".' if reason else f"{line}."
 
 
 def _run_exec(exec_cmd: str, turn: AwaitTurn, room_name: str, handle: str) -> None:

@@ -35,6 +35,7 @@ from app.schemas import (
 )
 from app.services import (
     actor,
+    approvals,
     in_memory_store,
     message_format,
     message_search,
@@ -287,9 +288,25 @@ async def list_messages(
     page = filtered[offset : offset + limit]
 
     return MessageListResponse(
-        messages=[MessageRead.model_validate(m) for m in page],
+        messages=_with_decisions(channel, [MessageRead.model_validate(m) for m in page]),
         total=total,
     )
+
+
+def _with_decisions(room: str, messages: list[MessageRead]) -> list[MessageRead]:
+    """Each ask on the page with its decision folded on, so the card reads one
+    message. Worked out from the transcript on read, never stored."""
+    if not any(m.metadata and "ask" in m.metadata for m in messages):
+        return messages
+    found = approvals.asked(approvals.records(room))
+    out = []
+    for m in messages:
+        ask = (m.metadata or {}).get("ask")
+        hit = found.get(str(ask.get("id"))) if isinstance(ask, dict) else None
+        if hit is not None and hit.answer is not None:
+            m = m.model_copy(update={"metadata": {**(m.metadata or {}), "ask": hit.folded()}})
+        out.append(m)
+    return out
 
 
 @router.get("/search", response_model=MessageSearchResponse, responses=refusals(404))

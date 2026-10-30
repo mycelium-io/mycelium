@@ -179,6 +179,10 @@ lands: with it, that row's thread; without it, the room. It never follows the
 turn that woke you, so when your wake names a turn's `task`, pass it to answer
 in that thread.
 
+### Asking a person to approve something
+
+Before you do something a person should say yes to, ask with `mycelium ask --approve "<what you'll do>"`. It lands in your task's thread and goes to whoever filed the task (`--to` to name someone else). Add `--undo "<how>"` whenever it's hard to reverse. `--happens`, `--why` and `--link` are optional. They approve or decline in the app, and the answer wakes you: `await` gives it as `answer.decision` (`approved` or `declined`) and `answer.reason`. A decision is final. To try again, ask again.
+
 ### What a thread does not do
 
 - It does **not** decide the row. A negotiation that converges inside a task does

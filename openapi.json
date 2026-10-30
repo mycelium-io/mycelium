@@ -6152,6 +6152,221 @@
         }
       }
     },
+    "/api/rooms/{room_name}/asks": {
+      "post": {
+        "tags": [
+          "asks"
+        ],
+        "summary": "Create Ask",
+        "description": "Ask a person to decide something, in a task's thread.",
+        "operationId": "create_ask_api_rooms__room_name__asks_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskPosted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/asks/{ask_id}/answer": {
+      "post": {
+        "tags": [
+          "asks"
+        ],
+        "summary": "Answer Ask",
+        "description": "Approve or decline an ask. Only the person asked may, and only once.",
+        "operationId": "answer_ask_api_rooms__room_name__asks__ask_id__answer_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "ask_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ask Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskAnswerCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskAnswered"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/sessions/spawn": {
       "post": {
         "tags": [
@@ -13329,6 +13544,377 @@
         "type": "object",
         "title": "AgentsControlRead"
       },
+      "Ask": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "const": "approve",
+            "title": "Kind"
+          },
+          "to": {
+            "type": "string",
+            "title": "To",
+            "description": "The one person who may answer"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "happens": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Happens",
+            "description": "What will happen if approved"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why",
+            "description": "Why now"
+          },
+          "undo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undo",
+            "description": "How to undo it"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link",
+            "description": "A PR, a memory or a URL it is about"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AskDecided"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set once the ask is answered"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "to",
+          "question"
+        ],
+        "title": "Ask",
+        "description": "What an agent asks a person, as the app draws it."
+      },
+      "AskAnswer": {
+        "properties": {
+          "ask": {
+            "type": "string",
+            "title": "Ask"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "declined"
+            ],
+            "title": "Decision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "by": {
+            "type": "string",
+            "title": "By"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ask",
+          "decision",
+          "by",
+          "at"
+        ],
+        "title": "AskAnswer",
+        "description": "The answer an agent reads, in ``await`` and on the answer message."
+      },
+      "AskAnswerCreate": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "title": "Decision",
+            "description": "approved or declined"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "by": {
+            "type": "string",
+            "title": "By",
+            "description": "Who answers; only the person asked may"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision",
+          "by"
+        ],
+        "title": "AskAnswerCreate"
+      },
+      "AskAnswered": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id"
+          },
+          "ask": {
+            "$ref": "#/components/schemas/Ask"
+          },
+          "answer": {
+            "$ref": "#/components/schemas/AskAnswer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "message_id",
+          "ask",
+          "answer"
+        ],
+        "title": "AskAnswered",
+        "description": "The ask as decided, and the message that carries the answer."
+      },
+      "AskCreate": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "The agent asking"
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Question"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "default": "approve"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To",
+            "description": "Who to ask; default the person who filed the task"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task",
+            "description": "The row to ask in; default the one the agent was last asked in, else the one task it holds"
+          },
+          "happens": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Happens"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why"
+          },
+          "undo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undo"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "question"
+        ],
+        "title": "AskCreate",
+        "description": "``mycelium ask``: only the question is required."
+      },
+      "AskDecided": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "declined"
+            ],
+            "title": "Decision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "by": {
+            "type": "string",
+            "title": "By"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision",
+          "by",
+          "at"
+        ],
+        "title": "AskDecided",
+        "description": "How an ask was decided, folded onto it once answered."
+      },
+      "AskPosted": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "The id the room's history gives it"
+          },
+          "ask": {
+            "$ref": "#/components/schemas/Ask"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "message_id",
+          "ask"
+        ],
+        "title": "AskPosted",
+        "description": "An ask, and the message that carries it."
+      },
       "AssignmentRead": {
         "properties": {
           "key": {
@@ -13688,6 +14274,17 @@
               }
             ],
             "title": "At"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AskAnswer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the message answers the handle's ask: the decision"
           }
         },
         "type": "object",
@@ -13996,6 +14593,17 @@
               }
             ],
             "description": "With confirm: what to POST to await/confirm"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AskAnswer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the turn answers the handle's ask: the decision"
           }
         },
         "additionalProperties": true,
@@ -14078,6 +14686,17 @@
               }
             ],
             "title": "At"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AskAnswer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the message answers the handle's ask: the decision"
           },
           "why": {
             "anyOf": [
@@ -23288,6 +23907,7 @@
           "kind": {
             "type": "string",
             "enum": [
+              "approve",
               "ask",
               "turn",
               "task"

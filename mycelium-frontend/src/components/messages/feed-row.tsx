@@ -47,6 +47,7 @@ import { EpisodeTag } from "@/components/episode-tag";
 import { EventIconMark } from "@/components/event-icon";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
+import { ApprovalCard } from "@/components/approval-card";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -632,6 +633,11 @@ export function FeedRow({
     );
   }
 
+  // A person's answer to an ask is how the agent hears it. Here the ask's card
+  // already says who decided and why, so the answer keeps its anchor and draws
+  // nothing.
+  if (ev.answers) return <div data-event-id={ev.id} />;
+
   // A conductor post is drawn from its structured line: one row naming the
   // step and who it went to, the prompt behind a toggle.
   if (ev.conductor) {
@@ -748,6 +754,10 @@ export function MessageRow({
           {/* A rating reply leads with its ratings as bars; its prose says the
               same, so it folds to a couple of lines under them. */}
           {drawsValues && <ReplyValues context={replyContext} />}
+          {/* An ask's text is its question, which the card leads with. */}
+          {ev.ask ? (
+            <ApprovalCard roomName={roomName} ask={ev.ask} onOpenMemory={ctx.onOpenMemory} />
+          ) : (
           <MessageBody
             content={ev.content}
             hit={hit}
@@ -758,6 +768,7 @@ export function MessageRow({
             onOpenThread={ctx.onOpenThread}
             foldTo={drawsValues ? REPLY_FOLD_PX : undefined}
           />
+          )}
           {ev.edited && (
             <span className="text-micro text-faint" title="revised by a later message">
               (edited)

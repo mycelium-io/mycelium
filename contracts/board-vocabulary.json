@@ -204,7 +204,7 @@
     }
   },
   "epic": {
-    "_comment": "The board as people read it, worked out on the hub on read (`GET /rooms/{room}/board`, `GET /rooms/{room}/board/{key}`) and drawn as returned by the CLI (`mycelium board`, `board show`) and the app, so neither projects epics itself. It lists only rows in `assignment.assignable_namespaces` on their own; a decision or a failure shows only as a part of an epic, and a `failed` part reads as blocked. `latest` skips what an engine or the hub posted. An epic is a row other rows name with `parent_relation`; nothing about it is stored. `steps` lists its parts' keys in path order: a part's step is one past the furthest sibling it depends on (`task.dependency_relation`), so parts in one step run side by side, and parts caught in a dependency cycle go last together. `latest` is the newest message said in a part's thread. A part's state is the first of `part_states` that holds: settled, `blocked_by` set or in `failed`, waiting on an unsettled row, held by someone, else open. An ask's `text` is the first line of the message that mentions the member, else its first line. What is waiting on a member is `GET /rooms/{room}/waiting?for=<handle>` (`mycelium waiting`): an ask it hasn't posted after in that thread, a floor given to it, or an open row it holds that waits on nothing and has no open parts, one item per thread in that order.",
+    "_comment": "The board as people read it, worked out on the hub on read (`GET /rooms/{room}/board`, `GET /rooms/{room}/board/{key}`) and drawn as returned by the CLI (`mycelium board`, `board show`) and the app, so neither projects epics itself. It lists only rows in `assignment.assignable_namespaces` on their own; a decision or a failure shows only as a part of an epic, and a `failed` part reads as blocked. `latest` skips what an engine or the hub posted. An epic is a row other rows name with `parent_relation`; nothing about it is stored. `steps` lists its parts' keys in path order: a part's step is one past the furthest sibling it depends on (`task.dependency_relation`), so parts in one step run side by side, and parts caught in a dependency cycle go last together. `latest` is the newest message said in a part's thread. A part's state is the first of `part_states` that holds: settled, `blocked_by` set or in `failed`, waiting on an unsettled row, held by someone, else open. An ask's `text` is the first line of the message that mentions the member, else its first line. What is waiting on a member is `GET /rooms/{room}/waiting?for=<handle>` (`mycelium waiting`): an agent's ask for its approval that nobody has answered (each its own item, `contracts/approvals.json`), an ask it hasn't posted after in that thread, a floor given to it, or an open row it holds that waits on nothing and has no open parts, one item per thread in that order.",
     "parent_relation": "part-of",
     "part_states": [
       "done",
@@ -235,6 +235,7 @@
       "path"
     ],
     "waiting_kinds": [
+      "approve",
       "ask",
       "turn",
       "task"

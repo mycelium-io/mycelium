@@ -1168,7 +1168,8 @@ export async function fetchRoomBoard(roomName: string): Promise<BoardRead> {
 
 /** One thing waiting on a member (`GET /rooms/{room}/waiting?for=`). */
 export interface WaitingItem {
-  kind: "ask" | "turn" | "task";
+  /** `approve` is an agent's ask for your OK, `ask` a message that asks you. */
+  kind: "approve" | "ask" | "turn" | "task";
   key?: string | null;
   title?: string | null;
   episode?: string | null;
@@ -1326,6 +1327,29 @@ export async function sendRoomMessage(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message_type: "broadcast", ...data }),
+  });
+}
+
+/** What the hub says once an ask is answered: the ask with its answer folded
+ *  on, the answer itself, and the message that carried it to the agent. */
+export interface AskAnswered {
+  room: string;
+  message_id: string;
+  ask: Record<string, unknown>;
+  answer: Record<string, unknown>;
+}
+
+/** Answer an agent's ask. The hub takes it only from the person asked, once,
+ *  and sends it back to the agent as values it can act on. */
+export async function answerAsk(
+  roomName: string,
+  askId: string,
+  answer: { decision: "approved" | "declined"; reason?: string | null; by: string },
+): Promise<AskAnswered> {
+  return apiFetch<AskAnswered>(`${roomApiPath(roomName)}/asks/${encodeURIComponent(askId)}/answer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(answer),
   });
 }
 

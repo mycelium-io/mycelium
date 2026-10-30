@@ -13,6 +13,7 @@ import typer
 from mycelium import __version__, proxy_env
 from mycelium.commands import (
     agent,
+    ask,
     board,
     config,
     demo,
@@ -139,6 +140,7 @@ app.command(name="connect")(hub.connect)
 app.command(name="await")(participate.await_room)
 app.command(name="respond")(participate.respond)
 app.command(name="waiting")(waiting.waiting)
+app.command(name="ask")(ask.ask)
 
 # A team on one task: the quickest way to watch agents coordinate.
 app.command(name="swarm")(swarm.swarm)

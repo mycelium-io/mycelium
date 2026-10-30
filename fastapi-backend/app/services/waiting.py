@@ -3,8 +3,11 @@
 
 """What is waiting on a member: the one read behind "Waiting on you".
 
-Three things, each worked out on read and never stored:
+Four things, each worked out on read and never stored:
 
+- **approve**: an agent's ask for the member's decision (:mod:`approvals`)
+  that nobody has answered yet. Each is its own item, since each needs its
+  own answer.
 - **ask**: a message that asks the member (by the one rule, :mod:`asks`) in a
   thread where it hasn't posted since. Several in one thread are one item,
   the newest, with the rest counted.
@@ -13,8 +16,8 @@ Three things, each worked out on read and never stored:
   nothing and has no open parts of its own.
 
 An ask in a settled task's thread is not waiting on anyone: the work it was
-about is over. Each kind appears once per thread, an ask before a turn before
-a task, so one task is never listed twice.
+about is over. Past approvals, each kind appears once per thread, an approval
+before an ask before a turn before a task, so one task is never listed twice.
 
 GitHub review requests are left out: the hub knows them as GitHub logins, and
 nothing maps a login to a member.
@@ -31,7 +34,7 @@ from app.services.board import _first_line, _Rows, parent_of, title_of
 from app.services.filesystem import EPISODE_META, system_meta
 
 #: The kinds of item, in the order they're listed.
-KINDS = ("ask", "turn", "task")
+KINDS = ("approve", "ask", "turn", "task")
 #: How far back the transcript is read for asks.
 SCAN = 2000
 
@@ -52,6 +55,7 @@ def _records(room: str) -> list[Any]:
 
 def waiting(room: str, handle: str, now: datetime) -> list[dict[str, Any]]:
     """Everything waiting on ``handle`` in ``room``, asks first, newest first."""
+    from app.services import approvals
     from app.services.asks import asks
     from app.services.persister import read_id, record_episode
     from app.services.room_channels import manager
@@ -96,9 +100,28 @@ def waiting(room: str, handle: str, now: datetime) -> list[dict[str, Any]]:
 
     items: list[dict[str, Any]] = []
     seen: set[str | None] = set()
+    records = _records(room)[-SCAN:]
+
+    # Approvals: an agent's ask for a decision, until it is answered.
+    for hit in approvals.open_for(me, records):
+        thread = thread_of(hit.record)
+        key = by_episode.get(thread) if thread else None
+        if key is not None and rows.settled(key):
+            continue
+        items.append(
+            {
+                "kind": approvals.WAITING_KIND,
+                **where(thread),
+                "sender": hit.record.sender,
+                "text": str(hit.ask.get("question") or ""),
+                "message_id": str(read_id(hit.record)),
+                "at": hit.record.recorded_at or None,
+                "count": 1,
+            }
+        )
+        seen.add(thread)
 
     # Asks: newest first, one per thread, dropped once the member posted there.
-    records = _records(room)[-SCAN:]
     answered: set[str | None] = set()
     pending: dict[str | None, list[Any]] = {}
     for record in reversed(records):
@@ -106,7 +129,9 @@ def waiting(room: str, handle: str, now: datetime) -> list[dict[str, Any]]:
         if _norm(record.sender) == me:
             answered.add(thread)
             continue
-        if thread in answered or not asks(record.content, me):
+        if thread in answered or thread in seen or approvals.ask_on(record) is not None:
+            continue
+        if not asks(record.content, me):
             continue
         key = by_episode.get(thread) if thread else None
         if key is not None and rows.settled(key):
