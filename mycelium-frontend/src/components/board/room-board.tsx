@@ -183,7 +183,8 @@ export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
               <Section label="Waiting on you" count={waiting.length}>
                 {waiting.map(item => (
                   <WaitingRow
-                    key={`${item.kind}:${item.episode ?? item.message_id ?? item.key}`}
+                    // Each open approval is its own row, and a thread can hold two.
+                    key={`${item.kind}:${(item.kind === "approve" ? item.message_id : item.episode) ?? item.message_id ?? item.key}`}
                     item={item}
                     you={you}
                     agent={!!item.sender && agentHandles.has(item.sender)}
@@ -381,7 +382,7 @@ function WaitingRow({
       standing={WAITING_STANDING[item.kind]}
       age={item.at ? shortAge(Date.parse(item.at), now) : ""}
       // Its own key: the task it's in may also have a row of its own below.
-      rowKey={`waiting:${item.kind}:${item.key ?? item.message_id ?? ""}`}
+      rowKey={`waiting:${item.kind}:${(item.kind === "approve" ? item.message_id : item.key) ?? item.key ?? item.message_id ?? ""}`}
       onOpen={onOpen}
     />
   );

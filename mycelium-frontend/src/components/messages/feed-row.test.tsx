@@ -155,7 +155,13 @@ describe("an agent's ask", () => {
         answer: { decision: "approved", reason: null, by: "operator", at: AT },
       },
     });
-    const answer = event({ id: "a2", messageId: "a2", sender: "operator", content: "Approved.", answers: "7e21c0a4" });
+    const answer = event({
+      id: "a2",
+      messageId: "a2",
+      sender: "operator",
+      content: "Approved.",
+      answers: { ask: "7e21c0a4", decision: "approved", reason: null, by: "operator", at: AT },
+    });
     const { container } = renderWithSWR(
       <KeymapProvider>
         <FeedRow ev={asked} ctx={ctx} />

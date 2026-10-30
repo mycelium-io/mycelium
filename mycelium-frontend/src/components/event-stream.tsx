@@ -20,6 +20,7 @@ import {
   upstreamInChat,
 } from "@/lib/threads";
 import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
+import { foldAnswers } from "@/lib/approvals";
 import { conductorLineOf, runProgress, type RunProgress } from "@/lib/conductor-line";
 import {
   applyActivity,
@@ -802,8 +803,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
 
   // What the channel draws, row for row: a ping that draws nothing is not
   // here, so it neither splits a sender's messages nor breaks a run of notices.
+  // A live answer arrives unfolded, so it's paired with its ask's card here.
   const visible = useMemo(
-    () => candidates.filter(e => e.type !== PING_TYPE || pingLines.has(e.id)),
+    () => foldAnswers(candidates.filter(e => e.type !== PING_TYPE || pingLines.has(e.id))),
     [candidates, pingLines],
   );
 

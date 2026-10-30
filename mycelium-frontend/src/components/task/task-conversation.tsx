@@ -20,6 +20,7 @@ import { useThreadMessages } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf } from "@/lib/threads";
 import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
+import { foldAnswers } from "@/lib/approvals";
 import { ratingsByReply, turnRuns } from "@/lib/conductor-line";
 import { FeedRow, lastChatSender, useFeedContext } from "@/components/messages/feed-row";
 import type { ConversationRows } from "@/components/messages/use-follow-latest";
@@ -158,13 +159,15 @@ export function TaskConversation({
   // row as new.
   const events = useMemo(
     () =>
-      [...messages]
-        .reverse()
-        .map((m) => {
-          const ev = parseEvent(m);
-          return ev.messageId ? { ...ev, id: ev.messageId } : ev;
-        })
-        .filter(drawn),
+      foldAnswers(
+        [...messages]
+          .reverse()
+          .map((m) => {
+            const ev = parseEvent(m);
+            return ev.messageId ? { ...ev, id: ev.messageId } : ev;
+          })
+          .filter(drawn),
+      ),
     [messages],
   );
 

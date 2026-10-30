@@ -881,7 +881,8 @@ export async function handleMock(req: Request): Promise<Response | null> {
         };
         fx.messages.push(msg);
         publish(roomName, { ...msg, room_name: roomName });
-        return json(msg, 201);
+        const meta = msg.metadata as { ask: unknown };
+        return json({ room: roomName, task: row?.key ?? null, episode, message_id: msg.id, ask: meta.ask }, 201);
       }
       if (sub.length === 3 && sub[2] === "answer") {
         const askId = decodeURIComponent(sub[1]);
@@ -889,8 +890,11 @@ export async function handleMock(req: Request): Promise<Response | null> {
         if (!asked) return json({ detail: `No ask ${askId}.` }, 404);
         const ask = (asked.metadata as { ask: Record<string, unknown> }).ask;
         const by = String(body.by ?? "").replace(/^@/, "");
-        if (by !== ask.to) return json({ detail: `Only @${String(ask.to)} can answer this.` }, 403);
-        if (ask.answer) return json({ detail: "This ask has been answered." }, 409);
+        if (by !== ask.to) return json({ detail: `This ask is for @${String(ask.to)}, not @${by}` }, 403);
+        if (ask.answer) {
+          const had = ask.answer as { decision: string; by: string };
+          return json({ detail: `Already ${had.decision} by @${had.by}` }, 409);
+        }
         const decision = body.decision === "declined" ? "declined" : "approved";
         const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : null;
         const answer = { decision, reason, by, at: now };
@@ -907,7 +911,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         };
         fx.messages.push(reply);
         publish(roomName, { ...reply, room_name: roomName });
-        return json(reply, 201);
+        return json({ room: roomName, message_id: reply.id, ask, answer: { ask: askId, ...answer } });
       }
       return null;
     }

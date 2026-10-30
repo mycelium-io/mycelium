@@ -15,7 +15,7 @@
 
 import { NOTICE_TYPE, PING_TYPE, noticeOf, pingOf } from "@/lib/threads";
 import { conductorLineOf, type ConductorLine } from "@/lib/conductor-line";
-import { answersAsk, askOf, type ApprovalAsk } from "@/lib/approvals";
+import { answerOf, askOf, type ApprovalAsk, type AskReply } from "@/lib/approvals";
 
 export interface Event {
   /** Render key only — synthesized, so a message republished by a status
@@ -57,9 +57,9 @@ export interface Event {
   /** An agent's ask of one person (an approval), which the feed draws as a
    *  card. Null on everything else. */
   ask: ApprovalAsk | null;
-  /** The id of the ask this message answers, which the feed folds into that
-   *  ask's card. Null on everything else. */
-  answers: string | null;
+  /** The answer this message carries to an ask, which the feed folds into
+   *  that ask's card. Null on everything else. */
+  answers: AskReply | null;
   raw: Record<string, unknown>;
   /** The message as the hub sent it, before any of the above was read off it,
    *  for "View raw message". */
@@ -296,7 +296,7 @@ export function parseEvent(msg: Record<string, unknown>): Event {
       ? conductorLineOf({ content: msg.content, metadata: msg.metadata })
       : null,
     ask: CHAT_TYPES.has(mtype) ? askOf({ content: msg.content, metadata: msg.metadata }) : null,
-    answers: CHAT_TYPES.has(mtype) ? answersAsk({ content: msg.content, metadata: msg.metadata }) : null,
+    answers: CHAT_TYPES.has(mtype) ? answerOf({ content: msg.content, metadata: msg.metadata }) : null,
     raw,
     wire: msg,
   };

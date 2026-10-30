@@ -1330,14 +1330,23 @@ export async function sendRoomMessage(
   });
 }
 
+/** What the hub says once an ask is answered: the ask with its answer folded
+ *  on, the answer itself, and the message that carried it to the agent. */
+export interface AskAnswered {
+  room: string;
+  message_id: string;
+  ask: Record<string, unknown>;
+  answer: Record<string, unknown>;
+}
+
 /** Answer an agent's ask. The hub takes it only from the person asked, once,
  *  and sends it back to the agent as values it can act on. */
 export async function answerAsk(
   roomName: string,
   askId: string,
   answer: { decision: "approved" | "declined"; reason?: string | null; by: string },
-): Promise<RoomMessage> {
-  return apiFetch<RoomMessage>(`${roomApiPath(roomName)}/asks/${encodeURIComponent(askId)}/answer`, {
+): Promise<AskAnswered> {
+  return apiFetch<AskAnswered>(`${roomApiPath(roomName)}/asks/${encodeURIComponent(askId)}/answer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(answer),
