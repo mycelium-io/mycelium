@@ -114,7 +114,10 @@ def asked(records: list[TranscriptRecord], room: str) -> dict[str, Asked]:
 
     An ask is the first record that carries its id. An answer counts only when
     a person sent it, as themselves: the routes check who answers, and so does
-    this, since any member can publish a frame on the room's channel.
+    this, since any member can publish a frame on the room's channel. Whether
+    they were in the room was checked when they answered (:func:`may_answer`);
+    it isn't asked again here, so someone leaving the room later doesn't reopen
+    an ask the agent already acted on.
     """
     found: dict[str, Asked] = {}
     for record in records:
@@ -125,7 +128,7 @@ def asked(records: list[TranscriptRecord], room: str) -> dict[str, Asked]:
             if hit is None or hit.answer is not None:
                 continue
             sender = _norm(record.sender)
-            if sender == _norm(answer.get("by")) and may_answer(room, sender, hit.ask):
+            if sender == _norm(answer.get("by")) and _is_person(room, sender):
                 hit.answer = answer
     return found
 

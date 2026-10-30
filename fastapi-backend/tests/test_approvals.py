@@ -346,6 +346,21 @@ class TestAnswering:
         assert waiting.waiting(ROOM, "julia", NOW) == []
 
     @pytest.mark.asyncio
+    async def test_an_answer_still_counts_after_whoever_gave_it_leaves_the_room(
+        self, room, monkeypatch
+    ):
+        """Being in the room is checked when they answer. Asking again on read
+        would reopen an ask the agent already acted on."""
+        from app.services import room_people
+
+        monkeypatch.setattr(room_people, "handles", lambda _r: {"avery"})
+        ask, _record, _task = await _ask()
+        await approvals.answer(ROOM, ask["id"], decision="approved", by="avery")
+        monkeypatch.setattr(room_people, "handles", lambda _r: set())
+        assert approvals.asked(room.persister.log.records, ROOM)[ask["id"]].answer is not None
+        assert waiting.waiting(ROOM, "julia", NOW) == []
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("who", ["lead", "builder", "jula"])
     async def test_an_agent_or_a_stranger_may_not_answer(self, room, who):
         ask, _record, _task = await _ask()
