@@ -25,8 +25,10 @@ Run `mycelium status --json` for machine-readable health data, or `mycelium stat
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
-A `mycelium` installed earlier with Homebrew is a CLI-only install from before
-the app existed; remove it (`brew uninstall mycelium`) and use the command above.
+A `mycelium` installed earlier with Homebrew is a CLI-only install on the Docker
+setup. Remove it with `brew uninstall mycelium`, then install with
+`bash -s -- --docker` to keep that setup and the rooms on it. Without
+`--docker`, an Apple silicon Mac gets the app, with a new hub of its own.
 
 Or via clawhub — tell your agent:
 > "install https://clawhub.ai/juliarvalenti/mycelium-io"
