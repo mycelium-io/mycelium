@@ -13,11 +13,15 @@ and a check up front would stop an engine that works.
 
 from __future__ import annotations
 
-NO_MODEL_TEXT = (
-    "The hub has no model set, so I can't answer. Set one in Settings → Engines' model, "
-    "or with `mycelium config set llm.model` and `mycelium config set llm.api_key`, "
-    "then `mycelium config apply`."
+#: Where to set the model, the same in the room and in ``mycelium doctor``: the
+#: app's Settings, or for a hub run with Docker, ``install --force``, which asks
+#: for it and recreates the hub so it takes effect.
+SET_ONE = (
+    "Set one in Settings → Engines' model, or on a hub you run with Docker, "
+    "with `mycelium install --force`."
 )
+
+NO_MODEL_TEXT = f"The hub has no model set, so I can't answer. {SET_ONE}"
 
 
 def configured() -> bool:

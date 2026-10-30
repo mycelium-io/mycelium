@@ -159,18 +159,25 @@ def _start_hub() -> str:
 
 #: The check's name. The app's Settings and the desktop's first run find it by
 #: this name, so it stays as it is while what it says names the engines' model.
-ENGINES_MODEL = "LLM connectivity"
+LLM_CHECK = "LLM connectivity"
 #: Who uses that model, in the words of the docs' Models page.
 ENGINES_THAT_THINK = (
     "Only the engines that think need it: personas, workers, the synthesizer, "
     "the verifier and hello. Your own agents don't."
+)
+#: Where to set one, as the hub's engines say it in the room
+#: (``app/services/engines_model.py``): Settings, or ``install --force``, which
+#: asks for the model and recreates a Docker hub so it takes effect.
+SET_ONE = (
+    "Set one in Settings → Engines' model, or on a hub you run with Docker, "
+    "with `mycelium install --force`."
 )
 
 
 def _not_set(set_up: str) -> CheckResult:
     """No model set: fine, and what that means."""
     return CheckResult(
-        name=ENGINES_MODEL,
+        name=LLM_CHECK,
         status="ok",
         message="Engines' model not set",
         details=[ENGINES_THAT_THINK, set_up],
@@ -179,7 +186,7 @@ def _not_set(set_up: str) -> CheckResult:
 
 def _check_llm_connectivity(
     *,
-    set_up: str = "To set one: mycelium install --force",
+    set_up: str = SET_ONE,
     replace_key: str | None = None,
 ) -> CheckResult:
     """Probe the backend's LLM with a real one-shot ``pi`` turn.
@@ -213,7 +220,7 @@ def _check_llm_connectivity(
         api_url = config.server.api_url
     except Exception:
         return CheckResult(
-            name=ENGINES_MODEL,
+            name=LLM_CHECK,
             status="warning",
             message="Skipped (cannot load config)",
         )
@@ -223,21 +230,21 @@ def _check_llm_connectivity(
     said = health(api_url, check_llm=True, probe="completion", timeout=30)
     if not said.answered:
         return CheckResult(
-            name=ENGINES_MODEL,
+            name=LLM_CHECK,
             status="warning",
             message="Skipped (backend unreachable)",
             details=[said.error or "", f"Start the backend: {_start_hub()}"],
         )
     if said.read is None:
         return CheckResult(
-            name=ENGINES_MODEL,
+            name=LLM_CHECK,
             status="warning",
             message=f"Backend /health: {said.error}",
         )
     llm = said.llm
     if llm is None:
         return CheckResult(
-            name=ENGINES_MODEL,
+            name=LLM_CHECK,
             status="warning",
             message="This hub doesn't report its model",
         )
@@ -258,7 +265,7 @@ def _check_llm_connectivity(
     # user-fixable without a reinstall).
     if status == "ok":
         return CheckResult(
-            name=ENGINES_MODEL,
+            name=LLM_CHECK,
             status="ok",
             message=f"{model}: completion probe succeeded",
         )
@@ -266,42 +273,42 @@ def _check_llm_connectivity(
         return _not_set(set_up)
     if status == "missing_extras":
         return CheckResult(
-            name=ENGINES_MODEL,
+            name=LLM_CHECK,
             status="error",
             message=f"{model}: missing provider SDK in backend",
             details=details,
         )
     if status == "bad_model":
         return CheckResult(
-            name=ENGINES_MODEL,
+            name=LLM_CHECK,
             status="error",
             message=f"{model}: invalid model string",
             details=details,
         )
     if status == "auth_error":
         return CheckResult(
-            name=ENGINES_MODEL,
+            name=LLM_CHECK,
             status="warning",
             message=f"{model}: authentication failed",
             details=[*details, replace_key] if replace_key else details,
         )
     if status == "unreachable":
         return CheckResult(
-            name=ENGINES_MODEL,
+            name=LLM_CHECK,
             status="warning",
             message=f"{model}: provider unreachable",
             details=details,
         )
     if status == "unchecked":
         return CheckResult(
-            name=ENGINES_MODEL,
+            name=LLM_CHECK,
             status="ok",
             message=f"{model}: probe unsupported for this provider",
             details=details,
         )
     # error | unknown
     return CheckResult(
-        name=ENGINES_MODEL,
+        name=LLM_CHECK,
         status="error",
         message=f"{model}: {status}",
         details=details,
@@ -884,7 +891,8 @@ def doctor(
             sections = desktop_checks()
             if (settings() or {}).get("mode") != "client":
                 in_settings = _check_llm_connectivity(
-                    set_up="To set one, choose a model and add its key in Settings → Engines' model (⌘,)",
+                    # The app's hub has no Docker step: Settings is the whole way.
+                    set_up="Set one in Settings → Engines' model (⌘,).",
                     replace_key="Paste a working key in Settings (⌘,)",
                 )
                 sections.append(("Models", [pi(), in_settings]))
