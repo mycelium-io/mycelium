@@ -2173,27 +2173,54 @@ class ReplyRead(BaseModel):
 # ``app/services/approvals.py``; kinds and fields frozen in contracts/approvals.json.
 
 
-class AskDecided(BaseModel):
-    """How an ask was decided, folded onto it once answered."""
+AskKind = Literal["approve", "choose", "question"]
 
-    decision: Literal["approved", "declined"]
-    reason: str | None = None
-    by: str
+
+class AskDecided(BaseModel):
+    """How an ask was answered, folded onto it once it is."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    kind: AskKind | None = Field(None, description="Absent on an answer from before kinds")
+    question: str | None = None
+    for_: str | None = Field(None, alias="for", description="The person the ask was put to")
+    by: str = Field(..., description="Who answered: the person asked, or another person")
     at: str
+    decision: Literal["approved", "declined"] | None = Field(None, description="On an approve")
+    choices: list[str] | None = Field(None, description="On a choose: the option ids picked")
+    chosen: list[str] | None = Field(None, description="On a choose: those options' labels")
+    text: str | None = Field(None, description="The answer to a question, or a note on any kind")
+
+
+class AskOption(BaseModel):
+    id: str = Field(..., description="Its number, from 1, in the order given")
+    label: str
+    detail: str | None = None
 
 
 class Ask(BaseModel):
     """What an agent asks a person, as the app draws it."""
 
     id: str
-    kind: Literal["approve"]
-    to: str = Field(..., description="The one person who may answer")
+    kind: AskKind
+    to: str = Field(..., description="The person it waits on; any person in the room may answer")
     question: str
     happens: str | None = Field(None, description="What will happen if approved")
     why: str | None = Field(None, description="Why now")
     undo: str | None = Field(None, description="How to undo it")
     link: str | None = Field(None, description="A PR, a memory or a URL it is about")
+    options: list[AskOption] | None = Field(None, description="On a choose")
+    multiple: bool | None = Field(None, description="On a choose: several may be picked")
+    recommend: list[str] | Literal["approve"] | None = Field(
+        None, description="What the agent would do: option ids on a choose, 'approve' on an approve"
+    )
+    suggest: str | None = Field(None, description="On a question: the agent's draft answer")
     answer: AskDecided | None = Field(None, description="Set once the ask is answered")
+
+
+class AskOptionCreate(BaseModel):
+    label: str = Field(..., min_length=1)
+    detail: str | None = None
 
 
 class AskCreate(BaseModel):
@@ -2212,6 +2239,12 @@ class AskCreate(BaseModel):
     why: str | None = None
     undo: str | None = None
     link: str | None = None
+    options: list[AskOptionCreate] | None = Field(None, description="A choose's options, in order")
+    multiple: bool = False
+    recommend: list[str] | str | None = Field(
+        None, description="Option ids on a choose, or 'approve' on an approve"
+    )
+    suggest: str | None = Field(None, description="A question's draft answer")
 
 
 class AskPosted(BaseModel):
@@ -2225,19 +2258,18 @@ class AskPosted(BaseModel):
 
 
 class AskAnswerCreate(BaseModel):
-    decision: str = Field(..., description="approved or declined")
-    reason: str | None = None
-    by: str = Field(..., description="Who answers; only the person asked may")
+    by: str = Field(..., description="Who answers: any person in the room, never an agent")
+    decision: str | None = Field(None, description="An approve's: approved or declined")
+    choices: list[str] | None = Field(None, description="A choose's: the option ids picked")
+    text: str | None = Field(None, description="A question's answer, or a note on any kind")
+    reason: str | None = Field(None, description="Another name for text, from before it")
 
 
-class AskAnswer(BaseModel):
+class AskAnswer(AskDecided):
     """The answer an agent reads, in ``await`` and on the answer message."""
 
     ask: str
-    decision: Literal["approved", "declined"]
-    reason: str | None = None
-    by: str
-    at: str
+    reason: str | None = Field(None, description="The note, on an answer from before text")
 
 
 class AskAnswered(BaseModel):
