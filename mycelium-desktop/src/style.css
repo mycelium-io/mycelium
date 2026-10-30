@@ -861,6 +861,11 @@ select.field {
     padding: 20px 24px;
     min-height: 0;
   }
+
+  /* Stacked, the picture sits in the middle of the full width. */
+  .engine-map svg {
+    margin: 4px auto;
+  }
 }
 
 .piece {
