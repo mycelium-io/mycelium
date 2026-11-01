@@ -1,32 +1,55 @@
 {
   "_comment": [
-    "Frozen contract for an agent asking a person to decide something.",
+    "Frozen contract for an agent asking a person something.",
     "",
-    "An ask is a message in a task's thread whose payload carries `ask`; the",
-    "answer is a message back to the agent whose payload carries `answer`. The",
-    "history read copies both into the message's `metadata`, and folds the",
-    "answer onto its ask as `ask.answer`. Agents never send UI: they fill in a",
-    "kind listed here, and the app draws it.",
+    "An ask is a message in a task's thread, or the room's channel, whose payload",
+    "carries `ask`; the answer is a message back to the agent whose payload",
+    "carries `answer`. The history read copies both into the message's",
+    "`metadata`, and folds the answer, less `ask`, onto its ask as `ask.answer`.",
+    "Agents never send UI: they fill in a kind listed here, and the app draws it.",
+    "",
+    "Every kind takes the `facts`. `kind_fields` are the ones only that kind",
+    "takes: a choose's `options` ([{id, label, detail?}], ids numbered from 1),",
+    "`multiple` and `recommend` (option ids); an approve's `recommend`",
+    "(`recommend_approve`); a question's `suggest` (a draft answer).",
+    "",
+    "An answer names its question and who it was `for`, and `by` is who answered:",
+    "any person in the room, never an agent. `answer_kind_fields` are what each",
+    "kind is answered with; `text` is the answer to a question, or a note on any",
+    "kind. An answer from before kinds carries its note as `reason`.",
     "",
     "Bound by: fastapi-backend/app/services/approvals.py (the hub),",
     "mycelium-cli/src/mycelium/commands/ask.py (`mycelium ask`) and",
     "mycelium-frontend/src/lib/approvals.ts (the card). Asserted by",
-    "fastapi-backend/tests/test_approvals.py and",
-    "mycelium-cli/tests/test_ask.py."
+    "fastapi-backend/tests/test_approvals.py,",
+    "mycelium-cli/tests/test_ask.py and",
+    "mycelium-frontend/src/lib/approvals.test.ts."
   ],
   "payload_keys": {
     "ask": "ask",
     "answer": "answer"
   },
-  "kinds": ["approve"],
+  "kinds": ["approve", "choose", "question"],
   "ask_fields": {
     "required": ["id", "kind", "to", "question"],
-    "optional": ["happens", "why", "undo", "link"]
+    "facts": ["happens", "why", "undo", "link"],
+    "kind_fields": {
+      "approve": ["recommend"],
+      "choose": ["options", "multiple", "recommend"],
+      "question": ["suggest"]
+    }
   },
+  "option_fields": ["id", "label", "detail"],
+  "recommend_approve": "approve",
   "decisions": ["approved", "declined"],
   "answer_fields": {
-    "required": ["ask", "decision", "by", "at"],
-    "optional": ["reason"]
+    "required": ["ask", "kind", "question", "for", "by", "at"],
+    "optional": ["decision", "choices", "chosen", "text"]
+  },
+  "answer_kind_fields": {
+    "approve": ["decision"],
+    "choose": ["choices", "chosen"],
+    "question": ["text"]
   },
   "waiting_kind": "approve"
 }

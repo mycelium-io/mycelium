@@ -47,7 +47,7 @@ import { EpisodeTag } from "@/components/episode-tag";
 import { EventIconMark } from "@/components/event-icon";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
-import { ApprovalCard } from "@/components/approval-card";
+import { AskCard } from "@/components/approval-card";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -756,7 +756,7 @@ export function MessageRow({
           {drawsValues && <ReplyValues context={replyContext} />}
           {/* An ask's text is its question, which the card leads with. */}
           {ev.ask ? (
-            <ApprovalCard roomName={roomName} ask={ev.ask} onOpenMemory={ctx.onOpenMemory} />
+            <AskCard roomName={roomName} ask={ev.ask} onOpenMemory={ctx.onOpenMemory} />
           ) : (
           <MessageBody
             content={ev.content}

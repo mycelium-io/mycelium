@@ -850,39 +850,67 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "asks": {
-      // POST /asks — an agent's ask for one person's OK, a message in the
-      // task's thread carrying `ask`. POST /asks/{id}/answer — the person's
-      // answer: folded onto the ask, and sent to the agent as its own message.
+      // POST /asks — an agent's ask (approve, choose or question), a message
+      // in the task's thread, or the room's channel when it names no task,
+      // carrying `ask`. POST /asks/{id}/answer — anyone in the room's answer,
+      // never an agent's: folded onto the ask, and sent to the agent as its
+      // own message, which names the question (services/approvals.py).
       if (method !== "POST") return null;
       const body = await readJson(req);
       const now = new Date().toISOString();
+      const text = (k: string) => (typeof body[k] === "string" && (body[k] as string).trim() ? (body[k] as string).trim() : undefined);
       if (sub.length === 1) {
-        const question = String(body.question ?? "").trim();
+        const question = text("question");
         if (!question) return json({ detail: "An ask needs a question." }, 422);
-        if ((body.kind ?? "approve") !== "approve") return json({ detail: `No ask kind '${String(body.kind)}'.` }, 422);
+        const kind = String(body.kind ?? "approve");
+        if (!["approve", "choose", "question"].includes(kind)) return json({ detail: `No ask kind '${kind}'.` }, 422);
+        const given = Array.isArray(body.options) ? (body.options as unknown[]) : [];
+        if (kind === "choose" ? given.length < 2 : given.length > 0) {
+          return json({ detail: "A choose needs two or more options, and only a choose may have them." }, 422);
+        }
+        const options = given.map((o, i) => {
+          const opt = (typeof o === "string" ? { label: o } : o) as { label?: string; detail?: string };
+          return { id: String(i + 1), label: String(opt.label ?? ""), ...(opt.detail ? { detail: opt.detail } : {}) };
+        });
+        const multiple = kind === "choose" && body.multiple === true;
+        const recommend =
+          kind === "approve" && body.recommend === "approve"
+            ? "approve"
+            : kind === "choose" && Array.isArray(body.recommend)
+              ? (body.recommend as unknown[]).map(String).filter((r) => options.some((o) => o.id === r))
+              : undefined;
+        if (Array.isArray(recommend) && recommend.length > 1 && !multiple) {
+          return json({ detail: "Recommend one option unless several can be picked." }, 422);
+        }
         const handle = String(body.handle ?? "").replace(/^@/, "");
         const row = typeof body.task === "string" ? fx.memories.find((m) => m.key === body.task) : undefined;
-        const episode = row?.episode ?? (typeof body.episode === "string" ? body.episode : null);
-        if (!episode) return json({ detail: "No task to ask in." }, 422);
+        if (typeof body.task === "string" && !row) return json({ detail: `No task ${body.task}.` }, 404);
         const to = String(body.to ?? row?.created_by ?? "operator").replace(/^@/, "");
         const id = stableUuid(`${roomName}/ask/${now}`).replace(/-/g, "").slice(0, 8);
-        const text = (k: string) => (typeof body[k] === "string" && body[k] ? (body[k] as string) : undefined);
+        const ask = {
+          id,
+          kind,
+          to,
+          question,
+          ...Object.fromEntries(["why", "happens", "undo", "link"].flatMap((k) => (text(k) ? [[k, text(k)]] : []))),
+          ...(options.length ? { options } : {}),
+          ...(multiple ? { multiple } : {}),
+          ...(recommend && recommend.length ? { recommend } : {}),
+          ...(kind === "question" && text("suggest") ? { suggest: text("suggest") } : {}),
+        };
         const msg: MockMessage = {
           id: `ask-${id}`,
           sender_handle: handle,
           recipient_handle: to,
           message_type: "broadcast",
           content: question,
-          episode,
+          episode: row?.episode ?? null,
           created_at: now,
-          metadata: {
-            ask: { id, kind: "approve", to, question, happens: text("happens"), why: text("why"), undo: text("undo"), link: text("link") },
-          },
+          metadata: { ask },
         };
         fx.messages.push(msg);
         publish(roomName, { ...msg, room_name: roomName });
-        const meta = msg.metadata as { ask: unknown };
-        return json({ room: roomName, task: row?.key ?? null, episode, message_id: msg.id, ask: meta.ask }, 201);
+        return json({ room: roomName, task: row?.key ?? null, episode: msg.episode, message_id: msg.id, ask }, 201);
       }
       if (sub.length === 3 && sub[2] === "answer") {
         const askId = decodeURIComponent(sub[1]);
@@ -890,21 +918,50 @@ export async function handleMock(req: Request): Promise<Response | null> {
         if (!asked) return json({ detail: `No ask ${askId}.` }, 404);
         const ask = (asked.metadata as { ask: Record<string, unknown> }).ask;
         const by = String(body.by ?? "").replace(/^@/, "");
-        if (by !== ask.to) return json({ detail: `This ask is for @${String(ask.to)}, not @${by}` }, 403);
-        if (ask.answer) {
-          const had = ask.answer as { decision: string; by: string };
-          return json({ detail: `Already ${had.decision} by @${had.by}` }, 409);
+        if (!by || fx.memories.some((m) => m.key === `agents/${by}`)) {
+          return json({ detail: `Only a person answers an ask, and @${by} isn't one.` }, 403);
         }
-        const decision = body.decision === "declined" ? "declined" : "approved";
-        const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : null;
-        const answer = { decision, reason, by, at: now };
+        if (ask.answer) {
+          const had = ask.answer as { by: string };
+          return json({ detail: `Already answered by @${had.by}` }, 409);
+        }
+        const options = (ask.options ?? []) as { id: string; label: string }[];
+        const note = text("text") ?? text("reason");
+        let decided: Record<string, unknown>;
+        let said: string;
+        if (ask.kind === "approve") {
+          if (body.decision !== "approved" && body.decision !== "declined") return json({ detail: "An approve needs a decision." }, 422);
+          decided = { decision: body.decision };
+          said = `${body.decision === "approved" ? "Approved" : "Declined"} "${String(ask.question)}"`;
+        } else if (ask.kind === "choose") {
+          const choices = (Array.isArray(body.choices) ? (body.choices as unknown[]) : []).map(String);
+          if (!choices.length || choices.some((c) => !options.some((o) => o.id === c)) || (choices.length > 1 && !ask.multiple)) {
+            return json({ detail: ask.multiple ? "Pick one or more of its options." : "Pick exactly one of its options." }, 422);
+          }
+          const chosen = options.filter((o) => choices.includes(o.id)).map((o) => o.label);
+          decided = { choices, chosen };
+          said = `Chose "${chosen.join(", ")}" for "${String(ask.question)}"`;
+        } else {
+          if (!note) return json({ detail: "A question needs an answer." }, 422);
+          decided = {};
+          said = `Answered "${String(ask.question)}": ${note}`;
+        }
+        const answer = {
+          kind: ask.kind,
+          question: ask.question,
+          for: ask.to,
+          by,
+          at: now,
+          ...decided,
+          ...(note ? { text: note } : {}),
+        };
         ask.answer = answer;
         const reply: MockMessage = {
           id: `answer-${askId}`,
           sender_handle: by,
           recipient_handle: asked.sender_handle,
           message_type: "broadcast",
-          content: decision === "approved" ? "Approved." : reason ? `Declined: ${reason}` : "Declined.",
+          content: note && ask.kind !== "question" ? `${said}\n\nNote: ${note}` : said,
           episode: asked.episode ?? null,
           created_at: now,
           metadata: { answer: { ask: askId, ...answer } },

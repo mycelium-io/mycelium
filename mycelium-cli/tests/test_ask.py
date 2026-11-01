@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``mycelium ask --approve``, and the answer as ``await`` shows it.
+"""``mycelium ask``, and the answer as ``await`` shows it.
 
 Node-free: the hub is a stand-in that records what the command sends.
 """
@@ -18,8 +18,13 @@ from typer.testing import CliRunner
 from mycelium import cli_options
 from mycelium.cli import app as cli_app
 from mycelium.commands import ask as ask_cmd
-from mycelium.commands.participate import _decision_line
-from mycelium_backend_client.models import AskAnswer, AskAnswerDecision, AwaitAskRead
+from mycelium.commands.participate import _answer_parts
+from mycelium_backend_client.models import (
+    AskAnswer,
+    AskAnswerDecisionType0,
+    AskAnswerKindType0,
+    AwaitAskRead,
+)
 from tests.conftest import install_stand_in_hub
 
 runner = CliRunner()
@@ -48,20 +53,28 @@ def _posted(request: httpx.Request) -> tuple[int, dict]:
     }
 
 
-def test_the_cli_s_kinds_and_facts_are_the_contract_s() -> None:
-    assert list(ask_cmd.KINDS) == CONTRACT["kinds"]
-    assert list(ask_cmd.FACTS) == CONTRACT["ask_fields"]["optional"]
-
-
-def test_only_the_question_is_needed(monkeypatch: pytest.MonkeyPatch) -> None:
-    sent: list[dict] = []
+@pytest.fixture
+def sent(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+    """What each ``mycelium ask`` sent the hub."""
+    bodies: list[dict] = []
     hub = install_stand_in_hub(monkeypatch)
 
     def answer(request: httpx.Request):
-        sent.append(json.loads(request.content))
+        bodies.append(json.loads(request.content))
         return _posted(request)
 
     hub.answer = answer
+    return bodies
+
+
+def test_the_cli_s_kinds_and_facts_are_the_contract_s() -> None:
+    assert list(ask_cmd.KINDS) == CONTRACT["kinds"]
+    assert list(ask_cmd.FACTS) == CONTRACT["ask_fields"]["facts"]
+    assert CONTRACT["recommend_approve"] == ask_cmd.RECOMMEND_APPROVE
+    assert set(ask_cmd._ASKED_TO) == set(CONTRACT["kinds"])
+
+
+def test_only_the_question_is_needed(sent: list[dict]) -> None:
     result = runner.invoke(cli_app, ["ask", "--approve", "Turn Apple Pay on for everyone"])
     assert result.exit_code == 0, result.output
     assert sent == [
@@ -70,15 +83,7 @@ def test_only_the_question_is_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "asked @julia to approve, in checkout/work/apple-pay" in result.output
 
 
-def test_the_facts_and_who_to_ask_are_sent(monkeypatch: pytest.MonkeyPatch) -> None:
-    sent: list[dict] = []
-    hub = install_stand_in_hub(monkeypatch)
-
-    def answer(request: httpx.Request):
-        sent.append(json.loads(request.content))
-        return _posted(request)
-
-    hub.answer = answer
+def test_the_facts_and_who_to_ask_are_sent(sent: list[dict]) -> None:
     result = runner.invoke(
         cli_app,
         ["ask", "--approve", "Merge it", "--undo", "Revert the merge", "--to", "@morgan"],
@@ -89,35 +94,96 @@ def test_the_facts_and_who_to_ask_are_sent(monkeypatch: pytest.MonkeyPatch) -> N
     assert "why" not in sent[0]
 
 
-def test_it_says_what_kind_of_ask_it_needs(monkeypatch: pytest.MonkeyPatch) -> None:
-    install_stand_in_hub(monkeypatch)
-    result = runner.invoke(cli_app, ["ask", "Merge it"])
+def test_a_bare_recommend_on_an_approve_recommends_it(sent: list[dict]) -> None:
+    result = runner.invoke(cli_app, ["ask", "--approve", "Merge it", "--recommend"])
+    assert result.exit_code == 0, result.output
+    assert sent[0]["recommend"] == "approve"
+
+
+def test_a_choose_sends_its_options_in_order_and_its_picks(sent: list[dict]) -> None:
+    result = runner.invoke(
+        cli_app,
+        [
+            "ask",
+            "--choose",
+            "Which payment provider first?",
+            "--option",
+            "Stripe",
+            "--option",
+            "Adyen",
+            "--option",
+            "Wait",
+            "--multiple",
+            "--recommend-option",
+            "1,3",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert sent[0]["kind"] == "choose"
+    assert [o["label"] for o in sent[0]["options"]] == [
+        "Stripe",
+        "Adyen",
+        "Wait",
+    ]
+    assert (sent[0]["multiple"], sent[0]["recommend"]) == (True, ["1", "3"])
+    assert "asked @julia to pick" in result.output
+
+
+def test_a_question_sends_its_draft_answer(sent: list[dict]) -> None:
+    result = runner.invoke(
+        cli_app,
+        ["ask", "--question", "What's slowest at checkout?", "--suggest", "The address form"],
+    )
+    assert result.exit_code == 0, result.output
+    assert (sent[0]["kind"], sent[0]["suggest"]) == ("question", "The address form")
+    assert "multiple" not in sent[0]
+
+
+@pytest.mark.parametrize("flags", [[], ["--approve", "--question"]])
+def test_it_says_what_kind_of_ask_it_needs(sent: list[dict], flags: list[str]) -> None:
+    result = runner.invoke(cli_app, ["ask", *flags, "Merge it"])
     assert result.exit_code == 2
-    assert "--approve" in result.output
+    assert "--approve, --choose or --question" in result.output
+    assert sent == []
 
 
 def test_a_refusal_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     hub = install_stand_in_hub(monkeypatch)
-    hub.answer = lambda _r: (422, {"detail": "No task to ask in: name it with --task"})
-    result = runner.invoke(cli_app, ["ask", "--approve", "Merge it"])
+    hub.answer = lambda _r: (
+        422,
+        {"detail": "A choose needs two or more options, each with a label"},
+    )
+    result = runner.invoke(cli_app, ["ask", "--choose", "Which?", "--option", "A"])
     assert result.exit_code == 1
-    assert "--task" in result.output
+    assert "two or more options" in result.output
 
 
-def test_await_shows_the_decision_beside_the_message() -> None:
-    read = AwaitAskRead(
-        prompt="Declined: wait for the iPhone test",
+def _answer(**fields) -> AwaitAskRead:
+    return AwaitAskRead(
+        prompt='Chose "Stripe" for "Which payment provider first?"\n\nNote: revisit in spring',
         id="0" * 32,
-        sender="julia",
-        answer=AskAnswer(
-            ask="a1b2c3",
-            decision=AskAnswerDecision.DECLINED,
-            by="julia",
-            at="2026-10-30T12:00:00+00:00",
-            reason="wait for the iPhone test",
-        ),
+        sender="jamie",
+        answer=AskAnswer(ask="a1b2c3", by="jamie", at="2026-10-30T12:00:00+00:00", **fields),
     )
-    assert _decision_line(read) == (
-        '\n\nAnswer to your ask a1b2c3: declined by @julia, reason "wait for the iPhone test".'
+
+
+def test_await_says_whose_answer_it_is_when_someone_else_gave_it() -> None:
+    read = _answer(
+        kind=AskAnswerKindType0.CHOOSE,
+        question="Which payment provider first?",
+        for_="morgan",
+        choices=["1"],
     )
-    assert _decision_line(AwaitAskRead(prompt="hi", id="0" * 32)) == ""
+    assert _answer_parts(read) == (" · answer to your ask, which you put to @morgan", "")
+    mine = _answer(
+        kind=AskAnswerKindType0.CHOOSE, question="Which payment provider first?", for_="jamie"
+    )
+    assert _answer_parts(mine) == (" · answer to your ask", "")
+    assert _answer_parts(AwaitAskRead(prompt="hi", id="0" * 32)) == ("", "")
+
+
+def test_an_answer_from_an_older_hub_still_says_the_decision() -> None:
+    read = _answer(decision=AskAnswerDecisionType0.DECLINED, reason="wait for the iPhone test")
+    assert _answer_parts(read)[1] == (
+        '\n\nAnswer to your ask a1b2c3: declined by @jamie, reason "wait for the iPhone test".'
+    )

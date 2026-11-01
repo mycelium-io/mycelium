@@ -18,6 +18,7 @@ import {
   startsAfter,
   summary,
   waitingLine,
+  waitingStanding,
   waitingTitle,
   whoHasIt,
 } from "./people";
@@ -126,6 +127,19 @@ describe("the people's board words", () => {
     expect(STANDING.working.tone).toBe("var(--muted-foreground)");
     expect(STANDING.blocked.tone).toBe("var(--red)");
     expect(WAITING_STANDING.ask.tone).toBe("var(--accent)");
+  });
+
+  it("says what an agent's ask wants of you, by its kind", () => {
+    expect(waitingStanding({ kind: "approve", count: 1 }).word).toBe("Approve?");
+    expect(waitingStanding({ kind: "approve", ask_kind: "choose", count: 1 }).word).toBe("Pick");
+    expect(waitingStanding({ kind: "approve", ask_kind: "question", count: 1 }).word).toBe("Answer?");
+    expect(waitingStanding({ kind: "ask", ask_kind: "question", count: 1 }).word).toBe("Asks you");
+  });
+
+  it("titles an ask in the room's channel with its question", () => {
+    const item = { kind: "approve" as const, text: "Which first?", count: 1 };
+    expect(waitingTitle(item)).toBe("Which first?");
+    expect(waitingLine(item)).toBe("In the room");
   });
 
   it("gives a waiting item the same shape as any row: its task, then one line", () => {

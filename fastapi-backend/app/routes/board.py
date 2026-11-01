@@ -75,6 +75,9 @@ class WaitingItem(BaseModel):
     message_id: str | None = None
     at: str | None = None
     count: int = Field(1, description="Asks in the same thread, the newest shown")
+    ask_kind: Literal["approve", "choose", "question"] | None = Field(
+        None, description="On an approve item: the kind of the agent's ask"
+    )
 
 
 class WaitingRead(BaseModel):

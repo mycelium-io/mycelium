@@ -209,6 +209,7 @@ export function mockWaiting(fx: RoomFixture, handle: string): WaitingItem[] {
     if (key && rows.settled(key)) continue;
     items.push({
       kind: "approve",
+      ask_kind: (ask as { kind?: "approve" | "choose" | "question" }).kind ?? "approve",
       ...about(key, thread),
       sender: m.sender_handle,
       text: ask.question ?? m.content,

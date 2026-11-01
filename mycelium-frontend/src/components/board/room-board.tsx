@@ -24,7 +24,6 @@ import type { ParsedCapture } from "@/lib/board/capture";
 import { fileCapture } from "@/lib/board/file-capture";
 import {
   STANDING,
-  WAITING_STANDING,
   epicLine,
   humanLine,
   sideBySide,
@@ -35,6 +34,7 @@ import {
   summary,
   titlesOf,
   waitingLine,
+  waitingStanding,
   waitingTitle,
   whoHasIt,
   type Standing,
@@ -379,7 +379,7 @@ function WaitingRow({
       agent={item.kind !== "task" && agent}
       title={waitingTitle(item)}
       line={waitingLine(item, you)}
-      standing={WAITING_STANDING[item.kind]}
+      standing={waitingStanding(item)}
       age={item.at ? shortAge(Date.parse(item.at), now) : ""}
       // Its own key: the task it's in may also have a row of its own below.
       rowKey={`waiting:${item.kind}:${(item.kind === "approve" ? item.message_id : item.key) ?? item.key ?? item.message_id ?? ""}`}

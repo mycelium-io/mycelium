@@ -403,18 +403,27 @@ def _ask_boxes(asks: list[AwaitAskRead | AwaitTurn], handle: str) -> list[str]:
             header += f" · in task {task} (reply with --task {task})"
         if isinstance(ask, AwaitAskRead) and ask.id:
             header += f" · {ask.id[:8]}"
-        lines += chat.box(header, ask.prompt + _decision_line(ask))
+        label, line = _answer_parts(ask)
+        lines += chat.box(header + label, ask.prompt + line)
     return lines
 
 
-def _decision_line(ask: AwaitAskRead | AwaitTurn) -> str:
-    """For an answer to the handle's ``mycelium ask``: the decision, as fields."""
+def _answer_parts(ask: AwaitAskRead | AwaitTurn) -> tuple[str, str]:
+    """For an answer to the handle's ``mycelium ask``: what its header adds
+    (whose answer it is, when someone other than whom it asked gave it) and,
+    from a hub whose answer text doesn't name the question, the decision."""
     answer = ask.answer if isinstance(ask.answer, AskAnswer) else None
     if answer is None:
-        return ""
+        return "", ""
+    label = " · answer to your ask"
+    asked_of = answer.for_ if isinstance(answer.for_, str) else None
+    if asked_of and asked_of != answer.by:
+        label += f", which you put to @{asked_of}"
+    if isinstance(answer.question, str):
+        return label, ""
     line = f"\n\nAnswer to your ask {answer.ask}: {answer.decision} by @{answer.by}"
-    reason = answer.reason if isinstance(answer.reason, str) else None
-    return f'{line}, reason "{reason}".' if reason else f"{line}."
+    note = answer.reason if isinstance(answer.reason, str) else None
+    return label, f'{line}, reason "{note}".' if note else f"{line}."
 
 
 def _run_exec(exec_cmd: str, turn: AwaitTurn, room_name: str, handle: str) -> None:

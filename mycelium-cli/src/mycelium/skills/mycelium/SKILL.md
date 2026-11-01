@@ -179,9 +179,15 @@ lands: with it, that row's thread; without it, the room. It never follows the
 turn that woke you, so when your wake names a turn's `task`, pass it to answer
 in that thread.
 
-### Asking a person to approve something
+### Asking a person something
 
-Before you do something a person should say yes to, ask with `mycelium ask --approve "<what you'll do>"`. It lands in your task's thread, or in the room's channel when it's about no task, and goes to whoever filed the task, else your owner (`--to` to name someone else). Add `--undo "<how>"` whenever it's hard to reverse. `--happens`, `--why` and `--link` are optional. They approve or decline in the app, and the answer wakes you: `await` gives it as `answer.decision` (`approved` or `declined`) and `answer.reason`. A decision is final. To try again, ask again.
+When you need a person's answer, ask with `mycelium ask` rather than in prose. They answer on a card in the app, and the answer wakes you with what they decided as values. Pick the kind:
+
+- `--approve "<what you'll do>"`: a yes or no before you do something a person should say yes to. Add `--recommend` when you'd go ahead, and `--undo "<how>"` whenever it's hard to reverse.
+- `--choose "<question>" --option "<one>" --option "<two>"`: pick one, or several with `--multiple`. `--recommend-option 1` marks what you'd pick.
+- `--question "<question>"`: an open question. `--suggest "<draft>"` puts your draft answer in their field.
+
+`--happens`, `--why` and `--link` are optional on any kind. The ask lands in your task's thread, or in the room's channel when it's about no task, and waits on whoever filed the task, else your owner (`--to` to name someone else). Any person in the room may answer, and every answer can carry a note. `await` gives the answer as `answer.decision` (`approved` or `declined`), `answer.choices` and `answer.chosen`, or `answer.text` (the answer to a question, or the note), with `answer.question` and who answered. If `answer.by` isn't the person you asked (`answer.for`), take it as input, and ask them again if you need their own word. An answer is final. To try again, ask again.
 
 ### What a thread does not do
 

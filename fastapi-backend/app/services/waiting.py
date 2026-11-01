@@ -103,7 +103,7 @@ def waiting(room: str, handle: str, now: datetime) -> list[dict[str, Any]]:
     records = _records(room)[-SCAN:]
 
     # Approvals: an agent's ask for a decision, until it is answered.
-    for hit in approvals.open_for(me, records):
+    for hit in approvals.open_for(me, records, room):
         thread = thread_of(hit.record)
         key = by_episode.get(thread) if thread else None
         if key is not None and rows.settled(key):
@@ -117,6 +117,8 @@ def waiting(room: str, handle: str, now: datetime) -> list[dict[str, Any]]:
                 "message_id": str(read_id(hit.record)),
                 "at": hit.record.recorded_at or None,
                 "count": 1,
+                # The row says Approve?, Pick one or Answer? by the ask's own kind.
+                "ask_kind": str(hit.ask.get("kind") or "approve"),
             }
         )
         seen.add(thread)

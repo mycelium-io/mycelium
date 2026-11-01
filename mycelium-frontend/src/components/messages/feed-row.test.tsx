@@ -136,6 +136,18 @@ describe("a message's hover bar", () => {
   });
 });
 
+const DECIDED = {
+  kind: "approve" as const,
+  question: "Flip it Friday?",
+  for: "operator",
+  by: "operator",
+  at: AT,
+  decision: "approved" as const,
+  choices: [],
+  chosen: [],
+  text: null,
+};
+
 describe("an agent's ask", () => {
   it("draws as its card, and the answer to it folds into the card", () => {
     const asked = event({
@@ -152,15 +164,20 @@ describe("an agent's ask", () => {
         why: null,
         undo: null,
         link: null,
-        answer: { decision: "approved", reason: null, by: "operator", at: AT },
+        options: [],
+        multiple: false,
+        recommend: [],
+        recommendsApprove: false,
+        suggest: null,
+        answer: DECIDED,
       },
     });
     const answer = event({
       id: "a2",
       messageId: "a2",
       sender: "operator",
-      content: "Approved.",
-      answers: { ask: "7e21c0a4", decision: "approved", reason: null, by: "operator", at: AT },
+      content: 'Approved "Flip it Friday?"',
+      answers: { ask: "7e21c0a4", ...DECIDED },
     });
     const { container } = renderWithSWR(
       <KeymapProvider>
@@ -168,9 +185,11 @@ describe("an agent's ask", () => {
         <FeedRow ev={answer} prev={asked} ctx={ctx} />
       </KeymapProvider>,
     );
-    expect(container.querySelector('[data-ask="7e21c0a4"]')).toHaveTextContent("Flip it Friday?");
-    expect(screen.getAllByText("Flip it Friday?")).toHaveLength(1);
-    expect(screen.getByText(/Approved by operator/)).toBeInTheDocument();
-    expect(screen.queryByText("Approved.")).toBeNull();
+    // Answered, it's one line saying what was decided; the answer's own
+    // message, which names the question too, draws nothing under it.
+    const line = container.querySelector('[data-ask="7e21c0a4"]');
+    expect(line).toHaveTextContent("Approved");
+    expect(line).toHaveTextContent("Flip it Friday?");
+    expect(screen.getAllByText(/Flip it Friday\?/)).toHaveLength(1);
   });
 });
