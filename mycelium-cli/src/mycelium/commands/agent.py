@@ -817,7 +817,7 @@ def agent_create(
         # claude_code (a resident session kept woken with `await --loop`)
         mycelium agent create release-agent --cwd ~/repos/mycelium
 
-        # cursor (resident Cursor session; drops workspace rules)
+        # cursor (a resident Cursor session)
         mycelium agent create design-agent --adapter cursor \\
             --cwd ~/repos/my-frontend \\
             --description "Owns the design system; pings @avery on ambiguity"
