@@ -274,7 +274,7 @@ class AgentManifest(BaseModel):
     @model_validator(mode="after")
     def check_adapter_requirements(self) -> AgentManifest:
         # cwd is optional: it's the resident session's working dir / cursor's
-        # workspace root (used for asset drops when set), not a launch requirement.
+        # workspace root, not a launch requirement.
         # A cognition engine must name which CE it runs; unknown kinds are a typo
         # guard (the backend routes on this). A retired kind still loads, so a
         # room's old manifest can be listed and removed.
