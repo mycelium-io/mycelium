@@ -8,7 +8,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithSWR } from "@/test/swr";
 import { describe, expect, it, vi } from "vitest";
-import type { BoardPart, BoardRead, WaitingRead } from "@/lib/api";
+import type { BoardPart, BoardRead, ClosedPage, ClosedTask, WaitingRead } from "@/lib/api";
 
 const ep = (id: string) => `urn:ioc:mycelium:episode:checkout:${id}`;
 const AN_HOUR_AGO = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -27,11 +27,18 @@ const part = (key: string, title: string, state: BoardPart["state"], more: Parti
 
 let board: BoardRead = { epics: [], tasks: [] };
 let waiting: WaitingRead = { handle: "julia", items: [] };
+// Each read of the closed list, answered from these pages by `before`.
+let closedPages: Record<string, ClosedPage> = {};
+const fetchClosedTasks = vi.fn(
+  async (_room: string, opts: { q?: string; before?: string | null }) =>
+    closedPages[`${opts.q ?? ""}|${opts.before ?? ""}`] ?? { tasks: [], more: false, total: 0 },
+);
 
 vi.mock("@/lib/api", () => ({
   logFetchError: () => () => undefined,
   fetchRoomBoard: vi.fn(async () => board),
   fetchWaiting: vi.fn(async () => waiting),
+  fetchClosedTasks: (room: string, opts: { q?: string; before?: string | null }) => fetchClosedTasks(room, opts),
   fetchRoomAgents: vi.fn().mockResolvedValue([{ handle: "builder", adapter: "claude_code" }]),
   fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchRoomPeople: vi.fn().mockResolvedValue({ people: [], agents: [], engines: [], others: [] }),
@@ -184,5 +191,77 @@ describe("<RoomBoard />", () => {
     renderWithSWR(<RoomBoard roomName="checkout" />);
     expect(await screen.findByText("Nothing is going on in this room yet")).toBeInTheDocument();
     expect(screen.getByText("Hand something off above, and an agent will pick it up.")).toBeInTheDocument();
+  });
+});
+
+describe("the board's closed tasks", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const closedTask = (slug: string, title: string, daysAgo: number, by = "builder"): ClosedTask => ({
+    ...part(`work/${slug}`, title, "done", { holder: by }),
+    closed_at: new Date(Date.now() - daysAgo * DAY).toISOString(),
+    closed_by: by,
+  });
+  const RECEIPT = closedTask("receipt", "Send a receipt email after checkout", 2);
+  const SAFARI = closedTask("safari", "Test checkout on Safari 17", 9, "reviewer");
+  const PROVIDER = closedTask("provider", "Pick a payment provider for cards", 75, "julia");
+
+  const openClosed = async () => {
+    board = { epics: [], tasks: [part("work/alerts", "Alert us when payments fail", "working", { holder: "builder" })] };
+    waiting = { handle: "julia", items: [] };
+    const user = userEvent.setup();
+    const onOpenThread = vi.fn();
+    renderWithSWR(<RoomBoard roomName="checkout" onOpenThread={onOpenThread} />);
+    const header = await screen.findByRole("button", { name: /^Closed/ });
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    await user.click(header);
+    return { user, onOpenThread };
+  };
+
+  it("folds at the end with its count, and opens to them newest first, headed by when they closed", async () => {
+    closedPages = { "|": { tasks: [RECEIPT, SAFARI, PROVIDER], more: false, total: 3 } };
+    await openClosed();
+    const section = screen.getByRole("region", { name: "Closed" });
+    expect(within(section).getByRole("button", { name: /^Closed/ })).toHaveTextContent("Closed3");
+    const text = section.textContent ?? "";
+    const order = ["This week", "Send a receipt", "Last week", "Test checkout on Safari", "Pick a payment provider"];
+    order.reduce((at, s) => {
+      const next = text.indexOf(s);
+      expect(next).toBeGreaterThan(at);
+      return next;
+    }, -1);
+    // Who closed it, and when: "you" for your own.
+    expect(within(section).getByRole("button", { name: /Pick a payment provider/ })).toHaveTextContent("you");
+    expect(within(section).getByRole("button", { name: /Pick a payment provider/ })).toHaveTextContent("75d");
+  });
+
+  it("finds one closed weeks ago by its words, and opens its thread", async () => {
+    closedPages = {
+      "|": { tasks: [RECEIPT, SAFARI], more: true, total: 3 },
+      "provider|": { tasks: [PROVIDER], more: false, total: 1 },
+    };
+    const { user, onOpenThread } = await openClosed();
+    await user.type(screen.getByRole("textbox", { name: "Find a closed task" }), "provider");
+    const row = await screen.findByRole("button", { name: /Pick a payment provider for cards/ });
+    expect(screen.queryByText("Send a receipt email after checkout")).not.toBeInTheDocument();
+    await user.click(row);
+    expect(onOpenThread).toHaveBeenCalledWith(ep("provider"));
+  });
+
+  it("reads older ones a page at a time, from where the last page ended", async () => {
+    closedPages = {
+      "|": { tasks: [RECEIPT, SAFARI], more: true, total: 3 },
+      [`|${SAFARI.closed_at}`]: { tasks: [PROVIDER], more: false, total: 3 },
+    };
+    const { user } = await openClosed();
+    await user.click(await screen.findByRole("button", { name: "Show older" }));
+    expect(await screen.findByText("Pick a payment provider for cards")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show older" })).not.toBeInTheDocument();
+  });
+
+  it("says when nothing matches", async () => {
+    closedPages = { "|": { tasks: [RECEIPT], more: false, total: 1 } };
+    const { user } = await openClosed();
+    await user.type(screen.getByRole("textbox", { name: "Find a closed task" }), "paypal");
+    expect(await screen.findByText("No closed task matches “paypal”.")).toBeInTheDocument();
   });
 });
