@@ -604,7 +604,7 @@ dev = [
 requires-dist = [
     { name = "attrs", specifier = ">=22.2.0" },
     { name = "beaupy", specifier = ">=3.5.0" },
-    { name = "cryptography", specifier = ">=50,<51" },
+    { name = "cryptography", specifier = ">=50.0.2,<51" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "keyring", specifier = ">=25.7.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8.0" },
