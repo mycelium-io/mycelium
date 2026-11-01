@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Lock, SquareTerminal } from "lucide-react";
+import { Lock, SquareTerminal, X } from "lucide-react";
 import { parseAnsi, readable, type AnsiStyle } from "@/lib/ansi";
 import { placeOf } from "@/lib/agent-place";
 import { terminalLink, useAgentScreen, useIsDesktop, useThisMachine } from "@/lib/desktop";
@@ -260,6 +260,49 @@ function Updated({ at }: { at: number | null }) {
       <span aria-hidden className="size-1.5 rounded-full bg-green motion-safe:animate-pulse" />
       live
     </span>
+  );
+}
+
+/**
+ * PROTOTYPE: the terminal as a pane of the room rather than a drawer over it.
+ * `side` sits beside the channel and narrows it; `peek` floats over the
+ * room's right edge with nothing dimmed, so the channel stays live. Both are
+ * the terminal's height, the window's, and close with Esc.
+ */
+export function AgentTerminalPane({
+  mode,
+  onClose,
+  ...props
+}: Props & { mode: "side" | "peek"; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <section
+      aria-label={`@${props.handle}'s terminal`}
+      className={
+        mode === "side"
+          ? "flex w-[min(680px,46vw)] flex-none flex-col border-l border-border bg-bg"
+          : "absolute inset-y-2 right-2 z-30 flex w-[min(680px,52vw)] flex-col overflow-hidden rounded-xl border border-border2 bg-bg shadow-2xl motion-safe:animate-in motion-safe:slide-in-from-right-4 motion-safe:fade-in-0"
+      }
+    >
+      <header className="flex h-10 flex-none items-center gap-2 border-b border-border px-3">
+        <Monogram handle={props.handle} kind="agent" className="size-5 text-[9px]" />
+        <span className="truncate text-label font-medium text-text">@{props.handle}</span>
+        <span className="text-micro text-faint">{props.room}</span>
+        <button
+          type="button"
+          aria-label="Close its terminal"
+          onClick={onClose}
+          className="ml-auto grid size-6 place-items-center rounded text-muted-foreground hover:bg-hairline hover:text-text"
+        >
+          <X className="size-3.5" />
+        </button>
+      </header>
+      <AgentScreen {...props} />
+    </section>
   );
 }
 

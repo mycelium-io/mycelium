@@ -15,7 +15,8 @@ import { AppShell } from "@/components/app-shell";
 import { RoomDock, type RoomDockHandle } from "@/components/room-dock";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
-import { AgentOpenerProvider } from "@/components/agent-opener";
+import { AgentOpenerProvider, useAgentOpener } from "@/components/agent-opener";
+import { AgentTerminalPane } from "@/components/agent-screen";
 import { CELL, StatusButton, StatusDot } from "@/components/status-items";
 import { episodeUrn } from "@/lib/threads";
 import { NO_FIND, loadView, parsePanelId, saveView, type FindRequest, type View } from "@/lib/room-dock";
@@ -96,6 +97,7 @@ function RoomWorkspace() {
   }, []);
 
   const { agents, episodes, openTasks } = useRoomStatus(roomName);
+  const opener = useAgentOpener();
   const { room, refresh: refreshRoom } = useRoom(roomName);
 
   // A pushed memory/presence event refreshes every reader of this room's data
@@ -286,7 +288,10 @@ function RoomWorkspace() {
   // Too narrow for a split: the rail leaves the group and becomes a sheet over
   // the room, with its icon strip left in place to open and close it.
   const sheetLayout = useSheetLayout();
-  const inspectorInPanel = inspectorOpen && !sheetLayout;
+  // PROTOTYPE: a terminal beside the channel folds the rail to its strip, so
+  // the room reads channel, then terminal.
+  const sideTerminal = opener?.variant === "side" && opener.opened !== null;
+  const inspectorInPanel = inspectorOpen && !sheetLayout && !sideTerminal;
 
   const {
     panelRef: inspectorPanelRef,
@@ -402,7 +407,7 @@ function RoomWorkspace() {
       statusLeft={statusLeft}
       roomViews={roomViews}
     >
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <ResizablePanelGroup
           className="min-h-0 flex-1"
           defaultLayout={defaultLayout}
@@ -470,6 +475,15 @@ function RoomWorkspace() {
                 the one a reader reaches for to put it away. */}
             {inspector(false, () => setInspectorOpen(open => !open))}
           </div>
+        )}
+        {opener?.opened && opener.variant !== "drawer" && (
+          <AgentTerminalPane
+            mode={opener.variant}
+            onClose={opener.close}
+            room={roomName}
+            handle={opener.opened.handle}
+            runner={opener.opened.runner}
+          />
         )}
         <RailSheet
           open={sheetLayout && inspectorOpen}

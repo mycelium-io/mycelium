@@ -47,6 +47,7 @@ import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
 import { RenameAgentDialog } from "@/components/rename-agent-dialog";
 import { AgentScreenDrawer } from "@/components/agent-screen";
+import { useAgentOpener } from "@/components/agent-opener";
 import { Button } from "@/components/ui/button";
 import { Monogram } from "@/components/ui/monogram";
 import { AgentCardHover } from "@/components/agent-card";
@@ -220,6 +221,7 @@ export function AgentsPanel({
   const [renaming, setRenaming] = useState<string | null>(null);
   // The agent whose terminal is open in the drawer, with the machine its manifest names.
   const [watching, setWatching] = useState<{ handle: string; runner: string | null } | null>(null);
+  const opener = useAgentOpener();
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
   // manifests, people from the hub's record of who joined, others who hold a
@@ -447,7 +449,10 @@ export function AgentsPanel({
                   const watch =
                     a.adapter === "engine" || a.adapter === "a2a"
                       ? undefined
-                      : () => setWatching({ handle: a.handle, runner: a.runner ?? null });
+                      : () =>
+                          // PROTOTYPE: open through the room's opener, so every
+                          // way of showing a terminal is tried from Members too.
+                          opener ? opener.open(a.handle) : setWatching({ handle: a.handle, runner: a.runner ?? null });
                   return (
                     <MemberMenu
                       key={`agent-${a.handle}`}

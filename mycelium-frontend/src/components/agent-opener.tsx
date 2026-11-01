@@ -30,6 +30,19 @@ export interface AgentOpener {
   /** Whether an @ tag for `handle` opens something. */
   canOpen: (handle: string) => boolean;
   open: (handle: string) => void;
+  /** PROTOTYPE: the agent whose terminal is open, and how it's shown. */
+  opened: { handle: string; runner: string | null } | null;
+  close: () => void;
+  variant: TerminalVariant;
+}
+
+/** PROTOTYPE: three ways to show an agent's terminal, picked with `?term=`. */
+export type TerminalVariant = "drawer" | "side" | "peek";
+
+function variantFromUrl(): TerminalVariant {
+  if (typeof window === "undefined") return "drawer";
+  const v = new URLSearchParams(window.location.search).get("term");
+  return v === "side" || v === "peek" ? v : "drawer";
 }
 
 const OpenerContext = createContext<AgentOpener | null>(null);
@@ -66,12 +79,17 @@ export function AgentOpenerProvider({ roomName, children }: { roomName: string; 
     },
     [openable],
   );
-  const value = useMemo(() => ({ room: roomName, canOpen, open }), [roomName, canOpen, open]);
+  const [variant] = useState<TerminalVariant>(variantFromUrl);
+  const close = useCallback(() => setOpened(null), []);
+  const value = useMemo(
+    () => ({ room: roomName, canOpen, open, opened, close, variant }),
+    [roomName, canOpen, open, opened, close, variant],
+  );
 
   return (
     <OpenerContext.Provider value={value}>
       {children}
-      {opened && (
+      {opened && variant === "drawer" && (
         <AgentScreenDrawer
           open
           onClose={() => setOpened(null)}
