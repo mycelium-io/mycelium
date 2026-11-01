@@ -30,7 +30,7 @@ import {
   runnerAgentOf,
 } from "./runners";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
-import { mockBoard, mockBoardRow, mockWaiting } from "./board";
+import { mockBoard, mockBoardRow, mockClosedTasks, mockWaiting } from "./board";
 import { demoBusy, demoOnLaunch, demoOnMessage, demoOnTask, isDemoScenario } from "./demo";
 import {
   LEARN_PERSON,
@@ -749,6 +749,15 @@ export async function handleMock(req: Request): Promise<Response | null> {
       // GET /board, GET /board/{key} — the board as people read it (services/board.py).
       if (method !== "GET") return null;
       if (sub.length === 1) return json(mockBoard(fx));
+      if (sub.length === 2 && sub[1] === "closed") {
+        return json(
+          mockClosedTasks(fx, roomName, {
+            q: searchParams.get("q") ?? "",
+            before: searchParams.get("before"),
+            limit: Number(searchParams.get("limit") ?? 30) || 30,
+          }),
+        );
+      }
       const key = sub.slice(1).map(decodeURIComponent).join("/");
       const row = mockBoardRow(fx, key);
       return row ? json(row) : notFound(`No board row '${key}' in this room (mock)`);

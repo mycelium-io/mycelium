@@ -160,6 +160,19 @@ export function progressOf(epic: BoardEpic): string {
   return `${epic.done} of ${epic.total} done`;
 }
 
+/** Which stretch of time a closed task falls in, as the closed list heads
+ *  it: "This week" and "Last week" by days, then the month it closed in,
+ *  with its year once it isn't this one. */
+export function closedGroup(closedAt: string, now: number): string {
+  const at = Date.parse(closedAt);
+  const days = (now - at) / (24 * 60 * 60 * 1000);
+  if (days < 7) return "This week";
+  if (days < 14) return "Last week";
+  const d = new Date(at);
+  const month = d.toLocaleString("en-US", { month: "long" });
+  return d.getFullYear() === new Date(now).getFullYear() ? month : `${month} ${d.getFullYear()}`;
+}
+
 /** A waiting item's title, the same as every other row's: the task it's in. */
 export function waitingTitle(item: WaitingItem): string {
   // An agent's ask in the room's channel is about no task: its question is

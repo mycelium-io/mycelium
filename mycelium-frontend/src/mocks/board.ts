@@ -12,7 +12,16 @@
  * these answer are moved up to today.
  */
 
-import type { BoardEpic, BoardPart, BoardRead, LatestLine, PartState, WaitingItem } from "@/lib/api";
+import type {
+  BoardEpic,
+  BoardPart,
+  BoardRead,
+  ClosedPage,
+  ClosedTask,
+  LatestLine,
+  PartState,
+  WaitingItem,
+} from "@/lib/api";
 import { MOCK_NOW, type MockMemory, type RoomFixture } from "./fixtures";
 
 /** A fixture time, moved up so the fixtures' now is the real one. */
@@ -171,6 +180,69 @@ export function mockBoard(fx: RoomFixture): BoardRead {
     else read.tasks.push(rows.part(key));
   }
   return read;
+}
+
+/** Closed work the checkout room did before the fixture's story, so the
+ *  board's history has weeks to page through. Days ago, title, who closed it,
+ *  and its last line. */
+const CHECKOUT_HISTORY: [number, string, string, string][] = [
+  [2, "Send a receipt email after checkout", "builder", "Receipts go out from the queue now, not the request."],
+  [5, "Fix the tax line rounding on orders over $1,000", "reviewer", "Checked against 40 old orders. All match."],
+  [9, "Load the card form after the page, so checkout opens faster", "builder", "Checkout opens 1.2s faster on a phone."],
+  [12, "Write the refund policy for double charges", "operator", "Under $50 refunds itself, the rest goes to support."],
+  [16, "Test checkout on Safari 17", "reviewer", "Two fixes, both in #488."],
+  [23, "Put the address form on one page", "builder", "Merged as #481."],
+  [30, "Show the delivery date before payment", "builder", "Shown under the basket total."],
+  [38, "Remove the old PayPal button", "builder", "Removed. PayPal stays off until after the sale."],
+  [45, "Set up Stripe webhooks for refunds", "builder", "Refunds now update the order within a minute."],
+  [52, "Agree the launch date for Apple Pay", "operator", "Friday at 9:00, after the iPhone test."],
+  [60, "Add a coupon field to checkout", "builder", "One field, under the basket."],
+  [68, "Log failed payments to the room", "reviewer", "Failed payments post to status/payments."],
+  [75, "Pick a payment provider for cards", "operator", "Stripe."],
+];
+
+/**
+ * The mock's answer to `GET /board/closed`: the room's closed work, newest
+ * closed first, a page at a time, matching `q` in its title or last line.
+ */
+export function mockClosedTasks(
+  fx: RoomFixture,
+  room: string,
+  opts: { q: string; before: string | null; limit: number },
+): ClosedPage {
+  const rows = new Rows(fx);
+  const day = 24 * 60 * 60 * 1000;
+  const all: ClosedTask[] = [];
+  for (const key of rows.rows.keys()) {
+    if (!key.startsWith("work/") || !rows.settled(key)) continue;
+    const part = rows.part(key);
+    all.push({ ...part, closed_at: part.updated_at ?? new Date().toISOString(), closed_by: part.holder ?? null });
+  }
+  if (room === "checkout") {
+    for (const [ago, title, by, line] of CHECKOUT_HISTORY) {
+      const at = new Date(Date.now() - ago * day - 3 * 60 * 60 * 1000).toISOString();
+      all.push({
+        key: `work/${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 48)}`,
+        title,
+        episode: null,
+        state: "done",
+        holder: by,
+        waiting_on: [],
+        latest: { sender: by, text: line, at },
+        parts: 0,
+        parts_done: 0,
+        updated_at: at,
+        closed_at: at,
+        closed_by: by,
+      });
+    }
+  }
+  const words = opts.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const matched = all
+    .filter(t => words.every(w => `${t.title} ${t.latest?.text ?? ""}`.toLowerCase().includes(w)))
+    .sort((a, b) => b.closed_at.localeCompare(a.closed_at));
+  const older = opts.before ? matched.filter(t => t.closed_at < opts.before!) : matched;
+  return { tasks: older.slice(0, opts.limit), more: older.length > opts.limit, total: matched.length };
 }
 
 export function mockBoardRow(fx: RoomFixture, key: string): BoardEpic | null {

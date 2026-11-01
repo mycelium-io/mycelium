@@ -1166,6 +1166,36 @@ export async function fetchRoomBoard(roomName: string): Promise<BoardRead> {
   });
 }
 
+/** A closed task, as the board's history reads it: the row it was, with when
+ *  it closed and who closed it (`GET /rooms/{room}/board/closed`). */
+export interface ClosedTask extends BoardPart {
+  closed_at: string;
+  closed_by?: string | null;
+}
+
+/** One page of closed tasks, newest closed first. `more` says an older page
+ *  follows, read with `before` set to the last row's `closed_at`. */
+export interface ClosedPage {
+  tasks: ClosedTask[];
+  more: boolean;
+  /** Every closed task the search matches, not only this page's. */
+  total: number;
+}
+
+export async function fetchClosedTasks(
+  roomName: string,
+  opts: { q?: string; before?: string | null; limit?: number } = {},
+): Promise<ClosedPage> {
+  const params = new URLSearchParams();
+  if (opts.q?.trim()) params.set("q", opts.q.trim());
+  if (opts.before) params.set("before", opts.before);
+  params.set("limit", String(opts.limit ?? 30));
+  return apiFetch<ClosedPage>(`${roomApiPath(roomName)}/board/closed?${params}`, {
+    cache: "no-store",
+    fallback: { tasks: [], more: false, total: 0 },
+  });
+}
+
 /** One thing waiting on a member (`GET /rooms/{room}/waiting?for=`). */
 export interface WaitingItem {
   /** `approve` is an agent's ask (of any kind), `ask` a message that asks you. */
