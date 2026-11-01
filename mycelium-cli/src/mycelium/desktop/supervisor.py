@@ -108,7 +108,9 @@ HUB_RESTART_MARKER = ".hub-restart-requested"
 #: The programs a supervisor started and is running (pid and program), in
 #: ``~/.mycelium``. An app that updates itself in place replaces its files under
 #: them without stopping them, so the next supervisor reads this to stop what
-#: was the app's own and start it again from the new files.
+#: was the app's own and start it again from the new files. The UI's entry also
+#: has its ``port``, so ``mycelium doctor`` looks for the UI where it is
+#: (:func:`started_ui_port`).
 STARTED_FILE = "desktop-started.json"
 #: How often the supervisor looks at its processes.
 TICK_S = 0.5
@@ -453,6 +455,18 @@ def free_port(host: str = HOST) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, 0))
         return int(s.getsockname()[1])
+
+
+def started_ui_port(path: Path | None = None) -> int | None:
+    """The port the running app's UI was started on, from :data:`STARTED_FILE`;
+    ``None`` when the app isn't running it (or wrote down no port)."""
+    try:
+        started = json.loads((path or Path.home() / ".mycelium" / STARTED_FILE).read_text())
+    except (OSError, ValueError):
+        return None
+    entry = started.get("ui") if isinstance(started, dict) else None
+    port = entry.get("port") if isinstance(entry, dict) else None
+    return port if isinstance(port, int) and port > 0 else None
 
 
 #: Where the UI server answers the readiness question (``lib/ui-guard.ts``).
@@ -902,7 +916,7 @@ class Supervisor:
                 c.proc.stdin.write(c.stdin + "\n")
                 c.proc.stdin.close()
         if not c.outlives:
-            self._remember(c.name, c.proc.pid, argv[0])
+            self._remember(c.name, c.proc.pid, argv[0], self.ui_port if c.name == "ui" else None)
         c.started_at = time.monotonic()
         c.unanswered_since = 0.0
         self._read(c)
@@ -1210,9 +1224,12 @@ class Supervisor:
             return {}
         return found if isinstance(found, dict) else {}
 
-    def _remember(self, name: str, pid: int, program: str) -> None:
-        """Write down that ``name`` runs as ``pid`` from ``program``."""
-        started = {**self._started(), name: {"pid": pid, "program": program}}
+    def _remember(self, name: str, pid: int, program: str, port: int | None = None) -> None:
+        """Write down that ``name`` runs as ``pid`` from ``program`` (on ``port``)."""
+        entry: dict[str, Any] = {"pid": pid, "program": program}
+        if port is not None:
+            entry["port"] = port
+        started = {**self._started(), name: entry}
         with contextlib.suppress(OSError):
             self.started_path.parent.mkdir(parents=True, exist_ok=True)
             self.started_path.write_text(json.dumps(started, indent=2) + "\n")

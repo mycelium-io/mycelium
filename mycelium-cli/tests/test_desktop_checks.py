@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 
 from mycelium.desktop import checks
@@ -49,6 +50,40 @@ def setting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def _names(sections) -> list[str]:
     return [c.name for _title, group in sections for c in group]
+
+
+def _ui_started_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, port: int | None) -> None:
+    """The file of what the app started, with its UI on ``port`` (none: not running)."""
+    started = tmp_path / "desktop-started.json"
+    if port is not None:
+        started.write_text(json.dumps({"ui": {"pid": 1, "program": "ui", "port": port}}))
+    monkeypatch.setattr(checks, "STARTED", started)
+
+
+@pytest.mark.parametrize(
+    ("port", "asked", "message"),
+    [
+        (None, checks.UI_PORT, f"serving on {checks.HOST}:{checks.UI_PORT}"),
+        (checks.UI_PORT, checks.UI_PORT, f"serving on {checks.HOST}:{checks.UI_PORT}"),
+        (55329, 55329, f"serving on {checks.HOST}:55329; {checks.UI_PORT} was taken"),
+    ],
+)
+def test_the_ui_is_checked_on_the_port_the_app_started_it_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, port: int | None, asked: int, message: str
+):
+    _ui_started_on(tmp_path, monkeypatch, port)
+    urls: list[str] = []
+    monkeypatch.setattr(checks, "_get", lambda url, **_k: urls.append(url) or httpx.Response(200))
+    found = checks.ui()
+    assert urls == [f"http://{checks.HOST}:{asked}/"]
+    assert (found.status, found.message) == ("ok", message)
+
+
+def test_nothing_on_the_ui_s_port_names_that_port(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _ui_started_on(tmp_path, monkeypatch, 55329)
+    monkeypatch.setattr(checks, "_get", lambda *_a, **_k: None)
+    found = checks.ui()
+    assert (found.status, found.message) == ("error", f"nothing on {checks.HOST}:55329")
 
 
 def test_a_hub_mac_checks_everything_it_runs(setting):
@@ -105,8 +140,6 @@ def test_the_hub_check_names_the_address_it_tried(monkeypatch: pytest.MonkeyPatc
 
 
 def test_a_hub_reached_at_its_ui_answers_under_api(monkeypatch: pytest.MonkeyPatch):
-    import httpx
-
     from tests.conftest import install_stand_in_hub
 
     tried: list[str] = []
@@ -220,8 +253,6 @@ def test_doctor_checks_what_the_app_runs_once_it_is_set_up(setting, monkeypatch)
 def _hub_answers(monkeypatch: pytest.MonkeyPatch, status: int, body: dict) -> list[dict]:
     """The hub answering ``status`` and ``body``; what's returned fills with the
     credential each request carried (``{}`` for none)."""
-    import httpx
-
     from tests.conftest import install_stand_in_hub
 
     asked: list[dict] = []
