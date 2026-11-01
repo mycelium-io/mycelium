@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import shutil
 import sys
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -26,17 +25,17 @@ from mycelium.desktop.supervisor import (
     HOST,
     HUB_PORT,
     SLIM_PORT,
-    STARTED_FILE,
     UI_PORT,
     Locator,
     port_open,
+    started_file,
     started_ui_port,
 )
 from mycelium.ui_status import CheckResult
 
 SETTINGS = desktop_settings_path()
 #: What the running app started, with the port its UI is on.
-STARTED = Path.home() / ".mycelium" / STARTED_FILE
+STARTED = started_file()
 
 
 def settings() -> dict[str, Any] | None:

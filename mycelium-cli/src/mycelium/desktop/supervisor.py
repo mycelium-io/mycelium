@@ -457,11 +457,16 @@ def free_port(host: str = HOST) -> int:
         return int(s.getsockname()[1])
 
 
+def started_file() -> Path:
+    """Where the app writes down what it started (:data:`STARTED_FILE`)."""
+    return Path.home() / ".mycelium" / STARTED_FILE
+
+
 def started_ui_port(path: Path | None = None) -> int | None:
     """The port the running app's UI was started on, from :data:`STARTED_FILE`;
     ``None`` when the app isn't running it (or wrote down no port)."""
     try:
-        started = json.loads((path or Path.home() / ".mycelium" / STARTED_FILE).read_text())
+        started = json.loads((path or started_file()).read_text())
     except (OSError, ValueError):
         return None
     entry = started.get("ui") if isinstance(started, dict) else None
@@ -603,7 +608,7 @@ class Supervisor:
         self.look = look
         #: Where the programs this supervisor started are written down, so the
         #: next one (after an update, or a crash) knows them as the app's own.
-        self.started_path = started_path or Path.home() / ".mycelium" / STARTED_FILE
+        self.started_path = started_path or started_file()
         #: Every hub seen at start, what deserves a look about them, and the
         #: one on the app's port when the app is using it.
         self.hubs: list[dict[str, Any]] = []
