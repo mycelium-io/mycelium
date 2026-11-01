@@ -837,7 +837,7 @@ dev = [
 requires-dist = [
     { name = "a2a-sdk", specifier = "==1.1.2" },
     { name = "anthropic", specifier = ">=0.40.0" },
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0,<0.142" },
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0,<0.163" },
     { name = "fastembed", specifier = ">=0.8.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.29.0,<2" },
