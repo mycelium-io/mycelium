@@ -67,8 +67,14 @@ function heading(ask: ApprovalAsk, mine: boolean, to: string): string {
  * An agent's ask, drawn where the agent asked it: in the room's channel or a
  * task's thread. It's put to one person, who sees it as theirs; anyone else in
  * the room sees whom it asks and may answer it too. Every kind takes a note
- * with its answer. Once answered it folds to one line that says what was
- * decided, by whom, and what was asked, and opens to the whole record.
+ * with its answer. Once answered it folds to the question, with what was
+ * answered under it and who answered when beside it, and opens to the whole
+ * record.
+ *
+ * Everything in it is text that wraps, or is cut with an ellipsis inside the
+ * card: no columns, and nothing that refuses to shrink. A fact is a paragraph
+ * with its label run in, and an option is one sentence (its number, its text
+ * and whether it's recommended), so a long one wraps as a whole.
  */
 export function AskCard({
   roomName,
@@ -132,22 +138,25 @@ export function AskCard({
     }
   };
 
-  // Answered: one line that says what was decided, which opens to the card.
+  // Answered: the question, and under it what was answered, each cut to fit
+  // the card. It opens to the whole record.
   if (answer && !open) {
+    const declined = answer.kind === "approve" && answer.decision === "declined";
     return (
       <button
         type="button"
         data-ask={ask.id}
         onClick={() => setOpen(true)}
         aria-expanded={false}
-        className="mt-1.5 flex w-full max-w-2xl items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-left text-label hover:bg-hairline"
+        className="mt-1.5 grid w-full max-w-2xl grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-left text-label hover:bg-hairline"
       >
-        <Verdict answer={answer} />
-        <span className="min-w-0 flex-1 truncate text-muted-foreground">
-          {ask.question}
-          {answer.text && <span className="text-text"> · {answer.text}</span>}
-        </span>
-        <span className="flex-shrink-0 text-micro text-faint">
+        {declined ? (
+          <X className="size-3.5 self-center text-red" aria-hidden />
+        ) : (
+          <Check className="size-3.5 self-center text-green" aria-hidden />
+        )}
+        <span className="truncate text-text">{ask.question}</span>
+        <span className="flex items-center gap-1 text-micro whitespace-nowrap text-faint">
           {who(answer.by)}
           {answer.for && answer.for.toLowerCase() !== answer.by.toLowerCase() && ` for ${who(answer.for)}`}
           {answer.at && (
@@ -156,8 +165,12 @@ export function AskCard({
               <Ago at={answer.at} />
             </>
           )}
+          <ChevronRight className="size-3.5" aria-hidden />
         </span>
-        <ChevronRight className="size-3.5 flex-shrink-0 text-faint" />
+        <span className="col-start-2 col-end-4 truncate text-muted-foreground">
+          {verdictOf(answer)}
+          {answer.text && ` · “${answer.text}”`}
+        </span>
       </button>
     );
   }
@@ -200,16 +213,15 @@ export function AskCard({
         </div>
         <p className="mt-1 text-body font-medium text-text">{ask.question}</p>
         {facts.length > 0 && (
-          // Side by side where the card is wide; in a narrow pane each label
-          // sits over its fact, so neither column gets squeezed to a few words.
-          <dl className="mt-2 flex flex-col gap-2 text-label @md:grid @md:grid-cols-[6.5rem_minmax(0,1fr)] @md:gap-x-3 @md:gap-y-1">
+          // Each fact is a paragraph with its label run in, so it wraps as
+          // text does at any width, with no column to squeeze it.
+          <div className="mt-1.5 space-y-1 text-label text-text">
             {facts.map(([label, value]) => (
-              <div key={label} className="flex flex-col @md:contents">
-                <dt className="text-micro text-muted-foreground @md:text-label">{label}</dt>
-                <dd className="text-text">{value}</dd>
-              </div>
+              <p key={label}>
+                <span className="font-medium text-muted-foreground">{label}</span> {value}
+              </p>
             ))}
-          </dl>
+          </div>
         )}
         {ask.link && <AskLink link={ask.link} onOpenMemory={onOpenMemory} />}
         {ask.kind === "choose" && (
@@ -240,15 +252,20 @@ export function AskCard({
                     }
                     className="mt-[3px] size-3.5 flex-shrink-0 accent-[var(--accent)]"
                   />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex flex-wrap items-baseline gap-x-1.5 text-label text-text">
-                      <span className="tabular text-faint">{o.id}</span>
-                      {o.label}
-                      {ask.recommend.includes(o.id) && (
-                        <span className="rounded bg-accent-soft px-1 text-micro text-accent">recommended</span>
-                      )}
+                  {/* The option is one sentence, its number then its text,
+                      wrapping as text. Under it, whether it's recommended and
+                      its detail, so neither breaks the sentence. */}
+                  <span className="min-w-0 flex-1 text-label">
+                    <span className="text-text">
+                      <span className="tabular text-faint">{o.id}.</span> {o.label}
                     </span>
-                    {o.detail && <span className="block text-micro text-muted-foreground">{o.detail}</span>}
+                    {(o.detail || ask.recommend.includes(o.id)) && (
+                      <span className="mt-0.5 block text-micro text-muted-foreground">
+                        {ask.recommend.includes(o.id) && <span className="text-accent">Recommended</span>}
+                        {ask.recommend.includes(o.id) && o.detail && " · "}
+                        {o.detail}
+                      </span>
+                    )}
                   </span>
                 </label>
               );
@@ -258,16 +275,22 @@ export function AskCard({
       </div>
       <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-t border-border px-3 py-1.5">
         {answer ? (
-          <div className="min-w-0 text-label">
-            <span className="flex flex-wrap items-center gap-x-1.5 text-text">
+          <div className="min-w-0 flex-1 text-label">
+            <p className="text-text">
               <Verdict answer={answer} />
               <span className="text-muted-foreground">
-                · {who(answer.by)}
+                {" · "}
+                {who(answer.by)}
                 {answer.for && answer.for.toLowerCase() !== answer.by.toLowerCase() && `, for ${who(answer.for)}`}
               </span>
-              {answer.at && <Ago at={answer.at} className="text-micro text-faint" />}
-            </span>
-            {answer.text && <p className="mt-0.5 pl-5 text-muted-foreground">“{answer.text}”</p>}
+              {answer.at && (
+                <>
+                  {" "}
+                  <Ago at={answer.at} className="text-micro text-faint" />
+                </>
+              )}
+            </p>
+            {answer.text && <p className="mt-0.5 text-muted-foreground">“{answer.text}”</p>}
           </div>
         ) : (
           <form
@@ -334,12 +357,20 @@ export function AskCard({
   );
 }
 
+/** What was decided, under the open card. The options above already show
+ *  which were picked, ticked, so a pick is named by its numbers alone. */
 function Verdict({ answer }: { answer: AskAnswer }) {
   const declined = answer.kind === "approve" && answer.decision === "declined";
+  const Mark = declined ? X : Check;
+  const ids = answer.choices;
+  const said =
+    answer.kind === "choose" && ids.length > 0
+      ? `Chose ${ids.length > 1 ? `${ids.slice(0, -1).join(", ")} and ${ids[ids.length - 1]}` : ids[0]}`
+      : verdictOf(answer);
   return (
-    <span className="flex flex-shrink-0 items-center gap-1.5 font-medium text-text">
-      {declined ? <X className="size-3.5 text-red" /> : <Check className="size-3.5 text-green" />}
-      {verdictOf(answer)}
+    <span className="font-medium text-text">
+      <Mark className={cn("mr-1 inline size-3.5 align-[-2px]", declined ? "text-red" : "text-green")} aria-hidden />
+      {said}
     </span>
   );
 }
