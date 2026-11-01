@@ -995,9 +995,11 @@ class MyceliumConfig(BaseModel):
 
             # A folder that joined a room (`mycelium join`) names its hub and
             # room; that beats this machine's files and loses to the environment.
+            # With no membership, the desktop app's client-mode hub stands in
+            # when the files name no hub of their own.
             from mycelium import caller
 
-            overlay = caller.config_overlay()
+            overlay = caller.config_overlay(config_dict.get("server", {}).get("api_url"))
             replaced = {
                 (section, key): (config_dict.get(section, {}).get(key), value)
                 for section, keys in overlay.items()
