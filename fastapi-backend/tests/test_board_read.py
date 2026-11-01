@@ -223,6 +223,88 @@ class TestEpics:
         assert (mid["parts"], mid["parts_done"]) == (1, 1)
 
 
+def closed_row(key: str, title: str, *, days_ago: float, **meta: object) -> None:
+    """A settled task, last written ``days_ago`` before NOW, which is when it closed."""
+    at = NOW - timedelta(days=days_ago)
+    write_memory_file(
+        get_room_dir(ROOM),
+        key,
+        f"# {title}",
+        created_by=str(meta.pop("by", "builder")),
+        created_at=at - timedelta(hours=1),
+        updated_at=at,
+        extra_meta={"episode": thread(key.split("/")[-1]), **meta},
+    )
+
+
+class TestClosed:
+    """The board's closed list: every settled task, found by its words, newest first."""
+
+    @pytest.fixture
+    def history(self):
+        closed_row("work/refunds", "Refund double charges", days_ago=1, status="resolved")
+        closed_row(
+            "work/stripe-keys",
+            "Rotate the Stripe keys",
+            days_ago=3,
+            assignment="resolved",
+            assignment_note_by="sec",
+            owner="builder",
+        )
+        closed_row("work/card-form", "Remove the old card form", days_ago=9, status="resolved")
+        closed_row("work/old-promo", "Pause the spring promo", days_ago=20, status="dismissed")
+        row("work/still-open", "Add Apple Pay to checkout", minute=1)
+        # Settled, but not a task: a decision isn't listed on its own.
+        closed_row("decisions/psp", "Use Stripe", days_ago=2, status="resolved")
+
+    def test_every_settled_task_newest_closed_first(self, history):
+        page = board.closed(ROOM, NOW)
+        assert [t["key"] for t in page["tasks"]] == [
+            "work/refunds",
+            "work/stripe-keys",
+            "work/card-form",
+            "work/old-promo",
+        ]
+        assert (page["more"], page["total"]) == (False, 4)
+        assert page["tasks"][0]["state"] == "done"
+        assert page["tasks"][0]["closed_at"] == (NOW - timedelta(days=1)).isoformat()
+
+    def test_parts_of_an_epic_are_listed_too(self, apple_pay):
+        assert "work/stripe" in [t["key"] for t in board.closed(ROOM, NOW)["tasks"]]
+
+    def test_who_closed_it_is_who_resolved_it_else_who_held_it(self, history):
+        by = {t["key"]: t["closed_by"] for t in board.closed(ROOM, NOW)["tasks"]}
+        assert by["work/stripe-keys"] == "sec"
+        assert by["work/refunds"] is None
+
+    def test_every_word_must_be_in_the_title_or_the_latest_line(self, history, monkeypatch):
+        monkeypatch.setattr(
+            board,
+            "latest_lines",
+            lambda _room: {
+                thread("card-form"): {"sender": "builder", "text": "shipped behind a flag"}
+            },
+        )
+        found = lambda q: [t["key"] for t in board.closed(ROOM, NOW, q=q)["tasks"]]  # noqa: E731
+        assert found("STRIPE keys") == ["work/stripe-keys"]
+        assert found("stripe promo") == []
+        assert found("flag") == ["work/card-form"]
+        assert board.closed(ROOM, NOW, q="the")["total"] == 3
+
+    def test_before_pages_back_and_more_says_there_is_more(self, history):
+        first = board.closed(ROOM, NOW, limit=2)
+        assert [t["key"] for t in first["tasks"]] == ["work/refunds", "work/stripe-keys"]
+        assert (first["more"], first["total"]) == (True, 4)
+        cut = datetime.fromisoformat(first["tasks"][-1]["closed_at"])
+        rest = board.closed(ROOM, NOW, before=cut, limit=2)
+        assert [t["key"] for t in rest["tasks"]] == ["work/card-form", "work/old-promo"]
+        assert (rest["more"], rest["total"]) == (False, 4)
+
+    def test_a_page_is_capped(self, history):
+        assert len(board.closed(ROOM, NOW, limit=10_000)["tasks"]) == 4
+        assert board.CLOSED_PAGE_MAX == 100
+
+
 class TestRoutes:
     async def test_the_board_and_one_row_read_over_http(self, client, apple_pay):
         await client.post("/api/rooms", json={"name": ROOM})
@@ -234,6 +316,17 @@ class TestRoutes:
         assert (done["state"], done["path"]) == ("done", [])
         missing = await client.get(f"/api/rooms/{ROOM}/board/work/nope")
         assert missing.status_code == 404
+
+    async def test_closed_reads_over_http_and_isn_t_taken_for_a_key(self, client, apple_pay):
+        await client.post("/api/rooms", json={"name": ROOM})
+        resp = await client.get(f"/api/rooms/{ROOM}/board/closed", params={"q": "stripe"})
+        assert resp.status_code == 200, resp.text
+        page = resp.json()
+        assert [t["key"] for t in page["tasks"]] == ["work/stripe"]
+        assert (page["more"], page["total"]) == (False, 1)
+        assert page["tasks"][0]["closed_at"]
+        bad = await client.get(f"/api/rooms/{ROOM}/board/closed", params={"before": "last tuesday"})
+        assert bad.status_code == 422
 
     async def test_waiting_reads_over_http(self, client, apple_pay):
         await client.post("/api/rooms", json={"name": ROOM})

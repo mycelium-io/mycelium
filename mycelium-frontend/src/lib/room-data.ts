@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EMPTY_LAYOUT, type RoomFolders } from "@/lib/room-folders";
 import type { RoomStatus } from "@/lib/board/upstream";
 import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
+import useSWRInfinite from "swr/infinite";
 import {
   fetchA2aBridge,
   fetchEpisodes,
@@ -32,6 +33,8 @@ import {
   fetchRoom,
   fetchRoomAgents,
   fetchRoomBoard,
+  fetchClosedTasks,
+  type ClosedPage,
   fetchWaiting,
   fetchRoomMembers,
   fetchRoomPeople,
@@ -179,6 +182,7 @@ type RoomResource =
   | "episodes"
   | "status"
   | "board"
+  | "board-closed"
   | "waiting"
   | "a2a"
   | "verifier-flags";
@@ -538,6 +542,35 @@ export function useRoomBoard(room: string, opts: RoomQueryOptions = {}) {
     room, "board", fetchRoomBoard, NO_BOARD, POLL.board, opts,
   );
   return { board: data, loading, refresh };
+}
+
+/**
+ * The room's closed tasks, newest closed first, a page at a time, matching
+ * `q` when there is one. Parked while `on` is false, so a folded list reads
+ * nothing. `more()` reads the next older page.
+ */
+export function useRoomClosedTasks(room: string, q: string, on: boolean) {
+  const { data, isLoading, size, setSize } = useSWRInfinite<ClosedPage>(
+    (index, previous: ClosedPage | null) => {
+      if (!on || !room) return null;
+      if (previous && !previous.more) return null;
+      const before = previous?.tasks[previous.tasks.length - 1]?.closed_at ?? "";
+      return ["room", room, "board-closed", q, index === 0 ? "" : before] as const;
+    },
+    ([, r, , query, before]: readonly [string, string, string, string, string]) =>
+      fetchClosedTasks(r, { q: query, before: before || null }),
+    { revalidateFirstPage: true },
+  );
+  const tasks = useMemo(() => (data ?? []).flatMap(p => p.tasks), [data]);
+  const last = data?.[data.length - 1];
+  const more = useCallback(() => void setSize(size + 1), [setSize, size]);
+  return {
+    tasks,
+    total: data?.[0]?.total ?? null,
+    hasMore: !!last?.more,
+    loading: isLoading || (size > 0 && data !== undefined && data.length < size),
+    more,
+  };
 }
 
 /** What is waiting on `handle` in the room. Parked until there is a handle. */

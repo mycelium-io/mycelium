@@ -3,8 +3,8 @@
 
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { useCallback, useDeferredValue, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { VIEW_ICONS } from "@/components/room-views-nav";
 import { cn } from "@/lib/utils";
@@ -16,14 +16,15 @@ import { AgentCardHover } from "@/components/agent-card";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { shortAge } from "@/components/activity-rail";
 import { NowProvider, useNow } from "@/lib/relative-time";
-import { useRoomAgents, useRoomBoard, useRoomWaiting } from "@/lib/room-data";
+import { useRoomAgents, useRoomBoard, useRoomClosedTasks, useRoomWaiting } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { noticeOf, pingOf } from "@/lib/threads";
-import type { BoardEpic, BoardPart, WaitingItem } from "@/lib/api";
+import type { BoardEpic, BoardPart, ClosedTask, WaitingItem } from "@/lib/api";
 import type { ParsedCapture } from "@/lib/board/capture";
 import { fileCapture } from "@/lib/board/file-capture";
 import {
   STANDING,
+  closedGroup,
   epicLine,
   humanLine,
   sideBySide,
@@ -214,6 +215,8 @@ export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
                 ))}
               </Section>
             )}
+
+            <ClosedSection roomName={roomName} you={you} agents={agentHandles} onOpen={open} />
           </div>
         </NowProvider>
       </ScrollArea>
@@ -243,6 +246,136 @@ function Section({ label, count, children }: { label: string; count?: number; ch
       </button>
       {!folded && <ul className="flex flex-col pb-1">{children}</ul>}
     </section>
+  );
+}
+
+/**
+ * What the room has closed, folded at the end of the board. Open, it finds a
+ * closed task by its words and lists them newest closed first, headed by when
+ * they closed, a page at a time. A row is the board's row, saying who closed
+ * it and when, and it opens its thread like any other.
+ */
+function ClosedSection({
+  roomName,
+  you,
+  agents,
+  onOpen,
+}: {
+  roomName: string;
+  you: string;
+  agents: Set<string>;
+  onOpen: (episode?: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const q = useDeferredValue(typed.trim());
+  const { tasks, total, hasMore, loading, more } = useRoomClosedTasks(roomName, q, true);
+  const now = useNow();
+  const groups = useMemo(() => {
+    const out: { label: string; tasks: ClosedTask[] }[] = [];
+    for (const task of tasks) {
+      const label = closedGroup(task.closed_at, now);
+      if (out[out.length - 1]?.label !== label) out.push({ label, tasks: [] });
+      out[out.length - 1].tasks.push(task);
+    }
+    return out;
+  }, [tasks, now]);
+  // Nothing has ever closed: no section to fold.
+  if (!open && !q && total === 0) return null;
+
+  return (
+    <section aria-label="Closed" className="border-b border-border last:border-b-0">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="group flex h-7 w-full items-end gap-1.5 px-3 pb-1 text-micro font-medium text-faint sm:px-4"
+      >
+        {open ? <ChevronDown className="size-3 self-center" /> : <ChevronRight className="size-3 self-center" />}
+        <span className="group-hover:text-muted-foreground">Closed</span>
+        {total !== null && <span className="font-normal tabular">{total}</span>}
+      </button>
+      {open && (
+        <div className="pb-1">
+          <label className="mx-3 mb-1 flex h-7 items-center gap-2 rounded-md border border-border bg-bg px-2 text-micro focus-within:border-border2 sm:mx-4">
+            <Search className="size-3.5 flex-shrink-0 text-faint" aria-hidden />
+            <input
+              value={typed}
+              onChange={e => setTyped(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Escape" && typed) {
+                  e.stopPropagation();
+                  setTyped("");
+                }
+              }}
+              placeholder="Find a closed task"
+              aria-label="Find a closed task"
+              spellCheck={false}
+              className="min-w-0 flex-1 bg-transparent text-text outline-none placeholder:text-faint"
+            />
+          </label>
+          {groups.map(group => (
+            <div key={group.label}>
+              <p className="px-3 pt-1.5 pb-0.5 text-micro text-faint sm:px-4" style={{ paddingLeft: "calc(0.75rem + 1.25rem + 0.5rem)" }}>
+                {group.label}
+              </p>
+              <ul className="flex flex-col">
+                {group.tasks.map(task => (
+                  <ClosedRow key={task.key} task={task} you={you} agents={agents} onOpen={onOpen} />
+                ))}
+              </ul>
+            </div>
+          ))}
+          {!loading && tasks.length === 0 && (
+            <p className="px-3 py-1.5 text-micro text-faint sm:px-4">
+              {q ? `No closed task matches “${q}”.` : "Nothing has closed yet."}
+            </p>
+          )}
+          {hasMore && (
+            <button
+              type="button"
+              onClick={more}
+              disabled={loading}
+              className="mx-3 mt-1 h-6 rounded px-1.5 text-micro text-muted-foreground hover:bg-hairline hover:text-text disabled:opacity-60 sm:mx-4"
+            >
+              {loading ? "Loading…" : "Show older"}
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** A closed task: who closed it, its title and last line, Done, and when it closed. */
+function ClosedRow({
+  task,
+  you,
+  agents,
+  onOpen,
+}: {
+  task: ClosedTask;
+  you: string;
+  agents: Set<string>;
+  onOpen: (episode?: string | null) => void;
+}) {
+  const now = useNow();
+  const by = (task.closed_by ?? task.holder ?? "").replace(/^@/, "") || null;
+  const who = by && by === you ? "you" : by;
+  return (
+    <Row
+      who={who}
+      avatar={by ?? undefined}
+      agent={!!by && agents.has(by)}
+      title={task.title}
+      line={humanLine(task)}
+      standing={STANDING.done}
+      age={shortAge(Date.parse(task.closed_at), now)}
+      ageTitle={`Closed ${new Date(task.closed_at).toLocaleString()}`}
+      rowKey={task.key}
+      dim
+      onOpen={() => onOpen(task.episode)}
+    />
   );
 }
 
