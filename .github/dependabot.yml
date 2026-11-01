@@ -19,6 +19,9 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: github-actions
-    directory: /
+    # The workflows, and the repo's own actions (setup-uv's pin lives in one).
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: weekly
