@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Download, Laptop, Loader2, RefreshCw } from "lucide-react";
 import { desktopMachine, useAppDownload, useIsDesktop } from "@/lib/desktop";
+import { useRunnerSignedOutOf } from "@/lib/desktop-app";
 import { rescanRunner, type Framework, type Runner } from "@/lib/api";
 import {
   hostMissing,
@@ -29,10 +30,24 @@ export const CONNECT_COMMAND = "mycelium runner";
  * connecting, and what to do when it never does. `mycelium runner` there only
  * says one is already running, so it's never the advice here. The usual reason
  * it doesn't connect is a hub with sign-in on that this computer isn't signed
- * in to.
+ * in to, and when the app knows that, it says so outright.
  */
 export function ThisComputerConnecting() {
   const machine = desktopMachine();
+  const refusedBy = useRunnerSignedOutOf();
+  if (refusedBy) {
+    return (
+      <div role="status" className="space-y-1 px-1 py-2">
+        <p className="text-label font-medium text-text">
+          This {machine} isn&apos;t signed in to {refusedBy.replace(/\/+$/, "")}
+        </p>
+        <p className="text-micro leading-relaxed text-muted-foreground">
+          The hub asks for sign-in, so this {machine}&apos;s runner can&apos;t connect. Run{" "}
+          <code className="font-mono text-text">mycelium login</code> in a terminal, then quit and reopen Mycelium.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="flex items-start gap-3 px-1 py-2">
       <Loader2 className="mt-0.5 size-4 animate-spin text-muted-foreground" />

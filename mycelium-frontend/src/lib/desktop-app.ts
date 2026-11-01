@@ -46,6 +46,27 @@ export interface AppState {
   mycelium: Found;
   herdr: Found;
   home: string;
+  /** What the app's supervisor last said (`mycelium desktop serve`); only the part read here. */
+  status?: {
+    /** The hub that refused this computer's sign-in, or null while its runner connects or is connected. */
+    runner_signed_out_of?: string | null;
+  } | null;
+}
+
+/** How often the page asks whether this computer's runner was refused, while it shows no machine. */
+const SIGNED_OUT_EVERY_MS = 5000;
+
+/**
+ * The hub that refused this computer's sign-in, from the app's own status:
+ * null in a browser, while the runner is still connecting, or once it's in.
+ */
+export function useRunnerSignedOutOf(): string | null {
+  const key = hasAppSettings() ? ["app", "get_state", "signed-out"] : null;
+  const { data } = useSWR<AppState>(key, () => appCall<AppState>("get_state"), {
+    refreshInterval: SIGNED_OUT_EVERY_MS,
+    revalidateOnFocus: false,
+  });
+  return data?.status?.runner_signed_out_of ?? null;
 }
 
 /** `get_model`: the key itself never comes back, only whether one is saved. */
