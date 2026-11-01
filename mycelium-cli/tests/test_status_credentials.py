@@ -18,11 +18,13 @@ import json
 import stat
 from pathlib import Path
 
+import httpx
 import pytest
 from typer.testing import CliRunner
 
 from mycelium import status_credentials
 from mycelium.cli import app
+from tests.conftest import install_stand_in_hub
 
 runner = CliRunner()
 
@@ -32,7 +34,14 @@ def _store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point the store at a throwaway file, off the developer's real home."""
     path = tmp_path / "status-credentials.json"
     monkeypatch.setenv(status_credentials.STORE_ENV, str(path))
+    # No hub answers unless a test sets one up, so nothing here reaches a real
+    # hub on this machine's port.
+    install_stand_in_hub(monkeypatch).answer = _unreachable
     return path
+
+
+def _unreachable(request: httpx.Request):
+    raise httpx.ConnectError("no route", request=request)
 
 
 # ── the module ────────────────────────────────────────────────────────────────
@@ -116,8 +125,111 @@ def test_ls_json_after_the_command_lists_names_never_values() -> None:
     )
     result = runner.invoke(app, ["board", "credential", "ls", "--json"])
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout) == {"GITHUB_TOKEN": True}
+    payload = json.loads(result.stdout)
+    assert payload["credentials"] == {"GITHUB_TOKEN": True}
+    assert payload["hub_reads_it"] is True
     assert "ghp_secret" not in result.output
+
+
+# ── whether the hub reads this machine's file ─────────────────────────────────
+
+REMOTE = "https://hub.example.com"
+
+
+def _remote_hub(monkeypatch: pytest.MonkeyPatch, store: str | None, url: str = REMOTE) -> None:
+    """Point the CLI at a hub at ``url``, reporting ``store`` as its store id."""
+    monkeypatch.setenv("MYCELIUM_API_URL", url)
+    storage = {"status": "ok", "message": "ok", **({"id": store} if store else {})}
+    health = {
+        "status": "ok",
+        "service": "mycelium-backend",
+        "version": "3.0.73",
+        "storage": storage,
+    }
+    install_stand_in_hub(monkeypatch).answer = lambda request: (
+        health if request.url.path == "/health" else (404, {"detail": "Not Found"})
+    )
+
+
+def test_a_hub_on_this_machine_reads_the_file_and_nothing_is_said(
+    monkeypatch: pytest.MonkeyPatch, _store: Path
+) -> None:
+    (_store.parent / ".store-id").write_text("this-store")
+    _remote_hub(monkeypatch, store="this-store", url="http://localhost:8000")
+    result = runner.invoke(
+        app, ["board", "credential", "set", "GITHUB_TOKEN", "--stdin"], input="ghp_secret"
+    )
+    assert result.exit_code == 0, result.output
+    assert "another machine" not in result.output
+
+
+def test_a_second_hub_on_this_machine_with_its_own_store_doesn_t_read_it(
+    monkeypatch: pytest.MonkeyPatch, _store: Path
+) -> None:
+    """The desktop app's hub beside a Docker one: same address family, two stores."""
+    (_store.parent / ".store-id").write_text("this-store")
+    _remote_hub(monkeypatch, store="the-other-hub-s", url="http://127.0.0.1:8001")
+    result = runner.invoke(
+        app, ["board", "credential", "set", "GITHUB_TOKEN", "--stdin"], input="ghp_secret"
+    )
+    assert "won't read this file" in " ".join(result.output.split())
+
+
+def test_a_local_hub_that_can_t_be_asked_is_taken_as_this_machine_s() -> None:
+    """Nothing answers (the fixture's default), so the address decides."""
+    assert status_credentials.hub_reads_here("http://localhost:8000") is True
+
+
+def test_a_hub_elsewhere_gets_a_plain_warning_and_the_value_is_still_stored(
+    monkeypatch: pytest.MonkeyPatch, _store: Path
+) -> None:
+    _remote_hub(monkeypatch, store="theirs")
+    result = runner.invoke(
+        app, ["board", "credential", "set", "GITHUB_TOKEN", "--stdin"], input="ghp_secret"
+    )
+    assert result.exit_code == 0, result.output
+    said = " ".join(result.output.split())
+    assert f"The hub at {REMOTE} runs on another machine and won't read this file." in said
+    assert "Run `mycelium board credential set GITHUB_TOKEN` on the hub's machine instead." in said
+    assert status_credentials.list_names() == {"GITHUB_TOKEN": True}
+
+    listed = runner.invoke(app, ["board", "credential", "ls"])
+    assert "Run `mycelium board credential ls` on the hub's machine" in " ".join(
+        listed.output.split()
+    )
+
+
+def test_json_says_whether_the_hub_reads_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    _remote_hub(monkeypatch, store="theirs")
+    result = runner.invoke(
+        app,
+        ["--json", "board", "credential", "set", "GITHUB_TOKEN", "--stdin"],
+        input="ghp_secret",
+    )
+    payload = json.loads(result.output)
+    assert (payload["hub"], payload["hub_reads_it"]) == (REMOTE, False)
+    listed = json.loads(runner.invoke(app, ["board", "credential", "ls", "--json"]).stdout)
+    assert (listed["hub"], listed["hub_reads_it"]) == (REMOTE, False)
+
+
+def test_a_hub_reached_by_name_that_reports_this_store_reads_it(
+    monkeypatch: pytest.MonkeyPatch, _store: Path
+) -> None:
+    """The same machine on the local network: the hub's store id is this folder's."""
+    (_store.parent / ".store-id").write_text("this-store")
+    _remote_hub(monkeypatch, store="this-store")
+    assert status_credentials.hub_reads_here(REMOTE) is True
+    result = runner.invoke(
+        app, ["board", "credential", "set", "GITHUB_TOKEN", "--stdin"], input="ghp_secret"
+    )
+    assert "another machine" not in result.output
+
+
+def test_a_hub_that_can_t_be_asked_is_taken_as_elsewhere(
+    monkeypatch: pytest.MonkeyPatch, _store: Path
+) -> None:
+    (_store.parent / ".store-id").write_text("this-store")
+    assert status_credentials.hub_reads_here(REMOTE) is False
 
 
 def test_ls_on_an_empty_hub_says_so() -> None:
