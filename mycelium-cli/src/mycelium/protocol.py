@@ -200,7 +200,7 @@ class AgentManifest(BaseModel):
         default=None,
         description=(
             "claude_code / cursor: optional working dir for the resident session. "
-            "Cursor treats it as the workspace root (and asset drop site) when set."
+            "Cursor treats it as the workspace root when set."
         ),
     )
     description: str = Field(default="", description="One-paragraph purpose statement.")
